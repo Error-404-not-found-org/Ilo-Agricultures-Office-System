@@ -17,7 +17,7 @@ app.use(clerkMiddleware()); // add auth object under req.auth
 
 app.use("/api/inngest", serve({ client: inngest, functions }));
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 app.get("/homepage", (req, res) => {
   res.send("Hello World!");
