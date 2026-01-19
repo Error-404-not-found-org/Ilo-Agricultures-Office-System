@@ -11,11 +11,20 @@ const syncUser = inngest.createFunction(
   { event: "clerk/user.created" },
   async ({ event }) => {
     await connectDB();
-    const { id, email_address, first_name, last_name, image_url } = event.data;
+    const { id, first_name, last_name, image_url } = event.data;
+
+    const email =
+      event.data.email_addresses?.[0]?.email_address ||
+      event.data.external_accounts?.[0]?.email_address;
+
+    if (!email) {
+      console.warn(`Skipping user creation: no email found for clerkId ${id}`);
+      return;
+    }
 
     const newUser = {
       clerkId: id,
-      email: email_address[0]?.email_address,
+      email,
       name: `${first_name || ""} ${last_name || ""}` || "User",
       imageUrl: image_url,
       address: null,
