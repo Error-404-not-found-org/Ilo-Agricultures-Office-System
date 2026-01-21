@@ -8,6 +8,9 @@ import { inngest, functions } from "./config/inngest.js";
 import { ENV } from "./config/env.js";
 import { connectDB } from "./config/db.js";
 
+import adminRoutes from "./routes/admin.routes.js";
+import technicianRoutes from "./routes/technician.routes.js";
+
 const app = express();
 
 const __dirname = path.resolve();
@@ -16,6 +19,9 @@ app.use(express.json());
 app.use(clerkMiddleware()); // add auth object under req.auth
 
 app.use("/api/inngest", serve({ client: inngest, functions }));
+
+app.use("/api/admin", adminRoutes);
+app.use("/api/technician", technicianRoutes);
 
 const PORT = process.env.PORT || 3000;
 
