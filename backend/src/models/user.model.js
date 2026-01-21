@@ -48,6 +48,15 @@ const userSchema = new mongoose.Schema(
       type: AddressSchema,
       required: false,
     },
+    role: {
+      type: String,
+      enum: ["admin", "technician", "farmer"],
+      default: "farmer",
+    },
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );
