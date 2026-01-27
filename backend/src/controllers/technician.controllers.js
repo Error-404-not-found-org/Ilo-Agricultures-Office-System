@@ -1,63 +1,151 @@
-export const getTechnicianInseminations = async (req, res) => {
-  res.status(200).send({ inseminations: [] });
+import { User } from "../models/user.model.js";
+import { Animal } from "../models/animal.model.js";
+import { Insemination } from "../models/insemination.model.js";
+import { clerkClient } from "@clerk/clerk-sdk-node";
+
+export const getMyInseminations = async (req, res) => {
+  try {
+    const inseminations = await Insemination.find().sort({ createdAt: -1 });
+    res.status(200).send({ inseminations });
+  } catch (error) {
+    console.error("Error fetching inseminations:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
 };
 
-export const getTechnicianProfile = async (req, res) => {
-  res.status(200).send({ profile: {} });
+export const getMyReInseminations = async (req, res) => {
+  //  const last = await Insemination.findOne({ animalId }).sort({
+  //    attemptNumber: -1,
+  //  });
+  //  await Insemination.create({
+  //    farmerId,
+  //    animalId,
+  //    technicianId,
+  //    attemptNumber: last.attemptNumber + 1,
+  //    status: "pending",
+  //    requestedBy: "farmer",
+  //  });
 };
 
-export const getTechnicianReInseminations = async (req, res) => {
-  res.status(200).send({ reInseminations: [] });
-};
-
-export const getTechnicianPregnancyChecks = async (req, res) => {
+export const getMyPregnancyChecks = async (req, res) => {
   res.status(200).send({ pregnancyChecks: [] });
 };
 
-export const getTechnicianCalvings = async (req, res) => {
-  res.status(200).send({ calvings: [] });
-};
-
-export const getTechnicianFarmers = async (req, res) => {
-  res.status(200).send({ farmers: [] });
-};
-
-export const getTechnicianNotifications = async (req, res) => {
+export const getMyNotifications = async (req, res) => {
   res.status(200).send({ notifications: [] });
 };
 
+export const getMyProfile = async (req, res) => {
+  try {
+    const profile = await User.findById(req.user._id);
+    res.status(200).send({ profile });
+  } catch (error) {
+    console.error("Error fetching profile:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
 // Post functions for technician
 
-export const createFarmerByTechnician = async (req, res) => {
+export const walkInInsemination = async (req, res) => {
   try {
-    const { email, name, phoneNumber, address } = req.body;
+    const {
+      firstName,
+      lastName,
+      email,
+      phoneNumber,
+      address,
+      imageUrl,
+      animalDetails,
+      inseminationDetails,
+    } = req.body;
 
-    const { clerkId } = req.params;
-  } catch (error) {}
-};
+    // 🔴 Basic validation first
+    if (!firstName || !lastName || !animalDetails || !inseminationDetails) {
+      return res.status(400).json({
+        message: "Missing required farmer, animal, or insemination data",
+      });
+    }
 
-// Delete functions for technician
+    // 1️⃣ Find or create farmer
+    let farmer = null;
 
-export const deleteFarmerProfile = async (req, res) => {
-  res.status(200).send({ message: "Farmer profile deleted successfully" });
-};
+    if (email) {
+      farmer = await User.findOne({ email });
+    }
 
-export const deleteTechnicianInsemination = async (req, res) => {
-  res.status(200).send({ message: "Insemination record deleted successfully" });
-};
+    if (!farmer) {
+      farmer = await User.create({
+        name: `${firstName} ${lastName}`,
+        phoneNumber,
+        email: email || undefined,
+        address,
+        imageUrl: imageUrl || "",
+        role: "farmer",
+        isVerified: !!email,
+      });
 
-export const deleteTechnicianReInsemination = async (req, res) => {
-  res
-    .status(200)
-    .send({ message: "Re-insemination record deleted successfully" });
-};
+      // Send Clerk invitation only if email exists
+      if (email) {
+        const invitation = await clerkClient.invitations.createInvitation({
+          emailAddress: email,
+          publicMetadata: { invitedBySystem: true },
+          redirectUrl: "https://ilo-agricultures-inseminati-p5bbd.sevalla.app/",
+        });
 
-export const deleteTechnicianPregnancyCheck = async (req, res) => {
-  res
-    .status(200)
-    .send({ message: "Pregnancy check record deleted successfully" });
-};
+        farmer.clerkId = invitation.userId;
+        await farmer.save();
+      }
+    }
 
-export const deleteTechnicianCalving = async (req, res) => {
-  res.status(200).send({ message: "Calving record deleted successfully" });
+    // 2️⃣ Find or register animal (avoid duplicates)
+    let animal = await Animal.findOne({
+      farmerId: farmer._id,
+      earTag: animalDetails.earTag,
+    });
+
+    if (!animal) {
+      animal = await Animal.create({
+        farmerId: farmer._id,
+        earTag: animalDetails.earTag,
+        species: animalDetails.species,
+        breed: animalDetails.breed,
+        color: animalDetails.color || "",
+        imageUrl: animalDetails.imageUrl || "",
+      });
+    }
+
+    // 3️⃣ Get last insemination attempt
+    const lastAttempt = await Insemination.findOne({
+      animalId: animal._id,
+    }).sort({ attemptNumber: -1 });
+
+    const attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
+
+    // 4️⃣ Create insemination record
+    const insemination = await Insemination.create({
+      farmerId: farmer._id,
+      animalId: animal._id,
+      inseminationDate: inseminationDetails.inseminationDate,
+      sireBreed: inseminationDetails.sireBreed,
+      sireCode: inseminationDetails.sireCode,
+      estrus: inseminationDetails.estrus,
+      attemptNumber,
+      status: attemptNumber === 1 ? "approved" : "pending",
+      approvedBy: attemptNumber === 1 ? req.user._id : null,
+    });
+
+    return res.status(201).json({
+      message:
+        "Walk-in farmer, animal, and insemination registered successfully",
+      farmer,
+      animal,
+      insemination,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      message: "Failed to process walk-in insemination",
+      error,
+    });
+  }
 };

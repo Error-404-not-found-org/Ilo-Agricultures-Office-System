@@ -14,12 +14,12 @@ const router = Router();
 
 router.use(protectedRoute, AdminOnly);
 
-router.post("/admin/create-user", registerUser);
-router.post("/admin/delete-user", deleteUser);
-router.get("/admin/inseminations", getAllInseminations);
-router.get("/admin/re-inseminations", getAllReInseminations);
-router.get("/admin/pregnancy-checks", getAllPregnancyChecks);
-router.get("/admin/calvings", getAllCalvings);
-router.delete("/admin/delete-insemination/:id", deleteInsemination);
+router.post("/create-user", registerUser);
+router.post("/delete-user", deleteUser);
+router.get("/inseminations", getAllInseminations);
+router.get("/re-inseminations", getAllReInseminations);
+router.get("/pregnancy-checks", getAllPregnancyChecks);
+router.get("/calvings", getAllCalvings);
+router.delete("/delete-insemination/:id", deleteInsemination);
 
 export default router;

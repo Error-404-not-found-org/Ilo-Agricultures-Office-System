@@ -2,19 +2,19 @@ import mongoose from "mongoose";
 
 const PregnancySchema = new mongoose.Schema(
   {
-    animal: {
+    animalId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Animal",
       required: true,
     },
 
-    farmer: {
+    farmerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
 
-    insemination: {
+    inseminationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Insemination",
       required: true,

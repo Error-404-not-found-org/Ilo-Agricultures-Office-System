@@ -26,10 +26,12 @@ const AddressSchema = new mongoose.Schema({
 
 const userSchema = new mongoose.Schema(
   {
+    clerkId: { type: String, unique: true, sparse: true },
+
     email: {
       type: String,
       required: true,
-      unique: true,
+      sparse: true,
     },
     name: {
       type: String,
@@ -38,11 +40,6 @@ const userSchema = new mongoose.Schema(
     imageUrl: {
       type: String,
       default: "",
-    },
-    clerkId: {
-      type: String,
-      unique: true,
-      required: true,
     },
     address: {
       type: AddressSchema,

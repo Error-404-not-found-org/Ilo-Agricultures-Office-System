@@ -2,19 +2,19 @@ import mongoose from "mongoose";
 
 const CalvingSchema = new mongoose.Schema(
   {
-    animal: {
+    animalId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Animal",
       required: true,
     },
     
-    farmer: {
+    farmerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
 
-    pregnancy: {
+    pregnancyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Pregnancy",
       required: true,
