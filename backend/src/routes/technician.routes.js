@@ -5,33 +5,25 @@ import {
   TechnicianOnly,
 } from "../middleware/auth.middleware.js";
 
-import { getTechnicianInseminations } from "../controllers/technician.controllers.js";
-import { getTechnicianProfile } from "../controllers/technician.controllers.js";
-import { getTechnicianReInseminations } from "../controllers/technician.controllers.js";
-import { getTechnicianPregnancyChecks } from "../controllers/technician.controllers.js";
-import { getTechnicianCalvings } from "../controllers/technician.controllers.js";
-import { getTechnicianFarmers } from "../controllers/technician.controllers.js";
-import { getTechnicianNotifications } from "../controllers/technician.controllers.js";
-
-import { createFarmerByTechnician } from "../controllers/technician.controllers.js";
+import { getMyInseminations } from "../controllers/technician.controllers.js";
+import { getMyProfile } from "../controllers/technician.controllers.js";
+import { getMyReInseminations } from "../controllers/technician.controllers.js";
+import { getMyPregnancyChecks } from "../controllers/technician.controllers.js";
+import { getMyNotifications } from "../controllers/technician.controllers.js";
+import { walkInInsemination } from "../controllers/technician.controllers.js";
 
 const router = Router();
 
 router.use(protectedRoute, TechnicianOnly);
 
 // Get functions for technician
-router.get("/technician/inseminations", getTechnicianInseminations);
-router.get("/technician/profile", getTechnicianProfile);
-router.get("/technician/re-inseminations", getTechnicianReInseminations);
-router.get("/technician/pregnancy-checks", getTechnicianPregnancyChecks);
-router.get("/technician/calvings", getTechnicianCalvings);
-router.get("/technician/farmers", getTechnicianFarmers);
-router.get("/technician/notifications", getTechnicianNotifications);
 
-// Post functions for technician
+router.get("/inseminations", getMyInseminations);
+router.get("/re-inseminations", getMyReInseminations);
+router.get("/pregnancy-checks", getMyPregnancyChecks);
+router.get("/notifications", getMyNotifications);
+router.get("/profile", getMyProfile);
 
-router.post("/technician/create-farmer-profile", createFarmerByTechnician);
-
-// Delete functions for technician
+router.post("/walk-in-insemination", walkInInsemination);
 
 export default router;

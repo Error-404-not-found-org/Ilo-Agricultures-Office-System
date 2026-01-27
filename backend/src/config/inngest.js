@@ -11,25 +11,51 @@ const syncUser = inngest.createFunction(
   { event: "clerk/user.created" },
   async ({ event }) => {
     await connectDB();
-    const { id, first_name, last_name, image_url } = event.data;
 
+    const {
+      id: clerkId,
+      first_name,
+      last_name,
+      image_url,
+      email_addresses,
+      external_accounts,
+    } = event.data;
+
+    const emailObj = email_addresses?.[0];
     const email =
-      event.data.email_addresses?.[0]?.email_address ||
-      event.data.external_accounts?.[0]?.email_address;
+      emailObj?.email_address || external_accounts?.[0]?.email_address;
 
     if (!email) {
-      console.warn(`Skipping user creation: no email found for clerkId ${id}`);
+      console.warn(`Skipping user creation: no email for clerkId ${clerkId}`);
       return;
     }
 
-    const newUser = {
-      clerkId: id,
-      email,
-      name: `${first_name || ""} ${last_name || ""}` || "User",
-      imageUrl: image_url,
-      address: null,
-    };
-    await User.create(newUser);
+    const isVerified = emailObj?.verification?.status === "verified";
+
+    // 🔎 Find existing user (technician-created)
+    let user = await User.findOne({ email });
+
+    if (user) {
+      // ✅ ACCEPT INVITE FLOW
+      user.clerkId = clerkId;
+      user.isVerified = isVerified;
+      user.imageUrl = user.imageUrl || image_url;
+      await user.save();
+
+      console.log(`Linked Clerk user to existing farmer: ${email}`);
+    } else {
+      // ✅ DIRECT SIGNUP (mobile app)
+      await User.create({
+        clerkId,
+        email,
+        name: `${first_name || ""} ${last_name || ""}`.trim(),
+        imageUrl: image_url || "",
+        role: "farmer",
+        isVerified,
+      });
+
+      console.log(`Created new farmer from Clerk signup: ${email}`);
+    }
   },
 );
 
@@ -38,8 +64,8 @@ const deleteUserFromDB = inngest.createFunction(
   { event: "clerk/user.deleted" },
   async ({ event }) => {
     await connectDB();
-    const { id } = event.data;
-    await User.deleteOne({ clerkId: id });
+    const { id: clerkId } = event.data;
+    await User.deleteOne({ clerkId });
   },
 );
 

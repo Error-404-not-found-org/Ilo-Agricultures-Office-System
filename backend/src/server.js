@@ -10,6 +10,9 @@ import { connectDB } from "./config/db.js";
 
 import adminRoutes from "./routes/admin.routes.js";
 import technicianRoutes from "./routes/technician.routes.js";
+import inseminationRoutes from "./routes/insemination.routes.js";
+import animalRoutes from "./routes/animal.routes.js";
+import userRoutes from "./routes/user.routes.js";
 
 const app = express();
 
@@ -22,6 +25,9 @@ app.use("/api/inngest", serve({ client: inngest, functions }));
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/technician", technicianRoutes);
+app.use("/api/insemination", inseminationRoutes);
+app.use("/api/animal", animalRoutes);
+app.use("/api/user", userRoutes);
 
 const PORT = process.env.PORT || 3000;
 

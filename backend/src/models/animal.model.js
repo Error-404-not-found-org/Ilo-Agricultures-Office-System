@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const AnimalSchema = new mongoose.Schema(
   {
-    farmer: {
+    farmerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,

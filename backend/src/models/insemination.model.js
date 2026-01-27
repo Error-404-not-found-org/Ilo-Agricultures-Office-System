@@ -2,18 +2,18 @@ import mongoose from "mongoose";
 
 const InseminationSchema = new mongoose.Schema(
   {
-    farmer: {
+    farmerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
-    animal: {
+    animalId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Animal",
       required: true,
     },
 
-    date: {
+    inseminationDate: {
       type: Date,
       required: true,
     },
@@ -33,8 +33,21 @@ const InseminationSchema = new mongoose.Schema(
       required: true,
     },
 
-    technician: {
+    status: {
       type: String,
+      enum: ["pending", "approved", "rejected", "done"],
+      default: "pending",
+    },
+
+    approvedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    attemptNumber: {
+      type: Number,
+      required: true,
+      default: 1,
     },
   },
   { timestamps: true },
