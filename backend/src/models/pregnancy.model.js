@@ -1,0 +1,38 @@
+import mongoose from "mongoose";
+
+const PregnancySchema = new mongoose.Schema(
+  {
+    animalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Animal",
+      required: true,
+    },
+
+    farmerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    inseminationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Insemination",
+      required: true,
+      unique: true,
+    },
+
+    pregnancyDiagnosis: {
+      date: Date,
+      result: {
+        type: String,
+        enum: ["Pregnant", "Empty"],
+      },
+    },
+
+    // Optional target calving date
+    targetCalvingDate: Date,
+  },
+  { timestamps: true },
+);
+
+export const Pregnancy = mongoose.model("Pregnancy", PregnancySchema);
