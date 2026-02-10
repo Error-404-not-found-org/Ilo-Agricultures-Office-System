@@ -1,33 +1,34 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import BottomNavigator from '../components/BottomNavigator';
+import { View } from 'react-native';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
+      // This line is the magic: it swaps the default tab bar for your custom component
+      tabBar={(props) => <BottomNavigator {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
-        }}
+        headerShown: false, // We hide headers because your screens have their own custom headers
+
+      }}
+    >
+      {/* Route 1: Home */}
+      <Tabs.Screen name="index" />
+
+      {/* Route 2: Clients */}
+      <Tabs.Screen name="clients" />
+
+      {/* Route 3: Animals */}
+      <Tabs.Screen 
+        name="animals" 
       />
-      <Tabs.Screen
-        name="explore"
+
+      {/* Route 4: Records (Placeholder) */}
+      <Tabs.Screen 
+        name="records" 
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+            href: null,
         }}
       />
     </Tabs>

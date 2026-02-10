@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "mobile",
+    "name": "ilo-agriculture",
     "slug": "mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "mobile",
+    "scheme": "ilo-agriculture",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {

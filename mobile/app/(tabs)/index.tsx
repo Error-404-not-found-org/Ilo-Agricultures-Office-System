@@ -1,98 +1,110 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { ArrowRight, Syringe, UserPlus, Activity } from 'lucide-react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import SafeScreen from "@/components/safeScreen"
+import Header from '@/components/Header';
+import { useRouter } from 'expo-router';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+// --- IMPORT THE BUTTON HERE ---
+import { SignOutButton } from '../components/sign-out-button'; 
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const router = useRouter();
+
+  return (
+    <SafeScreen>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 150 }}  // change it to 24 later after testing
+        showsVerticalScrollIndicator={false}
+      >
+
+        {/* --- HEADER --- */}
+        <Header />
+
+        {/* --- HERO CARD --- */}
+        <View className="mx-6 bg-slate-100 rounded-[32px] p-6 mb-8 shadow-sm">
+          <View className="flex-row justify-between items-start">
+            <View>
+              <Text className="text-lg font-bold text-slate-900">Pending Insemination</Text>
+              <Text className="text-slate-500 text-sm mb-2">Today's Tasks</Text>
+            </View>
+            <View className="bg-white px-3 py-1 rounded-full">
+              <Text className="text-xs font-bold text-slate-700">Today</Text>
+              
+            </View>
+          </View>
+
+          <Text className="text-7xl font-medium text-slate-900 mb-6 tracking-tighter">00</Text>
+
+          <View className="flex-row justify-between border-t border-slate-300 pt-5">
+            <StatItem label="Urgent" value="0" color="text-red-600" />
+            <View className="w-[1px] h-full bg-slate-300" />
+            <StatItem label="Routine" value="0" color="text-slate-900" />
+            <View className="w-[1px] h-full bg-slate-300"   />
+            <StatItem label="Follow-up" value="0" color="text-slate-900" />
+          </View>
+          
+        </View>
+
+        {/* --- ACTION GRID --- */}
+        <View className="px-6 flex-row flex-wrap justify-between gap-y-4 mb-8">
+          <ActionCard
+            title="Animals Assigned"
+            subtitle="View List"
+            icon={<MaterialCommunityIcons name="cow" size={28} color="#1F2937" />}
+          />
+          <ActionCard
+            title="Pregnancy Checks"
+            subtitle="Due Date"
+            icon={<Activity size={28} color="#1F2937" />}
+          />
+          <ActionCard
+            title="Add Clients"
+            subtitle="New Profile"
+            onPress={() => router.push('/clients/register-client')}
+            icon={<UserPlus size={28} color="#1F2937" />}
+          />
+          <ActionCard
+            title="Record Result"
+            subtitle="Log Completed"
+            icon={<Syringe size={28} color="#1F2937" />}
+          />
+        </View>
+{/* --- SIGN OUT BUTTON REMOVE LATER AFTER TESTTING--- */}
+        <View className="px-6">
+          <SignOutButton />
+        </View>
+        
+
+      </ScrollView>
+    </SafeScreen>
   );
 }
 
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
+// --- SUB COMPONENTS ---
+
+const StatItem = ({ label, value, color }: { label: string, value: string, color: string }) => (
+  <View className="items-center flex-1">
+    <Text className="text-slate-500 text-xs mb-1">{label}</Text>
+    <Text className={`text-2xl font-semibold ${color}`}>{value}</Text>
+  </View>
+);
+
+const ActionCard = ({ title, subtitle, icon, onPress }: { title: string, subtitle: string, icon: React.ReactNode, onPress? : () => void }) => (
+  <TouchableOpacity
+    activeOpacity={0.7}
+    className="w-[48%] bg-gray-100 rounded-[28px] p-5 justify-between min-h-[160px] border border-transparent active:border-gray-300"
+    onPress={onPress}
+  >
+    <View>
+      <View className="mb-4 bg-white self-start p-2 rounded-full shadow-sm">{icon}</View>
+      <Text className="font-bold text-gray-900 text-[15px] leading-5 mb-1">{title}</Text>
+      <Text className="text-gray-500 text-xs">{subtitle}</Text>
+    </View>
+    <View className="flex-row items-center justify-between mt-2">
+      <Text className="text-gray-800 font-semibold text-sm">Check</Text>
+      <ArrowRight size={18} color="#1F2937" />
+    </View>
+  </TouchableOpacity>
+);
