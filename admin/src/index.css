@@ -1,0 +1,14 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+    themes: emerald, corporate;
+}
+
+:root {
+    --font-outfit: "Outfit", sans-serif;
+    /* Custom Dark Green from reference image */
+    --color-custom-green: #074033; 
+}
+
+body {
+    font-family: var(--font-outfit);
+}
