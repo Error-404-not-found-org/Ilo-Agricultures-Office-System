@@ -10,7 +10,7 @@ export default function FarmerLayout() {
     >
       <Tabs.Screen name="index" />
       <Tabs.Screen name="add-animal" />
-       <Tabs.Screen name="records" />
+       <Tabs.Screen name="farmer.records" />
       <Tabs.Screen name="profile" />
       
     </Tabs>

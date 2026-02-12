@@ -106,9 +106,9 @@ const FarmerBottomNavigator = ({ state, descriptors, navigation }: BottomTabBarP
         </View>
 
         {/* Records */}
-        <TouchableOpacity onPress={() => onNavigate('records')} className="items-center justify-center flex-1 gap-1">
-          <FileText color={isFocused('records') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
-          <Text className={`text-xs font-semibold ${isFocused('records') ? 'text-gray-800' : 'text-gray-400'}`}>Records</Text>
+        <TouchableOpacity onPress={() => onNavigate('farmer.records')} className="items-center justify-center flex-1 gap-1">
+          <FileText color={isFocused('farmer.records') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
+          <Text className={`text-xs font-semibold ${isFocused('farmer.records') ? 'text-gray-800' : 'text-gray-400'}`}>Records</Text>
         </TouchableOpacity>
 
         {/* Profile */}
