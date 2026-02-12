@@ -11,7 +11,7 @@ import { connectDB } from "./config/db.js";
 import adminRoutes from "./routes/admin.routes.js";
 import technicianRoutes from "./routes/technician.routes.js";
 import inseminationRoutes from "./routes/insemination.routes.js";
-import animalRoutes from "./routes/animal.routes.js";
+import animalRoutes from "./routes/animals.routes.js";
 import userRoutes from "./routes/user.routes.js";
 
 const app = express();
