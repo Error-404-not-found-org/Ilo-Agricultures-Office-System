@@ -5,11 +5,11 @@ import { createFarmerAccount } from "../controllers/user.controllers.js";
 import {
   protectedRoute,
   TechnicianOnly,
-  adminOnly,
+  AdminOnly,
 } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-router.post("/create-farmer", protectedRoute, adminOnly, createFarmerAccount);
+router.post("/create-farmer", protectedRoute, AdminOnly, createFarmerAccount);
 
 export default router;
