@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { clerkMiddleware } from "@clerk/express";
 import { serve } from "inngest/express";
+import cors from "cors";
 
 import { inngest, functions } from "./config/inngest.js";
 
@@ -20,6 +21,7 @@ const __dirname = path.resolve();
 
 app.use(express.json());
 app.use(clerkMiddleware()); // add auth object under req.auth
+app.use(cors({ origin: ENV.CLIENT_URL, credentials: true }));
 
 app.use("/api/inngest", serve({ client: inngest, functions }));
 
@@ -31,11 +33,6 @@ app.use("/api/user", userRoutes);
 
 const PORT = process.env.PORT || 3000;
 
-app.get("/homepage", (req, res) => {
-  res.send("Hello World!");
-});
-
-//make our app ready
 
 if (ENV.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../admin/dist")));

@@ -8,7 +8,7 @@ export const inngest = new Inngest({
 
 const syncUser = inngest.createFunction(
   { id: "sync/user" },
-  { event: "clerk/user.created" },
+  { event: ["clerk/user.created", "clerk/user.updated"] },
   async ({ event }) => {
     await connectDB();
 
@@ -19,6 +19,7 @@ const syncUser = inngest.createFunction(
       image_url,
       email_addresses,
       external_accounts,
+      unsafe_metadata, // This might contain role logic if needed, but we prefer DB role
     } = event.data;
 
     const emailObj = email_addresses?.[0];
@@ -26,31 +27,35 @@ const syncUser = inngest.createFunction(
       emailObj?.email_address || external_accounts?.[0]?.email_address;
 
     if (!email) {
-      console.warn(`Skipping user creation: no email for clerkId ${clerkId}`);
+      console.warn(`Skipping user sync: no email for clerkId ${clerkId}`);
       return;
     }
 
     const isVerified = emailObj?.verification?.status === "verified";
+    const name = `${first_name || ""} ${last_name || ""}`.trim();
 
-    // 🔎 Find existing user (technician-created)
+    // 🔎 Find existing user (technician-created or just existing)
     let user = await User.findOne({ email });
 
     if (user) {
-      // ✅ ACCEPT INVITE FLOW
+      // ✅ UPDATE EXISTING USER / ACCEPT INVITE FLOW
       user.clerkId = clerkId;
       user.isVerified = isVerified;
-      user.imageUrl = user.imageUrl || image_url;
+      user.imageUrl = image_url || user.imageUrl;
+      user.name = name || user.name;
       await user.save();
 
-      console.log(`Linked Clerk user to existing farmer: ${email}`);
+      console.log(`Synced Clerk user with existing user: ${email} (${user.role})`);
     } else {
-      // ✅ DIRECT SIGNUP (mobile app)
+      // ✅ DIRECT SIGNUP (mobile app or web without invite)
+      // Default to farmer unless metadata says otherwise (though frontend shouldn't dictate role)
+      
       await User.create({
         clerkId,
         email,
-        name: `${first_name || ""} ${last_name || ""}`.trim(),
+        name: name || "New User",
         imageUrl: image_url || "",
-        role: "farmer",
+        role: "farmer", 
         isVerified,
       });
 

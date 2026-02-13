@@ -1,15 +1,14 @@
 import { Router } from "express";
 
-import { createFarmerAccount } from "../controllers/user.controllers.js";
+import { createInvitedUser } from "../controllers/user.controllers.js";
 
 import {
   protectedRoute,
-  TechnicianOnly,
-  AdminOnly,
+  requireRole,
 } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-router.post("/create-farmer", protectedRoute, AdminOnly, createFarmerAccount);
+router.post("/create-invited-user", protectedRoute, requireRole(["admin", "technician"]), createInvitedUser);
 
 export default router;
