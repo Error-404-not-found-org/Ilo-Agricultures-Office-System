@@ -4,16 +4,7 @@ import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { Animal } from "../models/animal.model.js";
 
-// Create User (simplified - primarily for creating technician/admin accounts directly)
-export const registerUser = async (req, res) => {
-    try {
-        const user = new User(req.body);
-        await user.save();
-        res.status(201).send({ message: "User created successfully", user });
-    } catch (error) {
-        res.status(500).send({ message: "Error creating user", error: error.message });
-    }
-};
+// Create User function removed - use user.controllers.js/createInvitedUser instead
 
 // Dashboard Stats
 export const getDashboardStats = async (req, res) => {
