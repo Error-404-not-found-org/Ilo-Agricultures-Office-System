@@ -1,7 +1,7 @@
 import { useUser } from "@clerk/clerk-react";
 import { Navigate, Outlet } from "react-router-dom";
 
-const ProtectedAdminRoute = () => {
+const ProtectedAdminRoute = ({ children }) => {
   const { user, isLoaded } = useUser();
 
   if (!isLoaded) {
