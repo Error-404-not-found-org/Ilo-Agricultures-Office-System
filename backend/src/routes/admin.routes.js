@@ -9,7 +9,7 @@ import { getAllReInseminations } from "../controllers/admin.controllers.js";
 import { getAllPregnancyChecks } from "../controllers/admin.controllers.js";
 import { getAllCalvings } from "../controllers/admin.controllers.js";
 import { deleteUser } from "../controllers/admin.controllers.js";
-import { deleteInsemination } from "../controllers/admin.controllers.js";
+import { deleteInsemination, syncUserMetadata } from "../controllers/admin.controllers.js";
 
 const router = Router();
 
@@ -23,5 +23,6 @@ router.get("/re-inseminations", getAllReInseminations);
 router.get("/pregnancy-checks", getAllPregnancyChecks);
 router.get("/calvings", getAllCalvings);
 router.delete("/delete-insemination/:id", deleteInsemination);
+router.post("/sync-metadata", syncUserMetadata);
 
 export default router;

@@ -118,3 +118,27 @@ export const deleteInsemination = async (req, res) => {
         res.status(500).send({ message: "Error deleting insemination", error: error.message });
     }
 };
+
+export const syncUserMetadata = async (req, res) => {
+    try {
+        const { clerkClient } = await import("@clerk/clerk-sdk-node");
+        const users = await User.find({ clerkId: { $ne: null } });
+        let updatedCount = 0;
+        
+        for (const user of users) {
+             try {
+                // Determine logic: sync DB role to Clerk
+                await clerkClient.users.updateUser(user.clerkId, {
+                    publicMetadata: { role: user.role }
+                });
+                updatedCount++;
+             } catch (err) {
+                 console.error(`Failed to sync user ${user.email}:`, err.message);
+             }
+        }
+        
+        res.status(200).json({ message: `Synced metadata for ${updatedCount} users.` });
+    } catch (error) {
+         res.status(500).json({ message: "Error syncing metadata", error: error.message });
+    }
+};

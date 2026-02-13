@@ -3,6 +3,7 @@ import { SignedIn, SignedOut } from "@clerk/clerk-react";
 
 // Components
 import Layout from "./components/Layout";
+import ProtectedAdminRoute from "./components/ProtectedAdminRoute";
 
 // Pages
 import Landing from "./pages/Landing";
@@ -24,7 +25,9 @@ function App() {
         element={
           <>
             <SignedIn>
-               <Layout />
+              <ProtectedAdminRoute>
+                <Layout />
+              </ProtectedAdminRoute>
             </SignedIn>
             <SignedOut>
               <Navigate to="/" replace />

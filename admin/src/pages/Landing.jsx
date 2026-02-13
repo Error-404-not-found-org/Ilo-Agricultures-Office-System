@@ -1,7 +1,7 @@
 import React from 'react';
-import { Link, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 import { useUser, SignInButton } from "@clerk/clerk-react";
-import { Tractor, ShieldCheck, Sprout, ArrowRight, Menu } from 'lucide-react';
+import { ShieldCheck, Smartphone, Download, ArrowRight, LayoutDashboard } from 'lucide-react';
 
 const Landing = () => {
     const { isSignedIn, isLoaded } = useUser();
@@ -13,86 +13,95 @@ const Landing = () => {
     return (
         <div className="font-['Outfit'] min-h-screen flex flex-col bg-[#F4F5F7]">
             {/* Navbar */}
-            <nav className="navbar px-6 lg:px-20 py-4 bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+            <nav className="navbar px-6 lg:px-20 py-4 bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-sm border-b border-gray-100">
                 <div className="flex-1 flex items-center gap-3">
-                    <img src="/logo.png" alt="BreedSmart Logo" className="w-12 h-12 object-contain" />
-                    <span className="text-2xl font-bold tracking-tight text-[#074033]">BreedSmart</span>
-                </div>
-                <div className="flex-none">
-                    <SignInButton mode="modal">
-                        <button className="btn bg-[#074033] hover:bg-[#052e24] text-white border-none rounded-xl px-6 font-medium shadow-md transition-transform hover:scale-105">
-                            Sign In
-                        </button>
-                    </SignInButton>
+                    <img src="/logo.png" alt="BreedSmart Logo" className="w-10 h-10 object-contain" />
+                    <span className="text-xl font-bold tracking-tight text-[#074033]">BreedSmart Portal</span>
                 </div>
             </nav>
 
-            {/* Hero Section */}
-            <header className="flex-1 flex flex-col justify-center items-center text-center px-6 lg:px-20 py-20 lg:py-32 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-full opacity-5 pointer-events-none">
-                     <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-                        <path d="M0 100 C 20 0 50 0 100 100 Z" fill="#074033" />
-                     </svg>
-                </div>
-                
-                <div className="max-w-4xl z-10">
-                    <div className="inline-block px-4 py-1.5 mb-6 rounded-full bg-[#E6F0EE] text-[#074033] text-sm font-semibold tracking-wide border border-[#074033]/10">
-                        🚀 Modernizing Agriculture Management
+            {/* Main Content - Split Layout */}
+            <header className="flex-1 flex items-center justify-center px-6 lg:px-20 py-12 lg:py-0">
+                <div className="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+                    
+                    {/* Left Column: Admin Login */}
+                    <div className="flex flex-col items-start text-left order-2 lg:order-1">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 mb-6 rounded-full bg-[#E6F0EE] text-[#074033] text-sm font-semibold tracking-wide border border-[#074033]/10">
+                            <ShieldCheck size={16} /> Admin Access Only
+                        </div>
+                        <h1 className="text-4xl lg:text-6xl font-extrabold text-[#1A1A1A] mb-6 leading-tight">
+                            Iloilo Agriculture <br/>
+                            <span className="text-[#074033]">Office Portal</span>
+                        </h1>
+                        <p className="text-lg text-gray-500 mb-8 max-w-lg leading-relaxed">
+                            Authorized personnel only. Manage technician assignments, monitor livestock records, and generate reports from this centralized dashboard.
+                        </p>
+                        
+                        <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                            <SignInButton mode="modal">
+                                 <button className="btn btn-lg bg-[#074033] hover:bg-[#052e24] text-white border-none rounded-2xl px-8 shadow-xl hover:shadow-2xl transition-all flex items-center gap-3">
+                                    <LayoutDashboard size={20} />
+                                    Access Dashboard
+                                </button>
+                            </SignInButton>
+                        </div>
+
+                        <div className="mt-12 pt-8 border-t border-gray-200 w-full">
+                            <p className="text-sm text-gray-400 mb-4 font-medium">System Modules</p>
+                            <div className="flex gap-6 text-gray-500">
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-green-500"></span> Livestock
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-blue-500"></span> Technical
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-purple-500"></span> Reports
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <h1 className="text-5xl lg:text-7xl font-extrabold text-[#1A1A1A] mb-8 leading-tight">
-                        Empowering <span className="text-[#074033]">Iloilo's</span> <br/>
-                        Agricultural Future
-                    </h1>
-                    <p className="text-lg lg:text-xl text-gray-500 mb-10 max-w-2xl mx-auto leading-relaxed">
-                        Streamline livestock tracking, manage technician assignments, and generate insightful reports with our comprehensive digital platform.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                        <SignInButton mode="modal">
-                             <button className="btn btn-lg bg-[#074033] hover:bg-[#052e24] text-white border-none rounded-2xl px-8 shadow-xl hover:shadow-2xl transition-all">
-                                Get Started <ArrowRight className="ml-2" />
-                            </button>
-                        </SignInButton>
-                        <button className="btn btn-lg btn-outline border-[#074033] text-[#074033] hover:bg-[#074033] hover:text-white rounded-2xl px-8">
-                            Learn More
-                        </button>
+
+                    {/* Right Column: Mobile App Download */}
+                    <div className="relative order-1 lg:order-2 flex justify-center lg:justify-end">
+                        <div className="bg-white p-8 rounded-3xl shadow-2xl border border-gray-100 max-w-md w-full relative overflow-hidden group">
+                           <div className="absolute top-0 right-0 w-32 h-32 bg-[#E6F0EE] rounded-bl-full -mr-16 -mt-16 transition-all group-hover:bg-[#d1e7e2]"></div>
+                           
+                           <div className="relative z-10">
+                                <div className="w-12 h-12 bg-[#074033]/10 rounded-xl flex items-center justify-center text-[#074033] mb-6">
+                                    <Smartphone size={24} />
+                                </div>
+                                
+                                <h3 className="text-2xl font-bold text-[#1A1A1A] mb-2">Farmer's Mobile App</h3>
+                                <p className="text-gray-500 mb-8">
+                                    Download the mobile application to register livestock, request services, and track progress.
+                                </p>
+
+                                <div className="flex items-center gap-6 bg-[#F8FAFC] p-4 rounded-2xl border border-gray-100">
+                                    {/* Placeholder QR Code */}
+                                    <div className="bg-white p-2 rounded-xl border border-gray-200 shadow-sm shrink-0">
+                                        <img 
+                                            src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://expo.dev/artifacts/eas/..." 
+                                            alt="Download QR" 
+                                            className="w-24 h-24 object-contain"
+                                        />
+                                    </div>
+                                    <div className="flex flex-col gap-2">
+                                        <p className="text-xs font-semibold text-gray-400 uppercase">Scan to Download</p>
+                                        <button className="btn btn-sm btn-outline border-gray-300 text-gray-600 hover:bg-[#074033] hover:border-[#074033] hover:text-white normal-case font-medium">
+                                            <Download size={16} className="mr-1" /> APK File
+                                        </button>
+                                    </div>
+                                </div>
+                           </div>
+                        </div>
                     </div>
                 </div>
             </header>
 
-            {/* Features Section */}
-            <section className="px-6 lg:px-20 py-20 bg-white">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-7xl mx-auto">
-                    {[
-                        { 
-                            icon: <Tractor size={32} />, 
-                            title: "Livestock Tracking", 
-                            desc: "Real-time monitoring of animal records, breeding history, and health status." 
-                        },
-                        { 
-                            icon: <ShieldCheck size={32} />, 
-                            title: "Technician Management", 
-                            desc: "Efficiently assign tasks and track the performance of your field technicians." 
-                        },
-                        { 
-                            icon: <Sprout size={32} />, 
-                            title: "Growth Analytics", 
-                            desc: "Data-driven insights to improve breeding success rates and farm productivity." 
-                        }
-                    ].map((feature, idx) => (
-                        <div key={idx} className="p-8 rounded-3xl bg-[#F4F5F7] hover:bg-[#E6F0EE] transition-colors border border-transparent hover:border-[#074033]/10 group">
-                            <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center text-[#074033] shadow-sm mb-6 group-hover:scale-110 transition-transform">
-                                {feature.icon}
-                            </div>
-                            <h3 className="text-xl font-bold text-[#1A1A1A] mb-3">{feature.title}</h3>
-                            <p className="text-gray-500 leading-relaxed">{feature.desc}</p>
-                        </div>
-                    ))}
-                </div>
-            </section>
-
             {/* Footer */}
-            <footer className="px-6 lg:px-20 py-8 bg-[#F4F5F7] border-t border-gray-200 text-center text-gray-400 text-sm">
-                <p>&copy; {new Date().getFullYear()} Iloilo Agricultures Office. All rights reserved.</p>
+            <footer className="px-6 lg:px-20 py-6 bg-white border-t border-gray-100 text-center text-gray-400 text-sm">
+                <p>&copy; {new Date().getFullYear()} Iloilo Agricultures Office. Restricted Access.</p>
             </footer>
         </div>
     );
