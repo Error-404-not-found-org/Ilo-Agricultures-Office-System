@@ -4,10 +4,16 @@ import { useUser, SignInButton } from "@clerk/clerk-react";
 import { ShieldCheck, Smartphone, Download, ArrowRight, LayoutDashboard } from 'lucide-react';
 
 const Landing = () => {
-    const { isSignedIn, isLoaded } = useUser();
+    const { isSignedIn, isLoaded, user } = useUser();
 
     if (isLoaded && isSignedIn) {
-        return <Navigate to="/dashboard" replace />;
+        // Only redirect to dashboard if the user has the admin role
+        if (user?.publicMetadata?.role === 'admin') {
+            return <Navigate to="/dashboard" replace />;
+        }
+        // If logged in but not admin, we stay on Landing but show a specific UI or let them sign out.
+        // The SignInButton below will handle the "You are already signed in" state effectively by Clerk's modal,
+        // but we can also show a friendly message.
     }
 
     return (
@@ -38,12 +44,24 @@ const Landing = () => {
                         </p>
                         
                         <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-                            <SignInButton mode="modal">
-                                 <button className="btn btn-lg bg-[#074033] hover:bg-[#052e24] text-white border-none rounded-2xl px-8 shadow-xl hover:shadow-2xl transition-all flex items-center gap-3">
-                                    <LayoutDashboard size={20} />
-                                    Access Dashboard
-                                </button>
-                            </SignInButton>
+                            {isSignedIn && user?.publicMetadata?.role !== 'admin' ? (
+                                <div className="p-4 bg-red-50 text-red-700 rounded-2xl border border-red-100 flex flex-col gap-2">
+                                    <p className="font-semibold text-sm">⛔ Access Restricted</p>
+                                    <p className="text-xs opacity-80">You are logged in as a <strong>{String(user?.publicMetadata?.role || 'User')}</strong>. This portal is for Admins only.</p>
+                                    <SignInButton>
+                                        <button className="btn btn-sm btn-outline text-red-700 hover:bg-red-100 border-red-200 mt-2">
+                                            Switch Account
+                                        </button>
+                                    </SignInButton>
+                                </div>
+                            ) : (
+                                <SignInButton mode="modal">
+                                     <button className="btn btn-lg bg-[#074033] hover:bg-[#052e24] text-white border-none rounded-2xl px-8 shadow-xl hover:shadow-2xl transition-all flex items-center gap-3">
+                                        <LayoutDashboard size={20} />
+                                        Access Dashboard
+                                    </button>
+                                </SignInButton>
+                            )}
                         </div>
 
                         <div className="mt-12 pt-8 border-t border-gray-200 w-full">
