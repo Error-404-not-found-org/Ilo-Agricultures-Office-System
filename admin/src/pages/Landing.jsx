@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { useUser, SignInButton } from "@clerk/clerk-react";
+import { useUser, SignInButton, SignOutButton } from "@clerk/clerk-react";
 import { ShieldCheck, Smartphone, Download, ArrowRight, LayoutDashboard } from 'lucide-react';
 
 const Landing = () => {
@@ -48,11 +48,11 @@ const Landing = () => {
                                 <div className="p-4 bg-red-50 text-red-700 rounded-2xl border border-red-100 flex flex-col gap-2">
                                     <p className="font-semibold text-sm">⛔ Access Restricted</p>
                                     <p className="text-xs opacity-80">You are logged in as a <strong>{String(user?.publicMetadata?.role || 'User')}</strong>. This portal is for Admins only.</p>
-                                    <SignInButton>
+                                    <SignOutButton>
                                         <button className="btn btn-sm btn-outline text-red-700 hover:bg-red-100 border-red-200 mt-2">
-                                            Switch Account
+                                            Sign Out & Switch Account
                                         </button>
-                                    </SignInButton>
+                                    </SignOutButton>
                                 </div>
                             ) : (
                                 <SignInButton mode="modal">
