@@ -62,3 +62,61 @@ export const createInvitedUser = async (req, res) => {
     res.status(500).json({ message: "Failed to create user" });
   }
 };
+
+export const getUsers = async (req, res) => {
+  try {
+    const { role } = req.query;
+    
+    const query = {};
+    if (role) {
+      query.role = role;
+    }
+
+    const users = await User.find(query).select("-password"); 
+    res.status(200).json(users);
+  } catch (error) {
+    console.error("Error fetching users:", error);
+    res.status(500).json({ message: "Failed to fetch users" });
+  }
+};
+
+export const syncUser = async (req, res) => {
+  try {
+    const { userId } = req.auth;
+    const user = await clerkClient.users.getUser(userId);
+
+    const emailObj = user.emailAddresses[0];
+    const email = emailObj?.emailAddress;
+
+    if (!email) {
+      return res.status(400).json({ message: "User has no email" });
+    }
+
+    const name = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    const isVerified = emailObj?.verification?.status === "verified";
+
+    // Upsert user
+    const dbUser = await User.findOneAndUpdate(
+      { email },
+      {
+        clerkId: userId,
+        name: name || "New User",
+        imageUrl: user.imageUrl || "",
+        isVerified,
+        $setOnInsert: { role: "technician" }, // Default safe role if new
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+     
+    // Sync role from metadata if present
+    if (user.publicMetadata?.role && dbUser.role !== user.publicMetadata.role) {
+        dbUser.role = user.publicMetadata.role;
+        await dbUser.save();
+    }
+
+    res.status(200).json({ message: "User synced", user: dbUser });
+  } catch (error) {
+    console.error("Error syncing user:", error);
+    res.status(500).json({ message: "Failed to sync user" });
+  }
+};

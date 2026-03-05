@@ -13,20 +13,28 @@ export default function TabLayout() {
 
       }}
     >
-      {/* Route 1: Home */}
-      <Tabs.Screen name="index" />
+      {/* Route 1: Home/Dashboard */}
+      <Tabs.Screen name="technician.dashboard" />
 
       {/* Route 2: Clients */}
-      <Tabs.Screen name="clients" />
+      <Tabs.Screen name="technician.clients" />
 
       {/* Route 3: Animals */}
       <Tabs.Screen 
-        name="animals" 
+        name="technician.animals" 
       />
 
-      {/* Route 4: Records (Placeholder) */}
+      {/* Route 4: Records */}
       <Tabs.Screen 
-        name="records" 
+        name="technician.records" 
+        options={{
+            href: null,
+        }}
+      />
+
+      {/* Route 5: Profile (Hidden) */}
+      <Tabs.Screen 
+        name="profile" 
         options={{
             href: null,
         }}

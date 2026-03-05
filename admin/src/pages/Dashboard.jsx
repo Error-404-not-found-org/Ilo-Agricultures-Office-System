@@ -6,8 +6,26 @@ const Dashboard = () => {
     const { data: stats, isLoading, error } = useQuery({
         queryKey: ['dashboardStats'],
         queryFn: async () => {
-            const response = await axios.get('/admin/stats');
-            return response.data;
+            try {
+                const response = await axios.get('/admin/stats');
+                return response.data;
+            } catch (err) {
+                if (err.response?.status === 401) {
+                    // Try to sync user if 401 (User not found)
+                    console.log("User not found, attempting sync...");
+                    try {
+                        await axios.post('/user/sync-manual');
+                    } catch (syncErr) {
+                         console.error("Sync failed:", syncErr);
+                         alert(`Sync Failed: ${syncErr.response?.status} - ${JSON.stringify(syncErr.response?.data)}`);
+                         throw syncErr; // Stop retry if sync fails
+                    }
+                    // Retry stats fetch
+                    const response = await axios.get('/admin/stats');
+                    return response.data;
+                }
+                throw err;
+            }
         }
     });
 

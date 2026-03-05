@@ -16,13 +16,14 @@ const router = Router();
 router.use(protectedRoute, AdminOnly);
 
 router.post("/create-user", createInvitedUser);
-router.get("/stats", getDashboardStats);
+router.post("/sync-metadata", syncUserMetadata);
 router.post("/delete-user", deleteUser);
+router.get("/stats", getDashboardStats);
 router.get("/inseminations", getAllInseminations);
 router.get("/re-inseminations", getAllReInseminations);
 router.get("/pregnancy-checks", getAllPregnancyChecks);
 router.get("/calvings", getAllCalvings);
 router.delete("/delete-insemination/:id", deleteInsemination);
-router.post("/sync-metadata", syncUserMetadata);
+
 
 export default router;

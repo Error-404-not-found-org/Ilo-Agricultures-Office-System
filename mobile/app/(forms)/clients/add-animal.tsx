@@ -1,8 +1,10 @@
 import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useApi } from '@/lib/api';
+import { useAuth } from '@clerk/clerk-expo';
 import SafeScreen from '@/components/safeScreen';
 import { ArrowLeft, ChevronDown, Calendar, Check, X, ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // --- OPTIONS ---
 const FARMER_OPTIONS = ['Leo Nabuab', 'Wilhelm Moyong', 'Diego Nim', 'Jaime Navarra', 'Vicente Nanas'];
@@ -21,6 +23,32 @@ export default function AddAIRecord() {
   // --- WIZARD STATE ---
   const [currentStep, setCurrentStep] = useState(1);
   const TOTAL_STEPS = 4;
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+  const [farmers, setFarmers] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+
+    const fetchFarmers = async () => {
+      try {
+        const res = await api.get('/user?role=farmer');
+        if (res.data) {
+          const farmerNames = res.data.map((u: any) => u.name);
+          setFarmers(farmerNames);
+        }
+      } catch (error: any) {
+        console.error('Failed to fetch farmers:', error);
+        if (error.response) {
+            console.error("Error Response:", error.response.data);
+            alert(`Error: ${error.response.status} - ${JSON.stringify(error.response.data)}`);
+        } else {
+            alert(`Error: ${error.message}`);
+        }
+      }
+    };
+    fetchFarmers();
+  }, []);
 
   // --- FORM STATE ---
   const [formData, setFormData] = useState({
@@ -142,7 +170,7 @@ export default function AddAIRecord() {
                         label="Farmer / Owner" 
                         value={formData.farmer} 
                         placeholder="Select Farmer" 
-                        onPress={() => openModal('farmer', 'Select Farmer', FARMER_OPTIONS)} 
+                        onPress={() => openModal('farmer', 'Select Farmer', farmers)} 
                     />
 
                     

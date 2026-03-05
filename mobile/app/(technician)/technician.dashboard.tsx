@@ -5,8 +5,7 @@ import SafeScreen from "@/components/safeScreen"
 import Header from '@/components/Header';
 import { useRouter } from 'expo-router';
 
-// --- IMPORT THE BUTTON HERE ---
-import { SignOutButton } from '../components/sign-out-button'; 
+ 
 
 export default function HomeScreen() {
 
@@ -71,11 +70,7 @@ export default function HomeScreen() {
             icon={<Syringe size={28} color="#1F2937" />}
           />
         </View>
-{/* --- SIGN OUT BUTTON REMOVE LATER AFTER TESTTING--- */}
-        <View className="px-6">
-          <SignOutButton />
-        </View>
-        
+
 
       </ScrollView>
     </SafeScreen>

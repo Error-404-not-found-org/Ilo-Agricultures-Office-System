@@ -24,3 +24,13 @@ export const registerAnimal = async (req, res) => {
     res.status(500).json({ message: "Failed to register animal" });
   }
 };
+
+export const getAllAnimals = async (req, res) => {
+  try {
+    const animals = await Animal.find().populate("farmerId", "name" );
+    res.status(200).json(animals);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to get animals" });
+  }
+};

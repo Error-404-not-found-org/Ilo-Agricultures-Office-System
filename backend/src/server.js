@@ -21,17 +21,21 @@ const __dirname = path.resolve();
 
 app.use(express.json());
 app.use(clerkMiddleware()); // add auth object under req.auth
-app.use(cors({ origin: ENV.CLIENT_URL, credentials: true }));
+app.use(cors({ 
+  origin: [ENV.CLIENT_URL, "http://localhost:5173", "http://localhost:8081", "http://10.0.2.2:8081"], 
+  credentials: true 
+}));
 
 app.use("/api/inngest", serve({ client: inngest, functions }));
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/technician", technicianRoutes);
 app.use("/api/insemination", inseminationRoutes);
-app.use("/api/animal", animalRoutes);
+app.use("/api/animals", animalRoutes);
 app.use("/api/user", userRoutes);
 
 const PORT = process.env.PORT || 3000;
+
 
 
 if (ENV.NODE_ENV === "production") {
@@ -43,8 +47,8 @@ if (ENV.NODE_ENV === "production") {
 
 const startServer = async () => {
   await connectDB();
-  app.listen(ENV.PORT, () => {
-    console.log(`Server is up and running`);
+  app.listen(ENV.PORT, () => {  
+    console.log(`Server is up and running on port ${ENV.PORT}`);
   });
 };
 

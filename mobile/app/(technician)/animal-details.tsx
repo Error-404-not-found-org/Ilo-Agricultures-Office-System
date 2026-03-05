@@ -17,7 +17,7 @@ export default function AnimalDetails() {
         {/* --- NAVBAR --- */}
         <View className="px-6 pt-2 pb-4 flex-row items-center">
             <TouchableOpacity 
-                onPress={() => router.push('/animals')} 
+                onPress={() => router.push('/technician.animals')} 
                 className="p-2 -ml-2 rounded-full active:bg-gray-100"
             >
                 <ArrowLeft size={24} color="black" />

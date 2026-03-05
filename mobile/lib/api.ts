@@ -5,7 +5,9 @@ import { useAuth } from '@clerk/clerk-expo';
 import { useEffect } from 'react';
 
 
-const API_URL = "http://localhost:3000/api";
+// Use 10.0.2.2 for Android Emulator
+// Use your machine's local IP (e.g., 192.168.1.x) for physical device
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000/api";
 
 const api= axios.create({
     baseURL: API_URL,
@@ -20,7 +22,9 @@ export const useApi = () => {
 
     useEffect(() => {
         const interceptor = api.interceptors.request.use(async (config) => {
+            console.log("Interceptor running for:", config.url);
             const token = await getToken();
+            console.log("Token retrieved:", !!token);
             if (token) {
                 config.headers.Authorization = `Bearer ${token}`;
             }
@@ -36,4 +40,4 @@ export const useApi = () => {
 
 }
 
-// on every sigle reg, we would like to have a auth token so that our backend knows were authenticated
+

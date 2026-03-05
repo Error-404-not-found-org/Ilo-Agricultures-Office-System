@@ -106,15 +106,15 @@ const BottomNavigator = ({ state, descriptors, navigation }: BottomTabBarProps) 
       <View className="flex-row items-end justify-between bg-gray-200 h-24 pb-6 px-4">
 
         {/* Home */}
-        <TouchableOpacity onPress={() => onNavigate('index')} className="items-center justify-center flex-1 gap-1">
-          <Home color={isFocused('index') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
-          <Text className={`text-xs font-semibold ${isFocused('index') ? 'text-gray-800' : 'text-gray-400'}`}>Home</Text>
+        <TouchableOpacity onPress={() => onNavigate('technician.dashboard')} className="items-center justify-center flex-1 gap-1">
+          <Home color={isFocused('technician.dashboard') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
+          <Text className={`text-xs font-semibold ${isFocused('technician.dashboard') ? 'text-gray-800' : 'text-gray-400'}`}>Home</Text>
         </TouchableOpacity>
 
         {/* Clients */}
-        <TouchableOpacity onPress={() => onNavigate('clients')} className="items-center justify-center flex-1 gap-1">
-          <Users color={isFocused('clients') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
-          <Text className={`text-xs font-semibold ${isFocused('clients') ? 'text-gray-800' : 'text-gray-400'}`}>Clients</Text>
+        <TouchableOpacity onPress={() => onNavigate('technician.clients')} className="items-center justify-center flex-1 gap-1">
+          <Users color={isFocused('technician.clients') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
+          <Text className={`text-xs font-semibold ${isFocused('technician.clients') ? 'text-gray-800' : 'text-gray-400'}`}>Clients</Text>
         </TouchableOpacity>
 
         {/* Center Button */}
@@ -129,15 +129,15 @@ const BottomNavigator = ({ state, descriptors, navigation }: BottomTabBarProps) 
         </View>
 
         {/* Animals */}
-        <TouchableOpacity onPress={() => onNavigate('animals')} className="items-center justify-center flex-1 gap-1">
-          <Dog color={isFocused('animals') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
-          <Text className={`text-xs font-semibold ${isFocused('animals') ? 'text-gray-800' : 'text-gray-400'}`}>Animals</Text>
+        <TouchableOpacity onPress={() => onNavigate('technician.animals')} className="items-center justify-center flex-1 gap-1">
+          <Dog color={isFocused('technician.animals') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
+          <Text className={`text-xs font-semibold ${isFocused('technician.animals') ? 'text-gray-800' : 'text-gray-400'}`}>Animals</Text>
         </TouchableOpacity>
 
         {/* Records */}
-        <TouchableOpacity onPress={() => onNavigate('records')} className="items-center justify-center flex-1 gap-1">
-          <FileText color={isFocused('records') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
-          <Text className={`text-xs font-semibold ${isFocused('records') ? 'text-gray-800' : 'text-gray-400'}`}>Records</Text>
+        <TouchableOpacity onPress={() => onNavigate('technician.records')} className="items-center justify-center flex-1 gap-1">
+          <FileText color={isFocused('technician.records') ? activeColor : inactiveColor} size={24} strokeWidth={2} />
+          <Text className={`text-xs font-semibold ${isFocused('technician.records') ? 'text-gray-800' : 'text-gray-400'}`}>Records</Text>
         </TouchableOpacity>
 
       </View>

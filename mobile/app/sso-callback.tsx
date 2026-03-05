@@ -14,9 +14,9 @@ export default function SSOCallback() {
     );
   }
 
-  // If the sign-in works, go to the tabs
+  // If the sign-in works, let the root layout handle redirection
   if (isSignedIn) {
-    return <Redirect href="/(tabs)" />;
+    return <Redirect href="/(auth)" />;
   }
 
   // If it fails, go back to login

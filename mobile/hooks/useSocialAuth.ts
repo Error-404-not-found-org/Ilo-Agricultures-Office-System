@@ -45,7 +45,7 @@ function useSocialAuth() {
       if (createdSessionId && setActive) {
         console.log("✅ Login Successful! Setting active...");
         await setActive({ session: createdSessionId });
-        router.replace("/(tabs)");
+        router.replace("/(auth)");
       }
 
     } catch (err) {
