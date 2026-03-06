@@ -46,7 +46,7 @@ const PORT = process.env.PORT || 3000;
 
 if (ENV.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../admin/dist")));
-  app.get("*", (req, res) => {
+  app.get("/{*any}", (req, res) => {
     res.sendFile(path.resolve(__dirname, "../admin", "dist", "index.html"));
   });
 }
