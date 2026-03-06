@@ -16,15 +16,23 @@ import animalRoutes from "./routes/animals.routes.js";
 import userRoutes from "./routes/user.routes.js";
 
 const app = express();
+app.set("trust proxy", 1); // For Clerk Invalid URL when behind proxy
 
 const __dirname = path.resolve();
 
 app.use(express.json());
 app.use(clerkMiddleware()); // add auth object under req.auth
-app.use(cors({ 
-  origin: [ENV.CLIENT_URL, "http://localhost:5173", "http://localhost:8081", "http://10.0.2.2:8081"], 
-  credentials: true 
-}));
+app.use(
+  cors({
+    origin: [
+      ENV.CLIENT_URL,
+      "http://localhost:5173",
+      "http://localhost:8081",
+      "http://10.0.2.2:8081",
+    ],
+    credentials: true,
+  }),
+);
 
 app.use("/api/inngest", serve({ client: inngest, functions }));
 
@@ -36,18 +44,16 @@ app.use("/api/user", userRoutes);
 
 const PORT = process.env.PORT || 3000;
 
-
-
 if (ENV.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../admin/dist")));
-  app.get("/{*any}", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "../admin", "build", "index.html"));
+  app.get("*", (req, res) => {
+    res.sendFile(path.resolve(__dirname, "../admin", "dist", "index.html"));
   });
 }
 
 const startServer = async () => {
   await connectDB();
-  app.listen(ENV.PORT, () => {  
+  app.listen(ENV.PORT, () => {
     console.log(`Server is up and running on port ${ENV.PORT}`);
   });
 };
