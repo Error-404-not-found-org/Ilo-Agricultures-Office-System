@@ -9,7 +9,9 @@ import ProtectedAdminRoute from "./components/ProtectedAdminRoute";
 import Landing from "./pages/Landing";
 import Dashboard from "./pages/Dashboard";
 import Technicians from "./pages/Technicians";
+import TechnicianProfile from "./pages/TechnicianProfile";
 import Livestock from "./pages/Livestock";
+import LivestockProfile from "./pages/LivestockProfile";
 import Inseminations from "./pages/Inseminations";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
@@ -37,7 +39,9 @@ function App() {
       >
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="technicians" element={<Technicians />} />
+        <Route path="technicians/:id" element={<TechnicianProfile />} />
         <Route path="livestock" element={<Livestock />} />
+        <Route path="livestock/:id" element={<LivestockProfile />} />
         <Route path="inseminations" element={<Inseminations />} />
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />

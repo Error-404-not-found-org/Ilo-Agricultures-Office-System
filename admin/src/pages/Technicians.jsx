@@ -1,8 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import axios from "../lib/axios";
+import AddTechnicianModal from "../components/AddTechnicianModal";
+import EditTechnicianModal from "../components/EditTechnicianModal";
 
 const Technicians = () => {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedTechnician, setSelectedTechnician] = useState(null);
+
   const {
     data: technicians,
     isLoading,
@@ -47,7 +53,12 @@ const Technicians = () => {
   return (
     <div className="p-6">
       <div className="flex justify-end items-center mb-6">
-        <button className="btn btn-primary">+ Add Technician</button>
+        <button
+          className="btn btn-primary"
+          onClick={() => setIsModalOpen(true)}
+        >
+          + Add Technician
+        </button>
       </div>
 
       {!technicians ||
@@ -109,11 +120,17 @@ const Technicians = () => {
                   </div>
                 </div>
 
-                <div className="card-actions w-full justify-center gap-2">
-                  <button className="btn btn-sm btn-outline btn-info">
+                <div className="card-actions w-full justify-center gap-2 mt-4">
+                  <Link
+                    to={`/admin/technicians/${tech._id}`}
+                    className="btn btn-sm btn-outline btn-info"
+                  >
                     View Profile
-                  </button>
-                  <button className="btn btn-sm btn-outline btn-warning">
+                  </Link>
+                  <button
+                    className="btn btn-sm btn-outline btn-warning"
+                    onClick={() => setSelectedTechnician(tech)}
+                  >
                     Edit
                   </button>
                 </div>
@@ -122,6 +139,17 @@ const Technicians = () => {
           ))}
         </div>
       )}
+
+      <AddTechnicianModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
+
+      <EditTechnicianModal
+        isOpen={!!selectedTechnician}
+        onClose={() => setSelectedTechnician(null)}
+        technician={selectedTechnician}
+      />
     </div>
   );
 };

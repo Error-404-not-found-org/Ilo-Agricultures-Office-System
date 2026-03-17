@@ -1,16 +1,27 @@
 import { Router } from "express";
-import { createInvitedUser, getUsers, syncUser } from "../controllers/user.controllers.js";
+import {
+  createInvitedUser,
+  getUsers,
+  syncUser,
+  getUserById,
+  updateUser,
+} from "../controllers/user.controllers.js";
 import { requireAuth } from "@clerk/express";
 
-import {
-  protectedRoute,
-  requireRole,
-} from "../middleware/auth.middleware.js";
+import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-router.post("/create-invited-user", protectedRoute, requireRole(["admin", "technician"]), createInvitedUser);
+router.post(
+  "/create-invited-user",
+  protectedRoute,
+  requireRole(["admin", "technician"]),
+  createInvitedUser,
+);
 router.get("/", protectedRoute, getUsers);
 router.post("/sync-manual", requireAuth(), syncUser);
+
+router.get("/:id", protectedRoute, getUserById);
+router.put("/:id", protectedRoute, updateUser);
 
 export default router;

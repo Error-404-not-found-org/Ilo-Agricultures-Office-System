@@ -1,4 +1,5 @@
 import { User } from "../models/user.model.js";
+import { Insemination } from "../models/insemination.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 
 export const createInvitedUser = async (req, res) => {
@@ -8,22 +9,28 @@ export const createInvitedUser = async (req, res) => {
 
     // Authorization Check
     const requesterRole = req.auth.claims.metadata?.role;
-    
+
     // Default to farmer if not specified, but validate role
     const targetRole = role || "farmer";
 
     if (requesterRole === "technician" && targetRole !== "farmer") {
-        return res.status(403).json({ message: "Technicians can only create Farmer accounts." });
+      return res
+        .status(403)
+        .json({ message: "Technicians can only create Farmer accounts." });
     }
 
     if (requesterRole === "farmer") {
-        return res.status(403).json({ message: "Farmers cannot create accounts." });
+      return res
+        .status(403)
+        .json({ message: "Farmers cannot create accounts." });
     }
-    
+
     // Check if user exists
     const existingUser = await User.findOne({ email });
-    if(existingUser) {
-        return res.status(400).json({ message: "User with this email already exists." });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json({ message: "User with this email already exists." });
     }
 
     const newUser = await User.create({
@@ -39,24 +46,26 @@ export const createInvitedUser = async (req, res) => {
     if (email) {
       const invitation = await clerkClient.invitations.createInvitation({
         emailAddress: email,
-        publicMetadata: { 
-            invitedBySystem: true,
-            role: targetRole 
+        publicMetadata: {
+          invitedBySystem: true,
+          role: targetRole,
         },
         redirectUrl: "https://ilo-agricultures-inseminati-p5bbd.sevalla.app/",
       });
 
-      newUser.clerkId = invitation.id; // Corrected from userId to id for invitation? Let's check docs or safe bet. 
+      newUser.clerkId = invitation.id; // Corrected from userId to id for invitation? Let's check docs or safe bet.
       // Actually invitation.id is the invitation ID. When user accepts, webhook handles the user creation/update.
       // But we can store it if needed. However, the webhook logic we wrote tries to match by email.
       // Let's keep it simple. We don't necessarily need clerkId on the user until they sign up.
       // But for reference we can store it.
-      // WAIT: In webhook we look up by email. 
-      
+      // WAIT: In webhook we look up by email.
+
       await newUser.save();
     }
 
-    res.status(201).json({ message: `${targetRole} created successfully`, newUser });
+    res
+      .status(201)
+      .json({ message: `${targetRole} created successfully`, newUser });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Failed to create user" });
@@ -66,13 +75,13 @@ export const createInvitedUser = async (req, res) => {
 export const getUsers = async (req, res) => {
   try {
     const { role } = req.query;
-    
+
     const query = {};
     if (role) {
       query.role = role;
     }
 
-    const users = await User.find(query).select("-password"); 
+    const users = await User.find(query).select("-password");
     res.status(200).json(users);
   } catch (error) {
     console.error("Error fetching users:", error);
@@ -105,18 +114,90 @@ export const syncUser = async (req, res) => {
         isVerified,
         $setOnInsert: { role: "technician" }, // Default safe role if new
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, new: true, setDefaultsOnInsert: true },
     );
-     
+
     // Sync role from metadata if present
     if (user.publicMetadata?.role && dbUser.role !== user.publicMetadata.role) {
-        dbUser.role = user.publicMetadata.role;
-        await dbUser.save();
+      dbUser.role = user.publicMetadata.role;
+      await dbUser.save();
     }
 
     res.status(200).json({ message: "User synced", user: dbUser });
   } catch (error) {
     console.error("Error syncing user:", error);
     res.status(500).json({ message: "Failed to sync user" });
+  }
+};
+
+export const getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    let stats = {};
+    if (user.role === "technician") {
+      const totalInseminations = await Insemination.countDocuments({
+        approvedBy: id,
+      });
+      const pendingInseminations = await Insemination.countDocuments({
+        approvedBy: id,
+        status: "pending",
+      });
+      const approvedInseminations = await Insemination.countDocuments({
+        approvedBy: id,
+        status: "approved",
+      });
+
+      stats = {
+        totalInseminations,
+        pendingInseminations,
+        approvedInseminations,
+      };
+    } else if (user.role === "farmer") {
+      const totalInseminations = await Insemination.countDocuments({
+        farmerId: id,
+      });
+      stats = {
+        totalInseminations,
+      };
+    }
+
+    res.status(200).json({ ...user.toObject(), stats });
+  } catch (error) {
+    console.error("Error fetching user details:", error);
+    res.status(500).json({ message: "Failed to fetch user details" });
+  }
+};
+
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { phoneNumber, status, address } = req.body;
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (phoneNumber) user.phoneNumber = phoneNumber;
+    if (status) user.status = status;
+
+    // Partially update address if provided
+    if (address) {
+      user.address = { ...user.address, ...address };
+    }
+
+    await user.save();
+
+    res.status(200).json({ message: "User updated successfully", user });
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ message: "Failed to update user" });
   }
 };
