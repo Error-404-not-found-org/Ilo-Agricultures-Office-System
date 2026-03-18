@@ -33,20 +33,17 @@ function InitialLayout() {
     if (isSignedIn) {
       // Redirect based on role
       const role = user?.publicMetadata?.role;
-      
-      // Wait for role to be defined
-      if (!role) return;
 
       if (inAuthGroup) {
          if (role === 'technician') {
-           router.replace('/(technician)/technician.dashboard');
-         } else if (role === 'farmer') {
-            router.replace('/(farmer)');
+            router.replace('/(technician)/technician.dashboard');
          } else {
-           console.warn('Unknown role:', role);
-           router.replace('/(technician)/technician.dashboard'); 
+            if (!role) console.warn('User has no role assigned. Defaulting to farmer route.');
+            else if (role !== 'farmer') console.warn('Unknown role:', role);
+            router.replace('/(farmer)');
          }
-      } else if (inTechnicianGroup && role === 'farmer') {
+      } else if (inTechnicianGroup && role !== 'technician') {
+         // If a user (including new ones with 'undefined' role) tries to access technician routes, force them to farmer
          router.replace('/(farmer)');
       } else if (inFarmerGroup && role === 'technician') {
          router.replace('/(technician)/technician.dashboard');
@@ -75,13 +72,19 @@ function InitialLayout() {
   return <Stack screenOptions={{ headerShown: false }} />;
 }
 
+import { Toaster } from 'sonner-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 export default function RootLayout() {
   return (
-    <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
-        <QueryClientProvider client={queryClient}>
-          <InitialLayout />
-        </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+          <QueryClientProvider client={queryClient}>
+            <InitialLayout />
+            <Toaster />
+          </QueryClientProvider>
       </ClerkProvider>
+    </GestureHandlerRootView>
   )
 }
   

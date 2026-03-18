@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
+import { toast } from "sonner-native";
 
 // 1. Warm up browser (Required for Android)
 export const useWarmUpBrowser = () => {
@@ -45,11 +46,17 @@ function useSocialAuth() {
       if (createdSessionId && setActive) {
         console.log("✅ Login Successful! Setting active...");
         await setActive({ session: createdSessionId });
+        toast.success("Login Successful", {
+          description: "Welcome to BreedSmart!"
+        });
         router.replace("/(auth)");
       }
 
-    } catch (err) {
+    } catch (err: any) {
       console.error("OAuth error", err);
+      toast.error("Authentication Failed", {
+        description: err?.errors?.[0]?.message || "There was an issue signing in with your account."
+      });
     } finally {
       setLoadingStrategy(null);
     }

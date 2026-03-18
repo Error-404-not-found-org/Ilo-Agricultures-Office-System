@@ -5,6 +5,7 @@ import { useClerk, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ChevronRight, LogOut, Settings, HelpCircle, User, Briefcase } from 'lucide-react-native';
+import { toast } from 'sonner-native';
 
 const TechnicianProfile = () => {
   const { signOut } = useClerk();
@@ -14,6 +15,7 @@ const TechnicianProfile = () => {
   const handleSignOut = async () => {
     try {
       await signOut();
+      toast.success("Signed out completely");
       router.replace('/(auth)');
     } catch (err) {
       console.error('Error signing out:', err);

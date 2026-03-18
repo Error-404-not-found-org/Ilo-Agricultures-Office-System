@@ -1,6 +1,5 @@
-import { View, Text, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, ActivityIndicator, StatusBar } from 'react-native';
 import React, { useEffect, useState, useCallback } from 'react';
-import SafeScreen from '@/components/safeScreen';
 import Header from '@/components/Header';
 import { useApi } from '@/lib/api';
 import RecordCard from '@/components/RecordCard';
@@ -81,38 +80,47 @@ const Records = () => {
 
   const getStatusColor = (status: string) => {
     switch(status.toLowerCase()) {
-        case 'approved': return 'text-green-600';
-        case 'pending': return 'text-yellow-600';
-        case 'rejected': return 'text-red-600';
-        default: return 'text-gray-600';
+        case 'approved': return 'text-[#059669]';
+        case 'pending': return 'text-[#d97706]';
+        case 'rejected': return 'text-[#dc2626]';
+        default: return 'text-slate-500';
     }
   };
 
   return (
-    <SafeScreen>
-      <View className="flex-1 bg-gray-50">
-        <Header />
-        
-        <View className="px-6 mb-4">
-            <Text className="text-2xl font-bold text-gray-900">Records</Text>
-            <Text className="text-gray-500">Recent inseminations and checks</Text>
+    <View className="flex-1 bg-[#F9FAFB]">
+      <StatusBar barStyle="light-content" />
+      
+      {/* Absolute Green Top Background */}
+      <View className="absolute top-0 left-0 right-0 h-[220px] bg-[#00643B]" />
+
+      <Header />
+      
+      {/* Overlapping White Curve Card */}
+      <View 
+        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg"
+        style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
+      >
+        <View className="mb-6">
+            <Text className="text-[24px] font-bold text-slate-800">Records</Text>
+            <Text className="text-slate-500 text-[14px] font-medium mt-1">Recent inseminations and checks.</Text>
         </View>
 
         {loading ? (
              <View className="flex-1 justify-center items-center">
-                <ActivityIndicator size="large" color="#2563EB" />
+                <ActivityIndicator size="large" color="#00643B" />
              </View>
         ) : (
             <ScrollView 
-                contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 100 }}
+                contentContainerStyle={{ paddingBottom: 100 }}
                 showsVerticalScrollIndicator={false}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#00643B" />
                 }
             >
                 {records.length === 0 ? (
                     <View className="mt-10 items-center">
-                        <Text className="text-gray-400">No records found</Text>
+                        <Text className="text-slate-400">No records found</Text>
                     </View>
                 ) : (
                     records.map((item) => (
@@ -131,7 +139,7 @@ const Records = () => {
             </ScrollView>
         )}
       </View>
-    </SafeScreen>
+    </View>
   );
 }
 

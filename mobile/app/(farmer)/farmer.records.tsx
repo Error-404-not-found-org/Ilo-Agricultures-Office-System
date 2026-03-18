@@ -1,6 +1,5 @@
-import { View, Text, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, ActivityIndicator, StatusBar } from 'react-native';
 import React, { useEffect, useState, useCallback } from 'react';
-import SafeScreen from '@/components/safeScreen';
 import Header from '@/components/Header';
 import RecordCard from '@/components/RecordCard';
 
@@ -75,18 +74,27 @@ const FarmerRecords = () => {
   };
 
   return (
-    <SafeScreen>
-      <View className="flex-1 bg-gray-50">
-        <Header />
+    <View className="flex-1 bg-[#F9FAFB]">
+      <StatusBar barStyle="light-content" />
+      
+      {/* Absolute Green Top Background */}
+      <View className="absolute top-0 left-0 right-0 h-[220px] bg-[#00643B]" />
+
+      <Header />
         
+      {/* Overlapping White Curve Card */}
+      <View 
+        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] pt-8 mt-2 shadow-lg"
+        style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
+      >
         <View className="px-6 mb-4">
-            <Text className="text-2xl font-bold text-gray-900">My Records</Text>
-            <Text className="text-gray-500">History of my animals</Text>
+            <Text className="text-[24px] font-bold text-slate-800">My Records</Text>
+            <Text className="text-slate-500">History of my animals</Text>
         </View>
 
         {loading ? (
              <View className="flex-1 justify-center items-center">
-                <ActivityIndicator size="large" color="#2563EB" />
+                <ActivityIndicator size="large" color="#00643B" />
              </View>
         ) : (
             <ScrollView 
@@ -117,7 +125,7 @@ const FarmerRecords = () => {
             </ScrollView>
         )}
       </View>
-    </SafeScreen>
+    </View>
   );
 }
 

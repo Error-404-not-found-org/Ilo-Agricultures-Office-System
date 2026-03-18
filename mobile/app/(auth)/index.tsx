@@ -4,6 +4,7 @@ import useSocialAuth from '../../hooks/useSocialAuth';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router'; 
 import { useSignIn } from '@clerk/clerk-expo';
+import { toast } from 'sonner-native';
 
 const AuthScreen = () => {
   const router = useRouter(); 
@@ -28,8 +29,11 @@ const AuthScreen = () => {
       // This indicates the user is signed in
       await setActive({ session: completeSignIn.createdSessionId });
       // Redirection is handled by _layout.tsx
+      toast.success('Successfully logged in!');
     } catch (err: any) {
-      Alert.alert("Login Failed", err.errors[0]?.message || "An error occurred");
+      toast.error("Login Failed", { 
+        description: err.errors[0]?.message || "An error occurred" 
+      });
     } finally {
       setLoading(false);
     }

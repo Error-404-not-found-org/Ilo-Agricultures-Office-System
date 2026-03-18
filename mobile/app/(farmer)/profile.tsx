@@ -5,6 +5,7 @@ import { useClerk, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ChevronRight, LogOut, Settings, HelpCircle, User } from 'lucide-react-native';
+import { toast } from 'sonner-native';
 
 const FarmerProfile = () => {
   const { signOut } = useClerk();
@@ -14,9 +15,10 @@ const FarmerProfile = () => {
   const handleSignOut = async () => {
     try {
       await signOut();
+      toast.success("You have Signed out.");
       router.replace('/(auth)');
-    } catch (err) {
-      console.error('Error signing out:', err);
+    } catch (error) {
+      console.error('Error signing out:', error);
     }
   };
 
