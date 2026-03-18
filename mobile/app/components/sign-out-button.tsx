@@ -2,6 +2,7 @@
 import { useClerk } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native';
+import { toast } from 'sonner-native';
 
 export const SignOutButton = () => {
   const { signOut } = useClerk();
@@ -12,6 +13,7 @@ export const SignOutButton = () => {
 
     try {
       await signOut();
+      toast.success("You have Signed out.");
       // Navigate to the auth group specifically to ensure we leave the tabs
       router.replace('/(auth)'); 
     } catch (err) {

@@ -1,6 +1,5 @@
-import { View, Text, TextInput, TouchableOpacity, FlatList } from 'react-native';
-import React from 'react';
-import SafeScreen from '@/components/safeScreen';
+import { View, Text, TextInput, TouchableOpacity, FlatList, StatusBar } from 'react-native';
+import React, { useState } from 'react';
 import Header from '@/components/Header';
 import { Search, ArrowRight } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,81 +17,106 @@ const ANIMALS_DATA = [
 
 const Animals = () => {
   const router = useRouter();
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredAnimals = ANIMALS_DATA.filter((a: any) => 
+     a.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     a.owner?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <SafeScreen>
+    <View className="flex-1 bg-[#F9FAFB]">
+      <StatusBar barStyle="light-content" />
+      
+      {/* Absolute Green Top Background */}
+      <View className="absolute top-0 left-0 right-0 h-[220px] bg-[#00643B]" />
+
       <Header />
       
-      <View className="flex-1 px-6">
+      {/* Overlapping White Curve Card */}
+      <View 
+        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg"
+        style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
+      >
         <FlatList 
-          data={ANIMALS_DATA}
+          data={filteredAnimals}
           keyExtractor={(item) => item.id}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 24 }}
+          contentContainerStyle={{ paddingBottom: 100 }}
           
-          // 2. MOVE TITLE & SEARCH HERE (So they scroll away)
           ListHeaderComponent={
             <View className="mb-6">
                {/* Title */}
-               <Text className="text-3xl font-bold text-center text-gray-900 mb-6">
+               <Text className="text-[24px] font-bold text-slate-800 mb-6">
                   Animals Assigned
                 </Text>
 
-                {/* Search Bar - Smaller & Cleaner */}
-                <View className="flex-row items-center bg-gray-100 rounded-2xl px-4 h-12 mb-2">
-                  <Search size={18} color="#9CA3AF" />
+                {/* Search Bar - Clean White Style */}
+                <View className="flex-row items-center bg-white rounded-2xl px-4 h-[52px] mb-2 border border-slate-100 shadow-sm" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2 }}>
+                  <Search size={20} color="#94a3b8" />
                   <TextInput 
-                    placeholder="Search animals..." 
-                    className="flex-1 ml-3 text-base text-gray-900"
-                    placeholderTextColor="#9CA3AF"
-                    style={{ paddingVertical: 0 }} // Fix for Android text alignment
+                    placeholder="Search by tag or owner..." 
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    className="flex-1 ml-3 text-[15px] font-medium text-slate-800"
+                    placeholderTextColor="#94a3b8"
+                    style={{ paddingVertical: 0 }} 
                   />
-                  {/* Removed the Burger Menu Icon here */}
                 </View>
             </View>
           }
 
-          // 3. THE LIST ITEMS
+          ListEmptyComponent={
+            <View className="items-center justify-center pt-20">
+              <Text className="text-slate-400 font-medium text-lg">No animals found.</Text>
+            </View>
+          }
+
           renderItem={({ item }) => (
-            <View className="bg-gray-100 rounded-[24px] p-5 mb-4 border border-transparent active:border-gray-200">
+            <View 
+                className="bg-white rounded-[24px] p-5 mb-4 border border-slate-100 shadow-sm"
+                style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 2 }}
+            >
               
               {/* Card Header */}
               <View className="flex-row justify-between items-start mb-2">
                 <View className="flex-row items-center gap-3">
-                  <View className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm">
-                     <MaterialCommunityIcons name="cow" size={24} color="black" />
+                  <View className="w-12 h-12 bg-emerald-50 rounded-full items-center justify-center">
+                     <MaterialCommunityIcons name="cow" size={26} color="#00643B" />
                   </View>
-                  <Text className="text-xl font-bold text-gray-900">{item.name}</Text>
+                  <Text className="text-[17px] font-bold text-slate-800">{item.name}</Text>
                 </View>
                 
                 {/* Status Badge */}
-                <View className={`px-2 py-1 rounded-lg ${item.status === 'Active' ? 'bg-green-100' : 'bg-gray-200'}`}>
-                    <Text className={`text-xs font-bold ${item.status === 'Active' ? 'text-green-700' : 'text-gray-600'}`}>
+                <View className={`px-2.5 py-1.5 rounded-lg ${item.status === 'Active' ? 'bg-emerald-50' : 'bg-slate-100'}`}>
+                    <Text className={`text-[11px] font-bold uppercase tracking-wider ${item.status === 'Active' ? 'text-emerald-700' : 'text-slate-500'}`}>
                         {item.status}
                     </Text>
                 </View>
               </View>
 
               {/* Details */}
-              <View className="ml-1 mb-6 mt-1">
-                <Text className="text-gray-500 text-xs uppercase font-bold mb-1">Details</Text>
-                <Text className="text-gray-800 text-sm">Owner: <Text className="font-semibold">{item.owner}</Text></Text>
-                <Text className="text-gray-800 text-sm">Breed: <Text className="font-semibold">{item.breed}</Text></Text>
-                <Text className="text-gray-800 text-sm">Location: <Text className="font-semibold">{item.address}</Text></Text>
+              <View className="ml-1 mb-6 mt-3">
+                <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-2">Details</Text>
+                <Text className="text-slate-600 text-[13px] mb-1">Owner: <Text className="font-semibold text-slate-800">{item.owner}</Text></Text>
+                <Text className="text-slate-600 text-[13px] mb-1">Species / Breed: <Text className="font-semibold text-slate-800">Cattle / {item.breed}</Text></Text>
+                <Text className="text-slate-600 text-[13px]">Location: <Text className="font-semibold text-slate-800">{item.address}</Text></Text>
               </View>
 
               {/* Action */}
               <TouchableOpacity
-                  onPress={() => router.push('/animal-details')}
-                  className="absolute bottom-5 right-5 flex-row items-center gap-1 active:opacity-50">
-                    <Text className="text-gray-900 text-xs font-bold">View Details</Text>
-                    <ArrowRight size={16} color="black" />
-                </TouchableOpacity>
+                  onPress={() => router.push(`/(technician)/animal-details?id=${item.id}`)}
+                  className="absolute bottom-5 right-5 flex-row items-center gap-1.5 active:opacity-50"
+               >
+                 <Text className="text-[#00643B] text-[13px] font-bold">View Details</Text>
+                 <ArrowRight size={16} color="#00643B" />
+              </TouchableOpacity>
 
             </View>
           )}
         />
       </View>
-    </SafeScreen>
+    </View>
   )
 }
 

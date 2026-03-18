@@ -1,7 +1,7 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
-import SafeScreen from '@/components/safeScreen';
-import { ArrowLeft, ChevronDown, Calendar, Check, X, ArrowRight, Camera } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ArrowLeft, ChevronDown, Calendar, Check, X, Camera } from 'lucide-react-native';
 import React, { useState } from 'react';
 
 // --- OPTIONS ---
@@ -59,21 +59,39 @@ export default function FarmerAddAnimal() {
     router.back();
   };
 
-  return (
-    <SafeScreen>
-      <View className="flex-1 bg-white px-5"> 
-        
-        {/* --- HEADER --- */}
-        <View className="flex-row items-center justify-between mb-6 mt-2">
-            <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-2 rounded-full active:bg-gray-100">
-                <ArrowLeft size={24} color="black" />
-            </TouchableOpacity>
-            <Text className="text-lg font-bold text-gray-900">Register New Animal</Text>
-            <View className="w-8" /> 
-        </View>
+  const insets = useSafeAreaInsets();
 
+  return (
+    <View className="flex-1 bg-[#F9FAFB]">
+      <StatusBar barStyle="light-content" />
+      
+      {/* Absolute Green Top Background */}
+      <View className="absolute top-0 left-0 right-0 h-[220px] bg-[#00643B]" />
+
+      {/* --- HEADER --- */}
+      <View 
+        style={{ paddingTop: insets.top + 16 }}
+        className="px-6 pb-6 flex-row items-center gap-4 z-10"
+      >
+        <TouchableOpacity 
+            onPress={() => router.back()}
+            className="w-10 h-10 bg-white/20 rounded-full items-center justify-center border border-white/20 shadow-sm"
+            activeOpacity={0.7}
+        >
+            <ArrowLeft size={20} color="white" />
+        </TouchableOpacity>
+        <View>
+            <Text className="text-[20px] font-bold text-white leading-tight">Register Animal</Text>
+            <Text className="text-[12px] text-emerald-100 font-medium tracking-wide">Add a new animal to your farm</Text>
+        </View>
+      </View>
+
+      <View 
+        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg"
+        style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
+      >
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
             
             {/* --- PHOTO PLACEHOLDER (Optional) --- */}
             <TouchableOpacity className="self-center bg-gray-100 h-24 w-24 rounded-full items-center justify-center mb-8 border border-gray-200 border-dashed">
@@ -175,7 +193,7 @@ export default function FarmerAddAnimal() {
         <CalendarModal visible={dateModalVisible} onClose={() => setDateModalVisible(false)} onSelect={handleDateSelect} />
 
       </View>
-    </SafeScreen>
+    </View>
   );
 }
 

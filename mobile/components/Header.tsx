@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Search, Bell } from 'lucide-react-native';
+import { Bell } from 'lucide-react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { useUser } from '@clerk/clerk-expo';
 
@@ -9,61 +9,66 @@ export default function Header() {
   const segments = useSegments();
   const { user } = useUser();
 
-  // 2. Check if we are inside the '(farmer)' folder
   const isFarmer = (segments as string[]).includes('(farmer)');
-  // 3. Set the display text
   const roleLabel = isFarmer ? 'Farmer' : 'Technician';
 
-  // Safety check: Don't render if role doesn't match context (avoids data leak in case of bug)
   const userRole = user?.publicMetadata?.role;
   if (userRole && ((isFarmer && userRole !== 'farmer') || (!isFarmer && userRole !== 'technician'))) {
       return null; 
   }
 
+  // Get current date string like "Sunday, 01 Dec 2024"
+  const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' };
+  const today = new Date().toLocaleDateString('en-GB', dateOptions);
+
   return (
-    <View className="flex-row justify-between items-center px-6 pt-2 mb-6">
+    <View className="flex-row justify-between items-center px-6 pt-16 pb-12 z-10 w-full bg-transparent">
       
-      {/* User Info Section */}
-      <TouchableOpacity 
-        className="flex-row items-center gap-3"
-        onPress={() => {
-            if (isFarmer) {
-                router.push('/(farmer)/profile');
-            } else {
-                router.push('/(technician)/profile');
-            }
-        }}
-      >
-        <View className="w-12 h-12 rounded-full border border-gray-200 items-center justify-center bg-gray-50 overflow-hidden">
-             {user?.imageUrl ? (
-                <Image source={{ uri: user.imageUrl }} className="w-full h-full" />
-             ) : (
-                <MaterialCommunityIcons name="account-outline" size={26} color="#374151" />
-             )}
-        </View>
-        <View>
-          <Text className="text-sm text-gray-500">Welcome back,</Text>
-          {/* Display First Name or fallback to Role */}
-          <Text className="text-xl font-bold text-gray-900">{user?.firstName || roleLabel}</Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* Action Buttons */}
-      <View className="flex-row gap-4">
+      {/* Left side: Avatar + Greeting & Date */}
+      <View className="flex-row items-center gap-3">
+        {/* User Avatar Section */}
         <TouchableOpacity 
-          onPress={() => router.push('/search')}
-          className="p-2 bg-gray-50 rounded-full"
+          onPress={() => {
+              if (isFarmer) {
+                  router.push('/(farmer)/profile');
+              } else {
+                  router.push('/(technician)/profile');
+              }
+          }}
+          activeOpacity={0.8}
         >
-          <Search size={24} color="#374151" />
+          <View className="w-12 h-12 rounded-full border-[2px] border-white/20 items-center justify-center bg-[#005230] overflow-hidden shadow-sm">
+               {user?.imageUrl ? (
+                  <Image source={{ uri: user.imageUrl }} className="w-full h-full" />
+               ) : (
+                  <MaterialCommunityIcons name="account" size={26} color="#86EFAC" />
+               )}
+          </View>
         </TouchableOpacity>
+        
+        {/* Greeting & Date Section */}
+        <View>
+          <Text className="text-white text-[20px] font-bold tracking-tight">
+            Hello, {user?.lastName || roleLabel}
+          </Text>
+          <Text className="text-white text-[12px] mt-0.5 font-medium">{roleLabel}</Text>
+          <Text className="text-emerald-100/90 text-[12px] mt-0.5 font-medium">
+            {today}
+          </Text>
+        </View>
+      </View>
 
+      {/* Right side: Action Buttons */}
+      <View className="flex-row items-center gap-2">
         <TouchableOpacity 
           onPress={() => router.push('/notifications')}
-          className="p-2 bg-gray-50 rounded-full"
+          className="w-10 h-10 bg-white/10 rounded-full items-center justify-center"
+          activeOpacity={0.7}
         >
-          <Bell size={24} color="#374151" />
+          <Bell size={20} color="white" />
         </TouchableOpacity>
       </View>
+      
     </View>
   );
 }

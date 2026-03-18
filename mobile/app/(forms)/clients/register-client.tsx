@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import SafeScreen from '@/components/safeScreen';
 import { ArrowLeft, Check, Square, CheckSquare } from 'lucide-react-native';
 import React, { useState } from 'react';
+import { useApi } from '@/lib/api'; // ADDED IMPORT
 
 export default function RegisterClient() {
   const router = useRouter();
@@ -24,6 +25,8 @@ export default function RegisterClient() {
   });
 
   const [noMiddleName, setNoMiddleName] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const api = useApi();
 
   // Toggle "No Middle Name" Logic
   const toggleNoMiddleName = () => {
@@ -34,9 +37,32 @@ export default function RegisterClient() {
     }
   };
 
-  const handleSave = () => {
-    console.log("SAVING CLIENT:", { ...formData, noMiddleName });
-    router.back();
+  const handleSave = async () => {
+    if (!formData.firstName || !formData.lastName || !formData.phone) {
+      alert("Please fill in all required fields (First Name, Last Name, Phone Number).");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const payload = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email, // Optional, but if provided, Clerk sends an invite
+        phoneNumber: formData.phone,
+        address: `${formData.address}, ${formData.barangay}, ${formData.city} ${formData.zipCode}`,
+        role: "farmer", // Hardcoded to create Farmers
+      };
+      
+      await api.post('/user/create-invited-user', payload);
+      alert("Success! Client successfully registered.");
+      router.back();
+    } catch (error: any) {
+      console.error("Failed to create client:", error);
+      alert(error.response?.data?.message || "An error occurred while creating the client.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
