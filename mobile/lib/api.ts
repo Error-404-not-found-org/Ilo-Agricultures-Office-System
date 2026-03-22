@@ -1,43 +1,42 @@
-// localhost:3000/api
+import axios from "axios";
+import { useAuth } from "@clerk/clerk-expo";
+import { useCallback, useEffect, useRef } from "react";
 
-import axios from 'axios';
-import { useAuth } from '@clerk/clerk-expo';
-import { useEffect } from 'react';
-
-
-// Use 10.0.2.2 for Android Emulator
-// Use your machine's local IP (e.g., 192.168.1.x) for physical device
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000/api";
-
-const api= axios.create({
-    baseURL: API_URL,
-    headers:{
-        "Content-Type": "application/json",
-    },
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.32:3000/api";
+const api = axios.create({
+  baseURL: API_URL,
+  headers: { "Content-Type": "application/json" },
+  timeout: 10000,
 });
 
-
 export const useApi = () => {
-    const {getToken} = useAuth();
+  const { getToken } = useAuth();
+  const interceptorRef = useRef<number | null>(null);
 
-    useEffect(() => {
-        const interceptor = api.interceptors.request.use(async (config) => {
-            console.log("Interceptor running for:", config.url);
-            const token = await getToken();
-            console.log("Token retrieved:", !!token);
-            if (token) {
-                config.headers.Authorization = `Bearer ${token}`;
-            }
-            return config;
-        });
+  // Set up interceptor synchronously (not inside useEffect)
+  // so it's registered before any query fires
+  if (interceptorRef.current !== null) {
+    api.interceptors.request.eject(interceptorRef.current);
+  }
 
-        return () => {
-            api.interceptors.request.eject(interceptor);
-        }
-    }, [getToken]);
+  interceptorRef.current = api.interceptors.request.use(async (config) => {
+    const token = await getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  });
 
-    return api;
+  useEffect(() => {
+    // Cleanup on unmount only
+    return () => {
+      if (interceptorRef.current !== null) {
+        api.interceptors.request.eject(interceptorRef.current);
+        interceptorRef.current = null;
+      }
+    };
+  }, []);
 
-}
-
-
+  return api;
+};

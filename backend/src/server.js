@@ -27,8 +27,9 @@ app.use(
     origin: [
       ENV.CLIENT_URL,
       "http://localhost:5173",
+      "http://192.168.1.47:8081", // 📱 your phone (Expo)
+      "http://192.168.1.32:8081", // 💻 your PC
       "http://localhost:8081",
-      "http://10.0.2.2:8081",
     ],
     credentials: true,
   }),
@@ -53,7 +54,7 @@ if (ENV.NODE_ENV === "production") {
 
 const startServer = async () => {
   await connectDB();
-  app.listen(ENV.PORT, () => {
+  app.listen(ENV.PORT, "0.0.0.0", () => {
     console.log(`Server is up and running on port ${ENV.PORT}`);
   });
 };
