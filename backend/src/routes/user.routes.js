@@ -5,6 +5,9 @@ import {
   syncUser,
   getUserById,
   updateUser,
+  getMe,
+  markVerified,
+  resendVerificationCode,
 } from "../controllers/user.controllers.js";
 import { requireAuth } from "@clerk/express";
 
@@ -20,8 +23,10 @@ router.post(
 );
 router.get("/", protectedRoute, getUsers);
 router.post("/sync-manual", requireAuth(), syncUser);
+router.get("/me", protectedRoute, getMe);
 
 router.get("/:id", protectedRoute, getUserById);
 router.put("/:id", protectedRoute, updateUser);
+router.post("/mark-verified", protectedRoute, markVerified);
 
 export default router;

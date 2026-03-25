@@ -16,23 +16,45 @@ const AuthScreen = () => {
   const [loading, setLoading] = useState(false);
 
   const onSignInPress = async () => {
-    if (!isLoaded) {
+    if (!isLoaded) return;
+    setLoading(true);
+
+    const cleanEmail = emailAddress.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    if (!cleanEmail || !password) {
+      toast.error("Required Fields", { description: "Please enter both email and password." });
+      setLoading(false);
       return;
     }
-    setLoading(true);
+
+    if (!emailRegex.test(cleanEmail)) {
+      toast.error("Invalid Email", { description: "Please enter a valid email address format." });
+      setLoading(false);
+      return;
+    }
+
     try {
       const completeSignIn = await signIn.create({
-        identifier: emailAddress,
+        identifier: cleanEmail,
         password,
       });
 
-      // This indicates the user is signed in
-      await setActive({ session: completeSignIn.createdSessionId });
-      // Redirection is handled by _layout.tsx
-      toast.success('Successfully logged in!');
+      if (completeSignIn.status === 'complete') {
+        await setActive({ session: completeSignIn.createdSessionId });
+        toast.success('Successfully logged in!');
+      } else {
+        toast.error("Login Incomplete", { description: "Additional verification required." });
+      }
     } catch (err: any) {
+      // Use warn instead of error to avoid intrusive console overlays on some mobile devs
+      console.warn("Login attempt failed:", err.message || "Invalid credentials");
+      
+      const errorMessage = err.errors?.[0]?.message || "Invalid email or password";
       toast.error("Login Failed", { 
-        description: err.errors[0]?.message || "An error occurred" 
+        description: errorMessage === "Identifier is invalid." 
+          ? "No account found with this email." 
+          : errorMessage 
       });
     } finally {
       setLoading(false);

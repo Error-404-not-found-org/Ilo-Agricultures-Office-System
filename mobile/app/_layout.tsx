@@ -27,28 +27,45 @@ function InitialLayout() {
     if (!isLoaded) return;
 
     const inAuthGroup = segments[0] === '(auth)';
+    const isVerifying = segments[1] === 'verify';
     const inTechnicianGroup = segments[0] === '(technician)';
     const inFarmerGroup = segments[0] === '(farmer)';
+    const inAdminGroup = segments[0] === '(admin)';
 
     if (isSignedIn) {
-      // Redirect based on role
       const role = user?.publicMetadata?.role;
+      // Logic: Allow if (metadata is true) OR (clerk status is verified AND metadata is not explicitly false)
+      const isEmailVerified = 
+        user?.publicMetadata?.isVerified === true || 
+        (user?.primaryEmailAddress?.verification.status === 'verified' && user?.publicMetadata?.isVerified !== false);
 
-      if (inAuthGroup) {
-         if (role === 'technician') {
+      // 1. Mandatory Verification Guard
+      if (!isEmailVerified) {
+        if (!isVerifying) {
+          router.replace('/(auth)/verify' as any);
+        }
+        setIsNavigating(false);
+        return;
+      }
+
+      // 2. Role-based Redirects (only for verified users)
+      if (inAuthGroup || isVerifying) {
+         if (role === 'admin') {
+            router.replace('/(admin)/admin.dashboard' as any);
+         } else if (role === 'technician') {
             router.replace('/(technician)/technician.dashboard');
          } else {
-            if (!role) console.warn('User has no role assigned. Defaulting to farmer route.');
-            else if (role !== 'farmer') console.warn('Unknown role:', role);
             router.replace('/(farmer)');
          }
+      } else if (inAdminGroup && role !== 'admin') {
+         router.replace('/(farmer)');
       } else if (inTechnicianGroup && role !== 'technician') {
-         // If a user (including new ones with 'undefined' role) tries to access technician routes, force them to farmer
          router.replace('/(farmer)');
       } else if (inFarmerGroup && role === 'technician') {
          router.replace('/(technician)/technician.dashboard');
+      } else if (inFarmerGroup && role === 'admin') {
+         router.replace('/(admin)/admin.dashboard' as any);
       } else {
-        // If we are signed in and in a valid group for our role, we are done navigating
         setIsNavigating(false);
       }
     } else if (!isSignedIn) {

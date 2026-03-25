@@ -1,9 +1,11 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import SafeScreen from '@/components/safeScreen';
 import { ArrowLeft, Check, Square, CheckSquare } from 'lucide-react-native';
+import { toast } from 'sonner-native';
 import React, { useState } from 'react';
 import { useApi } from '@/lib/api'; // ADDED IMPORT
+import * as ImagePicker from 'expo-image-picker';
 
 export default function RegisterClient() {
   const router = useRouter();
@@ -17,12 +19,33 @@ export default function RegisterClient() {
     age: '',
     phone: '',
     email: '',
+    houseNumber: '',
     address: '',
     barangay: '',
     city: '',
+    province: 'Iloilo',
+    region: 'Region VI',
     zipCode: '',
     password: '',
   });
+
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setImageUri(result.assets[0].uri);
+      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    }
+  };
 
   const [noMiddleName, setNoMiddleName] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -39,7 +62,7 @@ export default function RegisterClient() {
 
   const handleSave = async () => {
     if (!formData.firstName || !formData.lastName || !formData.phone) {
-      alert("Please fill in all required fields (First Name, Last Name, Phone Number).");
+      toast.error("Please fill in all required fields (First Name, Last Name, Phone Number).");
       return;
     }
 
@@ -48,18 +71,31 @@ export default function RegisterClient() {
       const payload = {
         firstName: formData.firstName,
         lastName: formData.lastName,
-        email: formData.email, // Optional, but if provided, Clerk sends an invite
+        middleName: formData.middleName !== 'N/A' ? formData.middleName : '',
+        suffix: formData.suffix,
+        email: formData.email,
+        password: formData.password, // ADDED MISSING PASSWORD
         phoneNumber: formData.phone,
-        address: `${formData.address}, ${formData.barangay}, ${formData.city} ${formData.zipCode}`,
+        imageUrl: imageBase64,
+        address: {
+          houseNumber: formData.houseNumber,
+          street: formData.address || 'N/A',
+          barangay: formData.barangay || 'N/A',
+          city: formData.city || 'N/A',
+          zipCode: formData.zipCode || '0000',
+          province: formData.province || 'Iloilo',
+          region: formData.region || 'Region VI',
+          phoneNumber: formData.phone
+        },
         role: "farmer", // Hardcoded to create Farmers
       };
       
       await api.post('/user/create-invited-user', payload);
-      alert("Success! Client successfully registered.");
+      toast.success("Client successfully registered.");
       router.back();
     } catch (error: any) {
       console.error("Failed to create client:", error);
-      alert(error.response?.data?.message || "An error occurred while creating the client.");
+      toast.error(error.response?.data?.message || "An error occurred while creating the client.");
     } finally {
       setLoading(false);
     }
@@ -84,6 +120,19 @@ export default function RegisterClient() {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
             
+            {/* ========================================= */}
+            {/* PROFILE PICTURE UPLOAD                    */}
+            {/* ========================================= */}
+            <View className="items-center mt-4 mb-6">
+              <TouchableOpacity onPress={pickImage} className="w-24 h-24 bg-gray-50 rounded-full items-center justify-center border border-dashed border-gray-300 overflow-hidden">
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
+                ) : (
+                  <Text className="text-xs text-blue-500 font-semibold text-center mt-2">Add Photo</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
             {/* ========================================= */}
             {/* SECTION 1: PERSONAL INFO                  */}
             {/* ========================================= */}
@@ -171,12 +220,24 @@ export default function RegisterClient() {
             {/* ========================================= */}
             <SectionHeader title="Address Details" />
 
-            <InputField 
-                label="Street Address" 
-                value={formData.address} 
-                onChangeText={(t: string) => setFormData({...formData, address: t})} 
-                placeholder="Lot 1, Street Name" 
-            />
+            <View className="flex-row gap-4">
+                <View className="w-1/3">
+                    <InputField 
+                        label="House No." 
+                        value={formData.houseNumber} 
+                        onChangeText={(t: string) => setFormData({...formData, houseNumber: t})} 
+                        placeholder="Blk 1" 
+                    />
+                </View>
+                <View className="flex-1">
+                    <InputField 
+                        label="Street Address" 
+                        value={formData.address} 
+                        onChangeText={(t: string) => setFormData({...formData, address: t})} 
+                        placeholder="Lot 1, Street Name" 
+                    />
+                </View>
+            </View>
 
             <View className="flex-row gap-4">
                 <View className="flex-1">
@@ -193,6 +254,25 @@ export default function RegisterClient() {
                         value={formData.city} 
                         onChangeText={(t: string) => setFormData({...formData, city: t})} 
                         placeholder="Iloilo City" 
+                    />
+                </View>
+            </View>
+
+            <View className="flex-row gap-4">
+                <View className="flex-[2]">
+                    <InputField 
+                        label="Province" 
+                        value={formData.province} 
+                        onChangeText={(t: string) => setFormData({...formData, province: t})} 
+                        placeholder="Iloilo" 
+                    />
+                </View>
+                <View className="flex-1">
+                    <InputField 
+                        label="Region" 
+                        value={formData.region} 
+                        onChangeText={(t: string) => setFormData({...formData, region: t})} 
+                        placeholder="Region VI" 
                     />
                 </View>
             </View>

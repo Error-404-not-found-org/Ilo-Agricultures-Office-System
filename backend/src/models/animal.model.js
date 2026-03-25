@@ -7,13 +7,17 @@ const AnimalSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    earTag: String,
+    animalId: { type: String, required: true },
+    earTag: { type: String },
+    brand: { type: String },
 
     species: {
       type: String,
       enum: ["Beef", "Dairy", "Carabao", "Goat", "Swine"],
       required: true,
     },
+
+    birthDate: { type: Date },
 
     breed: { type: String, required: true },
     color: { type: String },

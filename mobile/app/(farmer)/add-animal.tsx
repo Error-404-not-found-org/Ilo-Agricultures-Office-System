@@ -1,29 +1,53 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, StatusBar, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronDown, Calendar, Check, X, Camera } from 'lucide-react-native';
 import React, { useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
+import { useApi } from '@/lib/api';
+import { toast } from 'sonner-native';
 
 // --- OPTIONS ---
-const SPECIES_OPTIONS = ['Cow (Beef)', 'Cow (Dairy)', 'Carabao', 'Goat', 'Pig'];
-const BREED_OPTIONS = ['Native', 'Brahman', 'Angus', 'Holstein', 'Crossbreed'];
-const SEX_OPTIONS = ['Female', 'Male'];
-const SOURCE_OPTIONS = ['Born on Farm', 'Purchased', 'Government Grant'];
+const SPECIES_OPTIONS = ['Beef', 'Dairy', 'Carabao'];
+const BREED_OPTIONS = ['Native', 'Brahman', 'Holstein Sahiwal (HS)', 'PC Cross', 'Purebred'];
+
+const SPECIES_PREFIX: Record<string, string> = { Beef: 'BEF', Dairy: 'DAI', Carabao: 'CBU' };
 
 export default function FarmerAddAnimal() {
   const router = useRouter();
+  const api = useApi();
+  const insets = useSafeAreaInsets();
   
-  // --- FORM STATE ---
   const [formData, setFormData] = useState({
-    name: '',           // e.g. "Bella"
+    animalId: '',
+    earTag: '',
+    brand: '',
     species: '',
     breed: '',
-    sex: '',
-    birthDate: '',
     color: '',
-    source: '',         // Where did they get it?
-    notes: '',
+    ageYears: '',
+    ageMonths: '',
   });
+
+  const [loading, setLoading] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setImageUri(result.assets[0].uri);
+      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      toast.success("Photo selected!");
+    }
+  };
 
   // --- MODAL HELPERS ---
   const [modalVisible, setModalVisible] = useState(false);
@@ -45,7 +69,14 @@ export default function FarmerAddAnimal() {
   };
 
   const handleSelect = (val: string) => {
-    setFormData({...formData, [activeField]: val});
+    const updated = {...formData, [activeField]: val};
+    // Auto-update the Animal ID preview when species changes
+    if (activeField === 'species') {
+      const prefix = SPECIES_PREFIX[val] || 'ANM';
+      const ts = Date.now().toString().slice(-4);
+      updated.animalId = `${prefix}-${ts}`;
+    }
+    setFormData(updated);
     setModalVisible(false);
   };
 
@@ -54,12 +85,45 @@ export default function FarmerAddAnimal() {
     setDateModalVisible(false);
   };
 
-  const handleSave = () => {
-    console.log("FARMER SAVING ANIMAL:", formData);
-    router.back();
-  };
+  const handleSave = async () => {
+    if (!formData.species) return toast.error("Please select a species.");
+    if (!formData.breed) return toast.error("Please select a breed.");
+    
+    try {
+      setLoading(true);
 
-  const insets = useSafeAreaInsets();
+      // Compute birthDate from age if provided
+      let birthDate: string | undefined;
+      const yrs = parseInt(formData.ageYears || '0');
+      const mos = parseInt(formData.ageMonths || '0');
+      if (yrs > 0 || mos > 0) {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - yrs);
+        d.setMonth(d.getMonth() - mos);
+        birthDate = d.toISOString();
+      }
+
+      const payload = {
+        animalId: formData.animalId.trim() || undefined, // let backend auto-generate if blank
+        earTag: formData.earTag,
+        brand: formData.brand,
+        species: formData.species,
+        breed: formData.breed,
+        color: formData.color,
+        imageUrl: imageBase64,
+        birthDate,
+      };
+
+      const res = await api.post('/animals/register', payload);
+      toast.success(`Animal "${res.data.animal?.animalId}" registered!`, { position: 'top-center', duration: 4000 });
+      router.back();
+    } catch (error: any) {
+      console.error("Failed to add animal:", error);
+      toast.error(error.response?.data?.message || "Failed to register animal. Check your connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View className="flex-1 bg-[#F9FAFB]">
@@ -94,95 +158,71 @@ export default function FarmerAddAnimal() {
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
             
             {/* --- PHOTO PLACEHOLDER (Optional) --- */}
-            <TouchableOpacity className="self-center bg-gray-100 h-24 w-24 rounded-full items-center justify-center mb-8 border border-gray-200 border-dashed">
-                <Camera size={28} color="#9CA3AF" />
-                <Text className="text-xs text-gray-400 mt-1">Add Photo</Text>
+            <TouchableOpacity onPress={pickImage} className="self-center bg-gray-100 h-24 w-24 rounded-full items-center justify-center mb-8 border border-gray-200 border-dashed overflow-hidden shadow-sm">
+                {imageUri ? (
+                    <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
+                ) : (
+                    <>
+                      <Camera size={28} color="#9CA3AF" />
+                      <Text className="text-[10px] text-gray-500 font-semibold text-center mt-1">Add Photo</Text>
+                    </>
+                )}
             </TouchableOpacity>
 
             {/* --- FORM FIELDS --- */}
-            <Text className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Basic Details</Text>
-
-            <InputField 
-                label="Animal Name / ID" 
-                value={formData.name} 
-                onChangeText={(t: string) => setFormData({...formData, name: t})} 
-                placeholder="e.g. Bella or #102" 
-            />
+            <Text className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Animal Identification</Text>
 
             <View className="flex-row gap-3">
                 <View className="flex-1">
-                    <SelectField 
-                        label="Species" 
-                        value={formData.species} 
-                        placeholder="Select" 
-                        onPress={() => openModal('species', 'Select Species', SPECIES_OPTIONS)} 
-                    />
+                    <InputField label="Animal ID" value={formData.animalId} onChangeText={(t: string) => setFormData({...formData, animalId: t})} placeholder="Auto-generated if blank" />
                 </View>
                 <View className="flex-1">
-                    <SelectField 
-                        label="Sex" 
-                        value={formData.sex} 
-                        placeholder="M/F" 
-                        onPress={() => openModal('sex', 'Select Sex', SEX_OPTIONS)} 
-                    />
+                    <InputField label="Ear Tag" value={formData.earTag} onChangeText={(t: string) => setFormData({...formData, earTag: t})} placeholder="Tag-123" />
                 </View>
             </View>
 
-            <SelectField 
-                label="Breed" 
-                value={formData.breed} 
-                placeholder="Select Breed" 
-                onPress={() => openModal('breed', 'Select Breed', BREED_OPTIONS)} 
-            />
+            <View className="flex-row gap-3 mt-1">
+                <View className="flex-1">
+                    <SelectField label="Species" value={formData.species} placeholder="Select" onPress={() => openModal('species', 'Select Species', SPECIES_OPTIONS)} />
+                </View>
+                <View className="flex-1">
+                    <SelectField label="Breed" value={formData.breed} placeholder="Select" onPress={() => openModal('breed', 'Select Breed', BREED_OPTIONS)} />
+                </View>
+            </View>
 
             <View className="flex-row gap-3">
                 <View className="flex-1">
-                    <InputField 
-                        label="Color / Markings" 
-                        value={formData.color} 
-                        onChangeText={(t: string) => setFormData({...formData, color: t})} 
-                        placeholder="e.g. Black with white spots" 
-                    />
+                    <InputField label="Color" value={formData.color} onChangeText={(t: string) => setFormData({...formData, color: t})} placeholder="e.g. Black" />
                 </View>
                 <View className="flex-1">
-                     <DateSelector 
-                        label="Birth Date (Est.)" 
-                        value={formData.birthDate} 
-                        onPress={() => openDatePicker('birthDate')}
-                    />
+                    <InputField label="Brand" value={formData.brand} onChangeText={(t: string) => setFormData({...formData, brand: t})} placeholder="(Optional)" />
                 </View>
             </View>
 
-            <Text className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4 mt-4">History</Text>
-
-            <SelectField 
-                label="Source" 
-                value={formData.source} 
-                placeholder="Where did it come from?" 
-                onPress={() => openModal('source', 'Animal Source', SOURCE_OPTIONS)} 
-            />
-
-            <View className="mb-3">
-                <Text className="text-gray-700 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">Notes (Optional)</Text>
-                <TextInput 
-                    className="bg-white border border-gray-300 rounded-xl px-4 py-3 text-gray-900 text-sm focus:border-blue-500 h-24" 
-                    value={formData.notes} 
-                    onChangeText={(t) => setFormData({...formData, notes: t})} 
-                    placeholder="Any specific marks, previous sickness, etc." 
-                    placeholderTextColor="#9CA3AF"
-                    multiline
-                    textAlignVertical="top"
-                />
+            <View className="flex-row gap-3">
+                <View className="flex-1">
+                    <InputField label="Age (Years)" value={formData.ageYears} onChangeText={(t: string) => setFormData({...formData, ageYears: t})} placeholder="e.g. 2" keyboardType="numeric" />
+                </View>
+                <View className="flex-1">
+                    <InputField label="Months" value={formData.ageMonths} onChangeText={(t: string) => setFormData({...formData, ageMonths: t})} placeholder="e.g. 4" keyboardType="numeric" />
+                </View>
             </View>
 
             {/* --- SAVE BUTTON --- */}
             <TouchableOpacity 
                 onPress={handleSave}
+                disabled={loading}
                 activeOpacity={0.8}
-                className="bg-green-700 rounded-full py-4 items-center mt-6 shadow-lg shadow-green-200 flex-row justify-center gap-2"
+                className={`rounded-full py-4 items-center mt-6 shadow-lg flex-row justify-center gap-2 ${loading ? 'bg-green-500' : 'bg-green-700 shadow-green-200'}`}
             >
-                <Check size={20} color="white" />
-                <Text className="text-white font-bold text-lg">Add to My Farm</Text>
+                {loading ? (
+                   <ActivityIndicator color="white" size="small" />
+                ) : (
+                   <>
+                     <Check size={20} color="white" />
+                     <Text className="text-white font-bold text-lg">Add to My Farm</Text>
+                   </>
+                )}
             </TouchableOpacity>
 
           </ScrollView>

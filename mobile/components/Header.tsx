@@ -1,21 +1,48 @@
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Bell } from 'lucide-react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { useUser } from '@clerk/clerk-expo';
+import { useApi } from '@/lib/api';
 
 export default function Header() {
   const router = useRouter();
   const segments = useSegments();
   const { user } = useUser();
+  const api = useApi();
+  const [unreadCount, setUnreadCount] = useState(0);
 
+  useEffect(() => {
+    const fetchUnread = async () => {
+      try {
+        const res = await api.get('/notifications/unread-count');
+        setUnreadCount(res.data.count);
+      } catch (err) {
+        // Silently fail for header
+      }
+    };
+    if (user) fetchUnread();
+  }, [user, api]);
+
+  const isAdmin = (segments as string[]).includes('(admin)');
   const isFarmer = (segments as string[]).includes('(farmer)');
-  const roleLabel = isFarmer ? 'Farmer' : 'Technician';
+  const isTechnician = (segments as string[]).includes('(technician)');
+
+  const roleLabel = isAdmin ? 'Administrator' : isFarmer ? 'Farmer' : 'Technician';
 
   const userRole = user?.publicMetadata?.role;
-  if (userRole && ((isFarmer && userRole !== 'farmer') || (!isFarmer && userRole !== 'technician'))) {
-      return null; 
+  // Guard against showing wrong header in wrong route group
+  if (userRole) {
+    if (isAdmin && userRole !== 'admin') return null;
+    if (isFarmer && userRole !== 'farmer') return null;
+    if (isTechnician && userRole !== 'technician') return null;
   }
+
+  const PRIMARY_COLOR = isAdmin ? '#1e3a5f' : isFarmer || isTechnician ? '#00643B' : '#00643B';
+  const ACCENT_BG = isAdmin ? '#162d4a' : '#005230';
+  const ICON_COLOR = isAdmin ? '#93c5fd' : '#86EFAC';
+  const DATE_TEXT = isAdmin ? 'text-blue-100/90' : 'text-emerald-100/90';
 
   // Get current date string like "Sunday, 01 Dec 2024"
   const dateOptions: Intl.DateTimeFormatOptions = { weekday: 'long', day: '2-digit', month: 'short', year: 'numeric' };
@@ -27,21 +54,22 @@ export default function Header() {
       {/* Left side: Avatar + Greeting & Date */}
       <View className="flex-row items-center gap-3">
         {/* User Avatar Section */}
-        <TouchableOpacity 
+        <TouchableOpacity
           onPress={() => {
-              if (isFarmer) {
-                  router.push('/(farmer)/profile');
-              } else {
-                  router.push('/(technician)/profile');
-              }
+            if (isAdmin) router.push('/(admin)/profile' as any);
+            else if (isFarmer) router.push('/(farmer)/profile');
+            else router.push('/(technician)/profile');
           }}
           activeOpacity={0.8}
         >
-          <View className="w-12 h-12 rounded-full border-[2px] border-white/20 items-center justify-center bg-[#005230] overflow-hidden shadow-sm">
+          <View
+            className="w-12 h-12 rounded-full border-[2px] border-white/20 items-center justify-center overflow-hidden shadow-sm"
+            style={{ backgroundColor: ACCENT_BG }}
+          >
                {user?.imageUrl ? (
                   <Image source={{ uri: user.imageUrl }} className="w-full h-full" />
                ) : (
-                  <MaterialCommunityIcons name="account" size={26} color="#86EFAC" />
+                  <MaterialCommunityIcons name="account" size={26} color={ICON_COLOR} />
                )}
           </View>
         </TouchableOpacity>
@@ -49,10 +77,10 @@ export default function Header() {
         {/* Greeting & Date Section */}
         <View>
           <Text className="text-white text-[20px] font-bold tracking-tight">
-            Hello, {user?.lastName || roleLabel}
+            Hello, {user?.firstName || user?.lastName || 'User'}
           </Text>
           <Text className="text-white text-[12px] mt-0.5 font-medium">{roleLabel}</Text>
-          <Text className="text-emerald-100/90 text-[12px] mt-0.5 font-medium">
+          <Text className={`text-[12px] mt-0.5 font-medium ${DATE_TEXT}`}>
             {today}
           </Text>
         </View>
@@ -62,10 +90,17 @@ export default function Header() {
       <View className="flex-row items-center gap-2">
         <TouchableOpacity 
           onPress={() => router.push('/notifications')}
-          className="w-10 h-10 bg-white/10 rounded-full items-center justify-center"
+          className="w-10 h-10 bg-white/10 rounded-full items-center justify-center p-0"
           activeOpacity={0.7}
         >
-          <Bell size={20} color="white" />
+          <View>
+            <Bell size={20} color="white" />
+            {unreadCount > 0 && (
+              <View className="absolute -top-1 -right-1 bg-red-500 w-4 h-4 rounded-full border border-white items-center justify-center">
+                <Text className="text-white text-[9px] font-bold">{unreadCount > 9 ? '9+' : unreadCount}</Text>
+              </View>
+            )}
+          </View>
         </TouchableOpacity>
       </View>
       
