@@ -19,6 +19,7 @@ const FarmerProfile = () => {
       router.replace('/(auth)');
     } catch (error) {
       console.error('Error signing out:', error);
+      toast.error("Failed to sign out. Please try again.");
     }
   };
 

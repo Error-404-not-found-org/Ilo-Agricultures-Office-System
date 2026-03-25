@@ -88,7 +88,7 @@ const BottomNavigator = ({ state, descriptors, navigation }: BottomTabBarProps) 
 
       {/* --- MAIN TAB BAR (Floating Glassmorphic Redesign) --- */}
       <View style={styles.tabContainer}>
-        <View className="flex-row items-center justify-between bg-white/95 rounded-full px-2 h-[72px]" style={styles.tabBarShadow}>
+        <View className="flex-row items-center justify-between bg-white/95 rounded-full px- h-[72px]" style={styles.tabBarShadow}>
             
           <TabItem 
             icon={Home} 
@@ -175,7 +175,7 @@ const ModalAction = ({ icon, label, onPress }: { icon: any, label: string, onPre
 const styles = StyleSheet.create({
   tabContainer: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 24 : 16,
+    bottom: Platform.OS === 'ios' ? 40 : 32, // 24,16 if it is too high the tab bar will be too high
     left: 20,
     right: 20,
     backgroundColor: 'transparent',

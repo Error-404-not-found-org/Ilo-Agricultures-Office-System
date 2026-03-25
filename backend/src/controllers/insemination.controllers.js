@@ -81,7 +81,7 @@ export const updateInsemination = async (req, res) => {
 export const getAllInseminations = async (req, res) => {
   try {
     const inseminations = await Insemination.find()
-      .populate("animalId", "earTag species breed color")
+      .populate("animalId", "earTag species breed color animalId")
       .populate("farmerId", "name email phoneNumber")
       .populate("approvedBy", "name email")
       .sort({ createdAt: -1 });
@@ -90,5 +90,21 @@ export const getAllInseminations = async (req, res) => {
   } catch (error) {
     console.error("Error fetching all inseminations:", error);
     res.status(500).json({ message: "Failed to fetch inseminations" });
+  }
+};
+
+// GET /api/insemination/my — returns insemination records for the logged-in farmer
+export const getMyInseminations = async (req, res) => {
+  try {
+    const farmerId = req.user._id;
+    const records = await Insemination.find({ farmerId })
+      .populate("animalId", "animalId earTag species breed imageUrl")
+      .populate("approvedBy", "name")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json(records);
+  } catch (error) {
+    console.error("[getMyInseminations ERROR]", error.message);
+    res.status(500).json({ message: "Failed to fetch your records." });
   }
 };

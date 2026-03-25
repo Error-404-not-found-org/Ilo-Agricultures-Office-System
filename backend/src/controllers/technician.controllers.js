@@ -1,11 +1,16 @@
 import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
+import { Pregnancy } from "../models/pregnancy.model.js";
+import { Calving } from "../models/calving.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 
 export const getMyInseminations = async (req, res) => {
   try {
-    const inseminations = await Insemination.find().sort({ createdAt: -1 });
+    const inseminations = await Insemination.find()
+      .populate("animalId", "animalId earTag species breed")
+      .populate("farmerId", "name")
+      .sort({ createdAt: -1 });
     res.status(200).send({ inseminations });
   } catch (error) {
     console.error("Error fetching inseminations:", error);
@@ -28,7 +33,29 @@ export const getMyReInseminations = async (req, res) => {
 };
 
 export const getMyPregnancyChecks = async (req, res) => {
-  res.status(200).send({ pregnancyChecks: [] });
+  try {
+    const pregnancyChecks = await Pregnancy.find()
+      .populate("animalId", "animalId earTag species breed")
+      .populate("farmerId", "name")
+      .sort({ createdAt: -1 });
+    res.status(200).send({ pregnancyChecks });
+  } catch (error) {
+    console.error("Error fetching pregnancy checks:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const getMyCalvings = async (req, res) => {
+  try {
+    const calvings = await Calving.find()
+      .populate("animalId", "animalId earTag species breed")
+      .populate("farmerId", "name")
+      .sort({ createdAt: -1 });
+    res.status(200).send({ calvings });
+  } catch (error) {
+    console.error("Error fetching calvings:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
 };
 
 export const getMyNotifications = async (req, res) => {

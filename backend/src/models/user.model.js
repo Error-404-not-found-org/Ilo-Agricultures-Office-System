@@ -14,7 +14,7 @@ const AddressSchema = new mongoose.Schema({
 
   zipCode: {
     type: String,
-    match: /^[0-9]{4}$/,
+    match: [/^[0-9]{2,6}$/, "Zip code must be between 2 and 6 digits."],
     required: true,
   },
   phoneNumber: { type: String, required: true },

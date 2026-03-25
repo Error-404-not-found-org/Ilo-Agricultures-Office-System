@@ -1,74 +1,115 @@
 import { User } from "../models/user.model.js";
+import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import cloudinary from "../config/cloudinary.js";
+
+// GET /api/user/me — returns the logged-in user's full MongoDB profile
+export const getMe = async (req, res) => {
+  try {
+    // req.user is already populated by protectedRoute middleware
+    const user = await User.findById(req.user._id).select("-password");
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    // Also return their animals if they are a farmer
+    let animals = [];
+    if (user.role === "farmer") {
+      animals = await Animal.find({ farmerId: user._id })
+        .select("animalId earTag species breed")
+        .sort({ createdAt: -1 });
+    }
+
+    res.status(200).json({ ...user.toObject(), animals });
+  } catch (error) {
+    console.error("[getMe ERROR]", error.message);
+    res.status(500).json({ message: "Failed to fetch your profile." });
+  }
+};
+
 
 export const createInvitedUser = async (req, res) => {
   try {
-    const { firstName, lastName, email, phoneNumber, address, imageUrl, role } =
+    const { firstName, middleName, lastName, suffix, email, password, phoneNumber, address, imageUrl, role } =
       req.body;
 
-    // Authorization Check
-    const requesterRole = req.auth.claims.metadata?.role;
-
-    // Default to farmer if not specified, but validate role
+    const requesterRole = req.user?.role;
     const targetRole = role || "farmer";
 
     if (requesterRole === "technician" && targetRole !== "farmer") {
-      return res
-        .status(403)
-        .json({ message: "Technicians can only create Farmer accounts." });
+      return res.status(403).json({ message: "Technicians can only create Farmer accounts." });
     }
-
     if (requesterRole === "farmer") {
-      return res
-        .status(403)
-        .json({ message: "Farmers cannot create accounts." });
+      return res.status(403).json({ message: "Farmers cannot create accounts." });
     }
 
-    // Check if user exists
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and password are required." });
+    }
+
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res
-        .status(400)
-        .json({ message: "User with this email already exists." });
+      return res.status(400).json({ message: "User with this email already exists." });
     }
 
-    const newUser = await User.create({
-      name: `${firstName} ${lastName}`,
-      phoneNumber,
-      email: email || undefined,
-      address,
-      imageUrl: imageUrl || "",
-      role: targetRole,
-      isVerified: !!email,
+    let finalImageUrl = imageUrl || "";
+    if (imageUrl && imageUrl.startsWith("data:image")) {
+      try {
+        const uploadResponse = await cloudinary.uploader.upload(imageUrl, {
+          folder: "agriculture_profiles",
+        });
+        finalImageUrl = uploadResponse.secure_url;
+      } catch (err) {
+        console.error("Cloudinary upload failed", err);
+        return res.status(500).json({ message: "Image upload failed." });
+      }
+    }
+
+    // Create real Clerk account directly (no invitation email)
+    const clerkUser = await clerkClient.users.createUser({
+      emailAddress: [email],
+      password,
+      firstName: firstName,
+      lastName: lastName,
+      publicMetadata: { 
+        role: targetRole,
+        isVerified: false 
+      },
     });
 
-    if (email) {
-      const invitation = await clerkClient.invitations.createInvitation({
-        emailAddress: email,
-        publicMetadata: {
-          invitedBySystem: true,
-          role: targetRole,
-        },
-        redirectUrl: "https://ilo-agricultures-inseminati-p5bbd.sevalla.app/",
-      });
+    const fullName = [firstName, middleName, lastName, suffix].filter(Boolean).join(' ');
 
-      newUser.clerkId = invitation.id; // Corrected from userId to id for invitation? Let's check docs or safe bet.
-      // Actually invitation.id is the invitation ID. When user accepts, webhook handles the user creation/update.
-      // But we can store it if needed. However, the webhook logic we wrote tries to match by email.
-      // Let's keep it simple. We don't necessarily need clerkId on the user until they sign up.
-      // But for reference we can store it.
-      // WAIT: In webhook we look up by email.
+    const newUser = await User.create({
+      clerkId: clerkUser.id,
+      name: fullName,
+      email,
+      address,
+      imageUrl: finalImageUrl,
+      role: targetRole,
+      isVerified: false,
+    });
 
-      await newUser.save();
+    res.status(201).json({
+      message: `${targetRole} created successfully`,
+      newUser,
+      credentials: { email, password }, // returned once for admin to note
+    });
+  } catch (err) {
+    console.error("Error creating invited user:", err);
+
+    // Mongoose validation errors have errors as an object map (not an array)
+    if (err.name === "ValidationError" && err.errors) {
+      const firstKey = Object.keys(err.errors)[0];
+      const readableField = firstKey.replace("address.", ""); // e.g. "zipCode"
+      const readableMessage = err.errors[firstKey]?.message || "Validation failed";
+      return res.status(400).json({ message: `Invalid ${readableField}: ${readableMessage}` });
     }
 
-    res
-      .status(201)
-      .json({ message: `${targetRole} created successfully`, newUser });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to create user" });
+    // Clerk API errors have errors as an array
+    const clerkMessage = err.errors?.[0]?.longMessage || err.errors?.[0]?.message;
+
+    const status = err.status || 500;
+    const message = clerkMessage || err.message || "Failed to create user";
+    res.status(status).json({ message, clerkError: !!err.clerkError });
   }
 };
 
@@ -86,6 +127,19 @@ export const getUsers = async (req, res) => {
   } catch (error) {
     console.error("Error fetching users:", error);
     res.status(500).json({ message: "Failed to fetch users" });
+  }
+};
+
+// Admin: list all users with Clerk details (email, role, clerkId, status)
+export const listAllUsersForAdmin = async (req, res) => {
+  try {
+    const { role } = req.query;
+    const query = role ? { role } : {};
+    const users = await User.find(query).select("-__v").lean();
+    res.status(200).json(users);
+  } catch (error) {
+    console.error("Error listing users for admin:", error);
+    res.status(500).json({ message: "Failed to list users" });
   }
 };
 
@@ -162,8 +216,11 @@ export const getUserById = async (req, res) => {
       const totalInseminations = await Insemination.countDocuments({
         farmerId: id,
       });
+      const animals = await Animal.find({ farmerId: id }).sort({ createdAt: -1 });
+
       stats = {
         totalInseminations,
+        animals, // Included directly into the payload for the farmer's profile
       };
     }
 
@@ -177,7 +234,7 @@ export const getUserById = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { phoneNumber, status, address } = req.body;
+    const { name, email, phoneNumber, status, address } = req.body;
 
     const user = await User.findById(id);
 
@@ -185,6 +242,8 @@ export const updateUser = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
+    if (name) user.name = name;
+    if (email !== undefined) user.email = email;
     if (phoneNumber) user.phoneNumber = phoneNumber;
     if (status) user.status = status;
 
@@ -199,5 +258,60 @@ export const updateUser = async (req, res) => {
   } catch (error) {
     console.error("Error updating user:", error);
     res.status(500).json({ message: "Failed to update user" });
+  }
+};
+
+export const markVerified = async (req, res) => {
+  try {
+    const { userId } = req.auth;
+
+    const user = await User.findOne({ clerkId: userId });
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    const clerkUser = await clerkClient.users.getUser(userId);
+
+    // 1. Update Clerk Metadata
+    await clerkClient.users.updateUser(userId, {
+      publicMetadata: {
+        ...(clerkUser.publicMetadata || {}),
+        isVerified: true,
+      },
+    });
+
+    // 2. Update MongoDB
+    user.isVerified = true;
+    await user.save();
+
+    res.status(200).json({ message: "User successfully verified.", user });
+  } catch (error) {
+    console.error("[markVerified ERROR]", error.message);
+    res.status(500).json({ message: "Failed to verify user." });
+  }
+};
+
+export const resendVerificationCode = async (req, res) => {
+  try {
+    const { userId } = req.auth;
+    const user = await User.findOne({ clerkId: userId });
+    if (!user) return res.status(404).json({ message: "User not found." });
+
+    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Update Clerk Metadata
+    const clerkUser = await clerkClient.users.getUser(userId);
+    await clerkClient.users.updateUser(userId, {
+      publicMetadata: {
+        ...(clerkUser.publicMetadata || {}),
+        verificationCode: newCode,
+      },
+    });
+
+    // Note: In production, send via email/SMS. Code is NOT logged for security.
+
+
+    res.status(200).json({ message: "Verification code resent." });
+  } catch (error) {
+    console.error("[resendVerification ERROR]", error.message);
+    res.status(500).json({ message: "Failed to resend code." });
   }
 };
