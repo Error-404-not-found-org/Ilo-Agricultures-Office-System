@@ -20,6 +20,13 @@ const AIRequestSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    preferredDate: {
+      type: Date,
+      default: Date.now,
+    },
+    scheduledDate: {
+      type: Date,
+    },
     status: {
       type: String,
       enum: ["pending", "approved", "rejected", "done"],

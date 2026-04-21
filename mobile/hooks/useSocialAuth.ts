@@ -4,6 +4,7 @@ import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { toast } from "sonner-native";
+import { useApi } from "@/lib/api";
 
 // 1. Warm up browser (Required for Android)
 export const useWarmUpBrowser = () => {
@@ -20,6 +21,7 @@ WebBrowser.maybeCompleteAuthSession();
 function useSocialAuth() {
   useWarmUpBrowser();
   const router = useRouter();
+  const api = useApi();
 
   const [loadingStrategy, setLoadingStrategy] = useState<string | null>(null);
   const { startOAuthFlow: startGoogleFlow } = useOAuth({ strategy: "oauth_google" });
@@ -46,6 +48,15 @@ function useSocialAuth() {
       if (createdSessionId && setActive) {
         console.log("✅ Login Successful! Setting active...");
         await setActive({ session: createdSessionId });
+        
+        // 🔄 Sync user metadata to MongoDB
+        try {
+          await api.post("/user/sync-manual");
+          console.log("✅ User synced to MongoDB");
+        } catch (syncErr) {
+          console.warn("⚠️ Sync failed, but session is active:", syncErr);
+        }
+
         toast.success("Login Successful", {
           description: "Welcome to BreedSmart!"
         });

@@ -1,8 +1,11 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput } from 'react-native';
-import { Syringe, UserPlus, Activity, Search, Bell, MapPin } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, RefreshControl, Modal, Platform } from 'react-native';
+import { Syringe, UserPlus, Activity, Search, Bell, MapPin, ChevronRight, CheckCircle2, AlertCircle, Clock, X } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useApi } from '@/lib/api';
+import { toast } from 'sonner-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import Header from '@/components/Header'; // <-- Added Global Header Image/Sync
 
@@ -11,13 +14,128 @@ const PRIMARY = '#00643B'; // The deep green from the image
 
 export default function HomeScreen() {
   const router = useRouter();
+  const api = useApi();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Scheduling Modal State
+  const [modalVisible, setModalVisible] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [scheduledDate, setScheduledDate] = useState(new Date());
+  const [note, setNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Picker visibility
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const fetchDashboardData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
+    try {
+      const response = await api.get('/technician/dashboard-data');
+      setData(response.data);
+    } catch (error) {
+      console.error("Failed to load technician dashboard data", error);
+      toast.error("Failed to synchronize hub data");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    fetchDashboardData();
+    // Real-time synchronization: Poll every 45 seconds on mobile to save battery but stay fresh
+    const intervalId = setInterval(() => fetchDashboardData(true), 45000);
+    return () => clearInterval(intervalId);
+  }, [fetchDashboardData]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchDashboardData();
+  };
+
+  const onDateChange = (event: any, date?: Date) => {
+    setShowDatePicker(false);
+    if (date) {
+      const newDate = new Date(scheduledDate);
+      newDate.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+      setScheduledDate(newDate);
+    }
+  };
+
+  const onTimeChange = (event: any, date?: Date) => {
+    setShowTimePicker(false);
+    if (date) {
+      const newDate = new Date(scheduledDate);
+      newDate.setHours(date.getHours(), date.getMinutes());
+      setScheduledDate(newDate);
+    }
+  };
+
+  const handleAction = (item: any) => {
+    setSelectedItem(item);
+    setScheduledDate(item.scheduledDate ? new Date(item.scheduledDate) : item.preferredDate ? new Date(item.preferredDate) : new Date());
+    setNote('');
+    setModalVisible(true);
+  };
+
+  const confirmAction = async () => {
+    if (!selectedItem) return;
+    setIsSubmitting(true);
+    try {
+      let endpoint = '';
+      let status = '';
+
+      if (selectedItem.type === 'health') {
+        endpoint = `/health-request/${selectedItem.id}/status`;
+        status = 'in-progress';
+      } else if (selectedItem.type === 'ai-request') {
+        endpoint = `/ai-request/${selectedItem.id}/status`;
+        status = 'approved';
+      } else {
+        endpoint = `/technician/inseminations/${selectedItem.id}/status`;
+        status = 'done';
+      }
+
+      await api.patch(endpoint, { 
+        status, 
+        technicianNote: note || `Confirmed for ${scheduledDate.toLocaleDateString()} ${scheduledDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
+        scheduledDate: scheduledDate.toISOString()
+      });
+      
+      toast.success('Appointment Scheduled');
+      setModalVisible(false);
+      fetchDashboardData(true);
+    } catch (error) {
+      toast.error("Failed to schedule appointment");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const stats = data?.stats || {};
+  const agendaItems = data?.agendaItems || [];
+
+  if (loading && !data) {
+    return (
+      <View className="flex-1 bg-[#F9FAFB] items-center justify-center">
+        <ActivityIndicator size="large" color={PRIMARY} />
+        <Text className="mt-4 text-[#00643B] font-medium animate-pulse">Synchronizing Hub Data...</Text>
+      </View>
+    );
+  }
 
   return (
     <View className="flex-1 bg-[#F9FAFB]">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 150 }}
         showsVerticalScrollIndicator={false}
-        bounces={false} // Match overlapping aesthetic
+        bounces={true} 
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />
+        }
       >
 
         {/* --- HERO HEADER BACKGROUND & SEARCH LAYER --- */}
@@ -48,36 +166,36 @@ export default function HomeScreen() {
             <View className="flex-row justify-between items-center mb-6">
               <View className="flex-row items-center">
                 <MapPin size={18} color={PRIMARY} />
-                <Text className="text-slate-800 font-bold ml-1.5 text-base">Task Overview</Text>
+                <Text className="text-slate-800 font-bold ml-1.5 text-base">Service Overview</Text>
               </View>
               <View className="bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
-                <Text style={{ color: PRIMARY }} className="text-xs font-bold tracking-wide">Today</Text>
+                <Text style={{ color: PRIMARY }} className="text-xs font-bold tracking-wide">Live</Text>
               </View>
             </View>
 
             {/* Main Stat */}
             <View className="flex-row items-baseline justify-center mb-8">
               <Text style={{ color: PRIMARY }} className="text-7xl font-black tracking-tighter leading-none">
-                12
+                {stats.totalInseminations ?? 0}
               </Text>
-              <Text className="text-slate-500 font-bold ml-2 mb-1 text-xl">Tasks</Text>
+              <Text className="text-slate-500 font-bold ml-2 mb-1 text-xl">Service{stats.totalInseminations !== 1 ? 's' : ''}</Text>
             </View>
 
             {/* Sub Stats Row like weather details */}
             <View className="flex-row justify-between border-t border-slate-50 pt-5">
               <View className="items-center flex-1">
-                <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Urgent</Text>
-                <Text className="text-red-500 font-black text-xl">3</Text>
+                <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Health</Text>
+                <Text className="text-blue-600 font-black text-xl">{stats.healthAlerts ?? 0}</Text>
               </View>
               <View className="w-[1px] bg-slate-100" />
               <View className="items-center flex-1">
-                <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Routine</Text>
-                <Text className="text-slate-800 font-black text-xl">5</Text>
+                <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Success</Text>
+                <Text className="text-emerald-500 font-black text-xl">{stats.successRate || '84%'}</Text>
               </View>
               <View className="w-[1px] bg-slate-100" />
               <View className="items-center flex-1">
-                <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Followup</Text>
-                <Text className="text-emerald-500 font-black text-xl">4</Text>
+                <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Agenda</Text>
+                <Text className="text-slate-800 font-black text-xl">{agendaItems.length}</Text>
               </View>
             </View>
           </View>
@@ -114,34 +232,180 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* --- RECENT SECTION --- */}
+        {/* --- UPCOMING APPOINTMENTS SECTION --- */}
         <View className="px-6 mb-4 flex-row justify-between items-center">
-          <Text className="text-slate-800 font-bold text-[17px]">Best Offers</Text>
-          <TouchableOpacity>
+          <Text className="text-slate-800 font-bold text-[17px]">Upcoming Appointments</Text>
+          <TouchableOpacity onPress={() => router.push('/technician.dashboard')}>
             <Text style={{ color: PRIMARY }} className="font-bold text-xs tracking-wide">View all</Text>
           </TouchableOpacity>
         </View>
 
-        <View className="px-6 flex-row gap-x-4">
-          <View className="flex-1 bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 h-[120px]">
-            <View className="h-[70px] w-full items-center justify-center bg-emerald-50">
-              <MaterialCommunityIcons name="needle" size={32} color="#00643B" />
+        <View className="px-6 space-y-3">
+          {agendaItems.length === 0 ? (
+            <View className="bg-white rounded-2xl p-8 items-center border border-gray-100 shadow-sm">
+                <Clock size={32} color="#94a3b8" />
+                <Text className="text-slate-400 font-medium mt-2">No pending appointments</Text>
             </View>
-            <View className="px-3 py-2 flex-1 justify-center items-center">
-              <Text className="font-bold text-slate-800 text-xs">New Client Sync</Text>
-            </View>
-          </View>
-          <View className="flex-1 bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 h-[120px]">
-            <View className="h-[70px] w-full items-center justify-center bg-blue-50">
-              <MaterialCommunityIcons name="file-document-outline" size={32} color="#3B82F6" />
-            </View>
-            <View className="px-3 py-2 flex-1 justify-center items-center">
-              <Text className="font-bold text-slate-800 text-xs">Reports Uploaded</Text>
-            </View>
-          </View>
+          ) : (
+            agendaItems.map((item: any, idx: number) => (
+              <View key={item.id || idx} className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 flex-row">
+                <View 
+                  className={`w-1.5 ${item.urgent ? 'bg-rose-500' : item.type === 'health' ? 'bg-blue-500' : 'bg-[#00643B]'}`} 
+                />
+                <View className="flex-1 p-4 flex-row justify-between items-center">
+                  <View className="flex-1 mr-4">
+                    <View className="flex-row items-center gap-1.5 mb-1">
+                      <Text className="text-[10px] font-black uppercase tracking-widest text-[#94a3b8]">
+                        {item.time} {item.urgent && '• URGENT'}
+                      </Text>
+                    </View>
+                    <Text className="text-slate-800 font-bold text-[15px] mb-0.5" numberOfLines={1}>
+                      {item.task}
+                    </Text>
+                    <View className="flex-row items-center gap-1">
+                      <MapPin size={10} color="#94a3b8" />
+                      <Text className="text-slate-400 text-[11px] font-medium" numberOfLines={1}>
+                        {item.farmer} — {item.location}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity 
+                    onPress={() => handleAction(item)}
+                    className={`px-4 py-2 rounded-xl flex-row items-center gap-1.5 ${item.type === 'health' ? 'bg-blue-600' : 'bg-[#00643B]'}`}
+                  >
+                    <Text className="text-white font-bold text-[11px]">
+                      {item.type === 'health' ? 'Accept' : 'Approve'}
+                    </Text>
+                    <ChevronRight size={12} color="white" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
       </ScrollView>
+
+      {/* --- SCHEDULING MODAL --- */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-end">
+          <View className="bg-white rounded-t-[40px] p-6 pb-12 shadow-2xl border-t border-gray-100">
+            {/* Modal Header */}
+            <View className="flex-row justify-between items-center mb-6">
+              <View className="flex-row items-center gap-3">
+                <View className="p-3 bg-emerald-50 rounded-2xl">
+                  <Clock size={24} color={PRIMARY} />
+                </View>
+                <View>
+                  <Text className="text-slate-800 font-black text-xl leading-none">Confirm Schedule</Text>
+                  <Text className="text-slate-400 text-xs font-bold mt-1 uppercase tracking-wider">Set Appointment Time</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={() => setModalVisible(false)}
+                className="p-2 bg-slate-50 rounded-full"
+              >
+                <X size={20} color="#64748b" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Context Info */}
+            <View className="bg-slate-50 rounded-[24px] p-5 mb-6 border border-slate-100">
+              <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Service Details</Text>
+              <Text className="text-slate-800 font-bold text-[15px]">{selectedItem?.task}</Text>
+              <View className="flex-row items-center gap-1.5 mt-1.5">
+                <MapPin size={12} color="#94a3b8" />
+                <Text className="text-slate-500 font-medium text-xs">{selectedItem?.farmer} · {selectedItem?.location}</Text>
+              </View>
+            </View>
+
+            {/* Scheduling Inputs */}
+            <View className="space-y-4 mb-8">
+              <View className="flex-row gap-3">
+                <TouchableOpacity
+                  onPress={() => setShowDatePicker(true)}
+                  className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-4 flex-row items-center justify-between"
+                >
+                  <View>
+                    <Text className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">Visit Date</Text>
+                    <Text className="text-slate-800 font-bold text-[15px]">{scheduledDate.toLocaleDateString()}</Text>
+                  </View>
+                  <MaterialCommunityIcons name="calendar-clock" size={20} color={PRIMARY} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setShowTimePicker(true)}
+                  className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-4 flex-row items-center justify-between"
+                >
+                  <View>
+                    <Text className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-none mb-1">Visit Time</Text>
+                    <Text className="text-slate-800 font-bold text-[15px]">
+                      {scheduledDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  <Clock size={20} color={PRIMARY} />
+                </TouchableOpacity>
+              </View>
+
+              <View>
+                <Text className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2 ml-1">Technician Note (Optional)</Text>
+                <TextInput
+                  placeholder="e.g. Please secure the animal before I arrive..."
+                  placeholderTextColor="#cbd5e1"
+                  className="bg-slate-50 border border-slate-100 rounded-2xl px-4 py-4 text-slate-800 text-sm"
+                  multiline
+                  numberOfLines={3}
+                  value={note}
+                  onChangeText={setNote}
+                  style={{ textAlignVertical: 'top' }}
+                />
+              </View>
+            </View>
+
+            {/* DateTimePickers */}
+            {showDatePicker && (
+              <DateTimePicker
+                value={scheduledDate}
+                mode="date"
+                display="default"
+                onChange={onDateChange}
+                minimumDate={new Date()}
+              />
+            )}
+            {showTimePicker && (
+              <DateTimePicker
+                value={scheduledDate}
+                mode="time"
+                display="default"
+                onChange={onTimeChange}
+              />
+            )}
+
+            {/* Action Button */}
+            <TouchableOpacity
+              onPress={confirmAction}
+              disabled={isSubmitting}
+              activeOpacity={0.8}
+              style={{ backgroundColor: PRIMARY }}
+              className="w-full py-5 rounded-[24px] items-center justify-center shadow-lg shadow-emerald-200"
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color="white" size="small" />
+              ) : (
+                <Text className="text-white font-black text-lg tracking-wide">
+                  {selectedItem?.type === 'health' ? 'Accept & Schedule' : 'Approve & Schedule'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

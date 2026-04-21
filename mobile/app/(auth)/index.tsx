@@ -5,9 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router'; 
 import { useSignIn } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
+import { useApi } from '@/lib/api';
 
 const AuthScreen = () => {
   const router = useRouter(); 
+  const api = useApi();
   const { loadingStrategy, handleSocialAuth } = useSocialAuth();
   const { signIn, setActive, isLoaded } = useSignIn();
 
@@ -42,6 +44,15 @@ const AuthScreen = () => {
 
       if (completeSignIn.status === 'complete') {
         await setActive({ session: completeSignIn.createdSessionId });
+        
+        // 🔄 Sync user metadata to MongoDB
+        try {
+          await api.post("/user/sync-manual");
+          console.log("✅ User synced to MongoDB");
+        } catch (syncErr) {
+          console.warn("⚠️ Sync failed:", syncErr);
+        }
+
         toast.success('Successfully logged in!');
       } else {
         toast.error("Login Incomplete", { description: "Additional verification required." });

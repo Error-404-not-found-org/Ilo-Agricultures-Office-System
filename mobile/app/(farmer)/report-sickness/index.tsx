@@ -6,12 +6,15 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft, HeartPulse, User, MapPin,
-  ChevronDown, Camera, X, Check, AlertCircle, AlertTriangle, Pill
+  ChevronDown, Camera, X, Check, AlertCircle, AlertTriangle, Pill, Clock
 } from 'lucide-react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
+
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Platform } from 'react-native';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal { _id: string; animalId: string; earTag?: string; species: string; breed: string; }
@@ -54,10 +57,13 @@ export default function ReportSickness() {
   const [symptoms, setSymptoms]               = useState('');
   const [imageUri, setImageUri]               = useState<string | null>(null);
   const [imageBase64, setImageBase64]         = useState<string | null>(null);
+  const [preferredDate, setPreferredDate]     = useState(new Date());
   const [submitting, setSubmitting]           = useState(false);
 
   const [animalModalVisible, setAnimalModalVisible]       = useState(false);
   const [typeModalVisible, setTypeModalVisible]           = useState(false);
+  const [showDatePicker, setShowDatePicker]               = useState(false);
+  const [showTimePicker, setShowTimePicker]               = useState(false);
 
   // ── Load profile ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -92,6 +98,7 @@ export default function ReportSickness() {
         symptoms: symptoms.trim(),
         urgency,
         imageUrl: imageBase64,
+        preferredDate: preferredDate.toISOString(),
       });
       toast.success('Request submitted! A technician will attend to your animal.', { duration: 4000, position: 'top-center' });
       router.back();
@@ -99,6 +106,24 @@ export default function ReportSickness() {
       toast.error(error.response?.data?.message || 'Failed to submit. Please try again.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const newDate = new Date(preferredDate);
+      newDate.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+      setPreferredDate(newDate);
+    }
+  };
+
+  const onTimeChange = (event: any, selectedTime?: Date) => {
+    setShowTimePicker(false);
+    if (selectedTime) {
+      const newDate = new Date(preferredDate);
+      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
+      setPreferredDate(newDate);
     }
   };
 
@@ -204,6 +229,55 @@ export default function ReportSickness() {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* Preferred Date/Time Picker */}
+          <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Preferred Visit Date/Time *</Text>
+          <View className="flex-row gap-3 mb-4">
+            <TouchableOpacity
+              onPress={() => setShowDatePicker(true)}
+              className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center justify-between"
+              style={{ elevation: 1 }}
+            >
+              <View>
+                <Text className="text-[11px] text-gray-400 font-medium uppercase tracking-widest">Date</Text>
+                <Text className="text-[14px] font-bold text-gray-800">{preferredDate.toLocaleDateString()}</Text>
+              </View>
+              <Clock size={16} color="#9ca3af" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setShowTimePicker(true)}
+              className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center justify-between"
+              style={{ elevation: 1 }}
+            >
+              <View>
+                <Text className="text-[11px] text-gray-400 font-medium uppercase tracking-widest">Time</Text>
+                <Text className="text-[14px] font-bold text-gray-800">
+                  {preferredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              </View>
+              <Clock size={16} color="#9ca3af" />
+            </TouchableOpacity>
+          </View>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={preferredDate}
+              mode="date"
+              display="default"
+              onChange={onDateChange}
+              minimumDate={new Date()}
+            />
+          )}
+
+          {showTimePicker && (
+            <DateTimePicker
+              value={preferredDate}
+              mode="time"
+              display="default"
+              onChange={onTimeChange}
+            />
+          )}
 
           {/* Photo */}
           <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Attach Photo (Optional)</Text>

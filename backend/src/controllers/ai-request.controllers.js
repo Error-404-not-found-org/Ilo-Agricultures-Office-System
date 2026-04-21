@@ -124,6 +124,7 @@ export const updateRequestStatus = async (req, res) => {
         status,
         handledBy: req.user._id,
         technicianNote: technicianNote || "",
+        scheduledDate: req.body.scheduledDate || undefined,
       },
       { new: true }
     ).populate("farmerId", "name").populate("animalId", "animalId earTag species");

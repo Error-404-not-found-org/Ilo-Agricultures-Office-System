@@ -21,13 +21,12 @@ const Technicians = () => {
     },
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-full">
-        <span className="loading loading-spinner loading-lg text-primary"></span>
-      </div>
+    if (isLoading) return (
+        <div className="flex justify-center items-center flex-col min-h-[60vh] gap-4">
+            <span className="loading loading-infinity loading-lg text-[#074033] scale-150"></span>
+            <p className="text-[#074033] font-medium tracking-wide animate-pulse">Listing Technicians...</p>
+        </div>
     );
-  }
 
   if (error) {
     return (

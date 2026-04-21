@@ -6,12 +6,15 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft, Syringe, User, MapPin,
-  ChevronDown, Camera, X, Check, AlertCircle
+  ChevronDown, Camera, X, Check, AlertCircle, Clock
 } from 'lucide-react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
+
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Platform } from 'react-native';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal { _id: string; animalId: string; earTag?: string; species: string; breed: string; }
@@ -45,10 +48,13 @@ export default function RequestAI() {
   const [comment, setComment]               = useState('');
   const [imageUri, setImageUri]             = useState<string | null>(null);
   const [imageBase64, setImageBase64]       = useState<string | null>(null);
+  const [preferredDate, setPreferredDate]   = useState(new Date());
   const [submitting, setSubmitting]         = useState(false);
 
   // UI states
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   // ── Load farmer profile + animals on mount ──────────────────────────────────
   useEffect(() => {
@@ -58,7 +64,16 @@ export default function RequestAI() {
         setFarmer(res.data);
         setAnimals(res.data.animals || []);
       } catch (error: any) {
-        toast.error(error.response?.data?.message || 'Could not load your profile.');
+        let msg = 'Could not load your profile.';
+        if (error.response?.status === 401) {
+          msg = 'Session expired or user not synced. Please log out and back in.';
+        } else if (!error.response) {
+          msg = 'Network Error: Check if server is running and on same Wi-Fi.';
+        } else {
+          msg = error.response?.data?.message || msg;
+        }
+        toast.error(msg);
+        console.error("[Profile Load Error]", error);
       } finally {
         setLoadingProfile(false);
       }
@@ -95,6 +110,7 @@ export default function RequestAI() {
         animalId: selectedAnimal._id,
         imageUrl: imageBase64,
         comment: comment.trim(),
+        preferredDate: preferredDate.toISOString(),
       });
       toast.success('AI request submitted! A technician will contact you soon.', { duration: 4000, position: 'top-center' });
       router.back();
@@ -102,6 +118,24 @@ export default function RequestAI() {
       toast.error(error.response?.data?.message || 'Failed to submit request. Please try again.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(false);
+    if (selectedDate) {
+      const newDate = new Date(preferredDate);
+      newDate.setFullYear(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate());
+      setPreferredDate(newDate);
+    }
+  };
+
+  const onTimeChange = (event: any, selectedTime?: Date) => {
+    setShowTimePicker(false);
+    if (selectedTime) {
+      const newDate = new Date(preferredDate);
+      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
+      setPreferredDate(newDate);
     }
   };
 
@@ -194,6 +228,55 @@ export default function RequestAI() {
               )}
               <ChevronDown size={20} color={selectedAnimal ? '#00643B' : '#9ca3af'} />
             </TouchableOpacity>
+
+            {/* ── Preferred Date/Time Picker ───────────────────────────────── */}
+            <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Preferred Visit Date/Time *</Text>
+            <View className="flex-row gap-3 mb-5">
+              <TouchableOpacity
+                onPress={() => setShowDatePicker(true)}
+                className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center justify-between"
+                style={{ elevation: 1 }}
+              >
+                <View>
+                  <Text className="text-[11px] text-gray-400 font-medium uppercase tracking-widest">Date</Text>
+                  <Text className="text-[15px] font-bold text-gray-800">{preferredDate.toLocaleDateString()}</Text>
+                </View>
+                <Clock size={16} color="#9ca3af" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setShowTimePicker(true)}
+                className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center justify-between"
+                style={{ elevation: 1 }}
+              >
+                <View>
+                  <Text className="text-[11px] text-gray-400 font-medium uppercase tracking-widest">Time</Text>
+                  <Text className="text-[15px] font-bold text-gray-800">
+                    {preferredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                </View>
+                <Clock size={16} color="#9ca3af" />
+              </TouchableOpacity>
+            </View>
+
+            {showDatePicker && (
+              <DateTimePicker
+                value={preferredDate}
+                mode="date"
+                display="default"
+                onChange={onDateChange}
+                minimumDate={new Date()}
+              />
+            )}
+
+            {showTimePicker && (
+              <DateTimePicker
+                value={preferredDate}
+                mode="time"
+                display="default"
+                onChange={onTimeChange}
+              />
+            )}
 
             {/* ── Photo Attachment ─────────────────────────────────────────── */}
             <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Attach Photo (Optional)</Text>

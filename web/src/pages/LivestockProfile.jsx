@@ -21,13 +21,13 @@ const LivestockProfile = () => {
     },
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-full min-h-[500px]">
-        <span className="loading loading-spinner text-primary loading-lg"></span>
-      </div>
+    if (isLoading) return (
+        <div className="flex justify-center items-center flex-col min-h-[60vh] gap-4">
+            <span className="loading loading-infinity loading-lg text-[#074033] scale-150"></span>
+            <p className="text-[#074033] font-medium tracking-wide animate-pulse">Fetching Animal Profile...</p>
+        </div>
     );
-  }
+  
 
   if (error || !animal) {
     return (

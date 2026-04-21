@@ -119,7 +119,12 @@ export const updateHealthRequestStatus = async (req, res) => {
 
     const request = await HealthRequest.findByIdAndUpdate(
       id,
-      { status, handledBy: req.user._id, technicianNote: technicianNote || "" },
+      { 
+        status, 
+        handledBy: req.user._id, 
+        technicianNote: technicianNote || "",
+        scheduledDate: req.body.scheduledDate || undefined
+      },
       { new: true }
     )
       .populate("farmerId", "name")

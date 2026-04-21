@@ -1,5 +1,5 @@
 {
-  "name": "admin",
+  "name": "web",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -17,9 +17,11 @@
     "axios": "^1.13.5",
     "framer-motion": "^12.34.0",
     "ilo-agriculturesoffice-system": "file:..",
+    "leaflet": "^1.9.4",
     "lucide-react": "^0.563.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-leaflet": "^5.0.0",
     "react-router": "^7.13.0",
     "react-router-dom": "^7.13.0",
     "tailwindcss": "^4.1.18"

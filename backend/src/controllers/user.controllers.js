@@ -166,7 +166,7 @@ export const syncUser = async (req, res) => {
         name: name || "New User",
         imageUrl: user.imageUrl || "",
         isVerified,
-        $setOnInsert: { role: "technician" }, // Default safe role if new
+        $setOnInsert: { role: "farmer" }, // Mobile users are typically farmers
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },
     );

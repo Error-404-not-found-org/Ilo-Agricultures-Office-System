@@ -2,7 +2,7 @@ import axios from "axios";
 import { useAuth } from "@clerk/clerk-expo";
 import { useEffect, useMemo } from "react";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://10.178.119.138:3000/api";
+const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.7:3000/api";
 
 
 

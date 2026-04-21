@@ -7,13 +7,13 @@ const Landing = () => {
     const { isSignedIn, isLoaded, user } = useUser();
 
     if (isLoaded && isSignedIn) {
-        // Only redirect to dashboard if the user has the admin role
+        // Redirect based on role
         if (user?.publicMetadata?.role === 'admin') {
             return <Navigate to="/dashboard" replace />;
+        } else if (user?.publicMetadata?.role === 'technician') {
+            return <Navigate to="/technician/dashboard" replace />;
         }
-        // If logged in but not admin, we stay on Landing but show a specific UI or let them sign out.
-        // The SignInButton below will handle the "You are already signed in" state effectively by Clerk's modal,
-        // but we can also show a friendly message.
+        // If logged in but not admin or technician, they stay on Landing to see the restricted message.
     }
 
     return (
@@ -44,10 +44,10 @@ const Landing = () => {
                         </p>
                         
                         <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-                            {isSignedIn && user?.publicMetadata?.role !== 'admin' ? (
+                            {isSignedIn && !['admin', 'technician'].includes(user?.publicMetadata?.role) ? (
                                 <div className="p-4 bg-red-50 text-red-700 rounded-2xl border border-red-100 flex flex-col gap-2">
                                     <p className="font-semibold text-sm">⛔ Access Restricted</p>
-                                    <p className="text-xs opacity-80">You are logged in as a <strong>{String(user?.publicMetadata?.role || 'User')}</strong>. This portal is for Admins only.</p>
+                                    <p className="text-xs opacity-80">You are logged in as a <strong>{String(user?.publicMetadata?.role || 'User')}</strong>. This portal is for Admins and Technicians only.</p>
                                     <SignOutButton>
                                         <button className="btn btn-sm btn-outline text-red-700 hover:bg-red-100 border-red-200 mt-2">
                                             Sign Out & Switch Account
