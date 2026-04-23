@@ -15,7 +15,7 @@ const InseminationSchema = new mongoose.Schema(
 
     inseminationDate: {
       type: Date,
-      required: true,
+      // Removed required: true to allow pending requests
     },
 
     estrus: {
@@ -25,17 +25,17 @@ const InseminationSchema = new mongoose.Schema(
 
     sireBreed: {
       type: String,
-      required: true,
+      // Removed required: true to allow pending requests
     },
 
     sireCode: {
       type: String,
-      required: true,
+      // Removed required: true to allow pending requests
     },
 
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected", "done"],
+      enum: ["pending", "approved", "rejected", "done", "in-progress"],
       default: "pending",
     },
 
@@ -46,7 +46,6 @@ const InseminationSchema = new mongoose.Schema(
 
     attemptNumber: {
       type: Number,
-      required: true,
       default: 1,
     },
     preferredDate: {
@@ -57,6 +56,15 @@ const InseminationSchema = new mongoose.Schema(
       type: Date,
     },
     technicianNote: {
+      type: String,
+      default: "",
+    },
+    // New fields from AIRequest
+    imageUrl: {
+      type: String,
+      default: "",
+    },
+    comment: {
       type: String,
       default: "",
     },

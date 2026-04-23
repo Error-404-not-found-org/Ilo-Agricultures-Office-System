@@ -1,4 +1,4 @@
-import { AIRequest } from "../models/ai-request.model.js";
+import { Insemination } from "../models/insemination.model.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
@@ -20,16 +20,23 @@ export const createAIRequest = async (req, res) => {
       return res.status(404).json({ message: "Animal not found or does not belong to you." });
     }
 
-    const request = await AIRequest.create({
+    // Calculate attempt number
+    const lastAttempt = await Insemination.findOne({ animalId }).sort({ attemptNumber: -1 });
+    const attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
+
+    const request = await Insemination.create({
       farmerId,
       animalId,
       imageUrl: imageUrl || "",
       comment: comment || "",
+      preferredDate: req.body.preferredDate || new Date(),
+      status: "pending",
+      attemptNumber,
     });
 
-    console.log(`[AI Request Created] Farmer: ${farmerId} | Animal: ${animal.animalId} | Request: ${request._id}`);
+    console.log(`[Unified AI Request Created] Farmer: ${farmerId} | Animal: ${animal.animalId} | Record: ${request._id}`);
 
-    // --- TRIGGER NOTIFICATIONS to all technicians ---
+    // --- TRIGGER NOTIFICATIONS ---
     try {
       const technicians = await User.find({ role: "technician" });
       const admins = await User.find({ role: "admin" });
@@ -45,7 +52,6 @@ export const createAIRequest = async (req, res) => {
         })
       );
 
-      // Admins get a lighter summary notification
       const adminNotifs = admins.map(a =>
         Notification.create({
           recipientId: a._id,
@@ -60,7 +66,6 @@ export const createAIRequest = async (req, res) => {
       await Promise.all([...techNotifs, ...adminNotifs]);
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
-      // Don't fail the main request if notification fails
     }
 
     res.status(201).json({ message: "AI request submitted successfully.", request });
@@ -71,11 +76,10 @@ export const createAIRequest = async (req, res) => {
 };
 
 // GET /api/ai-request/my
-// Farmer gets their own requests (with animal info populated)
 export const getMyRequests = async (req, res) => {
   try {
     const farmerId = req.user._id;
-    const requests = await AIRequest.find({ farmerId })
+    const requests = await Insemination.find({ farmerId })
       .populate("animalId", "animalId earTag species breed imageUrl")
       .sort({ createdAt: -1 });
 
@@ -87,16 +91,15 @@ export const getMyRequests = async (req, res) => {
 };
 
 // GET /api/ai-request
-// Technician / Admin gets all requests (with farmer + animal info)
 export const getAllRequests = async (req, res) => {
   try {
     const { status } = req.query;
     const query = status ? { status } : {};
 
-    const requests = await AIRequest.find(query)
+    const requests = await Insemination.find(query)
       .populate("farmerId", "name address imageUrl")
       .populate("animalId", "animalId earTag species breed imageUrl")
-      .populate("handledBy", "name")
+      .populate("approvedBy", "name")
       .sort({ createdAt: -1 });
 
     res.status(200).json(requests);
@@ -107,33 +110,31 @@ export const getAllRequests = async (req, res) => {
 };
 
 // PATCH /api/ai-request/:id/status
-// Technician / Admin approves, rejects, or marks as done
 export const updateRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, technicianNote } = req.body;
 
-    const VALID_STATUSES = ["pending", "approved", "rejected", "done"];
+    const VALID_STATUSES = ["pending", "approved", "rejected", "done", "in-progress"];
     if (!VALID_STATUSES.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
-    const request = await AIRequest.findByIdAndUpdate(
+    const request = await Insemination.findByIdAndUpdate(
       id,
       {
         status,
-        handledBy: req.user._id,
+        approvedBy: req.user._id,
         technicianNote: technicianNote || "",
         scheduledDate: req.body.scheduledDate || undefined,
       },
-      { new: true }
+      { returnDocument: 'after' }
     ).populate("farmerId", "name").populate("animalId", "animalId earTag species");
 
     if (!request) {
-      return res.status(404).json({ message: "AI request not found." });
+      return res.status(404).json({ message: "AI request record not found." });
     }
 
-    console.log(`[AI Request Updated] ID: ${id} → Status: ${status} by ${req.user._id}`);
     res.status(200).json({ message: "Request status updated.", request });
   } catch (error) {
     console.error("[updateRequestStatus ERROR]", error.message);

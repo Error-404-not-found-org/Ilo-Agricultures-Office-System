@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, Info, AlertTriangle, AlertCircle } from 'lucide-react';
+import { Bell, Check, Info, AlertTriangle, AlertCircle, HeartPulse, Settings, Trash2 } from 'lucide-react';
 import axios from '../lib/axios';
 
 const NotificationBell = () => {
@@ -30,6 +30,15 @@ const NotificationBell = () => {
     const markAllAsReadMutation = useMutation({
         mutationFn: async () => {
             return await axios.patch('/notifications/mark-read');
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries(['notifications']);
+        }
+    });
+
+    const clearNotificationsMutation = useMutation({
+        mutationFn: async () => {
+            return await axios.delete('/notifications');
         },
         onSuccess: () => {
             queryClient.invalidateQueries(['notifications']);
@@ -67,14 +76,24 @@ const NotificationBell = () => {
                     <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-2xl z-50 border border-gray-100 overflow-hidden animate-in fade-in zoom-in duration-200">
                         <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-[#f8fafc]">
                             <h3 className="font-bold text-gray-800">Notifications</h3>
-                            {unreadCount > 0 && (
-                                <button 
-                                    onClick={() => markAllAsReadMutation.mutate()}
-                                    className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
-                                >
-                                    <Check size={14} /> Mark all read
-                                </button>
-                            )}
+                            <div className="flex gap-2">
+                                {unreadCount > 0 && (
+                                    <button 
+                                        onClick={() => markAllAsReadMutation.mutate()}
+                                        className="text-[10px] text-blue-600 hover:text-blue-800 font-black uppercase tracking-widest flex items-center gap-1 bg-blue-50 px-2 py-1 rounded-md"
+                                    >
+                                        <Check size={10} /> Read
+                                    </button>
+                                )}
+                                {notifications.length > 0 && (
+                                    <button 
+                                        onClick={() => clearNotificationsMutation.mutate()}
+                                        className="text-[10px] text-rose-600 hover:text-rose-800 font-black uppercase tracking-widest flex items-center gap-1 bg-rose-50 px-2 py-1 rounded-md"
+                                    >
+                                        <Trash2 size={10} /> Clear
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         
                         <div className="max-h-[70vh] overflow-y-auto">

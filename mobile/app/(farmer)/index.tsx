@@ -4,12 +4,27 @@ import { Activity, Search, Bell, MapPin, Plus } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useUser } from '@clerk/clerk-expo';
+import { useQuery } from '@tanstack/react-query';
+import { useApi } from '@/lib/api';
+import { format } from 'date-fns';
 
 const PRIMARY = '#00643B'; 
 
 export default function FarmerHome() {
   const router = useRouter();
   const { user } = useUser();
+  const api = useApi();
+
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ['user', 'me'],
+    queryFn: async () => {
+      const res = await api.get('/user/me');
+      return res.data;
+    }
+  });
+
+  const stats = profile?.stats || { totalAnimals: 0, cows: 0, carabaos: 0, pendingExams: 0 };
+  const currentDate = format(new Date(), 'EEEE, d MMM yyyy');
 
   return (
     <View className="flex-1 bg-[#F9FAFB]">
@@ -37,9 +52,9 @@ export default function FarmerHome() {
                 </View>
               </TouchableOpacity>
 
-              <View>
-                <Text className="text-white text-[20px] font-bold tracking-tight">Hello, {user?.firstName || 'Farmer'}</Text>
-                <Text className="text-emerald-100 text-[12px] mt-0.5 font-medium">Monday, 18 Mar 2026</Text>
+              <View className="flex-1">
+                <Text className="text-white text-[20px] font-bold tracking-tight" numberOfLines={1}>Hello, {user?.firstName || 'Farmer'}</Text>
+                <Text className="text-emerald-100 text-[12px] mt-0.5 font-medium">{currentDate}</Text>
               </View>
             </View>
 
@@ -81,7 +96,7 @@ export default function FarmerHome() {
             {/* Main Stat */}
             <View className="flex-row items-baseline justify-center mb-8">
               <Text style={{ color: PRIMARY }} className="text-7xl font-black tracking-tighter leading-none">
-                5
+                {isLoading ? '...' : stats.totalAnimals}
               </Text>
               <Text className="text-slate-500 font-bold ml-2 mb-1 text-xl">Animals</Text>
             </View>
@@ -90,17 +105,17 @@ export default function FarmerHome() {
             <View className="flex-row justify-between border-t border-slate-50 pt-5">
               <View className="items-center flex-1">
                 <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Cows</Text>
-                <Text className="text-slate-800 font-black text-xl">2</Text>
+                <Text className="text-slate-800 font-black text-xl">{isLoading ? '-' : stats.cows}</Text>
               </View>
               <View className="w-[1px] bg-slate-100" />
               <View className="items-center flex-1">
                 <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Carabaos</Text>
-                <Text className="text-slate-800 font-black text-xl">1</Text>
+                <Text className="text-slate-800 font-black text-xl">{isLoading ? '-' : stats.carabaos}</Text>
               </View>
               <View className="w-[1px] bg-slate-100" />
               <View className="items-center flex-1">
                 <Text className="text-slate-400 text-[11px] uppercase tracking-widest font-bold mb-1">Pending Exam</Text>
-                <Text className="text-emerald-500 font-black text-xl">2</Text>
+                <Text className="text-emerald-500 font-black text-xl">{isLoading ? '-' : stats.pendingExams}</Text>
               </View>
             </View>
           </View>

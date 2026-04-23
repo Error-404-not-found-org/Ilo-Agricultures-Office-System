@@ -1,6 +1,7 @@
 import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
+import { HealthRequest } from "../models/health-request.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import cloudinary from "../config/cloudinary.js";
 
@@ -11,15 +12,27 @@ export const getMe = async (req, res) => {
     const user = await User.findById(req.user._id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found." });
 
-    // Also return their animals if they are a farmer
+    // Also return their animals and stats if they are a farmer
     let animals = [];
+    let stats = {};
     if (user.role === "farmer") {
       animals = await Animal.find({ farmerId: user._id })
         .select("animalId earTag species breed")
         .sort({ createdAt: -1 });
+
+      const totalAnimals = animals.length;
+      const cows = animals.filter(a => ["Beef", "Dairy"].includes(a.species)).length;
+      const carabaos = animals.filter(a => a.species === "Carabao").length;
+      
+      const pendingExams = await HealthRequest.countDocuments({ 
+        farmerId: user._id, 
+        status: "pending" 
+      });
+
+      stats = { totalAnimals, cows, carabaos, pendingExams };
     }
 
-    res.status(200).json({ ...user.toObject(), animals });
+    res.status(200).json({ ...user.toObject(), animals, stats });
   } catch (error) {
     console.error("[getMe ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch your profile." });
@@ -168,7 +181,7 @@ export const syncUser = async (req, res) => {
         isVerified,
         $setOnInsert: { role: "farmer" }, // Mobile users are typically farmers
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
     );
 
     // Sync role from metadata if present
@@ -244,12 +257,24 @@ export const updateUser = async (req, res) => {
 
     if (name) user.name = name;
     if (email !== undefined) user.email = email;
-    if (phoneNumber) user.phoneNumber = phoneNumber;
+    if (phoneNumber) {
+      user.phoneNumber = phoneNumber;
+      if (user.address) user.address.phoneNumber = phoneNumber;
+    }
     if (status) user.status = status;
 
     // Partially update address if provided
     if (address) {
-      user.address = { ...user.address, ...address };
+      if (!user.address) {
+        user.address = address;
+      } else {
+        // Update fields individually to avoid overwriting the whole object incorrectly
+        Object.keys(address).forEach(key => {
+          user.address[key] = address[key];
+        });
+      }
+      // Sync phoneNumber if it was provided inside address
+      if (address.phoneNumber) user.phoneNumber = address.phoneNumber;
     }
 
     await user.save();
@@ -257,6 +282,9 @@ export const updateUser = async (req, res) => {
     res.status(200).json({ message: "User updated successfully", user });
   } catch (error) {
     console.error("Error updating user:", error);
+    if (error.name === "ValidationError") {
+      return res.status(400).json({ message: error.message });
+    }
     res.status(500).json({ message: "Failed to update user" });
   }
 };

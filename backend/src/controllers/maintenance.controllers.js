@@ -2,7 +2,6 @@ import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
-import { AIRequest } from "../models/ai-request.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 
@@ -35,7 +34,6 @@ export const getCleanupSurvey = async (req, res) => {
                 Animal.countDocuments({ farmerId: farmer._id }),
                 Insemination.countDocuments({ farmerId: farmer._id }),
                 HealthRequest.countDocuments({ farmerId: farmer._id }),
-                AIRequest.countDocuments({ farmerId: farmer._id }),
                 Pregnancy.countDocuments({ farmerId: farmer._id }),
                 Calving.countDocuments({ farmerId: farmer._id })
             ]);

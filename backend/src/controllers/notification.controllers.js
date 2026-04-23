@@ -1,5 +1,5 @@
 import { Notification } from "../models/notification.model.js";
-import { AIRequest } from "../models/ai-request.model.js";
+import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 
 // GET /api/notifications
@@ -59,7 +59,7 @@ export const getNotificationDetails = async (req, res) => {
 
     let relatedData = null;
     if (notification.type === "ai-request") {
-      relatedData = await AIRequest.findById(notification.relatedId)
+      relatedData = await Insemination.findById(notification.relatedId)
         .populate("animalId", "animalId earTag species breed imageUrl");
     } else if (notification.type === "health-request") {
       relatedData = await HealthRequest.findById(notification.relatedId)
@@ -70,5 +70,16 @@ export const getNotificationDetails = async (req, res) => {
   } catch (error) {
     console.error("[getNotificationDetails ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch notification details." });
+  }
+};
+
+// DELETE /api/notifications
+export const clearNotifications = async (req, res) => {
+  try {
+    await Notification.deleteMany({ recipientId: req.user._id });
+    res.status(200).json({ message: "All notifications cleared." });
+  } catch (error) {
+    console.error("[clearNotifications ERROR]", error.message);
+    res.status(500).json({ message: "Failed to clear notifications." });
   }
 };

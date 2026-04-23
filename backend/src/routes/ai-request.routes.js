@@ -6,11 +6,12 @@ import {
   updateRequestStatus,
 } from "../controllers/ai-request.controllers.js";
 import { protectedRoute } from "../middleware/auth.middleware.js";
+import { requestLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
 
 // Farmer submits a new request
-router.post("/", protectedRoute, createAIRequest);
+router.post("/", protectedRoute, requestLimiter, createAIRequest);
 
 // Farmer views their own requests
 router.get("/my", protectedRoute, getMyRequests);

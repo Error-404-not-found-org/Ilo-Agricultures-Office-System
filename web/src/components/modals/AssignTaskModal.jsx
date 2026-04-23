@@ -3,8 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle, AlertCircle, Users, HeartPulse } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
+import { useToast } from '../../contexts/ToastContext';
 
 const AssignTaskModal = ({ isOpen, onClose, taskData, onSuccess }) => {
+    const toast = useToast();
     const [selectedTech, setSelectedTech] = useState('');
 
     const { data: technicians = [] } = useQuery({
@@ -23,7 +25,7 @@ const AssignTaskModal = ({ isOpen, onClose, taskData, onSuccess }) => {
 
     const handleAssignTask = async () => {
         if (!selectedTech) {
-            alert('Please select a technician first.');
+            toast.error('Please select a technician first.');
             return;
         }
         try {
@@ -33,12 +35,12 @@ const AssignTaskModal = ({ isOpen, onClose, taskData, onSuccess }) => {
                 handledBy: selectedTech,
                 technicianNote: 'Assigned by Administrator.'
             });
-            alert('Task successfully assigned.');
+            toast.success('Task successfully assigned.');
             if (onSuccess) onSuccess();
             onClose();
         } catch (error) {
             console.error("Failed to assign task", error);
-            alert("Failed to assign task: " + (error.response?.data?.message || error.message));
+            toast.error("Failed to assign task: " + (error.response?.data?.message || error.message));
         }
     };
 

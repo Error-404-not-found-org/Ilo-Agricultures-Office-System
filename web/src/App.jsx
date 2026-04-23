@@ -3,6 +3,7 @@ import { SignedIn, SignedOut } from "@clerk/clerk-react";
 
 // Utilities
 import PageMeta from "./components/PageMeta";
+import { ToastProvider } from "./contexts/ToastContext";
 
 // Components
 import Layout from "./components/Layout";
@@ -32,7 +33,7 @@ import RouteOptimizer from "./pages/technician/RouteOptimizer";
 
 function App() {
   return (
-    <>
+    <ToastProvider>
       <PageMeta />
       <Routes>
       {/* Public Landing Page */}
@@ -94,7 +95,7 @@ function App() {
       {/* Catch-all redirect */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    </>
+    </ToastProvider>
   );
 }
 

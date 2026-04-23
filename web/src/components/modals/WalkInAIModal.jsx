@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
+import { useToast } from '../../contexts/ToastContext';
 
 const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
+    const queryClient = useQueryClient();
+    const toast = useToast();
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
@@ -13,23 +17,27 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
         animalDetails: { earTag: '', species: 'Cattle / Cow', breed: '' },
         inseminationDetails: { inseminationDate: new Date().toISOString().split('T')[0], sireBreed: '', sireCode: '', estrus: 'Natural' }
     });
-    const [loading, setLoading] = useState(false);
+
+    const mutation = useMutation({
+        mutationFn: async (data) => {
+            const res = await axiosInstance.post('/technician/walk-in-insemination', data);
+            return res.data;
+        },
+        onSuccess: () => {
+            toast.success("Walk-in transaction officially recorded!");
+            queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+            if (onSuccess) onSuccess();
+            onClose();
+        },
+        onError: (error) => {
+            toast.error("Failed to submit walk-in: " + (error.response?.data?.message || error.message));
+        }
+    });
 
     if (!isOpen) return null;
 
-    const handleSubmit = async () => {
-        try {
-            setLoading(true);
-            await axiosInstance.post('/technician/walk-in-insemination', formData);
-            alert("Walk-in transaction officially recorded! Clerk invite sent if email was provided.");
-            if (onSuccess) onSuccess();
-            onClose();
-        } catch (error) {
-            console.error(error);
-            alert("Failed to submit walk-in: " + (error.response?.data?.message || error.message));
-        } finally {
-            setLoading(false);
-        }
+    const handleSubmit = () => {
+        mutation.mutate(formData);
     };
 
     return (
@@ -117,8 +125,13 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                         </div>
 
                         <div className="flex justify-end pt-4">
-                            <button onClick={handleSubmit} disabled={loading} className="bg-[#0078d4] hover:bg-[#006cbd] text-white px-6 py-2.5 rounded font-bold text-sm transition-colors disabled:opacity-50">
-                                {loading ? 'Processing...' : 'Submit Walk-in Transaction'}
+                            <button 
+                                onClick={handleSubmit} 
+                                disabled={mutation.isPending} 
+                                className="bg-[#0078d4] hover:bg-[#006cbd] text-white px-6 py-2.5 rounded font-bold text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {mutation.isPending && <span className="loading loading-spinner loading-xs"></span>}
+                                {mutation.isPending ? 'Processing...' : 'Submit Walk-in Transaction'}
                             </button>
                         </div>
                     </div>

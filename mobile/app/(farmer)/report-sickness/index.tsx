@@ -12,6 +12,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
+import { validateRequestTime } from '@/lib/utils';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { Alert } from 'react-native';
 
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Platform } from 'react-native';
@@ -49,7 +52,6 @@ export default function ReportSickness() {
 
   const [farmer, setFarmer]           = useState<FarmerProfile | null>(null);
   const [animals, setAnimals]         = useState<Animal[]>([]);
-  const [loadingProfile, setLoadingProfile] = useState(true);
 
   const [selectedAnimal, setSelectedAnimal]   = useState<Animal | null>(null);
   const [requestType, setRequestType]         = useState('disease');
@@ -58,7 +60,38 @@ export default function ReportSickness() {
   const [imageUri, setImageUri]               = useState<string | null>(null);
   const [imageBase64, setImageBase64]         = useState<string | null>(null);
   const [preferredDate, setPreferredDate]     = useState(new Date());
-  const [submitting, setSubmitting]           = useState(false);
+
+  const queryClient = useQueryClient();
+
+  const { data: config } = useQuery({
+    queryKey: ['system', 'config'],
+    queryFn: async () => {
+      const res = await api.get('/config');
+      return res.data;
+    }
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await api.post('/health-request', data);
+    },
+    onSuccess: () => {
+      toast.success('Request submitted! A technician will attend to your animal.', { duration: 4000, position: 'top-center' });
+      // Reset Form
+      setSelectedAnimal(null);
+      setSymptoms("");
+      setImageUri(null);
+      setImageBase64(null);
+
+      queryClient.invalidateQueries({ queryKey: ['farmer', 'requests'] });
+      router.back();
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to submit. Please try again.');
+    }
+  });
+
+  const submitting = mutation.isPending;
 
   const [animalModalVisible, setAnimalModalVisible]       = useState(false);
   const [typeModalVisible, setTypeModalVisible]           = useState(false);
@@ -66,12 +99,20 @@ export default function ReportSickness() {
   const [showTimePicker, setShowTimePicker]               = useState(false);
 
   // ── Load profile ────────────────────────────────────────────────────────────
+  const { data: profile, isLoading: loadingProfile } = useQuery({
+    queryKey: ['user', 'me'],
+    queryFn: async () => {
+      const res = await api.get('/user/me');
+      return res.data;
+    }
+  });
+
   useEffect(() => {
-    api.get('/user/me')
-      .then(res => { setFarmer(res.data); setAnimals(res.data.animals || []); })
-      .catch((err: any) => toast.error(err.response?.data?.message || 'Could not load your profile.'))
-      .finally(() => setLoadingProfile(false));
-  }, []);
+    if (profile) {
+      setFarmer(profile);
+      setAnimals(profile.animals || []);
+    }
+  }, [profile]);
 
   // ── Image ───────────────────────────────────────────────────────────────────
   const pickImage = async () => {
@@ -87,26 +128,35 @@ export default function ReportSickness() {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
+    // 1. Profile Completeness Check
+    if (!farmer?.phoneNumber || !farmer?.address?.barangay) {
+      Alert.alert(
+        "Profile Incomplete",
+        "Please provide your contact number and home address in your profile before submitting a request.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Go to Profile", onPress: () => router.push('/(farmer)/profile') }
+        ]
+      );
+      return;
+    }
+
     if (!selectedAnimal) return toast.error('Please select an animal.');
     if (!symptoms.trim()) return toast.error('Please describe the symptoms or condition.');
 
-    try {
-      setSubmitting(true);
-      await api.post('/health-request', {
-        animalId: selectedAnimal._id,
-        requestType,
-        symptoms: symptoms.trim(),
-        urgency,
-        imageUrl: imageBase64,
-        preferredDate: preferredDate.toISOString(),
-      });
-      toast.success('Request submitted! A technician will attend to your animal.', { duration: 4000, position: 'top-center' });
-      router.back();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to submit. Please try again.');
-    } finally {
-      setSubmitting(false);
+    const validation = validateRequestTime(preferredDate, !!config?.isHoliday);
+    if (!validation.isValid) {
+      return toast.error(validation.message || "Invalid request time.", { duration: 5000 });
     }
+
+    mutation.mutate({
+      animalId: selectedAnimal._id,
+      requestType,
+      symptoms: symptoms.trim(),
+      urgency,
+      imageUrl: imageBase64,
+      preferredDate: preferredDate.toISOString(),
+    });
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {

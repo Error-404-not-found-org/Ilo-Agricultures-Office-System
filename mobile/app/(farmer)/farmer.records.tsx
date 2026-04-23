@@ -14,7 +14,9 @@ interface Animal {
 interface InseminationRecord {
   _id: string;
   animalId: { _id: string; animalId: string; earTag?: string; species: string; breed: string; imageUrl?: string; };
-  inseminationDate: string;
+  inseminationDate?: string;
+  scheduledDate?: string;
+  createdAt?: string;
   sireBreed: string; sireCode: string; estrus?: string;
   status: string; attemptNumber: number;
 }
@@ -87,7 +89,9 @@ const RecordCard = ({ item }: { item: InseminationRecord }) => {
         <View className="flex-row items-center gap-3">
           <View className="flex-row items-center gap-1">
             <CalendarDays size={11} color="#9ca3af" />
-            <Text className="text-xs text-gray-400">{format(new Date(item.inseminationDate), 'MMM dd, yyyy')}</Text>
+            <Text className="text-xs text-gray-400">
+              {format(new Date(item.inseminationDate || item.scheduledDate || item.createdAt || new Date()), 'MMM dd, yyyy')}
+            </Text>
           </View>
           {item.sireBreed ? <Text className="text-xs text-gray-400">· {item.sireBreed}</Text> : null}
         </View>

@@ -77,7 +77,7 @@ export const completeTask = async (req, res) => {
     const task = await Task.findOneAndUpdate(
       { _id: id, $or: [ { technicianId: req.user._id }, { technicianId: { $exists: false } }, { technicianId: null } ] },
       { status: "Completed", technicianId: req.user._id },
-      { new: true }
+      { returnDocument: 'after' }
     );
     if (!task) return res.status(404).json({ message: "Task not found" });
     

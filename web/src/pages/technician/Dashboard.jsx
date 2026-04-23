@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -13,6 +14,7 @@ import {
   ShieldAlert,
   Plus,
   FileText,
+  Users,
   MoreVertical,
   ChevronRight,
 } from "lucide-react";
@@ -22,49 +24,60 @@ import WalkInAIModal from "../../components/modals/WalkInAIModal";
 import WalkInHealthModal from "../../components/modals/WalkInHealthModal";
 import RegisterLivestockModal from "../../components/modals/RegisterLivestockModal";
 import AnimalHistoryModal from "../../components/modals/AnimalHistoryModal";
+import RegisterFarmerModal from "../../components/modals/RegisterFarmerModal";
+import { useToast } from "../../contexts/ToastContext";
 
 export default function TechnicianDashboard() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const toast = useToast();
+  const { 
+    data, 
+    isLoading: loading, 
+    refetch: refreshDashboard 
+  } = useQuery({
+    queryKey: ["technician", "dashboard"],
+    queryFn: async () => {
+      const response = await axiosInstance.get("/technician/dashboard-data");
+      return response.data;
+    },
+    refetchInterval: 5000, // 5 second polling for "real-time" experience
+    refetchOnWindowFocus: true,
+  });
+
+  const { data: config, refetch: refetchConfig } = useQuery({
+    queryKey: ["system", "config"],
+    queryFn: async () => {
+      const response = await axiosInstance.get("/config");
+      return response.data;
+    },
+  });
+
+  const toggleHolidayMutation = useMutation({
+    mutationFn: async (isHoliday) => {
+      await axiosInstance.post("/config/holiday", { isHoliday });
+    },
+    onSuccess: () => {
+      refetchConfig();
+    },
+    onError: (err) => {
+      toast.error("Failed to update holiday mode: " + (err.response?.data?.message || err.message));
+    }
+  });
 
   const [isWalkInAIModalOpen, setIsWalkInAIModalOpen] = useState(false);
   const [isWalkInHealthModalOpen, setIsWalkInHealthModalOpen] = useState(false);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
-  
-  // Task Action Modal state
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isRegisterFarmerModalOpen, setIsRegisterFarmerModalOpen] = useState(false);
+  const [selectedHistoryId, setSelectedHistoryId] = useState(null);
   const [selectedTask, setSelectedTask] = useState(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("All");
+  const [healthPrefill, setHealthPrefill] = useState(null);
   
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [selectedHistoryId, setSelectedHistoryId] = useState(null);
-
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        const response = await axiosInstance.get("/technician/dashboard-data");
-        setData(response.data);
-      } catch (error) {
-        console.error("Failed to load dashboard data", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchDashboardData();
-
-    // Real-time synchronization: Poll every 30 seconds
-    const intervalId = setInterval(refreshDashboard, 30000);
-    return () => clearInterval(intervalId);
-  }, []);
-
-  const refreshDashboard = async () => {
-    try {
-      const response = await axiosInstance.get("/technician/dashboard-data");
-      setData(response.data);
-    } catch (error) {
-      console.error(error);
-    }
-  };
+  const [filterStatus, setFilterStatus] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+  
+  const [decliningItem, setDecliningItem] = useState(null);
 
   if (loading) {
     return (
@@ -85,25 +98,23 @@ export default function TechnicianDashboard() {
   const timeline = data?.timeline;
 
   const handleRejectRequest = async (item) => {
-    if (!window.confirm("Are you sure you want to decline this request?")) return;
+    if (decliningItem !== item.id) {
+        setDecliningItem(item.id);
+        setTimeout(() => setDecliningItem(null), 3000);
+        return;
+    }
     
-    // --- OPTIMISTIC UI: Remove from local state immediately ---
-    setData(prev => ({
-        ...prev,
-        pendingRequests: prev.pendingRequests.filter(r => r.id !== item.id)
-    }));
-
     try {
         const endpoint = item.type === 'health' ? `/health-request/${item.id}/status` : `/ai-request/${item.id}/status`;
         await axiosInstance.patch(endpoint, { 
             status: item.type === 'health' ? 'cancelled' : 'rejected', 
             technicianNote: 'Declined by technician' 
         });
-        refreshDashboard(); // Sync with server
+        setDecliningItem(null);
+        refreshDashboard(); // Sync with server immediately
     } catch (err) {
         console.error("Failed to reject request", err);
-        alert("Action failed. Reverting changes...");
-        refreshDashboard(); // Revert on failure
+        toast.error("Action failed. " + (err.response?.data?.message || err.message));
     }
   };
 
@@ -158,6 +169,7 @@ export default function TechnicianDashboard() {
         <div className="lg:col-span-8 space-y-8">
           {/* NEW REQUEST FEED */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+
             <div className="border-b border-gray-100 p-6 flex justify-between items-center bg-gray-50/50">
               <div>
                 <h2 className="text-[#1e293b] text-lg font-black flex items-center gap-2">
@@ -181,7 +193,7 @@ export default function TechnicianDashboard() {
                              <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${item.type === 'health' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>
                                {item.type === 'health' ? 'Health Check' : 'AI Request'}
                              </span>
-                             <span className="text-[10px] font-bold text-gray-400">Sent: {item.time}</span>
+                             <span className="text-[10px] font-bold text-gray-400">Sent: {item.sentTime}</span>
                           </div>
                           <h4 className="text-[15px] font-bold text-[#1e293b]">{item.task}</h4>
                           <p className="text-[13px] font-medium text-gray-500 flex items-center gap-1.5 mt-1">
@@ -191,9 +203,9 @@ export default function TechnicianDashboard() {
                         <div className="flex gap-2">
                            <button 
                              onClick={() => handleRejectRequest(item)}
-                             className="px-4 py-2 rounded-lg text-xs font-bold text-gray-500 hover:text-rose-600 transition-colors"
+                             className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${decliningItem === item.id ? 'bg-rose-100 text-rose-700' : 'text-gray-500 hover:text-rose-600'}`}
                            >
-                             Cancel
+                             {decliningItem === item.id ? 'Confirm?' : 'Cancel'}
                            </button>
                            <button 
                              onClick={() => { setSelectedTask(item); setIsTaskModalOpen(true); }}
@@ -217,7 +229,7 @@ export default function TechnicianDashboard() {
                     {["All", "Inseminated", "Pregnant", "Pending"].map(status => (
                       <button 
                         key={status}
-                        onClick={() => setFilterStatus(status)} 
+                        onClick={() => { setFilterStatus(status); setCurrentPage(1); }} 
                         className={`px-4 py-1.5 rounded-full transition-colors ${filterStatus === status ? "bg-[#e6f7ec] text-[#074033]" : "text-gray-500 hover:text-gray-900"}`}
                       >{status}</button>
                     ))}
@@ -236,34 +248,124 @@ export default function TechnicianDashboard() {
                        </tr>
                     </thead>
                     <tbody>
-                       {animalRegistry.length === 0 ? (
-                         <tr><td colSpan="5" className="text-center py-10 text-gray-400 font-medium">No results found</td></tr>
-                       ) : (
-                         animalRegistry.filter(animal => {
-                            if (filterStatus === "All") return true;
-                            if (filterStatus === "Inseminated") return ["Inseminated", "Pending AI", "Pregnant"].includes(animal.status);
-                            if (filterStatus === "Pending") return ["Pending", "Pending AI"].includes(animal.status);
-                            return animal.status === filterStatus;
-                         }).map((animal, idx) => (
-                           <tr key={animal.rawId || idx} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                             <td className="py-4 px-6 font-bold text-gray-900">{animal.id}</td>
-                             <td className="py-4 px-4 font-medium">{animal.breed}</td>
-                             <td className="py-4 px-4">
-                               <span className={`inline-flex items-center gap-1.5 font-bold ${animal.sClass}`}>
-                                 <span className={`w-1.5 h-1.5 rounded-full ${animal.dotClass}`}></span>
-                                 {animal.status}
-                               </span>
-                             </td>
-                             <td className="py-4 px-4 font-medium text-gray-500">{animal.last}</td>
-                             <td className="py-4 px-6 text-right">
-                               <button 
-                                 onClick={() => { setSelectedHistoryId(animal.rawId); setIsHistoryModalOpen(true); }} 
-                                 className="text-[#0078d4] font-bold hover:underline"
-                               >View History</button>
-                             </td>
-                           </tr>
-                         ))
-                       )}
+                       {(() => {
+                          const filtered = animalRegistry.filter(animal => {
+                             if (filterStatus === "All") return true;
+                             if (filterStatus === "Inseminated") return ["Inseminated", "Pending AI", "Pregnant"].includes(animal.status);
+                             if (filterStatus === "Pending") return ["Pending", "Pending AI"].includes(animal.status);
+                             return animal.status === filterStatus;
+                          });
+                          
+                          const totalPages = Math.ceil(filtered.length / itemsPerPage);
+                          const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+                          if (filtered.length === 0) {
+                             return <tr><td colSpan="5" className="text-center py-10 text-gray-400 font-medium">No results found</td></tr>;
+                          }
+
+                          return (
+                            <>
+                              {paginated.map((animal, idx) => {
+                                const diffDays = animal.lastActionDate ? Math.floor((Date.now() - new Date(animal.lastActionDate).getTime()) / (1000 * 60 * 60 * 24)) : 0;
+                                return (
+                                  <tr key={animal.rawId || idx} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+                                    <td className="py-4 px-6 font-bold text-gray-900 relative group cursor-default">
+                                       {animal.id}
+                                       <div className="absolute left-16 top-1/2 -translate-y-1/2 ml-2 w-64 bg-white/95 backdrop-blur-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] rounded-2xl p-4 border border-gray-100 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50 transform scale-95 group-hover:scale-100 origin-left">
+                                          <div className="flex items-center gap-4">
+                                             <div className="w-12 h-12 rounded-xl bg-linear-to-br from-blue-50 to-blue-100 overflow-hidden shrink-0 shadow-inner">
+                                                 <img src={animal.imageUrl || `https://ui-avatars.com/api/?name=${animal.farmerName}&background=074033&color=fff`} className="w-full h-full object-cover" />
+                                             </div>
+                                             <div>
+                                                 <p className="text-[9px] font-black uppercase text-[#0078d4] tracking-widest leading-none mb-1">Registered Owner</p>
+                                                 <p className="text-sm font-bold text-gray-900 leading-tight block truncate w-36">{animal.farmerName}</p>
+                                                 <p className="text-[10px] font-bold text-gray-400 mt-1">{animal.farmerPhone || "No contact info"}</p>
+                                             </div>
+                                          </div>
+                                       </div>
+                                    </td>
+                                    <td className="py-4 px-4 font-medium align-top">{animal.breed}</td>
+                                    <td className="py-4 px-4 align-top w-48">
+                                      <span className={`inline-flex items-center gap-1.5 font-bold ${animal.sClass}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${animal.dotClass}`}></span>
+                                        {animal.status}
+                                      </span>
+                                      
+                                      {animal.status === 'Pregnant' && animal.lastActionDate && (
+                                         <div className="mt-2.5 w-full">
+                                            <div className="flex justify-between mb-1.5 items-end">
+                                               <span className="text-[9px] font-black uppercase tracking-widest text-gray-400">Gestation</span>
+                                               <span className={`text-[10px] font-black ${diffDays > 270 ? 'text-emerald-500' : 'text-purple-500'}`}>
+                                                  {Math.min(100, Math.floor((diffDays / 283) * 100))}%
+                                               </span>
+                                            </div>
+                                            <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden shadow-inner">
+                                               <div className={`h-full transition-all duration-1000 ${diffDays > 270 ? 'bg-emerald-500' : 'bg-purple-500'}`} style={{ width: `${Math.min(100, Math.floor((diffDays / 283) * 100))}%` }}></div>
+                                            </div>
+                                            {diffDays > 270 && <p className="text-emerald-500 mt-1 uppercase tracking-widest text-[9px] font-black animate-pulse flex items-center gap-1"><AlertCircle size={10} /> Calving Imminent</p>}
+                                         </div>
+                                      )}
+                                      
+                                      {/* Smart Check Due Alert */}
+                                      {animal.status === 'Inseminated' && animal.lastActionDate && diffDays > 21 && (
+                                          <div className="mt-2 inline-flex items-center gap-1 text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm border border-amber-100">
+                                            <AlertCircle size={10} /> Check Due
+                                          </div>
+                                      )}
+                                    </td>
+                                    <td className="py-4 px-4 font-medium text-gray-500 align-top pt-5">{animal.last}</td>
+                                    <td className="py-4 px-6 align-top text-right">
+                                      <div className="flex justify-end gap-1.5">
+                                        <button 
+                                          onClick={() => {
+                                             setHealthPrefill({ farmerName: animal.farmerName, earTag: animal.id.replace('#', '') });
+                                             setIsWalkInHealthModalOpen(true);
+                                          }} 
+                                          className="p-2 text-emerald-600 bg-emerald-50 border border-emerald-100 hover:bg-emerald-600 hover:text-white rounded-xl transition-colors tooltip tooltip-top flex items-center justify-center shrink-0" 
+                                          data-tip="Action: Health Check"
+                                        >
+                                           <HeartPulse size={14} className="stroke-[2.5]" />
+                                        </button>
+                                        <button onClick={() => { setSelectedHistoryId(animal.rawId); setIsHistoryModalOpen(true); }} className="p-2 text-[#0078d4] bg-blue-50 border border-blue-100 hover:bg-[#0078d4] hover:text-white rounded-xl transition-colors tooltip tooltip-left flex items-center justify-center shrink-0" data-tip="View History">
+                                           <FileText size={14} className="stroke-[2.5]" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                              
+                              {/* PAGINATION CONTROLS */}
+                              {totalPages > 1 && (
+                                <tr>
+                                  <td colSpan="5" className="p-4 border-t border-gray-50 bg-gray-50/10">
+                                    <div className="flex items-center justify-between">
+                                      <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">
+                                         Page {currentPage} of {totalPages}
+                                      </div>
+                                      <div className="flex gap-2">
+                                         <button 
+                                           onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                           disabled={currentPage === 1}
+                                           className="w-10 h-10 flex items-center justify-center border border-gray-200 rounded-xl text-gray-400 hover:border-[#074033] hover:text-[#074033] transition-all disabled:opacity-20 disabled:pointer-events-none bg-white shadow-sm"
+                                         >
+                                           <ChevronRight className="rotate-180" size={16} />
+                                         </button>
+                                         <button 
+                                           onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                           disabled={currentPage === totalPages}
+                                           className="w-10 h-10 flex items-center justify-center border border-gray-200 rounded-xl text-gray-400 hover:border-[#074033] hover:text-[#074033] transition-all disabled:opacity-20 disabled:pointer-events-none bg-white shadow-sm"
+                                         >
+                                           <ChevronRight size={16} />
+                                         </button>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </>
+                          );
+                       })()}
                     </tbody>
                  </table>
               </div>
@@ -320,53 +422,87 @@ export default function TechnicianDashboard() {
           </div>
 
           {/* QUICK ACTIONS HUB */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-[#1e293b] text-lg font-bold border-b border-gray-200 pb-3 mb-5">Quick Actions</h2>
-            <div className="space-y-3">
+          <div className="bg-[#074033] rounded-4xl shadow-2xl p-8 relative overflow-hidden group">
+            {/* Background Accent */}
+            <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/5 rounded-full blur-3xl group-hover:bg-white/10 transition-all duration-700" />
+            
+            <div className="flex justify-between items-center mb-8 relative z-10">
+              <div>
+                <h2 className="text-white text-xl font-black tracking-tight">Quick Actions</h2>
+                <p className="text-[10px] text-white/50 font-black uppercase tracking-widest mt-1">Field Command Hub</p>
+              </div>
+              <div className="flex items-center gap-2 bg-black/20 px-3 py-1.5 rounded-full backdrop-blur-sm border border-white/5">
+                <span className={`text-[9px] font-black uppercase tracking-tighter ${config?.isHoliday ? 'text-rose-400' : 'text-emerald-400'}`}>
+                   {config?.isHoliday ? 'Holiday' : 'Office Open'}
+                </span>
+                <button 
+                  onClick={() => toggleHolidayMutation.mutate(!config?.isHoliday)}
+                  disabled={toggleHolidayMutation.isPending}
+                  className={`w-7 h-4 rounded-full relative transition-colors duration-200 ${config?.isHoliday ? 'bg-rose-500' : 'bg-white/20'}`}
+                >
+                  <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow-sm transition-all duration-200 ${config?.isHoliday ? 'left-3.5' : 'left-0.5'}`} />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3 relative z-10">
               {[
-                { label: 'Walk-In AI', sub: 'Record impromptu service', icon: <Syringe size={18}/>, color: 'bg-blue-50 text-blue-600', action: () => setIsWalkInAIModalOpen(true) },
-                { label: 'Walk-In Health', sub: 'Record treatment', icon: <HeartPulse size={18}/>, color: 'bg-emerald-50 text-emerald-600', action: () => setIsWalkInHealthModalOpen(true) },
-                { label: 'Register Animal', sub: 'Link tag to farmer', icon: <Plus size={18}/>, color: 'bg-orange-50 text-orange-600', action: () => setIsRegisterModalOpen(true) }
+                { label: 'Register Farmer', sub: 'New client profile', icon: <Users size={20}/>, color: 'text-purple-400 bg-purple-400/10 border-purple-400/20', action: () => setIsRegisterFarmerModalOpen(true) },
+                { label: 'Walk-In AI', sub: 'New breeding record', icon: <Syringe size={20}/>, color: 'text-blue-400 bg-blue-400/10 border-blue-400/20', action: () => setIsWalkInAIModalOpen(true) },
+                { label: 'Walk-In Health', sub: 'Medical treatment', icon: <HeartPulse size={20}/>, color: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20', action: () => setIsWalkInHealthModalOpen(true) },
+                { label: 'Register Animal', sub: 'Add tag to system', icon: <Plus size={20}/>, color: 'text-amber-400 bg-amber-400/10 border-amber-400/20', action: () => setIsRegisterModalOpen(true) }
               ].map((act, i) => (
-                <button key={i} onClick={act.action} className="w-full bg-gray-50 hover:bg-gray-100 border border-gray-100 p-3 rounded-xl flex items-center gap-3 transition-all group group-hover:scale-[1.02]">
-                  <div className={`${act.color} p-2 rounded-lg group-hover:scale-110 transition-transform`}>{act.icon}</div>
-                  <div className="text-left">
-                    <h4 className="text-sm font-bold text-gray-800">{act.label}</h4>
-                    <p className="text-[10px] text-gray-400 font-medium">{act.sub}</p>
+                <button 
+                  key={i} 
+                  onClick={act.action} 
+                  className="w-full bg-white/5 hover:bg-white/10 border border-white/10 p-4 rounded-2xl flex items-center gap-4 transition-all active:scale-[0.98] group/btn"
+                >
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center border ${act.color} group-hover/btn:scale-110 transition-transform`}>
+                    {act.icon}
                   </div>
-                  <ChevronRight size={14} className="ml-auto text-gray-300" />
+                  <div className="text-left">
+                    <h4 className="text-sm font-black text-white">{act.label}</h4>
+                    <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider">{act.sub}</p>
+                  </div>
+                  <ChevronRight size={14} className="ml-auto text-white/20 group-hover/btn:text-white transition-colors" />
                 </button>
               ))}
             </div>
           </div>
 
-          {/* BREEDING TIMELINE */}
-          <div className="bg-[#f8fafc] rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-[#1e293b] text-sm font-extrabold mb-6 uppercase tracking-wider">Breeding Timeline</h2>
-            {timeline ? (
-            <div className="relative border-l-2 border-blue-100 ml-2 space-y-8">
+          {/* MISSION ACTIVITY FEED */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex justify-between items-center mb-6">
+               <h2 className="text-[#1e293b] text-sm font-extrabold uppercase tracking-wider flex items-center gap-2">
+                  <FileText size={16} className="text-gray-400" /> Recent Activity
+               </h2>
+               <Link to="/technician/missions" className="text-[10px] font-black text-blue-600 hover:underline uppercase tracking-widest">View All</Link>
+            </div>
+            
+            <div className="space-y-6">
                {[
-                 { title: 'Heat Detected', date: new Date(timeline.heatDate).toLocaleDateString(), color: 'bg-emerald-500', active: true },
-                 { title: 'Optimal Window', date: 'Calculated Active', color: 'bg-blue-500', active: true, progress: 60 },
-                 { title: 'Pregnancy Scan', date: 'Projected: +30 Days', color: 'bg-gray-300', active: false }
-               ].map((step, i) => (
-                 <div key={i} className={`relative pl-6 ${!step.active ? 'opacity-40' : ''}`}>
-                    <div className={`absolute -left-[9px] top-1 w-4 h-4 rounded-full border-4 border-white ${step.color} shadow-sm`}></div>
-                    <h4 className="text-[11px] font-black text-gray-900 leading-none mb-1">{step.title}</h4>
-                    <p className="text-[12px] font-bold text-gray-500">{step.date}</p>
-                    {step.progress && (
-                      <div className="w-full bg-blue-100 h-1.5 rounded-full mt-2 overflow-hidden">
-                        <div className="bg-blue-500 h-full rounded-full" style={{ width: `${step.progress}%` }}></div>
-                      </div>
-                    )}
+                 { title: 'New Farmer Registered', sub: 'Farmer: Benedicto Jaro', time: '12m ago', icon: <Users size={14}/>, color: 'text-purple-600 bg-purple-50' },
+                 { title: 'Insemination Complete', sub: 'Asset: #28/1042 · Brahman', time: '1h ago', icon: <Syringe size={14}/>, color: 'text-emerald-600 bg-emerald-50' },
+                 { title: 'Health Record Logged', sub: 'Asset: #28/1090 · Swine', time: '3h ago', icon: <HeartPulse size={14}/>, color: 'text-blue-600 bg-blue-50' },
+                 { title: 'New Asset Enrolled', sub: 'Tag: #28/1105 · Cattle', time: 'Yesterday', icon: <Plus size={14}/>, color: 'text-amber-600 bg-amber-50' }
+               ].map((log, i) => (
+                 <div key={i} className="flex gap-4 group cursor-default">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm border border-black/5 ${log.color} group-hover:scale-110 transition-transform`}>
+                       {log.icon}
+                    </div>
+                    <div className="flex-1 border-b border-gray-50 pb-4">
+                       <div className="flex justify-between items-start mb-0.5">
+                          <h4 className="text-[13px] font-bold text-[#1e293b] leading-tight group-hover:text-blue-600 transition-colors">{log.title}</h4>
+                          <span className="text-[10px] font-bold text-gray-400 whitespace-nowrap">{log.time}</span>
+                       </div>
+                       <p className="text-[11px] font-medium text-gray-500">{log.sub}</p>
+                    </div>
                  </div>
                ))}
             </div>
-            ) : (
-                <p className="text-gray-400 text-xs text-center py-4">No active timelines.</p>
-            )}
-            <button className="w-full mt-6 bg-[#074033] hover:bg-[#06352a] text-white py-3 rounded-xl shadow-md font-bold text-sm transition-transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
-                <Plus size={18} /> New Event
+
+            <button className="w-full mt-6 bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-100 py-3 rounded-xl font-bold text-[11px] uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                Download Daily Report
             </button>
           </div>
         </div>
@@ -374,9 +510,24 @@ export default function TechnicianDashboard() {
 
       <TaskActionModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} taskData={selectedTask} onSuccess={refreshDashboard} />
       <WalkInAIModal isOpen={isWalkInAIModalOpen} onClose={() => setIsWalkInAIModalOpen(false)} onSuccess={refreshDashboard} />
-      <WalkInHealthModal isOpen={isWalkInHealthModalOpen} onClose={() => setIsWalkInHealthModalOpen(false)} onSuccess={refreshDashboard} />
-      <RegisterLivestockModal isOpen={isRegisterModalOpen} onClose={() => setIsRegisterModalOpen(false)} onSuccess={refreshDashboard} />
-      <AnimalHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} animalId={selectedHistoryId} />
+      <WalkInHealthModal 
+        isOpen={isWalkInHealthModalOpen} 
+        onClose={() => { setIsWalkInHealthModalOpen(false); setHealthPrefill(null); }}
+        prefillData={healthPrefill}
+      />
+      <RegisterLivestockModal 
+        isOpen={isRegisterModalOpen} 
+        onClose={() => setIsRegisterModalOpen(false)} 
+      />
+      <AnimalHistoryModal 
+        isOpen={isHistoryModalOpen} 
+        onClose={() => setIsHistoryModalOpen(false)}
+        animalId={selectedHistoryId}
+      />
+      <RegisterFarmerModal
+        isOpen={isRegisterFarmerModalOpen}
+        onClose={() => setIsRegisterFarmerModalOpen(false)}
+      />
     </div>
   );
 }

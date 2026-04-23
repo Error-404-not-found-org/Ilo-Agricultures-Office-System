@@ -29,6 +29,7 @@ export const createHealthRequest = async (req, res) => {
       symptoms: symptoms.trim(),
       urgency: urgency || "medium",
       imageUrl: imageUrl || "",
+      preferredDate: req.body.preferredDate || new Date(),
     });
 
     console.log(`[Health Request Created] Farmer: ${farmerId} | Animal: ${animal.animalId} | Type: ${requestType} | Urgency: ${urgency}`);
@@ -125,7 +126,7 @@ export const updateHealthRequestStatus = async (req, res) => {
         technicianNote: technicianNote || "",
         scheduledDate: req.body.scheduledDate || undefined
       },
-      { new: true }
+      { returnDocument: 'after' }
     )
       .populate("farmerId", "name")
       .populate("animalId", "animalId earTag species");

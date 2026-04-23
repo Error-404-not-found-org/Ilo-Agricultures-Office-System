@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
+import { useToast } from '../../contexts/ToastContext';
 
-const WalkInHealthModal = ({ isOpen, onClose, onSuccess }) => {
+const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
+    const queryClient = useQueryClient();
+    const toast = useToast();
     const [formData, setFormData] = useState({
         farmerName: '',
         earTag: '',
@@ -11,25 +15,46 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess }) => {
         urgency: 'low',
         autoResolve: true // Checkbox to mark as resolved instantly
     });
-    const [loading, setLoading] = useState(false);
+
+    React.useEffect(() => {
+        if (isOpen && prefillData) {
+            setFormData({
+                ...formData,
+                farmerName: prefillData.farmerName || '',
+                earTag: prefillData.earTag || '',
+            });
+        } else if (isOpen && !prefillData) {
+            // Reset if no prefill
+            setFormData({
+                farmerName: '',
+                earTag: '',
+                diagnosis: '',
+                urgency: 'low',
+                autoResolve: true
+            });
+        }
+    }, [isOpen, prefillData]);
+
+    const mutation = useMutation({
+        mutationFn: async (data) => {
+            const res = await axiosInstance.post('/health-request/walk-in', data);
+            return res.data;
+        },
+        onSuccess: () => {
+            toast.success("Health record submitted and resolved!");
+            queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+            if (onSuccess) onSuccess();
+            onClose();
+        },
+        onError: (error) => {
+            toast.error("Failed to submit health log: " + (error.response?.data?.message || error.message));
+        }
+    });
 
     if (!isOpen) return null;
 
-    const handleSubmit = async () => {
-        try {
-            setLoading(true);
-            // Example custom endpoint or using the existing ones sequentially.
-            // Assuming there's an API route that can handle walk-in health logs for an earTag
-            await axiosInstance.post('/health-request/walk-in', formData);
-            alert("Health record submitted and resolved!");
-            if (onSuccess) onSuccess();
-            onClose();
-        } catch (error) {
-            console.error(error);
-            alert("Failed to submit health log: " + (error.response?.data?.message || error.message));
-        } finally {
-            setLoading(false);
-        }
+    const handleSubmit = () => {
+        mutation.mutate(formData);
     };
 
     return (
@@ -73,8 +98,13 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess }) => {
                         </div>
 
                         <div className="flex justify-end pt-4">
-                            <button onClick={handleSubmit} disabled={loading} className="bg-[#0078d4] hover:bg-[#006cbd] text-white px-6 py-2.5 rounded font-bold text-sm transition-colors disabled:opacity-50">
-                                {loading ? 'Processing...' : 'Submit Walk-in Transaction'}
+                            <button 
+                                onClick={handleSubmit} 
+                                disabled={mutation.isPending} 
+                                className="bg-[#0078d4] hover:bg-[#006cbd] text-white px-6 py-2.5 rounded font-bold text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {mutation.isPending && <span className="loading loading-spinner loading-xs"></span>}
+                                {mutation.isPending ? 'Processing...' : 'Submit Walk-in Transaction'}
                             </button>
                         </div>
                     </div>

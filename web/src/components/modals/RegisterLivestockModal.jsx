@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
+import { useToast } from '../../contexts/ToastContext';
 
 const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
+    const queryClient = useQueryClient();
+    const toast = useToast();
     const [formData, setFormData] = useState({
         farmerName: '',
         earTag: '',
@@ -13,23 +17,27 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
         sex: 'Female',
         dob: ''
     });
-    const [loading, setLoading] = useState(false);
+
+    const mutation = useMutation({
+        mutationFn: async (data) => {
+            const res = await axiosInstance.post('/technician/walk-in-livestock', data);
+            return res.data;
+        },
+        onSuccess: () => {
+            toast.success("Livestock profile registered successfully!");
+            queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+            if (onSuccess) onSuccess();
+            onClose();
+        },
+        onError: (error) => {
+            toast.error("Failed to register livestock: " + (error.response?.data?.message || error.message));
+        }
+    });
 
     if (!isOpen) return null;
 
-    const handleSubmit = async () => {
-        try {
-            setLoading(true);
-            await axiosInstance.post('/technician/walk-in-livestock', formData);
-            alert("Livestock profile registered successfully!");
-            if (onSuccess) onSuccess();
-            onClose();
-        } catch (error) {
-            console.error(error);
-            alert("Failed to register livestock: " + (error.response?.data?.message || error.message));
-        } finally {
-            setLoading(false);
-        }
+    const handleSubmit = () => {
+        mutation.mutate(formData);
     };
 
     return (
@@ -96,8 +104,13 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                         </div>
 
                         <div className="flex justify-end pt-4">
-                            <button onClick={handleSubmit} disabled={loading} className="bg-[#0078d4] hover:bg-[#006cbd] text-white px-6 py-2.5 rounded font-bold text-sm transition-colors disabled:opacity-50">
-                                {loading ? 'Processing...' : 'Register Livestock'}
+                            <button 
+                                onClick={handleSubmit} 
+                                disabled={mutation.isPending} 
+                                className="bg-[#0078d4] hover:bg-[#006cbd] text-white px-6 py-2.5 rounded font-bold text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {mutation.isPending && <span className="loading loading-spinner loading-xs"></span>}
+                                {mutation.isPending ? 'Processing...' : 'Register Livestock'}
                             </button>
                         </div>
                     </div>
