@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator, Image } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { ArrowLeft, User, MapPin, Activity, History, Info as InfoIcon, Edit2, Calendar } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -33,7 +33,7 @@ export default function AnimalDetails() {
     };
     
     fetchAnimal();
-  }, [id])
+  }, [id, api])
  );
 
   if (loading) {
@@ -114,8 +114,12 @@ export default function AnimalDetails() {
 
       {/* Header Profile Section */}
       <View className="px-6 items-center mt-6 z-10">
-          <View className="w-24 h-24 bg-white rounded-full items-center justify-center border-4 border-emerald-100 shadow-lg mb-4">
-              <MaterialCommunityIcons name="cow" size={48} color="#00643B" />
+          <View className="w-24 h-24 bg-white rounded-full items-center justify-center border-4 border-emerald-100 shadow-lg mb-4 overflow-hidden">
+              {animal.imageUrl ? (
+                  <Image source={{ uri: animal.imageUrl }} className="w-full h-full" resizeMode="cover" />
+              ) : (
+                  <MaterialCommunityIcons name="cow" size={48} color="#00643B" />
+              )}
           </View>
           <Text className="text-2xl font-black text-white mb-1">Tag {animal.earTag ? `#${animal.earTag}` : 'N/A'}</Text>
           <View className="flex-row items-center bg-white/20 px-3 py-1 rounded-full mb-3">
@@ -183,10 +187,14 @@ export default function AnimalDetails() {
                         </View>
                         
                         <View className="flex-row items-center gap-4 mb-5 bg-slate-50 p-3 rounded-2xl border border-slate-100">
-                             <View className="w-12 h-12 bg-emerald-100 rounded-full items-center justify-center">
-                                 <Text className="text-emerald-800 font-black text-lg">
-                                    {(animal.farmerId?.name || '?').charAt(0).toUpperCase()}
-                                 </Text>
+                             <View className="w-12 h-12 bg-emerald-100 rounded-full items-center justify-center overflow-hidden">
+                                 {animal.farmerId?.imageUrl ? (
+                                     <Image source={{ uri: animal.farmerId.imageUrl }} className="w-full h-full" resizeMode="cover" />
+                                 ) : (
+                                     <Text className="text-emerald-800 font-black text-lg">
+                                        {(animal.farmerId?.name || '?').charAt(0).toUpperCase()}
+                                     </Text>
+                                 )}
                              </View>
                              <View className="flex-1">
                                  <Text className="text-base font-bold text-slate-800">{farmerName}</Text>

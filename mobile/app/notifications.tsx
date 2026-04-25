@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StatusBar, FlatList, ActivityIndicator, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Bell, Info, CheckCircle2, AlertCircle, ShieldCheck } from 'lucide-react-native';
+import { ArrowLeft, Bell, Info, CheckCircle2, AlertCircle } from 'lucide-react-native';
 import { useApi } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner-native';
@@ -37,24 +37,33 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchNotifications = useCallback(async (isRefresh = false) => {
+  const fetchNotifications = useCallback(async (isRefresh = false, isBackgroundPoll = false) => {
     if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+    else if (!isBackgroundPoll) setLoading(true);
     
     try {
       const response = await api.get('/notifications');
       setNotifications(response.data);
     } catch (error: any) {
-      console.error("Failed to fetch notifications:", error);
-      toast.error(error.response?.data?.message || "Could not load notifications.");
+      if (!isBackgroundPoll) {
+        console.error("Failed to fetch notifications:", error);
+        toast.error(error.response?.data?.message || "Could not load notifications.");
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (!isBackgroundPoll) setLoading(false);
+      if (isRefresh) setRefreshing(false);
     }
   }, [api]);
 
   useEffect(() => {
     fetchNotifications();
+    
+    // Poll for new notifications every 5 seconds for a "real-time" feel
+    const interval = setInterval(() => {
+      fetchNotifications(false, true);
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, [fetchNotifications]);
 
   const markAllAsRead = async () => {
@@ -162,7 +171,7 @@ export default function NotificationsScreen() {
         ) : (
             <View className="flex-1 items-center justify-center opacity-50 pb-20">
                 <Bell size={64} color="#94a3b8" />
-                <Text className="text-slate-500 font-medium text-lg mt-4">You're all caught up!</Text>
+                <Text className="text-slate-500 font-medium text-lg mt-4">You&apos;re all caught up!</Text>
             </View>
         )}
       </View>

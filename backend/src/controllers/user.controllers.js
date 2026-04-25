@@ -12,17 +12,12 @@ export const getMe = async (req, res) => {
     const user = await User.findById(req.user._id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found." });
 
-    // Also return their animals and stats if they are a farmer
-    let animals = [];
+    // Return their stats if they are a farmer
     let stats = {};
     if (user.role === "farmer") {
-      animals = await Animal.find({ farmerId: user._id })
-        .select("animalId earTag species breed")
-        .sort({ createdAt: -1 });
-
-      const totalAnimals = animals.length;
-      const cows = animals.filter(a => ["Beef", "Dairy"].includes(a.species)).length;
-      const carabaos = animals.filter(a => a.species === "Carabao").length;
+      const totalAnimals = await Animal.countDocuments({ farmerId: user._id });
+      const cows = await Animal.countDocuments({ farmerId: user._id, species: { $in: ["Beef", "Dairy"] } });
+      const carabaos = await Animal.countDocuments({ farmerId: user._id, species: "Carabao" });
       
       const pendingExams = await HealthRequest.countDocuments({ 
         farmerId: user._id, 
@@ -32,7 +27,7 @@ export const getMe = async (req, res) => {
       stats = { totalAnimals, cows, carabaos, pendingExams };
     }
 
-    res.status(200).json({ ...user.toObject(), animals, stats });
+    res.status(200).json({ ...user.toObject(), stats });
   } catch (error) {
     console.error("[getMe ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch your profile." });
@@ -128,14 +123,40 @@ export const createInvitedUser = async (req, res) => {
 
 export const getUsers = async (req, res) => {
   try {
-    const { role } = req.query;
+    const { role, page, limit, search } = req.query;
 
     const query = {};
-    if (role) {
-      query.role = role;
+    if (role) query.role = role;
+
+    // Search by name or email
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
     }
 
-    const users = await User.find(query).select("-password");
+    // If pagination params are provided, paginate
+    if (page && limit) {
+      const pageNum = parseInt(page, 10) || 1;
+      const limitNum = parseInt(limit, 10) || 10;
+      const skip = (pageNum - 1) * limitNum;
+
+      const [users, total] = await Promise.all([
+        User.find(query).select("-password").sort({ createdAt: -1 }).skip(skip).limit(limitNum),
+        User.countDocuments(query),
+      ]);
+
+      return res.status(200).json({
+        data: users,
+        total,
+        page: pageNum,
+        totalPages: Math.ceil(total / limitNum),
+      });
+    }
+
+    // Fallback: return all (backwards compat)
+    const users = await User.find(query).select("-password").sort({ createdAt: -1 });
     res.status(200).json(users);
   } catch (error) {
     console.error("Error fetching users:", error);

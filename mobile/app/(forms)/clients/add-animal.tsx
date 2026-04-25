@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useApi } from '@/lib/api';
 import { useAuth } from '@clerk/clerk-expo';
@@ -7,11 +7,9 @@ import { ArrowLeft, ChevronDown, Calendar, Check, X, ArrowRight, Camera } from '
 import React, { useState, useEffect } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { toast } from 'sonner-native';
-import { ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 // --- OPTIONS ---
-const FARMER_OPTIONS = ['Leo Nabuab', 'Wilhelm Moyong', 'Diego Nim', 'Jaime Navarra', 'Vicente Nanas'];
 const SPECIES_OPTIONS = ['Beef', 'Dairy', 'Carabao'];
 const BREED_OPTIONS = ['Native', 'Brahman', 'Holstein Sahiwal (HS)', 'PC Cross', 'Purebred'];
 const AI_ATTEMPTS = ['Not Yet', '1', '2', '3', '4', '5+'];
@@ -49,7 +47,7 @@ export default function AddAIRecord() {
       }
     };
     fetchFarmers();
-  }, []);
+  }, [api, isLoaded, isSignedIn]);
 
   const [loading, setLoading] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -124,11 +122,6 @@ export default function AddAIRecord() {
   const handleSelect = (val: string) => {
     setFormData({...formData, [activeField]: val});
     setModalVisible(false);
-  };
-
-  const handleDateSelect = (date: string) => {
-    setFormData({...formData, [activeField]: date});
-    setDateModalVisible(false);
   };
 
   const handleNativeDateChange = (event: any, selectedDate: any) => {

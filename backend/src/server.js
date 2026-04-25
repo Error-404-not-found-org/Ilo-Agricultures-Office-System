@@ -62,6 +62,20 @@ app.use("/api/health-request", healthRequestRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/config", configRoutes);
 
+// ─── Global Error Handler ─────────────────────────────────────────────────────
+// MUST be defined after all routes. Catches any unhandled error from middleware
+// (e.g., Clerk requireAuth() crashes) and sends a proper JSON response
+// instead of silently closing the TCP connection (which Axios sees as "Network Error").
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  console.error(`[Global Error Handler] ${req.method} ${req.path} →`, err.message || err);
+  res.status(status).json({
+    message: err.message || "An unexpected server error occurred.",
+    ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 
 if (ENV.NODE_ENV === "production") {

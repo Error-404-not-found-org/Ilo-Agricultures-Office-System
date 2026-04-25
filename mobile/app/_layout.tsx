@@ -1,10 +1,12 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import "../global.css"
-import {QueryClient, QueryClientProvider} from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator } from "react-native";
+import { Toaster } from 'sonner-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const queryClient = new QueryClient();
 
@@ -76,7 +78,7 @@ function InitialLayout() {
         setIsNavigating(false);
       }
     }
-  }, [isSignedIn, isLoaded, user, segments]);
+  }, [isSignedIn, isLoaded, user, segments, router]);
 
   if (!isLoaded || isNavigating) {
     return (
@@ -88,9 +90,6 @@ function InitialLayout() {
 
   return <Stack screenOptions={{ headerShown: false }} />;
 }
-
-import { Toaster } from 'sonner-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 export default function RootLayout() {
   return (

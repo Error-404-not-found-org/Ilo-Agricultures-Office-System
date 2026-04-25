@@ -112,6 +112,34 @@ export const getAllAnimals = async (req, res) => {
   }
 };
 
+export const getMyAnimals = async (req, res) => {
+  try {
+    const { page, limit } = req.query;
+    const farmerId = req.user._id;
+
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
+    const animals = await Animal.find({ farmerId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
+
+    const total = await Animal.countDocuments({ farmerId });
+
+    res.status(200).json({
+      data: animals,
+      total,
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum)
+    });
+  } catch (error) {
+    console.error("[getMyAnimals ERROR]", error.message);
+    res.status(500).json({ message: "Failed to fetch your animals." });
+  }
+};
+
 export const getAnimalById = async (req, res) => {
   try {
     const { id } = req.params;

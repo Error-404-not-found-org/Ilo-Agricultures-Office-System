@@ -133,6 +133,22 @@ export const updateHealthRequestStatus = async (req, res) => {
 
     if (!request) return res.status(404).json({ message: "Request not found." });
 
+    // --- TRIGGER NOTIFICATION TO FARMER ---
+    try {
+      if (request.farmerId && request.farmerId._id) {
+        await Notification.create({
+          recipientId: request.farmerId._id,
+          senderId: req.user._id,
+          type: "health-request",
+          relatedId: request._id,
+          title: "Health Request Update",
+          message: `Your health request for ${request.animalId.earTag || request.animalId.animalId} has been marked as ${status}.`,
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[Notification Trigger Error]", notifyErr.message);
+    }
+
     console.log(`[Health Request Updated] ${id} → ${status}`);
     res.status(200).json({ message: "Status updated.", request });
   } catch (error) {

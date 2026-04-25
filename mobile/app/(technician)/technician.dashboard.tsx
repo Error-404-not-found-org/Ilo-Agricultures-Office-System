@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, RefreshControl, Modal, Platform } from 'react-native';
-import { Syringe, UserPlus, Activity, Search, Bell, MapPin, ChevronRight, CheckCircle2, AlertCircle, Clock, X } from 'lucide-react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, RefreshControl, Modal } from 'react-native';
+import { Syringe, UserPlus, Activity, Search, MapPin, ChevronRight, Clock, X } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useApi } from '@/lib/api';
+import { useAuth } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
@@ -15,6 +16,7 @@ const PRIMARY = '#00643B'; // The deep green from the image
 export default function HomeScreen() {
   const router = useRouter();
   const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -45,11 +47,12 @@ export default function HomeScreen() {
   }, [api]);
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     fetchDashboardData();
     // Real-time synchronization: Poll every 45 seconds on mobile to save battery but stay fresh
     const intervalId = setInterval(() => fetchDashboardData(true), 45000);
     return () => clearInterval(intervalId);
-  }, [fetchDashboardData]);
+  }, [fetchDashboardData, isLoaded, isSignedIn]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -108,7 +111,7 @@ export default function HomeScreen() {
       toast.success('Appointment Scheduled');
       setModalVisible(false);
       fetchDashboardData(true);
-    } catch (error) {
+    } catch (_error) {
       toast.error("Failed to schedule appointment");
     } finally {
       setIsSubmitting(false);
@@ -256,7 +259,7 @@ export default function HomeScreen() {
                   <View className="flex-1 mr-4">
                     <View className="flex-row items-center gap-1.5 mb-1">
                       <Text className="text-[10px] font-black uppercase tracking-widest text-[#94a3b8]">
-                        {item.time} {item.urgent && '• URGENT'}
+                        {item.time} {item.urgent && '• URGENT'} {item.status && item.status !== 'pending' && `• ${item.status.toUpperCase()}`}
                       </Text>
                     </View>
                     <Text className="text-slate-800 font-bold text-[15px] mb-0.5" numberOfLines={1}>
@@ -275,7 +278,7 @@ export default function HomeScreen() {
                     className={`px-4 py-2 rounded-xl flex-row items-center gap-1.5 ${item.type === 'health' ? 'bg-blue-600' : 'bg-[#00643B]'}`}
                   >
                     <Text className="text-white font-bold text-[11px]">
-                      {item.type === 'health' ? 'Accept' : 'Approve'}
+                      {item.status && item.status !== 'pending' ? 'View' : (item.type === 'health' ? 'Accept' : 'Approve')}
                     </Text>
                     <ChevronRight size={12} color="white" />
                   </TouchableOpacity>

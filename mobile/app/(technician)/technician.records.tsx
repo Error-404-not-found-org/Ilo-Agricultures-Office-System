@@ -2,9 +2,12 @@ import { View, Text, ScrollView, RefreshControl, ActivityIndicator, StatusBar, T
 import React, { useEffect, useState, useCallback } from 'react';
 import Header from '@/components/Header';
 import { useApi } from '@/lib/api';
+import { useRouter } from 'expo-router';
+import { toast } from 'sonner-native';
 import RecordCard from '@/components/RecordCard';
 
 const Records = () => {
+  const router = useRouter();
   const api = useApi();
   const [activeTab, setActiveTab] = useState<'history' | 'requests'>('history');
   const [loading, setLoading] = useState(false);
@@ -17,29 +20,37 @@ const Records = () => {
     setLoading(true);
     try {
       if (activeTab === 'history') {
-        const [insRes, pregRes, calvRes] = await Promise.all([
+        const results = await Promise.allSettled([
           api.get('/technician/inseminations'),
           api.get('/technician/pregnancy-checks'),
-          api.get('/technician/calvings')
-        ]);
-        
-        const combined = [
-          ...(insRes.data.inseminations || []).map((i: any) => ({ ...i, type: 'insemination' })),
-          ...(pregRes.data.pregnancyChecks || []).map((p: any) => ({ ...p, type: 'pregnancy' })),
-          ...(calvRes.data.calvings || []).map((c: any) => ({ ...c, type: 'calving' }))
-        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-        
-        setHistoryRecords(combined);
-      } else {
-        const [aiRes, healthRes] = await Promise.all([
+          api.get('/technician/calvings'),
           api.get('/ai-request'),
           api.get('/health-request')
         ]);
         
+        const [insRes, pregRes, calvRes, aiRes, healthRes] = results.map(r => r.status === 'fulfilled' ? (r as any).value : { data: [] });
+
+        const combined = [
+          ...(insRes.data?.inseminations || []).map((i: any) => ({ ...i, type: 'insemination' })),
+          ...(pregRes.data?.pregnancyChecks || []).map((p: any) => ({ ...p, type: 'pregnancy' })),
+          ...(calvRes.data?.calvings || []).map((c: any) => ({ ...c, type: 'calving' })),
+          ...(Array.isArray(aiRes.data) ? aiRes.data : []).filter((a: any) => a.status !== 'pending').map((a: any) => ({ ...a, type: 'ai-request' })),
+          ...(Array.isArray(healthRes.data) ? healthRes.data : []).filter((h: any) => h.status !== 'pending').map((h: any) => ({ ...h, type: 'health-request' }))
+        ].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        
+        setHistoryRecords(combined);
+      } else {
+        const results = await Promise.allSettled([
+          api.get('/ai-request'),
+          api.get('/health-request')
+        ]);
+        
+        const [aiRes, healthRes] = results.map(r => r.status === 'fulfilled' ? (r as any).value : { data: [] });
+        
         const combined = [
           ...(aiRes.data || []).map((a: any) => ({ ...a, type: 'ai-request' })),
           ...(healthRes.data || []).map((h: any) => ({ ...h, type: 'health-request' }))
-        ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        ].sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
         
         setServiceRequests(combined);
       }
@@ -62,22 +73,42 @@ const Records = () => {
 
   const renderHistoryItem = (item: any) => {
     let title = "";
+    let sub = item.animalId?.earTag || item.animalId?.animalId || "No Tag";
+    
     switch(item.type) {
       case 'insemination': title = `Insemination #${item.attemptNumber}`; break;
       case 'pregnancy': title = `Pregnancy Check: ${item.pregnancyDiagnosis?.result || 'Pending'}`; break;
       case 'calving': title = `Calving: ${item.numberOfCalves || 1} Calf`; break;
+      case 'ai-request': 
+        title = "AI Service Scheduled"; 
+        sub = `Farmer: ${item.farmerId?.name || 'Farmer'}`;
+        break;
+      case 'health-request': 
+        title = "Health Check Accepted"; 
+        sub = `Farmer: ${item.farmerId?.name || 'Farmer'}`;
+        break;
     }
+
+    const handlePress = () => {
+      if (item.animalId?._id) {
+        router.push(`/(technician)/animal-details?id=${item.animalId._id}` as any);
+      } else if (item.animal?._id) {
+        router.push(`/(technician)/animal-details?id=${item.animal._id}` as any);
+      } else {
+        toast.info("No animal profile linked to this record");
+      }
+    };
 
     return (
       <RecordCard 
-        key={item._id}
+        key={`${item.type}-${item._id}`}
         id={item._id}
         title={title}
-        subtitle={item.animalId?.earTag || item.animalId?.animalId || "No Tag"}
+        subtitle={sub}
         date={item.createdAt ? new Date(item.createdAt).toLocaleDateString() : 'N/A'}
         status={item.status || "Completed"}
-        statusColor="text-slate-500"
-        onPress={() => {}}
+        statusColor={item.status === 'pending' ? 'text-amber-500' : 'text-slate-500'}
+        onPress={handlePress}
       />
     );
   };
@@ -85,7 +116,7 @@ const Records = () => {
   const renderRequestItem = (item: any) => {
     const isAI = item.type === 'ai-request';
     return (
-      <View key={item._id} style={styles.card}>
+      <View key={`${item.type}-${item._id}`} style={styles.card}>
         <View style={styles.cardHeader}>
             <Text style={styles.timestamp}>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "RECENT"}</Text>
             <View style={[styles.badge, item.status === 'pending' ? styles.badgePending : styles.badgeApproved]}>

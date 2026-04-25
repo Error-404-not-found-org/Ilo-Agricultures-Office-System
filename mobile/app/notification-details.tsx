@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image, ActivityIndicator, StatusBar } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, User, MapPin, Calendar, Clock, Info, CheckCircle2, AlertCircle, Syringe, HeartPulse } from 'lucide-react-native';
+import { ArrowLeft, User, MapPin, Calendar, Clock, CheckCircle2, Syringe, HeartPulse } from 'lucide-react-native';
 import { useApi } from '@/lib/api';
 import { format } from 'date-fns';
+import { useUser } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
 
 interface NotificationDetails {
@@ -39,6 +40,7 @@ interface NotificationDetails {
     symptoms?: string;
     urgency?: string;
     imageUrl?: string;
+    technicianNote?: string;
   };
 }
 
@@ -46,6 +48,9 @@ export default function NotificationDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const api = useApi();
+  const { user } = useUser();
+  const role = (user?.publicMetadata?.role as string) || 'technician';
+  const isFarmer = role === 'farmer';
   const [data, setData] = useState<NotificationDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -145,9 +150,11 @@ export default function NotificationDetailsScreen() {
             </View>
         </View>
 
-        {/* Farmer Info */}
+        {/* Sender Info (Farmer or Technician) */}
         <View className="p-6 bg-white mb-2 border-b border-slate-100">
-            <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Requesting Farmer</Text>
+            <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
+              {isFarmer ? "Handled By Technician" : "Requesting Farmer"}
+            </Text>
             <View className="flex-row items-center">
                 <View className="w-16 h-16 rounded-2xl bg-slate-100 items-center justify-center overflow-hidden">
                     {notification.senderId.imageUrl ? (
@@ -194,17 +201,26 @@ export default function NotificationDetailsScreen() {
         <View className="p-6 bg-white mb-2 border-b border-slate-100">
             <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Message / Symptoms</Text>
             <Text className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
-                "{isAI ? relatedData.comment : relatedData.symptoms || 'No additional details provided.'}"
+                &quot;{isAI ? relatedData.comment : relatedData.symptoms || 'No additional details provided.'}&quot;
             </Text>
             
             {relatedData.imageUrl ? (
                 <View className="mt-4">
-                    <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Farmer's Attached Image</Text>
+                    <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Farmer&apos;s Attached Image</Text>
                     <Image 
                         source={{ uri: relatedData.imageUrl }} 
                         className="w-full h-64 rounded-3xl" 
                         resizeMode="cover"
                     />
+                </View>
+            ) : null}
+
+            {isFarmer && relatedData.technicianNote ? (
+                <View className="mt-6 pt-6 border-t border-slate-100">
+                    <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Technician&apos;s Note</Text>
+                    <Text className="text-slate-700 text-base leading-6 bg-emerald-50 p-4 rounded-2xl border border-emerald-100 italic">
+                        &quot;{relatedData.technicianNote}&quot;
+                    </Text>
                 </View>
             ) : null}
         </View>
@@ -228,24 +244,26 @@ export default function NotificationDetailsScreen() {
         </View>
 
         {/* Action Button */}
-        <View className="px-6 mt-4">
-            <TouchableOpacity 
-                disabled={isUpdating || relatedData.status !== 'pending'}
-                className={`py-5 rounded-[22px] items-center justify-center flex-row shadow-sm ${relatedData.status !== 'pending' ? 'bg-slate-300' : isAI ? 'bg-[#00643B]' : 'bg-amber-600'}`}
-                onPress={handleAction}
-            >
-                {isUpdating ? (
-                    <ActivityIndicator color="white" />
-                ) : (
-                    <>
-                        <CheckCircle2 size={24} color="white" />
-                        <Text className="text-white font-black text-lg ml-2">
-                            {relatedData.status === 'pending' ? 'Approve & Handle Request' : `Status: ${relatedData.status}`}
-                        </Text>
-                    </>
-                )}
-            </TouchableOpacity>
-        </View>
+        {!isFarmer && (
+            <View className="px-6 mt-4">
+                <TouchableOpacity 
+                    disabled={isUpdating || relatedData.status !== 'pending'}
+                    className={`py-5 rounded-[22px] items-center justify-center flex-row shadow-sm ${relatedData.status !== 'pending' ? 'bg-slate-300' : isAI ? 'bg-[#00643B]' : 'bg-amber-600'}`}
+                    onPress={handleAction}
+                >
+                    {isUpdating ? (
+                        <ActivityIndicator color="white" />
+                    ) : (
+                        <>
+                            <CheckCircle2 size={24} color="white" />
+                            <Text className="text-white font-black text-lg ml-2">
+                                {relatedData.status === 'pending' ? 'Approve & Handle Request' : `Status: ${relatedData.status}`}
+                            </Text>
+                        </>
+                    )}
+                </TouchableOpacity>
+            </View>
+        )}
 
       </ScrollView>
     </View>

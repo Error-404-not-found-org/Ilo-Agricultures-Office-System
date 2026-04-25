@@ -1,12 +1,12 @@
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
-  Modal, FlatList, StatusBar, ActivityIndicator, Image
+  Modal, FlatList, StatusBar, ActivityIndicator, Image, Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft, HeartPulse, User, MapPin,
-  ChevronDown, Camera, X, Check, AlertCircle, AlertTriangle, Pill, Clock
+  ChevronDown, Camera, X, Check, AlertCircle, Clock
 } from 'lucide-react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
@@ -14,14 +14,11 @@ import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { validateRequestTime } from '@/lib/utils';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { Alert } from 'react-native';
-
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Platform } from 'react-native';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal { _id: string; animalId: string; earTag?: string; species: string; breed: string; }
-interface FarmerProfile { _id: string; name: string; address?: { houseNumber?: string; street: string; barangay: string; city: string; province: string; }; animals: Animal[]; }
+interface FarmerProfile { _id: string; name: string; phoneNumber?: string; address?: { houseNumber?: string; street: string; barangay: string; city: string; province: string; }; animals: Animal[]; }
 
 const formatAddress = (address?: FarmerProfile['address']) => {
   if (!address) return 'No address on file';
@@ -110,9 +107,23 @@ export default function ReportSickness() {
   useEffect(() => {
     if (profile) {
       setFarmer(profile);
-      setAnimals(profile.animals || []);
     }
   }, [profile]);
+
+  // Fetch farmer's animals for the dropdown
+  const { data: animalsData, isLoading: isLoadingAnimals } = useQuery({
+    queryKey: ['animals', 'my-all'],
+    queryFn: async () => {
+      const res = await api.get('/animals/my?limit=100');
+      return res.data;
+    }
+  });
+
+  useEffect(() => {
+    if (animalsData?.data) {
+      setAnimals(animalsData.data);
+    }
+  }, [animalsData]);
 
   // ── Image ───────────────────────────────────────────────────────────────────
   const pickImage = async () => {
@@ -129,7 +140,10 @@ export default function ReportSickness() {
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     // 1. Profile Completeness Check
-    if (!farmer?.phoneNumber || !farmer?.address?.barangay) {
+    const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
+    const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
+
+    if (!hasPhone || !hasAddress) {
       Alert.alert(
         "Profile Incomplete",
         "Please provide your contact number and home address in your profile before submitting a request.",
@@ -178,7 +192,6 @@ export default function ReportSickness() {
   };
 
   const selectedType = REQUEST_TYPES.find(t => t.value === requestType);
-  const selectedUrgency = URGENCY_OPTIONS.find(u => u.value === urgency)!;
 
   return (
     <View className="flex-1 bg-[#F9FAFB]">
@@ -209,7 +222,7 @@ export default function ReportSickness() {
           {/* Farmer Info Card */}
           <View className="bg-white rounded-3xl p-5 mb-5 border border-gray-100" style={{ elevation: 2 }}>
             <Text className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Your Information</Text>
-            {loadingProfile ? <ActivityIndicator color="#b91c1c" /> : farmer ? (
+            {(loadingProfile && !farmer) ? <ActivityIndicator color="#b91c1c" /> : farmer ? (
               <View className="gap-3">
                 <View className="flex-row items-center gap-3">
                   <View className="w-8 h-8 bg-red-50 rounded-full items-center justify-center">
@@ -381,12 +394,18 @@ export default function ReportSickness() {
       {/* Animal Modal */}
       <Modal animationType="slide" transparent visible={animalModalVisible} onRequestClose={() => setAnimalModalVisible(false)}>
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white rounded-t-[32px] p-6 pb-12 max-h-[65%]">
+          <View className="bg-white rounded-t-[32px] p-6 pb-12 max-h-[75%]">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-bold text-gray-800">Select Animal</Text>
               <TouchableOpacity onPress={() => setAnimalModalVisible(false)} className="p-1 bg-gray-100 rounded-full"><X size={20} color="#374151" /></TouchableOpacity>
             </View>
-            {animals.length === 0 ? (
+            
+            {isLoadingAnimals ? (
+              <View className="items-center py-20">
+                <ActivityIndicator color="#b91c1c" size="large" />
+                <Text className="text-gray-400 mt-4 font-medium">Loading your animals...</Text>
+              </View>
+            ) : animals.length === 0 ? (
               <View className="items-center py-10 gap-3">
                 <AlertCircle size={36} color="#9ca3af" />
                 <Text className="text-gray-400 text-center font-medium">No registered animals found.</Text>
