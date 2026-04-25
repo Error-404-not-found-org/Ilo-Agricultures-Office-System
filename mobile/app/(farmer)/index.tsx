@@ -23,6 +23,17 @@ export default function FarmerHome() {
     }
   });
 
+  const { data: unreadCountData } = useQuery({
+    queryKey: ['notifications', 'unreadCount'],
+    queryFn: async () => {
+      const res = await api.get('/notifications/unread-count');
+      return res.data;
+    },
+    refetchInterval: 5000, // Poll every 5 seconds for real-time feel
+  });
+
+  const unreadCount = unreadCountData?.count || 0;
+
   const stats = profile?.stats || { totalAnimals: 0, cows: 0, carabaos: 0, pendingExams: 0 };
   const currentDate = format(new Date(), 'EEEE, d MMM yyyy');
 
@@ -42,7 +53,7 @@ export default function FarmerHome() {
           <View className="flex-row justify-between items-center mb-6 mt-4">
             
             {/* Left side: Avatar + Greeting & Date */}
-            <View className="flex-row items-center gap-3">
+            <View className="flex-1 flex-row items-center gap-3 pr-4">
               <TouchableOpacity 
                 activeOpacity={0.8}
                 onPress={() => router.push('/(farmer)/profile')}
@@ -60,11 +71,16 @@ export default function FarmerHome() {
 
             {/* Right side: Bell */}
             <TouchableOpacity 
-              className="w-10 h-10 bg-white/10 rounded-full items-center justify-center"
+              className="w-10 h-10 bg-white/10 rounded-full items-center justify-center relative"
               activeOpacity={0.7}
               onPress={() => router.push('/notifications')}
             >
               <Bell size={20} color="white" />
+              {unreadCount > 0 && (
+                <View className="absolute -top-1 -right-1 bg-red-500 w-5 h-5 rounded-full items-center justify-center border-2 border-[#00643B]">
+                  <Text className="text-white text-[10px] font-bold">{unreadCount}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 

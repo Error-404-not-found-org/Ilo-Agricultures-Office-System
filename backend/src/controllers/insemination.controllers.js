@@ -96,13 +96,31 @@ export const getAllInseminations = async (req, res) => {
 // GET /api/insemination/my — returns insemination records for the logged-in farmer
 export const getMyInseminations = async (req, res) => {
   try {
+    const { page, limit } = req.query;
     const farmerId = req.user._id;
+
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 10;
+    const skip = (pageNum - 1) * limitNum;
+
     const records = await Insemination.find({ farmerId })
       .populate("animalId", "animalId earTag species breed imageUrl")
       .populate("approvedBy", "name")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum);
 
-    res.status(200).json(records);
+    const total = await Insemination.countDocuments({ farmerId });
+    const approved = await Insemination.countDocuments({ farmerId, status: "approved" });
+    const pending = await Insemination.countDocuments({ farmerId, status: "pending" });
+
+    res.status(200).json({
+      data: records,
+      total,
+      stats: { total, approved, pending },
+      page: pageNum,
+      totalPages: Math.ceil(total / limitNum)
+    });
   } catch (error) {
     console.error("[getMyInseminations ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch your records." });

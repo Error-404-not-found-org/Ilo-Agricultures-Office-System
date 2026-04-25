@@ -60,10 +60,12 @@ export const getNotificationDetails = async (req, res) => {
     let relatedData = null;
     if (notification.type === "ai-request") {
       relatedData = await Insemination.findById(notification.relatedId)
-        .populate("animalId", "animalId earTag species breed imageUrl");
+        .populate("animalId", "animalId earTag species breed imageUrl")
+        .populate("approvedBy", "name imageUrl role address");
     } else if (notification.type === "health-request") {
       relatedData = await HealthRequest.findById(notification.relatedId)
-        .populate("animalId", "animalId earTag species breed imageUrl");
+        .populate("animalId", "animalId earTag species breed imageUrl")
+        .populate("handledBy", "name imageUrl role address");
     }
 
     res.status(200).json({ notification, relatedData });

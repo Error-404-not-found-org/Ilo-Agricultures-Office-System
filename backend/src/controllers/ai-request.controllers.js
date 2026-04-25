@@ -135,6 +135,22 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(404).json({ message: "AI request record not found." });
     }
 
+    // --- TRIGGER NOTIFICATION TO FARMER ---
+    try {
+      if (request.farmerId && request.farmerId._id) {
+        await Notification.create({
+          recipientId: request.farmerId._id,
+          senderId: req.user._id,
+          type: "ai-request",
+          relatedId: request._id,
+          title: "AI Request Update",
+          message: `Your AI request for ${request.animalId.earTag || request.animalId.animalId} has been marked as ${status}.`,
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[Notification Trigger Error]", notifyErr.message);
+    }
+
     res.status(200).json({ message: "Request status updated.", request });
   } catch (error) {
     console.error("[updateRequestStatus ERROR]", error.message);

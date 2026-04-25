@@ -1,6 +1,6 @@
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
-  Modal, FlatList, StatusBar, ActivityIndicator, Image
+  Modal, FlatList, StatusBar, ActivityIndicator, Image, Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,15 +14,12 @@ import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { validateRequestTime } from '@/lib/utils';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { Alert } from 'react-native';
-
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Platform } from 'react-native';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal { _id: string; animalId: string; earTag?: string; species: string; breed: string; }
 interface FarmerProfile {
-  _id: string; name: string; imageUrl?: string;
+  _id: string; name: string; imageUrl?: string; phoneNumber?: string;
   address?: { houseNumber?: string; street: string; barangay: string; city: string; province: string; };
   animals: Animal[];
 }
@@ -100,9 +97,24 @@ export default function RequestAI() {
   useEffect(() => {
     if (profile) {
       setFarmer(profile);
-      setAnimals(profile.animals || []);
     }
   }, [profile]);
+
+  // Fetch farmer's animals for the dropdown
+  const { data: animalsData, isLoading: isLoadingAnimals } = useQuery({
+    queryKey: ['animals', 'my-all'],
+    queryFn: async () => {
+      // Fetch up to 100 animals for the picker
+      const res = await api.get('/animals/my?limit=100');
+      return res.data;
+    }
+  });
+
+  useEffect(() => {
+    if (animalsData?.data) {
+      setAnimals(animalsData.data);
+    }
+  }, [animalsData]);
 
   // ── Image Picker ────────────────────────────────────────────────────────────
   const pickImage = async () => {
@@ -126,10 +138,13 @@ export default function RequestAI() {
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     // 1. Profile Completeness Check
-    if (!farmer?.phoneNumber || !farmer?.address?.barangay) {
+    const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
+    const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
+
+    if (!hasPhone || !hasAddress) {
       Alert.alert(
         "Profile Incomplete",
-        "Please provide your contact number and home address in your profile before submitting a request.",
+        "Please provide your contact number and home address in your profile before requesting AI services.",
         [
           { text: "Cancel", style: "cancel" },
           { text: "Go to Profile", onPress: () => router.push('/(farmer)/profile') }
@@ -207,7 +222,7 @@ export default function RequestAI() {
             <View className="bg-white rounded-3xl p-5 mb-5 border border-gray-100" style={{ elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8 }}>
               <Text className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Your Information</Text>
 
-              {loadingProfile ? (
+              {(loadingProfile && !farmer) ? (
                 <ActivityIndicator color="#00643B" />
               ) : farmer ? (
                 <View className="gap-3">
@@ -379,7 +394,7 @@ export default function RequestAI() {
       {/* ── Animal Selection Modal ──────────────────────────────────────────── */}
       <Modal animationType="slide" transparent visible={animalModalVisible} onRequestClose={() => setAnimalModalVisible(false)}>
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white rounded-t-[32px] p-6 pb-12 max-h-[65%]">
+          <View className="bg-white rounded-t-[32px] p-6 pb-12 max-h-[75%]">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-bold text-gray-800">Select Animal</Text>
               <TouchableOpacity onPress={() => setAnimalModalVisible(false)} className="p-1 bg-gray-100 rounded-full">
@@ -387,7 +402,12 @@ export default function RequestAI() {
               </TouchableOpacity>
             </View>
 
-            {animals.length === 0 ? (
+            {isLoadingAnimals ? (
+              <View className="items-center py-20">
+                <ActivityIndicator color="#00643B" size="large" />
+                <Text className="text-gray-400 mt-4 font-medium">Loading your animals...</Text>
+              </View>
+            ) : animals.length === 0 ? (
               <View className="items-center py-10 gap-3">
                 <AlertCircle size={36} color="#9ca3af" />
                 <Text className="text-gray-400 text-center font-medium">You have no registered animals yet.</Text>

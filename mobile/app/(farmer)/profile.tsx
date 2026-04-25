@@ -4,7 +4,7 @@ import SafeScreen from '@/components/safeScreen';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ChevronRight, LogOut, Settings, HelpCircle, User, Phone, MapPin, Save, X } from 'lucide-react-native';
+import { ChevronRight, LogOut, Settings, HelpCircle, User, Phone, MapPin } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@/lib/api';
@@ -244,7 +244,7 @@ const FarmerProfile = () => {
                 <MenuItem 
                     icon={<MaterialCommunityIcons name="cow" size={20} color="#4B5563" />} 
                     label="My Animals" 
-                    onPress={() => router.push('/(farmer)/animals' as any)} 
+                    onPress={() => router.push('/(farmer)/farmer.records' as any)} 
                 />
                  <View className="h-[1px] bg-gray-100 ml-14" />
                 <MenuItem 

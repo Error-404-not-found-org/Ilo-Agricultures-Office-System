@@ -5,6 +5,7 @@ import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { Inventory } from "../models/inventory.model.js";
+import { Notification } from "../models/notification.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 
 export const getMyInseminations = async (req, res) => {
@@ -459,10 +460,26 @@ export const updateInseminationStatus = async (req, res) => {
         scheduledDate: req.body.scheduledDate || undefined
       },
       { returnDocument: 'after' }
-    );
+    ).populate("farmerId", "name").populate("animalId", "animalId earTag species");
 
     if (!request) {
       return res.status(404).json({ message: "Insemination task not found." });
+    }
+
+    // --- TRIGGER NOTIFICATION TO FARMER ---
+    try {
+      if (request.farmerId && request.farmerId._id) {
+        await Notification.create({
+          recipientId: request.farmerId._id,
+          senderId: req.user._id,
+          type: "ai-request",
+          relatedId: request._id,
+          title: "AI Request Update",
+          message: `Your AI request for ${request.animalId?.earTag || request.animalId?.animalId || 'your animal'} has been marked as ${status}.`,
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[Notification Trigger Error]", notifyErr.message);
     }
 
     // --- TIMELINE AUTOMATION & INVENTORY ---

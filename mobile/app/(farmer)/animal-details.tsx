@@ -96,7 +96,7 @@ export default function AnimalDetails() {
       {/* Header Actions */}
       <View className="pt-14 px-6 flex-row justify-between items-center z-10">
           <TouchableOpacity 
-              onPress={() => router.back()} 
+              onPress={() => router.push('/(farmer)/farmer.records' as any)} 
               className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
           >
               <ArrowLeft size={22} color="white" />

@@ -6,7 +6,7 @@ export const protectedRoute = [
   requireAuth(), // Clerk auth
   async (req, res, next) => {
     try {
-      const clerkId = req.auth().userId;
+      const clerkId = req.auth.userId;
       if (!clerkId) {
         return res
           .status(401)

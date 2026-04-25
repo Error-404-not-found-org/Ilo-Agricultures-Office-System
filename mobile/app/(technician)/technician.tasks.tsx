@@ -29,7 +29,7 @@ export default function TasksScreen() {
   useFocusEffect(
     useCallback(() => {
       fetchTasks();
-    }, [])
+    }, [fetchTasks])
   );
 
   const onRefresh = async () => {

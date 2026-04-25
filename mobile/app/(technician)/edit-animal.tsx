@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useApi } from '@/lib/api';
 import { useAuth } from '@clerk/clerk-expo';
@@ -7,7 +7,6 @@ import { ArrowLeft, ChevronDown, Calendar, Check, X, ArrowRight, Camera } from '
 import React, { useState, useEffect } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { toast } from 'sonner-native';
-import { ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
 // --- OPTIONS ---
@@ -123,7 +122,7 @@ export default function EditAnimalWizard() {
     };
 
     loadAnimalData();
-  }, [id, isLoaded, isSignedIn]);
+  }, [id, isLoaded, isSignedIn, api]);
 
 
   const pickImage = async () => {

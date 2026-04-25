@@ -6,105 +6,140 @@ import {
   StatusBar,
   TextInput,
   ActivityIndicator,
-  RefreshControl
+  RefreshControl,
+  Image,
 } from "react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import Header from "@/components/Header";
-import { Search, MapPin, Phone } from "lucide-react-native";
-import React, { useState, useMemo, useCallback } from "react";
+import {
+  Search, MapPin, Phone, Users, UserPlus,
+  ChevronLeft, ChevronRight,
+} from "lucide-react-native";
+import React, { useState, useCallback, useEffect } from "react";
 import { useApi } from "@/lib/api";
-import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-expo";
-import techinician_clients_fetch from "@/app/components/techinicians/techinician.clients.fetch";
+
+const LIMIT = 10;
+const PRIMARY = "#00643B";
+
+type Client = {
+  _id: string;
+  name: string;
+  email?: string;
+  imageUrl?: string;
+  phoneNumber?: string;
+  address?: {
+    houseNumber?: string;
+    street?: string;
+    subdivision?: string;
+    barangay?: string;
+    city?: string;
+    province?: string;
+    phoneNumber?: string;
+  };
+};
+
+const getAddressString = (address: Client["address"]): string => {
+  if (!address) return "No address on file";
+  return [
+    address.houseNumber, address.street, address.subdivision,
+    address.barangay, address.city, address.province,
+  ].filter(Boolean).join(", ") || "No address on file";
+};
+
+const getInitials = (name: string) =>
+  name?.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase() || "?";
+
+// Pastel avatar colors cycling
+const AVATAR_COLORS = ["#D1FAE5", "#DBEAFE", "#FEF3C7", "#FCE7F3", "#EDE9FE"];
+const getAvatarColor = (name: string) =>
+  AVATAR_COLORS[name?.charCodeAt(0) % AVATAR_COLORS.length] || AVATAR_COLORS[0];
+const getInitialColor = (name: string) => {
+  const textColors = ["#065F46", "#1E40AF", "#92400E", "#9D174D", "#5B21B6"];
+  return textColors[name?.charCodeAt(0) % textColors.length] || textColors[0];
+};
 
 export default function ClientsScreen() {
   const router = useRouter();
   const api = useApi();
   const { isSignedIn, isLoaded } = useAuth();
-  const [searchQuery, setSearchQuery] = useState("");
 
-  const { data: clients = [], isLoading, isError, error, refetch, isRefetching } = useQuery({
-    queryKey: ["clients"],
-    enabled: isLoaded && isSignedIn,
-    queryFn: async () => {
-      const res = await api.get("/user?role=farmer");
-      if (Array.isArray(res.data)) return res.data;
-      if (Array.isArray(res.data.data)) return res.data.data;
-      return [];
+  const [clients, setClients] = useState<Client[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1); // Reset to first page on new search
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const fetchClients = useCallback(
+    async (pageNum: number, search: string, isRefresh = false) => {
+      if (!isLoaded || !isSignedIn) return;
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+
+      try {
+        const params = new URLSearchParams({
+          role: "farmer",
+          page: String(pageNum),
+          limit: String(LIMIT),
+          ...(search ? { search } : {}),
+        });
+        const res = await api.get(`/user?${params.toString()}`);
+        const responseData = res.data;
+
+        if (responseData?.data) {
+          // Paginated response
+          setClients(responseData.data);
+          setTotal(responseData.total ?? 0);
+          setTotalPages(responseData.totalPages ?? 1);
+        } else if (Array.isArray(responseData)) {
+          // Fallback flat array
+          setClients(responseData);
+          setTotal(responseData.length);
+          setTotalPages(1);
+        }
+      } catch (err) {
+        console.error("[Clients] Failed to fetch:", err);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
     },
-    staleTime: 1000 * 60 * 5,
-  });
+    [api, isLoaded, isSignedIn]
+  );
+
+  useEffect(() => {
+    fetchClients(page, debouncedSearch);
+  }, [page, debouncedSearch, fetchClients]);
 
   useFocusEffect(
     useCallback(() => {
-      refetch();
-    }, [refetch])
+      fetchClients(page, debouncedSearch, true);
+    }, [fetchClients, page, debouncedSearch])
   );
 
-  const getAddressString = (address: any): string => {
-    if (!address) return "";
-    return [
-      address.houseNumber, address.street, address.subdivision,
-      address.barangay, address.city, address.province,
-    ].filter(Boolean).join(", ");
+  const handleRefresh = () => fetchClients(page, debouncedSearch, true);
+
+  const goToPage = (p: number) => {
+    if (p < 1 || p > totalPages) return;
+    setPage(p);
   };
-
-  const filteredClients = useMemo(() => {
-    const query = searchQuery.toLowerCase().trim();
-    if (!query) return clients;
-    return clients.filter((c: any) => {
-      const nameMatch = c.name?.toLowerCase().includes(query);
-      const addrMatch = getAddressString(c.address).toLowerCase().includes(query);
-      return nameMatch || addrMatch;
-    });
-  }, [clients, searchQuery]);
-
-  // ✅ Keep Header separate so it stays visible during loading
-  const headerElement = (
-    <View className="mb-6">
-      <Text className="text-[24px] font-bold text-slate-800 mb-6">Client Management</Text>
-      <View className="flex-row gap-x-4 mb-8">
-        <TouchableOpacity
-          onPress={() => router.push("/clients/register-client")}
-          className="flex-1 bg-white rounded-2xl p-4 border border-slate-100 items-center justify-center shadow-sm"
-        >
-          <View className="w-12 h-12 bg-emerald-50 rounded-full items-center justify-center mb-3">
-            <MaterialCommunityIcons name="account-plus" size={24} color="#00643B" />
-          </View>
-          <Text className="font-bold text-slate-800 text-sm">New Client</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push("/clients/add-animal")}
-          className="flex-1 bg-white rounded-2xl p-4 border border-slate-100 items-center justify-center shadow-sm"
-        >
-          <View className="w-12 h-12 bg-blue-50 rounded-full items-center justify-center mb-3">
-            <MaterialCommunityIcons name="cow" size={24} color="#3B82F6" />
-          </View>
-          <Text className="font-bold text-slate-800 text-sm">Add Animal</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Text className="text-[18px] font-bold text-slate-800 mb-4">All Clients</Text>
-
-      <View className="flex-row items-center bg-white rounded-2xl px-4 h-[52px] mb-2 border border-slate-100 shadow-sm">
-        <Search size={20} color="#94a3b8" />
-        <TextInput
-          placeholder="Search clients..."
-          className="flex-1 ml-3 text-[15px] font-medium text-slate-800"
-          placeholderTextColor="#94a3b8"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-      </View>
-    </View>
-  );
 
   if (!isLoaded) {
     return (
-      <View className="flex-1 justify-center items-center">
-        <ActivityIndicator size="large" color="#00643B" />
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <ActivityIndicator size="large" color={PRIMARY} />
       </View>
     );
   }
@@ -112,72 +147,210 @@ export default function ClientsScreen() {
   return (
     <View className="flex-1 bg-[#F9FAFB]">
       <StatusBar barStyle="light-content" />
+
+      {/* Green hero background */}
       <View className="absolute top-0 left-0 right-0 h-[220px] bg-[#00643B]" />
       <Header />
 
-      <View 
-        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg" 
-        style={{ elevation: 8 }}
+      <View
+        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-3 pt-8 mt-2"
+        style={{ elevation: 8, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 15 }}
       >
         <FlatList
-          data={isLoading ? [] : filteredClients} // ✅ Pass empty data while loading
-          keyExtractor={(item, index) => item._id?.toString() || index.toString()}
+          style={{ flex: 1 }}
+          data={clients}
+          keyExtractor={(item, i) => item._id || String(i)}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 16 }}
           refreshControl={
-            <RefreshControl 
-                refreshing={isRefetching} 
-                onRefresh={() => refetch()} 
-                colors={["#00643B"]} 
-                tintColor="#00643B" 
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[PRIMARY]}
+              tintColor={PRIMARY}
             />
           }
-          ListHeaderComponent={headerElement} // ✅ Header stays visible
-          ListEmptyComponent={() => (
-            <View className="items-center justify-center py-10">
-              {isLoading ? (
-                <ActivityIndicator size="large" color="#00643B" />
-              ) : isError ? (
-                <Text className="text-red-500 text-center">Failed to load clients.</Text>
-              ) : (
-                <Text className="text-gray-400">No clients found.</Text>
+          ListHeaderComponent={
+            <View className="mb-4">
+              {/* Title + Count */}
+              <View className="flex-row items-center justify-between mb-5">
+                <View>
+                  <Text className="text-[24px] font-black text-slate-800 leading-tight">Clients</Text>
+                  <Text className="text-slate-400 text-xs font-medium mt-0.5">
+                    {loading ? "Loading..." : `${total} registered farmer${total !== 1 ? "s" : ""}`}
+                  </Text>
+                </View>
+                {/* Quick Actions */}
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={() => router.push("/clients/register-client")}
+                    className="flex-row items-center gap-1.5 bg-[#00643B] px-4 py-2.5 rounded-full"
+                    style={{ elevation: 3, shadowColor: "#00643B", shadowOpacity: 0.3, shadowRadius: 6 }}
+                  >
+                    <UserPlus size={15} color="white" />
+                    <Text className="text-white font-bold text-[12px]">New</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Search Bar */}
+              <View
+                className="flex-row items-center bg-white rounded-2xl px-4 h-[50px] mb-2 border border-slate-100"
+                style={{ elevation: 2, shadowColor: "#94a3b8", shadowOpacity: 0.08, shadowRadius: 8 }}
+              >
+                <Search size={18} color="#94a3b8" />
+                <TextInput
+                  placeholder="Search by name or email..."
+                  className="flex-1 ml-3 text-[14px] font-medium text-slate-800"
+                  placeholderTextColor="#94a3b8"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  style={{ paddingVertical: 0 }}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery("")} className="p-1">
+                    <Text className="text-slate-400 text-lg leading-none">×</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {/* Result count label */}
+              {!loading && debouncedSearch && (
+                <Text className="text-slate-400 text-[11px] font-medium mt-2 mb-1 ml-1">
+                  Results for &quot;{debouncedSearch}&quot;
+                </Text>
               )}
             </View>
-          )}
-          renderItem={({ item }) => (
-            <TouchableOpacity 
-               activeOpacity={0.7} 
-               onPress={() => router.push(`/(technician)/client-details?id=${item._id}` as any)}
-               className="bg-white rounded-[24px] p-5 mb-4 border border-slate-100 shadow-sm"
+          }
+          ListEmptyComponent={
+            <View className="items-center justify-center py-20 gap-3">
+              {loading ? (
+                <ActivityIndicator size="large" color={PRIMARY} />
+              ) : (
+                <>
+                  <View className="w-20 h-20 bg-slate-100 rounded-full items-center justify-center mb-2">
+                    <Users size={36} color="#cbd5e1" />
+                  </View>
+                  <Text className="text-slate-500 font-bold text-base">No clients found</Text>
+                  <Text className="text-slate-400 text-sm text-center px-8">
+                    {debouncedSearch
+                      ? `No farmers match "${debouncedSearch}"`
+                      : "No registered clients yet. Tap New to add one."}
+                  </Text>
+                </>
+              )}
+            </View>
+          }
+          ListFooterComponent={
+            !loading && totalPages > 1 ? (
+              <View
+                className="bg-white border-t border-slate-100 flex-row items-center justify-between px-8 py-2 mt-3"
+                style={{ borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
+              >
+                {/* Label */}
+                <Text className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                  Page {page} of {totalPages}
+                </Text>
+
+                {/* Buttons */}
+                <View className="flex-row gap-2">
+                  <TouchableOpacity
+                    onPress={() => goToPage(page - 1)}
+                    disabled={page === 1}
+                    className="w-10 h-10 rounded-[12px] bg-slate-50 border border-slate-100 items-center justify-center"
+                    style={page === 1 ? { opacity: 0.4 } : { elevation: 1 }}
+                  >
+                    <ChevronLeft size={18} color={page === 1 ? "#94a3b8" : PRIMARY} />
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={() => goToPage(page + 1)}
+                    disabled={page === totalPages}
+                    className="w-10 h-10 rounded-[12px] bg-slate-50 border border-slate-100 items-center justify-center"
+                    style={page === totalPages ? { opacity: 0.4 } : { elevation: 1 }}
+                  >
+                    <ChevronRight size={18} color={page === totalPages ? "#94a3b8" : PRIMARY} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={{ height: 24 }} />
+            )
+          }
+          renderItem={({ item, index }) => (
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={() => router.push(`/(technician)/client-details?id=${item._id}` as any)}
+              className="bg-white rounded-[20px] mb-3 border border-slate-100 overflow-hidden"
+              style={{ elevation: 2, shadowColor: "#94a3b8", shadowOpacity: 0.06, shadowRadius: 8 }}
             >
-               {/* ... (Your Item UI code) ... */}
-               <View className="flex-row items-center gap-3 mb-4">
-                  <View className="w-12 h-12 bg-emerald-100 rounded-full items-center justify-center">
-                    <Text className="text-emerald-800 font-black text-lg">
-                      {item.name?.charAt(0)?.toUpperCase() || "?"}
-                    </Text>
-                  </View>
-                  <View className="flex-1">
-                    <Text className="text-[17px] font-bold text-slate-800">{item.name || "No Name"}</Text>
-                    <View className="px-2 py-0.5 rounded-full bg-emerald-50 self-start mt-1">
-                      <Text className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">Farmer</Text>
+              {/* Left accent bar */}
+              <View className="flex-row">
+                <View style={{ width: 4, backgroundColor: PRIMARY, borderTopLeftRadius: 20, borderBottomLeftRadius: 20 }} />
+
+                <View className="flex-1 p-4">
+                  {/* Row: Avatar + Name + Badge */}
+                  <View className="flex-row items-center gap-3 mb-3">
+                    {item.imageUrl ? (
+                      <Image
+                        source={{ uri: item.imageUrl }}
+                        className="w-12 h-12 rounded-full"
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        className="w-12 h-12 rounded-full items-center justify-center"
+                        style={{ backgroundColor: getAvatarColor(item.name) }}
+                      >
+                        <Text
+                          className="font-black text-lg"
+                          style={{ color: getInitialColor(item.name) }}
+                        >
+                          {getInitials(item.name)}
+                        </Text>
+                      </View>
+                    )}
+                    <View className="flex-1">
+                      <Text className="text-[15px] font-bold text-slate-800" numberOfLines={1}>
+                        {item.name || "Unnamed Client"}
+                      </Text>
+                      {item.email && (
+                        <Text className="text-[11px] text-slate-400 font-medium" numberOfLines={1}>
+                          {item.email}
+                        </Text>
+                      )}
+                    </View>
+                    <View className="bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                      <Text className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">
+                        Farmer
+                      </Text>
                     </View>
                   </View>
+
+                  {/* Divider */}
+                  <View className="h-[1px] bg-slate-50 mb-3" />
+
+                  {/* Contact info */}
+                  <View className="gap-y-1.5">
+                    {(item.address?.phoneNumber || item.phoneNumber) && (
+                      <View className="flex-row items-center gap-2">
+                        <Phone size={12} color="#94a3b8" />
+                        <Text className="text-slate-500 text-[12px] font-medium">
+                          {item.address?.phoneNumber || item.phoneNumber}
+                        </Text>
+                      </View>
+                    )}
+                    {item.address && (
+                      <View className="flex-row items-start gap-2">
+                        <MapPin size={12} color="#94a3b8" style={{ marginTop: 1 }} />
+                        <Text className="text-slate-500 text-[12px] leading-4 flex-1" numberOfLines={2}>
+                          {getAddressString(item.address)}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
-                <View className="gap-y-2 ml-1">
-                  {item.address?.phoneNumber && (
-                    <View className="flex-row items-center gap-3">
-                      <Phone size={14} color="#94a3b8" />
-                      <Text className="text-slate-600 text-[13px]">{item.address.phoneNumber}</Text>
-                    </View>
-                  )}
-                  {item.address && (
-                    <View className="flex-row items-start gap-3 pr-4">
-                      <MapPin size={14} color="#94a3b8" style={{ marginTop: 2 }} />
-                      <Text className="text-slate-600 text-[13px] leading-5">{getAddressString(item.address)}</Text>
-                    </View>
-                  )}
-                </View>
+              </View>
             </TouchableOpacity>
           )}
         />
