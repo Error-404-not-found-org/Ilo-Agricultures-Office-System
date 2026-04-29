@@ -2,6 +2,7 @@ import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Calving } from "../models/calving.model.js";
+import { HealthRequest } from "../models/health-request.model.js";
 
 export const registerAnimal = async (req, res) => {
   try {
@@ -121,12 +122,10 @@ export const getMyAnimals = async (req, res) => {
     const limitNum = parseInt(limit, 10) || 10;
     const skip = (pageNum - 1) * limitNum;
 
-    const animals = await Animal.find({ farmerId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitNum);
-
-    const total = await Animal.countDocuments({ farmerId });
+    const [animals, total] = await Promise.all([
+      Animal.find({ farmerId }).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Animal.countDocuments({ farmerId }),
+    ]);
 
     res.status(200).json({
       data: animals,
@@ -243,5 +242,35 @@ export const updateAnimalWizard = async (req, res) => {
   } catch (error) {
     console.error("Wizard Update API Error:", error);
     res.status(500).json({ message: "Failed to construct full medical updates" });
+  }
+};
+
+export const deleteAnimal = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const animal = await Animal.findById(id);
+
+    if (!animal) {
+      return res.status(404).json({ message: "Animal not found" });
+    }
+
+    // Permission Check: Only the owner (farmer) or an admin/tech can delete.
+    if (req.user.role === "farmer" && animal.farmerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized to delete this animal" });
+    }
+
+    await Animal.findByIdAndDelete(id);
+    
+    // Cleanup related records
+    await Promise.all([
+      Insemination.deleteMany({ animalId: id }),
+      Calving.deleteMany({ animalId: id }),
+      HealthRequest.deleteMany({ animalId: id })
+    ]);
+
+    res.status(200).json({ message: "Animal and related records deleted successfully" });
+  } catch (error) {
+    console.error("Delete Animal Error:", error);
+    res.status(500).json({ message: "Failed to delete animal" });
   }
 };

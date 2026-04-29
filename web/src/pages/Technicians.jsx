@@ -5,6 +5,8 @@ import axios from "../lib/axios";
 import AddTechnicianModal from "../components/AddTechnicianModal";
 import EditTechnicianModal from "../components/EditTechnicianModal";
 
+import LoadingView from "../components/LoadingView";
+
 const Technicians = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTechnician, setSelectedTechnician] = useState(null);
@@ -21,12 +23,7 @@ const Technicians = () => {
     },
   });
 
-    if (isLoading) return (
-        <div className="flex justify-center items-center flex-col min-h-[60vh] gap-4">
-            <span className="loading loading-infinity loading-lg text-[#074033] scale-150"></span>
-            <p className="text-[#074033] font-medium tracking-wide animate-pulse">Listing Technicians...</p>
-        </div>
-    );
+  if (isLoading) return <LoadingView message="Listing Technicians..." />;
 
   if (error) {
     return (

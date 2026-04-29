@@ -5,12 +5,14 @@ import { Bell } from 'lucide-react-native';
 import { useRouter, useSegments } from 'expo-router';
 import { useUser } from '@clerk/clerk-expo';
 import { useApi } from '@/lib/api';
+import { useNetInfo } from '@react-native-community/netinfo';
 
 export default function Header() {
   const router = useRouter();
   const segments = useSegments();
   const { user } = useUser();
   const api = useApi();
+  const netInfo = useNetInfo();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -88,6 +90,15 @@ export default function Header() {
 
       {/* Right side: Action Buttons */}
       <View className="flex-row items-center gap-2">
+        {/* Connectivity Status */}
+        <View className={`w-10 h-10 ${netInfo.isConnected ? 'bg-white/10' : 'bg-amber-500/20'} rounded-full items-center justify-center`}>
+           <MaterialCommunityIcons 
+             name={netInfo.isConnected ? "cloud-check" : "cloud-off-outline"} 
+             size={20} 
+             color={netInfo.isConnected ? ICON_COLOR : "#f59e0b"} 
+           />
+        </View>
+
         <TouchableOpacity 
           onPress={() => router.push('/notifications')}
           className="w-10 h-10 bg-white/10 rounded-full items-center justify-center p-0"

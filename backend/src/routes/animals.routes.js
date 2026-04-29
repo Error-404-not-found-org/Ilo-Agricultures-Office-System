@@ -5,7 +5,8 @@ import {
   getAllAnimals,
   getAnimalById,
   updateAnimalWizard,
-  getMyAnimals
+  getMyAnimals,
+  deleteAnimal
 } from "../controllers/animals.controllers.js";
 import { protectedRoute } from "../middleware/auth.middleware.js";
 
@@ -16,5 +17,6 @@ router.get("/all", protectedRoute, getAllAnimals);
 router.get("/my", protectedRoute, getMyAnimals);
 router.get("/:id", protectedRoute, getAnimalById);
 router.put("/wizard/:id", protectedRoute, updateAnimalWizard);
+router.delete("/:id", protectedRoute, deleteAnimal);
 
 export default router;

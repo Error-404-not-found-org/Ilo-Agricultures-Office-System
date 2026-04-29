@@ -26,4 +26,8 @@ const AnimalSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Indexes for scalability
+AnimalSchema.index({ farmerId: 1 });
+AnimalSchema.index({ createdAt: -1 });
+
 export const Animal = mongoose.model("Animal", AnimalSchema);

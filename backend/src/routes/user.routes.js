@@ -8,6 +8,7 @@ import {
   getMe,
   markVerified,
   resendVerificationCode,
+  getBreedingMilestones,
 } from "../controllers/user.controllers.js";
 import { requireAuth } from "@clerk/express";
 
@@ -24,6 +25,7 @@ router.post(
 router.get("/", protectedRoute, getUsers);
 router.post("/sync-manual", requireAuth(), syncUser);
 router.get("/me", protectedRoute, getMe);
+router.get("/milestones", protectedRoute, getBreedingMilestones);
 
 router.get("/:id", protectedRoute, getUserById);
 router.put("/:id", protectedRoute, updateUser);

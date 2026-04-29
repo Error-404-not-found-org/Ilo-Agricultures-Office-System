@@ -119,7 +119,7 @@ export default function FarmerRecords() {
 
   // Records Pagination State
   const [records, setRecords] = useState<InseminationRecord[]>([]);
-  const [recordStats, setRecordStats] = useState({ total: 0, approved: 0, pending: 0 });
+  const [recordStats, setRecordStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0 });
   const [recordPage, setRecordPage] = useState(1);
   const [hasMoreRecords, setHasMoreRecords] = useState(true);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
@@ -166,7 +166,11 @@ export default function FarmerRecords() {
         setRecords(prev => [...prev, ...newRecords]);
       }
       
-      setRecordStats(res.data.stats || { total: res.data.total, approved: 0, pending: 0 });
+      const stats = res.data.stats || { total: res.data.total, approved: 0, pending: 0 };
+      setRecordStats({
+        ...stats,
+        rejected: (stats.total || 0) - (stats.approved || 0) - (stats.pending || 0)
+      });
       setHasMoreRecords(pageToLoad < res.data.totalPages);
       setRecordPage(pageToLoad);
     } catch (error: any) {
@@ -289,7 +293,8 @@ export default function FarmerRecords() {
                     {[
                       { label: 'Total',    val: recordStats.total,    color: '#00643B', bg: '#ecfdf5' },
                       { label: 'Approved', val: recordStats.approved, color: '#059669', bg: '#d1fae5' },
-                      { label: 'Pending',  val: recordStats.pending,  color: '#d97706', bg: '#fef3c7' },
+                      { label: 'Pending',  val: recordStats.pending,  color: '#d97706', bg: '#fffbeb' },
+                      { label: 'Rejected', val: recordStats.rejected, color: '#dc2626', bg: '#fef2f2' },
                     ].map(s => (
                       <View key={s.label} className="flex-1 rounded-xl py-3 items-center" style={{ backgroundColor: s.bg }}>
                         <Text className="text-lg font-black" style={{ color: s.color }}>{s.val}</Text>

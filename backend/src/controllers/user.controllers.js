@@ -2,6 +2,8 @@ import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { Pregnancy } from "../models/pregnancy.model.js";
+import { Calving } from "../models/calving.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import cloudinary from "../config/cloudinary.js";
 
@@ -15,21 +17,52 @@ export const getMe = async (req, res) => {
     // Return their stats if they are a farmer
     let stats = {};
     if (user.role === "farmer") {
-      const totalAnimals = await Animal.countDocuments({ farmerId: user._id });
-      const cows = await Animal.countDocuments({ farmerId: user._id, species: { $in: ["Beef", "Dairy"] } });
-      const carabaos = await Animal.countDocuments({ farmerId: user._id, species: "Carabao" });
+      const now = new Date();
+      const next30Days = new Date();
+      next30Days.setDate(now.getDate() + 30);
+
+      // 1. Waiting for Result: Approved AI procedures that don't have a pregnancy record yet
+      // OR AI requests still pending
+      const waitingForResult = await Insemination.countDocuments({
+        farmerId: user._id,
+        status: { $in: ["pending", "approved", "done"] }
+      });
       
-      const pendingExams = await HealthRequest.countDocuments({ 
-        farmerId: user._id, 
-        status: "pending" 
+      // We'll refine this: Inseminations with no pregnancy diagnostic yet
+      const inseminations = await Insemination.find({ farmerId: user._id }).select("_id");
+      const insIds = inseminations.map(i => i._id);
+      
+      const diagnoses = await Pregnancy.find({ inseminationId: { $in: insIds } }).select("inseminationId");
+      const diagnosedInsIds = diagnoses.map(d => d.inseminationId.toString());
+      
+      const pendingResults = insIds.filter(id => !diagnosedInsIds.includes(id.toString())).length;
+
+      // 2. Active Pregnancies: Confirmed pregnant and haven't calved
+      const activePregnancies = await Pregnancy.countDocuments({
+        farmerId: user._id,
+        "pregnancyDiagnosis.result": "Pregnant"
       });
 
-      stats = { totalAnimals, cows, carabaos, pendingExams };
+      // 3. Upcoming Calving: Confirmed pregnant and due within 30 days
+      const upcomingCalvings = await Pregnancy.countDocuments({
+        farmerId: user._id,
+        "pregnancyDiagnosis.result": "Pregnant",
+        targetCalvingDate: { $gte: now, $lte: next30Days }
+      });
+
+      const totalAnimals = await Animal.countDocuments({ farmerId: user._id });
+
+      stats = { 
+        totalAnimals, 
+        activePregnancies, 
+        upcomingCalvings, 
+        pendingResults 
+      };
     }
 
     res.status(200).json({ ...user.toObject(), stats });
   } catch (error) {
-    console.error("[getMe ERROR]", error.message);
+    console.error("[getMe ERROR]", error);
     res.status(500).json({ message: "Failed to fetch your profile." });
   }
 };
@@ -362,5 +395,85 @@ export const resendVerificationCode = async (req, res) => {
   } catch (error) {
     console.error("[resendVerification ERROR]", error.message);
     res.status(500).json({ message: "Failed to resend code." });
+  }
+};
+export const getBreedingMilestones = async (req, res) => {
+  try {
+    const farmerId = req.user._id;
+
+    // 1. Get all inseminations (to calculate Heat Checks and PD Checks)
+    const inseminations = await Insemination.find({ farmerId, status: { $ne: "rejected" } })
+      .populate("animalId", "earTag species breed")
+      .sort({ createdAt: -1 });
+
+    // 2. Get all active pregnancies (to calculate Calvings)
+    const pregnancies = await Pregnancy.find({ farmerId, "pregnancyDiagnosis.result": "Pregnant" })
+      .populate("animalId", "earTag species breed")
+      .sort({ targetCalvingDate: 1 });
+
+    const milestones = [];
+    const now = new Date();
+
+    // Process Pregnancies -> Upcoming Calvings
+    pregnancies.forEach(p => {
+      if (p.targetCalvingDate) {
+        milestones.push({
+          type: "calving",
+          title: "Upcoming Calving",
+          animal: p.animalId,
+          date: p.targetCalvingDate,
+          daysLeft: Math.ceil((new Date(p.targetCalvingDate).getTime() - now.getTime()) / (1000 * 3600 * 24)),
+          priority: "high"
+        });
+      }
+    });
+
+    // Process Inseminations -> Heat Checks (21 days) and PD Checks (60 days)
+    // We only show these if there is no pregnancy record yet for that insemination
+    const pregInsIds = pregnancies.map(p => p.inseminationId?.toString());
+
+    inseminations.forEach(ins => {
+      if (pregInsIds.includes(ins._id.toString())) return; // Already confirmed pregnant
+
+      const aiDate = ins.inseminationDate || ins.createdAt;
+      
+      // Heat Check (21 days)
+      const heatDate = new Date(aiDate);
+      heatDate.setDate(heatDate.getDate() + 21);
+      
+      if (heatDate > now) {
+        milestones.push({
+          type: "heat_check",
+          title: "Heat Watch",
+          animal: ins.animalId,
+          date: heatDate,
+          daysLeft: Math.ceil((heatDate.getTime() - now.getTime()) / (1000 * 3600 * 24)),
+          priority: "medium"
+        });
+      }
+
+      // PD Check (60 days)
+      const pdDate = new Date(aiDate);
+      pdDate.setDate(pdDate.getDate() + 60);
+      
+      if (pdDate > now) {
+        milestones.push({
+          type: "pd_check",
+          title: "Preg-Check Due",
+          animal: ins.animalId,
+          date: pdDate,
+          daysLeft: Math.ceil((pdDate.getTime() - now.getTime()) / (1000 * 3600 * 24)),
+          priority: "medium"
+        });
+      }
+    });
+
+    // Sort all milestones by date (closest first)
+    milestones.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    res.status(200).json(milestones);
+  } catch (error) {
+    console.error("[getBreedingMilestones ERROR]", error);
+    res.status(500).json({ message: "Failed to fetch milestones." });
   }
 };

@@ -1,9 +1,31 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from '../lib/axios';
 import AssignTaskModal from '../components/modals/AssignTaskModal';
+import { useSocket } from '../contexts/SocketContext';
+import { useToast } from '../contexts/ToastContext';
+
+import LoadingView from "../components/LoadingView";
 
 const Dashboard = () => {
+    const socket = useSocket();
+    const queryClient = useQueryClient();
+    const toast = useToast();
+
+    useEffect(() => {
+        if (!socket) return;
+
+        socket.on("dashboardUpdate", (payload) => {
+            console.log("[Socket] Admin Dashboard Refresh Triggered:", payload);
+            queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+            queryClient.invalidateQueries({ queryKey: ['pendingRequests'] });
+        });
+
+        return () => {
+            socket.off("dashboardUpdate");
+        };
+    }, [socket, queryClient]);
+
     const { data: stats, isLoading, error } = useQuery({
         queryKey: ['dashboardStats'],
         queryFn: async () => {
@@ -18,7 +40,7 @@ const Dashboard = () => {
                         await axios.post('/user/sync-manual');
                     } catch (syncErr) {
                          console.error("Sync failed:", syncErr);
-                         alert(`Sync Failed: ${syncErr.response?.status} - ${JSON.stringify(syncErr.response?.data)}`);
+                         toast.error(`Sync Failed: ${syncErr.response?.status}`);
                          throw syncErr; // Stop retry if sync fails
                     }
                     // Retry stats fetch
@@ -48,12 +70,7 @@ const Dashboard = () => {
         { title: "Pregnancies", value: stats?.pregnancies || 0, desc: "Active Cases", color: "text-info", bg: "bg-info/10", icon: "🤰" },
     ];
 
-    if (isLoading) return (
-        <div className="flex justify-center items-center flex-col min-h-[60vh] gap-4">
-            <span className="loading loading-infinity loading-lg text-[#074033] scale-150"></span>
-            <p className="text-[#074033] font-medium tracking-wide animate-pulse">Synchronizing Data...</p>
-        </div>
-    );
+    if (isLoading) return <LoadingView message="Synchronizing Data..." />;
     
     if (error) return (
         <div className="alert alert-error shadow-lg">

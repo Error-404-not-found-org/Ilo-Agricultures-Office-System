@@ -1,14 +1,13 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import "../global.css"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { queryClient, asyncStoragePersister } from "../lib/queryClient";
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator } from "react-native";
 import { Toaster } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
-const queryClient = new QueryClient();
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -24,6 +23,14 @@ function InitialLayout() {
   const segments = useSegments();
   const router = useRouter();
   const [isNavigating, setIsNavigating] = useState(true);
+
+  // Auto-reset navigation guard - if stuck for more than 5 seconds, let the user in
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (isNavigating) setIsNavigating(false);
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [isNavigating]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -95,10 +102,13 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
-          <QueryClientProvider client={queryClient}>
+          <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{ persister: asyncStoragePersister }}
+          >
             <InitialLayout />
             <Toaster />
-          </QueryClientProvider>
+          </PersistQueryClientProvider>
       </ClerkProvider>
     </GestureHandlerRootView>
   )
