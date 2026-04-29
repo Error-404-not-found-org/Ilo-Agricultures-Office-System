@@ -7,6 +7,8 @@ import { useApi } from '@/lib/api';
 import { useAuth } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNetInfo } from '@react-native-community/netinfo';
 
 import Header from '@/components/Header'; // <-- Added Global Header Image/Sync
 
@@ -17,45 +19,35 @@ export default function HomeScreen() {
   const router = useRouter();
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const queryClient = useQueryClient();
+  const netInfo = useNetInfo();
+  
+  const { 
+    data, 
+    isLoading: loading, 
+    isRefetching: refreshing,
+    refetch: fetchDashboardData 
+  } = useQuery({
+    queryKey: ['technician', 'dashboard'],
+    queryFn: async () => {
+      const response = await api.get('/technician/dashboard-data');
+      return response.data || {};
+    },
+    enabled: !!isLoaded && !!isSignedIn,
+    staleTime: 1000 * 60 * 5, // 5 mins
+  });
 
   // Scheduling Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [scheduledDate, setScheduledDate] = useState(new Date());
   const [note, setNote] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Picker visibility
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const fetchDashboardData = useCallback(async (isSilent = false) => {
-    if (!isSilent) setLoading(true);
-    try {
-      const response = await api.get('/technician/dashboard-data');
-      setData(response.data);
-    } catch (error) {
-      console.error("Failed to load technician dashboard data", error);
-      toast.error("Failed to synchronize hub data");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [api]);
-
-  useEffect(() => {
-    if (!isLoaded || !isSignedIn) return;
-    fetchDashboardData();
-    // Real-time synchronization: Poll every 45 seconds on mobile to save battery but stay fresh
-    const intervalId = setInterval(() => fetchDashboardData(true), 45000);
-    return () => clearInterval(intervalId);
-  }, [fetchDashboardData, isLoaded, isSignedIn]);
-
   const onRefresh = () => {
-    setRefreshing(true);
     fetchDashboardData();
   };
 
@@ -84,38 +76,60 @@ export default function HomeScreen() {
     setModalVisible(true);
   };
 
+  const scheduleMutation = useMutation({
+    mutationFn: async ({ endpoint, payload }: { endpoint: string, payload: any }) => {
+      await api.patch(endpoint, payload);
+    },
+    // Optimistic Update
+    onMutate: async ({ payload }) => {
+      await queryClient.cancelQueries({ queryKey: ['technician', 'dashboard'] });
+      const previousData = queryClient.getQueryData(['technician', 'dashboard']);
+      
+      // We don't strictly need to update the complex agendaItems array here 
+      // because the invalidate will fetch it soon, but we could filter it out.
+      
+      return { previousData };
+    },
+    onSuccess: () => {
+      toast.success('Appointment Scheduled');
+      setModalVisible(false);
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(['technician', 'dashboard'], context.previousData);
+      }
+      toast.error("Failed to schedule appointment");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['technician', 'dashboard'] });
+    }
+  });
+
   const confirmAction = async () => {
     if (!selectedItem) return;
-    setIsSubmitting(true);
-    try {
-      let endpoint = '';
-      let status = '';
+    
+    let endpoint = '';
+    let status = '';
 
-      if (selectedItem.type === 'health') {
-        endpoint = `/health-request/${selectedItem.id}/status`;
-        status = 'in-progress';
-      } else if (selectedItem.type === 'ai-request') {
-        endpoint = `/ai-request/${selectedItem.id}/status`;
-        status = 'approved';
-      } else {
-        endpoint = `/technician/inseminations/${selectedItem.id}/status`;
-        status = 'done';
-      }
+    if (selectedItem.type === 'health') {
+      endpoint = `/health-request/${selectedItem.id}/status`;
+      status = 'in-progress';
+    } else if (selectedItem.type === 'ai-request') {
+      endpoint = `/ai-request/${selectedItem.id}/status`;
+      status = 'approved';
+    } else {
+      endpoint = `/technician/inseminations/${selectedItem.id}/status`;
+      status = 'done';
+    }
 
-      await api.patch(endpoint, { 
+    scheduleMutation.mutate({
+      endpoint,
+      payload: { 
         status, 
         technicianNote: note || `Confirmed for ${scheduledDate.toLocaleDateString()} ${scheduledDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
         scheduledDate: scheduledDate.toISOString()
-      });
-      
-      toast.success('Appointment Scheduled');
-      setModalVisible(false);
-      fetchDashboardData(true);
-    } catch (_error) {
-      toast.error("Failed to schedule appointment");
-    } finally {
-      setIsSubmitting(false);
-    }
+      }
+    });
   };
 
   const stats = data?.stats || {};
@@ -140,6 +154,15 @@ export default function HomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />
         }
       >
+        {/* --- OFFLINE WARNING --- */}
+        {!netInfo.isConnected && (
+           <View className="bg-amber-500 py-2 px-6 flex-row items-center justify-center gap-2">
+              <MaterialCommunityIcons name="cloud-off-outline" size={16} color="white" />
+              <Text className="text-white text-[10px] font-black uppercase tracking-widest">
+                 Offline Mode — Viewing Cached Data
+              </Text>
+           </View>
+        )}
 
         {/* --- HERO HEADER BACKGROUND & SEARCH LAYER --- */}
         <View 
@@ -393,12 +416,12 @@ export default function HomeScreen() {
             {/* Action Button */}
             <TouchableOpacity
               onPress={confirmAction}
-              disabled={isSubmitting}
+              disabled={scheduleMutation.isPending}
               activeOpacity={0.8}
               style={{ backgroundColor: PRIMARY }}
               className="w-full py-5 rounded-[24px] items-center justify-center shadow-lg shadow-emerald-200"
             >
-              {isSubmitting ? (
+              {scheduleMutation.isPending ? (
                 <ActivityIndicator color="white" size="small" />
               ) : (
                 <Text className="text-white font-black text-lg tracking-wide">

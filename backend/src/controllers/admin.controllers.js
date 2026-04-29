@@ -44,26 +44,52 @@ export const getDashboardStats = async (req, res) => {
 // ... existing get functions implementation ...
 export const getAllInseminations = async (req, res) => {
     try {
-        const inseminations = await Insemination.find()
-            .populate('farmerId', 'name email')
-            .populate('animalId', 'earTag species breed')
-            .sort({ createdAt: -1 });
-        res.status(200).send({ inseminations });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const [inseminations, total] = await Promise.all([
+            Insemination.find()
+                .populate('farmerId', 'name email')
+                .populate('animalId', 'earTag species breed')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Insemination.countDocuments()
+        ]);
+
+        res.status(200).send({ 
+            data: inseminations,
+            inseminations: inseminations, // backwards compatibility
+            pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } 
+        });
     } catch (error) {
         res.status(500).send({ message: "Error fetching inseminations", error: error.message });
     }
 };
 
 export const getAllReInseminations = async (req, res) => {
-  // Logic for re-inseminations (typically filtered inseminations or a separate model if defined)
-  // For now returning empty or implementation dependent on specific business logic for 're-insemination'
-  // Assuming it might be inseminations with attemptNumber > 1
     try {
-        const reInseminations = await Insemination.find({ attemptNumber: { $gt: 1 } })
-            .populate('farmerId', 'name email')
-            .populate('animalId', 'earTag species breed')
-             .sort({ createdAt: -1 });
-        res.status(200).send({ reInseminations });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+        const query = { attemptNumber: { $gt: 1 } };
+
+        const [reInseminations, total] = await Promise.all([
+            Insemination.find(query)
+                .populate('farmerId', 'name email')
+                .populate('animalId', 'earTag species breed')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Insemination.countDocuments(query)
+        ]);
+
+        res.status(200).send({ 
+            data: reInseminations,
+            reInseminations: reInseminations, // backwards compatibility
+            pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } 
+        });
     } catch (error) {
         res.status(500).send({ message: "Error fetching re-inseminations", error: error.message });
     }
@@ -71,15 +97,29 @@ export const getAllReInseminations = async (req, res) => {
 
 export const getAllPregnancyChecks = async (req, res) => {
     try {
-        const pregnancyChecks = await Pregnancy.find()
-            .populate('farmerId', 'name email')
-            .populate('animalId', 'earTag species breed')
-            .populate({
-                path: 'inseminationId',
-                select: 'inseminationDate sireCode'
-            })
-            .sort({ createdAt: -1 });
-        res.status(200).send({ pregnancyChecks });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const [pregnancyChecks, total] = await Promise.all([
+            Pregnancy.find()
+                .populate('farmerId', 'name email')
+                .populate('animalId', 'earTag species breed')
+                .populate({
+                    path: 'inseminationId',
+                    select: 'inseminationDate sireCode'
+                })
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Pregnancy.countDocuments()
+        ]);
+
+        res.status(200).send({ 
+            data: pregnancyChecks,
+            pregnancyChecks: pregnancyChecks, // backwards compatibility
+            pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } 
+        });
     } catch (error) {
         res.status(500).send({ message: "Error fetching pregnancy checks", error: error.message });
     }
@@ -87,11 +127,25 @@ export const getAllPregnancyChecks = async (req, res) => {
 
 export const getAllCalvings = async (req, res) => {
     try {
-        const calvings = await Calving.find()
-            .populate('farmerId', 'name email')
-            .populate('animalId', 'earTag species breed')
-             .sort({ createdAt: -1 });
-        res.status(200).send({ calvings });
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+
+        const [calvings, total] = await Promise.all([
+            Calving.find()
+                .populate('farmerId', 'name email')
+                .populate('animalId', 'earTag species breed')
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit),
+            Calving.countDocuments()
+        ]);
+
+        res.status(200).send({ 
+            data: calvings,
+            calvings: calvings, // backwards compatibility
+            pagination: { total, page, limit, totalPages: Math.ceil(total / limit) } 
+        });
     } catch (error) {
         res.status(500).send({ message: "Error fetching calvings", error: error.message });
     }

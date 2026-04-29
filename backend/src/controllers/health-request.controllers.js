@@ -1,4 +1,4 @@
-import { HealthRequest } from "../models/health-request.model.js";
+  import { HealthRequest } from "../models/health-request.model.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
@@ -65,6 +65,13 @@ export const createHealthRequest = async (req, res) => {
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
+
+    // --- TRIGGER SOCKET UPDATE ---
+    req.app.get("io").emit("dashboardUpdate", { 
+      type: "HEALTH_REQUEST_CREATED", 
+      message: "New health request submitted",
+      urgency 
+    });
 
     res.status(201).json({ message: "Health request submitted.", request });
   } catch (error) {
@@ -148,6 +155,13 @@ export const updateHealthRequestStatus = async (req, res) => {
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
+
+    // --- TRIGGER SOCKET UPDATE ---
+    req.app.get("io").emit("dashboardUpdate", { 
+      type: "HEALTH_REQUEST_UPDATED", 
+      message: `Health request marked as ${status}`,
+      status 
+    });
 
     console.log(`[Health Request Updated] ${id} → ${status}`);
     res.status(200).json({ message: "Status updated.", request });

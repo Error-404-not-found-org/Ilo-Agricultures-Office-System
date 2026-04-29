@@ -4,6 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import axios from "../lib/axios";
 import EditInseminationModal from "../components/EditInseminationModal";
 
+import LoadingView from "../components/LoadingView";
+
 const LivestockProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -21,12 +23,7 @@ const LivestockProfile = () => {
     },
   });
 
-    if (isLoading) return (
-        <div className="flex justify-center items-center flex-col min-h-[60vh] gap-4">
-            <span className="loading loading-infinity loading-lg text-[#074033] scale-150"></span>
-            <p className="text-[#074033] font-medium tracking-wide animate-pulse">Fetching Animal Profile...</p>
-        </div>
-    );
+  if (isLoading) return <LoadingView message="Fetching Animal Profile..." />;
   
 
   if (error || !animal) {

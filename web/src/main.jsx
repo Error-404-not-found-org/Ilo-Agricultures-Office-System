@@ -14,17 +14,23 @@ if (!PUBLISHABLE_KEY) {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
+import { SocketProvider } from "./contexts/SocketContext.jsx";
+import { Toaster } from "sonner";
+
 const queryClient = new QueryClient();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-        <ReactQueryDevtools initialIsOpen={false} />
-      </QueryClientProvider>
+      <SocketProvider>
+        <QueryClientProvider client={queryClient}>
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
+          <Toaster position="top-right" richColors />
+          <ReactQueryDevtools initialIsOpen={false} />
+        </QueryClientProvider>
+      </SocketProvider>
     </ClerkProvider>
   </StrictMode>,
 );

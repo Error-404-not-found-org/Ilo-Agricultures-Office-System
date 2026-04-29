@@ -1,30 +1,35 @@
 import axios from "axios";
 import { useAuth } from "@clerk/clerk-expo";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.11:3000/api";
+const API_URL =
+  process.env.EXPO_PUBLIC_API_URL || "https://ilo-agricultures-inseminati-p5bbd.sevalla.app/api";
 
-let getTokenRef: (() => Promise<string | null>) | null = null;
+let getTokenRef: ((options?: any) => Promise<string | null>) | null = null;
 
 const api = axios.create({
   baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
-  timeout: 15000, // 15s — more resilient on mobile
 });
 
-// Permanent request interceptor — always uses the latest token provider
-api.interceptors.request.use(async (config) => {
-  if (getTokenRef) {
-    try {
-      const token = await getTokenRef();
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+// Permanent request interceptor
+api.interceptors.request.use(
+  async (config) => {
+    if (getTokenRef) {
+      try {
+        const token = await getTokenRef();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      } catch (e) {
+        console.error("[API] Failed to get token", e);
       }
-    } catch (error) {
-      console.error("[API Interceptor Error] Failed to get token:", error);
     }
-  }
-  return config;
-});
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  },
+);
 
 // Response interceptor for logging errors
 api.interceptors.response.use(
@@ -36,21 +41,18 @@ api.interceptors.response.use(
     if (error.response) {
       console.warn(`[API Error] ${error.response.status} ${method} ${url}`);
     } else if (error.request) {
-      console.error(`[Network Error] No response for ${method} ${url}. Backend: ${API_URL}`);
+      console.error(
+        `[Network Error] No response for ${method} ${url}. Backend: ${API_URL}`,
+      );
     } else {
       console.error(`[API Setup Error] ${error.message} for ${method} ${url}`);
     }
     return Promise.reject(error);
-  }
+  },
 );
 
 export const useApi = () => {
   const { getToken } = useAuth();
-
-  // Set synchronously on every render so it is ALWAYS available
-  // before the first request interceptor runs — eliminates the race condition
-  // that caused "Network Error" on app open.
   getTokenRef = getToken;
-
   return api;
 };

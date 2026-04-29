@@ -72,4 +72,11 @@ const InseminationSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Indexes for scalability
+InseminationSchema.index({ animalId: 1, createdAt: -1 });
+InseminationSchema.index({ farmerId: 1 });
+InseminationSchema.index({ status: 1 });
+InseminationSchema.index({ scheduledDate: 1 });
+InseminationSchema.index({ inseminationDate: -1 });
+
 export const Insemination = mongoose.model("Insemination", InseminationSchema);

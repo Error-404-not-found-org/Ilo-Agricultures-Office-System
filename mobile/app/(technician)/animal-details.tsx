@@ -1,6 +1,6 @@
-import { View, Text, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator, Image, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { ArrowLeft, User, MapPin, Activity, History, Info as InfoIcon, Edit2, Calendar } from 'lucide-react-native';
+import { ArrowLeft, User, MapPin, Activity, History, Info as InfoIcon, Edit2, Calendar, Trash2 } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useState, useCallback } from 'react';
 import { useApi } from '@/lib/api';
@@ -15,6 +15,7 @@ export default function AnimalDetails() {
   
   const [animal, setAnimal] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -35,6 +36,33 @@ export default function AnimalDetails() {
     fetchAnimal();
   }, [id, api])
  );
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Delete Animal",
+      "Are you sure you want to permanently delete this animal and all its history? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              setDeleting(true);
+              await api.delete(`/animals/${id}`);
+              toast.success("Animal deleted successfully");
+              router.replace("/(technician)/technician.animals");
+            } catch (error: any) {
+              console.error("Delete Error:", error);
+              toast.error(error.response?.data?.message || "Failed to delete animal");
+            } finally {
+              setDeleting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   if (loading) {
      return (
@@ -104,10 +132,21 @@ export default function AnimalDetails() {
           <Text className="text-white font-bold text-lg tracking-wide border-b-2 border-emerald-400 pb-1">Animal Profile</Text>
           <View className="flex-row gap-3">
              <TouchableOpacity 
-                 onPress={() => router.push(`/(technician)/edit-animal?id=${animal._id}` as any)}
-                 className="w-10 h-10 bg-white/20 rounded-full items-center justify-center active:bg-white/30"
+                onPress={() => router.push(`/(technician)/edit-animal?id=${animal._id}` as any)}
+                className="w-10 h-10 bg-white/20 rounded-full items-center justify-center active:bg-white/30"
              >
-                 <Edit2 size={18} color="white" />
+                <Edit2 size={18} color="white" />
+             </TouchableOpacity>
+             <TouchableOpacity 
+                onPress={handleDelete}
+                disabled={deleting}
+                className="w-10 h-10 bg-red-500/20 rounded-full items-center justify-center"
+             >
+                {deleting ? (
+                    <ActivityIndicator size="small" color="#ef4444" />
+                ) : (
+                    <Trash2 size={18} color="#ef4444" />
+                )}
              </TouchableOpacity>
           </View>
       </View>

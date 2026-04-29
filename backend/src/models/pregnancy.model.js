@@ -35,4 +35,8 @@ const PregnancySchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Indexes for scalability
+PregnancySchema.index({ animalId: 1, createdAt: -1 });
+PregnancySchema.index({ farmerId: 1 });
+
 export const Pregnancy = mongoose.model("Pregnancy", PregnancySchema);

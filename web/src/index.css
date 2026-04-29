@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @plugin "daisyui" {
-    themes: emerald, corporate;
+    themes: emerald, corporate, dark, night;
 }
 
 :root {
@@ -11,4 +11,13 @@
 
 body {
     font-family: var(--font-outfit);
+}
+
+@keyframes progress-timer {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+.animate-progress {
+  animation: progress-timer 5000ms linear forwards;
 }

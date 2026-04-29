@@ -2,6 +2,7 @@ import { Insemination } from "../models/insemination.model.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
+import { inngest } from "../config/inngest.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -67,6 +68,12 @@ export const createAIRequest = async (req, res) => {
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
+
+    // --- TRIGGER SOCKET UPDATE ---
+    req.app.get("io").emit("dashboardUpdate", { 
+      type: "AI_REQUEST_CREATED", 
+      message: "New AI request submitted" 
+    });
 
     res.status(201).json({ message: "AI request submitted successfully.", request });
   } catch (error) {
@@ -149,6 +156,25 @@ export const updateRequestStatus = async (req, res) => {
       }
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
+    }
+
+    // --- TRIGGER SOCKET UPDATE ---
+    req.app.get("io").emit("dashboardUpdate", { 
+      type: "AI_REQUEST_UPDATED", 
+      message: `AI request marked as ${status}`,
+      status 
+    });
+
+    // --- TRIGGER INNGEST AUTOMATION ---
+    if (status === "approved" || status === "done") {
+      await inngest.send({
+        name: "insemination/approved",
+        data: {
+          inseminationId: request._id,
+          animalId: request.animalId._id,
+          farmerId: request.farmerId._id,
+        },
+      });
     }
 
     res.status(200).json({ message: "Request status updated.", request });

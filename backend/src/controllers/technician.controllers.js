@@ -1,95 +1,38 @@
 import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
+import { HealthRequest } from "../models/health-request.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
-import { HealthRequest } from "../models/health-request.model.js";
-import { Inventory } from "../models/inventory.model.js";
 import { Notification } from "../models/notification.model.js";
+import { AIRequest } from "../models/ai-request.model.js";
+import { Config } from "../models/config.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import cloudinary from "../config/cloudinary.js";
+import { inngest } from "../config/inngest.js";
 
-export const getMyInseminations = async (req, res) => {
-  try {
-    const inseminations = await Insemination.find()
-      .populate("animalId", "animalId earTag species breed")
-      .populate("farmerId", "name")
-      .sort({ createdAt: -1 });
-    res.status(200).send({ inseminations });
-  } catch (error) {
-    console.error("Error fetching inseminations:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-export const getMyReInseminations = async (req, res) => {
-  try {
-    const inseminations = await Insemination.find({ attemptNumber: { $gt: 1 } })
-      .populate("farmerId", "name address phoneNumber imageUrl")
-      .populate("animalId", "earTag imageUrl breed species")
-      .sort({ createdAt: -1 });
-    res.status(200).json({ inseminations });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to fetch re-inseminations." });
-  }
-};
-
-export const getMyPregnancyChecks = async (req, res) => {
-  try {
-    const pregnancyChecks = await Pregnancy.find()
-      .populate("animalId", "earTag imageUrl breed species")
-      .populate("farmerId", "name address phoneNumber imageUrl")
-      .sort({ createdAt: -1 });
-    res.status(200).send({ pregnancyChecks });
-  } catch (error) {
-    console.error("Error fetching pregnancy checks:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-export const getMyCalvings = async (req, res) => {
-  try {
-    const calvings = await Calving.find()
-      .populate("animalId", "earTag imageUrl breed species")
-      .populate("farmerId", "name address phoneNumber imageUrl")
-      .sort({ createdAt: -1 });
-    res.status(200).send({ calvings });
-  } catch (error) {
-    console.error("Error fetching calvings:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
-
-export const getMyNotifications = async (req, res) => {
-  res.status(200).send({ notifications: [] });
-};
-
-export const getMyProfile = async (req, res) => {
-  try {
-    const profile = await User.findById(req.user._id);
-    res.status(200).send({ profile });
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
 export const getTechnicianDashboardData = async (req, res) => {
   try {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setDate(todayEnd.getDate() + 1);
-
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-    // 1. STATS
+    // 1. FETCH ALL STATS & DATA STREAMS IN PARALLEL
     const [
       totalInseminationsRecordToday,
-      pendingHealthAlertsCount,
+      totalHealthPending,
       totalAI_90,
-      totalPreg_90
+      totalPreg_90,
+      inseminations,
+      healthReqs,
+      animalRegistryData
     ] = await Promise.all([
-      Insemination.countDocuments({ 
+      // Stats
+      Insemination.countDocuments({
         $or: [
             { scheduledDate: { $gte: todayStart, $lt: todayEnd } },
             { inseminationDate: { $gte: todayStart, $lt: todayEnd } }
@@ -100,58 +43,91 @@ export const getTechnicianDashboardData = async (req, res) => {
       Pregnancy.countDocuments({ 
         createdAt: { $gte: ninetyDaysAgo },
         "pregnancyDiagnosis.result": "Pregnant"
-      })
-    ]);
-
-    const combinedInseminationsToday = totalInseminationsRecordToday;
-    const successRate = totalAI_90 > 0 ? ((totalPreg_90 / totalAI_90) * 100).toFixed(1) + "%" : "84.2%";
-
-    // 2. FETCH DATA STREAMS
-    const [
-      inseminations,
-      healthReqs
-    ] = await Promise.all([
+      }),
+      // Data Streams (Using .lean() for performance)
       Insemination.find({ status: { $in: ["pending", "approved", "in-progress"] } })
         .populate("farmerId", "name address")
         .populate("animalId", "earTag imageUrl breed species")
-        .sort({ createdAt: -1 }),
+        .sort({ createdAt: -1 })
+        .lean(),
         
       HealthRequest.find({ status: { $in: ["pending", "in-progress"] } })
         .populate("farmerId", "name address")
         .populate("animalId", "earTag imageUrl breed species")
         .sort({ urgency: -1, createdAt: -1 })
+        .lean(),
+
+      // Animal Registry (Fully Optimized Aggregation)
+      Animal.aggregate([
+        { $sort: { createdAt: -1 } },
+        { $limit: 100 }, // Fetch a slightly larger pool for sorting
+        
+        {
+          $lookup: {
+            from: "users",
+            localField: "farmerId",
+            foreignField: "_id",
+            as: "farmer"
+          }
+        },
+        { $unwind: { path: "$farmer", preserveNullAndEmptyArrays: true } },
+
+        {
+          $lookup: {
+            from: "inseminations",
+            let: { animalId: "$_id" },
+            pipeline: [
+              { $match: { $expr: { $eq: ["$animalId", "$$animalId"] } } },
+              { $sort: { createdAt: -1 } },
+              { $limit: 1 }
+            ],
+            as: "lastIns"
+          }
+        },
+        { $unwind: { path: "$lastIns", preserveNullAndEmptyArrays: true } },
+
+        {
+          $lookup: {
+            from: "pregnancies",
+            let: { animalId: "$_id" },
+            pipeline: [
+              { $match: { $expr: { $eq: ["$animalId", "$$animalId"] } } },
+              { $sort: { createdAt: -1 } },
+              { $limit: 1 }
+            ],
+            as: "lastPregnancy"
+          }
+        },
+        { $unwind: { path: "$lastPregnancy", preserveNullAndEmptyArrays: true } },
+
+        {
+          $addFields: {
+            lastActivityDate: {
+              $max: [
+                "$createdAt",
+                { $ifNull: ["$lastIns.createdAt", new Date(0)] },
+                { $ifNull: ["$lastPregnancy.createdAt", new Date(0)] }
+              ]
+            }
+          }
+        },
+        { $sort: { lastActivityDate: -1 } },
+        { $limit: 50 }
+      ])
     ]);
 
-    // Format all active missions into a single timeline
-    const activeTasks = [
-      ...inseminations.map(ins => ({
-        id: ins._id,
-        type: "insemination",
-        label: ins.attemptNumber > 1 ? "Re-Insemination" : "AI Mission",
-        task: ins.attemptNumber > 1 ? "Re-Insemination" : "Artificial Insemination",
-        date: ins.scheduledDate || ins.inseminationDate || ins.createdAt,
-        status: ins.status,
-        farmer: ins.farmerId?.name || "Unknown",
-        farmerId: ins.farmerId?._id,
-        location: ins.farmerId?.address?.barangay || "Unknown",
-        animal: ins.animalId,
-        urgency: ins.attemptNumber > 1 ? "high" : "routine",
-      })),
-      ...healthReqs.map(h => ({
-        id: h._id,
-        type: "health",
-        label: "Health Check",
-        task: h.treatmentType || "General Checkup",
-        date: h.scheduledDate || h.createdAt,
-        status: h.status,
-        farmer: h.farmerId?.name || "Unknown",
-        farmerId: h.farmerId?._id,
-        location: h.farmerId?.address?.barangay || h.animalId?.farmerId?.address?.barangay || "Unknown",
-        animal: h.animalId,
-        urgency: h.urgency,
-      }))
-    ].sort((a, b) => new Date(a.date) - new Date(b.date));
+    // 2. Fetch Success Rate from Cache or Calculate
+    let successRate = totalAI_90 > 0 ? ((totalPreg_90 / totalAI_90) * 100).toFixed(1) + "%" : "84.2%";
+    try {
+        const cachedStats = await Config.findOne({ key: "dashboard_success_rate" }).lean();
+        if (cachedStats && cachedStats.value) {
+            successRate = cachedStats.value;
+        }
+    } catch (e) {
+        console.error("Cache fetch failed", e);
+    }
 
+    // 2. FORMAT DATA
     const formatAddress = (addr) => {
        if (!addr) return "Unknown Location";
        if (typeof addr === 'string') return addr;
@@ -177,7 +153,7 @@ export const getTechnicianDashboardData = async (req, res) => {
     const pendingRequests = [];
     const agendaItems = [];
 
-    // Process Inseminations (includes both manual and mobile requests)
+    // Process Inseminations
     inseminations.forEach(ins => {
       const isMobileRequest = !ins.sireCode && ins.status === "pending";
       const item = {
@@ -224,57 +200,30 @@ export const getTechnicianDashboardData = async (req, res) => {
       }
     });
     
-    agendaItems.sort((a,b) => a.displayDate - b.displayDate);
-    pendingRequests.sort((a,b) => b.raw.createdAt - a.raw.createdAt);
+    agendaItems.sort((a,b) => new Date(a.displayDate) - new Date(b.displayDate));
+    pendingRequests.sort((a,b) => new Date(b.raw.createdAt) - new Date(a.raw.createdAt));
 
-    // 3. ANIMAL REGISTRY (Optimized)
-    const animals = await Animal.find().populate("farmerId", "name phoneNumber").limit(50).sort({ createdAt: -1 });
-    const animalIds = animals.map(a => a._id);
+    const animalRegistry = animalRegistryData.map(a => {
+      const lastIns = a.lastIns || null;
+      const lastPregnancy = a.lastPregnancy || null;
 
-    // Fetch related data in bulk instead of 100 individual queries
-    const [allLastInseminations, allLastPregnancies] = await Promise.all([
-      Insemination.find({ animalId: { $in: animalIds } }).sort({ createdAt: -1 }),
-      Pregnancy.find({ animalId: { $in: animalIds } }).sort({ createdAt: -1 })
-    ]);
-
-    // Group by animalId in memory
-    const inseminationMap = new Map();
-    allLastInseminations.forEach(ins => {
-      const id = ins.animalId.toString();
-      if (!inseminationMap.has(id)) inseminationMap.set(id, ins); // Takes the first one (most recent)
-    });
-
-    const pregnancyMap = new Map();
-    allLastPregnancies.forEach(preg => {
-      const id = preg.animalId.toString();
-      if (!pregnancyMap.has(id)) pregnancyMap.set(id, preg); // Takes the first one (most recent)
-    });
-
-    const animalRegistry = animals.map(a => {
-      const animalIdStr = a._id.toString();
-      const lastIns = inseminationMap.get(animalIdStr);
-      const lastPregnancy = pregnancyMap.get(animalIdStr);
-      
       let status = "Pending";
       let sClass = "text-yellow-600";
       let dotClass = "bg-yellow-500";
       let last = "Added";
       
-      // Priority 1: Pregnancy
       if (lastPregnancy && lastPregnancy.pregnancyDiagnosis?.result === "Pregnant") {
         status = "Pregnant";
         sClass = "text-purple-600";
         dotClass = "bg-purple-500";
         last = "Pregnancy Check";
       } 
-      // Priority 2: Active or Completed Insemination
       else if (lastIns && (lastIns.status === "approved" || lastIns.status === "done" || lastIns.status === "in-progress")) {
         status = "Inseminated";
         sClass = "text-blue-600";
         dotClass = "bg-blue-500";
         last = "Insemination";
       } 
-      // Priority 3: Pending Request
       else if (lastIns && lastIns.status === "pending") {
         status = "Pending AI";
         sClass = "text-yellow-600";
@@ -290,231 +239,253 @@ export const getTechnicianDashboardData = async (req, res) => {
         sClass,
         dotClass,
         last,
-        farmerName: a.farmerId?.name || "Unknown",
-        farmerPhone: a.farmerId?.phoneNumber || "No Contact",
+        farmerName: a.farmer?.name || "Unknown",
+        farmerPhone: a.farmer?.phoneNumber || "No Contact",
         imageUrl: a.imageUrl || null,
-        lastActionDate: lastPregnancy?.createdAt || lastIns?.inseminationDate || lastIns?.scheduledDate || lastIns?.createdAt || a.createdAt
+        lastActionDate: a.lastActivityDate
       };
     });
 
-    // 4. TIMELINE
-    const latestInsem = await Insemination.findOne().sort({ createdAt: -1 }).populate("animalId", "earTag");
-    let timeline = null;
-    if(latestInsem) {
-       timeline = {
-         animalId: latestInsem.animalId?.earTag || "Unknown",
-         heatDate: latestInsem.createdAt,
-       }
-    }
-
-    res.status(200).send({
+    res.status(200).json({
       stats: {
-        totalInseminations: combinedInseminationsToday,
-        healthAlerts: pendingHealthAlertsCount,
+        totalInseminations: totalInseminationsRecordToday,
+        healthAlerts: totalHealthPending,
         successRate
       },
-      agendaItems: agendaItems, // All today's scheduled tasks
-      pendingRequests: pendingRequests, // ALL pending requests for the center feed
-      animalRegistry,
-      timeline
+      pendingRequests,
+      agendaItems,
+      animalRegistry
     });
+
   } catch (error) {
-    console.error("Error fetching dashboard data:", error);
-    res.status(500).json({ message: "Internal server error" });
+    console.error("[getTechnicianDashboardData ERROR]", error);
+    res.status(500).json({ message: "Failed to load dashboard data." });
   }
 };
 
-// Post functions for technician
+// --- PAGINATED LISTS FOR TECHNICIAN ---
+
+export const getMyInseminations = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [records, total] = await Promise.all([
+      Insemination.find()
+        .populate("farmerId", "name phoneNumber address")
+        .populate("animalId", "earTag breed species imageUrl")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Insemination.countDocuments(),
+    ]);
+
+    res.status(200).json({
+      inseminations: records,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching inseminations", error: error.message });
+  }
+};
+
+export const getMyReInseminations = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const query = { attemptNumber: { $gt: 1 } };
+
+    const [records, total] = await Promise.all([
+      Insemination.find(query)
+        .populate("farmerId", "name phoneNumber address")
+        .populate("animalId", "earTag breed species imageUrl")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Insemination.countDocuments(query),
+    ]);
+
+    res.status(200).json({
+      data: records,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching re-inseminations", error: error.message });
+  }
+};
+
+export const getMyPregnancyChecks = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [records, total] = await Promise.all([
+      Pregnancy.find()
+        .populate("farmerId", "name phoneNumber address")
+        .populate("animalId", "earTag breed species imageUrl")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Pregnancy.countDocuments(),
+    ]);
+
+    res.status(200).json({
+      data: records,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching pregnancy checks", error: error.message });
+  }
+};
+
+export const getMyCalvings = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const [records, total] = await Promise.all([
+      Calving.find()
+        .populate("farmerId", "name phoneNumber address")
+        .populate("animalId", "earTag breed species imageUrl")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Calving.countDocuments(),
+    ]);
+
+    res.status(200).json({
+      data: records,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching calvings", error: error.message });
+  }
+};
+
+export const getMyNotifications = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const query = { recipientId: req.user._id };
+
+    const [records, total] = await Promise.all([
+      Notification.find(query)
+        .populate("senderId", "name imageUrl")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Notification.countDocuments(query),
+    ]);
+
+    res.status(200).json({
+      data: records,
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching notifications", error: error.message });
+  }
+};
+
+export const getMyProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select("-password").lean();
+    res.status(200).json(user);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching profile", error: error.message });
+  }
+};
+
+// --- ACTION HANDLERS ---
 
 export const walkInInsemination = async (req, res) => {
   try {
-    const {
-      firstName,
-      lastName,
-      email,
-      phoneNumber,
-      address,
-      imageUrl,
-      animalDetails,
-      inseminationDetails,
-    } = req.body;
+    const { farmerId, animalId, inseminationDate, sireBreed, sireCode, estrus } = req.body;
 
-    // 🔴 Basic validation first
-    if (!firstName || !lastName || !animalDetails || !inseminationDetails) {
-      return res.status(400).json({
-        message: "Missing required farmer, animal, or insemination data",
-      });
-    }
-
-    // 1️⃣ Find or create farmer
-    let farmer = null;
-
-    if (email) {
-      farmer = await User.findOne({ email });
-    }
-
-    if (!farmer) {
-      farmer = await User.create({
-        name: `${firstName} ${lastName}`,
-        phoneNumber,
-        email: email || undefined,
-        address,
-        imageUrl: imageUrl || "",
-        role: "farmer",
-        isVerified: !!email,
-      });
-
-      // Send Clerk invitation only if email exists
-      if (email) {
-        const invitation = await clerkClient.invitations.createInvitation({
-          emailAddress: email,
-          publicMetadata: { invitedBySystem: true },
-          redirectUrl: "https://ilo-agricultures-inseminati-p5bbd.sevalla.app/",
-        });
-
-        farmer.clerkId = invitation.userId;
-        await farmer.save();
-      }
-    }
-
-    // 2️⃣ Find or register animal (avoid duplicates)
-    let animal = await Animal.findOne({
-      farmerId: farmer._id,
-      earTag: animalDetails.earTag,
-    });
-
-    if (!animal) {
-      animal = await Animal.create({
-        farmerId: farmer._id,
-        earTag: animalDetails.earTag,
-        species: animalDetails.species,
-        breed: animalDetails.breed,
-        color: animalDetails.color || "",
-        imageUrl: animalDetails.imageUrl || "",
-      });
-    }
-
-    // 3️⃣ Get last insemination attempt
-    const lastAttempt = await Insemination.findOne({
-      animalId: animal._id,
-    }).sort({ attemptNumber: -1 });
-
+    const lastAttempt = await Insemination.findOne({ animalId }).sort({ attemptNumber: -1 });
     const attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
 
-    // 4️⃣ Check for duplicate (avoid double logging)
-    const existingIns = await Insemination.findOne({
-      animalId: animal._id,
-      inseminationDate: inseminationDetails.inseminationDate,
-      sireCode: inseminationDetails.sireCode
-    });
-
-    if (existingIns) {
-      return res.status(400).json({ message: "An insemination for this animal with the same sire and date already exists." });
-    }
-
-    // 5️⃣ Create insemination record
     const insemination = await Insemination.create({
-      farmerId: farmer._id,
-      animalId: animal._id,
-      inseminationDate: inseminationDetails.inseminationDate,
-      sireBreed: inseminationDetails.sireBreed,
-      sireCode: inseminationDetails.sireCode,
-      estrus: inseminationDetails.estrus,
+      farmerId,
+      animalId,
+      inseminationDate: inseminationDate || new Date(),
+      sireBreed,
+      sireCode,
+      estrus,
       attemptNumber,
-      status: attemptNumber === 1 ? "approved" : "pending",
-      approvedBy: attemptNumber === 1 ? req.user._id : null,
+      status: "approved",
+      approvedBy: req.user._id,
     });
 
-    return res.status(201).json({
-      message:
-        "Walk-in farmer, animal, and insemination registered successfully",
-      farmer,
-      animal,
-      insemination,
+    // Notify Farmer
+    await Notification.create({
+      recipientId: farmerId,
+      senderId: req.user._id,
+      type: "ai-request",
+      relatedId: insemination._id,
+      title: "Insemination Recorded",
+      message: `A walk-in insemination has been recorded for your animal by technician ${req.user.name}.`,
     });
+
+    // Trigger Socket Update
+    req.app.get("io").emit("dashboardUpdate", { type: "WALKIN_INSEMINATION_CREATED" });
+
+    res.status(201).json({ message: "Walk-in insemination recorded", insemination });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({
-      message: "Failed to process walk-in insemination",
-      error,
-    });
+    res.status(500).json({ message: "Error recording insemination", error: error.message });
   }
 };
 
 export const updateInseminationStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, technicianNote } = req.body;
+    const { status, technicianNote, scheduledDate } = req.body;
 
-    const VALID_STATUSES = ["pending", "in-progress", "approved", "rejected", "done"];
-    if (!VALID_STATUSES.includes(status)) {
-      return res.status(400).json({ message: "Invalid status value." });
-    }
-
-    const request = await Insemination.findByIdAndUpdate(
+    const insemination = await Insemination.findByIdAndUpdate(
       id,
-      {
-        status,
-        approvedBy: req.user._id,
-        technicianNote: technicianNote || "",
-        scheduledDate: req.body.scheduledDate || undefined
-      },
+      { status, technicianNote, scheduledDate, approvedBy: req.user._id },
       { returnDocument: 'after' }
-    ).populate("farmerId", "name").populate("animalId", "animalId earTag species");
+    ).populate("farmerId", "name");
 
-    if (!request) {
-      return res.status(404).json({ message: "Insemination task not found." });
+    if (!insemination) return res.status(404).json({ message: "Record not found" });
+
+    // Notify Farmer
+    await Notification.create({
+      recipientId: insemination.farmerId._id,
+      senderId: req.user._id,
+      type: "ai-request",
+      relatedId: insemination._id,
+      title: "AI Request Update",
+      message: `Your AI request status has been updated to: ${status}.`,
+    });
+
+    // Trigger Socket Update
+    req.app.get("io").emit("dashboardUpdate", { type: "INSEMINATION_UPDATED", status });
+
+    // --- TRIGGER INNGEST AUTOMATION ---
+    if (status === "approved" || status === "done") {
+      await inngest.send({
+        name: "insemination/approved",
+        data: {
+          inseminationId: insemination._id,
+          animalId: insemination.animalId,
+          farmerId: insemination.farmerId._id,
+        },
+      });
     }
 
-    // --- TRIGGER NOTIFICATION TO FARMER ---
-    try {
-      if (request.farmerId && request.farmerId._id) {
-        await Notification.create({
-          recipientId: request.farmerId._id,
-          senderId: req.user._id,
-          type: "ai-request",
-          relatedId: request._id,
-          title: "AI Request Update",
-          message: `Your AI request for ${request.animalId?.earTag || request.animalId?.animalId || 'your animal'} has been marked as ${status}.`,
-        });
-      }
-    } catch (notifyErr) {
-      console.error("[Notification Trigger Error]", notifyErr.message);
-    }
-
-    // --- TIMELINE AUTOMATION & INVENTORY ---
-    if (status === "done") {
-      // 1. Decrement Inventory if SireCode exists
-      if (request.sireCode) {
-        await Inventory.findOneAndUpdate(
-          { category: "semen", sireCode: request.sireCode },
-          { $inc: { currentStock: -1 } }
-        ).catch(err => console.error("Inventory deduction warning:", err.message));
-      }
-
-      // 2. Schedule Pregnancy Check 21 days from now
-      const checkDate = new Date();
-      checkDate.setDate(checkDate.getDate() + 21);
-
-      // Ensure we don't recreate if it already exists
-      const existingPregnancy = await Pregnancy.findOne({ inseminationId: request._id });
-      if (!existingPregnancy) {
-        await Pregnancy.create({
-          animalId: request.animalId,
-          farmerId: request.farmerId,
-          inseminationId: request._id,
-          pregnancyDiagnosis: {
-            date: checkDate
-          }
-        });
-        console.log(`[Timeline] Created Pregnancy PD check for ${checkDate}`);
-      }
-    }
-
-    res.status(200).json({ message: "Task status updated.", request });
+    res.status(200).json({ message: "Status updated", insemination });
   } catch (error) {
-    console.error("[updateInseminationStatus ERROR]", error.message);
-    res.status(500).json({ message: "Failed to update task status." });
+    res.status(500).json({ message: "Error updating status", error: error.message });
   }
 };
 
@@ -522,166 +493,276 @@ export const getAnimalHistory = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Verify animal
-    const animal = await Animal.findById(id).populate("farmerId", "name phoneNumber");
-    if (!animal) return res.status(404).json({ message: "Animal not found" });
-
-    // Fetch all records
-    const [inseminations, pregnancies, healthReqs] = await Promise.all([
-      Insemination.find({ animalId: id }).populate("approvedBy", "name address").sort({ createdAt: -1 }),
-      Pregnancy.find({ animalId: id }).sort({ createdAt: -1 }),
-      HealthRequest.find({ animalId: id }).populate("handledBy", "name address").sort({ createdAt: -1 }),
+    const [inseminations, pregnancies, calvings] = await Promise.all([
+      Insemination.find({ animalId: id }).sort({ createdAt: -1 }).lean(),
+      Pregnancy.find({ animalId: id }).sort({ createdAt: -1 }).lean(),
+      Calving.find({ animalId: id }).sort({ createdAt: -1 }).lean(),
     ]);
 
-    let timeline = [];
+    const history = [
+      ...inseminations.map(i => ({ ...i, eventType: "Insemination" })),
+      ...pregnancies.map(p => ({ ...p, eventType: "Pregnancy Check" })),
+      ...calvings.map(c => ({ ...c, eventType: "Calving" })),
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    const getTechInfo = (user) => {
-      if (!user) return { name: "System/Pending", location: "" };
-      let loc = "";
-      if (user.address) {
-        if (typeof user.address === 'string') loc = user.address;
-        else if (Array.isArray(user.address) && user.address.length > 0) {
-          loc = `${user.address[0].barangay || ''}, ${user.address[0].city || ''}`.replace(/^,|,$/g, '').trim();
-        } else if (typeof user.address === 'object') {
-          loc = `${user.address.barangay || ''}, ${user.address.city || ''}`.replace(/^,|,$/g, '').trim();
-        }
-      }
-      return { name: user.name, location: loc };
-    };
-
-    // Map Inseminations
-    inseminations.forEach(ins => {
-      const techInfo = getTechInfo(ins.approvedBy);
-      const isRequest = !ins.sireCode && ins.status === "pending";
-
-      timeline.push({
-        _id: ins._id,
-        type: isRequest ? "AI Request" : "Insemination",
-        title: isRequest ? "Mission Request (Farmer)" : `Artificial Insemination (${ins.attemptNumber || 1}${ins.attemptNumber === 1 ? 'st' : ins.attemptNumber === 2 ? 'nd' : ins.attemptNumber === 3 ? 'rd' : 'th'} Attempt)`,
-        description: isRequest ? `Farmer Note: ${ins.comment || "No comment"}` : `Sire Breed: ${ins.sireBreed} | Sire Code: ${ins.sireCode} | Status: ${ins.status.toUpperCase()}`,
-        status: ins.status,
-        date: ins.createdAt,
-        technicianName: techInfo.name,
-        iconType: isRequest ? "FileText" : "Syringe"
-      });
-    });
-
-    // Map Pregnancies
-    pregnancies.forEach(preg => {
-      const isCompleted = preg.pregnancyDiagnosis?.result;
-      const targetDate = preg.pregnancyDiagnosis?.date;
-      
-      let dateString = "Invalid Date";
-      if (targetDate) {
-        const d = new Date(targetDate);
-        if (!isNaN(d.getTime())) {
-          dateString = d.toLocaleDateString('en-US');
-        }
-      }
-
-      timeline.push({
-        _id: preg._id,
-        type: "Pregnancy Check",
-        title: isCompleted ? "Diagnosis Result" : "Scheduled Checkup",
-        description: isCompleted ? `Result: ${preg.pregnancyDiagnosis.result}` : `Follow-up scan scheduled for ${dateString}`,
-        status: isCompleted ? "done" : "pending",
-        date: preg.createdAt,
-        technicianName: "System Automation",
-        iconType: "CheckCircle2"
-      });
-    });
-
-    // Map Health Requests
-    healthReqs.forEach(req => {
-      const techInfo = getTechInfo(req.handledBy);
-      timeline.push({
-        _id: req._id,
-        type: "Health",
-        title: `Health: ${req.requestType}`,
-        description: `Symptoms: ${req.symptoms}`,
-        status: req.status,
-        date: req.createdAt,
-        technicianName: techInfo.name,
-        iconType: "HeartPulse"
-      });
-    });
-
-    // Add animal added event
-    timeline.push({
-      _id: animal._id,
-      type: "Registration",
-      title: "Animal Profile Created",
-      description: `Registered ear tag #${animal.earTag} (${animal.breed})`,
-      status: "done",
-      date: animal.createdAt,
-      technicianName: "Admin/Technician",
-      iconType: "FileText"
-    });
-
-    // SORT BY DATE DESCENDING
-    timeline.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    res.status(200).json({ animal, timeline });
+    res.status(200).json(history);
   } catch (error) {
-    console.error("Error fetching animal history:", error);
-    res.status(500).json({ message: "Internal server error fetching history." });
+    res.status(500).json({ message: "Error fetching animal history", error: error.message });
   }
 };
+
 export const registerFarmer = async (req, res) => {
   try {
     const { firstName, lastName, phoneNumber, email, address } = req.body;
 
-    if (!firstName || !lastName || !phoneNumber) {
-      return res.status(400).json({ message: "First name, last name, and phone number are required." });
-    }
+    const fullName = `${firstName} ${lastName}`.trim();
+    
+    // Check if user already exists
+    const existing = await User.findOne({ $or: [{ email }, { phoneNumber }] });
+    if (existing) return res.status(400).json({ message: "A user with this email or phone already exists." });
 
-    // Check if user already exists by phone or email
-    let existingUser = await User.findOne({ 
-      $or: [
-        { phoneNumber },
-        ...(email ? [{ email }] : [])
-      ]
+    // Create Clerk User
+    const clerkUser = await clerkClient.users.createUser({
+      emailAddress: email ? [email] : [],
+      phoneNumber: phoneNumber ? [phoneNumber] : [],
+      firstName,
+      lastName,
+      publicMetadata: { role: "farmer", isVerified: false },
     });
 
-    if (existingUser) {
-      return res.status(400).json({ message: "A farmer with this phone number or email already exists." });
-    }
-
-    const farmer = await User.create({
-      name: `${firstName} ${lastName}`,
+    const user = await User.create({
+      clerkId: clerkUser.id,
+      name: fullName,
+      email,
       phoneNumber,
-      email: email || undefined,
-      address: address ? {
-        street: address,
-        barangay: "Barangay Added", // Satisfy required field
-        city: "Iloilo City",
-        province: "Iloilo",
-        region: "VI",
-        zipCode: "5000",
-        phoneNumber: phoneNumber // Also required in address schema
-      } : undefined,
+      address,
       role: "farmer",
-      isVerified: !!email,
+      isVerified: false,
     });
 
-    // Send Clerk invitation if email is provided
-    if (email) {
-      try {
-        const invitation = await clerkClient.invitations.createInvitation({
-          emailAddress: email,
-          publicMetadata: { role: "farmer", invitedBySystem: true },
-        });
-        farmer.clerkId = invitation.userId;
-        await farmer.save();
-      } catch (clerkError) {
-        console.error("Clerk invitation failed", clerkError);
-        // We still created the farmer in our DB, so we don't necessarily fail the whole request
-      }
+    res.status(201).json({ message: "Farmer registered successfully", user });
+  } catch (error) {
+    console.error("[registerFarmer ERROR]", error);
+    res.status(500).json({ message: "Failed to register farmer", error: error.message });
+  }
+};
+
+export const recordPregnancyCheck = async (req, res) => {
+  try {
+    const { animalId, result, technicianNote, inseminationId } = req.body;
+
+    const animal = await Animal.findById(animalId);
+    if (!animal) return res.status(404).json({ message: "Animal not found" });
+
+    const pregnancy = await Pregnancy.create({
+      animalId,
+      farmerId: animal.farmerId,
+      inseminationId,
+      pregnancyDiagnosis: {
+        date: new Date(),
+        result: result, // "Pregnant" or "Empty"
+      },
+      targetCalvingDate: result === "Pregnant" ? new Date(Date.now() + 280 * 24 * 60 * 60 * 1000) : undefined,
+    });
+
+    // Notify Farmer
+    await Notification.create({
+      recipientId: animal.farmerId,
+      senderId: req.user._id,
+      type: "system",
+      relatedId: pregnancy._id,
+      title: "Pregnancy Check Result",
+      message: `The pregnancy check for ${animal.earTag} resulted in: ${result}.`,
+    });
+
+    // Trigger Inngest if Pregnant
+    if (result === "Pregnant") {
+      await inngest.send({
+        name: "pregnancy/confirmed",
+        data: {
+          pregnancyId: pregnancy._id,
+          animalId,
+          farmerId: animal.farmerId,
+        },
+      });
     }
 
-    res.status(201).json({ message: "Farmer registered successfully", farmer });
+    res.status(201).json({ message: "Pregnancy check recorded", pregnancy });
   } catch (error) {
-    console.error("Error registering farmer:", error);
-    res.status(500).json({ message: "Internal server error registering farmer." });
+    console.error("[recordPregnancyCheck ERROR]", error);
+    res.status(500).json({ message: "Failed to record pregnancy check", error: error.message });
+  }
+};
+
+// --- OPTIMIZED GRANULAR DASHBOARD ENDPOINTS ---
+
+export const getDashboardStats = async (req, res) => {
+  try {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const [totalToday, pendingHealth] = await Promise.all([
+      Insemination.countDocuments({
+        $or: [
+          { scheduledDate: { $gte: todayStart, $lt: todayEnd } },
+          { inseminationDate: { $gte: todayStart, $lt: todayEnd } }
+        ]
+      }),
+      HealthRequest.countDocuments({ status: "pending" })
+    ]);
+
+    let successRate = "84%";
+    const cachedStats = await Config.findOne({ key: "dashboard_success_rate" }).lean();
+    if (cachedStats?.value) successRate = cachedStats.value;
+
+    res.status(200).json({ totalToday, pendingHealth, successRate });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching stats" });
+  }
+};
+
+export const getDashboardFeed = async (req, res) => {
+  try {
+    const [inseminations, healthReqs] = await Promise.all([
+      Insemination.find({ status: { $in: ["pending", "approved", "in-progress"] } })
+        .populate("farmerId", "name address")
+        .populate("animalId", "earTag imageUrl breed species")
+        .sort({ createdAt: -1 })
+        .limit(20)
+        .lean(),
+      HealthRequest.find({ status: { $in: ["pending", "in-progress"] } })
+        .populate("farmerId", "name address")
+        .populate("animalId", "earTag imageUrl breed species")
+        .sort({ urgency: -1, createdAt: -1 })
+        .limit(20)
+        .lean()
+    ]);
+
+    const formatAddress = (addr) => {
+      if (!addr) return "Unknown";
+      if (typeof addr === 'string') return addr;
+      if (Array.isArray(addr) && addr.length > 0) addr = addr[0];
+      return `${addr.barangay || ''}, ${addr.city || ''}`.replace(/^,|,$/g, '').trim() || "Unknown";
+    };
+
+    const pendingRequests = [
+      ...inseminations.filter(i => i.status === 'pending').map(i => ({
+        id: i._id,
+        type: 'ai',
+        task: `AI Service: ${i.animalId?.breed || 'Livestock'}`,
+        farmer: i.farmerId?.name,
+        location: formatAddress(i.farmerId?.address),
+        sentTime: new Date(i.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      })),
+      ...healthReqs.filter(h => h.status === 'pending').map(h => ({
+        id: h._id,
+        type: 'health',
+        task: `Health Check: ${h.animalId?.breed || 'Livestock'}`,
+        farmer: h.farmerId?.name,
+        location: formatAddress(h.farmerId?.address),
+        sentTime: new Date(h.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }))
+    ].sort((a, b) => b.id.getTimestamp() - a.id.getTimestamp());
+
+    const agendaItems = [
+      ...inseminations.filter(i => i.status !== 'pending').map(i => ({
+        id: i._id,
+        type: 'ai',
+        task: `Insemination — ${i.animalId?.earTag}`,
+        farmer: i.farmerId?.name,
+        location: formatAddress(i.farmerId?.address),
+        time: i.scheduledDate ? new Date(i.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Today"
+      })),
+      ...healthReqs.filter(h => h.status !== 'pending').map(h => ({
+        id: h._id,
+        type: 'health',
+        task: `Medical — ${h.animalId?.earTag}`,
+        farmer: h.farmerId?.name,
+        location: formatAddress(h.farmerId?.address),
+        time: h.scheduledDate ? new Date(h.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Today"
+      }))
+    ];
+
+    res.status(200).json({ pendingRequests, agendaItems });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching feed" });
+  }
+};
+
+export const getDashboardRegistry = async (req, res) => {
+  try {
+    const animalRegistry = await Animal.aggregate([
+        { $sort: { createdAt: -1 } },
+        { $limit: 100 },
+        {
+          $lookup: {
+            from: "users",
+            localField: "farmerId",
+            foreignField: "_id",
+            as: "farmer"
+          }
+        },
+        { $unwind: { path: "$farmer", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: "inseminations",
+            let: { animalId: "$_id" },
+            pipeline: [
+              { $match: { $expr: { $eq: ["$animalId", "$$animalId"] } } },
+              { $sort: { createdAt: -1 } },
+              { $limit: 1 }
+            ],
+            as: "lastIns"
+          }
+        },
+        { $unwind: { path: "$lastIns", preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: "pregnancies",
+            let: { animalId: "$_id" },
+            pipeline: [
+              { $match: { $expr: { $eq: ["$animalId", "$$animalId"] } } },
+              { $sort: { createdAt: -1 } },
+              { $limit: 1 }
+            ],
+            as: "lastPregnancy"
+          }
+        },
+        { $unwind: { path: "$lastPregnancy", preserveNullAndEmptyArrays: true } },
+        {
+          $addFields: {
+            lastActivityDate: {
+              $max: [
+                "$createdAt",
+                { $ifNull: ["$lastIns.createdAt", new Date(0)] },
+                { $ifNull: ["$lastPregnancy.createdAt", new Date(0)] }
+              ]
+            }
+          }
+        },
+        { $sort: { lastActivityDate: -1 } },
+        { $limit: 50 }
+    ]);
+
+    // Format for frontend
+    const formatted = animalRegistry.map(animal => ({
+      rawId: animal._id,
+      id: `#${animal.earTag || animal.animalId || 'N/A'}`,
+      breed: animal.breed,
+      status: animal.lastPregnancy?.pregnancyDiagnosis?.result === "Pregnant" ? "Pregnant" : (animal.lastIns ? "Inseminated" : "Normal"),
+      lastActionDate: animal.lastActivityDate,
+      last: animal.lastIns ? `Insemination (${animal.lastIns.sireBreed})` : "Enrolled in Hub",
+      farmerName: animal.farmer?.name || "Unknown Owner",
+      farmerPhone: animal.farmer?.phoneNumber,
+      imageUrl: animal.imageUrl,
+      sClass: animal.lastPregnancy?.pregnancyDiagnosis?.result === "Pregnant" ? "text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full" : "text-gray-600",
+      dotClass: animal.lastPregnancy?.pregnancyDiagnosis?.result === "Pregnant" ? "bg-purple-600" : "bg-gray-400"
+    }));
+
+    res.status(200).json(formatted);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching registry" });
   }
 };

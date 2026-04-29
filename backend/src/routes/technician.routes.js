@@ -3,7 +3,8 @@ import {
   getMyInseminations, getMyProfile, getMyReInseminations, 
   getMyPregnancyChecks, getMyCalvings, getMyNotifications, 
   walkInInsemination, getTechnicianDashboardData, 
-  updateInseminationStatus, getAnimalHistory, registerFarmer 
+  updateInseminationStatus, getAnimalHistory, registerFarmer, recordPregnancyCheck,
+  getDashboardStats, getDashboardFeed, getDashboardRegistry
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, TechnicianOnly } from "../middleware/auth.middleware.js";
 import { getCleanupSurvey, executeCleanup } from "../controllers/maintenance.controllers.js";
@@ -18,6 +19,9 @@ router.post("/cleanup-execute", executeCleanup);
 
 // Get functions for technician
 router.get("/dashboard-data", getTechnicianDashboardData);
+router.get("/dashboard-stats", getDashboardStats);
+router.get("/dashboard-feed", getDashboardFeed);
+router.get("/dashboard-registry", getDashboardRegistry);
 router.get("/inseminations", getMyInseminations);
 router.get("/re-inseminations", getMyReInseminations);
 router.get("/pregnancy-checks", getMyPregnancyChecks);
@@ -29,5 +33,6 @@ router.post("/walk-in-insemination", walkInInsemination);
 router.patch("/inseminations/:id/status", updateInseminationStatus);
 router.get("/animal-history/:id", getAnimalHistory);
 router.post("/register-farmer", registerFarmer);
+router.post("/pregnancy-check", recordPregnancyCheck);
 
 export default router;

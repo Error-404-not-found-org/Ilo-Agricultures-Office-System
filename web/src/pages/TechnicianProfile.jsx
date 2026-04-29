@@ -3,6 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import axios from "../lib/axios";
 
+import LoadingView from "../components/LoadingView";
+
 const TechnicianProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -19,12 +21,7 @@ const TechnicianProfile = () => {
     },
   });
 
-  if (isLoading) return (
-        <div className="flex justify-center items-center flex-col min-h-[60vh] gap-4">
-            <span className="loading loading-infinity loading-lg text-[#074033] scale-150"></span>
-            <p className="text-[#074033] font-medium tracking-wide animate-pulse">Loading Member Details...</p>
-        </div>
-    );
+  if (isLoading) return <LoadingView message="Loading Member Details..." />;
 
   if (error || !technician) {
     return (

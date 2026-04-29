@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, K
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronDown, Calendar, Check, X, Camera } from 'lucide-react-native';
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
@@ -30,6 +30,7 @@ export default function FarmerAddAnimal() {
   });
 
   const [loading, setLoading] = useState(false);
+  const submitted = useRef(false); // Prevent duplicate submissions on timeout
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
 
@@ -88,7 +89,9 @@ export default function FarmerAddAnimal() {
   const handleSave = async () => {
     if (!formData.species) return toast.error("Please select a species.");
     if (!formData.breed) return toast.error("Please select a breed.");
+    if (submitted.current) return; // Block double-tap / timeout retry
     
+    submitted.current = true;
     try {
       setLoading(true);
 

@@ -43,7 +43,7 @@ export default function NotificationsScreen() {
     
     try {
       const response = await api.get('/notifications');
-      setNotifications(response.data);
+      setNotifications(Array.isArray(response.data) ? response.data : []);
     } catch (error: any) {
       if (!isBackgroundPoll) {
         console.error("Failed to fetch notifications:", error);

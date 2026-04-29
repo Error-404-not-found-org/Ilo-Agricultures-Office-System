@@ -1,5 +1,7 @@
 import express from "express";
 import path from "path";
+import { createServer } from "http";
+import { Server } from "socket.io";
 import { clerkMiddleware } from "@clerk/express";
 import { serve } from "inngest/express";
 import cors from "cors";
@@ -21,6 +23,17 @@ import notificationRoutes from "./routes/notification.routes.js";
 import configRoutes from "./routes/config.routes.js";
 
 const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: ENV.NODE_ENV === "production" ? ENV.CLIENT_URL : true,
+    credentials: true,
+  },
+});
+
+// Attach io to app to be accessible in controllers
+app.set("io", io);
+
 app.set("trust proxy", 1); // For Clerk Invalid URL when behind proxy
 
 // ─── Rate Limiting ──────────────────────────────────────────────────────────
@@ -47,10 +60,15 @@ app.use(
   }),
 );
 
+app.use((req, res, next) => {
+  console.log(`[HTTP] ${req.method} ${req.path}`);
+  next();
+});
+
 app.use("/api/inngest", serve({ client: inngest, functions }));
 
 // Strict request limiter moved to specific routes.
-app.use("/api", generalLimiter); // Apply general limiter to all /api routes
+// app.use("/api", generalLimiter); // Apply general limiter to all /api routes
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/technician", technicianRoutes);
@@ -85,9 +103,17 @@ if (ENV.NODE_ENV === "production") {
   });
 }
 
+// Socket.io connection logging
+io.on("connection", (socket) => {
+  console.log(`[Socket] User connected: ${socket.id}`);
+  socket.on("disconnect", () => {
+    console.log(`[Socket] User disconnected: ${socket.id}`);
+  });
+});
+
 const startServer = async () => {
   await connectDB();
-  app.listen(ENV.PORT, "0.0.0.0", () => {
+  httpServer.listen(ENV.PORT, "0.0.0.0", () => {
     console.log(`Server is up and running on port ${ENV.PORT}`);
   });
 };

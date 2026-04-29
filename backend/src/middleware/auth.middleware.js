@@ -6,23 +6,25 @@ export const protectedRoute = [
   requireAuth(), // Clerk auth
   async (req, res, next) => {
     try {
-      const clerkId = req.auth.userId;
+      console.log(`[AUTH-TRACE] Request received for: ${req.path}`);
+      
+      const { userId: clerkId } = req.auth();
       if (!clerkId) {
-        return res
-          .status(401)
-          .json({ message: "Unauthorized - invalid token" });
+        console.log("[AUTH-TRACE] Clerk verify failed - No UserId");
+        return res.status(401).json({ message: "Unauthorized - invalid token" });
       }
 
-      const user = await User.findOne({ clerkId });
+      const user = await User.findOne({ clerkId }).maxTimeMS(3000);
       if (!user) {
+        console.log(`[AUTH-TRACE] User not found in MongoDB for ClerkID: ${clerkId}`);
         return res.status(401).json({ message: "User not found" });
       }
 
-      // Attach user to request
+      console.log(`[AUTH-TRACE] Success! User ${user.name} identified.`);
       req.user = user;
       next();
     } catch (error) {
-      console.error("Error in protectedRoute middleware:", error);
+      console.error("[AUTH-TRACE ERROR]", error);
       res.status(500).json({ message: "Internal server error" });
     }
   },
