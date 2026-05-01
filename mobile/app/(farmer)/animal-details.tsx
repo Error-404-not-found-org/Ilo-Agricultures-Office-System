@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, ScrollView, StatusBar, ActivityIndicator, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { ArrowLeft, User, MapPin, Activity, History, Info as InfoIcon, Calendar, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, User, MapPin, Activity, History, Info as InfoIcon, Calendar, Trash2, Syringe, Stethoscope, ClipboardList, Scale } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useState, useCallback } from 'react';
 import { useApi } from '@/lib/api';
@@ -14,6 +14,7 @@ export default function AnimalDetails() {
   const [activeTab, setActiveTab] = useState<'Info' | 'History'>('Info');
   
   const [animal, setAnimal] = useState<any>(null);
+  const [medicalRecords, setMedicalRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
 
@@ -23,8 +24,12 @@ export default function AnimalDetails() {
     
     const fetchAnimal = async () => {
       try {
-        const res = await api.get(`/animals/${id}`);
-        setAnimal(res.data);
+        const [animalRes, medicalRes] = await Promise.all([
+          api.get(`/animals/${id}`),
+          api.get(`/medical/${id}`)
+        ]);
+        setAnimal(animalRes.data);
+        setMedicalRecords(medicalRes.data);
       } catch (error: any) {
         console.error("Failed to fetch animal details", error);
         toast.error(error.response?.data?.message || "Could not load animal details.");
@@ -111,7 +116,8 @@ export default function AnimalDetails() {
   // Combine and sort medical history
   const combinedHistory = [
       ...(animal.inseminations || []).map((i: any) => ({ ...i, type: 'insemination', recordDate: i.dateOfAI || i.createdAt })),
-      ...(animal.calvings || []).map((c: any) => ({ ...c, type: 'calving', recordDate: c.date || c.createdAt }))
+      ...(animal.calvings || []).map((c: any) => ({ ...c, type: 'calving', recordDate: c.date || c.createdAt })),
+      ...medicalRecords.map((m: any) => ({ ...m, recordDate: m.date }))
   ].sort((a, b) => new Date(b.recordDate).getTime() - new Date(a.recordDate).getTime());
 
   return (
@@ -186,6 +192,81 @@ export default function AnimalDetails() {
             {activeTab === 'Info' ? (
                 <View className="gap-y-6">
                     
+                    {/* Reproductive Status Section (For Females) */}
+                    {animal.gender === "Female" && (
+                        <View className="bg-white p-5 rounded-3xl border border-slate-100 mb-2" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
+                            <View className="flex-row items-center mb-5 gap-2">
+                                <MaterialCommunityIcons name="heart-pulse" size={20} color="#00643B" />
+                                <Text className="text-lg font-bold text-slate-800">Reproductive Health</Text>
+                            </View>
+                            
+                            <View className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100">
+                                <Text className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1">Current Status</Text>
+                                <View className="flex-row items-center gap-2">
+                                    <View className={`w-3 h-3 rounded-full ${
+                                        animal.reproductiveStatus === 'Pregnant' ? 'bg-emerald-500' :
+                                        animal.reproductiveStatus === 'Inseminated' ? 'bg-blue-500' :
+                                        animal.reproductiveStatus === 'In Heat' ? 'bg-orange-500' : 'bg-slate-300'
+                                    }`} />
+                                    <Text className="text-xl font-black text-slate-900">{animal.reproductiveStatus || 'Normal'}</Text>
+                                </View>
+                            </View>
+
+                            {/* Actionable Alerts based on Status */}
+                            {animal.reproductiveStatus === "Inseminated" && (
+                                <View className="space-y-3">
+                                    <View className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                                        <Text className="text-blue-800 font-bold text-sm leading-5">
+                                            It's been {Math.floor((Date.now() - new Date(animal.inseminations?.[0]?.dateOfAI || animal.updatedAt).getTime()) / (1000 * 60 * 60 * 24))} days since insemination.
+                                        </Text>
+                                        <Text className="text-blue-600 text-[12px] mt-1 font-medium italic">Is the animal showing signs of heat again?</Text>
+                                    </View>
+                                    
+                                    <View className="flex-row gap-3">
+                                        <TouchableOpacity 
+                                            onPress={async () => {
+                                                try {
+                                                    await api.patch(`/animals/${id}/reproductive-status`, { status: "In Heat", note: "Farmer observed heat signs (Recycle)." });
+                                                    toast.success("Status Updated. You can now request re-insemination.");
+                                                    setAnimal({...animal, reproductiveStatus: "In Heat"});
+                                                } catch (e) {
+                                                    toast.error("Update failed.");
+                                                }
+                                            }}
+                                            className="flex-1 bg-white border-2 border-orange-200 py-3 rounded-2xl items-center"
+                                        >
+                                            <Text className="text-orange-600 font-black text-xs uppercase">Yes - In Heat</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity 
+                                            onPress={async () => {
+                                                try {
+                                                    await api.patch(`/animals/${id}/reproductive-status`, { status: "Likely Pregnant", note: "No heat signs observed. Likely successful." });
+                                                    toast.success("Awesome! Technician will schedule a confirmation check.");
+                                                    setAnimal({...animal, reproductiveStatus: "Likely Pregnant"});
+                                                } catch (e) {
+                                                    toast.error("Update failed.");
+                                                }
+                                            }}
+                                            className="flex-1 bg-emerald-600 py-3 rounded-2xl items-center shadow-md shadow-emerald-200"
+                                        >
+                                            <Text className="text-white font-black text-xs uppercase">Likely Pregnant</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            )}
+
+                            {animal.reproductiveStatus === "In Heat" && (
+                                <TouchableOpacity 
+                                    onPress={() => router.push({ pathname: '/(farmer)/request-ai' as any, params: { animalId: id, earTag: animal.earTag } })}
+                                    className="w-full bg-[#00643B] py-4 rounded-2xl flex-row items-center justify-center gap-2 shadow-lg shadow-emerald-200"
+                                >
+                                    <MaterialCommunityIcons name="needle" size={20} color="white" />
+                                    <Text className="text-white font-black text-sm uppercase tracking-widest">Request Re-Insemination</Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    )}
+
                     {/* Basic Info Section */}
                     <View className="bg-white p-5 rounded-3xl border border-slate-100" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
                         <View className="flex-row items-center mb-5 gap-2">
@@ -195,6 +276,8 @@ export default function AnimalDetails() {
                         
                         <View className="gap-y-4">
                             <InfoRow label="System ID" value={animal.animalId || 'Missing'} />
+                            <Divider />
+                            <InfoRow label="Gender" value={animal.gender || 'Female'} />
                             <Divider />
                             <InfoRow label="Current Age" value={ageDisplay} />
                             <Divider />
@@ -251,24 +334,35 @@ export default function AnimalDetails() {
                             {combinedHistory.map((record: any, idx: number) => (
                                 <View key={idx} className="bg-white p-5 rounded-[24px] mb-4 border border-slate-100 flex-row" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 }}>
                                     
-                                    <View className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${record.type === 'insemination' ? 'bg-blue-50' : 'bg-orange-50'}`}>
-                                       {record.type === 'insemination' 
-                                            ? <MaterialCommunityIcons name="needle" size={24} color="#3B82F6" />
-                                            : <MaterialCommunityIcons name="baby-carriage" size={24} color="#F97316" />
-                                       }
+                                    <View className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${
+                                        record.type === 'insemination' ? 'bg-blue-50' : 
+                                        record.type === 'calving' ? 'bg-orange-50' : 
+                                        record.type === 'Vaccination' ? 'bg-emerald-50' :
+                                        record.type === 'Weight Log' ? 'bg-indigo-50' : 'bg-slate-50'
+                                    }`}>
+                                       {record.type === 'insemination' && <MaterialCommunityIcons name="needle" size={24} color="#3B82F6" />}
+                                       {record.type === 'calving' && <MaterialCommunityIcons name="baby-carriage" size={24} color="#F97316" />}
+                                       {record.type === 'Vaccination' && <Syringe size={22} color="#10B981" />}
+                                       {record.type === 'Deworming' && <MaterialCommunityIcons name="pill" size={22} color="#3B82F6" />}
+                                       {record.type === 'Treatment' && <Stethoscope size={22} color="#F59E0B" />}
+                                       {record.type === 'Weight Log' && <Scale size={22} color="#6366F1" />}
+                                       {record.type === 'Check-up' && <ClipboardList size={22} color="#64748B" />}
                                     </View>
 
                                     <View className="flex-1">
                                         <View className="flex-row justify-between items-start mb-1">
                                             <Text className="font-bold text-[16px] text-slate-800">
-                                                {record.type === 'insemination' ? `A.I. Attempt #${record.attemptNumber || 1}` : 'Calving Event'}
+                                                {record.type === 'insemination' ? `A.I. Attempt #${record.attemptNumber || 1}` : 
+                                                 record.type === 'calving' ? 'Calving Event' : record.type}
                                             </Text>
-                                            <Text className={`text-[12px] font-bold capitalize ${
-                                                record.result === 'Positive' ? 'text-emerald-600' : 
-                                                record.result === 'Negative' ? 'text-red-500' : 'text-slate-400'
-                                            }`}>
-                                                {record.result || 'Pending'}
-                                            </Text>
+                                            {record.type === 'insemination' && (
+                                                <Text className={`text-[12px] font-bold capitalize ${
+                                                    record.result === 'Positive' ? 'text-emerald-600' : 
+                                                    record.result === 'Negative' ? 'text-red-500' : 'text-slate-400'
+                                                }`}>
+                                                    {record.result || 'Pending'}
+                                                </Text>
+                                            )}
                                         </View>
                                         
                                         <View className="flex-row items-center gap-1 mb-2">
@@ -278,11 +372,17 @@ export default function AnimalDetails() {
                                             </Text>
                                         </View>
 
-                                        {record.type === 'insemination' && record.sireCode && (
-                                            <Text className="text-slate-600 text-sm mt-1">Semen Straw: <Text className="font-semibold text-slate-800">{record.sireCode}</Text></Text>
+                                        {record.details?.medicineName && (
+                                            <Text className="text-slate-600 text-sm mt-1">Medicine: <Text className="font-semibold text-slate-800">{record.details.medicineName}</Text></Text>
                                         )}
-                                        {record.type === 'calving' && record.notes && (
-                                            <Text className="text-slate-600 text-sm mt-1">Notes: <Text className="font-semibold text-slate-800">{record.notes}</Text></Text>
+                                        {record.details?.weight && (
+                                            <Text className="text-indigo-600 text-sm mt-1">Weight: <Text className="font-black">{record.details.weight} kg</Text></Text>
+                                        )}
+                                        {record.note && (
+                                            <Text className="text-slate-400 text-[12px] mt-1 italic leading-4">"{record.note}"</Text>
+                                        )}
+                                        {record.technicianId?.name && (
+                                            <Text className="text-slate-400 text-[10px] mt-2 font-bold uppercase tracking-tighter">Recorded by {record.technicianId.name}</Text>
                                         )}
                                     </View>
                                 </View>

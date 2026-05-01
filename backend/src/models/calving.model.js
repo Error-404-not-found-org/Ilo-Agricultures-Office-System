@@ -21,18 +21,26 @@ const CalvingSchema = new mongoose.Schema(
       unique: true,
     },
 
-    date: Date,
-    numberOfCalves: Number,
-
-    calfSex: {
-      type: String,
-      enum: ["M", "F"],
+    date: {
+      type: Date,
+      default: Date.now,
     },
-
+    numberOfCalves: {
+      type: Number,
+      default: 1,
+    },
+    calves: [{
+      sex: { type: String, enum: ["M", "F"] },
+      earTag: String,
+      weight: Number,
+      animalId: { type: mongoose.Schema.Types.ObjectId, ref: "Animal" }
+    }],
     calvingEase: {
       type: String,
       enum: ["Normal", "Difficult", "Abortion", "Stillbirth"],
+      default: "Normal"
     },
+    technicianNote: String,
   },
   { timestamps: true },
 );

@@ -3,6 +3,8 @@ import { Insemination } from "../models/insemination.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { Animal } from "../models/animal.model.js";
+import { Inventory } from "../models/inventory.model.js";
+import { HealthRequest } from "../models/health-request.model.js";
 
 // Create User function removed - use user.controllers.js/createInvitedUser instead
 
@@ -34,10 +36,32 @@ export const getDashboardStats = async (req, res) => {
             animals: totalAnimals,
             inseminations: totalInseminations,
             pregnancies: totalPregnancies,
-            calvings: totalCalvings
+            calvings: totalCalvings,
+            successRate: "84%" // Placeholder until Inngest syncs it
         });
     } catch (error) {
          res.status(500).send({ message: "Error fetching stats", error: error.message });
+    }
+};
+
+// Advanced Analytics for Admin Dashboard
+export const getAdminAnalytics = async (req, res) => {
+    try {
+        const [inventory, technicianStats] = await Promise.all([
+            Inventory.find().lean(),
+            Insemination.aggregate([
+                { $match: { status: 'done' } },
+                { $group: { _id: '$technicianId', count: { $sum: 1 } } },
+                { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'techInfo' } },
+                { $unwind: '$techInfo' },
+                { $project: { name: '$techInfo.name', count: 1 } },
+                { $sort: { count: -1 } }
+            ])
+        ]);
+
+        res.status(200).json({ inventory, technicianStats });
+    } catch (error) {
+        res.status(500).json({ message: "Error fetching analytics", error: error.message });
     }
 };
 

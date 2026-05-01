@@ -565,6 +565,11 @@ export const recordPregnancyCheck = async (req, res) => {
       targetCalvingDate: result === "Pregnant" ? new Date(Date.now() + 280 * 24 * 60 * 60 * 1000) : undefined,
     });
 
+    // Update Animal Reproductive Status
+    await Animal.findByIdAndUpdate(animalId, { 
+      reproductiveStatus: result === "Pregnant" ? "Pregnant" : "Normal" 
+    });
+
     // Notify Farmer
     await Notification.create({
       recipientId: animal.farmerId,
@@ -591,6 +596,97 @@ export const recordPregnancyCheck = async (req, res) => {
   } catch (error) {
     console.error("[recordPregnancyCheck ERROR]", error);
     res.status(500).json({ message: "Failed to record pregnancy check", error: error.message });
+  }
+};
+
+export const recordCalving = async (req, res) => {
+  try {
+    const { pregnancyId, animalId, date, calvingEase, numberOfCalves, calves, technicianNote } = req.body;
+
+    // 1. Validate Mother & Pregnancy
+    const mother = await Animal.findById(animalId);
+    if (!mother) return res.status(404).json({ message: "Mother animal not found" });
+
+    const pregnancy = await Pregnancy.findById(pregnancyId);
+    if (!pregnancy) return res.status(404).json({ message: "Pregnancy record not found" });
+
+    // 2. Register Each Calf as a New Animal
+    const registeredCalves = [];
+    const calfRecordsForBirth = [];
+
+    for (let i = 0; i < calves.length; i++) {
+      const calfData = calves[i];
+      
+      const newCalf = await Animal.create({
+        earTag: calfData.earTag || `CALF-${Date.now()}-${i}`,
+        species: mother.species,
+        breed: mother.breed, // Default to mother's breed
+        farmerId: mother.farmerId,
+        motherId: mother._id,
+        isVerified: true,
+        gender: calfData.sex === "M" ? "Male" : "Female"
+      });
+
+      registeredCalves.push(newCalf);
+      calfRecordsForBirth.push({
+        sex: calfData.sex,
+        earTag: newCalf.earTag,
+        weight: calfData.weight,
+        animalId: newCalf._id
+      });
+    }
+
+    // 3. Create Calving Record
+    const calving = await Calving.create({
+      animalId,
+      farmerId: mother.farmerId,
+      pregnancyId,
+      date: date || new Date(),
+      numberOfCalves: numberOfCalves || registeredCalves.length,
+      calves: calfRecordsForBirth,
+      calvingEase,
+      technicianNote
+    });
+
+    // 4. Update Mother's Status
+    // After calving, the mother is no longer pregnant.
+    // We update her Reproductive Status (if you have such a field, otherwise we just log it)
+    await Animal.findByIdAndUpdate(animalId, { 
+       reproductiveStatus: "Normal",
+       $push: { activityLogs: { event: "Calving", date: new Date(), description: `Gave birth to ${numberOfCalves} calves.` } }
+    });
+
+    // 5. Notify Farmer
+    await Notification.create({
+      recipientId: mother.farmerId,
+      senderId: req.user._id,
+      type: "system",
+      title: "New Calving Recorded",
+      message: `Congratulations! ${mother.earTag} has successfully calved (${numberOfCalves} offspring). New animals have been added to your registry.`,
+    });
+
+    // --- TRIGGER INNGEST AUTOMATION ---
+    await inngest.send({
+      name: "livestock/calving-recorded",
+      data: {
+        animalId,
+        farmerId: mother.farmerId,
+        numberOfCalves
+      }
+    });
+
+    // 6. Trigger Socket Update
+    req.app.get("io").emit("dashboardUpdate", { type: "CALVING_RECORDED", motherId: animalId });
+
+    res.status(201).json({ 
+      message: "Calving and offspring registered successfully", 
+      calving,
+      offspring: registeredCalves 
+    });
+
+  } catch (error) {
+    console.error("[recordCalving ERROR]", error);
+    res.status(500).json({ message: "Failed to record calving", error: error.message });
   }
 };
 
@@ -651,17 +747,23 @@ export const getDashboardFeed = async (req, res) => {
       ...inseminations.filter(i => i.status === 'pending').map(i => ({
         id: i._id,
         type: 'ai',
+        status: 'pending',
         task: `AI Service: ${i.animalId?.breed || 'Livestock'}`,
         farmer: i.farmerId?.name,
         location: formatAddress(i.farmerId?.address),
+        preferredDate: i.preferredDate || i.createdAt,
+        scheduledDate: i.scheduledDate,
         sentTime: new Date(i.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       })),
       ...healthReqs.filter(h => h.status === 'pending').map(h => ({
         id: h._id,
         type: 'health',
+        status: 'pending',
         task: `Health Check: ${h.animalId?.breed || 'Livestock'}`,
         farmer: h.farmerId?.name,
         location: formatAddress(h.farmerId?.address),
+        preferredDate: h.preferredDate || h.createdAt,
+        scheduledDate: h.scheduledDate,
         sentTime: new Date(h.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       }))
     ].sort((a, b) => b.id.getTimestamp() - a.id.getTimestamp());
@@ -670,17 +772,23 @@ export const getDashboardFeed = async (req, res) => {
       ...inseminations.filter(i => i.status !== 'pending').map(i => ({
         id: i._id,
         type: 'ai',
+        status: i.status,
         task: `Insemination — ${i.animalId?.earTag}`,
         farmer: i.farmerId?.name,
         location: formatAddress(i.farmerId?.address),
+        scheduledDate: i.scheduledDate,
+        preferredDate: i.preferredDate,
         time: i.scheduledDate ? new Date(i.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Today"
       })),
       ...healthReqs.filter(h => h.status !== 'pending').map(h => ({
         id: h._id,
         type: 'health',
+        status: h.status,
         task: `Medical — ${h.animalId?.earTag}`,
         farmer: h.farmerId?.name,
         location: formatAddress(h.farmerId?.address),
+        scheduledDate: h.scheduledDate,
+        preferredDate: h.preferredDate,
         time: h.scheduledDate ? new Date(h.scheduledDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Today"
       }))
     ];

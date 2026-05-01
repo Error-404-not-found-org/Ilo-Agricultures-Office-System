@@ -3,17 +3,16 @@ import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { Pregnancy } from "../models/pregnancy.model.js";
 
 export const registerAnimal = async (req, res) => {
   try {
     let { farmerId, animalId, earTag, brand, species, breed, color, imageUrl, birthDate } = req.body;
 
-    // If no farmerId is provided, but a farmer is making the request, use their own ID.
     if (!farmerId && req.user?.role === "farmer") {
         farmerId = req.user._id.toString();
     }
 
-    // Validate required fields early with a clear message
     if (!farmerId) return res.status(400).json({ message: "A farmer must be assigned to this animal." });
     if (!species) return res.status(400).json({ message: "Species is required." });
     if (!breed) return res.status(400).json({ message: "Breed is required." });
@@ -21,20 +20,15 @@ export const registerAnimal = async (req, res) => {
     const farmer = await User.findById(farmerId);
     if (!farmer) return res.status(404).json({ message: "Farmer not found." });
 
-    // Auto-generate a species-based animalId if not provided
-    // Format: {SPECIES_PREFIX}-{FARMER_INITIALS}-{COUNT_PER_SPECIES}
-    // e.g. BEF-JD-001 (1st Beef of Juan Dela Cruz), CBU-MB-002 (2nd Carabao of Maria Buenaventura)
     if (!animalId || animalId.trim() === "") {
       const SPECIES_PREFIX = { Beef: "BEF", Dairy: "DAI", Carabao: "CBU", Goat: "GOT", Swine: "SWN" };
       const prefix = SPECIES_PREFIX[species] || "ANM";
 
-      // Build farmer initials from name words (e.g. "Juan Dela Cruz" → "JDC")
       const initials = (farmer.name || "F")
         .split(" ")
         .map((w) => w[0]?.toUpperCase() || "")
         .join("");
 
-      // Count how many animals of the same species this farmer already has
       const count = await Animal.countDocuments({ farmerId, species });
       animalId = `${prefix}-${initials}-${String(count + 1).padStart(3, "0")}`;
     }
@@ -65,7 +59,6 @@ export const getAllAnimals = async (req, res) => {
 
     let query = {};
     if (search) {
-      // Find farmers matching search string
       const matchedFarmers = await User.find({ 
           name: { $regex: search, $options: "i" },
           role: "farmer" 
@@ -92,7 +85,8 @@ export const getAllAnimals = async (req, res) => {
         .populate("farmerId", "name")
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limitNum);
+        .limit(limitNum)
+        .lean();
 
       const total = await Animal.countDocuments(query);
 
@@ -103,8 +97,11 @@ export const getAllAnimals = async (req, res) => {
         pages: Math.ceil(total / limitNum)
       });
     } else {
-      // Standard Flat Array Return for Backwards Compatibility
-      const animals = await Animal.find(query).populate("farmerId", "name").sort({ createdAt: -1 });
+      const animals = await Animal.find(query)
+        .populate("farmerId", "name")
+        .sort({ createdAt: -1 })
+        .limit(100) 
+        .lean();
       res.status(200).json(animals);
     }
   } catch (error) {
@@ -143,17 +140,26 @@ export const getAnimalById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [animal, inseminations, calvings] = await Promise.all([
+    const [animal, inseminationsList, calvings, pregnancies] = await Promise.all([
       Animal.findById(id).populate("farmerId", "-password"),
       Insemination.find({ animalId: id })
         .populate("approvedBy", "name email imageUrl")
         .sort({ attemptNumber: -1 }),
       Calving.find({ animalId: id }).populate("pregnancyId").sort({ date: -1 }),
+      Pregnancy.find({ animalId: id })
     ]);
 
     if (!animal) {
       return res.status(404).json({ message: "Animal not found" });
     }
+
+    const inseminations = inseminationsList.map(ins => {
+      const preg = pregnancies.find(p => p.inseminationId.toString() === ins._id.toString());
+      return {
+        ...ins.toObject(),
+        pregnancy: preg || null
+      };
+    });
 
     res.status(200).json({
       ...animal.toObject(),
@@ -272,5 +278,64 @@ export const deleteAnimal = async (req, res) => {
   } catch (error) {
     console.error("Delete Animal Error:", error);
     res.status(500).json({ message: "Failed to delete animal" });
+  }
+};
+
+export const updateReproductiveStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, note } = req.body;
+    
+    const animal = await Animal.findById(id);
+    if (!animal) return res.status(404).json({ message: "Animal not found" });
+
+    if (animal.farmerId.toString() !== req.user._id.toString() && req.user.role !== "technician") {
+      return res.status(403).json({ message: "Unauthorized to update this animal's status" });
+    }
+
+    animal.reproductiveStatus = status;
+    
+    animal.activityLogs = animal.activityLogs || [];
+    animal.activityLogs.push({
+        event: "Reproductive Status Update",
+        date: new Date(),
+        description: `Farmer updated status to: ${status}. Note: ${note || "None"}`
+    });
+
+    await animal.save();
+
+    res.status(200).json({ message: "Animal status updated successfully", animal });
+  } catch (error) {
+    console.error("Update Reproductive Status Error:", error);
+    res.status(500).json({ message: "Failed to update animal status" });
+  }
+};
+
+export const requestReInsemination = async (req, res) => {
+  try {
+    const { animalId, preferredDate, comment } = req.body;
+    
+    const animal = await Animal.findById(animalId);
+    if (!animal) return res.status(404).json({ message: "Animal not found" });
+
+    const lastInsem = await Insemination.findOne({ animalId }).sort({ attemptNumber: -1 });
+    const nextAttempt = (lastInsem?.attemptNumber || 0) + 1;
+
+    const newRequest = await Insemination.create({
+      farmerId: req.user._id,
+      animalId,
+      status: "pending",
+      attemptNumber: nextAttempt,
+      preferredDate: preferredDate || new Date(),
+      technicianNote: comment || `Re-insemination request (Attempt #${nextAttempt})`
+    });
+
+    animal.reproductiveStatus = "In Heat";
+    await animal.save();
+
+    res.status(201).json({ message: "Re-insemination request sent to technician", request: newRequest });
+  } catch (error) {
+    console.error("Re-Insemination Request Error:", error);
+    res.status(500).json({ message: "Failed to send re-insemination request" });
   }
 };

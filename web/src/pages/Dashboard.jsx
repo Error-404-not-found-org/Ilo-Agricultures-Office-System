@@ -3,200 +3,177 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from '../lib/axios';
 import AssignTaskModal from '../components/modals/AssignTaskModal';
 import { useSocket } from '../contexts/SocketContext';
-import { useToast } from '../contexts/ToastContext';
-
+import { toast } from 'sonner';
 import LoadingView from "../components/LoadingView";
+import { 
+    Users, 
+    ClipboardCheck, 
+    Activity, 
+    ArrowUpRight, 
+    Filter, 
+    MoreHorizontal,
+    TrendingUp,
+    ShieldAlert,
+    Calendar,
+    ChevronRight,
+    Search,
+    MapPin
+} from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const Dashboard = () => {
     const socket = useSocket();
     const queryClient = useQueryClient();
-    const toast = useToast();
 
     useEffect(() => {
         if (!socket) return;
-
         socket.on("dashboardUpdate", (payload) => {
-            console.log("[Socket] Admin Dashboard Refresh Triggered:", payload);
-            queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-            queryClient.invalidateQueries({ queryKey: ['pendingRequests'] });
+            queryClient.invalidateQueries({ queryKey: ['adminDashboard'] });
         });
-
-        return () => {
-            socket.off("dashboardUpdate");
-        };
+        return () => socket.off("dashboardUpdate");
     }, [socket, queryClient]);
 
-    const { data: stats, isLoading, error } = useQuery({
-        queryKey: ['dashboardStats'],
+    const { data, isLoading } = useQuery({
+        queryKey: ['adminDashboard'],
         queryFn: async () => {
-            try {
-                const response = await axios.get('/admin/stats');
-                return response.data;
-            } catch (err) {
-                if (err.response?.status === 401) {
-                    // Try to sync user if 401 (User not found)
-                    console.log("User not found, attempting sync...");
-                    try {
-                        await axios.post('/user/sync-manual');
-                    } catch (syncErr) {
-                         console.error("Sync failed:", syncErr);
-                         toast.error(`Sync Failed: ${syncErr.response?.status}`);
-                         throw syncErr; // Stop retry if sync fails
-                    }
-                    // Retry stats fetch
-                    const response = await axios.get('/admin/stats');
-                    return response.data;
-                }
-                throw err;
-            }
-        }
-    });
-
-    const { data: pendingRequests = [], refetch: refetchRequests } = useQuery({
-        queryKey: ['pendingRequests'],
-        queryFn: async () => {
-            const res = await axios.get('/health-request?status=pending');
-            return res.data;
+            const [statsRes, pendingRes, registryRes, analyticsRes] = await Promise.all([
+                axios.get('/admin/stats'),
+                axios.get('/health-request?status=pending'),
+                axios.get('/technician/dashboard-registry'),
+                axios.get('/admin/analytics')
+            ]);
+            return {
+                stats: statsRes.data,
+                pendingRequests: pendingRes.data,
+                registry: registryRes.data,
+                analytics: analyticsRes.data
+            };
         }
     });
 
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedRequest, setSelectedRequest] = useState(null);
 
+    if (isLoading) return <LoadingView message="Loading Command Center..." />;
+
     const statsList = [
-        { title: "Total Users", value: stats?.totalUsers || 0, desc: "System Users", color: "text-primary", bg: "bg-primary/10", icon: "👥" },
-        { title: "Animals", value: stats?.animals || 0, desc: "Recorded Livestock", color: "text-secondary", bg: "bg-secondary/10", icon: "🐄" },
-        { title: "Inseminations", value: stats?.inseminations || 0, desc: "Total Procedures", color: "text-accent", bg: "bg-accent/10", icon: "🧬" },
-        { title: "Pregnancies", value: stats?.pregnancies || 0, desc: "Active Cases", color: "text-info", bg: "bg-info/10", icon: "🤰" },
+        { title: "Total Users", value: data?.stats?.totalUsers || 0, change: "+12%", desc: "Active in Platform", color: "text-emerald-600", bg: "bg-emerald-500/10", icon: <Users size={20} /> },
+        { title: "Livestock Registry", value: data?.stats?.animals || 0, change: "+5.4%", desc: "Tracked Head", color: "text-blue-600", bg: "bg-blue-500/10", icon: <Activity size={20} /> },
+        { title: "AI Success Rate", value: data?.stats?.successRate || "84%", change: "+2.1%", desc: "Pregnancy Ratio", color: "text-rose-600", bg: "bg-rose-500/10", icon: <TrendingUp size={20} /> },
+        { title: "Pending Tasks", value: data?.pendingRequests?.length || 0, change: "-4%", desc: "Requires Attention", color: "text-amber-600", bg: "bg-amber-500/10", icon: <ShieldAlert size={20} /> },
     ];
 
-    if (isLoading) return <LoadingView message="Synchronizing Data..." />;
-    
-    if (error) return (
-        <div className="alert alert-error shadow-lg">
-            <span>Error loading stats: {error.message}</span>
-        </div>
-    );
-
     return (
-        <div className="animate-fade-in">
-            <h1 className="text-3xl font-extrabold text-base-content/70 mb-2 lg:hidden">Dashboard</h1>
-            <p className="text-lg text-base-content/60 mb-8">Welcome back! Here's an overview of your farm data.</p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {statsList.map((stat, index) => (
-                    <div key={index} className={`card bg-base-100 shadow-xl border-b-4 ${stat.color.replace('text-', 'border-')} hover:scale-105 transition-transform duration-300`}>
-                        <div className="card-body">
-                            <div className="flex justify-between items-start">
-                                <div>
-                                    <h2 className="card-title text-base-content/60 text-lg">{stat.title}</h2>
-                                    <p className={`text-4xl font-black ${stat.color} mt-2`}>{stat.value}</p>
-                                    <p className="text-sm text-base-content/40 mt-1">{stat.desc}</p>
-                                </div>
-                                <div className={`p-3 rounded-full ${stat.bg} text-2xl`}>
-                                    {stat.icon}
-                                </div>
-                            </div>
-                        </div>
+        <div className="animate-fade-in pb-12">
+            {/* Header Banner */}
+            <div className="relative bg-[#074033] rounded-[32px] p-8 md:p-12 overflow-hidden mb-10">
+                <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                    <div>
+                        <h1 className="text-white text-4xl md:text-5xl font-black tracking-tight mb-3">Admin Hub</h1>
+                        <p className="text-emerald-100/70 text-lg font-medium max-w-md leading-relaxed">
+                            Overseeing the regional livestock productivity and technician fleet operations.
+                        </p>
                     </div>
-                ))}
-            </div>
-            
-            {/* Technician Tables Grid */}
-            <div className="mt-8 grid grid-cols-1 xl:grid-cols-2 gap-8">
-                {/* Client Management Table */}
-                <div className="card bg-base-100 shadow-xl col-span-1 xl:col-span-2">
-                    <div className="card-body overflow-x-auto p-6 md:p-8">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                            <h2 className="card-title text-2xl font-bold text-base-content/80">Client Management Table</h2>
-                            <select className="select select-bordered select-sm w-full sm:w-auto bg-base-200/50">
-                                <option>All Clients</option>
-                                <option>Active Requests</option>
-                                <option>Recent Visits</option>
-                            </select>
-                        </div>
-                        <table className="table table-zebra w-full">
-                            <thead className="bg-[#074033] text-white">
-                                <tr>
-                                    <th className="rounded-tl-lg">Farmer Name</th>
-                                    <th>Barangay/Location</th>
-                                    <th>Total Animals</th>
-                                    <th>Reliability Rating</th>
-                                    <th className="rounded-tr-lg">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {[
-                                    { name: "Alex Rivera", location: "Barangay Lokaan", animals: 28, rating: 5, bg: "bg-blue-100 text-blue-700" },
-                                    { name: "Manina Furrana", location: "Iloilo, Barangay", animals: 10, rating: 4, bg: "bg-purple-100 text-purple-700" },
-                                    { name: "Sampa Rewan", location: "Iloilo, Polana", animals: 26, rating: 5, bg: "bg-orange-100 text-orange-700" },
-                                    { name: "Latto Srieeno", location: "Barangay Jiwn", animals: 42, rating: 3, bg: "bg-emerald-100 text-emerald-700" },
-                                ].map((client, i) => (
-                                    <tr key={i} className="hover">
-                                        <td className="font-semibold flex items-center gap-4">
-                                            <div className="avatar placeholder">
-                                              <div className={`${client.bg} w-10 h-10 rounded-full font-bold text-sm`}>
-                                                <span>{client.name.charAt(0)}</span>
-                                              </div>
-                                            </div>
-                                            {client.name}
-                                        </td>
-                                        <td className="text-base-content/70">{client.location}</td>
-                                        <td className="font-medium">{client.animals} Head</td>
-                                        <td className="text-secondary text-lg">
-                                            {"★".repeat(client.rating)}{"☆".repeat(5-client.rating)}
-                                        </td>
-                                        <td>
-                                            <button className="btn btn-sm btn-outline btn-primary rounded-full px-5 shadow-sm">View Herd</button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="flex gap-3">
+                        <button className="bg-white/10 hover:bg-white/20 text-white px-5 py-3 rounded-2xl font-bold text-sm transition-all flex items-center gap-2 backdrop-blur-md">
+                            <Calendar size={18} />
+                            Generate Report
+                        </button>
+                        <button className="bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-xl shadow-emerald-500/20 flex items-center gap-2">
+                            <ArrowUpRight size={18} />
+                            System Audit
+                        </button>
                     </div>
                 </div>
+                {/* Decorative Elements */}
+                <div className="absolute top-[-20%] right-[-10%] w-[400px] h-[400px] bg-emerald-500/20 rounded-full blur-[120px]" />
+                <div className="absolute bottom-[-20%] left-[-10%] w-[300px] h-[300px] bg-emerald-400/10 rounded-full blur-[100px]" />
+            </div>
 
-                {/* Pending Health Requests Ledger */}
-                <div className="card bg-base-100 shadow-xl col-span-1 xl:col-span-2">
-                    <div className="card-body overflow-x-auto p-6 md:p-8">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-                            <h2 className="card-title text-2xl font-bold text-base-content/80">Pending Health Requests</h2>
-                            <button className="btn btn-sm btn-ghost text-primary">View Full Ledger →</button>
+            {/* High-Density Stats Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                {statsList.map((stat, i) => (
+                    <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * 0.1 }}
+                        key={i} 
+                        className="bg-white p-6 rounded-[28px] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all group"
+                    >
+                        <div className="flex justify-between items-start mb-4">
+                            <div className={`${stat.bg} ${stat.color} p-3 rounded-2xl transition-transform group-hover:scale-110`}>
+                                {stat.icon}
+                            </div>
+                            <div className="flex items-center gap-1 text-emerald-600 font-bold text-xs bg-emerald-50 px-2 py-1 rounded-lg">
+                                <TrendingUp size={12} />
+                                {stat.change}
+                            </div>
                         </div>
-                        <table className="table table-zebra w-full">
-                            <thead className="bg-[#074033] text-white">
+                        <h3 className="text-slate-400 font-black text-[11px] uppercase tracking-widest mb-1">{stat.title}</h3>
+                        <p className="text-3xl font-black text-slate-900 tracking-tighter">{stat.value}</p>
+                        <p className="text-[11px] text-slate-400 font-bold mt-1">{stat.desc}</p>
+                    </motion.div>
+                ))}
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                {/* Pending Health Requests Ledger */}
+                <div className="xl:col-span-2 bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="p-8 border-b border-slate-50 flex justify-between items-center">
+                        <div>
+                            <h2 className="text-xl font-black text-slate-900 tracking-tight">Priority Health Alerts</h2>
+                            <p className="text-slate-400 font-bold text-[11px] uppercase tracking-widest mt-1">Pending Technician Assignment</p>
+                        </div>
+                        <button className="text-blue-600 font-black text-[11px] uppercase tracking-widest flex items-center gap-1 hover:gap-2 transition-all">
+                            View Full Queue <ChevronRight size={14} />
+                        </button>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-50/50">
                                 <tr>
-                                    <th className="rounded-tl-lg">Farmer / Location</th>
-                                    <th>Animal ID</th>
-                                    <th>Urgency</th>
-                                    <th className="rounded-tr-lg">Action</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Farmer & Location</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Animal Details</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Urgency</th>
+                                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                {pendingRequests.length === 0 ? (
+                            <tbody className="divide-y divide-slate-50">
+                                {data?.pendingRequests?.length === 0 ? (
                                     <tr>
-                                        <td colSpan="4" className="text-center py-6 text-gray-500 font-medium">No pending requests right now.</td>
+                                        <td colSpan={4} className="px-8 py-20 text-center text-slate-400 font-bold italic">No pending health alerts found.</td>
                                     </tr>
                                 ) : (
-                                    pendingRequests.map((req, i) => (
-                                        <tr key={req._id} className="hover">
-                                            <td className="font-semibold text-base-content/80">{req.farmerId?.name || 'Unknown'}</td>
-                                            <td className="text-base-content/70 font-mono font-bold">#{req.animalId?.earTag || 'Unknown'}</td>
-                                            <td>
-                                                <span className={`badge ${
-                                                    req.urgency === 'high' ? 'badge-error bg-rose-500 border-rose-500 text-white' :
-                                                    'badge-warning bg-amber-500 border-amber-500 text-white'
-                                                } font-bold badge-sm py-3 px-4 shadow-sm`}>
-                                                    {req.urgency === 'high' ? 'High' : 'Standard'}
+                                    data?.pendingRequests?.slice(0, 5).map((req) => (
+                                        <tr key={req._id} className="hover:bg-slate-50/50 transition-all group">
+                                            <td className="px-8 py-5">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center font-black text-slate-400 text-xs uppercase">
+                                                        {(req.farmerId?.name || 'U').charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[13px] font-black text-slate-900">{req.farmerId?.name || 'Unknown'}</p>
+                                                        <p className="text-[11px] text-slate-400 font-bold flex items-center gap-1">
+                                                            <MapPin size={10} /> {req.farmerId?.address?.barangay || 'Iloilo'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-8 py-5">
+                                                <p className="text-[13px] font-black text-blue-600">#{req.animalId?.earTag || 'N/A'}</p>
+                                                <p className="text-[11px] text-slate-400 font-bold">{req.animalId?.breed || 'Livestock'}</p>
+                                            </td>
+                                            <td className="px-8 py-5 text-center">
+                                                <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm ${
+                                                    req.urgency === 'high' ? 'bg-rose-100 text-rose-600' : 'bg-slate-100 text-slate-600'
+                                                }`}>
+                                                    {req.urgency || 'Normal'}
                                                 </span>
                                             </td>
-                                            <td>
+                                            <td className="px-8 py-5 text-right">
                                                 <button 
-                                                    className="btn btn-sm btn-outline btn-primary rounded-full px-5 shadow-sm"
-                                                    onClick={() => {
-                                                        setSelectedRequest(req);
-                                                        setIsAssignModalOpen(true);
-                                                    }}
+                                                    onClick={() => { setSelectedRequest(req); setIsAssignModalOpen(true); }}
+                                                    className="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-slate-200"
                                                 >
                                                     Assign Task
                                                 </button>
@@ -208,13 +185,131 @@ const Dashboard = () => {
                         </table>
                     </div>
                 </div>
+
+                {/* Technician Fleet & Inventory Grid */}
+                <div className="xl:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Technician Performance */}
+                    <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-8">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 tracking-tight">Technician Fleet</h2>
+                                <p className="text-slate-400 font-bold text-[11px] uppercase tracking-widest mt-1">Monthly Success Rate</p>
+                            </div>
+                            <MoreHorizontal className="text-slate-300" />
+                        </div>
+                        <div className="space-y-6">
+                            {data?.analytics?.technicianStats?.length === 0 ? (
+                                <p className="text-center py-10 text-slate-400 font-bold italic">No technician activity recorded yet.</p>
+                            ) : (
+                                data?.analytics?.technicianStats?.map((tech, i) => (
+                                    <div key={i}>
+                                        <div className="flex justify-between items-end mb-2">
+                                            <p className="text-sm font-black text-slate-700">{tech.name}</p>
+                                            <p className="text-xs font-black text-emerald-600">{tech.count} Tasks</p>
+                                        </div>
+                                        <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                            <motion.div 
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${Math.min((tech.count / 50) * 100, 100)}%` }}
+                                                className="h-full bg-emerald-500 rounded-full"
+                                            />
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Semen & Supply Inventory */}
+                    <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm p-8">
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h2 className="text-xl font-black text-slate-900 tracking-tight">Supply Inventory</h2>
+                                <p className="text-slate-400 font-bold text-[11px] uppercase tracking-widest mt-1">Resource Stock Levels</p>
+                            </div>
+                            <button className="text-blue-600 font-black text-[10px] uppercase tracking-widest hover:underline">Manage</button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            {data?.analytics?.inventory?.length === 0 ? (
+                                <div className="col-span-2 text-center py-10 text-slate-400 font-bold italic">Stock is empty.</div>
+                            ) : (
+                                data?.analytics?.inventory?.slice(0, 4).map((item, i) => (
+                                    <div key={i} className="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{item.itemName}</p>
+                                        <div className="flex items-end gap-1">
+                                            <p className={`text-2xl font-black ${item.currentStock <= item.lowStockThreshold ? 'text-rose-600' : 'text-slate-900'}`}>
+                                                {item.currentStock}
+                                            </p>
+                                            <p className="text-[10px] font-bold text-slate-400 mb-1.5">{item.unit || 'pcs'}</p>
+                                        </div>
+                                        {item.currentStock <= item.lowStockThreshold && (
+                                            <div className="mt-2 flex items-center gap-1 text-[9px] font-black text-rose-500 uppercase">
+                                                <ShieldAlert size={10} /> Low Stock
+                                            </div>
+                                        )}
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Registry Side Ledger */}
+                <div className="xl:col-span-3 bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                    <div className="p-8 border-b border-slate-50 flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                            <ClipboardCheck size={20} />
+                        </div>
+                        <div>
+                            <h2 className="text-xl font-black text-slate-900 tracking-tight">Recent Activity</h2>
+                            <p className="text-slate-400 font-bold text-[11px] uppercase tracking-widest mt-1">Global Livestock Feed</p>
+                        </div>
+                    </div>
+                    <div className="p-4 space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
+                        {data?.registry?.map((animal, i) => (
+                            <div key={i} className="p-4 bg-slate-50/50 hover:bg-slate-50 rounded-2xl border border-transparent hover:border-slate-100 transition-all group">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center overflow-hidden">
+                                            {animal.imageUrl ? (
+                                                <img src={animal.imageUrl} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <span className="text-lg">🐄</span>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-black text-slate-900">{animal.id}</p>
+                                            <p className="text-[10px] text-slate-400 font-bold">{animal.breed}</p>
+                                        </div>
+                                    </div>
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-tighter ${
+                                        animal.status === 'Pregnant' ? 'bg-purple-100 text-purple-600' : 'bg-emerald-100 text-emerald-600'
+                                    }`}>
+                                        {animal.status}
+                                    </span>
+                                </div>
+                                <div className="flex justify-between items-center mt-3 pt-3 border-t border-slate-100/50">
+                                    <p className="text-[10px] font-black text-slate-400 flex items-center gap-1">
+                                        <Users size={10} /> {animal.farmerName}
+                                    </p>
+                                    <p className="text-[9px] font-bold text-slate-300 italic">
+                                        {new Date(animal.lastActionDate).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <button className="w-full py-4 bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:bg-slate-100 transition-all border-t border-slate-100">
+                        View Complete Registry
+                    </button>
+                </div>
             </div>
 
             <AssignTaskModal 
                 isOpen={isAssignModalOpen}
                 onClose={() => setIsAssignModalOpen(false)}
                 taskData={selectedRequest}
-                onSuccess={() => refetchRequests()}
+                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['adminDashboard'] })}
             />
         </div>
     );

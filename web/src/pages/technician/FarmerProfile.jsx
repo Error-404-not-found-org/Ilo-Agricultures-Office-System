@@ -43,6 +43,21 @@ export default function FarmerProfile() {
     );
   };
 
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return null;
+    const birth = new Date(birthDate);
+    const now = new Date();
+    let years = now.getFullYear() - birth.getFullYear();
+    let months = now.getMonth() - birth.getMonth();
+    if (months < 0) {
+      years--;
+      months += 12;
+    }
+    if (years === 0 && months === 0) return "Newborn";
+    if (years === 0) return `${months} Mos`;
+    return `${years} Yrs${months > 0 ? `, ${months} Mos` : ''}`;
+  };
+
   if (loading) {
     return (
     <div className="flex justify-center items-center flex-col min-h-[60vh] gap-8 animate-fade-in">
@@ -151,19 +166,51 @@ export default function FarmerProfile() {
             </div>
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.1 }}
-            className="bg-linear-to-br from-blue-600/10 to-indigo-600/10 rounded-4xl p-6 border border-blue-500/10 shadow-sm"
-          >
-            <h3 className="font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest text-[10px] mb-2">
-              Total Inseminations
-            </h3>
-            <p className="text-4xl font-black text-blue-600 dark:text-blue-400 tracking-tighter">
-              {farmer.stats?.totalInseminations || 0}
-            </p>
-          </motion.div>
+          <div className="grid grid-cols-2 gap-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.1 }}
+              className="bg-linear-to-br from-blue-600/10 to-indigo-600/10 rounded-3xl p-5 border border-blue-500/10 shadow-sm col-span-2"
+            >
+              <h3 className="font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest text-[10px] mb-1">
+                Total Inseminations
+              </h3>
+              <p className="text-3xl font-black text-blue-600 dark:text-blue-400 tracking-tighter">
+                {farmer.stats?.totalInseminations || 0}
+              </p>
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+              className="bg-linear-to-br from-emerald-600/10 to-teal-600/10 rounded-3xl p-5 border border-emerald-500/10 shadow-sm"
+            >
+              <h3 className="font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest text-[10px] mb-1">
+                Success Rate
+              </h3>
+              <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">
+                {farmer.stats?.totalInseminations > 0 
+                  ? Math.round((farmer.stats?.successfulInseminations || 0) / farmer.stats.totalInseminations * 100) 
+                  : 0}%
+              </p>
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.3 }}
+              className="bg-linear-to-br from-amber-600/10 to-orange-600/10 rounded-3xl p-5 border border-amber-500/10 shadow-sm"
+            >
+              <h3 className="font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest text-[10px] mb-1">
+                Pregnancies
+              </h3>
+              <p className="text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tighter">
+                {farmer.stats?.activePregnancies || 0} Active
+              </p>
+            </motion.div>
+          </div>
         </div>
 
         {/* Right Column: Livestock List */}
@@ -204,7 +251,8 @@ export default function FarmerProfile() {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * 0.05 }}
-                      className="bg-base-100 p-6 rounded-4xl border border-base-300 flex items-center gap-5 hover:shadow-xl hover:border-emerald-500/30 transition-all group/animal"
+                      onClick={() => navigate(`/technician/animals/${animal._id}`)}
+                      className="bg-base-100 p-6 rounded-4xl border border-base-300 flex items-center gap-5 hover:shadow-xl hover:border-emerald-500/30 transition-all group/animal cursor-pointer"
                     >
                       <div className="relative shrink-0">
                         <img
@@ -220,10 +268,23 @@ export default function FarmerProfile() {
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.2em] mb-1">Livestock Asset</p>
+                        <div className="flex justify-between items-start mb-1">
+                          <p className="text-[9px] font-black text-emerald-500 uppercase tracking-[0.2em]">Livestock Asset</p>
+                          {animal.birthDate && (
+                            <p className="text-[9px] font-black text-base-content/40 uppercase tracking-widest">
+                              Age: {calculateAge(animal.birthDate)}
+                            </p>
+                          )}
+                        </div>
                         <h4 className="text-lg font-black text-base-content truncate uppercase tracking-tighter leading-none">
                           #{animal.earTag}
                         </h4>
+                        
+                        {animal.lastServiceDate && (
+                          <p className="text-[10px] font-bold text-base-content/50 mt-1">
+                            Last Service: {new Date(animal.lastServiceDate).toLocaleDateString()}
+                          </p>
+                        )}
                         <div className="mt-3 flex flex-wrap gap-2">
                           <span className="px-2 py-1 bg-base-200 rounded-md text-[9px] font-black text-base-content/40 uppercase tracking-widest border border-base-300">
                             {animal.species}
@@ -231,6 +292,16 @@ export default function FarmerProfile() {
                           <span className="px-2 py-1 bg-blue-500/10 text-blue-500 rounded-md text-[9px] font-black uppercase tracking-widest border border-blue-500/10">
                             {animal.breed || "Pure"}
                           </span>
+                          {animal.totalCalves > 0 && (
+                            <span className="px-2 py-1 bg-amber-500/10 text-amber-600 rounded-md text-[9px] font-black uppercase tracking-widest border border-amber-500/10">
+                              {animal.totalCalves} {animal.totalCalves === 1 ? 'Calf' : 'Calves'}
+                            </span>
+                          )}
+                          {animal.reproductiveStatus && animal.reproductiveStatus !== 'Normal' && (
+                            <span className="px-2 py-1 bg-rose-500/10 text-rose-500 rounded-md text-[9px] font-black uppercase tracking-widest border border-rose-500/10">
+                              {animal.reproductiveStatus}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </motion.div>

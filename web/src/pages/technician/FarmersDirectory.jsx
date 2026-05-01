@@ -26,7 +26,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import LoadingView from "../../components/LoadingView";
+import Skeleton, { TableRowSkeleton } from "../../components/Skeleton";
 
 export default function FarmersDirectory() {
   const toast = useToast();
@@ -104,11 +104,30 @@ export default function FarmersDirectory() {
 
   if (loading)
     return (
-      <div className="flex justify-center items-center flex-col min-h-[60vh] gap-4">
-        <span className="loading loading-infinity loading-lg text-[#074033] scale-150"></span>
-        <p className="text-[#074033] font-bold tracking-widest animate-pulse uppercase text-[10px]">
-          Synchronizing Community Hub...
-        </p>
+      <div className="p-6 space-y-8 max-w-7xl mx-auto">
+        <div className="flex justify-between items-end">
+          <div className="space-y-4">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-12 w-96" />
+          </div>
+          <Skeleton className="h-16 w-48 rounded-2xl" />
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-32 rounded-3xl" />)}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => (
+             <div key={i} className="bg-base-100 rounded-4xl p-6 border border-base-300 space-y-4">
+                <Skeleton className="w-16 h-16 rounded-3xl" />
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-4 w-full" />
+                <div className="grid grid-cols-2 gap-2">
+                  <Skeleton className="h-10 rounded-xl" />
+                  <Skeleton className="h-10 rounded-xl" />
+                </div>
+             </div>
+          ))}
+        </div>
       </div>
     );
 
@@ -296,9 +315,13 @@ export default function FarmersDirectory() {
                   <div className="w-16 h-16 rounded-3xl bg-base-100 shadow-lg p-0.5 border border-base-300 overflow-hidden relative">
                     {farmer.imageUrl ? (
                       <img
-                        src={farmer.imageUrl}
+                        src={farmer.imageUrl.includes('cloudinary.com') 
+                          ? farmer.imageUrl.replace('/upload/', '/upload/f_auto,q_auto,w_200,c_fill/') 
+                          : farmer.imageUrl
+                        }
                         alt={farmer.name}
                         className="w-full h-full object-cover rounded-3xl"
+                        loading="lazy"
                       />
                     ) : (
                       <div className="w-full h-full bg-blue-500/10 flex items-center justify-center rounded-3xl">
@@ -439,9 +462,13 @@ export default function FarmersDirectory() {
                       <div className="w-12 h-12 bg-base-200 rounded-xl overflow-hidden relative shrink-0 border border-base-300">
                         {farmer.imageUrl ? (
                           <img
-                            src={farmer.imageUrl}
+                            src={farmer.imageUrl.includes('cloudinary.com') 
+                              ? farmer.imageUrl.replace('/upload/', '/upload/f_auto,q_auto,w_100,c_fill/') 
+                              : farmer.imageUrl
+                            }
                             alt={farmer.name}
                             className="w-full h-full object-cover"
+                            loading="lazy"
                           />
                         ) : (
                           <div className="w-full h-full bg-blue-500/10 flex items-center justify-center text-blue-600 font-black text-sm">

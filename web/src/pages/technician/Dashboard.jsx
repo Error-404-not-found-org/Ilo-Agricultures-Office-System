@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,8 +18,10 @@ import {
   MoreVertical,
   ChevronRight,
   Database,
+  Search,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
+import Skeleton, { TableRowSkeleton } from "../../components/Skeleton";
 import TaskActionModal from "../../components/modals/TaskActionModal";
 import WalkInAIModal from "../../components/modals/WalkInAIModal";
 import WalkInHealthModal from "../../components/modals/WalkInHealthModal";
@@ -31,18 +33,45 @@ import { useToast } from "../../contexts/ToastContext";
 export default function TechnicianDashboard() {
   const toast = useToast();
   const {
-    data,
-    isLoading: loading,
-    refetch: refreshDashboard,
+    data: stats,
+    isLoading: statsLoading,
   } = useQuery({
-    queryKey: ["technician", "dashboard"],
+    queryKey: ["technician", "stats"],
     queryFn: async () => {
-      const response = await axiosInstance.get("/technician/dashboard-data");
-      return response.data;
+      const res = await axiosInstance.get("/technician/dashboard-stats");
+      return res.data;
     },
-    refetchInterval: 5000, // 5 second polling for "real-time" experience
-    refetchOnWindowFocus: true,
+    staleTime: 1000 * 60 * 2, // 2 mins
   });
+
+  const {
+    data: feed,
+    isLoading: feedLoading,
+    refetch: refreshFeed,
+  } = useQuery({
+    queryKey: ["technician", "feed"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/dashboard-feed");
+      return res.data;
+    },
+    refetchInterval: 10000, // 10 seconds is plenty for the feed
+  });
+
+  const {
+    data: animalRegistry = [],
+    isLoading: registryLoading,
+  } = useQuery({
+    queryKey: ["technician", "registry"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/dashboard-registry");
+      return res.data;
+    },
+    staleTime: 1000 * 60 * 5, // 5 mins for the registry
+  });
+
+  const loading = statsLoading || feedLoading || registryLoading;
+  const pendingRequests = feed?.pendingRequests || [];
+  const agendaItems = feed?.agendaItems || [];
 
   const { data: config, refetch: refetchConfig } = useQuery({
     queryKey: ["system", "config"],
@@ -78,18 +107,25 @@ export default function TechnicianDashboard() {
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [healthPrefill, setHealthPrefill] = useState(null);
 
-  const [filterStatus, setFilterStatus] = useState("All");
-  const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 12;
+  const [currentPage, setCurrentPage] = useState(1);
+  const [filterStatus, setFilterStatus] = useState("All");
+
+  const filteredRegistry = React.useMemo(() => {
+    return animalRegistry.filter((animal) => {
+      if (filterStatus === "All") return true;
+      if (filterStatus === "Inseminated")
+        return ["Inseminated", "Pending AI", "Pregnant"].includes(animal.status);
+      if (filterStatus === "Pending")
+        return ["Pending", "Pending AI"].includes(animal.status);
+      return animal.status === filterStatus;
+    });
+  }, [animalRegistry, filterStatus]);
 
   const [decliningItem, setDecliningItem] = useState(null);
 
 
-  const stats = data?.stats || {};
-  const pendingRequests = data?.pendingRequests || [];
-  const agendaItems = data?.agendaItems || [];
-  const animalRegistry = data?.animalRegistry || [];
-  const timeline = data?.timeline;
+  // Removing old data extractions as they are now handled by separate queries
 
   const handleRejectRequest = async (item) => {
     if (decliningItem !== item.id) {
@@ -102,18 +138,21 @@ export default function TechnicianDashboard() {
       const endpoint =
         item.type === "health"
           ? `/health-request/${item.id}/status`
-          : `/ai-request/${item.id}/status`;
+          : `/technician/inseminations/${item.id}/status`;
+          
       await axiosInstance.patch(endpoint, {
         status: item.type === "health" ? "cancelled" : "rejected",
         technicianNote: "Declined by technician",
       });
+      
+      toast.success("Request Declined Successfully");
       setDecliningItem(null);
-      refreshDashboard(); // Sync with server immediately
+      refreshFeed(); // Sync with server immediately
     } catch (err) {
       console.error("Failed to reject request", err);
-      toast.error(
-        "Action failed. " + (err.response?.data?.message || err.message),
-      );
+      toast.error(err.response?.data?.message || "Failed to update status");
+    } finally {
+      setDecliningItem(null);
     }
   };
 
@@ -140,9 +179,9 @@ export default function TechnicianDashboard() {
             <h3 className="text-sm font-bold tracking-widest text-[#86bf9a] uppercase">
               Today's Activity
             </h3>
-            <p className="text-5xl font-black">
-              {loading ? <div className="skeleton h-12 w-16 bg-white/20"></div> : (stats?.totalInseminations ?? 0)}
-            </p>
+            <div className="text-5xl font-black">
+              {loading ? <Skeleton className="h-12 w-16" /> : (stats?.totalToday ?? 0)}
+            </div>
           </div>
           <div className="relative z-10 flex items-center gap-2 text-xs font-medium text-[#c0e0cc] mt-4">
             <Syringe size={14} /> Total Services Logged
@@ -158,9 +197,9 @@ export default function TechnicianDashboard() {
             <h3 className="text-sm font-bold tracking-widest text-[#93c5fd] uppercase">
               Pending Actions
             </h3>
-            <p className="text-5xl font-black">
-              {loading ? <div className="skeleton h-12 w-16 bg-white/20"></div> : (stats?.healthAlerts ?? 0)}
-            </p>
+            <div className="text-5xl font-black">
+              {loading ? <Skeleton className="h-12 w-16" /> : (stats?.pendingHealth ?? 0)}
+            </div>
           </div>
           <div className="relative z-10 flex items-center gap-2 text-xs font-medium text-[#bfdbfe] mt-4">
             <Clock size={14} className="stroke-[2.5px]" />{" "}
@@ -177,9 +216,9 @@ export default function TechnicianDashboard() {
             <h3 className="text-sm font-bold tracking-widest text-[#4b5563] uppercase">
               Success Rate
             </h3>
-            <p className="text-5xl font-black text-[#126b2e]">
-              {loading ? <div className="skeleton h-12 w-20"></div> : (stats?.successRate || "0%")}
-            </p>
+            <div className="text-5xl font-black text-[#126b2e]">
+              {loading ? <Skeleton className="h-12 w-20" /> : (stats?.successRate || "0%")}
+            </div>
           </div>
           <div className="relative z-10 flex items-center gap-2 text-xs font-medium text-[#126b2e] mt-4">
             <CheckCircle2 size={14} className="stroke-[2.5px]" /> Insemination
@@ -290,20 +329,20 @@ export default function TechnicianDashboard() {
                 <Database size={20} className="text-[#074033] dark:text-emerald-500" /> Animal
                 Registry
               </h2>
-              <div className="flex flex-wrap gap-2 text-[11px] font-bold mt-4 sm:mt-0 bg-base-200 p-1 rounded-xl shadow-inner border border-base-300">
-                {["All", "Inseminated", "Pregnant", "Pending"].map((status) => (
-                  <button
-                    key={status}
-                    onClick={() => {
-                      setFilterStatus(status);
-                      setCurrentPage(1);
-                    }}
-                    className={`px-4 py-1.5 rounded-lg transition-all ${filterStatus === status ? "bg-[#074033] dark:bg-emerald-600 text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
-                  >
-                    {status}
-                  </button>
-                ))}
-              </div>
+                <div className="flex flex-wrap gap-2 text-[11px] font-bold bg-base-200 p-1 rounded-xl shadow-inner border border-base-300">
+                  {["All", "Inseminated", "Pregnant", "Pending"].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        setFilterStatus(status);
+                        setCurrentPage(1);
+                      }}
+                      className={`px-4 py-1.5 rounded-lg transition-all ${filterStatus === status ? "bg-[#074033] dark:bg-emerald-600 text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -321,40 +360,19 @@ export default function TechnicianDashboard() {
                   {loading ? (
                     <>
                       {[...Array(5)].map((_, i) => (
-                        <tr key={i} className="border-b border-base-300">
-                          <td className="py-4 px-6"><div className="skeleton h-4 w-20 bg-base-300/50"></div></td>
-                          <td className="py-4 px-4"><div className="skeleton h-4 w-24 bg-base-300/50"></div></td>
-                          <td className="py-4 px-4"><div className="skeleton h-4 w-32 bg-base-300/50"></div></td>
-                          <td className="py-4 px-4"><div className="skeleton h-4 w-28 bg-base-300/50"></div></td>
-                          <td className="py-4 px-6 text-right"><div className="skeleton h-8 w-16 ml-auto rounded-lg bg-base-300/50"></div></td>
-                        </tr>
+                        <TableRowSkeleton key={i} />
                       ))}
                     </>
                   ) : (() => {
-                    const filtered = animalRegistry.filter((animal) => {
-                      if (filterStatus === "All") return true;
-                      if (filterStatus === "Inseminated")
-                        return [
-                          "Inseminated",
-                          "Pending AI",
-                          "Pregnant",
-                        ].includes(animal.status);
-                      if (filterStatus === "Pending")
-                        return ["Pending", "Pending AI"].includes(
-                          animal.status,
-                        );
-                      return animal.status === filterStatus;
-                    });
-
                     const totalPages = Math.ceil(
-                      filtered.length / itemsPerPage,
+                      filteredRegistry.length / itemsPerPage,
                     );
-                    const paginated = filtered.slice(
+                    const paginated = filteredRegistry.slice(
                       (currentPage - 1) * itemsPerPage,
                       currentPage * itemsPerPage,
                     );
 
-                    if (filtered.length === 0) {
+                    if (filteredRegistry.length === 0) {
                       return (
                         <tr>
                           <td
@@ -387,13 +405,19 @@ export default function TechnicianDashboard() {
                                 <div className="absolute left-16 top-1/2 -translate-y-1/2 ml-2 w-64 bg-base-100 backdrop-blur-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] rounded-2xl p-4 border border-base-300 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-all z-50 transform scale-95 group-hover:scale-100 origin-left">
                                   <div className="flex items-center gap-4">
                                     <div className="w-12 h-12 rounded-xl bg-base-200 overflow-hidden shrink-0 shadow-inner">
-                                      <img
-                                        src={
-                                          animal.imageUrl ||
-                                          `https://ui-avatars.com/api/?name=${animal.farmerName}&background=074033&color=fff`
-                                        }
-                                        className="w-full h-full object-cover"
-                                      />
+                                      {animal.imageUrl ? (
+                                        <img
+                                          src={animal.imageUrl.replace('/upload/', '/upload/f_auto,q_auto,w_100,c_fill/')}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <div 
+                                          className="w-full h-full flex items-center justify-center text-white font-black text-xs uppercase"
+                                          style={{ backgroundColor: animal.status === "Pregnant" ? "#7c3aed" : "#074033" }}
+                                        >
+                                          {animal.id.substring(1, 3)}
+                                        </div>
+                                      )}
                                     </div>
                                     <div>
                                       <p className="text-[9px] font-black uppercase text-blue-500 tracking-widest leading-none mb-1">
@@ -818,12 +842,12 @@ export default function TechnicianDashboard() {
         isOpen={isTaskModalOpen}
         onClose={() => setIsTaskModalOpen(false)}
         taskData={selectedTask}
-        onSuccess={refreshDashboard}
+        onSuccess={refreshFeed}
       />
       <WalkInAIModal
         isOpen={isWalkInAIModalOpen}
         onClose={() => setIsWalkInAIModalOpen(false)}
-        onSuccess={refreshDashboard}
+        onSuccess={refreshFeed}
       />
       <WalkInHealthModal
         isOpen={isWalkInHealthModalOpen}

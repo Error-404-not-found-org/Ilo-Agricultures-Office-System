@@ -21,6 +21,7 @@ import aiRequestRoutes from "./routes/ai-request.routes.js";
 import healthRequestRoutes from "./routes/health-request.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import configRoutes from "./routes/config.routes.js";
+import medicalRoutes from "./routes/medical.routes.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -79,6 +80,7 @@ app.use("/api/ai-request", aiRequestRoutes);
 app.use("/api/health-request", healthRequestRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/config", configRoutes);
+app.use("/api/medical", medicalRoutes);
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 // MUST be defined after all routes. Catches any unhandled error from middleware

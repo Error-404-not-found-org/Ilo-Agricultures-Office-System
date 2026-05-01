@@ -61,6 +61,7 @@ const HealthRequestSchema = new mongoose.Schema(
 HealthRequestSchema.index({ animalId: 1, createdAt: -1 });
 HealthRequestSchema.index({ farmerId: 1 });
 HealthRequestSchema.index({ status: 1 });
+HealthRequestSchema.index({ urgency: -1, createdAt: -1 });
 HealthRequestSchema.index({ scheduledDate: 1 });
 
 export const HealthRequest = mongoose.model("HealthRequest", HealthRequestSchema);

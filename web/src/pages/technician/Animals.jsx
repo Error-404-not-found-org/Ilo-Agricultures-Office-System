@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
+import Skeleton, { CardSkeleton, TableRowSkeleton } from "../../components/Skeleton";
 
 const TechnicianAnimals = () => {
   const toast = useToast();
@@ -70,11 +71,17 @@ const TechnicianAnimals = () => {
 
   if (isLoading)
     return (
-      <div className="flex justify-center items-center flex-col min-h-[60vh] gap-4">
-        <span className="loading loading-infinity loading-lg text-[#074033] scale-150"></span>
-        <p className="text-[#074033] font-bold tracking-widest animate-pulse uppercase text-[10px]">
-          Accessing Livestock Database...
-        </p>
+      <div className="p-6 space-y-8 max-w-7xl mx-auto">
+        <div className="flex justify-between items-end">
+          <div className="space-y-4">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-12 w-96" />
+          </div>
+          <Skeleton className="h-16 w-48 rounded-2xl" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[...Array(8)].map((_, i) => <CardSkeleton key={i} />)}
+        </div>
       </div>
     );
 
@@ -269,14 +276,18 @@ const TechnicianAnimals = () => {
               <div className="p-6 pb-2">
                 <div className="flex justify-between items-start mb-6">
                   <div className="w-16 h-16 rounded-3xl bg-base-100 shadow-lg p-0.5 border border-base-300 overflow-hidden relative">
-                    <img
-                      src={
-                        animal.imageUrl ||
-                        `https://ui-avatars.com/api/?name=${animal.earTag || "Tag"}&background=074033&color=fff`
-                      }
-                      alt={animal.earTag}
-                      className="w-full h-full object-cover rounded-3xl"
-                    />
+                    {animal.imageUrl ? (
+                      <img
+                        src={animal.imageUrl.replace('/upload/', '/upload/f_auto,q_auto,w_200,c_fill/')}
+                        alt={animal.earTag}
+                        className="w-full h-full object-cover rounded-3xl"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white font-black text-xl uppercase bg-[#074033]">
+                        {animal.earTag?.substring(0, 2) || "AN"}
+                      </div>
+                    )}
                     <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-base-100 flex items-center justify-center text-[10px] text-white font-black shadow-sm">
                       {animal.species === "Cattle"
                         ? "C"
@@ -382,13 +393,17 @@ const TechnicianAnimals = () => {
                   <td className="py-5 px-6">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 bg-base-200 rounded-xl overflow-hidden relative shrink-0 border border-base-300">
-                        <img
-                          src={
-                            animal.imageUrl ||
-                            `https://ui-avatars.com/api/?name=${animal.earTag}&background=074033&color=fff`
-                          }
-                          className="w-full h-full object-cover"
-                        />
+                        {animal.imageUrl ? (
+                          <img
+                            src={animal.imageUrl.replace('/upload/', '/upload/f_auto,q_auto,w_100,c_fill/')}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-white font-black text-xs uppercase bg-[#074033]">
+                            {animal.earTag?.substring(0, 2) || "AN"}
+                          </div>
+                        )}
                       </div>
                       <div>
                         <h4 className="text-sm font-black text-base-content tracking-tight">

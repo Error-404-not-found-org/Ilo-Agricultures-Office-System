@@ -3,6 +3,16 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import axios from "../lib/axios";
 import EditInseminationModal from "../components/EditInseminationModal";
+import AddMedicalRecordModal from "../components/modals/AddMedicalRecordModal";
+import { 
+  Stethoscope, 
+  Syringe, 
+  Activity, 
+  Scale, 
+  Plus, 
+  ChevronRight,
+  ClipboardList
+} from 'lucide-react';
 
 import LoadingView from "../components/LoadingView";
 
@@ -10,6 +20,16 @@ const LivestockProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [selectedInsemination, setSelectedInsemination] = useState(null);
+  const [isMedicalModalOpen, setIsMedicalModalOpen] = useState(false);
+
+  // Fetch Medical History
+  const { data: medicalHistory, refetch: refetchMedical } = useQuery({
+    queryKey: ["medical", id],
+    queryFn: async () => {
+      const response = await axios.get(`/medical/${id}`);
+      return response.data;
+    },
+  });
 
   const {
     data: animal,
@@ -143,6 +163,7 @@ const LivestockProfile = () => {
                         <th>Sire Info</th>
                         <th>Status</th>
                         <th>Technician</th>
+                        <th>Outcome</th>
                         <th>Action</th>
                       </tr>
                     </thead>
@@ -196,6 +217,27 @@ const LivestockProfile = () => {
                             )}
                           </td>
                           <td>
+                            {ins.pregnancy ? (
+                              <div className="space-y-1">
+                                <div className={`badge badge-sm text-white font-bold ${ins.pregnancy.pregnancyDiagnosis?.result === 'Pregnant' ? 'bg-emerald-500 border-none' : 'bg-rose-500 border-none'}`}>
+                                  {ins.pregnancy.pregnancyDiagnosis?.result || "Pending"}
+                                </div>
+                                {ins.pregnancy.pregnancyDiagnosis?.date && (
+                                  <div className="text-[10px] text-gray-500 whitespace-nowrap font-bold">
+                                    Checked: {new Date(ins.pregnancy.pregnancyDiagnosis.date).toLocaleDateString()}
+                                  </div>
+                                )}
+                                {ins.pregnancy.targetCalvingDate && (
+                                  <div className="text-[10px] text-emerald-600 font-bold whitespace-nowrap">
+                                    Due: {new Date(ins.pregnancy.targetCalvingDate).toLocaleDateString()}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-gray-400 italic font-bold">Not Diagnosed</span>
+                            )}
+                          </td>
+                          <td>
                             <button
                               onClick={() => setSelectedInsemination(ins)}
                               className="btn btn-xs btn-outline btn-warning"
@@ -212,48 +254,76 @@ const LivestockProfile = () => {
             </div>
           </div>
 
+          {/* Medical & Vaccination Records */}
           <div className="card bg-base-100 shadow-xl border border-base-200 overflow-hidden">
             <div className="card-body p-0">
-              <h2 className="card-title px-6 pt-6 pb-2 text-xl border-b border-base-200">
-                Calving Records
-              </h2>
+              <div className="px-6 pt-6 pb-2 flex justify-between items-center border-b border-base-200">
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="text-emerald-600" size={20} />
+                  <h2 className="text-xl font-bold tracking-tight">Medical History</h2>
+                </div>
+                <button 
+                  onClick={() => setIsMedicalModalOpen(true)}
+                  className="btn btn-sm btn-primary bg-[#074033] hover:bg-black border-none rounded-xl flex items-center gap-2"
+                >
+                  <Plus size={16} /> Add Record
+                </button>
+              </div>
 
-              {!animal.calvings || animal.calvings.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  No calving records found for this animal.
+              {!medicalHistory || medicalHistory.length === 0 ? (
+                <div className="text-center py-12 px-6">
+                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                    <ClipboardList size={32} />
+                  </div>
+                  <p className="text-slate-400 font-bold text-sm">No medical records found.</p>
+                  <p className="text-slate-300 text-xs mt-1">Vaccinations and treatments will appear here.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table table-zebra w-full">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Calving Ease</th>
-                        <th>Calf Sex</th>
-                        <th>Calves Count</th>
+                    <thead className="bg-slate-50">
+                      <tr className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <th className="px-6">Date</th>
+                        <th>Type</th>
+                        <th>Details</th>
+                        <th>Technician</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {animal.calvings.map((calving) => (
-                        <tr key={calving._id}>
-                          <td>
-                            {calving.date
-                              ? new Date(calving.date).toLocaleDateString()
-                              : "N/A"}
+                    <tbody className="divide-y divide-slate-50">
+                      {medicalHistory.map((record) => (
+                        <tr key={record._id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <p className="text-sm font-bold text-slate-700">
+                              {new Date(record.date).toLocaleDateString()}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase">
+                              {new Date(record.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </p>
                           </td>
                           <td>
-                            <span
-                              className={`badge ${
-                                calving.calvingEase === "Normal"
-                                  ? "badge-success text-white"
-                                  : "badge-warning"
-                              }`}
-                            >
-                              {calving.calvingEase || "Unknown"}
+                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight ${
+                              record.type === 'Vaccination' ? 'bg-emerald-50 text-emerald-600' :
+                              record.type === 'Deworming' ? 'bg-blue-50 text-blue-600' :
+                              record.type === 'Treatment' ? 'bg-amber-50 text-amber-600' :
+                              'bg-slate-100 text-slate-600'
+                            }`}>
+                              {record.type}
                             </span>
                           </td>
-                          <td>{calving.calfSex || "N/A"}</td>
-                          <td>{calving.numberOfCalves || "1"}</td>
+                          <td>
+                            <p className="text-[13px] font-bold text-slate-800">
+                              {record.details?.medicineName || record.details?.diagnosis || (record.type === 'Weight Log' ? `${record.details?.weight} kg` : 'Check-up')}
+                            </p>
+                            {record.note && <p className="text-xs text-slate-400 line-clamp-1">{record.note}</p>}
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-400 uppercase">
+                                {(record.technicianId?.name || 'U').charAt(0)}
+                              </div>
+                              <span className="text-xs font-bold text-slate-600">{record.technicianId?.name}</span>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -270,6 +340,14 @@ const LivestockProfile = () => {
         onClose={() => setSelectedInsemination(null)}
         insemination={selectedInsemination}
         animalId={id}
+      />
+
+      <AddMedicalRecordModal 
+        isOpen={isMedicalModalOpen}
+        onClose={() => setIsMedicalModalOpen(false)}
+        animalId={id}
+        animalTag={animal.earTag}
+        onSuccess={() => refetchMedical()}
       />
     </div>
   );
