@@ -283,11 +283,39 @@ export const getUserById = async (req, res) => {
       const totalInseminations = await Insemination.countDocuments({
         farmerId: id,
       });
-      const animals = await Animal.find({ farmerId: id }).sort({ createdAt: -1 });
+      const successfulInseminations = await Pregnancy.countDocuments({
+        farmerId: id,
+        "pregnancyDiagnosis.result": "Pregnant"
+      });
+      const activePregnancies = await Animal.countDocuments({
+        farmerId: id,
+        reproductiveStatus: "Pregnant"
+      });
+
+      const animalsList = await Animal.find({ farmerId: id }).sort({ createdAt: -1 }).lean();
+      
+      const animals = await Promise.all(animalsList.map(async (animal) => {
+        const totalCalves = await Animal.countDocuments({ motherId: animal._id });
+        const lastInsemination = await Insemination.findOne({ animalId: animal._id }).sort({ createdAt: -1 });
+        const lastHealth = await HealthRequest.findOne({ animalId: animal._id }).sort({ createdAt: -1 });
+        
+        let lastServiceDate = null;
+        if (lastInsemination && lastHealth) {
+            lastServiceDate = lastInsemination.createdAt > lastHealth.createdAt ? lastInsemination.createdAt : lastHealth.createdAt;
+        } else if (lastInsemination) {
+            lastServiceDate = lastInsemination.createdAt;
+        } else if (lastHealth) {
+            lastServiceDate = lastHealth.createdAt;
+        }
+
+        return { ...animal, totalCalves, lastServiceDate };
+      }));
 
       stats = {
         totalInseminations,
-        animals, // Included directly into the payload for the farmer's profile
+        successfulInseminations,
+        activePregnancies,
+        animals,
       };
     }
 

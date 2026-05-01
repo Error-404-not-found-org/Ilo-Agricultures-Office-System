@@ -15,7 +15,7 @@ const TaskActionModal = ({ isOpen, onClose, taskData, onSuccess }) => {
 
     const isHealth = taskData?.type === 'health';
     const isUrgent = taskData?.urgent;
-    const isPending = taskData?.status === 'pending';
+    const isPending = taskData?.status?.toLowerCase() === 'pending';
 
     // Initialize state when taskData changes
     useEffect(() => {
@@ -47,7 +47,7 @@ const TaskActionModal = ({ isOpen, onClose, taskData, onSuccess }) => {
 
         const status = taskData.type === 'health' ? 'cancelled' : 'rejected';
         const endpoint = taskData.type === 'health' ? `/health-request/${taskData.id}/status` : 
-                         taskData.type === 'ai-request' ? `/ai-request/${taskData.id}/status` :
+                         (taskData.type === 'ai-request' || taskData.type === 'ai') ? `/technician/inseminations/${taskData.id}/status` :
                          `/technician/inseminations/${taskData.id}/status`;
         
         setIsSubmitting(true);
@@ -69,7 +69,7 @@ const TaskActionModal = ({ isOpen, onClose, taskData, onSuccess }) => {
     const handleAction = () => {
         let status = isPending ? (taskData.type === 'health' ? 'in-progress' : 'approved') : (taskData.type === 'health' ? 'resolved' : 'done');
         const endpoint = taskData.type === 'health' ? `/health-request/${taskData.id}/status` : 
-                         taskData.type === 'ai-request' ? `/ai-request/${taskData.id}/status` :
+                         (taskData.type === 'ai-request' || taskData.type === 'ai') ? `/technician/inseminations/${taskData.id}/status` :
                          `/technician/inseminations/${taskData.id}/status`;
 
         setIsSubmitting(true);

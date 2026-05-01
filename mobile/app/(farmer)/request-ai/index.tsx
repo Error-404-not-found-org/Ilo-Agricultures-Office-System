@@ -2,7 +2,7 @@ import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
   Modal, FlatList, StatusBar, ActivityIndicator, Image, Alert
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft, Syringe, User, MapPin,
@@ -34,6 +34,7 @@ const formatAddress = (address?: FarmerProfile['address']) => {
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function RequestAI() {
   const router    = useRouter();
+  const params    = useLocalSearchParams();
   const api        = useApi();
   const insets     = useSafeAreaInsets();
   const scrollRef  = useRef<ScrollView>(null);
@@ -113,8 +114,17 @@ export default function RequestAI() {
   useEffect(() => {
     if (animalsData?.data) {
       setAnimals(animalsData.data);
+      
+      // Pre-fill if coming from animal-details
+      if (params.animalId) {
+        const found = (animalsData.data as Animal[]).find(a => a._id === params.animalId);
+        if (found) {
+          setSelectedAnimal(found);
+          setComment(`Re-insemination request for ${found.earTag || found.animalId}. Signs of heat observed.`);
+        }
+      }
     }
-  }, [animalsData]);
+  }, [animalsData, params.animalId]);
 
   // ── Image Picker ────────────────────────────────────────────────────────────
   const pickImage = async () => {

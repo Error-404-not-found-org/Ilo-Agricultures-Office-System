@@ -4,7 +4,7 @@ import {
   getMyPregnancyChecks, getMyCalvings, getMyNotifications, 
   walkInInsemination, getTechnicianDashboardData, 
   updateInseminationStatus, getAnimalHistory, registerFarmer, recordPregnancyCheck,
-  getDashboardStats, getDashboardFeed, getDashboardRegistry
+  recordCalving, getDashboardStats, getDashboardFeed, getDashboardRegistry
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, TechnicianOnly } from "../middleware/auth.middleware.js";
 import { getCleanupSurvey, executeCleanup } from "../controllers/maintenance.controllers.js";
@@ -34,5 +34,6 @@ router.patch("/inseminations/:id/status", updateInseminationStatus);
 router.get("/animal-history/:id", getAnimalHistory);
 router.post("/register-farmer", registerFarmer);
 router.post("/pregnancy-check", recordPregnancyCheck);
+router.post("/record-calving", recordCalving);
 
 export default router;

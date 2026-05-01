@@ -66,4 +66,9 @@ const userSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+// Performance indexes
+userSchema.index({ name: 1 });
+userSchema.index({ role: 1 });
+userSchema.index({ clerkId: 1 });
+
 export const User = mongoose.model("User", userSchema);
