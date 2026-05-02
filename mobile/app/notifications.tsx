@@ -28,9 +28,9 @@ export default function NotificationsScreen() {
     light:      role === 'admin' ? '#eff6ff' : '#ecfdf5',
     border:     role === 'admin' ? '#bfdbfe' : '#a7f3d0',
     dot:        role === 'admin' ? '#3b82f6' : '#10b981',
-    markRead:   role === 'admin' ? 'text-blue-700' : 'text-emerald-700',
-    unreadBg:   role === 'admin' ? 'bg-blue-50/50' : 'bg-emerald-50/50',
-    unreadBorder: role === 'admin' ? 'border-blue-100' : 'border-emerald-100',
+    unreadBorder: role === 'admin' ? 'border-blue-100 dark:border-blue-900/50' : 'border-emerald-100 dark:border-emerald-900/50',
+    unreadBg:   role === 'admin' ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-emerald-50/50 dark:bg-emerald-900/20',
+    markRead:   role === 'admin' ? 'text-blue-700 dark:text-blue-400' : 'text-emerald-700 dark:text-emerald-400',
   };
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -79,22 +79,22 @@ export default function NotificationsScreen() {
   const getIcon = (type: string, isRead: boolean) => {
     const opacity = isRead ? 0.6 : 1;
     if (type === 'ai-request') return (
-      <View style={{ backgroundColor: THEME.light }} className="w-12 h-12 rounded-full items-center justify-center">
+      <View style={{ backgroundColor: THEME.light }} className="w-12 h-12 dark:bg-emerald-900/30 rounded-full items-center justify-center">
         <CheckCircle2 size={24} color={THEME.primary} style={{ opacity }} />
       </View>
     );
     if (type === 'health-request') return (
-      <View className="w-12 h-12 bg-amber-100 rounded-full items-center justify-center">
+      <View className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full items-center justify-center">
         <AlertCircle size={24} color="#D97706" style={{ opacity }} />
       </View>
     );
     if (type === 'system') return (
-      <View className="w-12 h-12 bg-slate-100 rounded-full items-center justify-center">
+      <View className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full items-center justify-center">
         <Bell size={24} color="#475569" style={{ opacity }} />
       </View>
     );
     return (
-      <View className="w-12 h-12 bg-blue-100 rounded-full items-center justify-center">
+      <View className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full items-center justify-center">
         <Info size={24} color="#2563EB" style={{ opacity }} />
       </View>
     );
@@ -103,7 +103,7 @@ export default function NotificationsScreen() {
   const renderItem = ({ item }: { item: NotificationItem }) => (
     <TouchableOpacity
         activeOpacity={0.7}
-        className={`flex-row p-4 mb-3 rounded-2xl border ${item.isRead ? 'bg-white border-slate-100' : `${THEME.unreadBg} ${THEME.unreadBorder} shadow-sm`}`}
+        className={`flex-row p-4 mb-3 rounded-2xl border ${item.isRead ? 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700' : `${THEME.unreadBg} ${THEME.unreadBorder} shadow-sm`}`}
         onPress={() => {
             if (!item.isRead) {
                 api.patch('/notifications/mark-read', { notificationId: item._id });
@@ -116,17 +116,17 @@ export default function NotificationsScreen() {
         
         <View className="flex-1 ml-4 justify-center">
             <View className="flex-row justify-between items-start mb-1">
-                <Text className={`text-base font-bold flex-1 mr-2 ${item.isRead ? 'text-slate-700' : 'text-slate-900'}`}>{item.title}</Text>
+                <Text className={`text-base font-bold flex-1 mr-2 ${item.isRead ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-white'}`}>{item.title}</Text>
                 {!item.isRead && <View className="w-2.5 h-2.5 rounded-full mt-1.5" style={{ backgroundColor: THEME.dot }} />}
             </View>
-            <Text className={`text-[13px] leading-5 ${item.isRead ? 'text-slate-500' : 'text-slate-600 font-medium'}`}>{item.message}</Text>
-            <Text className="text-slate-400 text-xs mt-2 font-medium">{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</Text>
+            <Text className={`text-[13px] leading-5 ${item.isRead ? 'text-slate-500 dark:text-slate-400' : 'text-slate-600 dark:text-slate-300 font-medium'}`}>{item.message}</Text>
+            <Text className="text-slate-400 dark:text-slate-500 text-xs mt-2 font-medium">{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</Text>
         </View>
     </TouchableOpacity>
   );
 
   return (
-    <View className="flex-1 bg-[#F9FAFB]">
+    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
       
       <View className="absolute top-0 left-0 right-0 h-[180px]" style={{ backgroundColor: THEME.primary }} />
@@ -143,11 +143,11 @@ export default function NotificationsScreen() {
       </View>
 
       <View 
-        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-6 pt-8 shadow-lg"
+        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-8 shadow-lg"
         style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
       >
         <View className="flex-row justify-between items-center mb-6">
-            <Text className="text-[20px] font-bold text-slate-800">Recent Updates</Text>
+            <Text className="text-[20px] font-bold text-slate-800 dark:text-white">Recent Updates</Text>
           <TouchableOpacity onPress={markAllAsRead}>
               <Text className={`font-bold text-sm ${THEME.markRead}`}>Mark all as read</Text>
           </TouchableOpacity>

@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import SafeScreen from '@/components/safeScreen';
 import { ArrowLeft, Check, Square, CheckSquare } from 'lucide-react-native';
@@ -103,16 +103,16 @@ export default function RegisterClient() {
 
   return (
     <SafeScreen>
-      <View className="flex-1 bg-white px-6">
+      <View className="flex-1 bg-white dark:bg-slate-950 px-6">
         
         {/* --- HEADER --- */}
         <View className="flex-row items-center justify-between mb-6 mt-2">
-            <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-2 rounded-full active:bg-gray-100">
-                <ArrowLeft size={24} color="black" />
+            <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-2 rounded-full active:bg-gray-100 dark:active:bg-slate-800">
+                <ArrowLeft size={24} color="gray" />
             </TouchableOpacity>
             <View>
-                <Text className="text-xl font-bold text-gray-900">New Client</Text>
-                <Text className="text-xs text-gray-500">Create a new profile</Text>
+                <Text className="text-xl font-bold text-gray-900 dark:text-white">New Client</Text>
+                <Text className="text-xs text-gray-500 dark:text-slate-400">Create a new profile</Text>
             </View>
             <View className="w-8" /> 
         </View>
@@ -124,11 +124,11 @@ export default function RegisterClient() {
             {/* PROFILE PICTURE UPLOAD                    */}
             {/* ========================================= */}
             <View className="items-center mt-4 mb-6">
-              <TouchableOpacity onPress={pickImage} className="w-24 h-24 bg-gray-50 rounded-full items-center justify-center border border-dashed border-gray-300 overflow-hidden">
+              <TouchableOpacity onPress={pickImage} className="w-24 h-24 bg-gray-50 dark:bg-slate-800 rounded-full items-center justify-center border border-dashed border-gray-300 dark:border-slate-700 overflow-hidden">
                 {imageUri ? (
                   <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
                 ) : (
-                  <Text className="text-xs text-blue-500 font-semibold text-center mt-2">Add Photo</Text>
+                  <Text className="text-xs text-blue-500 dark:text-blue-400 font-semibold text-center mt-2">Add Photo</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -149,15 +149,15 @@ export default function RegisterClient() {
             {/* Middle Name + Checkbox */}
             <View className="mb-4">
                 <View className="flex-row justify-between items-center mb-1.5 ml-1">
-                    <Text className={`font-medium text-sm ${noMiddleName ? 'text-gray-400' : 'text-gray-700'}`}>Middle Name</Text>
+                    <Text className={`font-medium text-sm ${noMiddleName ? 'text-gray-400 dark:text-slate-500' : 'text-gray-700 dark:text-slate-300'}`}>Middle Name</Text>
                     
                     <TouchableOpacity onPress={toggleNoMiddleName} className="flex-row items-center gap-1.5 active:opacity-60">
                          {noMiddleName ? <CheckSquare size={16} color="#2563EB" /> : <Square size={16} color="#6B7280" />}
-                         <Text className="text-xs text-gray-500">I have no middle name</Text>
+                         <Text className="text-xs text-gray-500 dark:text-slate-400">I have no middle name</Text>
                     </TouchableOpacity>
                 </View>
                 <TextInput 
-                    className={`border rounded-xl px-4 py-3.5 text-base ${noMiddleName ? 'bg-gray-100 border-gray-200 text-gray-400' : 'bg-white border-gray-300 text-gray-900 focus:border-blue-500'}`}
+                    className={`border rounded-xl px-4 py-3.5 text-base ${noMiddleName ? 'bg-gray-100 dark:bg-slate-900/50 border-gray-200 dark:border-slate-800 text-gray-400 dark:text-slate-500' : 'bg-white dark:bg-slate-800 border-gray-300 dark:border-slate-700 text-gray-900 dark:text-white focus:border-blue-500'}`}
                     value={noMiddleName ? "N/A" : formData.middleName} 
                     onChangeText={(t) => setFormData({...formData, middleName: t})} 
                     placeholder="Zaragosa" 
@@ -301,16 +301,23 @@ export default function RegisterClient() {
             {/* --- SAVE BUTTON --- */}
             <TouchableOpacity 
                 onPress={handleSave}
+                disabled={loading}
                 activeOpacity={0.8}
-                className="bg-blue-600 rounded-full py-4 items-center mt-6 shadow-lg shadow-blue-200 flex-row justify-center gap-2"
+                className={`rounded-full py-4 items-center mt-6 shadow-lg flex-row justify-center gap-2 ${loading ? 'bg-blue-400' : 'bg-blue-600 shadow-blue-200'}`}
             >
-                <Check size={20} color="white" />
-                <Text className="text-white font-bold text-lg">Create Account</Text>
+                {loading ? (
+                    <ActivityIndicator color="white" size="small" />
+                ) : (
+                    <>
+                        <Check size={20} color="white" />
+                        <Text className="text-white font-bold text-lg">Create Account</Text>
+                    </>
+                )}
             </TouchableOpacity>
 
             {/* --- TERMS DISCLAIMER --- */}
-            <Text className="text-xs text-gray-500 text-center mt-4 px-4 leading-5">
-                By tapping <Text className="font-bold text-gray-700">Create Account</Text>, you agree with the <Text className="text-blue-600 underline">Terms and Conditions</Text> and <Text className="text-blue-600 underline">Privacy Notice</Text>.
+            <Text className="text-xs text-gray-500 dark:text-slate-500 text-center mt-4 px-4 leading-5">
+                By tapping <Text className="font-bold text-gray-700 dark:text-slate-300">Create Account</Text>, you agree with the <Text className="text-blue-600 dark:text-blue-400 underline">Terms and Conditions</Text> and <Text className="text-blue-600 dark:text-blue-400 underline">Privacy Notice</Text>.
             </Text>
 
           </ScrollView>
@@ -323,16 +330,16 @@ export default function RegisterClient() {
 // --- REUSABLE COMPONENTS ---
 
 const SectionHeader = ({ title }: { title: string }) => (
-    <View className="mt-4 mb-4 pb-2 border-b border-gray-100">
-        <Text className="text-sm font-bold text-gray-900 uppercase tracking-wider">{title}</Text>
+    <View className="mt-4 mb-4 pb-2 border-b border-gray-100 dark:border-slate-800">
+        <Text className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">{title}</Text>
     </View>
 );
 
 const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', secureTextEntry = false }: any) => (
     <View className="mb-4">
-        <Text className="text-gray-700 font-medium mb-1.5 ml-1 text-sm">{label}</Text>
+        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1.5 ml-1 text-sm">{label}</Text>
         <TextInput 
-            className="bg-white border border-gray-300 rounded-xl px-4 py-3.5 text-gray-900 text-base focus:border-blue-500" 
+            className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3.5 text-gray-900 dark:text-white text-base focus:border-blue-500" 
             value={value} 
             onChangeText={onChangeText} 
             placeholder={placeholder} 

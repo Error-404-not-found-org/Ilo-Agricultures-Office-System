@@ -206,22 +206,22 @@ export default function AddAIRecord() {
 
   return (
     <SafeScreen>
-      <View className="flex-1 bg-white px-5"> 
+      <View className="flex-1 bg-white dark:bg-slate-950 px-5"> 
         
         {/* --- COMPACT HEADER --- */}
         <View className="flex-row items-center justify-between mb-4 mt-2">
-            <TouchableOpacity onPress={handleBack} className="p-2 -ml-2 rounded-full active:bg-gray-100">
-                <ArrowLeft size={22} color="black" />
+            <TouchableOpacity onPress={handleBack} className="p-2 -ml-2 rounded-full active:bg-gray-100 dark:active:bg-slate-800">
+                <ArrowLeft size={22} color="gray" />
             </TouchableOpacity>
             <View className="items-center">
-                <Text className="text-base font-bold text-gray-900">New Record</Text>
-                <Text className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Step {currentStep} / {TOTAL_STEPS}</Text>
+                <Text className="text-base font-bold text-gray-900 dark:text-white">New Record</Text>
+                <Text className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">Step {currentStep} / {TOTAL_STEPS}</Text>
             </View>
             <View className="w-8" /> 
         </View>
 
         {/* --- PROGRESS BAR --- */}
-        <View className="flex-row h-1 bg-gray-100 rounded-full mb-6 overflow-hidden">
+        <View className="flex-row h-1 bg-gray-100 dark:bg-slate-800 rounded-full mb-6 overflow-hidden">
             <View className="bg-blue-600 h-full rounded-full" style={{ width: `${(currentStep / TOTAL_STEPS) * 100}%` }} />
         </View>
 
@@ -233,17 +233,17 @@ export default function AddAIRecord() {
             {/* ========================================= */}
             {currentStep === 1 && (
                 <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900">Animal Identity</Text>
-                    <Text className="text-sm text-gray-500 mb-5">Select farmer and animal details.</Text>
+                    <Text className="text-xl font-bold mb-1 text-gray-900 dark:text-white">Animal Identity</Text>
+                    <Text className="text-sm text-gray-500 dark:text-slate-400 mb-5">Select farmer and animal details.</Text>
                     
                     <View className="items-center mb-6 mt-2">
-                        <TouchableOpacity onPress={pickImage} className="w-24 h-24 bg-gray-50 rounded-full items-center justify-center border border-dashed border-gray-300 overflow-hidden">
+                        <TouchableOpacity onPress={pickImage} className="w-24 h-24 bg-gray-50 dark:bg-slate-800 rounded-full items-center justify-center border border-dashed border-gray-300 dark:border-slate-700 overflow-hidden">
                             {imageUri ? (
                                 <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
                             ) : (
                                 <>
                                   <Camera size={24} color="#9CA3AF" />
-                                  <Text className="text-[10px] text-gray-500 font-semibold text-center mt-1">Add Photo</Text>
+                                  <Text className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold text-center mt-1">Add Photo</Text>
                                 </>
                             )}
                         </TouchableOpacity>
@@ -311,8 +311,8 @@ export default function AddAIRecord() {
             {/* ========================================= */}
             {currentStep === 2 && (
                 <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900">Insemination</Text>
-                    <Text className="text-sm text-gray-500 mb-5">Enter AI details below.</Text>
+                    <Text className="text-xl font-bold mb-1 text-gray-900 dark:text-white">Insemination</Text>
+                    <Text className="text-sm text-gray-500 dark:text-slate-400 mb-5">Enter AI details below.</Text>
 
                     {/* UPDATED: DATE PICKER FIELD */}
                     <DateSelector 
@@ -352,8 +352,8 @@ export default function AddAIRecord() {
             {/* ========================================= */}
             {currentStep === 3 && (
                 <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900">Pregnancy Check</Text>
-                    <Text className="text-sm text-gray-500 mb-5">Enter PD results (Optional).</Text>
+                    <Text className="text-xl font-bold mb-1 text-gray-900 dark:text-white">Pregnancy Check</Text>
+                    <Text className="text-sm text-gray-500 dark:text-slate-400 mb-5">Enter PD results (Optional).</Text>
 
                     <DateSelector 
                         label="PD Date" 
@@ -372,8 +372,8 @@ export default function AddAIRecord() {
             {/* ========================================= */}
             {currentStep === 4 && (
                 <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900">Calf Drop</Text>
-                    <Text className="text-sm text-gray-500 mb-5">Enter calving details (Optional).</Text>
+                    <Text className="text-xl font-bold mb-1 text-gray-900 dark:text-white">Calf Drop</Text>
+                    <Text className="text-sm text-gray-500 dark:text-slate-400 mb-5">Enter calving details (Optional).</Text>
 
                     <DateSelector 
                         label="Calving Date" 
@@ -441,9 +441,9 @@ export default function AddAIRecord() {
 
 const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default' }: any) => (
     <View className="mb-3">
-        <Text className="text-gray-700 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
+        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
         <TextInput 
-            className="bg-white border border-gray-300 rounded-xl px-4 py-3 text-gray-900 text-sm focus:border-blue-500" 
+            className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3 text-gray-900 dark:text-white text-sm focus:border-blue-500" 
             value={value} 
             onChangeText={onChangeText} 
             placeholder={placeholder} 
@@ -455,9 +455,9 @@ const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'd
 
 const SelectField = ({ label, value, placeholder, onPress }: any) => (
     <View className="mb-3">
-        <Text className="text-gray-700 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TouchableOpacity onPress={onPress} className="flex-row items-center justify-between bg-white border border-gray-300 rounded-xl px-4 py-3">
-            <Text className={`text-sm ${value ? 'text-gray-900' : 'text-gray-400'}`}>{value || placeholder}</Text>
+        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
+        <TouchableOpacity onPress={onPress} className="flex-row items-center justify-between bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3">
+            <Text className={`text-sm ${value ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>{value || placeholder}</Text>
             <ChevronDown size={18} color="gray" />
         </TouchableOpacity>
     </View>
@@ -467,20 +467,20 @@ const SelectField = ({ label, value, placeholder, onPress }: any) => (
 const DateSelector = ({ label, value, onPress, onSetToday, onSetNotYet }: any) => (
     <View className="mb-3">
         <View className="flex-row justify-between items-center mb-1 ml-1">
-            <Text className="text-gray-700 font-medium text-xs uppercase tracking-wide">{label}</Text>
+            <Text className="text-gray-700 dark:text-slate-300 font-medium text-xs uppercase tracking-wide">{label}</Text>
             <View className="flex-row gap-x-4">
                 {onSetNotYet && (
                     <TouchableOpacity onPress={onSetNotYet} className="active:opacity-50">
-                        <Text className="text-gray-500 text-[10px] font-bold">NOT YET</Text>
+                        <Text className="text-gray-500 dark:text-slate-400 text-[10px] font-bold">NOT YET</Text>
                     </TouchableOpacity>
                 )}
                 <TouchableOpacity onPress={onSetToday} className="active:opacity-50">
-                    <Text className="text-blue-600 text-[10px] font-bold">SET TO TODAY</Text>
+                    <Text className="text-blue-600 dark:text-blue-400 text-[10px] font-bold">SET TO TODAY</Text>
                 </TouchableOpacity>
             </View>
         </View>
-        <TouchableOpacity onPress={onPress} className="bg-white border border-gray-300 rounded-xl px-4 py-3 flex-row justify-between items-center">
-            <Text className={`text-sm ${value ? 'text-gray-900' : 'text-gray-400'}`}>{value || "Select Date"}</Text>
+        <TouchableOpacity onPress={onPress} className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3 flex-row justify-between items-center">
+            <Text className={`text-sm ${value ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>{value || "Select Date"}</Text>
             <Calendar size={18} color="gray" />
         </TouchableOpacity>
     </View>
@@ -490,17 +490,17 @@ const DateSelector = ({ label, value, onPress, onSetToday, onSetNotYet }: any) =
 const SelectionModal = ({ visible, title, options, onClose, onSelect }: any) => (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
         <View className="flex-1 bg-black/50 justify-end">
-            <View className="bg-white rounded-t-[32px] p-6 pb-10 max-h-[70%]">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[70%]">
                 <View className="flex-row justify-between items-center mb-4">
-                    <Text className="text-lg font-bold">{title}</Text>
-                    <TouchableOpacity onPress={onClose} className="p-1 bg-gray-100 rounded-full"><X size={20} color="black" /></TouchableOpacity>
+                    <Text className="text-lg font-bold dark:text-white">{title}</Text>
+                    <TouchableOpacity onPress={onClose} className="p-1 bg-gray-100 dark:bg-slate-800 rounded-full"><X size={20} color="gray" /></TouchableOpacity>
                 </View>
                 <FlatList 
                     data={options} 
                     keyExtractor={(item) => item} 
                     renderItem={({ item }) => (
-                        <TouchableOpacity onPress={() => onSelect(item)} className="py-3.5 border-b border-gray-100 active:bg-blue-50">
-                            <Text className="text-base text-gray-800">{item}</Text>
+                        <TouchableOpacity onPress={() => onSelect(item)} className="py-3.5 border-b border-gray-100 dark:border-slate-800 active:bg-blue-50 dark:active:bg-slate-800">
+                            <Text className="text-base text-gray-800 dark:text-slate-200">{item}</Text>
                         </TouchableOpacity>
                     )} 
                 />

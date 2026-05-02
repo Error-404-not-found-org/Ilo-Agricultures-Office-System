@@ -14,7 +14,7 @@ export default function TasksScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('Urgent');
 
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
       const res = await api.get('/tasks');
       setTasks(res.data);
@@ -24,7 +24,8 @@ export default function TasksScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api]);
+
 
   useFocusEffect(
     useCallback(() => {
@@ -52,9 +53,9 @@ export default function TasksScreen() {
   const filteredTasks = tasks.filter((t: any) => t.category === activeTab);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F9FAFB]">
-      <View className="px-6 py-4 flex-row justify-between items-center bg-white border-b border-gray-100 shadow-sm z-10 w-full relative">
-        <Text className="text-2xl font-black text-[#00643B]">To-Do List</Text>
+    <SafeAreaView className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
+      <View className="px-6 py-4 flex-row justify-between items-center bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10 w-full relative">
+        <Text className="text-2xl font-black text-[#00643B] dark:text-emerald-500">To-Do List</Text>
         <TouchableOpacity 
           className="bg-[#00643B] w-10 h-10 rounded-full items-center justify-center shadow-sm"
           onPress={() => router.push('/(technician)/create-task')}
@@ -63,7 +64,7 @@ export default function TasksScreen() {
         </TouchableOpacity>
       </View>
 
-      <View className="flex-row px-4 py-3 bg-white">
+      <View className="flex-row px-4 py-3 bg-white dark:bg-slate-900">
         {['Urgent', 'Routine', 'Follow-up'].map(tab => (
           <TouchableOpacity
             key={tab}

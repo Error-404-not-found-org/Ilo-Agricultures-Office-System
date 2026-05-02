@@ -38,6 +38,14 @@ export default function TabLayout() {
             href: null,
         }}
       />
+
+      {/* Route 6: Reports (Hidden) */}
+      <Tabs.Screen 
+        name="technician.reports" 
+        options={{
+            href: null,
+        }}
+      />
     </Tabs>
   );
 }

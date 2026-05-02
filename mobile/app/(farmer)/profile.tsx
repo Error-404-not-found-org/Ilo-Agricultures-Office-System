@@ -1,11 +1,13 @@
 import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, ActivityIndicator } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState, useEffect } from 'react';
 import SafeScreen from '@/components/safeScreen';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ChevronRight, LogOut, Settings, HelpCircle, User, Phone, MapPin } from 'lucide-react-native';
+import { ChevronRight, LogOut, Settings, HelpCircle, User, Phone, MapPin, Sun, Moon } from 'lucide-react-native';
 import { toast } from 'sonner-native';
+import { useColorScheme } from 'nativewind';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@/lib/api';
 
@@ -15,6 +17,17 @@ const FarmerProfile = () => {
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
+  const { colorScheme, toggleColorScheme } = useColorScheme();
+
+  const handleToggleTheme = async () => {
+    const newScheme = colorScheme === 'dark' ? 'light' : 'dark';
+    toggleColorScheme();
+    try {
+      await AsyncStorage.setItem('theme_preference', newScheme);
+    } catch (e) {
+      console.warn("Failed to save theme preference:", e);
+    }
+  };
 
   // ── Data Fetching ───────────────────────────────────────────────────────────
   const { data: dbUser, isLoading } = useQuery({
@@ -101,12 +114,12 @@ const FarmerProfile = () => {
 
   return (
     <SafeScreen>
-      <ScrollView className="flex-1 bg-gray-50" showsVerticalScrollIndicator={false}>
+      <ScrollView className="flex-1 bg-gray-50 dark:bg-slate-900" showsVerticalScrollIndicator={false}>
         
         {/* Header Section */}
-        <View className="px-6 pt-6 pb-8 bg-white rounded-b-[32px] shadow-sm mb-6">
+        <View className="px-6 pt-6 pb-8 bg-white dark:bg-slate-800 rounded-b-[32px] shadow-sm mb-6">
             <View className="flex-row justify-between items-center mb-6">
-                <Text className="text-xl font-bold text-gray-900">My Profile</Text>
+                <Text className="text-xl font-bold text-gray-900 dark:text-white">My Profile</Text>
                 {isEditing ? (
                   <View className="flex-row gap-4">
                      <TouchableOpacity onPress={() => setIsEditing(false)}>
@@ -124,7 +137,7 @@ const FarmerProfile = () => {
             </View>
 
             <View className="flex-row items-center gap-4">
-                <View className="w-20 h-20 rounded-full bg-gray-100 items-center justify-center border-2 border-white shadow-sm overflow-hidden">
+                <View className="w-20 h-20 rounded-full bg-gray-100 dark:bg-slate-700 items-center justify-center border-2 border-white dark:border-slate-800 shadow-sm overflow-hidden">
                     {clerkUser?.imageUrl ? (
                          <Image source={{ uri: clerkUser.imageUrl }} className="w-full h-full" />
                     ) : (
@@ -136,8 +149,8 @@ const FarmerProfile = () => {
                       <ActivityIndicator size="small" color="#2563EB" className="self-start mt-2" />
                     ) : (
                       <>
-                        <Text className="text-xl font-bold text-gray-900" numberOfLines={1}>{clerkUser?.fullName || dbUser?.name || 'Farmer'}</Text>
-                        <Text className="text-gray-500 text-xs" numberOfLines={1}>{clerkUser?.primaryEmailAddress?.emailAddress || dbUser?.email || 'No email'}</Text>
+                        <Text className="text-xl font-bold text-gray-900 dark:text-white" numberOfLines={1}>{clerkUser?.fullName || dbUser?.name || 'Farmer'}</Text>
+                        <Text className="text-gray-500 dark:text-slate-400 text-xs" numberOfLines={1}>{clerkUser?.primaryEmailAddress?.emailAddress || dbUser?.email || 'No email'}</Text>
                       </>
                     )}
                     <View className="bg-blue-100 px-2 py-0.5 rounded-md self-start mt-1">
@@ -218,8 +231,8 @@ const FarmerProfile = () => {
                 </>
             ) : (
                 <>
-                    <Text className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Contact & Location</Text>
-                    <View className="bg-white rounded-2xl overflow-hidden shadow-sm">
+                    <Text className="text-sm font-semibold text-gray-400 dark:text-slate-500 mb-3 uppercase tracking-wider">Contact & Location</Text>
+                    <View className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm">
                         <MenuItem 
                             icon={<Phone size={20} color="#4B5563" />} 
                             label={dbUser?.phoneNumber || 'Add Phone Number'} 
@@ -238,15 +251,21 @@ const FarmerProfile = () => {
 
         {/* Existing Menu Options */}
         <View className="px-6 mb-8">
-            <Text className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Account Settings</Text>
+            <Text className="text-sm font-semibold text-gray-400 dark:text-slate-500 mb-3 uppercase tracking-wider">Account Settings</Text>
             
-            <View className="bg-white rounded-2xl overflow-hidden shadow-sm">
+            <View className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm">
                 <MenuItem 
                     icon={<MaterialCommunityIcons name="cow" size={20} color="#4B5563" />} 
                     label="My Animals" 
                     onPress={() => router.push('/(farmer)/farmer.records' as any)} 
                 />
                  <View className="h-[1px] bg-gray-100 ml-14" />
+                 <MenuItem 
+                    icon={colorScheme === 'dark' ? <Sun size={20} color="#4B5563" /> : <Moon size={20} color="#4B5563" />} 
+                    label={colorScheme === 'dark' ? "Light Mode" : "Dark Mode"} 
+                    onPress={handleToggleTheme} 
+                />
+                <View className="h-[1px] bg-gray-100 dark:bg-slate-700 ml-14" />
                 <MenuItem 
                     icon={<Settings size={20} color="#4B5563" />} 
                     label="Preferences" 
@@ -256,9 +275,9 @@ const FarmerProfile = () => {
         </View>
 
         <View className="px-6 mb-8">
-           <Text className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Support</Text>
+           <Text className="text-sm font-semibold text-gray-400 dark:text-slate-500 mb-3 uppercase tracking-wider">Support</Text>
             
-            <View className="bg-white rounded-2xl overflow-hidden shadow-sm">
+            <View className="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm">
                 <MenuItem 
                     icon={<HelpCircle size={20} color="#4B5563" />} 
                     label="Help & FAQ" 
@@ -277,7 +296,7 @@ const FarmerProfile = () => {
         <View className="px-6 mb-10">
             <TouchableOpacity 
                 onPress={handleSignOut}
-                className="flex-row items-center justify-center bg-red-50 py-4 rounded-xl active:bg-red-100"
+                className="flex-row items-center justify-center bg-red-50 dark:bg-red-950/20 py-4 rounded-xl active:bg-red-100"
             >
                 <LogOut size={20} color="#EF4444" />
                 <Text className="text-red-600 font-bold ml-2">Sign Out</Text>
@@ -293,13 +312,13 @@ const FarmerProfile = () => {
 const MenuItem = ({ icon, label, onPress }: { icon: React.ReactNode, label: string, onPress: () => void }) => (
     <TouchableOpacity 
         onPress={onPress}
-        className="flex-row items-center justify-between p-4 active:bg-gray-50"
+        className="flex-row items-center justify-between p-4 active:bg-gray-50 dark:active:bg-slate-700/50"
     >
         <View className="flex-row items-center gap-3">
-            <View className="w-8 h-8 rounded-full bg-gray-50 items-center justify-center">
+            <View className="w-8 h-8 rounded-full bg-gray-50 dark:bg-slate-700 items-center justify-center">
                 {icon}
             </View>
-            <Text className="text-gray-700 font-medium text-[15px]">{label}</Text>
+            <Text className="text-gray-700 dark:text-slate-200 font-medium text-[15px]">{label}</Text>
         </View>
         <ChevronRight size={18} color="#9CA3AF" />
     </TouchableOpacity>

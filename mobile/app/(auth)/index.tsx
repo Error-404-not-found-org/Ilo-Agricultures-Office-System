@@ -1,14 +1,13 @@
-import { View, Text, TouchableOpacity, ActivityIndicator, TextInput, Image, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, TextInput, Image } from 'react-native';
 import React, { useState } from 'react';
 import useSocialAuth from '../../hooks/useSocialAuth';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router'; 
 import { useSignIn } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
 import { useApi } from '@/lib/api';
 
 const AuthScreen = () => {
-  const router = useRouter(); 
+
   const api = useApi();
   const { loadingStrategy, handleSocialAuth } = useSocialAuth();
   const { signIn, setActive, isLoaded } = useSignIn();
@@ -162,7 +161,7 @@ const AuthScreen = () => {
 
           {/* Footer Register Link */}
           <View className="flex-row justify-center mt-6">
-            <Text className="text-gray-500">Don't have an account? </Text>
+            <Text className="text-gray-500">Don&apos;t have an account? </Text>
             <TouchableOpacity>
               <Text className="text-blue-500 font-bold">Register</Text>
             </TouchableOpacity>

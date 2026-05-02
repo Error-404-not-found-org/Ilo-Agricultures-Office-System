@@ -12,22 +12,22 @@ interface RecordCardProps {
   onPress?: () => void;
 }
 
-const RecordCard = ({ title, subtitle, date, status, statusColor = "text-gray-600", onPress }: RecordCardProps) => {
+const RecordCard = ({ title, subtitle, date, status, statusColor = "text-gray-600 dark:text-slate-400", onPress }: RecordCardProps) => {
   return (
     <TouchableOpacity 
       activeOpacity={0.7}
       onPress={onPress}
-      className="bg-white p-4 rounded-2xl mb-3 border border-gray-100 shadow-sm flex-row items-center justify-between"
+      className="bg-white dark:bg-slate-800 p-4 rounded-2xl mb-3 border border-gray-100 dark:border-slate-700 shadow-sm flex-row items-center justify-between"
     >
       <View className="flex-1">
         <View className="flex-row justify-between mb-1">
-            <Text className="text-xs text-gray-400 font-medium uppercase">{date}</Text>
+            <Text className="text-xs text-gray-400 dark:text-slate-500 font-medium uppercase">{date}</Text>
             <Text className={`text-xs font-bold uppercase ${statusColor}`}>{status}</Text>
         </View>
-        <Text className="text-base font-bold text-gray-900 mb-0.5" numberOfLines={1}>
+        <Text className="text-base font-bold text-gray-900 dark:text-white mb-0.5" numberOfLines={1}>
           {title}
         </Text>
-        <Text className="text-sm text-gray-500" numberOfLines={1}>
+        <Text className="text-sm text-gray-500 dark:text-slate-400" numberOfLines={1}>
           {subtitle}
         </Text>
       </View>
@@ -38,5 +38,6 @@ const RecordCard = ({ title, subtitle, date, status, statusColor = "text-gray-60
     </TouchableOpacity>
   );
 };
+
 
 export default RecordCard;

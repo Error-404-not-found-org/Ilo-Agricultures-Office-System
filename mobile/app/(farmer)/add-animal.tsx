@@ -1,7 +1,7 @@
 import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, StatusBar, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronDown, Calendar, Check, X, Camera } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Check, X, Camera } from 'lucide-react-native';
 import React, { useState, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useApi } from '@/lib/api';
@@ -64,10 +64,6 @@ export default function FarmerAddAnimal() {
     setModalVisible(true);
   };
 
-  const openDatePicker = (field: string) => {
-    setActiveField(field);
-    setDateModalVisible(true);
-  };
 
   const handleSelect = (val: string) => {
     const updated = {...formData, [activeField]: val};
@@ -129,7 +125,7 @@ export default function FarmerAddAnimal() {
   };
 
   return (
-    <View className="flex-1 bg-[#F9FAFB]">
+    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
       
       {/* Absolute Green Top Background */}
@@ -154,26 +150,26 @@ export default function FarmerAddAnimal() {
       </View>
 
       <View 
-        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg"
+        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg"
         style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
       >
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
             
             {/* --- PHOTO PLACEHOLDER (Optional) --- */}
-            <TouchableOpacity onPress={pickImage} className="self-center bg-gray-100 h-24 w-24 rounded-full items-center justify-center mb-8 border border-gray-200 border-dashed overflow-hidden shadow-sm">
+            <TouchableOpacity onPress={pickImage} className="self-center bg-gray-100 dark:bg-slate-800 h-24 w-24 rounded-full items-center justify-center mb-8 border border-gray-200 dark:border-slate-700 border-dashed overflow-hidden shadow-sm">
                 {imageUri ? (
                     <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
                 ) : (
                     <>
                       <Camera size={28} color="#9CA3AF" />
-                      <Text className="text-[10px] text-gray-500 font-semibold text-center mt-1">Add Photo</Text>
+                      <Text className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold text-center mt-1">Add Photo</Text>
                     </>
                 )}
             </TouchableOpacity>
 
             {/* --- FORM FIELDS --- */}
-            <Text className="text-sm font-bold text-gray-900 uppercase tracking-wider mb-4">Animal Identification</Text>
+            <Text className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4">Animal Identification</Text>
 
             <View className="flex-row gap-3">
                 <View className="flex-1">
@@ -244,9 +240,9 @@ export default function FarmerAddAnimal() {
 
 const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default' }: any) => (
     <View className="mb-3">
-        <Text className="text-gray-700 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
+        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
         <TextInput 
-            className="bg-white border border-gray-300 rounded-xl px-4 py-3 text-gray-900 text-sm focus:border-blue-500" 
+            className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3 text-gray-900 dark:text-white text-sm focus:border-blue-500" 
             value={value} 
             onChangeText={onChangeText} 
             placeholder={placeholder} 
@@ -258,38 +254,29 @@ const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'd
 
 const SelectField = ({ label, value, placeholder, onPress }: any) => (
     <View className="mb-3">
-        <Text className="text-gray-700 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TouchableOpacity onPress={onPress} className="flex-row items-center justify-between bg-white border border-gray-300 rounded-xl px-4 py-3">
-            <Text className={`text-sm ${value ? 'text-gray-900' : 'text-gray-400'}`}>{value || placeholder}</Text>
+        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
+        <TouchableOpacity onPress={onPress} className="flex-row items-center justify-between bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3">
+            <Text className={`text-sm ${value ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>{value || placeholder}</Text>
             <ChevronDown size={18} color="gray" />
         </TouchableOpacity>
     </View>
 );
 
-const DateSelector = ({ label, value, onPress }: any) => (
-    <View className="mb-3">
-        <Text className="text-gray-700 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TouchableOpacity onPress={onPress} className="bg-white border border-gray-300 rounded-xl px-4 py-3 flex-row justify-between items-center">
-            <Text className={`text-sm ${value ? 'text-gray-900' : 'text-gray-400'}`}>{value || "Select Date"}</Text>
-            <Calendar size={18} color="gray" />
-        </TouchableOpacity>
-    </View>
-);
 
 const SelectionModal = ({ visible, title, options, onClose, onSelect }: any) => (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
         <View className="flex-1 bg-black/50 justify-end">
-            <View className="bg-white rounded-t-[32px] p-6 pb-10 max-h-[70%]">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[70%]">
                 <View className="flex-row justify-between items-center mb-4">
-                    <Text className="text-lg font-bold">{title}</Text>
-                    <TouchableOpacity onPress={onClose} className="p-1 bg-gray-100 rounded-full"><X size={20} color="black" /></TouchableOpacity>
+                    <Text className="text-lg font-bold dark:text-white">{title}</Text>
+                    <TouchableOpacity onPress={onClose} className="p-1 bg-gray-100 dark:bg-slate-800 rounded-full"><X size={20} color="gray" /></TouchableOpacity>
                 </View>
                 <FlatList 
                     data={options} 
                     keyExtractor={(item) => item} 
                     renderItem={({ item }) => (
-                        <TouchableOpacity onPress={() => onSelect(item)} className="py-3.5 border-b border-gray-100 active:bg-green-50">
-                            <Text className="text-base text-gray-800">{item}</Text>
+                        <TouchableOpacity onPress={() => onSelect(item)} className="py-3.5 border-b border-gray-100 dark:border-slate-800 active:bg-green-50 dark:active:bg-slate-800">
+                            <Text className="text-base text-gray-800 dark:text-slate-200">{item}</Text>
                         </TouchableOpacity>
                     )} 
                 />
@@ -304,15 +291,15 @@ const CalendarModal = ({ visible, onClose, onSelect }: any) => {
     return (
         <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
             <View className="flex-1 bg-black/50 justify-center items-center px-6">
-                <View className="bg-white w-full rounded-3xl p-5">
+                <View className="bg-white dark:bg-slate-900 w-full rounded-3xl p-5">
                     <View className="flex-row justify-between items-center mb-4">
-                        <Text className="text-lg font-bold">Select Date</Text>
+                        <Text className="text-lg font-bold dark:text-white">Select Date</Text>
                         <TouchableOpacity onPress={onClose}><X size={20} color="gray" /></TouchableOpacity>
                     </View>
                     <View className="flex-row flex-wrap gap-2 justify-center">
                         {days.map((d) => (
-                            <TouchableOpacity key={d} onPress={() => onSelect(`10/${d}/2023`)} className="w-10 h-10 items-center justify-center rounded-full bg-gray-50 active:bg-green-600 active:text-white">
-                                <Text className="text-gray-700">{d}</Text>
+                            <TouchableOpacity key={d} onPress={() => onSelect(`10/${d}/2023`)} className="w-10 h-10 items-center justify-center rounded-full bg-gray-50 dark:bg-slate-800 active:bg-green-600 dark:active:bg-green-600 active:text-white">
+                                <Text className="text-gray-700 dark:text-slate-300">{d}</Text>
                             </TouchableOpacity>
                         ))}
                     </View>

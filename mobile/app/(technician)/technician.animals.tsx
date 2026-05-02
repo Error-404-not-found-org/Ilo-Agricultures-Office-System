@@ -71,7 +71,7 @@ const Animals = () => {
   };
 
   return (
-    <View className="flex-1 bg-[#F9FAFB]">
+    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
       
       {/* Absolute Green Top Background */}
@@ -80,7 +80,7 @@ const Animals = () => {
       <Header />
       
       <View 
-        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-3 pt-8 mt-2"
+        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-3 pt-8 mt-2"
         style={{ elevation: 8, shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 15 }}
       >
         <FlatList 
@@ -102,8 +102,8 @@ const Animals = () => {
                {/* Title + Count */}
                <View className="flex-row items-center justify-between mb-5">
                   <View>
-                    <Text className="text-[24px] font-black text-slate-800 leading-tight">Animals</Text>
-                    <Text className="text-slate-400 text-xs font-medium mt-0.5">
+                    <Text className="text-[24px] font-black text-slate-800 dark:text-white leading-tight">Animals</Text>
+                    <Text className="text-slate-400 dark:text-slate-500 text-xs font-medium mt-0.5">
                       {loading ? "Loading..." : `${total} registered animal${total !== 1 ? "s" : ""}`}
                     </Text>
                   </View>
@@ -122,7 +122,7 @@ const Animals = () => {
 
                 {/* Search Bar */}
                 <View 
-                  className="flex-row items-center bg-white rounded-2xl px-4 h-[50px] mb-2 border border-slate-100" 
+                  className="flex-row items-center bg-white dark:bg-slate-800 rounded-2xl px-4 h-[50px] mb-2 border border-slate-100 dark:border-slate-700" 
                   style={{ elevation: 2, shadowColor: '#94a3b8', shadowOpacity: 0.08, shadowRadius: 8 }}
                 >
                   <Search size={18} color="#94a3b8" />
@@ -130,7 +130,7 @@ const Animals = () => {
                     placeholder="Search by tag, ID, or owner..." 
                     value={searchQuery}
                     onChangeText={setSearchQuery}
-                    className="flex-1 ml-3 text-[14px] font-medium text-slate-800"
+                    className="flex-1 ml-3 text-[14px] font-medium text-slate-800 dark:text-white"
                     placeholderTextColor="#94a3b8"
                     style={{ paddingVertical: 0 }} 
                   />
@@ -151,10 +151,10 @@ const Animals = () => {
                 <ActivityIndicator size="large" color={PRIMARY} />
               ) : (
                 <>
-                  <View className="w-20 h-20 bg-slate-100 rounded-full items-center justify-center mb-2">
+                  <View className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full items-center justify-center mb-2">
                     <Dog size={36} color="#cbd5e1" />
                   </View>
-                  <Text className="text-slate-500 font-bold text-base">No animals found</Text>
+                  <Text className="text-slate-500 dark:text-slate-400 font-bold text-base">No animals found</Text>
                 </>
               )}
             </View>
@@ -163,10 +163,10 @@ const Animals = () => {
           ListFooterComponent={
             !loading && totalPages > 1 ? (
               <View
-                className="bg-white border-t border-slate-100 flex-row items-center justify-between px-8 py-2 mt-3"
+                className="bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex-row items-center justify-between px-8 py-2 mt-3"
                 style={{ borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}
               >
-                <Text className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                <Text className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
                   Page {page} of {totalPages}
                 </Text>
 
@@ -174,16 +174,16 @@ const Animals = () => {
                   <TouchableOpacity
                     onPress={() => goToPage(page - 1)}
                     disabled={page === 1}
-                    className="w-10 h-10 rounded-[12px] bg-slate-50 border border-slate-100 items-center justify-center"
+                    className="w-10 h-10 rounded-[12px] bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 items-center justify-center"
                     style={page === 1 ? { opacity: 0.4 } : { elevation: 1 }}
                   >
                     <ChevronLeft size={18} color={page === 1 ? "#94a3b8" : PRIMARY} />
                   </TouchableOpacity>
-
+ 
                   <TouchableOpacity
                     onPress={() => goToPage(page + 1)}
                     disabled={page === totalPages}
-                    className="w-10 h-10 rounded-[12px] bg-slate-50 border border-slate-100 items-center justify-center"
+                    className="w-10 h-10 rounded-[12px] bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 items-center justify-center"
                     style={page === totalPages ? { opacity: 0.4 } : { elevation: 1 }}
                   >
                     <ChevronRight size={18} color={page === totalPages ? "#94a3b8" : PRIMARY} />
@@ -199,7 +199,7 @@ const Animals = () => {
             <TouchableOpacity
               activeOpacity={0.75}
               onPress={() => router.push(`/(technician)/animal-details?id=${item._id}` as any)}
-              className="bg-white rounded-[20px] mb-3 border border-slate-100 overflow-hidden"
+              className="bg-white dark:bg-slate-800 rounded-[20px] mb-3 border border-slate-100 dark:border-slate-700 overflow-hidden"
               style={{ elevation: 2, shadowColor: "#94a3b8", shadowOpacity: 0.06, shadowRadius: 8 }}
             >
               <View className="flex-row">
@@ -221,28 +221,28 @@ const Animals = () => {
                       </View>
                     )}
                     <View className="flex-1">
-                      <Text className="text-[15px] font-bold text-slate-800" numberOfLines={1}>
+                      <Text className="text-[15px] font-bold text-slate-800 dark:text-white" numberOfLines={1}>
                         {item.animalId || 'No ID'} {item.earTag ? `(${item.earTag})` : ''}
                       </Text>
-                      <Text className="text-[11px] text-slate-400 font-medium" numberOfLines={1}>
+                      <Text className="text-[11px] text-slate-400 dark:text-slate-500 font-medium" numberOfLines={1}>
                         {item.species || 'Unknown'} • {item.breed || 'Mixed'}
                       </Text>
                     </View>
-                    <View className="bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                      <Text className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">
+                    <View className="bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-1 rounded-full border border-emerald-100 dark:border-emerald-800">
+                      <Text className="text-[9px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">
                         Active
                       </Text>
                     </View>
                   </View>
 
                   {/* Divider */}
-                  <View className="h-[1px] bg-slate-50 mb-3" />
+                  <View className="h-[1px] bg-slate-50 dark:bg-slate-700 mb-3" />
 
                   {/* Owner Info */}
                   <View className="flex-row items-center gap-2">
                     <MaterialCommunityIcons name="account-outline" size={14} color="#94a3b8" />
-                    <Text className="text-slate-500 text-[12px] font-medium">
-                      Owner: <Text className="text-slate-800">{item.farmerId?.name || 'Unassigned'}</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[12px] font-medium">
+                      Owner: <Text className="text-slate-800 dark:text-slate-200">{item.farmerId?.name || 'Unassigned'}</Text>
                     </Text>
                   </View>
                 </View>

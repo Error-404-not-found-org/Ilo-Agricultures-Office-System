@@ -67,7 +67,7 @@ export default function AdminUsersScreen() {
   const headerElement = (
     <View className="mb-4">
       <View className="flex-row justify-between items-center mb-5">
-        <Text className="text-[24px] font-bold text-slate-800">All Users</Text>
+        <Text className="text-[24px] font-bold text-slate-800 dark:text-white">All Users</Text>
         <TouchableOpacity
           onPress={() => router.push('/(admin)/create-user' as any)}
           className="bg-blue-600 px-4 py-2 rounded-full flex-row items-center gap-2"
@@ -83,19 +83,19 @@ export default function AdminUsersScreen() {
           <TouchableOpacity
             key={r}
             onPress={() => setRoleFilter(r)}
-            className={`px-3 py-1.5 rounded-full border ${roleFilter === r ? 'bg-[#1e3a5f] border-[#1e3a5f]' : 'bg-white border-slate-200'}`}
+            className={`px-3 py-1.5 rounded-full border ${roleFilter === r ? 'bg-[#1e3a5f] border-[#1e3a5f] dark:bg-slate-700 dark:border-slate-600' : 'bg-white border-slate-200 dark:bg-slate-800 dark:border-slate-700'}`}
           >
-            <Text className={`text-xs font-bold capitalize ${roleFilter === r ? 'text-white' : 'text-slate-500'}`}>{r}</Text>
+            <Text className={`text-xs font-bold capitalize ${roleFilter === r ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`}>{r}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
       {/* Search */}
-      <View className="flex-row items-center bg-white rounded-2xl px-4 h-[52px] mb-2 border border-slate-100 shadow-sm">
+      <View className="flex-row items-center bg-white dark:bg-slate-800 rounded-2xl px-4 h-[52px] mb-2 border border-slate-100 dark:border-slate-700 shadow-sm">
         <Search size={20} color="#94a3b8" />
         <TextInput
           placeholder="Search by name or email..."
-          className="flex-1 ml-3 text-[15px] font-medium text-slate-800"
+          className="flex-1 ml-3 text-[15px] font-medium text-slate-800 dark:text-white"
           placeholderTextColor="#94a3b8"
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -105,12 +105,12 @@ export default function AdminUsersScreen() {
   );
 
   return (
-    <View className="flex-1 bg-[#F0F4FF]">
+    <View className="flex-1 bg-[#F0F4FF] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
       <View className="absolute top-0 left-0 right-0 h-[220px]" style={{ backgroundColor: PRIMARY }} />
       <Header />
 
-      <View className="flex-1 bg-[#F0F4FF] rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg" style={{ elevation: 8 }}>
+      <View className="flex-1 bg-[#F0F4FF] dark:bg-slate-950 rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg" style={{ elevation: 8 }}>
         <FlatList
           data={isLoading ? [] : filteredUsers}
           keyExtractor={(item, index) => item._id?.toString() || index.toString()}
@@ -127,14 +127,14 @@ export default function AdminUsersScreen() {
               ) : isError ? (
                 <Text className="text-red-500 text-center">Failed to load users.</Text>
               ) : (
-                <Text className="text-gray-400">No users found.</Text>
+                <Text className="text-gray-400 dark:text-slate-500">No users found.</Text>
               )}
             </View>
           )}
           renderItem={({ item }) => {
             const roleStyle = ROLE_COLORS[item.role] || ROLE_COLORS.farmer;
             return (
-              <View className="bg-white rounded-[24px] p-5 mb-4 border border-slate-100 shadow-sm">
+              <View className="bg-white dark:bg-slate-800 rounded-[24px] p-5 mb-4 border border-slate-100 dark:border-slate-700 shadow-sm">
                 {/* Header Row */}
                 <View className="flex-row items-center gap-3 mb-3">
                   <View className="w-12 h-12 rounded-full items-center justify-center" style={{ backgroundColor: roleStyle.bg }}>
@@ -143,7 +143,7 @@ export default function AdminUsersScreen() {
                     </Text>
                   </View>
                   <View className="flex-1">
-                    <Text className="text-[17px] font-bold text-slate-800">{item.name || 'No Name'}</Text>
+                    <Text className="text-[17px] font-bold text-slate-800 dark:text-white">{item.name || 'No Name'}</Text>
                     <View className="flex-row items-center gap-2 mt-1">
                       <View className="px-2 py-0.5 rounded-full self-start" style={{ backgroundColor: roleStyle.bg }}>
                         <Text style={{ color: roleStyle.text }} className="text-[10px] font-bold uppercase tracking-widest">
@@ -151,8 +151,8 @@ export default function AdminUsersScreen() {
                         </Text>
                       </View>
                       {item.isVerified && (
-                        <View className="px-2 py-0.5 rounded-full bg-emerald-50 self-start">
-                          <Text className="text-emerald-700 text-[10px] font-bold">✓ Verified</Text>
+                        <View className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-900/30 self-start">
+                          <Text className="text-emerald-700 dark:text-emerald-400 text-[10px] font-bold">✓ Verified</Text>
                         </View>
                       )}
                     </View>
@@ -160,24 +160,24 @@ export default function AdminUsersScreen() {
                 </View>
 
                 {/* Credential Info */}
-                <View className="gap-y-1.5 ml-1 p-3 bg-slate-50 rounded-2xl">
+                <View className="gap-y-1.5 ml-1 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-2xl">
                   <View className="flex-row items-center gap-2">
                     <Mail size={13} color="#94a3b8" />
-                    <Text className="text-slate-600 text-[13px]">{item.email || 'No email'}</Text>
+                    <Text className="text-slate-600 dark:text-slate-400 text-[13px]">{item.email || 'No email'}</Text>
                   </View>
                   <View className="flex-row items-center gap-2">
                     <Shield size={13} color="#94a3b8" />
-                    <Text className="text-slate-500 text-[13px]">clerkId: <Text className="font-mono text-slate-700">{item.clerkId || 'Not synced'}</Text></Text>
+                    <Text className="text-slate-500 dark:text-slate-500 text-[13px]">clerkId: <Text className="font-mono text-slate-700 dark:text-slate-300">{item.clerkId || 'Not synced'}</Text></Text>
                   </View>
                   <View className="flex-row items-center gap-2">
                     <MaterialCommunityIcons name="clock-outline" size={13} color="#94a3b8" />
-                    <Text className="text-slate-500 text-[13px]">
+                    <Text className="text-slate-500 dark:text-slate-500 text-[13px]">
                       Created: {item.createdAt ? new Date(item.createdAt).toLocaleDateString() : '—'}
                     </Text>
                   </View>
                   <View className="flex-row items-center gap-2">
                     <MaterialCommunityIcons name="circle-outline" size={13} color="#94a3b8" />
-                    <Text className="text-slate-500 text-[13px]">Status: <Text className="font-semibold text-slate-700">{item.status || 'active'}</Text></Text>
+                    <Text className="text-slate-500 dark:text-slate-500 text-[13px]">Status: <Text className="font-semibold text-slate-700 dark:text-slate-300">{item.status || 'active'}</Text></Text>
                   </View>
                 </View>
               </View>
