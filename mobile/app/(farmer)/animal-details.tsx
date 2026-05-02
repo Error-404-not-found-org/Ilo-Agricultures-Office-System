@@ -71,7 +71,7 @@ export default function AnimalDetails() {
 
   if (loading) {
      return (
-        <View className="flex-1 items-center justify-center bg-[#F9FAFB]">
+        <View className="flex-1 items-center justify-center bg-[#F9FAFB] dark:bg-slate-950">
             <ActivityIndicator size="large" color="#00643B" />
         </View>
      );
@@ -79,8 +79,8 @@ export default function AnimalDetails() {
 
   if (!animal) {
      return (
-        <View className="flex-1 items-center justify-center bg-[#F9FAFB]">
-            <Text className="text-slate-500 font-bold">Animal Not Found.</Text>
+        <View className="flex-1 items-center justify-center bg-[#F9FAFB] dark:bg-slate-950">
+            <Text className="text-slate-500 dark:text-slate-400 font-bold">Animal Not Found.</Text>
             <TouchableOpacity onPress={() => router.back()} className="mt-4 px-6 py-3 bg-[#00643B] rounded-full">
                 <Text className="text-white font-bold">Go Back</Text>
             </TouchableOpacity>
@@ -121,7 +121,7 @@ export default function AnimalDetails() {
   ].sort((a, b) => new Date(b.recordDate).getTime() - new Date(a.recordDate).getTime());
 
   return (
-    <View className="flex-1 bg-[#F9FAFB]">
+    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
       
       {/* Absolute Green Top Background */}
@@ -153,7 +153,7 @@ export default function AnimalDetails() {
 
       {/* Header Profile Section */}
       <View className="px-6 items-center mt-6 z-10">
-          <View className="w-24 h-24 bg-white rounded-full items-center justify-center border-4 border-emerald-100 shadow-lg mb-4">
+          <View className="w-24 h-24 bg-white dark:bg-slate-800 rounded-full items-center justify-center border-4 border-emerald-100 dark:border-emerald-900 shadow-lg mb-4">
               <MaterialCommunityIcons name="cow" size={48} color="#00643B" />
           </View>
           <Text className="text-2xl font-black text-white mb-1">Tag {animal.earTag ? `#${animal.earTag}` : 'N/A'}</Text>
@@ -164,7 +164,7 @@ export default function AnimalDetails() {
 
       {/* Overlapping White Curve Card */}
       <View 
-        className="flex-1 bg-[#F9FAFB] rounded-t-[32px] pt-6 mt-4 shadow-lg flex-col"
+        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] pt-6 mt-4 shadow-lg flex-col"
         style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
       >
         
@@ -172,18 +172,18 @@ export default function AnimalDetails() {
         <View className="flex-row px-6 mb-6">
             <TouchableOpacity 
                 onPress={() => setActiveTab('Info')}
-                className={`flex-1 py-3.5 border-b-2 items-center flex-row justify-center gap-2 ${activeTab === 'Info' ? 'border-[#00643B]' : 'border-slate-200'}`}
+                className={`flex-1 py-3.5 border-b-2 items-center flex-row justify-center gap-2 ${activeTab === 'Info' ? 'border-[#00643B]' : 'border-slate-200 dark:border-slate-800'}`}
             >
                 <InfoIcon size={18} color={activeTab === 'Info' ? '#00643B' : '#94a3b8'} />
-                <Text className={`font-bold text-[15px] ${activeTab === 'Info' ? 'text-[#00643B]' : 'text-slate-400'}`}>General Info</Text>
+                <Text className={`font-bold text-[15px] ${activeTab === 'Info' ? 'text-[#00643B]' : 'text-slate-400 dark:text-slate-500'}`}>General Info</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
                 onPress={() => setActiveTab('History')}
-                className={`flex-1 py-3.5 border-b-2 items-center flex-row justify-center gap-2 ${activeTab === 'History' ? 'border-[#00643B]' : 'border-slate-200'}`}
+                className={`flex-1 py-3.5 border-b-2 items-center flex-row justify-center gap-2 ${activeTab === 'History' ? 'border-[#00643B]' : 'border-slate-200 dark:border-slate-800'}`}
             >
                 <History size={18} color={activeTab === 'History' ? '#00643B' : '#94a3b8'} />
-                <Text className={`font-bold text-[15px] ${activeTab === 'History' ? 'text-[#00643B]' : 'text-slate-400'}`}>Medical History</Text>
+                <Text className={`font-bold text-[15px] ${activeTab === 'History' ? 'text-[#00643B]' : 'text-slate-400 dark:text-slate-500'}`}>Medical History</Text>
             </TouchableOpacity>
         </View>
 
@@ -194,30 +194,30 @@ export default function AnimalDetails() {
                     
                     {/* Reproductive Status Section (For Females) */}
                     {animal.gender === "Female" && (
-                        <View className="bg-white p-5 rounded-3xl border border-slate-100 mb-2" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
+                        <View className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-100 dark:border-slate-700 mb-2" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
                             <View className="flex-row items-center mb-5 gap-2">
                                 <MaterialCommunityIcons name="heart-pulse" size={20} color="#00643B" />
-                                <Text className="text-lg font-bold text-slate-800">Reproductive Health</Text>
+                                <Text className="text-lg font-bold text-slate-800 dark:text-white">Reproductive Health</Text>
                             </View>
                             
-                            <View className="bg-slate-50 p-4 rounded-2xl mb-4 border border-slate-100">
-                                <Text className="text-slate-500 font-bold text-[11px] uppercase tracking-widest mb-1">Current Status</Text>
+                            <View className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl mb-4 border border-slate-100 dark:border-slate-700">
+                                <Text className="text-slate-500 dark:text-slate-400 font-bold text-[11px] uppercase tracking-widest mb-1">Current Status</Text>
                                 <View className="flex-row items-center gap-2">
                                     <View className={`w-3 h-3 rounded-full ${
                                         animal.reproductiveStatus === 'Pregnant' ? 'bg-emerald-500' :
                                         animal.reproductiveStatus === 'Inseminated' ? 'bg-blue-500' :
                                         animal.reproductiveStatus === 'In Heat' ? 'bg-orange-500' : 'bg-slate-300'
                                     }`} />
-                                    <Text className="text-xl font-black text-slate-900">{animal.reproductiveStatus || 'Normal'}</Text>
+                                    <Text className="text-xl font-black text-slate-900 dark:text-white">{animal.reproductiveStatus || 'Normal'}</Text>
                                 </View>
                             </View>
 
                             {/* Actionable Alerts based on Status */}
                             {animal.reproductiveStatus === "Inseminated" && (
                                 <View className="space-y-3">
-                                    <View className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-                                        <Text className="text-blue-800 font-bold text-sm leading-5">
-                                            It's been {Math.floor((Date.now() - new Date(animal.inseminations?.[0]?.dateOfAI || animal.updatedAt).getTime()) / (1000 * 60 * 60 * 24))} days since insemination.
+                                    <View className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800">
+                                        <Text className="text-blue-800 dark:text-blue-200 font-bold text-sm leading-5">
+                                            It&apos;s been {Math.floor((Date.now() - new Date(animal.inseminations?.[0]?.dateOfAI || animal.updatedAt).getTime()) / (1000 * 60 * 60 * 24))} days since insemination.
                                         </Text>
                                         <Text className="text-blue-600 text-[12px] mt-1 font-medium italic">Is the animal showing signs of heat again?</Text>
                                     </View>
@@ -229,13 +229,13 @@ export default function AnimalDetails() {
                                                     await api.patch(`/animals/${id}/reproductive-status`, { status: "In Heat", note: "Farmer observed heat signs (Recycle)." });
                                                     toast.success("Status Updated. You can now request re-insemination.");
                                                     setAnimal({...animal, reproductiveStatus: "In Heat"});
-                                                } catch (e) {
+                                                } catch {
                                                     toast.error("Update failed.");
                                                 }
                                             }}
-                                            className="flex-1 bg-white border-2 border-orange-200 py-3 rounded-2xl items-center"
+                                            className="flex-1 bg-white dark:bg-slate-800 border-2 border-orange-200 dark:border-orange-900/50 py-3 rounded-2xl items-center"
                                         >
-                                            <Text className="text-orange-600 font-black text-xs uppercase">Yes - In Heat</Text>
+                                            <Text className="text-orange-600 dark:text-orange-400 font-black text-xs uppercase">Yes - In Heat</Text>
                                         </TouchableOpacity>
                                         <TouchableOpacity 
                                             onPress={async () => {
@@ -243,7 +243,7 @@ export default function AnimalDetails() {
                                                     await api.patch(`/animals/${id}/reproductive-status`, { status: "Likely Pregnant", note: "No heat signs observed. Likely successful." });
                                                     toast.success("Awesome! Technician will schedule a confirmation check.");
                                                     setAnimal({...animal, reproductiveStatus: "Likely Pregnant"});
-                                                } catch (e) {
+                                                } catch {
                                                     toast.error("Update failed.");
                                                 }
                                             }}
@@ -268,10 +268,10 @@ export default function AnimalDetails() {
                     )}
 
                     {/* Basic Info Section */}
-                    <View className="bg-white p-5 rounded-3xl border border-slate-100" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
+                    <View className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-100 dark:border-slate-700" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
                         <View className="flex-row items-center mb-5 gap-2">
                             <Activity size={20} color="#00643B" />
-                            <Text className="text-lg font-bold text-slate-800">Biological Details</Text>
+                            <Text className="text-lg font-bold text-slate-800 dark:text-white">Biological Details</Text>
                         </View>
                         
                         <View className="gap-y-4">
@@ -292,13 +292,13 @@ export default function AnimalDetails() {
                     </View>
 
                     {/* Owner Info Section */}
-                    <View className="bg-white p-5 rounded-3xl border border-slate-100" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
+                    <View className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-100 dark:border-slate-700" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }}>
                         <View className="flex-row items-center mb-5 gap-2">
                             <User size={20} color="#00643B" />
-                            <Text className="text-lg font-bold text-slate-800">Ownership Details</Text>
+                            <Text className="text-lg font-bold text-slate-800 dark:text-white">Ownership Details</Text>
                         </View>
                         
-                        <View className="flex-row items-center gap-4 mb-5 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                        <View className="flex-row items-center gap-4 mb-5 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700">
                              <View className="w-12 h-12 bg-emerald-100 rounded-full items-center justify-center">
                                  <Text className="text-emerald-800 font-black text-lg">
                                     {(animal.farmerId?.name || '?').charAt(0).toUpperCase()}
@@ -318,7 +318,7 @@ export default function AnimalDetails() {
                                 <Text className="text-slate-500 font-medium text-[13px]">Location Address</Text>
                                 <View className="flex-row items-start gap-2 mt-1 pr-4">
                                     <MapPin size={16} color="#00643B" style={{marginTop: 2}} />
-                                    <Text className="text-slate-800 font-semibold text-[15px] leading-5 w-11/12">
+                                    <Text className="text-slate-800 dark:text-slate-200 font-semibold text-[15px] leading-5 w-11/12">
                                        {farmerAddress}
                                     </Text>
                                 </View>
@@ -335,10 +335,10 @@ export default function AnimalDetails() {
                                 <View key={idx} className="bg-white p-5 rounded-[24px] mb-4 border border-slate-100 flex-row" style={{ shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 }}>
                                     
                                     <View className={`w-12 h-12 rounded-full items-center justify-center mr-4 ${
-                                        record.type === 'insemination' ? 'bg-blue-50' : 
-                                        record.type === 'calving' ? 'bg-orange-50' : 
-                                        record.type === 'Vaccination' ? 'bg-emerald-50' :
-                                        record.type === 'Weight Log' ? 'bg-indigo-50' : 'bg-slate-50'
+                                        record.type === 'insemination' ? 'bg-blue-50 dark:bg-blue-900/30' : 
+                                        record.type === 'calving' ? 'bg-orange-50 dark:bg-orange-900/30' : 
+                                        record.type === 'Vaccination' ? 'bg-emerald-50 dark:bg-emerald-900/30' :
+                                        record.type === 'Weight Log' ? 'bg-indigo-50 dark:bg-indigo-900/30' : 'bg-slate-50 dark:bg-slate-900/30'
                                     }`}>
                                        {record.type === 'insemination' && <MaterialCommunityIcons name="needle" size={24} color="#3B82F6" />}
                                        {record.type === 'calving' && <MaterialCommunityIcons name="baby-carriage" size={24} color="#F97316" />}
@@ -379,7 +379,7 @@ export default function AnimalDetails() {
                                             <Text className="text-indigo-600 text-sm mt-1">Weight: <Text className="font-black">{record.details.weight} kg</Text></Text>
                                         )}
                                         {record.note && (
-                                            <Text className="text-slate-400 text-[12px] mt-1 italic leading-4">"{record.note}"</Text>
+                                            <Text className="text-slate-400 text-[12px] mt-1 italic leading-4">&quot;{record.note}&quot;</Text>
                                         )}
                                         {record.technicianId?.name && (
                                             <Text className="text-slate-400 text-[10px] mt-2 font-bold uppercase tracking-tighter">Recorded by {record.technicianId.name}</Text>

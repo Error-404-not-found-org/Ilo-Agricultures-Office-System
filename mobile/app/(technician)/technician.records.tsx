@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, RefreshControl, ActivityIndicator, StatusBar, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, ActivityIndicator, StatusBar, TouchableOpacity } from 'react-native';
 import React, { useEffect, useState, useCallback } from 'react';
 import Header from '@/components/Header';
 import { useApi } from '@/lib/api';
@@ -113,51 +113,33 @@ const Records = () => {
     );
   };
 
-  const renderRequestItem = (item: any) => {
-    const isAI = item.type === 'ai-request';
-    return (
-      <View key={`${item.type}-${item._id}`} style={styles.card}>
-        <View style={styles.cardHeader}>
-            <Text style={styles.timestamp}>{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "RECENT"}</Text>
-            <View style={[styles.badge, item.status === 'pending' ? styles.badgePending : styles.badgeApproved]}>
-                <Text style={[styles.badgeText, item.status === 'pending' ? styles.badgeTextPending : styles.badgeTextApproved]}>
-                    {item.status || 'pending'}
-                </Text>
-            </View>
-        </View>
-        <Text style={styles.cardTitle}>{isAI ? "AI Service Request" : "Health Service Request"}</Text>
-        <Text style={styles.cardSubtitle}>Farmer: <Text style={{fontWeight: 'bold'}}>{item.farmerId?.name || "Farmer"}</Text></Text>
-      </View>
-    );
-  };
-
   return (
-    <View style={styles.container}>
+    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
-      <View style={styles.greenTop} />
+      <View className="absolute top-0 left-0 right-0 h-[220px] bg-[#00643B]" />
 
       <Header />
       
-      <View style={styles.contentCard}>
-        <View style={styles.tabBar}>
+      <View className="flex-1 bg-white dark:bg-slate-950 rounded-t-[32px] px-6 pt-8 mt-2 shadow-2xl">
+        <View className="flex-row bg-[#F1F5F9] dark:bg-slate-800 p-1.5 rounded-2xl mb-5">
             <TouchableOpacity 
                 activeOpacity={0.7}
                 onPress={() => setActiveTab('history')}
-                style={[styles.tab, activeTab === 'history' ? styles.tabActive : null]}
+                className={`flex-1 py-3 items-center justify-center rounded-xl ${activeTab === 'history' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
             >
-                <Text style={[styles.tabText, activeTab === 'history' ? styles.tabTextActive : null]}>Activity History</Text>
+                <Text className={`font-bold text-[14px] ${activeTab === 'history' ? 'text-[#00643B] dark:text-emerald-400' : 'text-[#64748B] dark:text-slate-500'}`}>Activity History</Text>
             </TouchableOpacity>
             <TouchableOpacity 
                 activeOpacity={0.7}
                 onPress={() => setActiveTab('requests')}
-                style={[styles.tab, activeTab === 'requests' ? styles.tabActive : null]}
+                className={`flex-1 py-3 items-center justify-center rounded-xl ${activeTab === 'requests' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''}`}
             >
-                <Text style={[styles.tabText, activeTab === 'requests' ? styles.tabTextActive : null]}>Service Requests</Text>
+                <Text className={`font-bold text-[14px] ${activeTab === 'requests' ? 'text-[#00643B] dark:text-emerald-400' : 'text-[#64748B] dark:text-slate-500'}`}>Service Requests</Text>
             </TouchableOpacity>
         </View>
 
         {loading && !refreshing ? (
-             <View style={styles.centered}>
+             <View className="flex-1 justify-center items-center mb-16">
                 <ActivityIndicator size="large" color="#00643B" />
              </View>
         ) : (
@@ -171,38 +153,30 @@ const Records = () => {
                 {activeTab === 'history' ? (
                     historyRecords.map(renderHistoryItem)
                 ) : (
-                    serviceRequests.map(renderRequestItem)
+                    serviceRequests.map((item) => {
+                      const isAI = item.type === 'ai-request';
+                      return (
+                        <View key={`${item.type}-${item._id}`} className="bg-white dark:bg-slate-800 p-5 rounded-2xl mb-3 border border-slate-100 dark:border-slate-700 shadow-sm">
+                          <View className="flex-row justify-between items-center mb-2">
+                              <Text className="text-[10px] text-[#94A3B8] dark:text-slate-500 font-bold uppercase">{item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "RECENT"}</Text>
+                              <View className={`px-2 py-0.5 rounded-full ${item.status === 'pending' ? 'bg-amber-50 dark:bg-amber-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20'}`}>
+                                  <Text className={`text-[10px] font-bold uppercase ${item.status === 'pending' ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                      {item.status || 'pending'}
+                                  </Text>
+                              </View>
+                          </View>
+                          <Text className="text-[16px] font-bold text-[#1E293B] dark:text-white">{isAI ? "AI Service Request" : "Health Service Request"}</Text>
+                          <Text className="text-[14px] text-[#64748B] dark:text-slate-400 mt-1">Farmer: <Text className="font-bold text-slate-800 dark:text-slate-200">{item.farmerId?.name || "Farmer"}</Text></Text>
+                        </View>
+                      );
+                    })
                 )}
             </ScrollView>
         )}
       </View>
     </View>
   );
+
 }
-
-const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F9FAFB' } as ViewStyle,
-    greenTop: { position: 'absolute', top: 0, left: 0, right: 0, height: 220, backgroundColor: '#00643B' } as ViewStyle,
-    contentCard: { flex: 1, backgroundColor: 'white', borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingHorizontal: 24, paddingTop: 24, marginTop: 8 } as ViewStyle,
-    tabBar: { flexDirection: 'row', backgroundColor: '#F1F5F9', padding: 6, borderRadius: 16, marginBottom: 20 } as ViewStyle,
-    tab: { flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 12 } as ViewStyle,
-    tabActive: { backgroundColor: 'white' } as ViewStyle,
-    tabText: { fontWeight: 'bold', color: '#64748B', fontSize: 14 } as TextStyle,
-    tabTextActive: { color: '#00643B' } as TextStyle,
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 60 } as ViewStyle,
-    card: { backgroundColor: 'white', padding: 20, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: '#F1F5F9' } as ViewStyle,
-    cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } as ViewStyle,
-    timestamp: { fontSize: 10, color: '#94A3B8', fontWeight: 'bold' } as TextStyle,
-    badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 } as ViewStyle,
-    badgePending: { backgroundColor: '#FFFBEB' } as ViewStyle,
-    badgeApproved: { backgroundColor: '#ECFDF5' } as ViewStyle,
-    badgeText: { fontSize: 10, fontWeight: 'bold' } as TextStyle,
-    badgeTextPending: { color: '#D97706' } as TextStyle,
-    badgeTextApproved: { color: '#059669' } as TextStyle,
-    cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' } as TextStyle,
-    cardSubtitle: { fontSize: 14, color: '#64748B', marginTop: 4 } as TextStyle
-});
-
-import { ViewStyle, TextStyle } from 'react-native';
 
 export default Records;

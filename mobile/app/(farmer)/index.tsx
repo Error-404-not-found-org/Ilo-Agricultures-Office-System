@@ -39,7 +39,7 @@ export default function FarmerHome() {
   const currentDate = format(new Date(), 'EEEE, d MMM yyyy');
 
   return (
-    <View className="flex-1 bg-[#F9FAFB]">
+    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
       <ScrollView
         contentContainerStyle={{ paddingBottom: 150 }}
         showsVerticalScrollIndicator={false}
@@ -102,12 +102,12 @@ export default function FarmerHome() {
 
         {/* --- OVERVIEW CARD (overlaps header) --- */}
         <View className="px-6 -mt-16 z-10 w-full mb-8">
-          <View className="bg-white rounded-[32px] p-6 shadow-sm border border-gray-100">
+          <View className="bg-white dark:bg-slate-800 rounded-[32px] p-6 shadow-sm border border-gray-100 dark:border-slate-700">
             {/* Card Header */}
             <View className="flex-row justify-between items-center mb-6">
               <View className="flex-row items-center">
                 <MapPin size={18} color={PRIMARY} />
-                <Text className="text-slate-800 font-bold ml-1.5 text-base">My Farm Status</Text>
+                <Text className="text-slate-800 dark:text-white font-bold ml-1.5 text-base">My Farm Status</Text>
               </View>
               <View className="bg-emerald-50 px-3 py-1 rounded-full border border-emerald-100">
                 <Text style={{ color: PRIMARY }} className="text-xs font-bold tracking-wide">Active</Text>
@@ -119,23 +119,23 @@ export default function FarmerHome() {
               <Text style={{ color: PRIMARY }} className="text-7xl font-black tracking-tighter leading-none">
                 {isLoading ? '...' : stats.totalAnimals}
               </Text>
-              <Text className="text-slate-500 font-bold ml-2 mb-1 text-xl">Animals</Text>
+              <Text className="text-slate-500 dark:text-slate-400 font-bold ml-2 mb-1 text-xl">Animals</Text>
             </View>
 
             {/* Sub Stats Row */}
-            <View className="flex-row justify-between border-t border-slate-50 pt-5">
+            <View className="flex-row justify-between border-t border-slate-50 dark:border-slate-700 pt-5">
               <View className="items-center flex-1">
-                <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-1">Waiting Result</Text>
-                <Text className="text-slate-800 font-black text-xl">{isLoading ? '-' : stats.pendingResults}</Text>
+                <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-bold mb-1">Waiting Result</Text>
+                <Text className="text-slate-800 dark:text-white font-black text-xl">{isLoading ? '-' : stats.pendingResults}</Text>
               </View>
-              <View className="w-[1px] bg-slate-100" />
+              <View className="w-[1px] bg-slate-100 dark:bg-slate-700" />
               <View className="items-center flex-1">
-                <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-1">Pregnant</Text>
-                <Text className="text-slate-800 font-black text-xl">{isLoading ? '-' : stats.activePregnancies}</Text>
+                <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-bold mb-1">Pregnant</Text>
+                <Text className="text-slate-800 dark:text-white font-black text-xl">{isLoading ? '-' : stats.activePregnancies}</Text>
               </View>
-              <View className="w-[1px] bg-slate-100" />
+              <View className="w-[1px] bg-slate-100 dark:bg-slate-700" />
               <View className="items-center flex-1">
-                <Text className="text-slate-400 text-[10px] uppercase tracking-widest font-bold mb-1">Upcoming Calving</Text>
+                <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-bold mb-1">Upcoming Calving</Text>
                 <Text className="text-emerald-500 font-black text-xl">{isLoading ? '-' : stats.upcomingCalvings}</Text>
               </View>
             </View>
@@ -144,7 +144,7 @@ export default function FarmerHome() {
 
         {/* --- QUICK ACTIONS --- */}
         <View className="px-6 mb-8">
-          <Text className="text-slate-800 font-bold text-[17px] mb-4">Quick Links</Text>
+          <Text className="text-slate-800 dark:text-white font-bold text-[17px] mb-4">Quick Links</Text>
           <View className="flex-row justify-between">
             <ActionCategory
               title="My\nRecords"
@@ -175,11 +175,11 @@ export default function FarmerHome() {
           onRequestClose={() => setShowRequestHub(false)}
         >
           <View className="flex-1 justify-end bg-black/40">
-            <View className="bg-white rounded-t-[32px] p-8 pb-12 shadow-2xl">
-              <View className="w-12 h-1.5 bg-slate-200 rounded-full self-center mb-6" />
+            <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-8 pb-12 shadow-2xl">
+              <View className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full self-center mb-6" />
               
-              <Text className="text-2xl font-black text-slate-800 mb-2">Request Service</Text>
-              <Text className="text-slate-500 mb-8 font-medium">What service do you need for your animal today?</Text>
+              <Text className="text-2xl font-black text-slate-800 dark:text-white mb-2">Request Service</Text>
+              <Text className="text-slate-500 dark:text-slate-400 mb-8 font-medium">What service do you need for your animal today?</Text>
 
               <View className="gap-y-4">
                 <HubOption 
@@ -226,9 +226,9 @@ export default function FarmerHome() {
 
               <TouchableOpacity 
                 onPress={() => setShowRequestHub(false)}
-                className="mt-8 py-4 bg-slate-100 rounded-2xl items-center"
+                className="mt-8 py-4 bg-slate-100 dark:bg-slate-800 rounded-2xl items-center"
               >
-                <Text className="text-slate-600 font-bold">Cancel</Text>
+                <Text className="text-slate-600 dark:text-slate-400 font-bold">Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -244,15 +244,15 @@ export default function FarmerHome() {
 const HubOption = ({ title, subtitle, icon, color, onPress }: { title: string, subtitle: string, icon: React.ReactNode, color: string, onPress: () => void }) => (
   <TouchableOpacity 
     onPress={onPress}
-    className="flex-row items-center p-4 rounded-3xl border border-slate-50 bg-white shadow-sm"
+    className="flex-row items-center p-4 rounded-3xl border border-slate-50 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm"
     style={{ elevation: 2, shadowColor: '#94a3b8', shadowOpacity: 0.05, shadowRadius: 5 }}
   >
     <View className="w-14 h-14 rounded-2xl items-center justify-center mr-4" style={{ backgroundColor: color }}>
       {icon}
     </View>
     <View className="flex-1">
-      <Text className="text-base font-bold text-slate-800">{title}</Text>
-      <Text className="text-slate-400 text-xs mt-0.5">{subtitle}</Text>
+      <Text className="text-base font-bold text-slate-800 dark:text-white">{title}</Text>
+      <Text className="text-slate-400 dark:text-slate-500 text-xs mt-0.5">{subtitle}</Text>
     </View>
     <MaterialCommunityIcons name="chevron-right" size={24} color="#CBD5E1" />
   </TouchableOpacity>
@@ -261,7 +261,7 @@ const HubOption = ({ title, subtitle, icon, color, onPress }: { title: string, s
 const ActionCategory = ({ title, icon, iconBg, onPress }: { title: string, icon: React.ReactNode, iconBg: string, onPress?: () => void }) => (
   <TouchableOpacity
     activeOpacity={0.7}
-    className="flex-1 bg-white rounded-[20px] pt-4 pb-3 px-1 items-center border border-gray-100 shadow-sm mx-1"
+    className="flex-1 bg-white dark:bg-slate-800 rounded-[20px] pt-4 pb-3 px-1 items-center border border-gray-100 dark:border-slate-700 shadow-sm mx-1"
     style={{ elevation: 2, shadowColor: '#94a3b8', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}
     onPress={onPress}
   >
@@ -271,7 +271,7 @@ const ActionCategory = ({ title, icon, iconBg, onPress }: { title: string, icon:
     >
       {icon}
     </View>
-    <Text className="text-slate-700 text-[10px] font-bold text-center leading-3">
+    <Text className="text-slate-700 dark:text-slate-200 text-[10px] font-bold text-center leading-3">
       {title.split('\\n').map((line, i) => (
         <Text key={i}>{line}{i === 0 ? '\n' : ''}</Text>
       ))}

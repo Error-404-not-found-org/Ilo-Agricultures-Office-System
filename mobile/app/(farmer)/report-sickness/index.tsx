@@ -35,9 +35,9 @@ const REQUEST_TYPES = [
 ];
 
 const URGENCY_OPTIONS = [
-  { value: 'low',    label: 'Low',    desc: 'Can wait a few days',      color: '#22c55e', bg: '#f0fdf4' },
-  { value: 'medium', label: 'Medium', desc: 'Needs attention soon',     color: '#f59e0b', bg: '#fffbeb' },
-  { value: 'high',   label: 'Urgent', desc: 'Emergency / critical now', color: '#ef4444', bg: '#fef2f2' },
+  { value: 'low',    label: 'Low',    desc: 'Can wait a few days',      color: '#22c55e', bg: '#f0fdf4', darkBg: '#064e3b' },
+  { value: 'medium', label: 'Medium', desc: 'Needs attention soon',     color: '#f59e0b', bg: '#fffbeb', darkBg: '#78350f' },
+  { value: 'high',   label: 'Urgent', desc: 'Emergency / critical now', color: '#ef4444', bg: '#fef2f2', darkBg: '#7f1d1d' },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ export default function ReportSickness() {
   const selectedType = REQUEST_TYPES.find(t => t.value === requestType);
 
   return (
-    <View className="flex-1 bg-[#F9FAFB]">
+    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
 
       {/* Red-tinted top bar to signal health/urgency */}
@@ -212,7 +212,7 @@ export default function ReportSickness() {
       </View>
 
       {/* Content card */}
-      <View className="flex-1 bg-[#F9FAFB] rounded-t-[32px] px-6 pt-6 mt-2" style={{ shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 15, elevation: 8 }}>
+      <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-6 mt-2" style={{ shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 15, elevation: 8 }}>
         <ScrollView
           ref={scrollRef}
           showsVerticalScrollIndicator={false}
@@ -220,8 +220,8 @@ export default function ReportSickness() {
           contentContainerStyle={{ paddingBottom: 160 }}
         >
           {/* Farmer Info Card */}
-          <View className="bg-white rounded-3xl p-5 mb-5 border border-gray-100" style={{ elevation: 2 }}>
-            <Text className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">Your Information</Text>
+          <View className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-5 border border-gray-100 dark:border-slate-700" style={{ elevation: 2 }}>
+            <Text className="text-xs font-bold text-gray-400 dark:text-slate-400 uppercase tracking-widest mb-4">Your Information</Text>
             {(loadingProfile && !farmer) ? <ActivityIndicator color="#b91c1c" /> : farmer ? (
               <View className="gap-3">
                 <View className="flex-row items-center gap-3">
@@ -229,8 +229,8 @@ export default function ReportSickness() {
                     <User size={15} color="#b91c1c" />
                   </View>
                   <View>
-                    <Text className="text-[11px] text-gray-400 font-medium">Full Name</Text>
-                    <Text className="text-[14px] font-semibold text-gray-800">{farmer.name}</Text>
+                    <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium">Full Name</Text>
+                    <Text className="text-[14px] font-semibold text-gray-800 dark:text-white">{farmer.name}</Text>
                   </View>
                 </View>
                 <View className="flex-row items-start gap-3">
@@ -238,8 +238,8 @@ export default function ReportSickness() {
                     <MapPin size={15} color="#b91c1c" />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-[11px] text-gray-400 font-medium">Address</Text>
-                    <Text className="text-[14px] font-semibold text-gray-800 leading-tight">{formatAddress(farmer.address)}</Text>
+                    <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium">Address</Text>
+                    <Text className="text-[14px] font-semibold text-gray-800 dark:text-slate-200 leading-tight">{formatAddress(farmer.address)}</Text>
                   </View>
                 </View>
               </View>
@@ -249,16 +249,16 @@ export default function ReportSickness() {
           </View>
 
           {/* Animal Picker */}
-          <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Affected Animal *</Text>
+          <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Affected Animal *</Text>
           <TouchableOpacity
             onPress={() => setAnimalModalVisible(true)}
-            className={`bg-white border rounded-2xl px-4 py-4 flex-row items-center justify-between mb-4 ${selectedAnimal ? 'border-red-400' : 'border-gray-200'}`}
+            className={`bg-white dark:bg-slate-800 border rounded-2xl px-4 py-4 flex-row items-center justify-between mb-4 ${selectedAnimal ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-slate-700'}`}
             style={{ elevation: 1 }}
           >
             {selectedAnimal ? (
               <View>
-                <Text className="text-[15px] font-bold text-gray-800">{selectedAnimal.animalId}{selectedAnimal.earTag ? ` · ${selectedAnimal.earTag}` : ''}</Text>
-                <Text className="text-sm text-gray-400">{selectedAnimal.species} — {selectedAnimal.breed}</Text>
+                <Text className="text-[15px] font-bold text-gray-800 dark:text-white">{selectedAnimal.animalId}{selectedAnimal.earTag ? ` · ${selectedAnimal.earTag}` : ''}</Text>
+                <Text className="text-sm text-gray-400 dark:text-slate-400">{selectedAnimal.species} — {selectedAnimal.breed}</Text>
               </View>
             ) : (
               <Text className="text-gray-400 text-sm">Tap to choose an animal</Text>
@@ -267,25 +267,28 @@ export default function ReportSickness() {
           </TouchableOpacity>
 
           {/* Request Type */}
-          <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Request Type</Text>
+          <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Request Type</Text>
           <TouchableOpacity
             onPress={() => setTypeModalVisible(true)}
-            className="bg-white border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center justify-between mb-4"
+            className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 flex-row items-center justify-between mb-4"
             style={{ elevation: 1 }}
           >
-            <Text className="text-[15px] font-semibold text-gray-800">{selectedType?.label || 'Select type'}</Text>
+            <Text className="text-[15px] font-semibold text-gray-800 dark:text-white">{selectedType?.label || 'Select type'}</Text>
             <ChevronDown size={20} color="#9ca3af" />
           </TouchableOpacity>
 
           {/* Urgency Selector */}
-          <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Urgency Level</Text>
+          <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Urgency Level</Text>
           <View className="flex-row gap-2 mb-4">
             {URGENCY_OPTIONS.map(opt => (
               <TouchableOpacity
                 key={opt.value}
                 onPress={() => setUrgency(opt.value)}
                 className="flex-1 rounded-2xl py-3 px-2 items-center border-2"
-                style={{ borderColor: urgency === opt.value ? opt.color : '#e5e7eb', backgroundColor: urgency === opt.value ? opt.bg : 'white' }}
+                style={{ 
+                  borderColor: urgency === opt.value ? opt.color : '#e5e7eb', 
+                  backgroundColor: urgency === opt.value ? opt.bg : 'white' 
+                }}
               >
                 <Text className="text-xs font-bold" style={{ color: urgency === opt.value ? opt.color : '#9ca3af' }}>{opt.label}</Text>
                 <Text className="text-[9px] text-center mt-0.5" style={{ color: urgency === opt.value ? opt.color : '#d1d5db' }}>{opt.desc}</Text>
@@ -294,28 +297,28 @@ export default function ReportSickness() {
           </View>
 
           {/* Preferred Date/Time Picker */}
-          <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Preferred Visit Date/Time *</Text>
+          <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Preferred Visit Date/Time *</Text>
           <View className="flex-row gap-3 mb-4">
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
-              className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center justify-between"
+              className="flex-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 flex-row items-center justify-between"
               style={{ elevation: 1 }}
             >
               <View>
-                <Text className="text-[11px] text-gray-400 font-medium uppercase tracking-widest">Date</Text>
-                <Text className="text-[14px] font-bold text-gray-800">{preferredDate.toLocaleDateString()}</Text>
+                <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium uppercase tracking-widest">Date</Text>
+                <Text className="text-[14px] font-bold text-gray-800 dark:text-white">{preferredDate.toLocaleDateString()}</Text>
               </View>
               <Clock size={16} color="#9ca3af" />
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => setShowTimePicker(true)}
-              className="flex-1 bg-white border border-gray-200 rounded-2xl px-4 py-4 flex-row items-center justify-between"
+              className="flex-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 flex-row items-center justify-between"
               style={{ elevation: 1 }}
             >
               <View>
-                <Text className="text-[11px] text-gray-400 font-medium uppercase tracking-widest">Time</Text>
-                <Text className="text-[14px] font-bold text-gray-800">
+                <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium uppercase tracking-widest">Time</Text>
+                <Text className="text-[14px] font-bold text-gray-800 dark:text-white">
                   {preferredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </Text>
               </View>
@@ -343,7 +346,7 @@ export default function ReportSickness() {
           )}
 
           {/* Photo */}
-          <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Attach Photo (Optional)</Text>
+          <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Attach Photo (Optional)</Text>
           {imageUri ? (
             <View className="mb-4 relative">
               <Image source={{ uri: imageUri }} className="w-full h-44 rounded-2xl" resizeMode="cover" />
@@ -352,17 +355,17 @@ export default function ReportSickness() {
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity onPress={pickImage} className="w-full h-32 bg-white border-2 border-dashed border-gray-200 rounded-2xl items-center justify-center mb-4 gap-2">
+            <TouchableOpacity onPress={pickImage} className="w-full h-32 bg-white dark:bg-slate-800 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl items-center justify-center mb-4 gap-2">
               <Camera size={26} color="#9ca3af" />
-              <Text className="text-sm text-gray-400 font-medium">Tap to attach a photo</Text>
-              <Text className="text-xs text-gray-300">of the wound, swelling, or symptom</Text>
+              <Text className="text-sm text-gray-400 dark:text-slate-400 font-medium">Tap to attach a photo</Text>
+              <Text className="text-xs text-gray-300 dark:text-slate-500">of the wound, swelling, or symptom</Text>
             </TouchableOpacity>
           )}
 
           {/* Symptoms / Description */}
-          <Text className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 ml-1">Symptoms / Description *</Text>
+          <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Symptoms / Description *</Text>
           <TextInput
-            className="bg-white border border-gray-200 rounded-2xl px-4 py-4 text-gray-800 text-sm mb-6"
+            className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 text-gray-800 dark:text-white text-sm mb-6"
             style={{ minHeight: 120, textAlignVertical: 'top', elevation: 1 }}
             value={symptoms}
             onChangeText={setSymptoms}
@@ -394,10 +397,10 @@ export default function ReportSickness() {
       {/* Animal Modal */}
       <Modal animationType="slide" transparent visible={animalModalVisible} onRequestClose={() => setAnimalModalVisible(false)}>
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white rounded-t-[32px] p-6 pb-12 max-h-[75%]">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-12 max-h-[75%]">
             <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-lg font-bold text-gray-800">Select Animal</Text>
-              <TouchableOpacity onPress={() => setAnimalModalVisible(false)} className="p-1 bg-gray-100 rounded-full"><X size={20} color="#374151" /></TouchableOpacity>
+              <Text className="text-lg font-bold text-gray-800 dark:text-white">Select Animal</Text>
+              <TouchableOpacity onPress={() => setAnimalModalVisible(false)} className="p-1 bg-gray-100 dark:bg-slate-800 rounded-full"><X size={20} color="gray" /></TouchableOpacity>
             </View>
             
             {isLoadingAnimals ? (
@@ -416,10 +419,10 @@ export default function ReportSickness() {
                 keyExtractor={item => item._id}
                 renderItem={({ item }) => (
                   <TouchableOpacity onPress={() => { setSelectedAnimal(item); setAnimalModalVisible(false); }}
-                    className={`py-4 px-3 border-b border-gray-50 flex-row items-center justify-between ${selectedAnimal?._id === item._id ? 'bg-red-50 rounded-xl' : ''}`}>
+                    className={`py-4 px-3 border-b border-gray-50 dark:border-slate-800 flex-row items-center justify-between ${selectedAnimal?._id === item._id ? 'bg-red-50 dark:bg-red-900/30 rounded-xl' : ''}`}>
                     <View>
-                      <Text className="text-[15px] font-bold text-gray-800">{item.animalId}{item.earTag ? ` · ${item.earTag}` : ''}</Text>
-                      <Text className="text-sm text-gray-400">{item.species} — {item.breed}</Text>
+                      <Text className="text-[15px] font-bold text-gray-800 dark:text-white">{item.animalId}{item.earTag ? ` · ${item.earTag}` : ''}</Text>
+                      <Text className="text-sm text-gray-400 dark:text-slate-400">{item.species} — {item.breed}</Text>
                     </View>
                     {selectedAnimal?._id === item._id && <Check size={18} color="#b91c1c" />}
                   </TouchableOpacity>
@@ -433,18 +436,18 @@ export default function ReportSickness() {
       {/* Request Type Modal */}
       <Modal animationType="slide" transparent visible={typeModalVisible} onRequestClose={() => setTypeModalVisible(false)}>
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white rounded-t-[32px] p-6 pb-12">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-12">
             <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-lg font-bold text-gray-800">Request Type</Text>
-              <TouchableOpacity onPress={() => setTypeModalVisible(false)} className="p-1 bg-gray-100 rounded-full"><X size={20} color="#374151" /></TouchableOpacity>
+              <Text className="text-lg font-bold text-gray-800 dark:text-white">Request Type</Text>
+              <TouchableOpacity onPress={() => setTypeModalVisible(false)} className="p-1 bg-gray-100 dark:bg-slate-800 rounded-full"><X size={20} color="gray" /></TouchableOpacity>
             </View>
             {REQUEST_TYPES.map(type => (
               <TouchableOpacity
                 key={type.value}
                 onPress={() => { setRequestType(type.value); setTypeModalVisible(false); }}
-                className={`py-4 px-3 border-b border-gray-50 flex-row items-center justify-between ${requestType === type.value ? 'bg-red-50 rounded-xl' : ''}`}
+                className={`py-4 px-3 border-b border-gray-50 dark:border-slate-800 flex-row items-center justify-between ${requestType === type.value ? 'bg-red-50 dark:bg-red-900/30 rounded-xl' : ''}`}
               >
-                <Text className="text-base text-gray-800 font-medium">{type.label}</Text>
+                <Text className="text-base text-gray-800 dark:text-white font-medium">{type.label}</Text>
                 {requestType === type.value && <Check size={18} color="#b91c1c" />}
               </TouchableOpacity>
             ))}

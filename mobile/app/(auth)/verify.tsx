@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { toast } from 'sonner-native';
 import { useApi } from '@/lib/api';
 import { Mail, ArrowRight, LogOut, RefreshCcw } from 'lucide-react-native';
-import SafeAreaView from 'react-native-safe-area-context';
+
 
 const PRIMARY = '#074033';
 
@@ -36,25 +36,26 @@ export default function VerifyScreen() {
     }
   }, [countdown]);
 
-  useEffect(() => {
-    if (isUserLoaded && user && user.primaryEmailAddress?.verification?.status !== 'verified') {
-       sendVerificationCode();
-    }
-  }, [isUserLoaded]);
-
-  const sendVerificationCode = async () => {
+  const sendVerificationCode = useCallback(async () => {
     if (!user || countdown > 0) return;
     setIsSendingCode(true);
     try {
       await user.primaryEmailAddress?.prepareVerification({ strategy: 'email_code' });
       toast.success('Verification code sent to your email.');
       setCountdown(60);
-    } catch (err: any) {
+    } catch {
       toast.error('Failed to send verification code.');
     } finally {
       setIsSendingCode(false);
     }
-  };
+  }, [user, countdown]);
+
+  useEffect(() => {
+    if (isUserLoaded && user && user.primaryEmailAddress?.verification?.status !== 'verified') {
+       sendVerificationCode();
+    }
+  }, [isUserLoaded, user, sendVerificationCode]);
+
 
   const onVerifyPress = async () => {
     if (!user || code.length < 6) return;

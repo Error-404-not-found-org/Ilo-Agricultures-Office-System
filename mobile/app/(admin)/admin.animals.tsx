@@ -26,7 +26,7 @@ export default function AdminAnimalsScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const fetchAnimals = async (pageNumber: number, searchRaw: string, isRefresh = false) => {
+  const fetchAnimals = useCallback(async (pageNumber: number, searchRaw: string, isRefresh = false) => {
     if (loading) return;
     setLoading(true);
     try {
@@ -42,12 +42,12 @@ export default function AdminAnimalsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [api, loading]);
 
   useEffect(() => {
     setPage(1);
     fetchAnimals(1, debouncedSearch, true);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, fetchAnimals]);
 
   const handleLoadMore = () => {
     if (!loading && hasMore) {
@@ -64,12 +64,12 @@ export default function AdminAnimalsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-[#F0F4FF]">
+    <View className="flex-1 bg-[#F0F4FF] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
       <View className="absolute top-0 left-0 right-0 h-[190px]" style={{ backgroundColor: PRIMARY }} />
       <Header />
       <View
-        className="flex-1 bg-[#F0F4FF] rounded-t-[32px] px-5 pt-6 mt-2 shadow-lg"
+        className="flex-1 bg-[#F0F4FF] dark:bg-slate-950 rounded-t-[32px] px-5 pt-6 mt-2 shadow-lg"
         style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
       >
         <FlatList
@@ -83,14 +83,14 @@ export default function AdminAnimalsScreen() {
           onRefresh={handleRefresh}
           ListHeaderComponent={
             <View className="mb-5">
-              <Text className="text-[22px] font-bold text-slate-800 mb-4">Animals Directory</Text>
-              <View className="flex-row items-center bg-white rounded-xl px-4 h-[48px] mb-2 border border-slate-100 shadow-sm">
+              <Text className="text-[22px] font-bold text-slate-800 dark:text-white mb-4">Animals Directory</Text>
+              <View className="flex-row items-center bg-white dark:bg-slate-800 rounded-xl px-4 h-[48px] mb-2 border border-slate-100 dark:border-slate-700 shadow-sm">
                 <Search size={18} color="#94a3b8" />
                 <TextInput
                   placeholder="Search by tag, ID, or owner..."
                   value={searchQuery}
                   onChangeText={setSearchQuery}
-                  className="flex-1 ml-3 text-[14px] font-medium text-slate-800"
+                  className="flex-1 ml-3 text-[14px] font-medium text-slate-800 dark:text-white"
                   placeholderTextColor="#94a3b8"
                   style={{ paddingVertical: 0 }}
                 />
@@ -102,7 +102,7 @@ export default function AdminAnimalsScreen() {
               {loading ? (
                 <ActivityIndicator size="large" color={PRIMARY} />
               ) : (
-                <Text className="text-slate-400 font-medium text-base">No animals found.</Text>
+                <Text className="text-slate-400 dark:text-slate-500 font-medium text-base">No animals found.</Text>
               )}
             </View>
           }
@@ -112,30 +112,30 @@ export default function AdminAnimalsScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <View className="bg-white rounded-[20px] p-4 mb-3 border border-slate-100 shadow-sm relative overflow-hidden">
+            <View className="bg-white dark:bg-slate-800 rounded-[20px] p-4 mb-3 border border-slate-100 dark:border-slate-700 shadow-sm relative overflow-hidden">
               <View className="flex-row justify-between items-start mb-3">
                 <View className="flex-row items-center gap-3">
-                  <View className="w-10 h-10 bg-blue-50 rounded-full items-center justify-center">
+                  <View className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-full items-center justify-center">
                     <MaterialCommunityIcons name="cow" size={22} color={PRIMARY} />
                   </View>
                   <View>
-                    <Text className="text-[15px] font-bold text-slate-800">
+                    <Text className="text-[15px] font-bold text-slate-800 dark:text-white">
                       {item.animalId || 'No ID'} {item.earTag ? `(${item.earTag})` : ''}
                     </Text>
-                    <Text className="text-[12px] font-medium text-slate-500">
+                    <Text className="text-[12px] font-medium text-slate-500 dark:text-slate-400">
                       {item.species || 'Unknown'} / {item.breed || 'Mixed'}
                     </Text>
                   </View>
                 </View>
               </View>
               <View className="ml-1 mb-4">
-                <Text className="text-slate-600 text-[12px] mb-1">
-                  Owner: <Text className="font-semibold text-slate-800">{item.farmerId?.name || 'Unassigned'}</Text>
+                <Text className="text-slate-600 dark:text-slate-400 text-[12px] mb-1">
+                  Owner: <Text className="font-semibold text-slate-800 dark:text-slate-200">{item.farmerId?.name || 'Unassigned'}</Text>
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => router.push(`/(technician)/animal-details?id=${item._id}` as any)}
-                className="absolute bottom-0 right-0 bg-blue-50 px-4 py-2.5 rounded-tl-[16px] flex-row items-center gap-1 active:opacity-75"
+                className="absolute bottom-0 right-0 bg-blue-50 dark:bg-blue-900/50 px-4 py-2.5 rounded-tl-[16px] flex-row items-center gap-1 active:opacity-75"
               >
                 <Text style={{ color: PRIMARY }} className="text-[12px] font-bold tracking-wide">VIEW</Text>
                 <ArrowRight size={14} color={PRIMARY} />
