@@ -339,3 +339,15 @@ export const requestReInsemination = async (req, res) => {
     res.status(500).json({ message: "Failed to send re-insemination request" });
   }
 };
+
+export const getAnimalsByFarmer = async (req, res) => {
+  try {
+    const { farmerId } = req.params;
+    const animals = await Animal.find({ farmerId }).sort({ earTag: 1 }).lean();
+    res.status(200).json(animals);
+  } catch (error) {
+    console.error("[getAnimalsByFarmer ERROR]", error);
+    res.status(500).json({ message: "Failed to fetch farmer's animals." });
+  }
+};
+

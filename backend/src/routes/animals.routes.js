@@ -8,14 +8,16 @@ import {
   getMyAnimals,
   deleteAnimal,
   updateReproductiveStatus,
-  requestReInsemination
+  requestReInsemination,
+  getAnimalsByFarmer
 } from "../controllers/animals.controllers.js";
-import { protectedRoute } from "../middleware/auth.middleware.js";
+import { protectedRoute, TechnicianOnly } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
 router.post("/register", protectedRoute, registerAnimal);
 router.get("/all", protectedRoute, getAllAnimals);
+router.get("/farmer/:farmerId", protectedRoute, TechnicianOnly, getAnimalsByFarmer);
 router.get("/my", protectedRoute, getMyAnimals);
 router.get("/:id", protectedRoute, getAnimalById);
 router.put("/wizard/:id", protectedRoute, updateAnimalWizard);

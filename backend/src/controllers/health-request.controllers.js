@@ -170,3 +170,51 @@ export const updateHealthRequestStatus = async (req, res) => {
     res.status(500).json({ message: "Failed to update status." });
   }
 };
+
+// POST /api/health-request/walk-in — technician recording a done service
+export const walkInHealthRequest = async (req, res) => {
+  try {
+    const { earTag, diagnosis, urgency, farmerName } = req.body;
+
+    if (!earTag) return res.status(400).json({ message: "Ear tag is required." });
+    if (!diagnosis) return res.status(400).json({ message: "Diagnosis/Details required." });
+
+    // Find animal by ear tag
+    const animal = await Animal.findOne({ earTag }).populate("farmerId");
+    if (!animal) {
+      return res.status(404).json({ message: `Animal with tag ${earTag} not found in registry.` });
+    }
+
+    const request = await HealthRequest.create({
+      farmerId: animal.farmerId._id,
+      animalId: animal._id,
+      requestType: "disease",
+      symptoms: diagnosis,
+      urgency: urgency || "low",
+      status: "resolved", // Walk-ins are usually already handled
+      handledBy: req.user._id,
+      technicianNote: "Walk-in service recorded by technician.",
+      preferredDate: new Date(),
+      scheduledDate: new Date()
+    });
+
+    // Notify Farmer
+    await Notification.create({
+      recipientId: animal.farmerId._id,
+      senderId: req.user._id,
+      type: "health-request",
+      relatedId: request._id,
+      title: "Health Service Recorded",
+      message: `A walk-in health service for ${animal.earTag} has been recorded by technician ${req.user.name}.`,
+    });
+
+    // Trigger Socket
+    req.app.get("io").emit("dashboardUpdate", { type: "WALKIN_HEALTH_RECORDED" });
+
+    res.status(201).json({ message: "Walk-in health service recorded.", request });
+  } catch (error) {
+    console.error("[walkInHealthRequest ERROR]", error.message);
+    res.status(500).json({ message: "Failed to record health service." });
+  }
+};
+

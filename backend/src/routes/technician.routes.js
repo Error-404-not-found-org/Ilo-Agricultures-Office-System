@@ -4,7 +4,7 @@ import {
   getMyPregnancyChecks, getMyCalvings, getMyNotifications, 
   walkInInsemination, getTechnicianDashboardData, 
   updateInseminationStatus, getAnimalHistory, registerFarmer, recordPregnancyCheck,
-  recordCalving, getDashboardStats, getDashboardFeed, getDashboardRegistry
+  recordCalving, getDashboardStats, getDashboardFeed, getDashboardRegistry, walkInLivestock
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, TechnicianOnly } from "../middleware/auth.middleware.js";
 import { getCleanupSurvey, executeCleanup } from "../controllers/maintenance.controllers.js";
@@ -30,6 +30,7 @@ router.get("/notifications", getMyNotifications);
 router.get("/profile", getMyProfile);
 
 router.post("/walk-in-insemination", walkInInsemination);
+router.post("/walk-in-livestock", walkInLivestock);
 router.patch("/inseminations/:id/status", updateInseminationStatus);
 router.get("/animal-history/:id", getAnimalHistory);
 router.post("/register-farmer", registerFarmer);

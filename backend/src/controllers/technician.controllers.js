@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
@@ -409,18 +410,50 @@ export const getMyProfile = async (req, res) => {
 
 export const walkInInsemination = async (req, res) => {
   try {
-    const { farmerId, animalId, inseminationDate, sireBreed, sireCode, estrus } = req.body;
+    const { firstName, lastName, phoneNumber, email, address, animalDetails, inseminationDetails } = req.body;
 
-    const lastAttempt = await Insemination.findOne({ animalId }).sort({ attemptNumber: -1 });
+    if (!phoneNumber || !animalDetails?.earTag) {
+        return res.status(400).json({ message: "Farmer phone and Animal Ear Tag are required." });
+    }
+
+    // 1. Resolve or Create Farmer
+    let farmer = await User.findOne({ phoneNumber });
+    if (!farmer) {
+      farmer = await User.create({
+        name: `${firstName} ${lastName}`.trim(),
+        phoneNumber,
+        email: email || undefined,
+        address: address || "Not Provided",
+        role: "farmer",
+        isVerified: true // Technician-verified
+      });
+    }
+
+    // 2. Resolve or Create Animal
+    let animal = await Animal.findOne({ earTag: animalDetails.earTag });
+    if (!animal) {
+      const animalId = `ANM-${Date.now().toString().slice(-6)}`;
+      animal = await Animal.create({
+        farmerId: farmer._id,
+        animalId,
+        earTag: animalDetails.earTag,
+        species: animalDetails.species || "Cattle / Cow",
+        breed: animalDetails.breed || "Crossbreed",
+        isVerified: true
+      });
+    }
+
+    // 3. Record Insemination
+    const lastAttempt = await Insemination.findOne({ animalId: animal._id }).sort({ attemptNumber: -1 });
     const attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
 
     const insemination = await Insemination.create({
-      farmerId,
-      animalId,
-      inseminationDate: inseminationDate || new Date(),
-      sireBreed,
-      sireCode,
-      estrus,
+      farmerId: farmer._id,
+      animalId: animal._id,
+      inseminationDate: inseminationDetails?.inseminationDate || new Date(),
+      sireBreed: inseminationDetails?.sireBreed,
+      sireCode: inseminationDetails?.sireCode,
+      estrus: inseminationDetails?.estrus || "Natural",
       attemptNumber,
       status: "approved",
       approvedBy: req.user._id,
@@ -428,22 +461,24 @@ export const walkInInsemination = async (req, res) => {
 
     // Notify Farmer
     await Notification.create({
-      recipientId: farmerId,
+      recipientId: farmer._id,
       senderId: req.user._id,
       type: "ai-request",
       relatedId: insemination._id,
-      title: "Insemination Recorded",
-      message: `A walk-in insemination has been recorded for your animal by technician ${req.user.name}.`,
+      title: "Field AI Recorded",
+      message: `A field insemination has been recorded for your animal (${animal.earTag}) by technician ${req.user.name}.`,
     });
 
     // Trigger Socket Update
     req.app.get("io").emit("dashboardUpdate", { type: "WALKIN_INSEMINATION_CREATED" });
 
-    res.status(201).json({ message: "Walk-in insemination recorded", insemination });
+    res.status(201).json({ message: "Walk-in insemination recorded successfully", insemination, farmer, animal });
   } catch (error) {
+    console.error("[walkInInsemination ERROR]", error);
     res.status(500).json({ message: "Error recording insemination", error: error.message });
   }
 };
+
 
 export const updateInseminationStatus = async (req, res) => {
   try {
@@ -798,6 +833,66 @@ export const getDashboardFeed = async (req, res) => {
     res.status(500).json({ message: "Error fetching feed" });
   }
 };
+
+export const walkInLivestock = async (req, res) => {
+  try {
+    const { farmerName, earTag, species, breed, color, sex, dob } = req.body;
+
+    if (!earTag || !species || !breed) {
+      return res.status(400).json({ message: "Missing required animal details (Tag, Species, Breed)." });
+    }
+
+    // Find Farmer - handle case where farmerName might be an ID or a Name
+    let farmer;
+    if (mongoose.Types.ObjectId.isValid(farmerName)) {
+      farmer = await User.findById(farmerName);
+    } else {
+      farmer = await User.findOne({ name: { $regex: new RegExp(farmerName, "i") }, role: "farmer" });
+    }
+
+    if (!farmer) {
+      return res.status(404).json({ message: "Farmer not found. Please register the farmer first if they are new." });
+    }
+
+    // Check if earTag already exists
+    const existing = await Animal.findOne({ earTag });
+    if (existing) {
+      return res.status(400).json({ message: `An animal with Ear Tag #${earTag} already exists.` });
+    }
+
+    const animalId = `ANM-${Date.now().toString().slice(-6)}`;
+
+    const animal = await Animal.create({
+      farmerId: farmer._id,
+      animalId,
+      earTag,
+      species,
+      breed,
+      color,
+      gender: sex,
+      birthDate: dob ? new Date(dob) : undefined,
+      isVerified: true
+    });
+
+    // Notify Farmer
+    await Notification.create({
+      recipientId: farmer._id,
+      senderId: req.user._id,
+      type: "system",
+      title: "New Animal Registered",
+      message: `A new ${species} (${breed}) with Tag #${earTag} has been added to your registry by technician ${req.user.name}.`,
+    });
+
+    // Trigger Socket Update
+    req.app.get("io").emit("dashboardUpdate", { type: "LIVESTOCK_REGISTERED" });
+
+    res.status(201).json({ message: "Livestock registered successfully", animal });
+  } catch (error) {
+    console.error("[walkInLivestock ERROR]", error);
+    res.status(500).json({ message: "Failed to register livestock", error: error.message });
+  }
+};
+
 
 export const getDashboardRegistry = async (req, res) => {
   try {
