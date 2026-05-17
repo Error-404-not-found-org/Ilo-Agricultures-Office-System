@@ -1,0 +1,90 @@
+=========================================================
+          BREEDSMART - SYSTEM QA & TESTING CHECKLIST
+=========================================================
+CURRENT ESTIMATED COMPLETION: 92% (Polishing & QA Phase)
+=========================================================
+
+1. AUTHENTICATION & ONBOARDING FLOW
+---------------------------------------------------------
+[ ] Area to Check: Mobile App Registration
+Basis of Success: A new user can download the app, create an account using an Email + Password (or Username), see the real-time password strength meter, successfully verify their email via the 6-digit code, and be redirected to the Farmer Dashboard.
+[ ] Area to Check: Web Dashboard Login
+Basis of Success: A technician can log in using their credentials or Magic Link, bypass the mobile 6-digit code flow, and successfully access the Technician Dashboard.
+
+2. END-TO-END CORE LIFECYCLE (The Golden Path)
+---------------------------------------------------------
+[ ] Area to Check: Adding an Animal (Mobile/Web)
+Basis of Success: A farmer can register a new cow on mobile. The web dashboard updates instantly to show the new animal under that farmer's directory.
+[ ] Area to Check: Requesting an AI Service
+Basis of Success: Farmer taps "Request AI" -> selects the animal -> submits. Technician sees the "Pending Request" on the web dashboard.
+[ ] Area to Check: Technician Approving & Logging AI
+Basis of Success: Technician approves the AI request on the web, fills out the semen details/straw count, and marks it "Done". The Farmer's mobile app receives a notification and their "Waiting Result" stat changes from 0 to 1.
+[ ] Area to Check: Pregnancy Diagnosis (21 Days Later)
+Basis of Success: Technician logs a successful pregnancy check. The animal's status permanently changes to "Pregnant" across both web and mobile, and the Farmer's "Pregnant" stat increases.
+
+3. OFFLINE-FIRST CAPABILITIES (Critical Field Test)
+---------------------------------------------------------
+[ ] Area to Check: Mobile App without Internet
+Basis of Success: Turn off Wi-Fi/Data on the mobile device. Open the app. The dashboard, animal list, and past activities should still load perfectly from local cache (AsyncStorage/TanStack Query).
+[ ] Area to Check: Offline Actions Syncing
+Basis of Success: While offline, submit an "Add Animal" or "Request AI" form. Turn the Wi-Fi back on. The app should automatically detect the network and push the queued request to the MongoDB backend without the app crashing.
+
+4. WEB DASHBOARD ROBUSTNESS
+---------------------------------------------------------
+[ ] Area to Check: The Animal Hub
+Basis of Success: Clicking an animal opens the full Activity Ledger. You can successfully view their lineage, past inseminations, and add new health records without UI overlapping or data failing to load.
+[ ] Area to Check: Farmer Directory & Analytics
+Basis of Success: You can seamlessly register a new "Walk-in" farmer using the exact same modal logic we built, and the analytics numbers accurately reflect total farmers, animals, and successful pregnancies.
+
+5. MOOWIE AI ASSISTANT
+---------------------------------------------------------
+[ ] Area to Check: Real-time Diagnostics
+Basis of Success: Chat with Moowie on mobile or web. Provide symptoms (e.g., "My cow has a fever and stopped eating"). Moowie should respond with formatted, accurate veterinary advice without the UI breaking or the loading state freezing.
+
+=========================================================
+WHAT'S LEFT IN THE FINAL 8%?
+=========================================================
+- Fixing any minor UI alignment issues across different phone screen sizes.
+- Real-world field testing (letting an actual technician test the offline sync).
+- Verifying Push Notification delivery on actual physical devices (Expo Go sometimes restricts this).
+- Final production deployment for the Node.js backend.
+
+=========================================================
+HOW TO BUILD A STANDALONE ANDROID APK (NO PLAY STORE)
+=========================================================
+Since this app is built with Expo, you will use EAS (Expo Application Services) to generate an APK that you can directly install on any Android phone (sideloading) without going through the Google Play Store.
+
+STEP 1: Install EAS CLI
+Open your terminal and run:
+`npm install -g eas-cli`
+
+STEP 2: Log into your Expo Account
+Run:
+`eas login`
+(Enter your Expo account credentials)
+
+STEP 3: Configure the Project for EAS
+Navigate into your `mobile` folder in the terminal and run:
+`eas build:configure`
+This will generate an `eas.json` file in your mobile directory.
+
+STEP 4: Modify eas.json to Output an APK
+By default, Expo builds an `.aab` file for the Play Store. To force it to build an `.apk` file instead, open `eas.json` and modify the "preview" profile like this:
+{
+  "build": {
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {}
+  }
+}
+
+STEP 5: Start the Build Process
+Run this command to send the project to Expo's cloud servers to build the APK:
+`eas build -p android --profile preview`
+
+STEP 6: Download & Install
+Once the build is complete (it usually takes 5-10 minutes), the terminal will give you a direct download link. You can also log into your Expo dashboard on your browser to download the `.apk` file. 
+Transfer that `.apk` file to your Android phone, tap it, and select "Install" to test the fully compiled production app!

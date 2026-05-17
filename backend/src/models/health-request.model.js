@@ -42,7 +42,7 @@ const HealthRequestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "in-progress", "resolved", "cancelled"],
+      enum: ["pending", "approved", "in-progress", "resolved", "cancelled"],
       default: "pending",
     },
     handledBy: {
@@ -52,6 +52,18 @@ const HealthRequestSchema = new mongoose.Schema(
     technicianNote: {
       type: String,
       default: "",
+    },
+    diagnosis: {
+      type: String,
+      default: "",
+    },
+    treatment: {
+      type: String,
+      default: "", // Medicine or procedures given
+    },
+    advice: {
+      type: String,
+      default: "", // Advice for the farmer
     },
   },
   { timestamps: true }

@@ -23,7 +23,7 @@ export default function WalkInInsemination() {
             onClick={() => navigate(-1)}
             className="flex items-center gap-2 text-base-content/40 hover:text-emerald-500 font-black uppercase text-[10px] tracking-widest transition-all mb-4 group"
           >
-            <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back to Terminal
+            <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" /> Back to Console
           </button>
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-[#074033] dark:bg-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-900/20">

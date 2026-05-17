@@ -20,7 +20,7 @@ const InseminationSchema = new mongoose.Schema(
 
     estrus: {
       type: String,
-      enum: ["Natural", "Synchronized"],
+      enum: ["Natural", "Synchronized", "Induced"],
     },
 
     sireBreed: {
@@ -39,6 +39,12 @@ const InseminationSchema = new mongoose.Schema(
       default: "pending",
     },
 
+    // The technician who actually performed the AI
+    technicianId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
     approvedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -55,11 +61,21 @@ const InseminationSchema = new mongoose.Schema(
     scheduledDate: {
       type: Date,
     },
+    // Supporting Data for UNIP Form No. 2
     technicianNote: {
       type: String,
       default: "",
     },
-    // New fields from AIRequest
+
+    // Results tracking
+    isSuccess: { type: Boolean, default: null }, // Legacy support
+    outcome: { 
+      type: String, 
+      enum: ["Pending", "Pregnant", "Failed (Re-heat)", "Failed (Aborted)", "Failed (Negative PD)"],
+      default: "Pending"
+    },
+    pregnancyId: { type: mongoose.Schema.Types.ObjectId, ref: "Pregnancy" },
+
     imageUrl: {
       type: String,
       default: "",

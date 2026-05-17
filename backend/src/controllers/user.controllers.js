@@ -37,10 +37,10 @@ export const getMe = async (req, res) => {
       
       const pendingResults = insIds.filter(id => !diagnosedInsIds.includes(id.toString())).length;
 
-      // 2. Active Pregnancies: Confirmed pregnant and haven't calved
-      const activePregnancies = await Pregnancy.countDocuments({
+      // 2. Active Pregnancies: Animals currently marked as "Pregnant" in the Animal model
+      const activePregnancies = await Animal.countDocuments({
         farmerId: user._id,
-        "pregnancyDiagnosis.result": "Pregnant"
+        reproductiveStatus: "Pregnant"
       });
 
       // 3. Upcoming Calving: Confirmed pregnant and due within 30 days
@@ -51,12 +51,14 @@ export const getMe = async (req, res) => {
       });
 
       const totalAnimals = await Animal.countDocuments({ farmerId: user._id });
+      const totalCalves = await Calving.countDocuments({ farmerId: user._id });
 
       stats = { 
         totalAnimals, 
         activePregnancies, 
         upcomingCalvings, 
-        pendingResults 
+        pendingResults,
+        totalCalves
       };
     }
 
@@ -129,6 +131,11 @@ export const createInvitedUser = async (req, res) => {
       isVerified: false,
     });
 
+    req.app.get("io").emit("dashboardUpdate", {
+      type: "FARMER_REGISTERED",
+      message: `New farmer ${fullName} registered.`,
+    });
+
     res.status(201).json({
       message: `${targetRole} created successfully`,
       newUser,
@@ -197,6 +204,42 @@ export const getUsers = async (req, res) => {
   }
 };
 
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Find the user in our DB
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Attempt to delete from Clerk if clerkId exists
+    if (user.clerkId) {
+      try {
+        await clerkClient.users.deleteUser(user.clerkId);
+      } catch (clerkErr) {
+        console.error("Error deleting user from Clerk:", clerkErr);
+      }
+    }
+
+    // Delete associated data
+    await Animal.deleteMany({ farmerId: id });
+    await Insemination.deleteMany({ farmerId: id });
+    await HealthRequest.deleteMany({ farmerId: id });
+    await Pregnancy.deleteMany({ farmerId: id });
+    await Calving.deleteMany({ farmerId: id });
+
+    // Finally, delete the user from our DB
+    await User.findByIdAndDelete(id);
+
+    return res.status(200).json({ message: "User successfully deleted" });
+  } catch (error) {
+    console.error("Error deleting user:", error);
+    return res.status(500).json({ message: "Internal server error while deleting user." });
+  }
+};
+
 // Admin: list all users with Clerk details (email, role, clerkId, status)
 export const listAllUsersForAdmin = async (req, res) => {
   try {
@@ -215,28 +258,48 @@ export const syncUser = async (req, res) => {
     const { userId } = req.auth;
     const user = await clerkClient.users.getUser(userId);
 
-    const emailObj = user.emailAddresses[0];
+    const emailObj = user.emailAddresses?.[0];
     const email = emailObj?.emailAddress;
+    const username = user.username;
 
-    if (!email) {
-      return res.status(400).json({ message: "User has no email" });
+    // In free tier, users might sign up with just a Username instead of Email
+    const name = `${user.firstName || ""} ${user.lastName || ""}`.trim() || username || "New User";
+    const isVerified = emailObj?.verification?.status === "verified" || !!username;
+
+    // 1. Search for existing sync
+    let dbUser = await User.findOne({ clerkId: userId });
+
+    // 2. Search by Email
+    if (!dbUser && email) {
+      dbUser = await User.findOne({ email });
     }
 
-    const name = `${user.firstName || ""} ${user.lastName || ""}`.trim();
-    const isVerified = emailObj?.verification?.status === "verified";
+    // 3. Search by Name (Offline Profiles Only)
+    if (!dbUser && name && name !== "New User") {
+      dbUser = await User.findOne({
+        name: { $regex: new RegExp(`^${name}$`, 'i') },
+        clerkId: { $exists: false } // Target offline profiles
+      });
+    }
 
-    // Upsert user
-    const dbUser = await User.findOneAndUpdate(
-      { email },
-      {
+    if (dbUser) {
+      // Merge Account
+      dbUser.clerkId = userId;
+      if (email && !dbUser.email) dbUser.email = email;
+      dbUser.imageUrl = user.imageUrl || dbUser.imageUrl;
+      dbUser.isVerified = true;
+      await dbUser.save();
+    } else {
+      // Create Brand New Account
+      dbUser = await User.create({
         clerkId: userId,
-        name: name || "New User",
+        name: name,
+        email: email || undefined,
         imageUrl: user.imageUrl || "",
-        isVerified,
-        $setOnInsert: { role: "farmer" }, // Mobile users are typically farmers
-      },
-      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true },
-    );
+        isVerified: isVerified,
+        role: "farmer",
+      });
+    }
 
     // Sync role from metadata if present
     if (user.publicMetadata?.role && dbUser.role !== user.publicMetadata.role) {
@@ -361,6 +424,12 @@ export const updateUser = async (req, res) => {
 
     await user.save();
 
+    req.app.get("io").emit("dashboardUpdate", {
+      type: "FARMER_UPDATED",
+      message: `Farmer ${user.name} profile updated.`,
+      userId: id,
+    });
+
     res.status(200).json({ message: "User updated successfully", user });
   } catch (error) {
     console.error("Error updating user:", error);
@@ -388,9 +457,14 @@ export const markVerified = async (req, res) => {
       },
     });
 
-    // 2. Update MongoDB
     user.isVerified = true;
     await user.save();
+
+    req.app.get("io").emit("dashboardUpdate", {
+      type: "FARMER_VERIFIED",
+      message: `Farmer ${user.name} is now verified.`,
+      userId: user._id,
+    });
 
     res.status(200).json({ message: "User successfully verified.", user });
   } catch (error) {
@@ -425,6 +499,24 @@ export const resendVerificationCode = async (req, res) => {
     res.status(500).json({ message: "Failed to resend code." });
   }
 };
+export const updatePushToken = async (req, res) => {
+  try {
+    const { pushToken } = req.body;
+    const userId = req.user._id;
+
+    if (pushToken === undefined) {
+      return res.status(400).json({ message: "Push token is required." });
+    }
+
+    await User.findByIdAndUpdate(userId, { pushToken });
+
+    res.status(200).json({ message: "Push token updated successfully." });
+  } catch (error) {
+    console.error("[updatePushToken ERROR]", error);
+    res.status(500).json({ message: "Failed to update push token." });
+  }
+};
+
 export const getBreedingMilestones = async (req, res) => {
   try {
     const farmerId = req.user._id;
@@ -503,5 +595,46 @@ export const getBreedingMilestones = async (req, res) => {
   } catch (error) {
     console.error("[getBreedingMilestones ERROR]", error);
     res.status(500).json({ message: "Failed to fetch milestones." });
+  }
+};
+
+export const getMyActivityFeed = async (req, res) => {
+  try {
+    const farmerId = req.user._id;
+
+    const [inseminations, healthRequests, calvings] = await Promise.all([
+      Insemination.find({ farmerId }).populate("animalId", "earTag").sort({ createdAt: -1 }).limit(5),
+      HealthRequest.find({ farmerId }).populate("animalId", "earTag").sort({ createdAt: -1 }).limit(5),
+      Calving.find({ farmerId }).populate("animalId", "earTag").sort({ createdAt: -1 }).limit(5)
+    ]);
+
+    const feed = [
+      ...inseminations.map(i => ({ 
+        id: i._id, 
+        title: `AI performed on ${i.animalId?.earTag || 'Animal'}`, 
+        date: i.createdAt, 
+        type: 'ai' 
+      })),
+      ...healthRequests.map(h => ({ 
+        id: h._id, 
+        title: `Health Check — ${h.animalId?.earTag || 'Animal'}`, 
+        date: h.createdAt, 
+        type: 'health' 
+      })),
+      ...calvings.map(c => ({ 
+        id: c._id, 
+        title: `Calving recorded — ${c.animalId?.earTag || 'Animal'}`, 
+        date: c.createdAt, 
+        type: 'calving' 
+      }))
+    ];
+
+    // Sort by most recent
+    feed.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    res.status(200).json(feed.slice(0, 10));
+  } catch (error) {
+    console.error("[getMyActivityFeed ERROR]", error);
+    res.status(500).json({ message: "Failed to fetch activity feed." });
   }
 };

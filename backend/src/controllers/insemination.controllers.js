@@ -1,6 +1,8 @@
 import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
+import { Pregnancy } from "../models/pregnancy.model.js";
+import { Calving } from "../models/calving.model.js";
 
 export const createInsemination = async (req, res) => {
   try {
@@ -17,6 +19,19 @@ export const createInsemination = async (req, res) => {
     const animal = await Animal.findById(animalId);
     if (!animal) {
       return res.status(404).json({ message: "Animal not found" });
+    }
+
+    // Age Check: Prevent Insemination for Newborns/Young animals
+    if (animal.birthDate) {
+        const birth = new Date(animal.birthDate);
+        const now = new Date();
+        const diffMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+        
+        if (diffMonths < 12) {
+            return res.status(400).json({ 
+              message: `Animal is too young for insemination. Age: ${diffMonths === 0 ? "Newborn" : diffMonths + " months"}. Minimum age is 12 months.` 
+            });
+        }
     }
 
     // 2. Get last insemination attempt
@@ -54,19 +69,23 @@ export const updateInsemination = async (req, res) => {
     const { id } = req.params;
     const { inseminationDate, sireBreed, sireCode, estrus, status } = req.body;
 
-    const insemination = await Insemination.findById(id);
+    const insemination = await Insemination.findByIdAndUpdate(
+      id,
+      { $set: { inseminationDate, sireBreed, sireCode, estrus, status } },
+      { new: true, runValidators: true }
+    );
 
     if (!insemination) {
       return res.status(404).json({ message: "Insemination record not found" });
     }
 
-    if (inseminationDate) insemination.inseminationDate = inseminationDate;
-    if (sireBreed) insemination.sireBreed = sireBreed;
-    if (sireCode) insemination.sireCode = sireCode;
-    if (estrus) insemination.estrus = estrus;
-    if (status) insemination.status = status;
-
-    await insemination.save();
+    // Sync Animal Status if marked as 'done'
+    if (status === "done") {
+      await Animal.findByIdAndUpdate(insemination.animalId, {
+        reproductiveStatus: "Inseminated"
+      });
+      console.log(`[Status Sync] Animal ${insemination.animalId} set to Inseminated via updateInsemination.`);
+    }
 
     res.status(200).json({
       message: "Insemination updated successfully",
@@ -127,5 +146,35 @@ export const getMyInseminations = async (req, res) => {
   } catch (error) {
     console.error("[getMyInseminations ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch your records." });
+  }
+};
+
+// DELETE /api/insemination/:id
+export const deleteInsemination = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Find and Cascade Delete Children
+    const pregnancies = await Pregnancy.find({ inseminationId: id });
+    const pregIds = pregnancies.map(p => p._id);
+
+    // Delete linked pregnancies and any calvings resulting from them
+    await Promise.all([
+      Pregnancy.deleteMany({ inseminationId: id }),
+      Calving.deleteMany({ pregnancyId: { $in: pregIds } })
+    ]);
+
+    // 2. Delete the Insemination itself
+    const record = await Insemination.findByIdAndDelete(id);
+
+    if (!record) {
+      return res.status(404).json({ message: "Insemination record not found." });
+    }
+
+    console.log(`[Insemination & Cascade Deleted] ${id}`);
+    res.status(200).json({ message: "Insemination and all linked breeding data deleted successfully." });
+  } catch (error) {
+    console.error("[deleteInsemination ERROR]", error.message);
+    res.status(500).json({ message: "Failed to delete insemination record.", error: error.message });
   }
 };

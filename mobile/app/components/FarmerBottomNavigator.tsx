@@ -1,34 +1,46 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, TouchableWithoutFeedback, StyleSheet } from 'react-native';
-import { Home, User, Plus, FileText, Dog, X, Syringe, MessageCircleQuestion } from 'lucide-react-native';
-import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  TouchableWithoutFeedback,
+  StyleSheet,
+  Platform,
+} from "react-native";
+import {
+  Home,
+  User,
+  Plus,
+  FileText,
+  Dog,
+  X,
+  Syringe,
+  MessageCircleQuestion,
+} from "lucide-react-native";
+import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { router } from "expo-router";
 
-// Farmer Theme Colors (Matching Technician Design System but using Farmer Green)
 const COLORS = {
-  primary: '#00643B',
-  active: '#00643B',
-  inactive: '#94a3b8',
-  background: '#ffffff',
-  surface: '#f8fafc',
-  darkBackground: '#0f172a',
-  darkSurface: '#1e293b',
+  primary: "#00643B",
+  active: "#00643B",
+  inactive: "#94a3b8",
+  white: "#ffffff",
 };
 
-const FarmerBottomNavigator = ({ state, descriptors, navigation }: BottomTabBarProps) => {
+const FarmerBottomNavigator = ({
+  state,
+  descriptors,
+  navigation,
+}: BottomTabBarProps) => {
   const [modalVisible, setModalVisible] = useState(false);
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { colorScheme } = useColorScheme();
 
   const onNavigate = (screenName: string) => {
     navigation.navigate(screenName);
   };
 
   const isFocused = (screenName: string) => {
-    const route = state.routes.find(r => r.name === screenName);
+    const route = state.routes.find((r) => r.name === screenName);
     return route ? state.index === state.routes.indexOf(route) : false;
   };
 
@@ -38,191 +50,239 @@ const FarmerBottomNavigator = ({ state, descriptors, navigation }: BottomTabBarP
   };
 
   return (
-    <>
-      {/* --- QUICK ACTION MODAL --- */}
+    <View style={styles.outerContainer}>
       <Modal
-        animationType="fade"
-        transparent={true}
         visible={modalVisible}
+        transparent
+        animationType="fade"
         onRequestClose={() => setModalVisible(false)}
       >
-        <TouchableOpacity
-          className="flex-1 bg-slate-900/60 justify-end"
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
-        >
-          <TouchableWithoutFeedback>
-            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] px-6 pt-8 pb-12" style={[styles.modalShadow, { paddingBottom: insets.bottom + 20 }]}>
-              <View className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full self-center mb-6" />
-              <View className="flex-row justify-between items-center mb-8">
-                <Text className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Request Services</Text>
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full items-center justify-center"
-                >
-                  <X size={20} color={colorScheme === 'dark' ? '#94a3b8' : '#64748b'} />
+        <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Quick Actions</Text>
+                <TouchableOpacity onPress={() => setModalVisible(false)}>
+                  <X size={20} color="#64748b" />
                 </TouchableOpacity>
               </View>
-              <View className="flex-row flex-wrap justify-between gap-y-4">
+
+              <View style={styles.modalGrid}>
                 <ModalAction
                   icon={<Syringe size={24} color={COLORS.primary} />}
                   label="Request AI"
-                  onPress={() => handleModalAction('/(farmer)/request-ai')}
+                  onPress={() => handleModalAction("/(farmer)/request-ai")}
                 />
                 <ModalAction
-                  icon={<MessageCircleQuestion size={24} color="#dc2626" />}
+                  icon={
+                    <MessageCircleQuestion size={24} color={COLORS.primary} />
+                  }
                   label="Report Issue"
-                  onPress={() => handleModalAction('/(farmer)/report-sickness')}
+                  onPress={() => handleModalAction("/(farmer)/report-sickness")}
+                />
+                <ModalAction
+                  icon={<FileText size={24} color={COLORS.primary} />}
+                  label="My Requests"
+                  onPress={() => handleModalAction("/(farmer)/my-requests")}
+                />
+                <ModalAction
+                  icon={<Plus size={24} color={COLORS.primary} />}
+                  label="Add Animal"
+                  onPress={() => handleModalAction("/(farmer)/add-animal")}
                 />
               </View>
             </View>
-          </TouchableWithoutFeedback>
-
-        </TouchableOpacity>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
-      {/* --- MAIN TAB BAR — flat, flush, no floating (Technician Design) --- */}
-      <View style={[styles.tabContainer, { 
-        paddingBottom: Math.max(insets.bottom, 12),
-        backgroundColor: colorScheme === 'dark' ? COLORS.darkBackground : COLORS.background,
-      }]}>
-        <View style={[styles.topBorder, { backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#f1f5f9' }]} />
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'flex-end',
-            backgroundColor: colorScheme === 'dark' ? COLORS.darkBackground : COLORS.background,
-            paddingTop: 8,
-          }}
-        >
+      <View style={styles.tabContainer}>
+        <View style={styles.tabBar}>
           <TabItem
             icon={Home}
             label="Farm"
-            isFocused={isFocused('index')}
-            onPress={() => onNavigate('index')}
-            colorScheme={colorScheme}
+            isFocused={isFocused("index")}
+            onPress={() => onNavigate("index")}
           />
           <TabItem
             icon={Dog}
-            label="Animals"
-            isFocused={isFocused('add-animal')}
-            onPress={() => onNavigate('add-animal')}
-            colorScheme={colorScheme}
+            label="Cattle"
+            isFocused={isFocused("add-animal")}
+            onPress={() => onNavigate("add-animal")}
           />
 
-          {/* Center FAB — rises above bar via negative marginTop */}
-          <View style={{ flex: 1, alignItems: 'center', marginTop: -20 }}>
-            <TouchableOpacity
-              style={[styles.fab, styles.fabShadow, { borderColor: colorScheme === 'dark' ? COLORS.darkBackground : '#ffffff' }]}
-              activeOpacity={0.9}
-              onPress={() => setModalVisible(true)}
-            >
-              <Plus color="white" size={28} strokeWidth={2.5} />
-            </TouchableOpacity>
-          </View>
+          <View style={styles.centerSpace} />
 
           <TabItem
             icon={FileText}
             label="Records"
-            isFocused={isFocused('farmer.records')}
-            onPress={() => onNavigate('farmer.records')}
-            colorScheme={colorScheme}
+            isFocused={isFocused("farmer.records")}
+            onPress={() => onNavigate("farmer.records")}
           />
           <TabItem
             icon={User}
             label="Profile"
-            isFocused={isFocused('profile')}
-            onPress={() => onNavigate('profile')}
-            colorScheme={colorScheme}
+            isFocused={isFocused("profile")}
+            onPress={() => onNavigate("profile")}
           />
         </View>
+
+        <TouchableOpacity
+          activeOpacity={0.9}
+          onPress={() => setModalVisible(true)}
+          style={styles.fab}
+        >
+          <Plus color="#fff" size={28} strokeWidth={3} />
+        </TouchableOpacity>
       </View>
-    </>
+    </View>
   );
 };
 
-// --- SUB COMPONENTS ---
-
-const TabItem = ({ icon: Icon, label, isFocused, onPress, colorScheme }: any) => (
+const TabItem = ({ icon: Icon, label, isFocused, onPress }: any) => (
   <TouchableOpacity
     onPress={onPress}
-    style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 4 }}
-    activeOpacity={0.6}
+    style={styles.tabItem}
+    activeOpacity={0.7}
   >
-    <View
-      style={
-        isFocused
-          ? { backgroundColor: colorScheme === 'dark' ? '#064e3b' : '#ecfdf5', width: 52, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }
-          : { alignItems: 'center', justifyContent: 'center' }
-      }
-    >
-      <Icon color={isFocused ? COLORS.active : COLORS.inactive} size={22} strokeWidth={isFocused ? 2.5 : 2} />
+    <View style={[styles.iconWrapper, isFocused && styles.activeIconWrapper]}>
+      <Icon
+        color={isFocused ? COLORS.active : COLORS.inactive}
+        size={22}
+        strokeWidth={isFocused ? 2.5 : 2}
+      />
     </View>
-    <Text style={{ fontSize: 10, color: isFocused ? COLORS.active : COLORS.inactive, fontWeight: '600', marginTop: 2 }}>
+    <Text
+      style={{
+        fontSize: 10,
+        color: isFocused ? COLORS.active : COLORS.inactive,
+        fontFamily: isFocused ? "Outfit_700Bold" : "Outfit_500Medium",
+        marginTop: 4,
+      }}
+    >
       {label}
     </Text>
   </TouchableOpacity>
 );
 
-
-const ModalAction = ({ icon, label, onPress }: { icon: any; label: string; onPress?: () => void }) => (
+const ModalAction = ({ icon, label, onPress }: any) => (
   <TouchableOpacity
     onPress={onPress}
-    className="w-[47%] bg-white dark:bg-slate-800 p-5 rounded-[24px] items-center border border-slate-100 dark:border-slate-700"
-    style={styles.actionShadow}
+    style={styles.modalAction}
+    activeOpacity={0.7}
   >
-    <View className="w-14 h-14 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mb-3">{icon}</View>
-    <Text className="font-bold text-slate-700 dark:text-slate-200 text-[13px]">{label}</Text>
+    <View style={styles.actionIcon}>{icon}</View>
+    <Text style={styles.actionLabel}>{label}</Text>
   </TouchableOpacity>
 );
 
-
-// --- STYLES ---
-
 const styles = StyleSheet.create({
-  tabContainer: {
-    backgroundColor: '#ffffff',
-    elevation: 16,
-    zIndex: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 16,
+  outerContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "transparent",
   },
-  topBorder: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
+  tabContainer: {
+    height: 90,
+    justifyContent: "flex-end",
+    paddingBottom: Platform.OS === "ios" ? 25 : 15,
+  },
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    height: 65,
+    marginHorizontal: 16,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "space-around",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+    paddingHorizontal: 8,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconWrapper: {
+    padding: 6,
+    borderRadius: 12,
+  },
+  activeIconWrapper: {
+    backgroundColor: "rgba(0, 100, 59, 0.08)",
+  },
+  centerSpace: {
+    width: 60,
   },
   fab: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#00643B',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#ffffff',
-  },
-  fabShadow: {
-    shadowColor: '#00643B',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  modalShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 20,
-  },
-  actionShadow: {
-    shadowColor: '#94a3b8',
+    position: "absolute",
+    top: 0,
+    left: "50%",
+    marginLeft: -28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#00643B",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#00643B",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 10,
+    borderWidth: 4,
+    borderColor: "#fff",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontFamily: "Outfit_700Bold",
+    color: "#1e293b",
+  },
+  modalGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  modalAction: {
+    width: "48%",
+    backgroundColor: "#f8fafc",
+    padding: 20,
+    borderRadius: 24,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#f1f5f9",
+    marginBottom: 16,
+  },
+  actionIcon: {
+    marginBottom: 12,
+  },
+  actionLabel: {
+    fontSize: 13,
+    fontFamily: "Outfit_600SemiBold",
+    color: "#00643B",
   },
 });
 

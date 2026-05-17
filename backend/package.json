@@ -4,7 +4,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "inngest": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
   },
   "keywords": [],
   "author": "",
@@ -14,13 +15,14 @@
   "dependencies": {
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/express": "^1.7.63",
+    "axios": "^1.7.0",
     "cloudinary": "^2.8.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^7.5.1",
     "ilo-agriculturesoffice-system": "file:..",
-    "inngest": "^3.49.3",
+    "inngest": "^3.54.2",
     "mongodb": "^7.1.0",
     "mongoose": "^9.1.4",
     "multer": "^2.0.2",

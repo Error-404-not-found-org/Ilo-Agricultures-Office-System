@@ -5,14 +5,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
 
-const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
+const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
     const queryClient = useQueryClient();
     
     const [formData, setFormData] = useState({
         pregnancyId: '',
         animalId: '',
         date: new Date().toISOString().split('T')[0],
-        calvingEase: 'Normal',
+        calvingEase: 'Natural',
         numberOfCalves: 1,
         calves: [
             { sex: 'F', earTag: '', weight: '' }
@@ -58,13 +58,13 @@ const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
             return res.data;
         },
         onSuccess: () => {
-            toast.success("Calving event and offspring successfully recorded!");
+            toast.success("Calf Drop and offspring successfully recorded!");
             queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
             if (onSuccess) onSuccess();
             onClose();
         },
         onError: (error) => {
-            toast.error("Failed to record calving: " + (error.response?.data?.message || error.message));
+            toast.error("Failed to record Calf Drop: " + (error.response?.data?.message || error.message));
         }
     });
 
@@ -86,7 +86,7 @@ const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                 <Baby size={24} className="text-emerald-600" />
                             </div>
                             <div>
-                                <h2 className="text-2xl font-black text-slate-900 leading-tight tracking-tight">Record Calving</h2>
+                                <h2 className="text-2xl font-black text-slate-900 leading-tight tracking-tight">Record Calf Drop</h2>
                                 <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">
                                     Registering offspring for {pregnancyData?.animalId?.earTag || "Selected Animal"}
                                 </p>
@@ -101,7 +101,7 @@ const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                         {/* Basic Info Section */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Calving Date</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Drop Date</label>
                                 <div className="relative">
                                     <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                     <input 
@@ -113,20 +113,20 @@ const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                 </div>
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Calving Ease</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Calving Ease (CD)</label>
                                 <select 
                                     value={formData.calvingEase}
                                     onChange={(e) => setFormData({...formData, calvingEase: e.target.value})}
                                     className="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 text-[13px] font-black text-slate-900 focus:bg-white focus:border-blue-500 transition-all outline-none appearance-none"
                                 >
-                                    <option value="Normal">Normal Delivery</option>
-                                    <option value="Difficult">Difficult / Assisted</option>
+                                    <option value="Natural">Natural</option>
+                                    <option value="Difficult">Difficult</option>
                                     <option value="Abortion">Abortion</option>
                                     <option value="Stillbirth">Stillbirth</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Number of Calves</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">No. of Calving</label>
                                 <div className="flex items-center gap-2">
                                     <input 
                                         type="number"
@@ -143,7 +143,20 @@ const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
 
                         {/* Offspring Details Section */}
                         <div className="space-y-6">
-                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest border-l-4 border-emerald-500 pl-4 py-1">Offspring Registry</h3>
+                            <div className="flex justify-between items-end">
+                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest border-l-4 border-emerald-500 pl-4 py-1">Offspring Registry</h3>
+                                <div className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-xl border border-emerald-100 flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                    <span className="text-[9px] font-black uppercase tracking-widest">Auto-creating Animal Records</span>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-blue-50/30 p-4 rounded-2xl border border-blue-100/50 mb-4">
+                                <p className="text-[10px] font-bold text-blue-600 leading-relaxed">
+                                    Each calf registered below will automatically be added to the municipality's animal registry and linked to mother 
+                                    <span className="font-black mx-1 underline">#{pregnancyData?.animalId?.earTag || "---"}</span>.
+                                </p>
+                            </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {formData.calves.map((calf, index) => (
@@ -190,7 +203,7 @@ const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Official Ear Tag</label>
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Calf's ID No.</label>
                                                 <input 
                                                     type="text"
                                                     value={calf.earTag}
@@ -235,7 +248,7 @@ const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                             ) : (
                                 <>
                                     <ClipboardCheck size={20} />
-                                    <span>Register Offspring & Update Records</span>
+                                    <span>Register Offspring & Update Ledger</span>
                                 </>
                             )}
                         </button>
@@ -246,4 +259,4 @@ const RecordCalvingModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
     );
 };
 
-export default RecordCalvingModal;
+export default RecordCalfDropModal;

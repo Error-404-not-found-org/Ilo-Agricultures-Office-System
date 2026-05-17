@@ -9,6 +9,9 @@ import {
   markVerified,
   resendVerificationCode,
   getBreedingMilestones,
+  getMyActivityFeed,
+  updatePushToken,
+  deleteUser,
 } from "../controllers/user.controllers.js";
 import { requireAuth } from "@clerk/express";
 
@@ -26,9 +29,12 @@ router.get("/", protectedRoute, getUsers);
 router.post("/sync-manual", requireAuth(), syncUser);
 router.get("/me", protectedRoute, getMe);
 router.get("/milestones", protectedRoute, getBreedingMilestones);
+router.get("/activity", protectedRoute, getMyActivityFeed);
 
+router.post("/push-token", protectedRoute, updatePushToken);
 router.get("/:id", protectedRoute, getUserById);
 router.put("/:id", protectedRoute, updateUser);
+router.delete("/:id", protectedRoute, deleteUser);
 router.post("/mark-verified", protectedRoute, markVerified);
 
 export default router;

@@ -47,32 +47,36 @@ const Technicians = () => {
   };
 
   return (
-    <div className="p-6">
-      <div className="flex justify-end items-center mb-6">
+    <div className="space-y-6 pb-20">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+            <h1 className="text-3xl font-black text-base-content tracking-tight uppercase">Fleet Roster</h1>
+            <p className="text-base-content/40 font-bold text-[10px] uppercase tracking-widest mt-1">Active Personnel Registry</p>
+        </div>
         <button
-          className="btn btn-primary"
+          className="h-10 px-6 rounded-none bg-[#074033] hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-sm flex items-center gap-2"
           onClick={() => setIsModalOpen(true)}
         >
-          + Add Technician
+          <span>+</span> Add Technician
         </button>
       </div>
 
       {!technicians ||
       !Array.isArray(technicians) ||
       technicians.length === 0 ? (
-        <div className="text-center py-10 bg-base-100 rounded-lg shadow">
-          <p className="text-gray-500">No technicians found.</p>
+        <div className="text-center py-10 bg-base-100 border border-base-300 rounded-none shadow-sm">
+          <p className="text-base-content/40 font-black uppercase tracking-widest text-[10px]">No technicians found.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {technicians.map((tech) => (
             <div
               key={tech._id || Math.random()}
-              className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow duration-300 rounded-xl"
+              className="card bg-base-100 shadow-sm border border-base-300 hover:border-emerald-500/30 transition-all duration-300 rounded-none group overflow-hidden"
             >
               <figure className="px-6 pt-6">
                 <div className="avatar">
-                  <div className="w-24 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
+                  <div className="w-24 h-24 rounded-none border border-base-300 shadow-sm group-hover:scale-105 transition-transform overflow-hidden">
                     <img
                       src={
                         tech.imageUrl ||
@@ -80,34 +84,40 @@ const Technicians = () => {
                           (tech.name || "Unknown")
                       }
                       alt={tech.name || "User"}
+                      className="w-full h-full object-cover grayscale-[0.2]"
                     />
                   </div>
                 </div>
               </figure>
-              <div className="card-body items-center text-center">
-                <h2 className="card-title text-xl font-bold">
+              <div className="card-body items-center text-center p-6">
+                <h2 className="text-sm font-black text-base-content uppercase tracking-widest">
                   {tech.name || "Unknown"}
                 </h2>
                 <div
-                  className={`badge ${getStatusColor(tech.status)} badge-lg mb-2 capitalize`}
+                  className={`border rounded-none text-[8px] font-black uppercase tracking-widest px-3 py-1 mb-2 ${
+                    tech.status?.toLowerCase() === 'active' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600' :
+                    tech.status?.toLowerCase() === 'on-site' ? 'bg-amber-500/10 border-amber-500/20 text-amber-600' :
+                    tech.status?.toLowerCase() === 'on-leave' ? 'bg-rose-500/10 border-rose-500/20 text-rose-600' :
+                    'bg-base-200 border-base-300 text-base-content/60'
+                  }`}
                 >
                   {tech.status || "Unknown"}
                 </div>
 
-                <div className="space-y-1 w-full text-sm text-gray-600 mb-4">
-                  <div className="flex justify-between border-b pb-1">
-                    <span className="font-semibold">Email:</span>
-                    <span className="truncate max-w-[150px]">
+                <div className="space-y-1 w-full text-[10px] text-base-content/60 mb-4 uppercase tracking-widest font-bold">
+                  <div className="flex justify-between border-b border-base-200 pb-1">
+                    <span className="opacity-50">Email</span>
+                    <span className="truncate max-w-[120px] text-base-content">
                       {tech.email || "N/A"}
                     </span>
                   </div>
-                  <div className="flex justify-between border-b pb-1">
-                    <span className="font-semibold">Phone:</span>
-                    <span>{tech.phoneNumber || "N/A"}</span>
+                  <div className="flex justify-between border-b border-base-200 pb-1">
+                    <span className="opacity-50">Phone</span>
+                    <span className="text-base-content">{tech.phoneNumber || "N/A"}</span>
                   </div>
-                  <div className="flex justify-between pb-1">
-                    <span className="font-semibold">Address:</span>
-                    <span className="truncate max-w-[150px]">
+                  <div className="flex justify-between pb-1 mt-2">
+                    <span className="opacity-50 text-[9px]">Location</span>
+                    <span className="truncate max-w-[120px] text-[9px] text-base-content">
                       {(tech.address?.city || "N/A") +
                         (tech.address?.province
                           ? `, ${tech.address.province}`
@@ -116,15 +126,15 @@ const Technicians = () => {
                   </div>
                 </div>
 
-                <div className="card-actions w-full justify-center gap-2 mt-4">
+                <div className="card-actions w-full justify-center gap-2 mt-4 flex-nowrap">
                   <Link
                     to={`/admin/technicians/${tech._id}`}
-                    className="btn btn-sm btn-outline btn-info"
+                    className="h-8 px-4 rounded-none text-[9px] font-black uppercase tracking-widest bg-base-200 text-base-content/60 hover:bg-[#074033] hover:text-white transition-all flex-1 flex items-center justify-center border border-base-300 hover:border-[#074033]"
                   >
-                    View Profile
+                    Profile
                   </Link>
                   <button
-                    className="btn btn-sm btn-outline btn-warning"
+                    className="h-8 px-4 rounded-none text-[9px] font-black uppercase tracking-widest bg-base-100 text-base-content/60 hover:bg-amber-500 hover:text-white hover:border-amber-500 transition-all flex-1 flex items-center justify-center border border-base-300"
                     onClick={() => setSelectedTechnician(tech)}
                   >
                     Edit

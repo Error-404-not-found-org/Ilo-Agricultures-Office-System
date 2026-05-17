@@ -12,6 +12,7 @@ import ProtectedTechnicianRoute from "./components/ProtectedTechnicianRoute";
 
 // Pages
 import Landing from "./pages/Landing";
+import DownloadApp from "./pages/DownloadApp";
 import Dashboard from "./pages/Dashboard";
 import Technicians from "./pages/Technicians";
 import TechnicianProfile from "./pages/TechnicianProfile";
@@ -20,6 +21,7 @@ import LivestockProfile from "./pages/LivestockProfile";
 import Inseminations from "./pages/Inseminations";
 import Users from "./pages/Users";
 import Settings from "./pages/Settings";
+import Reports from "./pages/Reports";
 // Technician Pages
 import TechnicianDashboard from "./pages/technician/Dashboard";
 import FarmersDirectory from "./pages/technician/FarmersDirectory";
@@ -29,7 +31,14 @@ import TechnicianInseminations from "./pages/technician/Inseminations";
 import TechnicianHealth from "./pages/technician/Health";
 import WalkInInsemination from "./pages/technician/WalkInInsemination";
 import TechMyProfile from "./pages/technician/Profile";
-import RouteOptimizer from "./pages/technician/RouteOptimizer";
+import TechnicianAnalytics from "./pages/technician/Analytics";
+import TechnicianReports from "./pages/technician/Reports";
+import TechnicianSchedule from "./pages/technician/Schedule";
+import TechnicianRequests from "./pages/technician/Requests";
+import BreedingLedger from "./pages/technician/BreedingLedger";
+import TestModalPage from "./pages/technician/TestModalPage";
+import FarmerDashboard from "./pages/FarmerDashboard";
+import ProtectedFarmerRoute from "./components/ProtectedFarmerRoute";
 
 function App() {
   return (
@@ -38,6 +47,7 @@ function App() {
       <Routes>
       {/* Public Landing Page */}
       <Route path="/" element={<Landing />} />
+      <Route path="/download-app" element={<DownloadApp />} />
 
       {/* Protected Admin Routes */}
       <Route
@@ -62,6 +72,7 @@ function App() {
         <Route path="inseminations" element={<Inseminations />} />
         <Route path="users" element={<Users />} />
         <Route path="settings" element={<Settings />} />
+        <Route path="reports" element={<Reports />} />
       </Route>
 
       {/* Protected Technician Routes */}
@@ -87,9 +98,34 @@ function App() {
         <Route path="animals/:id" element={<LivestockProfile />} />
         <Route path="inseminations" element={<TechnicianInseminations />} />
         <Route path="health" element={<TechnicianHealth />} />
+        <Route path="ledger" element={<BreedingLedger />} />
         <Route path="walk-in" element={<WalkInInsemination />} />
         <Route path="profile" element={<TechMyProfile />} />
-        <Route path="route" element={<RouteOptimizer />} />
+        <Route path="analytics" element={<TechnicianAnalytics />} />
+        <Route path="reports" element={<TechnicianReports />} />
+        <Route path="schedule" element={<TechnicianSchedule />} />
+        <Route path="requests" element={<TechnicianRequests />} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="lab" element={<TestModalPage />} />
+      </Route>
+
+      {/* Protected Farmer Routes */}
+      <Route
+        path="/farmer"
+        element={
+          <>
+            <SignedIn>
+              <ProtectedFarmerRoute>
+                <Layout />
+              </ProtectedFarmerRoute>
+            </SignedIn>
+            <SignedOut>
+              <Navigate to="/" replace />
+            </SignedOut>
+          </>
+        }
+      >
+        <Route path="dashboard" element={<FarmerDashboard />} />
       </Route>
 
       {/* Catch-all redirect */}

@@ -12,69 +12,69 @@ export const inngest = new Inngest({
   id: "ilo-agricultures-office-system-backend",
 });
 
-const syncUser = inngest.createFunction(
-  { id: "sync/user" },
-  { event: ["clerk/user.created", "clerk/user.updated"] },
-  async ({ event }) => {
-    await connectDB();
+const handleUserSync = async ({ event }) => {
+  await connectDB();
 
-    const {
-      id: clerkId,
-      first_name,
-      last_name,
-      image_url,
-      email_addresses,
-      external_accounts,
-      unsafe_metadata, // This might contain role logic if needed, but we prefer DB role
-    } = event.data;
+  const {
+    id: clerkId,
+    first_name,
+    last_name,
+    image_url,
+    email_addresses,
+    external_accounts,
+  } = event.data;
 
-    const emailObj = email_addresses?.[0];
-    const email =
-      emailObj?.email_address || external_accounts?.[0]?.email_address;
+  const emailObj = email_addresses?.[0];
+  const email =
+    emailObj?.email_address || external_accounts?.[0]?.email_address;
 
-    if (!email) {
-      console.warn(`Skipping user sync: no email for clerkId ${clerkId}`);
-      return;
-    }
+  if (!email) {
+    console.warn(`Skipping user sync: no email for clerkId ${clerkId}`);
+    return;
+  }
 
-    const isVerified = emailObj?.verification?.status === "verified";
-    const name = `${first_name || ""} ${last_name || ""}`.trim();
+  const isVerified = emailObj?.verification?.status === "verified";
+  const name = `${first_name || ""} ${last_name || ""}`.trim();
 
-    // 🔎 Find existing user (technician-created or just existing)
-    let user = await User.findOne({ email });
+  let user = await User.findOne({ email });
 
-    if (user) {
-      // ✅ UPDATE EXISTING USER / ACCEPT INVITE FLOW
-      user.clerkId = clerkId;
-      user.isVerified = isVerified;
-      user.imageUrl = image_url || user.imageUrl;
-      user.name = name || user.name;
-      await user.save();
-    } else {
-      // ✅ DIRECT SIGNUP (mobile app or web without invite)
-      // Default to farmer unless metadata says otherwise (though frontend shouldn't dictate role)
-      
-      user = await User.create({
-        clerkId,
-        email,
-        name: name || "New User",
-        imageUrl: image_url || "",
-        role: "farmer", 
-        isVerified,
-      });
-      console.log(`Created new farmer from Clerk signup: ${email}`);
-    }
+  if (user) {
+    user.clerkId = clerkId;
+    user.isVerified = isVerified;
+    user.imageUrl = image_url || user.imageUrl;
+    user.name = name || user.name;
+    await user.save();
+  } else {
+    user = await User.create({
+      clerkId,
+      email,
+      name: name || "New User",
+      imageUrl: image_url || "",
+      role: "farmer", 
+      isVerified,
+    });
+    console.log(`Created new farmer from Clerk signup: ${email}`);
+  }
 
-    // 🔄 SYNC ROLE TO CLERK METADATA (Critical for Frontend RBAC)
-    // Check if role is already set in metadata to avoid infinite loop
-    const currentRole = event.data.public_metadata?.role;
-    if (currentRole !== user.role) {
-      await clerkClient.users.updateUser(clerkId, {
-        publicMetadata: { role: user.role }
-      });
-      console.log(`Synced role '${user.role}' to Clerk metadata for ${email}`);
-    }
-  },
+  const currentRole = event.data.public_metadata?.role;
+  if (currentRole !== user.role) {
+    await clerkClient.users.updateUser(clerkId, {
+      publicMetadata: { role: user.role }
+    });
+    console.log(`Synced role '${user.role}' to Clerk metadata for ${email}`);
+  }
+};
+
+const syncUserCreated = inngest.createFunction(
+  { id: "sync/user-created" },
+  { event: "clerk/user.created" },
+  handleUserSync
+);
+
+const syncUserUpdated = inngest.createFunction(
+  { id: "sync/user-updated" },
+  { event: "clerk/user.updated" },
+  handleUserSync
 );
 
 const deleteUserFromDB = inngest.createFunction(
@@ -100,30 +100,96 @@ const onInseminationApproved = inngest.createFunction(
     await connectDB();
     const { inseminationId, animalId, farmerId } = event.data;
 
-    // Step 1: Wait for the Heat Window (approx 21 days)
-    // We wait 18 days to give the farmer a "pre-alert"
+    // --- STEP 1: DAY 18 (HEAT DETECTION) ---
     await step.sleep("wait-for-heat-window", "18 days");
 
-    // Step 2: Check if a new insemination was already recorded during the wait
-    const latest = await step.run("check-latest-status", async () => {
-      const recent = await Insemination.findOne({ animalId }).sort({ createdAt: -1 });
-      return recent && recent._id.toString() !== inseminationId;
+    const stillRelevant18 = await step.run("check-relevance-18", async () => {
+      const ins = await Insemination.findById(inseminationId);
+      return ins && ins.status === "done" && ins.isSuccess === null;
     });
 
-    if (latest) return { message: "Animal already re-inseminated, cancelling reminder." };
-
-    // Step 3: Send Notification
-    await step.run("send-heat-reminder", async () => {
-      const animal = await Animal.findById(animalId);
-      await Notification.create({
-        recipientId: farmerId,
-        senderId: "000000000000000000000000", // System ID
-        type: "system",
-        relatedId: animalId,
-        title: "🔥 Heat Detection Reminder",
-        message: `It has been 18 days since the insemination of ${animal?.earTag || 'your animal'}. Please observe for signs of heat (estrus) over the next 3 days.`,
+    if (stillRelevant18) {
+      await step.run("send-heat-reminder", async () => {
+        const animal = await Animal.findById(animalId);
+        await Notification.create({
+          recipientId: farmerId,
+          senderId: "000000000000000000000000",
+          type: "system",
+          relatedId: animalId,
+          title: "🔥 Heat Detection Reminder",
+          message: `It has been 18 days since the insemination of ${animal?.earTag || 'your animal'}. Please observe for signs of heat (estrus) over the next 3 days.`,
+        });
       });
+    }
+
+    // --- STEP 2: DAY 21 (FARMER CONFIRMATION) ---
+    await step.sleep("wait-for-confirmation", "3 days"); // Day 18 + 3 = Day 21
+
+    const stillRelevant21 = await step.run("check-relevance-21", async () => {
+      const ins = await Insemination.findById(inseminationId);
+      return ins && ins.status === "done" && ins.isSuccess === null;
     });
+
+    if (stillRelevant21) {
+      await step.run("ask-farmer-success", async () => {
+        const animal = await Animal.findById(animalId);
+        await Notification.create({
+          recipientId: farmerId,
+          senderId: "000000000000000000000000",
+          type: "ai-request",
+          relatedId: inseminationId,
+          title: "🐮 AI Outcome Confirmation",
+          message: `It has been 21 days since the insemination of ${animal?.earTag}. Is she still in heat, or do you think she conceived? Click to confirm.`,
+        });
+      });
+    }
+
+    // --- STEP 3: DAY 25 (TECHNICIAN NUDGE) ---
+    await step.sleep("wait-for-tech-nudge", "4 days"); // Day 21 + 4 = Day 25
+
+    if (stillRelevant21) {
+      await step.run("nudge-technician", async () => {
+        const ins = await Insemination.findById(inseminationId).populate("farmerId", "name");
+        const technicians = await User.find({ role: "technician" });
+        
+        await Promise.all(technicians.map(tech => 
+          Notification.create({
+            recipientId: tech._id,
+            senderId: "000000000000000000000000",
+            type: "system",
+            relatedId: inseminationId,
+            title: "📞 Follow-up Required",
+            message: `Farmer ${ins.farmerId?.name} has not confirmed the outcome for AI attempt #${ins.attemptNumber}. Please contact them for an update.`,
+          })
+        ));
+      });
+    }
+
+    // --- STEP 4: DAY 60 (PD DIAGNOSIS REMINDER) ---
+    await step.sleep("wait-for-pd-window", "35 days"); // Day 25 + 35 = Day 60
+
+    const stillRelevant60 = await step.run("check-relevance-60", async () => {
+      const ins = await Insemination.findById(inseminationId);
+      return ins && ins.status === "done" && ins.isSuccess === null;
+    });
+
+    if (stillRelevant60) {
+      await step.run("send-pd-reminder", async () => {
+        const ins = await Insemination.findById(inseminationId).populate("animalId", "earTag");
+        const technicians = await User.find({ role: "technician" });
+
+        await Promise.all(technicians.map(tech => 
+          Notification.create({
+            recipientId: tech._id,
+            senderId: "000000000000000000000000",
+            type: "system",
+            relatedId: inseminationId,
+            title: "🧪 Pregnancy Diagnosis Due",
+            message: `Animal ${ins.animalId?.earTag} is now at Day 60 post-AI. Rectal palpation or PD is recommended.`,
+          })
+        ));
+      });
+    }
   }
 );
 
@@ -173,6 +239,70 @@ const onPregnancyConfirmed = inngest.createFunction(
 );
 
 /**
+ * Nightly background job to update reproductive statuses based on time.
+ */
+const automatedGestationLifecycle = inngest.createFunction(
+  { id: "livestock/gestation-lifecycle" },
+  { cron: "0 1 * * *" }, // Run at 1:00 AM daily
+  async ({ step }) => {
+    await connectDB();
+
+    // 1. Process Inseminated Animals (Flag for PD after 60 days)
+    await step.run("flag-for-pregnancy-check", async () => {
+      const sixtyDaysAgo = new Date();
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+      const animals = await Animal.find({
+        reproductiveStatus: "Inseminated",
+        lastInseminationDate: { $lte: sixtyDaysAgo }
+      });
+
+      for (const animal of animals) {
+        animal.reproductiveStatus = "Likely Pregnant";
+        await animal.save();
+
+        // Notify technician
+        const technicians = await User.find({ role: "technician" });
+        await Promise.all(technicians.map(tech => 
+          Notification.create({
+            recipientId: tech._id,
+            senderId: "000000000000000000000000",
+            type: "system",
+            relatedId: animal._id,
+            title: "⏱️ Pregnancy Diagnosis Due",
+            message: `Animal ${animal.earTag} was inseminated 60+ days ago. PD is now due.`,
+          })
+        ));
+      }
+      return { flagged: animals.length };
+    });
+
+    // 2. Process Pregnant Animals (Notification before calving)
+    await step.run("alert-upcoming-calving", async () => {
+      const sevenDaysFromNow = new Date();
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+      const animals = await Animal.find({
+        reproductiveStatus: "Pregnant",
+        expectedCalvingDate: { $lte: sevenDaysFromNow, $gt: new Date() }
+      });
+
+      for (const animal of animals) {
+        await Notification.create({
+          recipientId: animal.farmerId,
+          senderId: "000000000000000000000000",
+          type: "system",
+          relatedId: animal._id,
+          title: "🍼 Calving within 7 days",
+          message: `Your animal (${animal.earTag}) is expected to calve around ${animal.expectedCalvingDate.toLocaleDateString()}.`,
+        });
+      }
+      return { alertsSent: animals.length };
+    });
+  }
+);
+
+/**
  * Nightly aggregation for dashboard stats.
  * Runs at midnight to calculate the 90-day success rate.
  */
@@ -205,4 +335,12 @@ const dailyStatsAggregation = inngest.createFunction(
   }
 );
 
-export const functions = [syncUser, deleteUserFromDB, onInseminationApproved, onPregnancyConfirmed, dailyStatsAggregation];
+export const functions = [
+  syncUserCreated,
+  syncUserUpdated,
+  deleteUserFromDB, 
+  onInseminationApproved, 
+  onPregnancyConfirmed, 
+  dailyStatsAggregation,
+  automatedGestationLifecycle
+];

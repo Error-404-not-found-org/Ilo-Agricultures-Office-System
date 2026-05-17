@@ -6,6 +6,7 @@ import { useRouter, useSegments } from 'expo-router';
 import { useUser } from '@clerk/clerk-expo';
 import { useApi } from '@/lib/api';
 import { useNetInfo } from '@react-native-community/netinfo';
+import { getOfflineQueue } from '@/lib/offlineQueue';
 
 export default function Header() {
   const router = useRouter();
@@ -14,6 +15,7 @@ export default function Header() {
   const api = useApi();
   const netInfo = useNetInfo();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -26,6 +28,20 @@ export default function Header() {
     };
     if (user) fetchUnread();
   }, [user, api]);
+
+  // Sync Pending Actions Count
+  useEffect(() => {
+    const updateSyncCount = async () => {
+      const queue = await getOfflineQueue();
+      setPendingSyncCount(queue.length);
+    };
+    
+    updateSyncCount();
+    
+    // Check every 10 seconds or when coming back online
+    const interval = setInterval(updateSyncCount, 10000);
+    return () => clearInterval(interval);
+  }, [netInfo.isConnected]);
 
   const isAdmin = (segments as string[]).includes('(admin)');
   const isFarmer = (segments as string[]).includes('(farmer)');
@@ -91,13 +107,22 @@ export default function Header() {
       {/* Right side: Action Buttons */}
       <View className="flex-row items-center gap-2">
         {/* Connectivity Status */}
-        <View className={`w-10 h-10 ${netInfo.isConnected ? 'bg-white/10' : 'bg-amber-500/20'} rounded-full items-center justify-center`}>
+        <TouchableOpacity 
+          onPress={() => router.push('/(technician)/sync-history' as any)}
+          activeOpacity={0.7}
+          className={`w-10 h-10 ${netInfo.isConnected ? 'bg-white/10' : 'bg-amber-500/20'} rounded-full items-center justify-center relative`}
+        >
            <MaterialCommunityIcons 
              name={netInfo.isConnected ? "cloud-check" : "cloud-off-outline"} 
              size={20} 
              color={netInfo.isConnected ? ICON_COLOR : "#f59e0b"} 
            />
-        </View>
+           {pendingSyncCount > 0 && (
+              <View className="absolute -top-1 -right-1 bg-amber-500 w-4 h-4 rounded-full border border-white items-center justify-center">
+                <Text className="text-white text-[9px] font-bold">{pendingSyncCount}</Text>
+              </View>
+           )}
+        </TouchableOpacity>
 
         <TouchableOpacity 
           onPress={() => router.push('/notifications')}

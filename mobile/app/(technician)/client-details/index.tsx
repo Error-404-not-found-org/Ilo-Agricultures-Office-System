@@ -26,13 +26,21 @@ export default function ClientDetails() {
           setClient(res.data);
         } catch (error: any) {
           console.error("Failed to fetch client details", error);
-          toast.error(error.response?.data?.message || "Could not load client details.");
+          if (error.response?.status === 404) {
+             toast.info("This client record no longer exists.");
+             router.replace("/(technician)/technician.clients" as any);
+          } else {
+             toast.error(error.response?.data?.message || "Could not load client details.");
+          }
         } finally {
           setLoading(false);
         }
       };
       
       fetchClient();
+
+      const interval = setInterval(fetchClient, 10000); // 10 seconds polling
+      return () => clearInterval(interval);
     }, [id])
   );
 
@@ -75,7 +83,7 @@ export default function ClientDetails() {
       {/* Header Actions */}
       <View className="pt-14 px-6 flex-row justify-between items-center z-10">
           <TouchableOpacity 
-              onPress={() => router.push("/(technician)/technician.clients")} 
+              onPress={() => router.back()} 
               className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
           >
               <ArrowLeft size={22} color="white" />

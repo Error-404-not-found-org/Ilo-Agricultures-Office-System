@@ -1,17 +1,23 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, Image, ActivityIndicator, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useApi } from '@/lib/api';
 import { useAuth } from '@clerk/clerk-expo';
-import SafeScreen from '@/components/safeScreen';
-import { ArrowLeft, ChevronDown, Calendar, Check, X, ArrowRight, Camera } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Calendar, Check, X, ArrowRight, Camera, Save, Info, ChevronRight, User } from 'lucide-react-native';
 import React, { useState, useEffect } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { toast } from 'sonner-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useOfflineMutation } from '@/hooks/useOfflineMutation';
+import { useQueryClient } from '@tanstack/react-query';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { CATTLE_BREEDS, CATTLE_SPECIES } from '@/lib/constants';
+
+const PRIMARY = '#00643B';
 
 // --- OPTIONS ---
-const SPECIES_OPTIONS = ['Beef', 'Dairy', 'Carabao'];
-const BREED_OPTIONS = ['Native', 'Brahman', 'Holstein Sahiwal (HS)', 'PC Cross', 'Purebred'];
+const SPECIES_OPTIONS = CATTLE_SPECIES;
+const BREED_OPTIONS = CATTLE_BREEDS;
 const AI_ATTEMPTS = ['Not Yet', '1', '2', '3', '4', '5+'];
 const ESTRUS_OPTIONS = ['Natural', 'Synchronized'];
 const PD_RESULTS = ['Positive', 'Negative', 'Re-heat'];
@@ -20,6 +26,7 @@ const CALF_SEX = ['Male', 'Female'];
 
 export default function AddAIRecord() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   
   // --- WIZARD STATE ---
   const [currentStep, setCurrentStep] = useState(1);
@@ -29,6 +36,56 @@ export default function AddAIRecord() {
   const [farmers, setFarmers] = useState<string[]>([]);
 
   const [farmersList, setFarmersList] = useState<any[]>([]);
+  const queryClient = useQueryClient();
+
+  const [formData, setFormData] = useState({
+    // Step 1: Identity
+    farmer: '',
+    ageYears: '',
+    ageMonths: '', 
+    animalId: '',
+    earTag: '',
+    brand: '',
+    species: '',
+    breed: '',
+    color: '',
+    
+    // Step 2: AI
+    aiDate: new Date().toLocaleDateString(),
+    noOfAI: '', 
+    estrusType: '',
+    sireBreed: '',
+    sireCode: `SIRE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+
+    // Step 3: PD
+    pdDate: '',
+    pdResult: '',
+
+    // Step 4: Calf
+    calfDate: '',
+    calfId: '',
+    calfSex: '',
+    calvingEase: '',
+  });
+
+  const mutation = useOfflineMutation({
+    url: '/animals/register',
+    method: 'POST',
+    description: `Register Animal: ${formData.earTag || formData.animalId}`
+  }, {
+    onSuccess: () => {
+      toast.success("Animal successfully registered.", { duration: 4000, position: 'center' });
+      queryClient.invalidateQueries({ queryKey: ['technician', 'dashboard'] });
+      router.back();
+    },
+    onError: (error: any) => {
+      if (error.message !== 'OFFLINE_SAVED') {
+        toast.error(error.response?.data?.message || "Error registering the animal.", { duration: 5000, position: 'center' });
+      } else {
+        router.back();
+      }
+    }
+  });
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -48,8 +105,6 @@ export default function AddAIRecord() {
     };
     fetchFarmers();
   }, [api, isLoaded, isSignedIn]);
-
-  const [loading, setLoading] = useState(false);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
 
@@ -67,36 +122,6 @@ export default function AddAIRecord() {
       setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
     }
   };
-
-  const [formData, setFormData] = useState({
-    // Step 1: Identity
-    farmer: '',
-    ageYears: '',
-    ageMonths: '', 
-    animalId: '',
-    earTag: '',
-    brand: '',
-    species: '',
-    breed: '',
-    color: '',
-    
-    // Step 2: AI
-    aiDate: new Date().toLocaleDateString(),
-    noOfAI: '', 
-    estrusType: '',
-    sireBreed: '',
-    sireCode: '',
-
-    // Step 3: PD
-    pdDate: '',
-    pdResult: '',
-
-    // Step 4: Calf
-    calfDate: '',
-    calfId: '',
-    calfSex: '',
-    calvingEase: '',
-  });
 
   // --- MODAL HELPERS ---
   const [modalVisible, setModalVisible] = useState(false);
@@ -177,23 +202,7 @@ export default function AddAIRecord() {
       birthDate: today.toISOString(),
     };
 
-    try {
-      setLoading(true);
-      await api.post('/animals/register', finalPayload);
-      toast.success("Animal successfully registered.", {
-        duration: 4000, 
-        position: 'center'
-      });
-      router.back();
-    } catch (error: any) {
-      console.error("Failed to add animal:", error);
-      toast.error(error.response?.data?.message || "Error registering the animal.", {
-        duration: 5000,
-        position: 'center'
-      });
-    } finally {
-      setLoading(false);
-    }
+    mutation.mutate(finalPayload);
   };
 
   // Helper date rendering
@@ -205,307 +214,286 @@ export default function AddAIRecord() {
   };
 
   return (
-    <SafeScreen>
-      <View className="flex-1 bg-white dark:bg-slate-950 px-5"> 
-        
-        {/* --- COMPACT HEADER --- */}
-        <View className="flex-row items-center justify-between mb-4 mt-2">
-            <TouchableOpacity onPress={handleBack} className="p-2 -ml-2 rounded-full active:bg-gray-100 dark:active:bg-slate-800">
-                <ArrowLeft size={22} color="gray" />
-            </TouchableOpacity>
-            <View className="items-center">
-                <Text className="text-base font-bold text-gray-900 dark:text-white">New Record</Text>
-                <Text className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase tracking-wider">Step {currentStep} / {TOTAL_STEPS}</Text>
+    <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+      <StatusBar barStyle="dark-content" />
+      
+      {/* Premium Header */}
+      <View style={{ paddingHorizontal: 24, paddingVertical: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9', paddingTop: insets.top + 10 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <TouchableOpacity onPress={handleBack} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#f1f5f9' }}>
+            <ArrowLeft size={22} color="#1e293b" />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ color: '#1e293b', fontFamily: 'Outfit_900Black', fontSize: 18 }}>New Record</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Text style={{ color: PRIMARY, fontFamily: 'Outfit_800ExtraBold', fontSize: 10, textTransform: 'uppercase' }}>Step {currentStep} of {TOTAL_STEPS}</Text>
+              <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: '#cbd5e1' }} />
+              <Text style={{ color: '#94a3b8', fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>
+                {currentStep === 1 ? 'Identity' : currentStep === 2 ? 'Insemination' : currentStep === 3 ? 'Diagnosis' : 'Calving'}
+              </Text>
             </View>
-            <View className="w-8" /> 
+          </View>
+          <View style={{ width: 44 }} />
         </View>
 
-        {/* --- PROGRESS BAR --- */}
-        <View className="flex-row h-1 bg-gray-100 dark:bg-slate-800 rounded-full mb-6 overflow-hidden">
-            <View className="bg-blue-600 h-full rounded-full" style={{ width: `${(currentStep / TOTAL_STEPS) * 100}%` }} />
+        {/* Progress System */}
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 24 }}>
+          {[1, 2, 3, 4].map((s) => (
+            <View key={s} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s <= currentStep ? PRIMARY : '#f1f5f9' }} />
+          ))}
         </View>
-
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-            
-            {/* ========================================= */}
-            {/* STEP 1: ANIMAL IDENTIFICATION             */}
-            {/* ========================================= */}
-            {currentStep === 1 && (
-                <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900 dark:text-white">Animal Identity</Text>
-                    <Text className="text-sm text-gray-500 dark:text-slate-400 mb-5">Select farmer and animal details.</Text>
-                    
-                    <View className="items-center mb-6 mt-2">
-                        <TouchableOpacity onPress={pickImage} className="w-24 h-24 bg-gray-50 dark:bg-slate-800 rounded-full items-center justify-center border border-dashed border-gray-300 dark:border-slate-700 overflow-hidden">
-                            {imageUri ? (
-                                <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
-                            ) : (
-                                <>
-                                  <Camera size={24} color="#9CA3AF" />
-                                  <Text className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold text-center mt-1">Add Photo</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
-                    </View>
-
-                    <SelectField 
-                        label="Farmer / Owner" 
-                        value={formData.farmer} 
-                        placeholder="Select Farmer" 
-                        onPress={() => openModal('farmer', 'Select Farmer', farmers)} 
-                    />
-
-                    <View className="flex-row gap-3">
-                        <View className="flex-[1.5]">
-                            <InputField 
-                                label="Est. Age (Years)" 
-                                value={formData.ageYears} 
-                                onChangeText={(t: string) => setFormData({...formData, ageYears: t})} 
-                                placeholder="e.g. 1" 
-                                keyboardType="numeric"
-                            />
-                        </View>
-                        <View className="flex-[1.5]">
-                            <InputField 
-                                label="Months" 
-                                value={formData.ageMonths} 
-                                onChangeText={(t: string) => setFormData({...formData, ageMonths: t})} 
-                                placeholder="e.g. 4" 
-                                keyboardType="numeric"
-                            />
-                        </View>
-                    </View>
-
-                    <View className="flex-row gap-3">
-                        <View className="flex-1">
-                            <InputField label="Animal ID" value={formData.animalId} onChangeText={(t: string) => setFormData({...formData, animalId: t})} placeholder="ID-001" />
-                        </View>
-                        <View className="flex-1">
-                            <InputField label="Ear Tag" value={formData.earTag} onChangeText={(t: string) => setFormData({...formData, earTag: t})} placeholder="Tag-123" />
-                        </View>
-                    </View>
-
-                    <View className="flex-row gap-3 mt-1">
-                        <View className="flex-1">
-                            <SelectField label="Species" value={formData.species} placeholder="Select" onPress={() => openModal('species', 'Select Species', SPECIES_OPTIONS)} />
-                        </View>
-                        <View className="flex-1">
-                            <SelectField label="Breed" value={formData.breed} placeholder="Select" onPress={() => openModal('breed', 'Select Breed', BREED_OPTIONS)} />
-                        </View>
-                    </View>
-
-                    <View className="flex-row gap-3">
-                        <View className="flex-1">
-                            <InputField label="Color" value={formData.color} onChangeText={(t: string) => setFormData({...formData, color: t})} placeholder="e.g. Black" />
-                        </View>
-                        <View className="flex-1">
-                            <InputField label="Brand" value={formData.brand} onChangeText={(t: string) => setFormData({...formData, brand: t})} placeholder="(Optional)" />
-                        </View>
-                    </View>
-                </View>
-            )}
-
-            {/* ========================================= */}
-            {/* STEP 2: ARTIFICIAL INSEMINATION           */}
-            {/* ========================================= */}
-            {currentStep === 2 && (
-                <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900 dark:text-white">Insemination</Text>
-                    <Text className="text-sm text-gray-500 dark:text-slate-400 mb-5">Enter AI details below.</Text>
-
-                    {/* UPDATED: DATE PICKER FIELD */}
-                    <DateSelector 
-                        label="Date of AI" 
-                        value={formData.aiDate} 
-                        onPress={() => openDatePicker('aiDate')}
-                        onSetToday={() => setDateToToday('aiDate')}
-                        onSetNotYet={() => setFormData({...formData, aiDate: 'Not Yet'})}
-                    />
-
-                    <View className="flex-row gap-3">
-                         <View className="w-1/2">
-                            <SelectField 
-                                label="No. of AI" 
-                                value={formData.noOfAI} 
-                                placeholder="Select" 
-                                onPress={() => openModal('noOfAI', 'Select AI Attempt', AI_ATTEMPTS)} 
-                            />
-                         </View>
-                    </View>
-
-                    <SelectField label="Estrus Type" value={formData.estrusType} placeholder="Natural / Synchronized" onPress={() => openModal('estrusType', 'Estrus Type', ESTRUS_OPTIONS)} />
-
-                    <View className="flex-row gap-3 mt-1">
-                        <View className="flex-1">
-                            <InputField label="Sire Breed" value={formData.sireBreed} onChangeText={(t: string) => setFormData({...formData, sireBreed: t})} placeholder="e.g. Brahman" />
-                        </View>
-                        <View className="flex-1">
-                            <InputField label="Sire Code" value={formData.sireCode} onChangeText={(t: string) => setFormData({...formData, sireCode: t})} placeholder="Code" />
-                        </View>
-                    </View>
-                </View>
-            )}
-
-            {/* ========================================= */}
-            {/* STEP 3: PREGNANCY DIAGNOSIS               */}
-            {/* ========================================= */}
-            {currentStep === 3 && (
-                <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900 dark:text-white">Pregnancy Check</Text>
-                    <Text className="text-sm text-gray-500 dark:text-slate-400 mb-5">Enter PD results (Optional).</Text>
-
-                    <DateSelector 
-                        label="PD Date" 
-                        value={formData.pdDate} 
-                        onPress={() => openDatePicker('pdDate')}
-                        onSetToday={() => setDateToToday('pdDate')}
-                        onSetNotYet={() => setFormData({...formData, pdDate: 'Not Yet'})}
-                    />
-
-                    <SelectField label="Result" value={formData.pdResult} placeholder="Select Result" onPress={() => openModal('pdResult', 'PD Result', PD_RESULTS)} />
-                </View>
-            )}
-
-            {/* ========================================= */}
-            {/* STEP 4: CALF DROP                         */}
-            {/* ========================================= */}
-            {currentStep === 4 && (
-                <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900 dark:text-white">Calf Drop</Text>
-                    <Text className="text-sm text-gray-500 dark:text-slate-400 mb-5">Enter calving details (Optional).</Text>
-
-                    <DateSelector 
-                        label="Calving Date" 
-                        value={formData.calfDate} 
-                        onPress={() => openDatePicker('calfDate')}
-                        onSetToday={() => setDateToToday('calfDate')}
-                        onSetNotYet={() => setFormData({...formData, calfDate: 'Not Yet'})}
-                    />
-
-                    <View className="flex-row gap-3">
-                        <View className="flex-1">
-                            <InputField label="Calf ID" value={formData.calfId} onChangeText={(t: string) => setFormData({...formData, calfId: t})} placeholder="New ID" />
-                        </View>
-                        <View className="flex-1">
-                            <SelectField label="Sex" value={formData.calfSex} placeholder="M/F" onPress={() => openModal('calfSex', 'Calf Sex', CALF_SEX)} />
-                        </View>
-                    </View>
-
-                    <SelectField label="Calving Ease" value={formData.calvingEase} placeholder="Select Condition" onPress={() => openModal('calvingEase', 'Calving Ease', CALVING_EASE)} />
-                </View>
-            )}
-
-          </ScrollView>
-        </KeyboardAvoidingView>
-
-        {/* --- BOTTOM BUTTONS --- */}
-        <View className="py-4">
-            {currentStep < TOTAL_STEPS ? (
-                <TouchableOpacity onPress={handleNext} className="bg-blue-600 rounded-full py-3.5 items-center flex-row justify-center gap-2 shadow-sm">
-                    <Text className="text-white font-bold text-base">Next Step</Text>
-                    <ArrowRight size={18} color="white" />
-                </TouchableOpacity>
-            ) : (
-                <TouchableOpacity onPress={handleSave} disabled={loading} className={`rounded-full py-3.5 items-center flex-row justify-center gap-2 shadow-lg ${loading ? 'bg-blue-400' : 'bg-blue-600 shadow-blue-200'}`}>
-                    {loading ? (
-                       <ActivityIndicator color="white" size="small" />
-                    ) : (
-                       <>
-                         <Check size={18} color="white" />
-                         <Text className="text-white font-bold text-base">Save Record</Text>
-                       </>
-                    )}
-                </TouchableOpacity>
-            )}
-        </View>
-
-        {/* --- MODALS --- */}
-        <SelectionModal visible={modalVisible} title={modalTitle} options={modalOptions} onClose={() => setModalVisible(false)} onSelect={handleSelect} />
-        
-        {dateModalVisible && (
-            <DateTimePicker
-                value={getPickerDate()}
-                mode="date"
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                onChange={handleNativeDateChange}
-            />
-        )}
-
       </View>
-    </SafeScreen>
+
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, paddingBottom: 100 }}>
+          
+          {/* STEP 1: IDENTITY */}
+          {currentStep === 1 && (
+            <View>
+              <View style={{ alignItems: 'center', marginBottom: 32 }}>
+                <TouchableOpacity onPress={pickImage} style={{ width: 110, height: 110, borderRadius: 55, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#cbd5e1', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 }}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                  ) : (
+                    <View style={{ alignItems: 'center' }}>
+                      <Camera size={32} color="#cbd5e1" />
+                      <Text style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'Outfit_700Bold', marginTop: 4 }}>PHOTO</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              <SelectField 
+                label="Farmer / Owner" 
+                value={formData.farmer} 
+                placeholder="Assign to a farmer" 
+                onPress={() => openModal('farmer', 'Select Farmer', farmers)} 
+              />
+
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Age (Years)" value={formData.ageYears} onChangeText={(t: string) => setFormData({...formData, ageYears: t})} placeholder="e.g. 2" keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Months" value={formData.ageMonths} onChangeText={(t: string) => setFormData({...formData, ageMonths: t})} placeholder="e.g. 6" keyboardType="numeric" />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Animal ID" value={formData.animalId} onChangeText={(t: string) => setFormData({...formData, animalId: t})} placeholder="ID-001" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Ear Tag" value={formData.earTag} onChangeText={(t: string) => setFormData({...formData, earTag: t})} placeholder="Tag-XYZ" />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <SelectField label="Species" value={formData.species} placeholder="Select" onPress={() => openModal('species', 'Select Species', SPECIES_OPTIONS)} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <SelectField label="Breed" value={formData.breed} placeholder="Select" onPress={() => openModal('breed', 'Select Breed', BREED_OPTIONS)} />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Color" value={formData.color} onChangeText={(t: string) => setFormData({...formData, color: t})} placeholder="e.g. Brown" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Brand" value={formData.brand} onChangeText={(t: string) => setFormData({...formData, brand: t})} placeholder="(Optional)" />
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* STEP 2: INSEMINATION */}
+          {currentStep === 2 && (
+            <View>
+              <DateSelector 
+                label="Date of AI" 
+                value={formData.aiDate} 
+                onPress={() => openDatePicker('aiDate')}
+                onSetToday={() => setDateToToday('aiDate')}
+                onSetNotYet={() => setFormData({...formData, aiDate: 'Not Yet'})}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <SelectField label="No. of AI" value={formData.noOfAI} placeholder="Attempt" onPress={() => openModal('noOfAI', 'AI Attempt', AI_ATTEMPTS)} />
+                </View>
+                <View style={{ flex: 2 }}>
+                  <SelectField label="Estrus Type" value={formData.estrusType} placeholder="Select Type" onPress={() => openModal('estrusType', 'Estrus Type', ESTRUS_OPTIONS)} />
+                </View>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Sire Breed" value={formData.sireBreed} onChangeText={(t: string) => setFormData({...formData, sireBreed: t})} placeholder="e.g. PC Cross" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Sire Code" value={formData.sireCode} onChangeText={(t: string) => setFormData({...formData, sireCode: t})} placeholder="Code" />
+                </View>
+              </View>
+            </View>
+          )}
+
+          {/* STEP 3: PREGNANCY */}
+          {currentStep === 3 && (
+            <View>
+              <DateSelector 
+                label="PD Date" 
+                value={formData.pdDate} 
+                onPress={() => openDatePicker('pdDate')}
+                onSetToday={() => setDateToToday('pdDate')}
+                onSetNotYet={() => setFormData({...formData, pdDate: 'Not Yet'})}
+              />
+              <SelectField label="Diagnosis Result" value={formData.pdResult} placeholder="Select Result" onPress={() => openModal('pdResult', 'PD Result', PD_RESULTS)} />
+              
+              <View style={{ backgroundColor: '#eff6ff', padding: 16, borderRadius: 20, flexDirection: 'row', gap: 12, marginTop: 12 }}>
+                <Info size={20} color="#3b82f6" />
+                <Text style={{ flex: 1, color: '#1e40af', fontFamily: 'Outfit_500Medium', fontSize: 13, lineHeight: 18 }}>
+                  PD is typically performed 60-90 days after insemination for accurate results.
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* STEP 4: CALVING */}
+          {currentStep === 4 && (
+            <View>
+              <DateSelector 
+                label="Calving Date" 
+                value={formData.calfDate} 
+                onPress={() => openDatePicker('calfDate')}
+                onSetToday={() => setDateToToday('calfDate')}
+                onSetNotYet={() => setFormData({...formData, calfDate: 'Not Yet'})}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 16 }}>
+                <View style={{ flex: 1 }}>
+                  <InputField label="Calf ID" value={formData.calfId} onChangeText={(t: string) => setFormData({...formData, calfId: t})} placeholder="ID-2026" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <SelectField label="Sex" value={formData.calfSex} placeholder="Select" onPress={() => openModal('calfSex', 'Calf Sex', CALF_SEX)} />
+                </View>
+              </View>
+
+              <SelectField label="Calving Ease" value={formData.calvingEase} placeholder="Condition" onPress={() => openModal('calvingEase', 'Calving Ease', CALVING_EASE)} />
+            </View>
+          )}
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {/* Navigation Footer */}
+      <View style={{ paddingHorizontal: 24, paddingBottom: Platform.OS === 'ios' ? insets.bottom + 10 : 24, paddingTop: 16, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#f1f5f9' }}>
+        {currentStep < TOTAL_STEPS ? (
+          <TouchableOpacity onPress={handleNext} activeOpacity={0.8} style={{ backgroundColor: PRIMARY, paddingVertical: 18, borderRadius: 24, alignItems: 'center', shadowColor: PRIMARY, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Text style={{ color: '#fff', fontFamily: 'Outfit_900Black', fontSize: 18 }}>Continue</Text>
+              <ArrowRight size={20} color="#fff" strokeWidth={3} />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={handleSave} disabled={mutation.isPending} activeOpacity={0.8} style={{ backgroundColor: PRIMARY, paddingVertical: 18, borderRadius: 24, alignItems: 'center', shadowColor: PRIMARY, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8 }}>
+            {mutation.isPending ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Check size={22} color="#fff" strokeWidth={3} />
+                <Text style={{ color: '#fff', fontFamily: 'Outfit_900Black', fontSize: 18 }}>Save Record</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Standard Modals */}
+      <SelectionModal visible={modalVisible} title={modalTitle} options={modalOptions} onClose={() => setModalVisible(false)} onSelect={handleSelect} />
+      
+      {dateModalVisible && (
+        <DateTimePicker
+          value={getPickerDate()}
+          mode="date"
+          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          onChange={handleNativeDateChange}
+        />
+      )}
+    </View>
   );
 }
 
-// --- REUSABLE COMPACT COMPONENTS ---
-
 const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default' }: any) => (
-    <View className="mb-3">
-        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TextInput 
-            className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3 text-gray-900 dark:text-white text-sm focus:border-blue-500" 
-            value={value} 
-            onChangeText={onChangeText} 
-            placeholder={placeholder} 
-            placeholderTextColor="#9CA3AF"
-            keyboardType={keyboardType}
-        />
-    </View>
+  <View style={{ marginBottom: 20 }}>
+    <Text style={{ color: '#64748b', fontFamily: 'Outfit_700Bold', fontSize: 12, marginBottom: 8, marginLeft: 4, textTransform: 'uppercase' }}>{label}</Text>
+    <TextInput 
+      style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, fontFamily: 'Outfit_600SemiBold', fontSize: 15, borderWidth: 1, borderColor: '#e2e8f0', color: '#1e293b' }}
+      value={value} 
+      onChangeText={onChangeText} 
+      placeholder={placeholder} 
+      placeholderTextColor="#cbd5e1"
+      keyboardType={keyboardType}
+    />
+  </View>
 );
 
 const SelectField = ({ label, value, placeholder, onPress }: any) => (
-    <View className="mb-3">
-        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TouchableOpacity onPress={onPress} className="flex-row items-center justify-between bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3">
-            <Text className={`text-sm ${value ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>{value || placeholder}</Text>
-            <ChevronDown size={18} color="gray" />
-        </TouchableOpacity>
-    </View>
+  <View style={{ marginBottom: 20 }}>
+    <Text style={{ color: '#64748b', fontFamily: 'Outfit_700Bold', fontSize: 12, marginBottom: 8, marginLeft: 4, textTransform: 'uppercase' }}>{label}</Text>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#e2e8f0' }}>
+      <Text style={{ color: value ? '#1e293b' : '#cbd5e1', fontFamily: 'Outfit_600SemiBold', fontSize: 15 }}>{value || placeholder}</Text>
+      <ChevronDown size={20} color="#94a3b8" />
+    </TouchableOpacity>
+  </View>
 );
 
-// --- NEW DATE SELECTOR (COMPACT & NON-TYPING) ---
 const DateSelector = ({ label, value, onPress, onSetToday, onSetNotYet }: any) => (
-    <View className="mb-3">
-        <View className="flex-row justify-between items-center mb-1 ml-1">
-            <Text className="text-gray-700 dark:text-slate-300 font-medium text-xs uppercase tracking-wide">{label}</Text>
-            <View className="flex-row gap-x-4">
-                {onSetNotYet && (
-                    <TouchableOpacity onPress={onSetNotYet} className="active:opacity-50">
-                        <Text className="text-gray-500 dark:text-slate-400 text-[10px] font-bold">NOT YET</Text>
-                    </TouchableOpacity>
-                )}
-                <TouchableOpacity onPress={onSetToday} className="active:opacity-50">
-                    <Text className="text-blue-600 dark:text-blue-400 text-[10px] font-bold">SET TO TODAY</Text>
-                </TouchableOpacity>
-            </View>
-        </View>
-        <TouchableOpacity onPress={onPress} className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3 flex-row justify-between items-center">
-            <Text className={`text-sm ${value ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>{value || "Select Date"}</Text>
-            <Calendar size={18} color="gray" />
+  <View style={{ marginBottom: 24 }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: 4 }}>
+      <Text style={{ color: '#64748b', fontFamily: 'Outfit_700Bold', fontSize: 12, textTransform: 'uppercase' }}>{label}</Text>
+      <View style={{ flexDirection: 'row', gap: 12 }}>
+        {onSetNotYet && (
+          <TouchableOpacity onPress={onSetNotYet}>
+            <Text style={{ color: '#94a3b8', fontFamily: 'Outfit_800ExtraBold', fontSize: 10, textTransform: 'uppercase' }}>NOT YET</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={onSetToday}>
+          <Text style={{ color: PRIMARY, fontFamily: 'Outfit_800ExtraBold', fontSize: 10, textTransform: 'uppercase' }}>TODAY</Text>
         </TouchableOpacity>
+      </View>
     </View>
+    <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, borderStyle: 'dashed', borderWidth: 1, borderColor: PRIMARY, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+      <Text style={{ color: value ? '#1e293b' : '#cbd5e1', fontFamily: 'Outfit_600SemiBold', fontSize: 15 }}>{value || "Select Date"}</Text>
+      <Calendar size={20} color={PRIMARY} />
+    </TouchableOpacity>
+  </View>
 );
 
-// --- STANDARD SELECTION MODAL ---
 const SelectionModal = ({ visible, title, options, onClose, onSelect }: any) => (
-    <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
-        <View className="flex-1 bg-black/50 justify-end">
-            <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[70%]">
-                <View className="flex-row justify-between items-center mb-4">
-                    <Text className="text-lg font-bold dark:text-white">{title}</Text>
-                    <TouchableOpacity onPress={onClose} className="p-1 bg-gray-100 dark:bg-slate-800 rounded-full"><X size={20} color="gray" /></TouchableOpacity>
-                </View>
-                <FlatList 
-                    data={options} 
-                    keyExtractor={(item) => item} 
-                    renderItem={({ item }) => (
-                        <TouchableOpacity onPress={() => onSelect(item)} className="py-3.5 border-b border-gray-100 dark:border-slate-800 active:bg-blue-50 dark:active:bg-slate-800">
-                            <Text className="text-base text-gray-800 dark:text-slate-200">{item}</Text>
-                        </TouchableOpacity>
-                    )} 
-                />
-            </View>
+  <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
+    <View style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.8)', justifyContent: 'flex-end' }}>
+      <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40, maxHeight: '70%' }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: '#1e293b' }}>{title}</Text>
+          <TouchableOpacity onPress={onClose} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' }}>
+            <X size={20} color="#64748b" />
+          </TouchableOpacity>
         </View>
-    </Modal>
+        <FlatList 
+          data={options} 
+          keyExtractor={(item) => item} 
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <TouchableOpacity onPress={() => onSelect(item)} activeOpacity={0.6} style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ color: '#334155', fontFamily: 'Outfit_600SemiBold', fontSize: 16 }}>{item}</Text>
+              <ChevronRight size={18} color="#cbd5e1" />
+            </TouchableOpacity>
+          )} 
+        />
+      </View>
+    </View>
+  </Modal>
 );
 

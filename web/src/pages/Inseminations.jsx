@@ -72,7 +72,11 @@ const Inseminations = () => {
                 </thead>
                 <tbody>
                   {inseminations.map((ins) => (
-                    <tr key={ins._id} className="hover">
+                    <tr 
+                      key={ins._id} 
+                      className="hover cursor-pointer"
+                      onClick={() => setSelectedInsemination(ins)}
+                    >
                       {/* Date & Estrus */}
                       <td className="whitespace-nowrap">
                         <div className="font-bold">

@@ -4,6 +4,7 @@ import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
+import cloudinary from "../config/cloudinary.js";
 
 export const getCleanupSurvey = async (req, res) => {
     try {
@@ -49,6 +50,10 @@ export const getCleanupSurvey = async (req, res) => {
             }
         }
 
+        // 3. CLOUDINARY ORPHANS (Survey Only)
+        // We can't easily list all for a survey without intensive API calls, 
+        // but we can estimate based on a sample or just provide the tool.
+
         res.status(200).json({
             summary: {
                 orphanAnimalsCount: orphanAnimals.length,
@@ -70,23 +75,55 @@ export const getCleanupSurvey = async (req, res) => {
 };
 
 export const executeCleanup = async (req, res) => {
-    const { orphanAnimalIds, inactiveFarmerIds } = req.body;
+    const { orphanAnimalIds, inactiveFarmerIds, cleanupCloudinary } = req.body;
     
-    if (!orphanAnimalIds || !inactiveFarmerIds) {
-        return res.status(400).json({ message: "Missing IDs for cleanup." });
-    }
-
     try {
-        const animalResult = await Animal.deleteMany({ _id: { $in: orphanAnimalIds } });
-        const farmerResult = await User.deleteMany({ _id: { $in: inactiveFarmerIds } });
+        let animalsDeleted = 0;
+        let farmersDeleted = 0;
+        let imagesDeleted = 0;
+
+        if (orphanAnimalIds && orphanAnimalIds.length > 0) {
+            const result = await Animal.deleteMany({ _id: { $in: orphanAnimalIds } });
+            animalsDeleted = result.deletedCount;
+        }
+
+        if (inactiveFarmerIds && inactiveFarmerIds.length > 0) {
+            const result = await User.deleteMany({ _id: { $in: inactiveFarmerIds } });
+            farmersDeleted = result.deletedCount;
+        }
+
+        // --- CLOUDINARY ORPHAN CLEANUP ---
+        if (cleanupCloudinary) {
+            // 1. Get all animal image URLs from DB
+            const animals = await Animal.find({}, 'imageUrl');
+            const validUrls = new Set(animals.map(a => a.imageUrl).filter(Boolean));
+
+            // 2. List resources in folder
+            const { resources } = await cloudinary.api.resources({
+                type: 'upload',
+                prefix: 'livestock_profiles/',
+                max_results: 500
+            });
+
+            const toDelete = resources
+                .filter(res => !validUrls.has(res.secure_url))
+                .map(res => res.public_id);
+
+            if (toDelete.length > 0) {
+                const cloudResult = await cloudinary.api.delete_resources(toDelete);
+                imagesDeleted = toDelete.length;
+                console.log(`[Cloudinary Cleanup] Deleted ${imagesDeleted} orphaned images.`, cloudResult);
+            }
+        }
 
         res.status(200).json({
             message: "Cleanup successful",
-            animalsDeleted: animalResult.deletedCount,
-            farmersDeleted: farmerResult.deletedCount
+            animalsDeleted,
+            farmersDeleted,
+            imagesDeleted
         });
     } catch (error) {
         console.error("Cleanup Execution Error:", error);
-        res.status(500).json({ message: "Failed to execute cleanup." });
+        res.status(500).json({ message: "Failed to execute cleanup.", error: error.message });
     }
 };

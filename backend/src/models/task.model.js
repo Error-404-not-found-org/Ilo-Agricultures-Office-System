@@ -18,10 +18,19 @@ const TaskSchema = new mongoose.Schema(
         ref: "Animal",
       },
     ],
+    taskType: {
+      type: String,
+      enum: ["AI", "PD", "CD", "Vaccination", "Deworming", "Treatment", "Registration", "Other"],
+      default: "Other",
+    },
     category: {
       type: String,
-      enum: ["Urgent", "Routine", "Follow-up"],
+      enum: ["Urgent", "Routine", "Follow-up", "Emergency"],
       required: true,
+    },
+    priority: {
+      type: Number,
+      default: 2, // 1: High, 2: Medium, 3: Low
     },
     notes: {
       type: String,
@@ -29,7 +38,7 @@ const TaskSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Pending", "Completed"],
+      enum: ["Pending", "In Progress", "Completed", "Cancelled"],
       default: "Pending",
     },
   },

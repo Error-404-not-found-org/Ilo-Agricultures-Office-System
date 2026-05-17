@@ -12,6 +12,8 @@ const Landing = () => {
             return <Navigate to="/dashboard" replace />;
         } else if (user?.publicMetadata?.role === 'technician') {
             return <Navigate to="/technician/dashboard" replace />;
+        } else if (user?.publicMetadata?.role === 'farmer') {
+            return <Navigate to="/farmer/dashboard" replace />;
         }
         // If logged in but not admin or technician, they stay on Landing to see the restricted message.
     }

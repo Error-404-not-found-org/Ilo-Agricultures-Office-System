@@ -2,314 +2,296 @@ import { View, Text, RefreshControl, ActivityIndicator, StatusBar, Image, Toucha
 import React, { useEffect, useState, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Syringe, Tag, CalendarDays, Dog } from 'lucide-react-native';
+import { Syringe, Tag, CalendarDays, Dog, TrendingUp, ClipboardCheck, AlertCircle, Activity as ActivityIcon, ChevronRight, User } from 'lucide-react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { format } from 'date-fns';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
-  _id: string; animalId: string; earTag?: string;
-  species: string; breed: string; color?: string; imageUrl?: string; birthDate?: string;
-}
-interface InseminationRecord {
   _id: string;
-  animalId: { _id: string; animalId: string; earTag?: string; species: string; breed: string; imageUrl?: string; };
-  inseminationDate?: string;
-  scheduledDate?: string;
-  createdAt?: string;
-  sireBreed: string; sireCode: string; estrus?: string;
-  status: string; attemptNumber: number;
+  animalId: string;
+  earTag?: string;
+  breed: string;
+  species: string;
+  reproductiveStatus?: string;
 }
 
-// ─── Status Badge ─────────────────────────────────────────────────────────────
-const STATUS_CFG: Record<string, { color: string; bg: string; label: string }> = {
-  approved: { color: '#059669', bg: '#ecfdf5', label: 'Approved' },
-  pending:  { color: '#d97706', bg: '#fffbeb', label: 'Pending'  },
+interface InseminationRecord {
+  _id: string;
+  animalId: Animal;
+  inseminationDate: string;
+  status: 'pending' | 'approved' | 'rejected';
+  attemptNumber: number;
+  sireBreed: string;
+  sireCode: string;
+  approvedBy?: { name: string };
+}
+
+const STATUS_CFG: Record<string, { color: string, bg: string, label: string }> = {
+  pending:  { color: '#d97706', bg: '#fffbeb', label: 'Processing' },
+  approved: { color: '#059669', bg: '#d1fae5', label: 'Accepted' },
   rejected: { color: '#dc2626', bg: '#fef2f2', label: 'Rejected' },
-  done:     { color: '#2563eb', bg: '#eff6ff', label: 'Done'     },
+  cancelled: { color: '#64748b', bg: '#f1f5f9', label: 'Cancelled' },
+  done:     { color: '#00643B', bg: '#ecfdf5', label: 'Completed' },
 };
+
+// ─── Sub-Components ──────────────────────────────────────────────────────────
+
 const StatusBadge = ({ status }: { status: string }) => {
   const c = STATUS_CFG[status?.toLowerCase()] || STATUS_CFG.pending;
   return (
-    <View className="px-2 py-1 rounded-full bg-slate-50 dark:bg-slate-800" style={{ backgroundColor: c.bg }}>
-      <Text className="text-[11px] font-bold" style={{ color: c.color }}>{c.label}</Text>
+    <View style={{ backgroundColor: c.bg, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
+      <Text style={{ fontSize: 9, fontFamily: 'Outfit_800ExtraBold', color: c.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{c.label}</Text>
     </View>
   );
 };
 
-// ─── Animal Card ──────────────────────────────────────────────────────────────
 const AnimalCard = ({ item, onPress }: { item: Animal, onPress?: () => void }) => (
-  <TouchableOpacity activeOpacity={0.8} onPress={onPress} className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 border border-gray-100 dark:border-slate-700 flex-row gap-3" style={{ elevation: 2 }}>
-    <View className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 items-center justify-center">
-      {item.imageUrl ? (
-        <Image source={{ uri: item.imageUrl }} style={{ width: 48, height: 48, borderRadius: 10 }} resizeMode="cover" />
-      ) : (
-        <Dog size={22} color="#00643B" />
-      )}
+  <TouchableOpacity 
+    activeOpacity={0.8} 
+    onPress={onPress}
+    style={{ backgroundColor: '#fff', borderRadius: 24, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2, borderWidth: 1, borderColor: '#f1f5f9' }}
+  >
+    <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center' }}>
+       <MaterialCommunityIcons name="cow" size={30} color="#059669" />
     </View>
-    <View className="flex-1 justify-center">
-      <View className="flex-row items-center justify-between mb-1">
-        <Text className="text-[14px] font-bold text-gray-800 dark:text-white">{item.animalId}</Text>
-        {item.earTag && (
-          <View className="flex-row items-center gap-1 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded-full">
-            <Tag size={10} color="#00643B" />
-            <Text className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">{item.earTag}</Text>
+    <View style={{ flex: 1, marginLeft: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        <Text style={{ fontSize: 16, fontFamily: 'Outfit_700Bold', color: '#1e293b' }}>{item.animalId}</Text>
+        {item.reproductiveStatus === 'Pregnant' && (
+          <View style={{ backgroundColor: '#f5f3ff', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+            <Text style={{ fontSize: 8, fontFamily: 'Outfit_800ExtraBold', color: '#7c3aed', textTransform: 'uppercase' }}>Pregnant</Text>
           </View>
         )}
       </View>
-      <Text className="text-xs text-gray-500 dark:text-slate-400 mb-1">{item.species} — {item.breed}</Text>
-      <View className="flex-row items-center gap-3">
-        {item.color && <Text className="text-xs text-gray-400">· {item.color}</Text>}
-        {item.birthDate && (
-          <Text className="text-xs text-gray-400">
-            · Born: {format(new Date(item.birthDate), 'MMM dd, yyyy')}
-          </Text>
-        )}
-      </View>
+      <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: '#64748b', marginTop: 2 }}>
+        {item.species} • {item.breed} {item.earTag ? `• #${item.earTag}` : ''}
+      </Text>
     </View>
+    <ChevronRight size={18} color="#cbd5e1" />
   </TouchableOpacity>
 );
 
-// ─── Insemination Record Card ─────────────────────────────────────────────────
 const RecordCard = ({ item, onPress }: { item: InseminationRecord, onPress?: () => void }) => {
   const animal = item.animalId;
+  const dateStr = item.inseminationDate ? format(new Date(item.inseminationDate), 'MMM dd, yyyy') : 'No Date';
+  
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={onPress} className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-3 border border-gray-100 dark:border-slate-700 flex-row gap-3" style={{ elevation: 2 }}>
-      <View className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 items-center justify-center">
-        {animal?.imageUrl ? (
-          <Image source={{ uri: animal.imageUrl }} style={{ width: 48, height: 48, borderRadius: 10 }} resizeMode="cover" />
-        ) : <Syringe size={22} color="#00643B" />}
-      </View>
-      <View className="flex-1">
-        <View className="flex-row items-center justify-between mb-1">
-          <Text className="text-[13px] font-bold text-gray-800 dark:text-white">Attempt #{item.attemptNumber} — {animal?.species || '—'}</Text>
-          <StatusBadge status={item.status} />
-        </View>
-        <Text className="text-xs text-gray-500 dark:text-slate-400 mb-1">{animal?.animalId}{animal?.earTag ? ` · ${animal.earTag}` : ''}</Text>
-        <View className="flex-row items-center gap-3">
-          <View className="flex-row items-center gap-1">
-            <CalendarDays size={11} color="#9ca3af" />
-            <Text className="text-xs text-gray-400">
-              {format(new Date(item.inseminationDate || item.scheduledDate || item.createdAt || new Date()), 'MMM dd, yyyy')}
-            </Text>
+    <TouchableOpacity 
+      activeOpacity={0.8} 
+      onPress={onPress}
+      style={{ backgroundColor: '#fff', borderRadius: 24, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: '#f1f5f9' }}
+    >
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
+            <CalendarDays size={20} color="#64748b" />
           </View>
-          {item.sireBreed ? <Text className="text-xs text-gray-400">· {item.sireBreed}</Text> : null}
+          <View>
+            <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>{dateStr}</Text>
+            <Text style={{ fontSize: 16, fontFamily: 'Outfit_700Bold', color: '#1e293b', marginTop: 2 }}>{animal?.animalId || 'Animal Profile'}</Text>
+          </View>
         </View>
+        <StatusBadge status={item.status} />
+      </View>
+      
+      <View style={{ backgroundColor: '#f8fafc', borderRadius: 16, padding: 12, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+         <View>
+            <Text style={{ fontSize: 9, fontFamily: 'Outfit_600SemiBold', color: '#94a3b8', textTransform: 'uppercase' }}>Sire / Breed</Text>
+            <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: '#475569', marginTop: 2 }}>{item.sireCode || 'AI-S1'} / {item.sireBreed}</Text>
+         </View>
+         <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 9, fontFamily: 'Outfit_600SemiBold', color: '#94a3b8', textTransform: 'uppercase' }}>Attempt</Text>
+            <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: '#00643B', marginTop: 2 }}>#{item.attemptNumber}</Text>
+         </View>
+      </View>
+
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#ecfdf5', alignItems: 'center', justifyContent: 'center' }}>
+            <User size={12} color="#059669" />
+          </View>
+          <Text style={{ fontSize: 11, fontFamily: 'Outfit_500Medium', color: '#64748b' }}>
+            Handled by <Text style={{ fontFamily: 'Outfit_700Bold', color: '#334155' }}>{item.approvedBy?.name || 'Technician'}</Text>
+          </Text>
+        </View>
+        <TouchableOpacity onPress={onPress}>
+           <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: '#00643B' }}>Details</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
 };
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-export default function FarmerRecords() {
+export default function FarmerReports() {
   const api    = useApi();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<'animals' | 'records'>('animals');
-
-  // Animals Pagination State
   const [animals, setAnimals] = useState<Animal[]>([]);
-  const [animalPage, setAnimalPage] = useState(1);
-  const [totalAnimals, setTotalAnimals] = useState(0);
-  const [hasMoreAnimals, setHasMoreAnimals] = useState(true);
-  const [isLoadingAnimals, setIsLoadingAnimals] = useState(false);
-  const [isRefreshingAnimals, setIsRefreshingAnimals] = useState(false);
-
-  // Records Pagination State
   const [records, setRecords] = useState<InseminationRecord[]>([]);
   const [recordStats, setRecordStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0 });
-  const [recordPage, setRecordPage] = useState(1);
-  const [hasMoreRecords, setHasMoreRecords] = useState(true);
-  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
-  const [isRefreshingRecords, setIsRefreshingRecords] = useState(false);
+  const [isLoadingAnimals, setIsLoadingAnimals] = useState(true);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Fetch Animals
-  const fetchAnimals = useCallback(async (pageToLoad = 1, isRefresh = false) => {
-    if (isRefresh) setIsRefreshingAnimals(true);
-    else if (pageToLoad === 1) setIsLoadingAnimals(true);
-
+  const fetchAnimals = useCallback(async (isRefresh = false) => {
+    if (!isRefresh) setIsLoadingAnimals(true);
     try {
-      const res = await api.get(`/animals/my?page=${pageToLoad}&limit=10`);
-      const newAnimals = res.data.data;
-      
-      if (pageToLoad === 1) {
-        setAnimals(newAnimals);
-      } else {
-        setAnimals(prev => [...prev, ...newAnimals]);
-      }
-      
-      setTotalAnimals(res.data.total);
-      setHasMoreAnimals(pageToLoad < res.data.totalPages);
-      setAnimalPage(pageToLoad);
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Could not load your animals.');
+      const res = await api.get('/animals/my');
+      const body = res.data;
+      setAnimals(Array.isArray(body) ? body : (body?.data || []));
+    } catch (e) {
+      toast.error('Cattle sync failed');
     } finally {
       setIsLoadingAnimals(false);
-      setIsRefreshingAnimals(false);
+      if (isRefresh) setIsRefreshing(false);
     }
   }, [api]);
 
-  // Fetch Records
-  const fetchRecords = useCallback(async (pageToLoad = 1, isRefresh = false) => {
-    if (isRefresh) setIsRefreshingRecords(true);
-    else if (pageToLoad === 1) setIsLoadingRecords(true);
-
+  const fetchRecords = useCallback(async (isRefresh = false) => {
+    if (!isRefresh) setIsLoadingRecords(true);
     try {
-      const res = await api.get(`/insemination/my?page=${pageToLoad}&limit=10`);
-      const newRecords = res.data.data;
-      
-      if (pageToLoad === 1) {
-        setRecords(newRecords);
-      } else {
-        setRecords(prev => [...prev, ...newRecords]);
-      }
-      
-      const stats = res.data.stats || { total: res.data.total, approved: 0, pending: 0 };
-      setRecordStats({
-        ...stats,
-        rejected: (stats.total || 0) - (stats.approved || 0) - (stats.pending || 0)
-      });
-      setHasMoreRecords(pageToLoad < res.data.totalPages);
-      setRecordPage(pageToLoad);
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Could not load your records.');
+      const res = await api.get('/insemination/my');
+      setRecords(res.data.data || []);
+      if (res.data.stats) setRecordStats(res.data.stats);
+    } catch (e) {
+      toast.error('Activity sync failed');
     } finally {
       setIsLoadingRecords(false);
-      setIsRefreshingRecords(false);
+      if (isRefresh) setIsRefreshing(false);
     }
   }, [api]);
 
-  // Initial load
-  useEffect(() => {
-    fetchAnimals(1, false);
-    fetchRecords(1, false);
+  const onRefresh = useCallback(() => {
+    setIsRefreshing(true);
+    fetchAnimals(true);
+    fetchRecords(true);
   }, [fetchAnimals, fetchRecords]);
 
-  // Load More Handlers
-  const handleLoadMoreAnimals = () => {
-    if (!isLoadingAnimals && hasMoreAnimals) {
-      fetchAnimals(animalPage + 1, false);
-    }
-  };
+  useEffect(() => {
+    fetchAnimals();
+    fetchRecords();
 
-  const handleLoadMoreRecords = () => {
-    if (!isLoadingRecords && hasMoreRecords) {
-      fetchRecords(recordPage + 1, false);
-    }
-  };
-
-  // Refresh Handlers
-  const handleRefreshAnimals = () => fetchAnimals(1, true);
-  const handleRefreshRecords = () => fetchRecords(1, true);
-
-  const TAB_BTN = (id: 'animals' | 'records', label: string, count: number) => (
-    <TouchableOpacity
-      key={id}
-      onPress={() => setActiveTab(id)}
-      className={`flex-1 py-3 rounded-2xl items-center flex-row justify-center gap-2 ${activeTab === id ? 'bg-[#00643B]' : 'bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700'}`}
-    >
-      <Text className={`font-bold text-sm ${activeTab === id ? 'text-white' : 'text-gray-500 dark:text-slate-400'}`}>{label}</Text>
-      <View className={`px-1.5 py-0.5 rounded-full ${activeTab === id ? 'bg-white/30' : 'bg-gray-100 dark:bg-slate-700'}`}>
-        <Text className={`text-[11px] font-bold ${activeTab === id ? 'text-white' : 'text-gray-500 dark:text-slate-400'}`}>{count}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  const renderFooter = (hasMore: boolean) => {
-    if (!hasMore) return <View className="h-20" />;
-    return (
-      <View className="py-6 items-center">
-        <ActivityIndicator size="small" color="#00643B" />
-      </View>
-    );
-  };
+    const interval = setInterval(() => {
+      fetchAnimals(true);
+      fetchRecords(true);
+    }, 10000); // Poll every 10 seconds silently
+    
+    return () => clearInterval(interval);
+  }, [fetchAnimals, fetchRecords]);
 
   return (
-    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
+    <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
       <StatusBar barStyle="light-content" />
-      <View className="absolute top-0 left-0 right-0 h-[200px] bg-[#00643B]" />
+      
+      {/* Premium Header */}
+      <View style={{ paddingTop: insets.top + 20, backgroundColor: '#00643B', paddingBottom: 100, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, paddingHorizontal: 24 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <View>
+            <Text style={{ color: 'rgba(255,255,255,0.7)', fontFamily: 'Outfit_500Medium', fontSize: 13 }}>Production Dashboard</Text>
+            <Text style={{ color: '#fff', fontFamily: 'Outfit_900Black', fontSize: 28 }}>Reports Center</Text>
+          </View>
+          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
+            <ClipboardCheck color="#fff" size={24} />
+          </View>
+        </View>
 
-      {/* Header */}
-      <View style={{ paddingTop: insets.top + 16 }} className="px-6 pb-5 z-10">
-        <Text className="text-[22px] font-bold text-white">My Records</Text>
-        <Text className="text-emerald-100 text-sm">Animals & insemination history</Text>
+        {/* Improved Moowie Insight Card */}
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+          <View style={{ width: 60, height: 60 }}>
+            <Image 
+              source={{ uri: 'https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png' }} 
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="contain"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#fff', fontFamily: 'Outfit_800ExtraBold', fontSize: 14 }}>Moowie Analysis</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.8)', fontFamily: 'Outfit_500Medium', fontSize: 11, lineHeight: 15, marginTop: 2 }}>
+              {activeTab === 'animals' 
+                ? `Scanning your herd... You have ${animals.length} cattle registered. Check their breeding cycles for optimal production!`
+                : `Analyzing history... ${recordStats.total} total attempts found. Your success rate is looking promising!`}
+            </Text>
+          </View>
+        </View>
       </View>
 
-      {/* Main Card */}
-      <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-5 pt-5" style={{ elevation: 8 }}>
-        {/* Tab switcher */}
-        <View className="flex-row gap-2 mb-4">
-          {TAB_BTN('animals', '🐄 Animals', totalAnimals)}
-          {TAB_BTN('records', '💉 Records', recordStats.total)}
+      {/* Main Content */}
+      <View style={{ flex: 1, marginTop: -60, paddingHorizontal: 24 }}>
+        {/* Tab Switcher */}
+        <View style={{ flexDirection: 'row', backgroundColor: '#fff', borderRadius: 24, padding: 6, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 4 }}>
+          <TouchableOpacity 
+            onPress={() => setActiveTab('animals')}
+            style={{ flex: 1, paddingVertical: 12, borderRadius: 18, alignItems: 'center', backgroundColor: activeTab === 'animals' ? '#00643B' : 'transparent', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+          >
+            <Dog size={16} color={activeTab === 'animals' ? '#fff' : '#94a3b8'} />
+            <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: activeTab === 'animals' ? '#fff' : '#64748b' }}>Cattle Hub</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => setActiveTab('records')}
+            style={{ flex: 1, paddingVertical: 12, borderRadius: 18, alignItems: 'center', backgroundColor: activeTab === 'records' ? '#00643B' : 'transparent', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+          >
+            <ActivityIcon size={16} color={activeTab === 'records' ? '#fff' : '#94a3b8'} />
+            <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: activeTab === 'records' ? '#fff' : '#64748b' }}>Activity Feed</Text>
+          </TouchableOpacity>
         </View>
 
         {activeTab === 'animals' ? (
-            isLoadingAnimals && animalPage === 1 ? (
-              <View className="flex-1 items-center justify-center">
-                <ActivityIndicator size="large" color="#00643B" />
-              </View>
-            ) : animals.length === 0 ? (
-              <ScrollView refreshControl={<RefreshControl refreshing={isRefreshingAnimals} onRefresh={handleRefreshAnimals} colors={['#00643B']} />}>
-                  <View className="items-center py-20 gap-3">
-                    <Dog size={48} color="#d1d5db" />
-                    <Text className="text-gray-400 font-semibold text-base">No animals registered yet</Text>
-                    <Text className="text-gray-300 text-sm text-center">Tap the + button to register your first animal.</Text>
-                  </View>
-              </ScrollView>
-            ) : (
-              <FlatList
-                data={animals}
-                keyExtractor={(item) => item._id}
-                showsVerticalScrollIndicator={false}
-                renderItem={({ item }) => <AnimalCard item={item} onPress={() => router.push(`/(farmer)/animal-details?id=${item._id}`)} />}
-                onEndReached={handleLoadMoreAnimals}
-                onEndReachedThreshold={0.3}
-                refreshControl={<RefreshControl refreshing={isRefreshingAnimals} onRefresh={handleRefreshAnimals} colors={['#00643B']} />}
-                ListFooterComponent={renderFooter(hasMoreAnimals)}
-              />
-            )
+          isLoadingAnimals ? (
+            <ActivityIndicator color="#00643B" style={{ marginTop: 40 }} />
+          ) : (
+            <FlatList
+              data={animals}
+              keyExtractor={(item) => item._id}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => <AnimalCard item={item} onPress={() => router.push(`/(farmer)/animal-details?id=${item._id}`)} />}
+              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={['#00643B']} />}
+              ListEmptyComponent={
+                <View style={{ alignItems: 'center', marginTop: 60, opacity: 0.4 }}>
+                  <MaterialCommunityIcons name="cow-off" size={60} color="#64748b" />
+                  <Text style={{ fontFamily: 'Outfit_700Bold', color: '#64748b', marginTop: 12 }}>No cattle found</Text>
+                </View>
+              }
+            />
+          )
         ) : (
-            isLoadingRecords && recordPage === 1 ? (
-              <View className="flex-1 items-center justify-center">
-                <ActivityIndicator size="large" color="#00643B" />
-              </View>
-            ) : records.length === 0 ? (
-              <ScrollView refreshControl={<RefreshControl refreshing={isRefreshingRecords} onRefresh={handleRefreshRecords} colors={['#00643B']} />}>
-                  <View className="items-center py-20 gap-3">
-                    <Syringe size={48} color="#d1d5db" />
-                    <Text className="text-gray-400 font-semibold text-base">No insemination records yet</Text>
-                    <Text className="text-gray-300 text-sm text-center">Records appear here once a technician logs an AI procedure.</Text>
-                  </View>
-              </ScrollView>
-            ) : (
-              <FlatList
-                data={records}
-                keyExtractor={(item) => item._id}
-                showsVerticalScrollIndicator={false}
-                ListHeaderComponent={
-                  <View className="flex-row gap-2 mb-4">
-                    {[
-                      { label: 'Total',    val: recordStats.total,    color: '#00643B', bg: '#ecfdf5' },
-                      { label: 'Approved', val: recordStats.approved, color: '#059669', bg: '#d1fae5' },
-                      { label: 'Pending',  val: recordStats.pending,  color: '#d97706', bg: '#fffbeb' },
-                      { label: 'Rejected', val: recordStats.rejected, color: '#dc2626', bg: '#fef2f2' },
-                    ].map(s => (
-                      <View key={s.label} className="flex-1 rounded-xl py-3 items-center" style={{ backgroundColor: s.bg }}>
-                        <Text className="text-lg font-black" style={{ color: s.color }}>{s.val}</Text>
-                        <Text className="text-[10px] font-semibold" style={{ color: s.color }}>{s.label}</Text>
-                      </View>
-                    ))}
-                  </View>
-                }
-                renderItem={({ item }) => <RecordCard item={item} onPress={() => router.push(`/(farmer)/animal-details?id=${item.animalId._id}`)} />}
-                onEndReached={handleLoadMoreRecords}
-                onEndReachedThreshold={0.3}
-                refreshControl={<RefreshControl refreshing={isRefreshingRecords} onRefresh={handleRefreshRecords} colors={['#00643B']} />}
-                ListFooterComponent={renderFooter(hasMoreRecords)}
-              />
-            )
+          isLoadingRecords ? (
+            <ActivityIndicator color="#00643B" style={{ marginTop: 40 }} />
+          ) : (
+            <FlatList
+              data={records}
+              keyExtractor={(item) => item._id}
+              showsVerticalScrollIndicator={false}
+              ListHeaderComponent={
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+                  {[
+                    { label: 'Total', val: recordStats.total, color: '#00643B', bg: '#ecfdf5', icon: TrendingUp },
+                    { label: 'Active', val: recordStats.approved, color: '#059669', bg: '#f0fdf4', icon: ClipboardCheck },
+                    { label: 'Wait', val: recordStats.pending, color: '#d97706', bg: '#fffbeb', icon: ActivityIcon },
+                    { label: 'Closed', val: recordStats.rejected, color: '#64748b', bg: '#f1f5f9', icon: AlertCircle },
+                  ].map((s, i) => (
+                    <View key={i} style={{ flex: 1, backgroundColor: s.bg, borderRadius: 20, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: s.color + '15' }}>
+                      <s.icon size={11} color={s.color} style={{ marginBottom: 4 }} />
+                      <Text style={{ fontSize: 16, fontFamily: 'Outfit_900Black', color: s.color }}>{s.val}</Text>
+                      <Text style={{ fontSize: 7, fontFamily: 'Outfit_800ExtraBold', color: s.color, textTransform: 'uppercase' }}>{s.label}</Text>
+                    </View>
+                  ))}
+                </View>
+              }
+              renderItem={({ item }) => <RecordCard item={item} onPress={() => router.push(`/(farmer)/animal-details?id=${item.animalId?._id}`)} />}
+              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={['#00643B']} />}
+              ListEmptyComponent={
+                <View style={{ alignItems: 'center', marginTop: 60, opacity: 0.4 }}>
+                  <MaterialCommunityIcons name="clipboard-text-off-outline" size={60} color="#64748b" />
+                  <Text style={{ fontFamily: 'Outfit_700Bold', color: '#64748b', marginTop: 12 }}>No records found</Text>
+                </View>
+              }
+            />
+          )
         )}
       </View>
     </View>

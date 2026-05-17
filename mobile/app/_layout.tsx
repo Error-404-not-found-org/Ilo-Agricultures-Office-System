@@ -1,4 +1,28 @@
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useSegments, router, useRootNavigationState } from "expo-router";
+import { Buffer } from 'buffer';
+// @ts-ignore
+import { decode, encode } from 'base-64';
+
+// Polyfills for crypto and auth libraries
+if (typeof global.Buffer === 'undefined') {
+  global.Buffer = Buffer;
+}
+if (typeof global.btoa === 'undefined') {
+  global.btoa = encode;
+}
+if (typeof global.atob === 'undefined') {
+  global.atob = decode;
+}
+
+import { 
+  useFonts,
+  Outfit_400Regular,
+  Outfit_500Medium,
+  Outfit_600SemiBold,
+  Outfit_700Bold,
+  Outfit_800ExtraBold,
+  Outfit_900Black 
+} from '@expo-google-fonts/outfit';
 import "../global.css"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, persistOptions } from "../lib/queryClient";
@@ -10,49 +34,53 @@ import { Toaster } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColorScheme as useNativeWindColorScheme } from "nativewind";
+import NetInfo from "@react-native-community/netinfo";
+import { processOfflineQueue } from "../lib/offlineQueue";
+import { useApi } from "../lib/api";
+import { registerForPushNotificationsAsync } from "../lib/notifications";
+import Constants from "expo-constants";
+import * as Notifications from 'expo-notifications';
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 if (!CLERK_PUBLISHABLE_KEY) {
-  throw new Error(
-    'Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env',
-  )
+  throw new Error('Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY');
 }
 
 function InitialLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const segments = useSegments();
-  const router = useRouter();
-  const [isNavigating, setIsNavigating] = useState(true);
+  const [appReady, setAppReady] = useState(false);
   const { setColorScheme } = useNativeWindColorScheme();
+  const api = useApi();
+  const navigationState = useRootNavigationState();
 
-  // Reliable system theme detection for splash
-  const systemColorScheme = useColorScheme();
-  const isDark = systemColorScheme === 'dark';
+  const isFullyLoaded = isLoaded && appReady;
 
-  // Auto-reset navigation guard - if stuck for more than 5 seconds, let the user in
+  // Initialization
   useEffect(() => {
-    async function initTheme() {
+    async function init() {
       try {
         const savedTheme = await AsyncStorage.getItem("theme_preference");
-        if (savedTheme === "dark" || savedTheme === "light") {
-          setColorScheme(savedTheme as "dark" | "light");
-        }
-      } catch (e) {
-        console.error("Theme init error:", e);
-      }
+        if (savedTheme) setColorScheme(savedTheme as any);
+      } catch (e) {}
+      setTimeout(() => setAppReady(true), 2000);
     }
-    initTheme();
-    
-    const timer = setTimeout(() => {
-      if (isNavigating) setIsNavigating(false);
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [isNavigating, setColorScheme]);
+    init();
+  }, []);
 
+  // Offline Sync
   useEffect(() => {
-    if (!isLoaded) return;
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected) processOfflineQueue(api);
+    });
+    return () => unsubscribe();
+  }, [api]);
+
+  // Auth Guard Logic
+  useEffect(() => {
+    if (!isFullyLoaded || !navigationState?.key) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const isVerifying = segments[1] === 'verify';
@@ -60,74 +88,70 @@ function InitialLayout() {
     const inFarmerGroup = segments[0] === '(farmer)';
     const inAdminGroup = segments[0] === '(admin)';
 
-    if (isSignedIn) {
-      const role = user?.publicMetadata?.role;
-      // Logic: Allow if (metadata is true) OR (clerk status is verified AND metadata is not explicitly false)
-      const isEmailVerified = 
-        user?.publicMetadata?.isVerified === true || 
-        (user?.primaryEmailAddress?.verification.status === 'verified' && user?.publicMetadata?.isVerified !== false);
+    const isActuallySignedIn = isSignedIn && !!user;
 
-      // 1. Mandatory Verification Guard
-      if (!isEmailVerified) {
-        if (!isVerifying) {
-          router.replace('/(auth)/verify' as any);
+    if (isActuallySignedIn) {
+      // --- REGISTER PUSH TOKEN (DISABLED FOR EXPO GO STABILITY) ---
+      /*
+      registerForPushNotificationsAsync().then(token => {
+        if (token) {
+          api.post('/user/push-token', { pushToken: token })
+            .catch(err => console.error("Push token sync failed", err));
         }
-        setIsNavigating(false);
+      });
+      */
+
+      const role = user?.publicMetadata?.role;
+      const verified = user?.publicMetadata?.isVerified === true || 
+                       user?.primaryEmailAddress?.verification.status === 'verified';
+
+      // 1. Verification Guard
+      if (!verified) {
+        if (!isVerifying) {
+          router.replace('/(auth)/verify');
+        }
+        // If they are unverified, stop evaluating routing rules so they stay on the verify screen.
         return;
       }
 
-      // 2. Role-based Redirects (only for verified users)
-      if (inAuthGroup || isVerifying) {
-         if (role === 'admin') {
-            router.replace('/(admin)/admin.dashboard' as any);
-         } else if (role === 'technician') {
-            router.replace('/(technician)/technician.dashboard');
-         } else {
-            router.replace('/(farmer)');
-         }
-      } else if (inAdminGroup && role !== 'admin') {
-         router.replace('/(farmer)');
-      } else if (inTechnicianGroup && role !== 'technician') {
-         router.replace('/(farmer)');
-      } else if (inFarmerGroup && role === 'technician') {
-         router.replace('/(technician)/technician.dashboard');
-      } else if (inFarmerGroup && role === 'admin') {
-         router.replace('/(admin)/admin.dashboard' as any);
-      } else {
-        setIsNavigating(false);
+      // 2. Redirect to correct dashboard
+      const atRoot = (segments as any).length === 0 || (segments as any)[0] === '';
+      
+      // FIX: Only consider it a "wrong group" if the role is actually loaded/defined
+      // This prevents the "bounce" effect while role metadata is still syncing
+      const wrongGroup = role ? (
+        (inAdminGroup && role !== 'admin') || 
+        (inTechnicianGroup && role !== 'technician') ||
+        (inFarmerGroup && (role === 'technician' || role === 'admin'))
+      ) : false;
+
+      // Since we returned early for unverified users, anyone hitting this block IS verified.
+      // If a verified user is in the auth group or at root, send them to their dashboard.
+      if (inAuthGroup || atRoot || wrongGroup) {
+        if (role === 'admin') router.replace('/(admin)/admin.dashboard');
+        else if (role === 'technician') router.replace('/(technician)/technician.dashboard');
+        else router.replace('/(farmer)');
       }
-    } else if (!isSignedIn) {
+    } else if (isLoaded && !isSignedIn) {
+      // 3. Force Auth
       if (!inAuthGroup) {
         router.replace('/(auth)');
-      } else {
-        // If not signed in and in auth group, we are done navigating
-        setIsNavigating(false);
       }
     }
-  }, [isSignedIn, isLoaded, user, segments, router]);
+  }, [isSignedIn, isLoaded, user, appReady, segments, navigationState?.key]);
 
+  const isDark = useColorScheme() === 'dark';
 
-  if (!isLoaded || isNavigating) {
+  if (!isFullyLoaded) {
     return (
       <View style={{ flex: 1, backgroundColor: isDark ? '#020617' : '#ffffff', alignItems: 'center', justifyContent: 'center' }}>
-         <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-            <Image 
-              source={require('../assets/logo.png')} 
-              style={{ width: 140, height: 140, marginBottom: 40 }} 
-              resizeMode="contain"
-            />
-            <View style={{ position: 'relative', alignItems: 'center', justifyContent: 'center' }}>
-               <ActivityIndicator size="large" color="#00643B" style={{ transform: [{ scale: 1.5 }] }} />
-               <View style={{ position: 'absolute', width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(16, 185, 129, 0.05)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.1)' }} />
-            </View>
-         </View>
-         
-         {isSignedIn && (
-           <View style={{ marginTop: 60, alignItems: 'center' }}>
-              <Text style={{ color: '#00643B', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 4, fontSize: 11 }}>Synchronizing Data Hub</Text>
-              <Text style={{ color: isDark ? '#64748b' : '#94a3b8', fontWeight: '900', textTransform: 'uppercase', letterSpacing: 2, fontSize: 8, marginTop: 12 }}>Secure Terminal Handshake</Text>
-           </View>
-         )}
+        <Image source={require('../assets/logo.png')} style={{ width: 130, height: 130, marginBottom: 30 }} resizeMode="contain" />
+        <ActivityIndicator size="large" color="#00643B" />
+        <View style={{ marginTop: 20 }}>
+          <Text style={{ color: '#00643B', fontWeight: '900', fontSize: 10, letterSpacing: 2 }}>
+            {isSignedIn ? 'RESOLVING PERMISSIONS...' : 'AUTHENTICATING...'}
+          </Text>
+        </View>
       </View>
     );
   }
@@ -135,37 +159,41 @@ function InitialLayout() {
   return <Stack screenOptions={{ headerShown: false }} />;
 }
 
+import { SafeAreaProvider } from "react-native-safe-area-context";
+
+/*
+// Only set handler if not in Expo Go to avoid SDK 53+ warnings
+if (Constants.appOwnership !== 'expo') {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+}
+*/
+
 export default function RootLayout() {
-  useEffect(() => {
-    // Hard-fix for "Row too big" error: Clear the cache once if it's potentially corrupted
-    const clearCorruptedCache = async () => {
-      try {
-        const cache = await AsyncStorage.getItem("REACT_QUERY_OFFLINE_CACHE");
-        if (cache && cache.length > 1024 * 1024 * 2) { // > 2MB
-          console.warn("Clearing oversized cache to prevent crash");
-          await AsyncStorage.removeItem("REACT_QUERY_OFFLINE_CACHE");
-        }
-      } catch (e) {
-        console.error("Cache check error:", e);
-      }
-    };
-    clearCorruptedCache();
-  }, []);
+  const [fontsLoaded] = useFonts({
+    Outfit_400Regular, Outfit_500Medium, Outfit_600SemiBold,
+    Outfit_700Bold, Outfit_800ExtraBold, Outfit_900Black,
+  });
+
+  if (!fontsLoaded) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
-          <PersistQueryClientProvider
-            client={queryClient}
-            persistOptions={persistOptions}
-            onSuccess={() => console.log("Cache hydrated successfully")}
-          >
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
+          <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
             <InitialLayout />
             <Toaster />
           </PersistQueryClientProvider>
-      </ClerkProvider>
-    </GestureHandlerRootView>
-  )
+        </ClerkProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
+  );
 }
-  
-
