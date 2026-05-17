@@ -14,4 +14,9 @@ coverage/
 ip.json
 ip.txt
 error.log
-*.log
+*.log
+
+# Checklists & QA Checklists
+BreedSmart_QA_Checklist.txt
+*checklist*
+*Checklist*
