@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image, ScrollView, FlatList, ActivityIndicator, Alert, StatusBar, Modal, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Trash2, Camera, Plus, MapPin, Calendar, Clock, X, Save, Image as ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Camera, Plus, MapPin, Clock, X, Save, Image as ImageIcon } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { toast } from 'sonner-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useApi } from '@/lib/api';
 
 const PRIMARY = '#00643B';
 
@@ -16,49 +17,10 @@ const generateOtonCoordinates = () => {
   return { latitude: lat, longitude: lng };
 };
 
-// Initial Mock data with simulated high-fidelity coordinates
-const INITIAL_NOTES = [
-  {
-    id: '1',
-    title: 'Heat Sign Observation',
-    description: 'Cow #024 showing strong heat signs this morning. Mucus discharge noted. Ready for AI session at 2:00 PM.',
-    image: 'https://res.cloudinary.com/donhulins/image/upload/v1778122059/media__1778122059581.png',
-    date: 'May 07, 2026',
-    time: '08:30 AM',
-    location: 'Oton, Iloilo',
-    latitude: '10.6974',
-    longitude: '122.4831',
-    farmer: 'Pedro Salazar'
-  },
-  {
-    id: '2',
-    title: 'Post-Treatment Check',
-    description: 'Calf with diarrhea is showing improvement after 24h hydration therapy. Appetite returning to normal.',
-    image: 'https://res.cloudinary.com/donhulins/image/upload/v1778122627/media__1778122627811.png',
-    date: 'May 06, 2026',
-    time: '04:15 PM',
-    location: 'San Nicolas',
-    latitude: '10.6841',
-    longitude: '122.4712',
-    farmer: 'Maria Lopez'
-  },
-  {
-    id: '3',
-    title: 'New Herd Addition',
-    description: 'Inspected 5 new head of cattle for Aling Nena. All vaccinations verified and records synced to hub.',
-    image: 'https://res.cloudinary.com/donhulins/image/upload/v1778123376/media__1778123376142.png',
-    date: 'May 05, 2026',
-    time: '11:00 AM',
-    location: 'Poblacion',
-    latitude: '10.7093',
-    longitude: '122.4955',
-    farmer: 'Aling Nena'
-  }
-];
-
 export default function PhotoNotesScreen() {
   const router = useRouter();
-  const [notes, setNotes] = useState(INITIAL_NOTES);
+  const api = useApi();
+  const [notes, setNotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   
@@ -72,19 +34,37 @@ export default function PhotoNotesScreen() {
     longitude: ''
   });
 
+  const fetchNotes = async () => {
+    try {
+      setLoading(true);
+      const res = await api.get('/technician/photo-notes');
+      setNotes(res.data || []);
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to load photo notes");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
+
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: 0.6,
+      base64: true,
     });
 
-    if (!result.canceled) {
+    if (!result.canceled && result.assets?.length > 0) {
       const coords = generateOtonCoordinates();
       setNewNote({ 
         ...newNote, 
-        image: result.assets[0].uri,
+        image: `data:image/jpeg;base64,${result.assets[0].base64}`,
         latitude: coords.latitude,
         longitude: coords.longitude
       });
@@ -102,14 +82,15 @@ export default function PhotoNotesScreen() {
     let result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 0.8,
+      quality: 0.6,
+      base64: true,
     });
 
-    if (!result.canceled) {
+    if (!result.canceled && result.assets?.length > 0) {
       const coords = generateOtonCoordinates();
       setNewNote({ 
         ...newNote, 
-        image: result.assets[0].uri,
+        image: `data:image/jpeg;base64,${result.assets[0].base64}`,
         latitude: coords.latitude,
         longitude: coords.longitude
       });
@@ -117,24 +98,33 @@ export default function PhotoNotesScreen() {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!newNote.title || !newNote.image) {
       toast.error("Title and Image are required");
       return;
     }
 
-    const note = {
-      id: Date.now().toString(),
-      ...newNote,
-      date: new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
-      time: new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }),
-      location: 'Oton, Iloilo',
-    };
+    try {
+      setLoading(true);
+      await api.post('/technician/photo-notes', {
+        title: newNote.title,
+        description: newNote.description,
+        imageUrl: newNote.image,
+        farmerName: newNote.farmer,
+        latitude: newNote.latitude,
+        longitude: newNote.longitude,
+      });
 
-    setNotes([note as any, ...notes]);
-    setModalVisible(false);
-    setNewNote({ title: '', description: '', image: '', farmer: '', latitude: '', longitude: '' });
-    toast.success("Field note saved!");
+      toast.success("Field note saved successfully!");
+      setModalVisible(false);
+      setNewNote({ title: '', description: '', image: '', farmer: '', latitude: '', longitude: '' });
+      fetchNotes();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.response?.data?.message || "Failed to save field note");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -146,62 +136,83 @@ export default function PhotoNotesScreen() {
         { 
           text: "Delete", 
           style: "destructive", 
-          onPress: () => {
-            setNotes((prev: any[]) => prev.filter((n: any) => n.id !== id));
-            toast.success("Note deleted successfully");
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await api.delete(`/technician/photo-notes/${id}`);
+              toast.success("Note deleted successfully");
+              fetchNotes();
+            } catch (err: any) {
+              console.error(err);
+              toast.error("Failed to delete note");
+            } finally {
+              setLoading(false);
+            }
           }
         }
       ]
     );
   };
 
-  const renderNote = ({ item }: { item: typeof INITIAL_NOTES[0] }) => (
-    <View style={{ backgroundColor: '#fff', borderRadius: 28, overflow: 'hidden', marginBottom: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 15, elevation: 4, borderWidth: 1, borderColor: '#f1f5f9' }}>
-      <View style={{ height: 180, position: 'relative' }}>
-        <Image source={{ uri: item.image }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-        <View style={{ position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 }}>
-           <Text style={{ color: '#fff', fontSize: 10, fontFamily: 'Outfit_700Bold' }}>{item.date}</Text>
+  const renderNote = ({ item }: { item: any }) => {
+    const noteDate = item.createdAt 
+      ? new Date(item.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      : 'Today';
+    
+    const noteTime = item.createdAt
+      ? new Date(item.createdAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+      : 'Now';
+
+    return (
+      <View style={{ backgroundColor: '#fff', borderRadius: 28, overflow: 'hidden', marginBottom: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 15, elevation: 4, borderWidth: 1, borderColor: '#f1f5f9' }}>
+        <View style={{ height: 180, position: 'relative' }}>
+          <Image source={{ uri: item.imageUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          <View style={{ position: 'absolute', top: 12, left: 12, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 4 }}>
+             <Text style={{ color: '#fff', fontSize: 10, fontFamily: 'Outfit_700Bold' }}>{noteDate}</Text>
+          </View>
+          <TouchableOpacity 
+            onPress={() => handleDelete(item._id)}
+            style={{ position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(239, 68, 68, 0.9)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Trash2 size={18} color="#fff" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity 
-          onPress={() => handleDelete(item.id)}
-          style={{ position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(239, 68, 68, 0.9)', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Trash2 size={18} color="#fff" />
-        </TouchableOpacity>
+
+        <View style={{ padding: 20 }}>
+           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1 }}>
+                 <Text style={{ fontSize: 18, fontFamily: 'Outfit_800ExtraBold', color: '#1e293b' }}>{item.title}</Text>
+                 <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                       <MapPin size={12} color="#059669" />
+                       <Text style={{ fontSize: 11, fontFamily: 'Outfit_700Bold', color: '#059669' }}>
+                         {item.locationName || 'Oton, Iloilo'} ({item.latitude || '10.6967'}°, {item.longitude || '122.4820'}°)
+                       </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                       <Clock size={12} color="#94a3b8" />
+                       <Text style={{ fontSize: 11, fontFamily: 'Outfit_600SemiBold', color: '#64748b' }}>{noteTime}</Text>
+                    </View>
+                 </View>
+              </View>
+           </View>
+
+           <Text style={{ fontSize: 14, fontFamily: 'Outfit_500Medium', color: '#475569', marginTop: 12, lineHeight: 20 }}>
+              {item.description}
+           </Text>
+
+           <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#f1f5f9', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#ecfdf5', alignItems: 'center', justifyContent: 'center' }}>
+                 <MaterialCommunityIcons name="account" size={14} color={PRIMARY} />
+              </View>
+              <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: '#334155' }}>
+                {item.farmerName || 'General Note'}
+              </Text>
+           </View>
+        </View>
       </View>
-
-      <View style={{ padding: 20 }}>
-         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <View style={{ flex: 1 }}>
-               <Text style={{ fontSize: 18, fontFamily: 'Outfit_800ExtraBold', color: '#1e293b' }}>{item.title}</Text>
-               <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                     <MapPin size={12} color="#059669" />
-                     <Text style={{ fontSize: 11, fontFamily: 'Outfit_700Bold', color: '#059669' }}>
-                       {item.location} ({item.latitude || '10.6967'}°, {item.longitude || '122.4820'}°)
-                     </Text>
-                  </View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                     <Clock size={12} color="#94a3b8" />
-                     <Text style={{ fontSize: 11, fontFamily: 'Outfit_600SemiBold', color: '#64748b' }}>{item.time}</Text>
-                  </View>
-               </View>
-            </View>
-         </View>
-
-         <Text style={{ fontSize: 14, fontFamily: 'Outfit_500Medium', color: '#475569', marginTop: 12, lineHeight: 20 }}>
-            {item.description}
-         </Text>
-
-         <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#f1f5f9', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#ecfdf5', alignItems: 'center', justifyContent: 'center' }}>
-               <MaterialCommunityIcons name="account" size={14} color={PRIMARY} />
-            </View>
-            <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: '#334155' }}>{item.farmer}</Text>
-         </View>
-      </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#f8fafc' }}>
@@ -226,20 +237,26 @@ export default function PhotoNotesScreen() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={notes}
-        keyExtractor={item => item.id}
-        renderItem={renderNote}
-        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={{ marginTop: 100, alignItems: 'center' }}>
-            <Camera size={64} color="#cbd5e1" />
-            <Text style={{ fontFamily: 'Outfit_700Bold', color: '#94a3b8', marginTop: 16, fontSize: 16 }}>No photo notes yet</Text>
-            <Text style={{ fontFamily: 'Outfit_500Medium', color: '#cbd5e1', marginTop: 4 }}>Capture your field operations with Moowie! 📸</Text>
-          </View>
-        }
-      />
+      {loading && notes.length === 0 ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={PRIMARY} />
+        </View>
+      ) : (
+        <FlatList
+          data={notes}
+          keyExtractor={item => item._id}
+          renderItem={renderNote}
+          contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={{ marginTop: 100, alignItems: 'center' }}>
+              <Camera size={64} color="#cbd5e1" />
+              <Text style={{ fontFamily: 'Outfit_700Bold', color: '#94a3b8', marginTop: 16, fontSize: 16 }}>No photo notes yet</Text>
+              <Text style={{ fontFamily: 'Outfit_500Medium', color: '#cbd5e1', marginTop: 4 }}>Capture your field operations with Moowie! 📸</Text>
+            </View>
+          }
+        />
+      )}
 
       {/* Add Note Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
@@ -308,17 +325,17 @@ export default function PhotoNotesScreen() {
                         <Text style={{ fontFamily: 'Outfit_700Bold', color: '#64748b', fontSize: 12, marginBottom: 8, marginLeft: 4 }}>NOTE TITLE</Text>
                         <TextInput 
                            placeholder="e.g. Insemination Session #4"
-                           style={{ backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, fontFamily: 'Outfit_600SemiBold', fontSize: 15, borderWidth: 1, borderColor: '#f1f5f9' }}
+                           style={{ backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, fontFamily: 'Outfit_600SemiBold', fontSize: 15, borderWidth: 1, borderColor: '#f1f5f9', color: '#1e293b' }}
                            value={newNote.title}
                            onChangeText={(t) => setNewNote({...newNote, title: t})}
-                         />
+                          />
                      </View>
 
                      <View>
                         <Text style={{ fontFamily: 'Outfit_700Bold', color: '#64748b', fontSize: 12, marginBottom: 8, marginLeft: 4 }}>FARMER NAME</Text>
                         <TextInput 
                            placeholder="Who is this note for?"
-                           style={{ backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, fontFamily: 'Outfit_600SemiBold', fontSize: 15, borderWidth: 1, borderColor: '#f1f5f9' }}
+                           style={{ backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, fontFamily: 'Outfit_600SemiBold', fontSize: 15, borderWidth: 1, borderColor: '#f1f5f9', color: '#1e293b' }}
                            value={newNote.farmer}
                            onChangeText={(t) => setNewNote({...newNote, farmer: t})}
                         />
@@ -330,7 +347,7 @@ export default function PhotoNotesScreen() {
                            placeholder="Describe what you see in the field..."
                            multiline
                            numberOfLines={4}
-                           style={{ backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, fontFamily: 'Outfit_500Medium', fontSize: 15, borderWidth: 1, borderColor: '#f1f5f9', height: 100, textAlignVertical: 'top' }}
+                           style={{ backgroundColor: '#f8fafc', borderRadius: 16, padding: 16, fontFamily: 'Outfit_500Medium', fontSize: 15, borderWidth: 1, borderColor: '#f1f5f9', height: 100, textAlignVertical: 'top', color: '#1e293b' }}
                            value={newNote.description}
                            onChangeText={(t) => setNewNote({...newNote, description: t})}
                         />
@@ -339,11 +356,16 @@ export default function PhotoNotesScreen() {
 
                   <TouchableOpacity 
                     onPress={handleSave}
+                    disabled={loading}
                     style={{ backgroundColor: PRIMARY, marginTop: 32, borderRadius: 20, alignItems: 'center', shadowColor: PRIMARY, shadowOpacity: 0.3, shadowRadius: 10, elevation: 8, paddingVertical: 16 }}
                   >
                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Save size={20} color="#fff" />
-                        <Text style={{ color: '#fff', fontFamily: 'Outfit_900Black', fontSize: 16 }}>Save Field Note</Text>
+                        {loading ? <ActivityIndicator color="#fff" /> : (
+                          <>
+                            <Save size={20} color="#fff" />
+                            <Text style={{ color: '#fff', fontFamily: 'Outfit_900Black', fontSize: 16 }}>Save Field Note</Text>
+                          </>
+                        )}
                      </View>
                   </TouchableOpacity>
                   

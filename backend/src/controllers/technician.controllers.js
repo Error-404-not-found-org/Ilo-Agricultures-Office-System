@@ -9,6 +9,7 @@ import { Calving } from "../models/calving.model.js";
 import { Notification } from "../models/notification.model.js";
 import { AIRequest } from "../models/ai-request.model.js";
 import { Config } from "../models/config.model.js";
+import { FieldNote } from "../models/field-note.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { inngest } from "../config/inngest.js";
 
@@ -1719,5 +1720,180 @@ export const deleteCalving = async (req, res) => {
     res.status(200).json({ message: "Calving event deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Failed to delete record", error: error.message });
+  }
+};
+
+export const getFieldNotes = async (req, res) => {
+  try {
+    const [inseminations, healthRequests, technicianNotes] = await Promise.all([
+      Insemination.find({ imageUrl: { $exists: true, $ne: "" } })
+        .populate("farmerId", "name phoneNumber address")
+        .populate("animalId", "earTag breed species imageUrl")
+        .sort({ createdAt: -1 })
+        .lean(),
+      HealthRequest.find({ imageUrl: { $exists: true, $ne: "" } })
+        .populate("farmerId", "name phoneNumber address")
+        .populate("animalId", "earTag breed species imageUrl")
+        .sort({ createdAt: -1 })
+        .lean(),
+      FieldNote.find()
+        .populate("technicianId", "name")
+        .populate("farmerId", "name phoneNumber address")
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    const notes = [
+      ...inseminations.map((ins) => ({
+        id: ins._id,
+        type: "insemination",
+        farmer: ins.farmerId?.name || "Unknown Farmer",
+        farmerPhone: ins.farmerId?.phoneNumber || "No Phone",
+        animalTag: ins.animalId?.earTag || "No Tag",
+        animalSpecies: ins.animalId?.species || "Cattle",
+        animalBreed: ins.animalId?.breed || "Crossbreed",
+        imageUrl: ins.imageUrl,
+        note: ins.comment || "No comment provided.",
+        date: ins.createdAt,
+        status: ins.status,
+      })),
+      ...healthRequests.map((hr) => ({
+        id: hr._id,
+        type: "health",
+        farmer: hr.farmerId?.name || "Unknown Farmer",
+        farmerPhone: hr.farmerId?.phoneNumber || "No Phone",
+        animalTag: hr.animalId?.earTag || "No Tag",
+        animalSpecies: hr.animalId?.species || "Cattle",
+        animalBreed: hr.animalId?.breed || "Crossbreed",
+        imageUrl: hr.imageUrl,
+        note: hr.symptoms || "No symptoms/notes provided.",
+        date: hr.createdAt,
+        status: hr.status,
+      })),
+      ...technicianNotes.map((tn) => ({
+        id: tn._id,
+        type: "technician-note",
+        farmer: tn.farmerName || tn.farmerId?.name || "General Note",
+        farmerPhone: tn.farmerId?.phoneNumber || "N/A",
+        animalTag: "N/A",
+        animalSpecies: "N/A",
+        animalBreed: "N/A",
+        imageUrl: tn.imageUrl,
+        note: `[${tn.title}] ${tn.description || "No description."}`,
+        date: tn.createdAt,
+        status: "recorded",
+        latitude: tn.latitude,
+        longitude: tn.longitude,
+        author: tn.technicianId?.name || "Technician",
+      })),
+    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.status(200).json(notes);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load field notes", error: error.message });
+  }
+};
+
+export const createFieldNote = async (req, res) => {
+  try {
+    const technicianId = req.user._id;
+    const { title, description, imageUrl, farmerName, latitude, longitude } = req.body;
+
+    if (!title) {
+      return res.status(400).json({ message: "Note title is required" });
+    }
+
+    // Handle Image Upload if base64
+    let finalImageUrl = imageUrl;
+    if (imageUrl && imageUrl.startsWith("data:image")) {
+      try {
+        const uploadResponse = await cloudinary.uploader.upload(imageUrl, {
+          folder: "technician_field_notes",
+        });
+        finalImageUrl = uploadResponse.secure_url;
+      } catch (uploadError) {
+        console.error("[createFieldNote IMAGE UPLOAD ERROR]", uploadError);
+        return res.status(500).json({ message: "Failed to upload photo note image" });
+      }
+    }
+
+    // Attempt to resolve farmerId if farmerName matches an existing farmer
+    let farmerId = null;
+    if (farmerName) {
+      const farmer = await User.findOne({
+        name: { $regex: new RegExp(farmerName, "i") },
+        role: "farmer",
+      });
+      if (farmer) {
+        farmerId = farmer._id;
+      }
+    }
+
+    const fieldNote = await FieldNote.create({
+      technicianId,
+      farmerId,
+      farmerName: farmerName || "General Note",
+      title,
+      description,
+      imageUrl: finalImageUrl || "",
+      latitude: latitude || "",
+      longitude: longitude || "",
+    });
+
+    req.app.get("io").emit("dashboardUpdate", {
+      type: "FIELD_NOTE_CREATED",
+      message: `Technician ${req.user.name} uploaded a new field note: ${title}`,
+    });
+
+    res.status(201).json({ message: "Field note saved successfully", fieldNote });
+  } catch (error) {
+    console.error("[createFieldNote ERROR]", error);
+    res.status(500).json({ message: "Failed to save field note", error: error.message });
+  }
+};
+
+export const getTechnicianFieldNotes = async (req, res) => {
+  try {
+    const notes = await FieldNote.find({ technicianId: req.user._id })
+      .sort({ createdAt: -1 })
+      .lean();
+    res.status(200).json(notes);
+  } catch (error) {
+    res.status(500).json({ message: "Failed to load your field notes", error: error.message });
+  }
+};
+
+export const deleteFieldNote = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const note = await FieldNote.findOne({ _id: id, technicianId: req.user._id });
+    if (!note) {
+      return res.status(404).json({ message: "Field note not found or unauthorized" });
+    }
+
+    await FieldNote.findByIdAndDelete(id);
+    res.status(200).json({ message: "Field note deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete field note", error: error.message });
+  }
+};
+
+export const deleteFieldNoteRecord = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { type } = req.query;
+
+    if (type === "insemination") {
+      await Insemination.findByIdAndDelete(id);
+      res.status(200).json({ message: "Insemination field note deleted successfully" });
+    } else if (type === "health") {
+      await HealthRequest.findByIdAndDelete(id);
+      res.status(200).json({ message: "Health request field note deleted successfully" });
+    } else {
+      await FieldNote.findByIdAndDelete(id);
+      res.status(200).json({ message: "Field note deleted successfully" });
+    }
+  } catch (error) {
+    res.status(500).json({ message: "Failed to delete field note record", error: error.message });
   }
 };

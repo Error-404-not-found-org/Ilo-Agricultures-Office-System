@@ -710,7 +710,10 @@ const Dashboard = () => {
                 </div>
               )}
             </div>
-            <button className="w-full mt-8 bg-base-200 hover:bg-base-300 text-base-content/40 border border-base-300 py-3.5 rounded-none font-black text-[10px] uppercase tracking-widest transition-all">
+            <button 
+              onClick={() => navigate("/technician/ledger")}
+              className="w-full mt-8 bg-base-200 hover:bg-base-300 text-base-content/40 border border-base-300 py-3.5 rounded-none font-black text-[10px] uppercase tracking-widest transition-all"
+            >
               Audit Field Ledger
             </button>
           </div>

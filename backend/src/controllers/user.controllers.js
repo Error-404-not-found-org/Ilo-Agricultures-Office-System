@@ -600,30 +600,40 @@ export const getBreedingMilestones = async (req, res) => {
 
 export const getMyActivityFeed = async (req, res) => {
   try {
-    const farmerId = req.user._id;
+    const isTechnicianOrAdmin = req.user.role === "technician" || req.user.role === "admin";
+    const query = isTechnicianOrAdmin ? {} : { farmerId: req.user._id };
 
     const [inseminations, healthRequests, calvings] = await Promise.all([
-      Insemination.find({ farmerId }).populate("animalId", "earTag").sort({ createdAt: -1 }).limit(5),
-      HealthRequest.find({ farmerId }).populate("animalId", "earTag").sort({ createdAt: -1 }).limit(5),
-      Calving.find({ farmerId }).populate("animalId", "earTag").sort({ createdAt: -1 }).limit(5)
+      Insemination.find(query).populate("animalId", "earTag").populate("farmerId", "name").sort({ createdAt: -1 }).limit(5),
+      HealthRequest.find(query).populate("animalId", "earTag").populate("farmerId", "name").sort({ createdAt: -1 }).limit(5),
+      Calving.find(query).populate("animalId", "earTag").populate("farmerId", "name").sort({ createdAt: -1 }).limit(5)
     ]);
 
     const feed = [
       ...inseminations.map(i => ({ 
         id: i._id, 
-        title: `AI performed on ${i.animalId?.earTag || 'Animal'}`, 
+        title: isTechnicianOrAdmin 
+          ? `AI on ${i.animalId?.earTag || 'Animal'} (${i.farmerId?.name || 'Farmer'})`
+          : `AI performed on ${i.animalId?.earTag || 'Animal'}`, 
+        description: i.status === 'done' ? 'Completed Service' : `Status: ${i.status}`,
         date: i.createdAt, 
         type: 'ai' 
       })),
       ...healthRequests.map(h => ({ 
         id: h._id, 
-        title: `Health Check — ${h.animalId?.earTag || 'Animal'}`, 
+        title: isTechnicianOrAdmin 
+          ? `Health Check — ${h.animalId?.earTag || 'Animal'} (${h.farmerId?.name || 'Farmer'})`
+          : `Health Check — ${h.animalId?.earTag || 'Animal'}`, 
+        description: `Status: ${h.status}`,
         date: h.createdAt, 
         type: 'health' 
       })),
       ...calvings.map(c => ({ 
         id: c._id, 
-        title: `Calving recorded — ${c.animalId?.earTag || 'Animal'}`, 
+        title: isTechnicianOrAdmin 
+          ? `Calving — ${c.animalId?.earTag || 'Animal'} (${c.farmerId?.name || 'Farmer'})`
+          : `Calving recorded — ${c.animalId?.earTag || 'Animal'}`, 
+        description: c.calvingEase ? `Ease: ${c.calvingEase}` : 'New Calf Recorded',
         date: c.createdAt, 
         type: 'calving' 
       }))

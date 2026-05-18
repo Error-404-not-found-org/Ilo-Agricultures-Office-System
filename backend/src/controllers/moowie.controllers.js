@@ -2,6 +2,7 @@ import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { ENV } from "../config/env.js";
+import axios from "axios";
 
 /**
  * POST /api/moowie/ask
@@ -21,11 +22,11 @@ export const askMoowie = async (req, res) => {
       });
     }
     
-    let context = `You are "Moowie", a professional and friendly AI agricultural assistant for the Iloilo Agriculture's Office. 
-    You are speaking to a ${userRole}. 
-    Be concise, helpful, and use technical terminology only when speaking to technicians.
-    Maintain a helpful 'cow' persona (occasional 'Moo!' is okay but keep it professional).
-    If the user asks about a specific animal, reference the data provided.\n\n`;
+    let context = `# Persona
+You are Moowie, a professional, knowledgeable, and friendly AI Agricultural and Veterinary Field Assistant for the Iloilo Agriculture's Office (Oton, Iloilo). You are currently speaking to a ${userRole}. Keep your responses concise and action-oriented. Use high-fidelity veterinary and technical terms when speaking with technicians, and clear, supportive guidance when helping farmers. Maintain a warm 'cow-like' personality (an occasional 'Moo!' is welcome, but keep your advice highly scientific and professional).
+
+# Goal
+Your main goal is to help users with questions about the Iloilo Agriculture's Office's livestock services, breeding programs (Artificial Insemination), pregnancy checks, health request diagnostics, and field data logs. If the user asks about a specific animal, refer strictly to the database context provided below.\n\n`;
 
     if (animalId) {
       const [animal, inseminations, healthHistory] = await Promise.all([
@@ -60,22 +61,24 @@ export const askMoowie = async (req, res) => {
       }
     }
 
-    // Call Gemini API using native fetch
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    // Call Gemini API using axios
+    const response = await axios.post(
+      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
         contents: [{
           parts: [{
             text: `${context}\nUser Message: ${message}`
           }]
         }]
-      })
-    });
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      }
+    );
 
-    const data = await response.json();
+    const data = response.data;
     
     if (data.error) {
       throw new Error(data.error.message || "Gemini API Error");
@@ -89,10 +92,50 @@ export const askMoowie = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Moowie AI Error Details:", error.message || error);
+    console.error("Moowie AI Error Details:", error.response?.data || error.message || error);
     res.status(500).json({ 
       message: "Moowie is feeling a bit tired.",
-      error: error.message 
+      error: error.response?.data?.error?.message || error.message 
     });
+  }
+};
+
+export const queryAnimalForVoiceflow = async (req, res) => {
+  try {
+    const { earTag } = req.body;
+    if (!earTag) {
+      return res.status(400).json({ error: "earTag is required" });
+    }
+
+    const animal = await Animal.findOne({ earTag: { $regex: new RegExp(earTag, "i") } }).lean();
+    if (!animal) {
+      return res.status(200).json({ 
+        found: false, 
+        message: `Moo! I couldn't find any animal in our Oton database matching ear tag ${earTag}.` 
+      });
+    }
+
+    // Retrieve recent inseminations and medical logs to provide complete context
+    const [inseminations, healthHistory] = await Promise.all([
+      Insemination.find({ animalId: animal._id }).sort({ createdAt: -1 }).limit(1).lean(),
+      HealthRequest.find({ animalId: animal._id }).sort({ createdAt: -1 }).limit(1).lean()
+    ]);
+
+    const lastInsemination = inseminations[0] ? `Sire: ${inseminations[0].sireBreed}, Status: ${inseminations[0].status}` : "None";
+    const lastHealthRequest = healthHistory[0] ? `${healthHistory[0].requestType} (${healthHistory[0].symptoms})` : "None";
+
+    res.status(200).json({
+      found: true,
+      earTag: animal.earTag,
+      species: animal.species,
+      breed: animal.breed,
+      status: animal.reproductiveStatus,
+      lastInsemination,
+      lastHealthRequest,
+      message: `Moo! I found animal tag ${animal.earTag} (${animal.breed} ${animal.species}). Its status is currently ${animal.reproductiveStatus}.`
+    });
+  } catch (error) {
+    console.error("[queryAnimalForVoiceflow ERROR]", error);
+    res.status(500).json({ error: error.message });
   }
 };
