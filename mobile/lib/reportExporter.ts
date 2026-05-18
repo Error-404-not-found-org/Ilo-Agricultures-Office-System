@@ -1,11 +1,10 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import { cacheDirectory, writeAsStringAsync, EncodingType } from 'expo-file-system';
 import * as XLSX from 'xlsx';
-import { format } from 'date-fns';
 
 export interface ReportRow {
-  type: 'AI' | 'PD' | 'CD';
+  type: 'AI' | 'PD' | 'CD' | 'HL';
   animalId: string;
   earTag: string;
   brand: string;
@@ -126,10 +125,10 @@ export const generateExcel = async (data: ReportRow[], filename: string) => {
   XLSX.utils.book_append_sheet(workbook, worksheet, "Report");
   
   const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
-  const uri = `${FileSystem.cacheDirectory}${filename}.xlsx`;
+  const uri = `${cacheDirectory}${filename}.xlsx`;
   
-  await FileSystem.writeAsStringAsync(uri, wbout, {
-    encoding: FileSystem.EncodingType.Base64
+  await writeAsStringAsync(uri, wbout, {
+    encoding: EncodingType.Base64
   });
   
   await Sharing.shareAsync(uri);

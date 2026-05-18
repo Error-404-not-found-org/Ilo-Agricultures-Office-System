@@ -57,7 +57,24 @@ export default function BreedingCalendar() {
           </View>
         ) : milestones?.length > 0 ? (
           milestones.map((item: any, idx: number) => (
-            <MilestoneCard key={idx} item={item} onPress={() => router.push(`/(farmer)/animal-details?id=${item.animal._id}`)} />
+            <MilestoneCard 
+              key={idx} 
+              item={item} 
+              onPress={() => {
+                if (item.type === 'calving' && item.daysLeft <= 0) {
+                  router.push({
+                    pathname: '/(farmer)/record-calving',
+                    params: {
+                      pregnancyId: item.relatedId,
+                      animalId: item.animal._id,
+                      earTag: item.animal.earTag || item.animal.animalId
+                    }
+                  });
+                } else {
+                  router.push(`/(farmer)/animal-details?id=${item.animal._id}`);
+                }
+              }} 
+            />
           ))
         ) : (
           <View className="py-20 items-center bg-white dark:bg-slate-800 rounded-[32px] border border-slate-50 dark:border-slate-700 mt-4">
@@ -101,11 +118,19 @@ const MilestoneCard = ({ item, onPress }: { item: any, onPress: () => void }) =>
         
         <Text className="text-slate-500 dark:text-slate-400 font-bold text-xs mb-2">Tag: #{item.animal?.earTag || 'N/A'}</Text>
         
-        <View className="flex-row items-center gap-2">
-            <Calendar size={12} color="#94a3b8" />
-            <Text className="text-slate-400 dark:text-slate-500 text-[11px] font-bold">
-                {format(new Date(item.date), 'MMM d, yyyy')}
-            </Text>
+        <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2">
+                <Calendar size={12} color="#94a3b8" />
+                <Text className="text-slate-400 dark:text-slate-500 text-[11px] font-bold">
+                    {format(new Date(item.date), 'MMM d, yyyy')}
+                </Text>
+            </View>
+            
+            {item.type === 'calving' && item.daysLeft <= 0 && (
+                <View className="bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-lg">
+                    <Text className="text-[#00643B] dark:text-emerald-400 text-[10px] font-black uppercase">Tap to Record</Text>
+                </View>
+            )}
         </View>
       </View>
       

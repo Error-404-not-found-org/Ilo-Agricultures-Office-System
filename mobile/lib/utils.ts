@@ -27,6 +27,16 @@ export const validateRequestTime = (preferredDate: Date, isHoliday: boolean) => 
     };
   }
 
+  // 4. Same-Day Cutoff Check
+  const isToday = preferredDate.toDateString() === now.toDateString();
+  const currentHour = now.getHours();
+  if (isToday && currentHour >= 17) {
+    return {
+      isValid: false,
+      message: "Office hours have ended for today (5:00 PM cutoff). Please schedule your request for tomorrow or another upcoming date."
+    };
+  }
+
   // 5. Preferred Visit Time Window Check (Visit must be between 8 AM - 5:59 PM)
   const prefHour = preferredDate.getHours();
   if (prefHour < 8 || prefHour >= 18) {

@@ -9,7 +9,7 @@ import { toast } from 'sonner-native';
 export default function TasksScreen() {
   const router = useRouter();
   const api = useApi();
-  const [tasks, setTasks] = useState([]);
+  const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('Urgent');
@@ -17,7 +17,7 @@ export default function TasksScreen() {
   const fetchTasks = useCallback(async () => {
     try {
       const res = await api.get('/tasks');
-      setTasks(res.data);
+      setTasks(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error(err);
       toast.error('Failed to load tasks');
@@ -50,7 +50,7 @@ export default function TasksScreen() {
     }
   };
 
-  const filteredTasks = tasks.filter((t: any) => t.category === activeTab);
+  const filteredTasks = (tasks || []).filter((t: any) => t.category === activeTab);
 
   return (
     <SafeAreaView className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
@@ -92,7 +92,12 @@ export default function TasksScreen() {
             </View>
           ) : (
             filteredTasks.map((t: any) => (
-              <View key={t._id} className="bg-white rounded-2xl p-4 mb-4 border border-slate-100 shadow-sm">
+              <TouchableOpacity 
+                key={t._id} 
+                activeOpacity={0.7}
+                className="bg-white rounded-2xl p-4 mb-4 border border-slate-100 shadow-sm"
+                onPress={() => router.push(`/(technician)/task-details?id=${t._id}` as any)}
+              >
                 <View className="flex-row justify-between items-start mb-2">
                   <Text className="font-bold text-base text-slate-800 flex-1 mr-2" numberOfLines={2}>{t.notes}</Text>
                   <View className={`px-2 py-1 rounded-md ${
@@ -110,21 +115,18 @@ export default function TasksScreen() {
                   <Text className="text-slate-700 font-semibold mb-1 text-sm">{t.farmerId?.name}</Text>
                   {t.animalIds && t.animalIds.length > 0 && (
                     <Text className="text-slate-500 text-xs mt-1">
-                      Animals: {t.animalIds.map((a: any) => a.animalId).join(', ')}
+                      Animals: {t.animalIds.map((a: any) => a.earTag || a.animalId).join(', ')}
                     </Text>
                   )}
                 </View>
 
                 <View className="flex-row justify-end border-t border-slate-100 pt-3">
-                  <TouchableOpacity 
-                    className="flex-row items-center border border-slate-200 px-3 py-1.5 rounded-lg"
-                    onPress={() => handleComplete(t._id)}
-                  >
+                  <View className="flex-row items-center border border-slate-200 px-3 py-1.5 rounded-lg">
                     <CheckCircle size={16} color="#0f766e" />
-                    <Text className="text-[#0f766e] font-bold ml-1.5 text-xs">Mark Complete</Text>
-                  </TouchableOpacity>
+                    <Text className="text-[#0f766e] font-bold ml-1.5 text-xs">View Details</Text>
+                  </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </ScrollView>

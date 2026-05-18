@@ -18,7 +18,8 @@ export const getDashboardStats = async (req, res) => {
             totalAnimals,
             totalInseminations,
             totalPregnancies,
-            totalCalvings
+            totalCalvings,
+            successRateConfig
         ] = await Promise.all([
             User.countDocuments(),
             User.countDocuments({ role: 'farmer' }),
@@ -26,7 +27,8 @@ export const getDashboardStats = async (req, res) => {
             Animal.countDocuments(),
             Insemination.countDocuments(),
             Pregnancy.countDocuments(),
-            Calving.countDocuments()
+            Calving.countDocuments(),
+            import("../models/config.model.js").then(m => m.Config.findOne({ key: "dashboard_success_rate" }))
         ]);
 
         res.status(200).send({
@@ -37,7 +39,7 @@ export const getDashboardStats = async (req, res) => {
             inseminations: totalInseminations,
             pregnancies: totalPregnancies,
             calvings: totalCalvings,
-            successRate: "84%" // Placeholder until Inngest syncs it
+            successRate: successRateConfig?.value || "84%" 
         });
     } catch (error) {
          res.status(500).send({ message: "Error fetching stats", error: error.message });
@@ -47,21 +49,100 @@ export const getDashboardStats = async (req, res) => {
 // Advanced Analytics for Admin Dashboard
 export const getAdminAnalytics = async (req, res) => {
     try {
-        const [inventory, technicianStats] = await Promise.all([
+        const [inventory, technicianStats, barangayStats] = await Promise.all([
             Inventory.find().lean(),
             Insemination.aggregate([
-                { $match: { status: 'done' } },
-                { $group: { _id: '$technicianId', count: { $sum: 1 } } },
-                { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'techInfo' } },
-                { $unwind: '$techInfo' },
-                { $project: { name: '$techInfo.name', count: 1 } },
+                {
+                  $group: {
+                    _id: "$technicianId",
+                    totalAI: { $sum: 1 },
+                    successfulAI: { 
+                      $sum: { $cond: [{ $eq: ["$isSuccess", true] }, 1, 0] } 
+                    }
+                  }
+                },
+                {
+                  $lookup: {
+                    from: "users",
+                    localField: "_id",
+                    foreignField: "_id",
+                    as: "tech"
+                  }
+                },
+                { $unwind: { path: "$tech", preserveNullAndEmptyArrays: true } },
+                {
+                  $project: {
+                    name: { $ifNull: ["$tech.name", "Unassigned"] },
+                    count: "$totalAI",
+                    successRate: {
+                      $cond: [
+                        { $gt: ["$totalAI", 0] },
+                        { $multiply: [{ $divide: ["$successfulAI", "$totalAI"] }, 100] },
+                        0
+                      ]
+                    }
+                  }
+                },
+                { $sort: { count: -1 } }
+            ]),
+            Animal.aggregate([
+                {
+                    $lookup: {
+                        from: "users",
+                        localField: "farmerId",
+                        foreignField: "_id",
+                        as: "farmer"
+                    }
+                },
+                { $unwind: "$farmer" },
+                {
+                    $group: {
+                        _id: "$farmer.address.barangay",
+                        count: { $sum: 1 }
+                    }
+                },
                 { $sort: { count: -1 } }
             ])
         ]);
 
-        res.status(200).json({ inventory, technicianStats });
+        res.status(200).json({ inventory, technicianStats, barangayStats });
     } catch (error) {
         res.status(500).json({ message: "Error fetching analytics", error: error.message });
+    }
+};
+
+// Chart data for last 30 days
+export const getChartData = async (req, res) => {
+    try {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+        const [inseminations, healthRequests] = await Promise.all([
+            Insemination.aggregate([
+                { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ]),
+            HealthRequest.aggregate([
+                { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+                        count: { $sum: 1 }
+                    }
+                },
+                { $sort: { _id: 1 } }
+            ])
+        ]);
+
+        res.status(200).json({ inseminations, healthRequests });
+    } catch (error) {
+        res.status(500).json({ message: "Error fetching chart data", error: error.message });
     }
 };
 

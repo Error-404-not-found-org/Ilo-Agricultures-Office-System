@@ -22,6 +22,11 @@ import healthRequestRoutes from "./routes/health-request.routes.js";
 import notificationRoutes from "./routes/notification.routes.js";
 import configRoutes from "./routes/config.routes.js";
 import medicalRoutes from "./routes/medical.routes.js";
+import reportRoutes from "./routes/report.routes.js";
+import analyticsRoutes from "./routes/analytics.routes.js";
+import moowieRoutes from "./routes/moowie.routes.js";
+
+
 
 const app = express();
 const httpServer = createServer(app);
@@ -81,6 +86,11 @@ app.use("/api/health-request", healthRequestRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/config", configRoutes);
 app.use("/api/medical", medicalRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/analytics", analyticsRoutes);
+app.use("/api/moowie", moowieRoutes);
+
+
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 // MUST be defined after all routes. Catches any unhandled error from middleware

@@ -1,24 +1,34 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, StatusBar } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl, StatusBar, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Calendar, FileDown, Printer, ChevronRight, ChevronLeft, Download } from 'lucide-react-native';
+import { ArrowLeft, Printer, ChevronRight, ChevronLeft, Download, Filter } from 'lucide-react-native';
 import { useApi } from '@/lib/api';
 import { useAuth } from '@clerk/clerk-expo';
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from 'date-fns';
 import { generatePDF, generateExcel, ReportRow } from '@/lib/reportExporter';
 import { toast } from 'sonner-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 const PRIMARY = '#00643B';
 
 export default function TechnicianReportsScreen() {
   const router = useRouter();
   const api = useApi();
+  const insets = useSafeAreaInsets();
   const { isLoaded, isSignedIn } = useAuth();
   
   const [activeTab, setActiveTab] = useState<'monthly' | 'weekly'>('monthly');
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState<ReportRow[]>([]);
+
+  const getFullAddress = (farmer: any) => {
+    if (!farmer?.address) return '—';
+    if (typeof farmer.address === 'string') return farmer.address;
+    const { street, barangay, city } = farmer.address;
+    return [street, barangay, city].filter(Boolean).join(', ') || '—';
+  };
 
   const fetchReportData = useCallback(async () => {
     if (!isLoaded || !isSignedIn) return;
@@ -27,16 +37,15 @@ export default function TechnicianReportsScreen() {
       const start = activeTab === 'monthly' ? startOfMonth(selectedDate) : startOfWeek(selectedDate);
       const end = activeTab === 'monthly' ? endOfMonth(selectedDate) : endOfWeek(selectedDate);
 
-      // Fetch all relevant records
-      const [insRes, pregRes, calvRes] = await Promise.all([
+      const [insRes, pregRes, calvRes, healthRes] = await Promise.all([
         api.get('/technician/inseminations'),
         api.get('/technician/pregnancy-checks'),
         api.get('/technician/calvings'),
+        api.get('/health-request')
       ]);
 
       const allEvents: ReportRow[] = [];
 
-      // Process Inseminations
       (insRes.data?.inseminations || []).forEach((ins: any) => {
         const date = new Date(ins.inseminationDate || ins.createdAt);
         if (date >= start && date <= end) {
@@ -48,7 +57,7 @@ export default function TechnicianReportsScreen() {
             species: ins.animalId?.species || '—',
             breed: ins.animalId?.breed || '—',
             color: ins.animalId?.color || '—',
-            address: ins.farmerId?.location || '—',
+            address: getFullAddress(ins.farmerId),
             farmer: ins.farmerId?.name || '—',
             date: format(date, 'MM/dd/yyyy'),
             noOfAi: ins.attemptNumber,
@@ -59,8 +68,7 @@ export default function TechnicianReportsScreen() {
         }
       });
 
-      // Process Pregnancy Checks
-      (pregRes.data?.pregnancyChecks || []).forEach((preg: any) => {
+      (pregRes.data?.data || []).forEach((preg: any) => {
         const date = new Date(preg.checkDate || preg.createdAt);
         if (date >= start && date <= end) {
           allEvents.push({
@@ -71,7 +79,7 @@ export default function TechnicianReportsScreen() {
             species: preg.animalId?.species || '—',
             breed: preg.animalId?.breed || '—',
             color: preg.animalId?.color || '—',
-            address: preg.farmerId?.location || '—',
+            address: getFullAddress(preg.farmerId),
             farmer: preg.farmerId?.name || '—',
             date: format(date, 'MM/dd/yyyy'),
             pdDate: format(date, 'MM/dd/yyyy'),
@@ -80,9 +88,8 @@ export default function TechnicianReportsScreen() {
         }
       });
 
-      // Process Calvings
-      (calvRes.data?.calvings || []).forEach((calv: any) => {
-        const date = new Date(calv.calvingDate || calv.createdAt);
+      (calvRes.data?.data || []).forEach((calv: any) => {
+        const date = new Date(calv.date || calv.createdAt);
         if (date >= start && date <= end) {
           allEvents.push({
             type: 'CD',
@@ -92,7 +99,7 @@ export default function TechnicianReportsScreen() {
             species: calv.animalId?.species || '—',
             breed: calv.animalId?.breed || '—',
             color: calv.animalId?.color || '—',
-            address: calv.farmerId?.location || '—',
+            address: getFullAddress(calv.farmerId),
             farmer: calv.farmerId?.name || '—',
             date: format(date, 'MM/dd/yyyy'),
             cdDate: format(date, 'MM/dd/yyyy'),
@@ -103,10 +110,30 @@ export default function TechnicianReportsScreen() {
         }
       });
 
+      (Array.isArray(healthRes.data) ? healthRes.data : []).forEach((health: any) => {
+        const date = new Date(health.createdAt);
+        if (date >= start && date <= end) {
+          allEvents.push({
+            type: 'HL',
+            animalId: health.animalId?.animalId || '—',
+            earTag: health.animalId?.earTag || '—',
+            brand: health.animalId?.brand || '—',
+            species: health.animalId?.species || '—',
+            breed: health.animalId?.breed || '—',
+            color: health.animalId?.color || '—',
+            address: getFullAddress(health.farmerId),
+            farmer: health.farmerId?.name || '—',
+            date: format(date, 'MM/dd/yyyy'),
+            sireBreed: health.issue || 'Check-up', 
+            sireCode: health.status?.toUpperCase() || 'COMPLETED'
+          });
+        }
+      });
+
       setReportData(allEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     } catch (error) {
-      console.error("Report fetch error:", error);
-      toast.error("Failed to generate report data");
+      console.error("Report sync error:", error);
+      toast.error("Failed to sync records");
     } finally {
       setLoading(false);
     }
@@ -126,136 +153,137 @@ export default function TechnicianReportsScreen() {
     setSelectedDate(newDate);
   };
 
-  const handleExportPDF = () => {
-    generatePDF(reportData, format(selectedDate, 'MMMM'), format(selectedDate, 'yyyy'));
-  };
-
-  const handleExportExcel = () => {
-    generateExcel(reportData, `Technician_Report_${format(selectedDate, 'MMM_yyyy')}`);
-  };
-
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+    <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
       <StatusBar barStyle="light-content" />
       
-      {/* Header */}
-      <View style={{ backgroundColor: PRIMARY }} className="pt-14 pb-6 px-6 shadow-md">
-        <View className="flex-row items-center justify-between">
-          <TouchableOpacity onPress={() => router.back()} className="p-2 bg-white/20 rounded-full">
-            <ArrowLeft size={20} color="white" />
+      {/* Fixed Header */}
+      <View style={{ backgroundColor: PRIMARY, paddingBottom: 50, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, paddingHorizontal: 24, paddingTop: insets.top + 20 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity onPress={() => router.back()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+               <ArrowLeft size={20} color="#fff" />
+            </TouchableOpacity>
+            <Text style={{ color: '#fff', fontFamily: 'Outfit_900Black', fontSize: 24 }}>Field Reports</Text>
+          </View>
+          <TouchableOpacity style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+             <Filter size={18} color="#fff" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-white">Record Reports</Text>
-          <View className="w-10" />
+        </View>
+
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 20, padding: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <View style={{ width: 48, height: 48 }}>
+            <Image 
+              source={{ uri: 'https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png' }} 
+              style={{ width: '100%', height: '100%' }}
+              resizeMode="contain"
+            />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#fff', fontFamily: 'Outfit_800ExtraBold', fontSize: 13 }}>Moowie Auditor</Text>
+            <Text style={{ color: 'rgba(255,255,255,0.9)', fontFamily: 'Outfit_600SemiBold', fontSize: 11, lineHeight: 15 }}>
+              Audited {reportData.length} records. Your data is fully synchronized!
+            </Text>
+          </View>
         </View>
       </View>
 
-      <ScrollView className="flex-1">
-        {/* Tab Switcher */}
-        <View className="flex-row bg-white dark:bg-slate-900 mx-6 mt-6 rounded-2xl p-1 shadow-sm border border-slate-100 dark:border-slate-800">
-          <TouchableOpacity 
-            onPress={() => setActiveTab('monthly')}
-            className={`flex-1 py-3 rounded-xl items-center ${activeTab === 'monthly' ? 'bg-[#00643B]' : ''}`}
-          >
-            <Text className={`font-bold ${activeTab === 'monthly' ? 'text-white' : 'text-slate-500'}`}>Monthly</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            onPress={() => setActiveTab('weekly')}
-            className={`flex-1 py-3 rounded-xl items-center ${activeTab === 'weekly' ? 'bg-[#00643B]' : ''}`}
-          >
-            <Text className={`font-bold ${activeTab === 'weekly' ? 'text-white' : 'text-slate-500'}`}>Weekly</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Period Selector */}
-        <View className="mx-6 mt-6 bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-100 dark:border-slate-800 flex-row items-center justify-between">
-          <TouchableOpacity onPress={() => changeDate(-1)} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
-            <ChevronLeft size={24} color={PRIMARY} />
-          </TouchableOpacity>
-          
-          <View className="items-center">
-            <Text className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Reporting Period</Text>
-            <Text className="text-lg font-bold text-slate-800 dark:text-white">
-              {activeTab === 'monthly' ? format(selectedDate, 'MMMM yyyy') : `${format(startOfWeek(selectedDate), 'MMM d')} - ${format(endOfWeek(selectedDate), 'MMM d, yyyy')}`}
-            </Text>
-          </View>
-
-          <TouchableOpacity onPress={() => changeDate(1)} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
-            <ChevronRight size={24} color={PRIMARY} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Preview Table Header */}
-        <View className="px-6 mt-8 flex-row justify-between items-end">
-          <View>
-            <Text className="text-2xl font-black text-slate-800 dark:text-white">Report Preview</Text>
-            <Text className="text-slate-400 text-xs font-bold uppercase tracking-wider mt-1">{reportData.length} Activities Found</Text>
-          </View>
-          <View className="flex-row gap-2">
-            <TouchableOpacity onPress={handleExportPDF} className="p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-2xl border border-emerald-100 dark:border-emerald-800">
-              <Printer size={20} color={PRIMARY} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleExportExcel} className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-2xl border border-blue-100 dark:border-blue-800">
-              <Download size={20} color="#2563EB" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Table Preview */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={true} className="mt-4 px-6 mb-8">
-          <View className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden border border-slate-100 dark:border-slate-800 shadow-sm">
-            {/* Table Header Row */}
-            <View className="flex-row bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800">
-              <TableCol label="Data" width={60} isHeader />
-              <TableCol label="Animal ID" width={100} isHeader />
-              <TableCol label="Tag" width={80} isHeader />
-              <TableCol label="Species" width={80} isHeader />
-              <TableCol label="Breed" width={100} isHeader />
-              <TableCol label="Farmer" width={120} isHeader />
-              <TableCol label="Date" width={100} isHeader />
-              <TableCol label="Result/Details" width={150} isHeader />
-            </View>
-
-            {loading ? (
-              <View className="py-20 items-center justify-center w-[790px]">
-                <ActivityIndicator size="large" color={PRIMARY} />
+      {/* CLIPPED CONTENT CONTAINER: Background color and overflow: hidden fix the overlap issue */}
+      <View style={{ 
+          flex: 1, 
+          marginTop: -30, 
+          backgroundColor: '#f9fafb', // Matches page bg
+          borderTopLeftRadius: 40, 
+          borderTopRightRadius: 40,
+          overflow: 'hidden' // CLIPS the scrolling items so they don't go onto the green bg
+      }}>
+        <ScrollView 
+          style={{ flex: 1 }} 
+          contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 30, paddingBottom: insets.bottom + 100 }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchReportData} tintColor={PRIMARY} />}
+        >
+           {/* Period Selector Card */}
+           <View style={{ backgroundColor: '#fff', borderRadius: 24, padding: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 4, marginBottom: 24 }}>
+              <View style={{ flexDirection: 'row', backgroundColor: '#f8fafc', borderRadius: 16, padding: 4, marginBottom: 16 }}>
+                 <TouchableOpacity onPress={() => setActiveTab('monthly')} style={{ flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', backgroundColor: activeTab === 'monthly' ? '#00643B' : 'transparent' }}>
+                    <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, color: activeTab === 'monthly' ? '#fff' : '#64748b' }}>Monthly</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity onPress={() => setActiveTab('weekly')} style={{ flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', backgroundColor: activeTab === 'weekly' ? '#00643B' : 'transparent' }}>
+                    <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, color: activeTab === 'weekly' ? '#fff' : '#64748b' }}>Weekly</Text>
+                 </TouchableOpacity>
               </View>
-            ) : reportData.length === 0 ? (
-              <View className="py-20 items-center justify-center w-[790px]">
-                <Calendar size={48} color="#cbd5e1" />
-                <Text className="text-slate-400 font-bold mt-4">No data for this period</Text>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                 <TouchableOpacity onPress={() => changeDate(-1)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' }}>
+                    <ChevronLeft size={20} color={PRIMARY} />
+                 </TouchableOpacity>
+                 <View style={{ alignItems: 'center' }}>
+                    <Text style={{ fontSize: 18, fontFamily: 'Outfit_900Black', color: '#1e293b' }}>
+                       {activeTab === 'monthly' ? format(selectedDate, 'MMMM yyyy') : `${format(startOfWeek(selectedDate), 'MMM d')} - ${format(endOfWeek(selectedDate), 'MMM d')}`}
+                    </Text>
+                 </View>
+                 <TouchableOpacity onPress={() => changeDate(1)} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' }}>
+                    <ChevronRight size={20} color={PRIMARY} />
+                 </TouchableOpacity>
               </View>
-            ) : (
+           </View>
+
+           {/* Export Actions */}
+           <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
+              <TouchableOpacity onPress={() => generatePDF(reportData, format(selectedDate, 'MMMM'), format(selectedDate, 'yyyy'))} style={{ flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#f1f5f9' }}>
+                 <Printer size={18} color={PRIMARY} />
+                 <Text style={{ fontFamily: 'Outfit_700Bold', color: '#1e293b', fontSize: 13 }}>PDF Report</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => generateExcel(reportData, `Report_${format(selectedDate, 'MMM_yyyy')}`)} style={{ flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 16, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#f1f5f9' }}>
+                 <Download size={18} color="#2563EB" />
+                 <Text style={{ fontFamily: 'Outfit_700Bold', color: '#1e293b', fontSize: 13 }}>Excel Sheet</Text>
+              </TouchableOpacity>
+           </View>
+
+           {/* Record List */}
+           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: '#1e293b', fontSize: 18 }}>Activity Records</Text>
+              <View style={{ backgroundColor: '#ecfdf5', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
+                 <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: '#059669', fontSize: 10 }}>{reportData.length} TOTAL</Text>
+              </View>
+           </View>
+
+           {loading && reportData.length === 0 ? (
+              <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />
+           ) : reportData.length === 0 ? (
+              <View style={{ backgroundColor: '#fff', borderRadius: 24, padding: 48, alignItems: 'center', borderWidth: 1, borderColor: '#f1f5f9' }}>
+                 <MaterialCommunityIcons name="file-search-outline" size={60} color="#cbd5e1" />
+                 <Text style={{ fontFamily: 'Outfit_700Bold', color: '#94a3b8', marginTop: 16 }}>No records found</Text>
+              </View>
+           ) : (
               reportData.map((row, idx) => (
-                <View key={idx} className={`flex-row border-b border-slate-50 dark:border-slate-800/50 ${idx % 2 === 0 ? '' : 'bg-slate-50/30 dark:bg-slate-800/20'}`}>
-                  <TableCol label={row.type} width={60} color={row.type === 'AI' ? '#059669' : row.type === 'PD' ? '#2563EB' : '#D97706'} bold />
-                  <TableCol label={row.animalId} width={100} />
-                  <TableCol label={row.earTag} width={80} />
-                  <TableCol label={row.species} width={80} />
-                  <TableCol label={row.breed} width={100} />
-                  <TableCol label={row.farmer} width={120} />
-                  <TableCol label={row.date} width={100} />
-                  <TableCol 
-                    label={row.type === 'AI' ? `Sire: ${row.sireCode}` : row.type === 'PD' ? `Result: ${row.pdResult}` : `Calf: ${row.cdSex} (${row.cdEase})`} 
-                    width={150} 
-                  />
-                </View>
+                 <View key={idx} style={{ backgroundColor: '#fff', borderRadius: 24, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 10, elevation: 2, borderWidth: 1, borderColor: '#f1f5f9' }}>
+                    <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: row.type === 'AI' ? '#ecfdf5' : row.type === 'PD' ? '#eff6ff' : row.type === 'HL' ? '#fef2f2' : '#fffbeb', alignItems: 'center', justifyContent: 'center' }}>
+                       <Text style={{ fontFamily: 'Outfit_900Black', color: row.type === 'AI' ? '#059669' : row.type === 'PD' ? '#2563EB' : row.type === 'HL' ? '#ef4444' : '#D97706', fontSize: 14 }}>{row.type}</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 16 }}>
+                       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                          <Text style={{ fontSize: 15, fontFamily: 'Outfit_700Bold', color: '#1e293b' }}>{row.animalId}</Text>
+                          <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: '#94a3b8' }}>{row.date}</Text>
+                       </View>
+                       <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: '#64748b', marginTop: 2 }} numberOfLines={1}>
+                          {row.farmer} · {row.address}
+                       </Text>
+                       <View style={{ marginTop: 6, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: '#f8fafc', alignSelf: 'flex-start', borderRadius: 6 }}>
+                          <Text style={{ fontSize: 9, fontFamily: 'Outfit_800ExtraBold', color: '#475569', textTransform: 'uppercase' }}>
+                             {row.type === 'AI' ? `Sire: ${row.sireCode} (${row.breed})` : 
+                              row.type === 'PD' ? `Result: ${row.pdResult}` : 
+                              row.type === 'HL' ? `Health: ${row.sireBreed}` :
+                              `Calf Drop: ${row.cdNum} (${row.cdEase})`}
+                          </Text>
+                       </View>
+                    </View>
+                 </View>
               ))
-            )}
-          </View>
+           )}
         </ScrollView>
-      </ScrollView>
+      </View>
     </View>
   );
 }
-
-const TableCol = ({ label, width, isHeader, color, bold }: { label: string; width: number; isHeader?: boolean; color?: string; bold?: boolean }) => (
-  <View style={{ width }} className="p-4 items-center justify-center">
-    <Text 
-      numberOfLines={1}
-      style={{ color: color || undefined }}
-      className={`${isHeader ? 'text-[10px] font-black uppercase text-slate-400 tracking-tighter' : 'text-[13px] text-slate-600 dark:text-slate-300'} ${bold ? 'font-bold' : ''}`}
-    >
-      {label}
-    </Text>
-  </View>
-);

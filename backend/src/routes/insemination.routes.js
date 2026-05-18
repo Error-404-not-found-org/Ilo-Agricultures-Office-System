@@ -6,6 +6,7 @@ import {
   updateInsemination,
   getAllInseminations,
   getMyInseminations,
+  deleteInsemination,
 } from "../controllers/insemination.controllers.js";
 import { protectedRoute } from "../middleware/auth.middleware.js";
 import { requestLimiter } from "../middleware/rateLimit.middleware.js";
@@ -17,5 +18,6 @@ router.get("/my", protectedRoute, getMyInseminations);
 router.get("/test-no-auth", (req, res) => res.json({ message: "Insemination router is ALIVE" }));
 router.get("/all", protectedRoute, getAllInseminations);
 router.put("/:id", protectedRoute, updateInsemination);
+router.delete("/:id", protectedRoute, deleteInsemination);
 
 export default router;

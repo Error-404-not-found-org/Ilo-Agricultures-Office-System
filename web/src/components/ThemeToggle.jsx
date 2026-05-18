@@ -3,7 +3,7 @@ import { Sun, Moon } from "lucide-react";
 
 const ThemeToggle = () => {
   const [theme, setTheme] = useState(
-    localStorage.getItem("theme") || "emerald"
+    localStorage.getItem("theme") || "emerald",
   );
 
   useEffect(() => {

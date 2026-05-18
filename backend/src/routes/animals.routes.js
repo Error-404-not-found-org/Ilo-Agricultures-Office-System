@@ -9,7 +9,8 @@ import {
   deleteAnimal,
   updateReproductiveStatus,
   requestReInsemination,
-  getAnimalsByFarmer
+  getAnimalsByFarmer,
+  recordCalving
 } from "../controllers/animals.controllers.js";
 import { protectedRoute, TechnicianOnly } from "../middleware/auth.middleware.js";
 
@@ -26,5 +27,6 @@ router.delete("/:id", protectedRoute, deleteAnimal);
 // Breeding Lifecycle
 router.patch("/:id/reproductive-status", protectedRoute, updateReproductiveStatus);
 router.post("/re-inseminate", protectedRoute, requestReInsemination);
+router.post("/record-calving", protectedRoute, recordCalving);
 
 export default router;

@@ -6,18 +6,19 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft, Syringe, User, MapPin,
-  ChevronDown, Camera, X, Check, AlertCircle, Clock
+  ChevronDown, Camera, X, Check, AlertCircle, Clock, Activity
 } from 'lucide-react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { validateRequestTime } from '@/lib/utils';
-import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Animal { _id: string; animalId: string; earTag?: string; species: string; breed: string; }
+interface Animal { _id: string; animalId: string; earTag?: string; species: string; breed: string; reproductiveStatus?: string; }
 interface FarmerProfile {
   _id: string; name: string; imageUrl?: string; phoneNumber?: string;
   address?: { houseNumber?: string; street: string; barangay: string; city: string; province: string; };
@@ -60,10 +61,11 @@ export default function RequestAI() {
     }
   });
 
-  const mutation = useMutation({
-    mutationFn: async (data: any) => {
-      return await api.post('/ai-request', data);
-    },
+  const mutation = useOfflineMutation({
+    url: '/ai-request',
+    method: 'POST',
+    description: `AI Request for ${selectedAnimal?.earTag || 'Livestock'}`
+  }, {
     onSuccess: () => {
       toast.success('AI request submitted! A technician will contact you soon.', { duration: 4000, position: 'top-center' });
       // Reset Form
@@ -76,7 +78,12 @@ export default function RequestAI() {
       router.back();
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Failed to submit request. Please try again.');
+      if (error.message !== 'OFFLINE_SAVED') {
+        toast.error(error.response?.data?.message || 'Failed to submit request. Please try again.');
+      } else {
+        // If offline saved, still navigate back
+        router.back();
+      }
     }
   });
 
@@ -85,7 +92,12 @@ export default function RequestAI() {
   // UI states
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [timeModalVisible, setTimeModalVisible] = useState(false);
+
+  const TIME_SLOTS = [
+    "08:00 AM", "09:00 AM", "10:00 AM", "11:00 AM",
+    "01:00 PM", "02:00 PM", "03:00 PM", "04:00 PM", "05:00 PM"
+  ];
 
   const { data: profile, isLoading: loadingProfile } = useQuery({
     queryKey: ['user', 'me'],
@@ -112,19 +124,26 @@ export default function RequestAI() {
   });
 
   useEffect(() => {
-    if (animalsData?.data) {
-      setAnimals(animalsData.data);
-      
-      // Pre-fill if coming from animal-details
-      if (params.animalId) {
-        const found = (animalsData.data as Animal[]).find(a => a._id === params.animalId);
-        if (found) {
-          setSelectedAnimal(found);
-          setComment(`Re-insemination request for ${found.earTag || found.animalId}. Signs of heat observed.`);
+    if (animalsData) {
+      const list = Array.isArray(animalsData) ? animalsData : animalsData.data;
+      if (Array.isArray(list)) {
+        setAnimals(list);
+        
+        // Pre-fill if coming from animal-details OR Re-inseminate flow
+        if (params.animalId) {
+          const found = (list as Animal[]).find(a => a._id === params.animalId);
+          if (found) {
+            setSelectedAnimal(found);
+            if (params.mode === 're-inseminate') {
+              setComment(`2nd Attempt: Re-insemination request for ${params.earTag || found.earTag || found.animalId}. Signs of heat observed after previous attempt.`);
+            } else {
+              setComment(`AI Request for ${found.earTag || found.animalId}. Signs of heat observed.`);
+            }
+          }
         }
       }
     }
-  }, [animalsData, params.animalId]);
+  }, [animalsData, params.animalId, params.mode]);
 
   // ── Image Picker ────────────────────────────────────────────────────────────
   const pickImage = async () => {
@@ -164,6 +183,16 @@ export default function RequestAI() {
     }
 
     if (!selectedAnimal) return toast.error('Please select an animal for this request.');
+    
+    // Safety check: Don't allow AI request for pregnant animals
+    if (selectedAnimal.reproductiveStatus === 'Pregnant') {
+      return Alert.alert(
+        "Action Blocked",
+        "This animal is already marked as Pregnant. You cannot request artificial insemination unless you report heat signs first from the animal's profile.",
+        [{ text: "OK" }]
+      );
+    }
+
     if (!comment.trim()) return toast.error('Please describe your request in the comment box.');
 
     const validation = validateRequestTime(preferredDate, !!config?.isHoliday);
@@ -188,13 +217,17 @@ export default function RequestAI() {
     }
   };
 
-  const onTimeChange = (event: any, selectedTime?: Date) => {
-    setShowTimePicker(false);
-    if (selectedTime) {
-      const newDate = new Date(preferredDate);
-      newDate.setHours(selectedTime.getHours(), selectedTime.getMinutes());
-      setPreferredDate(newDate);
-    }
+  const handleSelectTime = (timeStr: string) => {
+    setTimeModalVisible(false);
+    const [time, modifier] = timeStr.split(' ');
+    let [hours, minutes] = time.split(':').map(Number);
+    
+    if (modifier === 'PM' && hours < 12) hours += 12;
+    if (modifier === 'AM' && hours === 12) hours = 0;
+
+    const newDate = new Date(preferredDate);
+    newDate.setHours(hours, minutes, 0, 0);
+    setPreferredDate(newDate);
   };
 
   // ── UI ──────────────────────────────────────────────────────────────────────
@@ -303,12 +336,12 @@ export default function RequestAI() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => setShowTimePicker(true)}
+                onPress={() => setTimeModalVisible(true)}
                 className="flex-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 flex-row items-center justify-between"
                 style={{ elevation: 1 }}
               >
                 <View>
-                  <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium uppercase tracking-widest">Time</Text>
+                  <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium uppercase tracking-widest">Time Slot</Text>
                   <Text className="text-[15px] font-bold text-gray-800 dark:text-white">
                     {preferredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
@@ -327,14 +360,6 @@ export default function RequestAI() {
               />
             )}
 
-            {showTimePicker && (
-              <DateTimePicker
-                value={preferredDate}
-                mode="time"
-                display="default"
-                onChange={onTimeChange}
-              />
-            )}
 
             {/* ── Photo Attachment ─────────────────────────────────────────── */}
             <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Attach Photo (Optional)</Text>
@@ -429,20 +454,76 @@ export default function RequestAI() {
                 keyExtractor={(item) => item._id}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    onPress={() => { setSelectedAnimal(item); setAnimalModalVisible(false); }}
-                    className={`py-4 px-3 border-b border-gray-50 dark:border-slate-800 flex-row items-center justify-between ${selectedAnimal?._id === item._id ? 'bg-emerald-50 dark:bg-emerald-900/30 rounded-xl' : ''}`}
+                    onPress={() => { 
+                      if (item.reproductiveStatus === 'Pregnant') {
+                        Alert.alert("Selection Unavailable", "This animal is currently pregnant and cannot be selected for A.I. services.");
+                        return;
+                      }
+                      setSelectedAnimal(item); 
+                      setAnimalModalVisible(false); 
+                    }}
+                    className={`py-4 px-3 border-b border-gray-50 dark:border-slate-800 flex-row items-center justify-between ${selectedAnimal?._id === item._id ? 'bg-emerald-50 dark:bg-emerald-900/30 rounded-xl' : ''} ${item.reproductiveStatus === 'Pregnant' ? 'opacity-50' : ''}`}
                   >
-                    <View>
-                      <Text className="text-[15px] font-bold text-gray-800 dark:text-white">
-                        {item.animalId}{item.earTag ? ` · ${item.earTag}` : ''}
-                      </Text>
-                      <Text className="text-sm text-gray-400 dark:text-slate-400">{item.species} — {item.breed}</Text>
+                    <View className="flex-row items-center gap-3">
+                      <View className="flex-1">
+                        <Text className="text-[15px] font-bold text-gray-800 dark:text-white">
+                          {item.animalId}{item.earTag ? ` · ${item.earTag}` : ''}
+                        </Text>
+                        <View className="flex-row items-center gap-2 mt-1">
+                          <Text className="text-xs text-gray-400 dark:text-slate-400">{item.species} · {item.breed}</Text>
+                          {item.reproductiveStatus && (
+                            <View className={`px-2 py-0.5 rounded-full ${item.reproductiveStatus === 'Pregnant' ? 'bg-purple-100 dark:bg-purple-900/30 border border-purple-200' : 'bg-gray-100 dark:bg-slate-800'}`}>
+                              <Text className={`text-[9px] font-black uppercase ${item.reproductiveStatus === 'Pregnant' ? 'text-purple-600' : 'text-gray-500'}`}>{item.reproductiveStatus}</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      {item.reproductiveStatus === 'Pregnant' && <AlertCircle size={16} color="#9333ea" />}
+                      {selectedAnimal?._id === item._id && <Check size={18} color="#00643B" />}
                     </View>
-                    {selectedAnimal?._id === item._id && <Check size={18} color="#00643B" />}
                   </TouchableOpacity>
                 )}
               />
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Time Slot Selection Modal ─────────────────────────────────────────── */}
+      <Modal animationType="fade" transparent visible={timeModalVisible} onRequestClose={() => setTimeModalVisible(false)}>
+        <View className="flex-1 bg-black/40 justify-center px-6">
+          <View className="bg-white dark:bg-slate-900 rounded-[32px] p-6 shadow-2xl">
+            <View className="flex-row justify-between items-center mb-6">
+              <View>
+                <Text className="text-xl font-bold text-gray-800 dark:text-white">Select Time Slot</Text>
+                <Text className="text-xs text-gray-400 dark:text-slate-400 mt-1">Available service hours: 8 AM - 5 PM</Text>
+              </View>
+              <TouchableOpacity onPress={() => setTimeModalVisible(false)} className="p-2 bg-gray-50 dark:bg-slate-800 rounded-full">
+                <X size={20} color="gray" />
+              </TouchableOpacity>
+            </View>
+
+            <View className="flex-row flex-wrap gap-3 justify-between">
+              {TIME_SLOTS.map((slot) => {
+                const isSelected = preferredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) === slot.replace(/^0/, '');
+                return (
+                  <TouchableOpacity
+                    key={slot}
+                    onPress={() => handleSelectTime(slot)}
+                    className={`w-[30%] py-3 rounded-2xl items-center border ${isSelected ? 'bg-emerald-600 border-emerald-600' : 'bg-gray-50 dark:bg-slate-800 border-gray-100 dark:border-slate-700'}`}
+                  >
+                    <Text className={`text-[12px] font-bold ${isSelected ? 'text-white' : 'text-gray-600 dark:text-slate-300'}`}>{slot}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => setTimeModalVisible(false)}
+              className="mt-8 py-4 bg-gray-100 dark:bg-slate-800 rounded-2xl items-center"
+            >
+              <Text className="text-gray-600 dark:text-slate-400 font-bold">Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

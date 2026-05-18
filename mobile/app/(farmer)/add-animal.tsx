@@ -1,310 +1,548 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, StatusBar, Image, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronDown, Check, X, Camera } from 'lucide-react-native';
-import React, { useState, useRef } from 'react';
-import * as ImagePicker from 'expo-image-picker';
-import { useApi } from '@/lib/api';
-import { toast } from 'sonner-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Modal,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
+  Image,
+  ActivityIndicator,
+  RefreshControl,
+} from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Check,
+  X,
+  Camera,
+  Plus,
+  Search,
+} from "lucide-react-native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import * as ImagePicker from "expo-image-picker";
+import { useApi } from "@/lib/api";
+import { useUser } from "@clerk/clerk-expo";
+import { toast } from "sonner-native";
+import { format } from "date-fns";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "@/lib/constants";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 // --- OPTIONS ---
-const SPECIES_OPTIONS = ['Beef', 'Dairy', 'Carabao'];
-const BREED_OPTIONS = ['Native', 'Brahman', 'Holstein Sahiwal (HS)', 'PC Cross', 'Purebred'];
+const SPECIES_OPTIONS = CATTLE_SPECIES;
+const BREED_OPTIONS = CATTLE_BREEDS;
+const COLOR_OPTIONS = CATTLE_COLORS;
+const SPECIES_PREFIX: Record<string, string> = {
+  "Beef Cattle": "BEF",
+  "Dairy Cattle": "DAI",
+  Carabao: "CBU",
+};
 
-const SPECIES_PREFIX: Record<string, string> = { Beef: 'BEF', Dairy: 'DAI', Carabao: 'CBU' };
-
-export default function FarmerAddAnimal() {
+export default function FarmerAnimalsHub() {
   const router = useRouter();
   const api = useApi();
+  const { user } = useUser();
   const insets = useSafeAreaInsets();
-  
-  const [formData, setFormData] = useState({
-    animalId: '',
-    earTag: '',
-    brand: '',
-    species: '',
-    breed: '',
-    color: '',
-    ageYears: '',
-    ageMonths: '',
+
+  // --- View State ---
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  const queryClient = useQueryClient();
+
+  // --- List State ---
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // --- Fetch Animals via React Query ---
+  const {
+    data: animalsData,
+    isLoading: loadingList,
+    refetch,
+    isRefetching: refreshing,
+  } = useQuery({
+    queryKey: ["animals", "my-all"],
+    queryFn: async () => {
+      try {
+        const res = await api.get("/animals/my?limit=100");
+        const body = res.data;
+        // Handle both direct array and object-wrapped responses
+        const list = Array.isArray(body) ? body : (body?.data || []);
+        return list;
+      } catch (err) {
+        console.error("Failed to fetch animals:", err);
+        return [];
+      }
+    },
+    refetchInterval: 5000,
   });
 
-  const [loading, setLoading] = useState(false);
-  const submitted = useRef(false); // Prevent duplicate submissions on timeout
+  const animals = Array.isArray(animalsData) ? animalsData : [];
+
+  // --- Form State ---
+  const [formData, setFormData] = useState({
+    earTag: "",
+    brand: "",
+    species: "",
+    breed: "",
+    color: "",
+    gender: "Female",
+    birthDate: "",
+  });
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: async (payload: any) => {
+      return await api.post("/animals/register", payload);
+    },
+    onSuccess: async () => {
+      toast.success("Animal added successfully!");
+      setShowAddForm(false);
+
+      // CRITICAL: Invalidate and refetch all relevant queries to update UI immediately
+      await queryClient.refetchQueries({ queryKey: ["animals"] });
+      await queryClient.refetchQueries({ queryKey: ["user", "me"] });
+
+      // Reset form
+      setFormData({
+        earTag: "",
+        brand: "",
+        species: "",
+        breed: "",
+        color: "",
+        gender: "Female",
+        birthDate: "",
+      });
+      setImageUri(null);
+      setImageBase64(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Failed to register animal.");
+    },
+  });
+
+  const loadingForm = mutation.isPending;
+
+  // --- Form Handlers ---
+  // --- Form Handlers ---
+  const handleSave = async () => {
+    if (!formData.species || !formData.breed)
+      return toast.error("Please fill required fields.");
+
+    let birthDate = undefined;
+    if (formData.birthDate) {
+      birthDate = new Date(formData.birthDate).toISOString();
+    }
+
+    mutation.mutate({
+      ...formData,
+      imageUrl: imageBase64,
+      birthDate,
+    });
+  };
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
       base64: true,
     });
-
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setImageUri(result.assets[0].uri);
       setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
-      toast.success("Photo selected!");
     }
   };
 
-  // --- MODAL HELPERS ---
-  const [modalVisible, setModalVisible] = useState(false);
-  const [dateModalVisible, setDateModalVisible] = useState(false);
-  const [modalTitle, setModalTitle] = useState('');
-  const [modalOptions, setModalOptions] = useState<string[]>([]);
-  const [activeField, setActiveField] = useState('');
+  // --- Modals ---
+  const [modal, setModal] = useState({
+    visible: false,
+    title: "",
+    options: [],
+    field: "",
+  });
+  const openModal = (field: string, title: string, options: any) =>
+    setModal({ visible: true, title, options, field });
 
-  const openModal = (field: string, title: string, options: string[]) => {
-    setActiveField(field);
-    setModalTitle(title);
-    setModalOptions(options);
-    setModalVisible(true);
-  };
-
-
-  const handleSelect = (val: string) => {
-    const updated = {...formData, [activeField]: val};
-    // Auto-update the Animal ID preview when species changes
-    if (activeField === 'species') {
-      const prefix = SPECIES_PREFIX[val] || 'ANM';
-      const ts = Date.now().toString().slice(-4);
-      updated.animalId = `${prefix}-${ts}`;
-    }
-    setFormData(updated);
-    setModalVisible(false);
-  };
-
-  const handleDateSelect = (date: string) => {
-    setFormData({...formData, [activeField]: date});
-    setDateModalVisible(false);
-  };
-
-  const handleSave = async () => {
-    if (!formData.species) return toast.error("Please select a species.");
-    if (!formData.breed) return toast.error("Please select a breed.");
-    if (submitted.current) return; // Block double-tap / timeout retry
-    
-    submitted.current = true;
-    try {
-      setLoading(true);
-
-      // Compute birthDate from age if provided
-      let birthDate: string | undefined;
-      const yrs = parseInt(formData.ageYears || '0');
-      const mos = parseInt(formData.ageMonths || '0');
-      if (yrs > 0 || mos > 0) {
-        const d = new Date();
-        d.setFullYear(d.getFullYear() - yrs);
-        d.setMonth(d.getMonth() - mos);
-        birthDate = d.toISOString();
-      }
-
-      const payload = {
-        animalId: formData.animalId.trim() || undefined, // let backend auto-generate if blank
-        earTag: formData.earTag,
-        brand: formData.brand,
-        species: formData.species,
-        breed: formData.breed,
-        color: formData.color,
-        imageUrl: imageBase64,
-        birthDate,
-      };
-
-      const res = await api.post('/animals/register', payload);
-      toast.success(`Animal "${res.data.animal?.animalId}" registered!`, { position: 'top-center', duration: 4000 });
-      router.back();
-    } catch (error: any) {
-      console.error("Failed to add animal:", error);
-      toast.error(error.response?.data?.message || "Failed to register animal. Check your connection.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const filteredAnimals = (animals || []).filter(
+    (a: any) =>
+      (a.animalId || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (a.breed || "").toLowerCase().includes(searchQuery.toLowerCase()),
+  );
 
   return (
     <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
       <StatusBar barStyle="light-content" />
-      
-      {/* Absolute Green Top Background */}
       <View className="absolute top-0 left-0 right-0 h-[220px] bg-[#00643B]" />
 
       {/* --- HEADER --- */}
-      <View 
+      <View
         style={{ paddingTop: insets.top + 16 }}
-        className="px-6 pb-6 flex-row items-center gap-4 z-10"
+        className="px-6 pb-6 flex-row items-center justify-between z-10"
       >
-        <TouchableOpacity 
+        <View className="flex-row items-center gap-4">
+          <TouchableOpacity
             onPress={() => router.back()}
-            className="w-10 h-10 bg-white/20 rounded-full items-center justify-center border border-white/20 shadow-sm"
-            activeOpacity={0.7}
-        >
+            className="w-10 h-10 bg-white/20 rounded-full items-center justify-center border border-white/10"
+          >
             <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View>
-            <Text className="text-[20px] font-bold text-white leading-tight">Register Animal</Text>
-            <Text className="text-[12px] text-emerald-100 font-medium tracking-wide">Add a new animal to your farm</Text>
+          </TouchableOpacity>
+          <View>
+            <Text className="text-[22px] font-outfit-black text-white leading-tight">
+              My Cattle
+            </Text>
+            <Text className="text-[12px] text-emerald-100 font-outfit-medium opacity-90">
+              Herd management & registry
+            </Text>
+          </View>
         </View>
+        {!showAddForm && (
+          <TouchableOpacity
+            onPress={() => setShowAddForm(true)}
+            className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm"
+          >
+            <Plus size={20} color="#00643B" />
+          </TouchableOpacity>
+        )}
       </View>
 
-      <View 
-        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-8 mt-2 shadow-lg"
-        style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
+      <View
+        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-6 mt-2 shadow-lg"
+        style={{ elevation: 8 }}
       >
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-            
-            {/* --- PHOTO PLACEHOLDER (Optional) --- */}
-            <TouchableOpacity onPress={pickImage} className="self-center bg-gray-100 dark:bg-slate-800 h-24 w-24 rounded-full items-center justify-center mb-8 border border-gray-200 dark:border-slate-700 border-dashed overflow-hidden shadow-sm">
-                {imageUri ? (
-                    <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
-                ) : (
-                    <>
-                      <Camera size={28} color="#9CA3AF" />
-                      <Text className="text-[10px] text-gray-500 dark:text-slate-400 font-semibold text-center mt-1">Add Photo</Text>
-                    </>
-                )}
-            </TouchableOpacity>
+        {/* --- MOOWIE GREETING SECTION (Inspired by Tarsi) --- */}
+        <View className="mb-8">
+          <Text className="text-[10px] font-outfit-black text-slate-400 mb-1 ml-1 uppercase tracking-[2px]">
+            {format(new Date(), "EEEE, MMMM d").toUpperCase()}
+          </Text>
+          <Text className="text-[24px] font-outfit-black text-slate-800 dark:text-white mb-6 ml-1 leading-tight">
+            Good{" "}
+            {new Date().getHours() < 12
+              ? "morning"
+              : new Date().getHours() < 18
+                ? "afternoon"
+                : "evening"}
+            , {user?.firstName || "Farmer"}!
+          </Text>
 
-            {/* --- FORM FIELDS --- */}
-            <Text className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider mb-4">Animal Identification</Text>
-
-            <View className="flex-row gap-3">
-                <View className="flex-1">
-                    <InputField label="Animal ID" value={formData.animalId} onChangeText={(t: string) => setFormData({...formData, animalId: t})} placeholder="Auto-generated if blank" />
-                </View>
-                <View className="flex-1">
-                    <InputField label="Ear Tag" value={formData.earTag} onChangeText={(t: string) => setFormData({...formData, earTag: t})} placeholder="Tag-123" />
-                </View>
+          <View className="flex-row items-end">
+            {/* Mascot Container */}
+            <View className="w-28 h-28 -mb-2 z-10">
+              <Image
+                source={{
+                  uri: "https://res.cloudinary.com/donhulins/image/upload/v1778124094/moowie_hi_animals_section_xbocgj.png",
+                }}
+                className="w-full h-full"
+                resizeMode="contain"
+              />
             </View>
 
-            <View className="flex-row gap-3 mt-1">
-                <View className="flex-1">
-                    <SelectField label="Species" value={formData.species} placeholder="Select" onPress={() => openModal('species', 'Select Species', SPECIES_OPTIONS)} />
-                </View>
-                <View className="flex-1">
-                    <SelectField label="Breed" value={formData.breed} placeholder="Select" onPress={() => openModal('breed', 'Select Breed', BREED_OPTIONS)} />
-                </View>
+            {/* Speech Bubble */}
+            <View className="flex-1 bg-white dark:bg-slate-800 rounded-[28px] rounded-bl-none p-5 ml-[-15px] border border-emerald-100/50 dark:border-emerald-900/20 shadow-sm">
+              <Text className="text-emerald-700 dark:text-emerald-400 font-outfit-black text-[13px] mb-1">
+                Moowie
+              </Text>
+              <Text className="text-slate-600 dark:text-slate-300 font-outfit-medium text-[12px] leading-[18px]">
+                {showAddForm
+                  ? "Yay! A new addition to the family! 🐮 I'm so excited to meet them. Fill in the details below so we can start tracking their progress!"
+                  : loadingList
+                    ? "Checking your herd data..."
+                    : animals.length > 0
+                      ? `Your herd is looking great! You have ${animals.length} cattle registered in the system. Keep them healthy!`
+                      : "Welcome to your new herd registry! Tap the + button at the top right to add your first animal."}
+              </Text>
             </View>
+          </View>
+        </View>
 
-            <View className="flex-row gap-3">
-                <View className="flex-1">
-                    <InputField label="Color" value={formData.color} onChangeText={(t: string) => setFormData({...formData, color: t})} placeholder="e.g. Black" />
-                </View>
-                <View className="flex-1">
-                    <InputField label="Brand" value={formData.brand} onChangeText={(t: string) => setFormData({...formData, brand: t})} placeholder="(Optional)" />
-                </View>
-            </View>
-
-            <View className="flex-row gap-3">
-                <View className="flex-1">
-                    <InputField label="Age (Years)" value={formData.ageYears} onChangeText={(t: string) => setFormData({...formData, ageYears: t})} placeholder="e.g. 2" keyboardType="numeric" />
-                </View>
-                <View className="flex-1">
-                    <InputField label="Months" value={formData.ageMonths} onChangeText={(t: string) => setFormData({...formData, ageMonths: t})} placeholder="e.g. 4" keyboardType="numeric" />
-                </View>
-            </View>
-
-            {/* --- SAVE BUTTON --- */}
-            <TouchableOpacity 
-                onPress={handleSave}
-                disabled={loading}
-                activeOpacity={0.8}
-                className={`rounded-full py-4 items-center mt-6 shadow-lg flex-row justify-center gap-2 ${loading ? 'bg-green-500' : 'bg-green-700 shadow-green-200'}`}
+        {showAddForm ? (
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            className="flex-1"
+          >
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 120 }}
             >
-                {loading ? (
-                   <ActivityIndicator color="white" size="small" />
+              <View className="flex-row items-center justify-between mb-6">
+                <Text className="text-[18px] font-outfit-bold text-slate-800 dark:text-white">
+                  Register New Animal
+                </Text>
+                <TouchableOpacity onPress={() => setShowAddForm(false)}>
+                  <Text className="text-red-500 font-outfit-bold text-sm">
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Photo Pick */}
+              <TouchableOpacity
+                onPress={pickImage}
+                className="self-center bg-slate-50 dark:bg-slate-800 h-24 w-24 rounded-full items-center justify-center mb-8 border border-slate-200 dark:border-slate-700 border-dashed overflow-hidden"
+              >
+                {imageUri ? (
+                  <Image source={{ uri: imageUri }} className="w-full h-full" />
                 ) : (
-                   <>
-                     <Check size={20} color="white" />
-                     <Text className="text-white font-bold text-lg">Add to My Farm</Text>
-                   </>
+                  <Camera size={28} color="#94a3b8" />
                 )}
-            </TouchableOpacity>
+              </TouchableOpacity>
 
-          </ScrollView>
-        </KeyboardAvoidingView>
+              <View className="flex-row gap-3">
+                <InputField
+                  label="Ear Tag (Optional)"
+                  value={formData.earTag}
+                  maxLength={3}
+                  onChangeText={(t: any) =>
+                    setFormData({ ...formData, earTag: t })
+                  }
+                  placeholder="Tag #"
+                />
+              </View>
 
-        {/* --- REUSED MODALS --- */}
-        <SelectionModal visible={modalVisible} title={modalTitle} options={modalOptions} onClose={() => setModalVisible(false)} onSelect={handleSelect} />
-        <CalendarModal visible={dateModalVisible} onClose={() => setDateModalVisible(false)} onSelect={handleDateSelect} />
+              <View className="flex-row gap-3">
+                <SelectField
+                  label="Species"
+                  value={formData.species}
+                  onPress={() =>
+                    openModal("species", "Select Species", SPECIES_OPTIONS)
+                  }
+                />
+                <SelectField
+                  label="Breed"
+                  value={formData.breed}
+                  onPress={() =>
+                    openModal("breed", "Select Breed", BREED_OPTIONS)
+                  }
+                />
+              </View>
 
+              <View className="flex-row gap-3">
+                <SelectField
+                  label="Color"
+                  value={formData.color}
+                  onPress={() =>
+                    openModal("color", "Select Color", COLOR_OPTIONS)
+                  }
+                />
+                <InputField
+                  label="Brand"
+                  value={formData.brand}
+                  maxLength={15}
+                  onChangeText={(t: any) =>
+                    setFormData({ ...formData, brand: t })
+                  }
+                  placeholder="Optional"
+                />
+              </View>
+
+              <View className="flex-row gap-3">
+                <SelectField
+                  label="Gender"
+                  value={formData.gender}
+                  onPress={() =>
+                    openModal("gender", "Select Gender", ["Female", "Male"])
+                  }
+                />
+                <SelectField
+                  label="Birth Date"
+                  value={formData.birthDate || "Select Date"}
+                  onPress={() => setShowDatePicker(true)}
+                />
+              </View>
+
+              <TouchableOpacity
+                onPress={handleSave}
+                className="bg-[#00643B] rounded-full py-4 items-center mt-4 shadow-md shadow-emerald-200"
+              >
+                {loadingForm ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text className="text-white font-outfit-bold text-base">
+                    Add to My Farm
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              {showDatePicker && (
+                <DateTimePicker
+                  value={formData.birthDate ? new Date(formData.birthDate) : new Date()}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(false);
+                    if (selectedDate) {
+                      setFormData({
+                        ...formData,
+                        birthDate: selectedDate.toISOString().split("T")[0],
+                      });
+                    }
+                  }}
+                />
+              )}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        ) : (
+          <View className="flex-1">
+            {/* Search */}
+            <View className="flex-row items-center bg-white dark:bg-slate-800 rounded-2xl px-4 h-12 mb-4 border border-slate-100 dark:border-slate-700 shadow-sm">
+              <Search size={18} color="#94a3b8" />
+              <TextInput
+                placeholder="Search by ID or breed..."
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                className="flex-1 ml-3 font-outfit-medium text-slate-800 dark:text-white text-sm"
+                placeholderTextColor="#94a3b8"
+              />
+            </View>
+
+            {loadingList ? (
+              <ActivityIndicator color="#00643B" className="mt-10" />
+            ) : filteredAnimals.length === 0 ? (
+              <View className="items-center py-20">
+                <MaterialCommunityIcons
+                  name="cow-off"
+                  size={48}
+                  color="#cbd5e1"
+                />
+                <Text className="text-slate-400 font-outfit-bold text-base mt-2">
+                  No animals found
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredAnimals}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push(`/(farmer)/animal-details?id=${item._id}`)
+                    }
+                    className="bg-white dark:bg-slate-800 rounded-[24px] p-4 mb-3 border border-slate-50 dark:border-slate-800 flex-row items-center shadow-sm"
+                  >
+                    <View className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 items-center justify-center mr-4">
+                      {item.imageUrl ? (
+                        <Image
+                          source={{ uri: item.imageUrl }}
+                          className="w-full h-full rounded-xl"
+                        />
+                      ) : (
+                        <MaterialCommunityIcons
+                          name="cow"
+                          size={24}
+                          color="#00643B"
+                        />
+                      )}
+                    </View>
+                    <View className="flex-1">
+                      <Text className="font-outfit-bold text-slate-800 dark:text-white text-[15px]">
+                        {item.animalId}
+                      </Text>
+                      <Text className="font-outfit-medium text-slate-500 text-[11px]">
+                        {item.breed} • {item.species}
+                      </Text>
+                    </View>
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={20}
+                      color="#cbd5e1"
+                    />
+                  </TouchableOpacity>
+                )}
+                refreshControl={
+                  <RefreshControl refreshing={refreshing} onRefresh={refetch} />
+                }
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 100 }}
+              />
+            )}
+          </View>
+        )}
       </View>
+
+      <Modal visible={modal.visible} transparent animationType="slide">
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10">
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-lg font-outfit-bold dark:text-white">
+                {modal.title}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setModal({ ...modal, visible: false })}
+              >
+                <X size={24} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-row flex-wrap justify-between">
+              {modal.options.map((opt: string) => (
+                <TouchableOpacity
+                  key={opt}
+                  onPress={() => {
+                    setFormData({ ...formData, [modal.field]: opt });
+                    setModal({ ...modal, visible: false });
+                  }}
+                  className="w-[48%] py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl items-center justify-center mb-3 border border-slate-100 dark:border-slate-700 active:bg-emerald-50"
+                >
+                  <Text className="font-outfit-bold text-[11px] text-slate-700 dark:text-white uppercase tracking-tight text-center px-1">
+                    {opt}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-// --- SUB-COMPONENTS (Identical to Technician form for consistency) ---
-
-const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default' }: any) => (
-    <View className="mb-3">
-        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TextInput 
-            className="bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3 text-gray-900 dark:text-white text-sm focus:border-blue-500" 
-            value={value} 
-            onChangeText={onChangeText} 
-            placeholder={placeholder} 
-            placeholderTextColor="#9CA3AF"
-            keyboardType={keyboardType}
-        />
-    </View>
+const InputField = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = "default",
+  maxLength,
+}: any) => (
+  <View className="flex-1 mb-4">
+    <Text className="text-[10px] font-outfit-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
+      {label}
+    </Text>
+    <TextInput
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder}
+      keyboardType={keyboardType}
+      maxLength={maxLength}
+      className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3.5 font-outfit-medium text-slate-800 dark:text-white text-sm"
+      placeholderTextColor="#94a3b8"
+    />
+  </View>
 );
 
-const SelectField = ({ label, value, placeholder, onPress }: any) => (
-    <View className="mb-3">
-        <Text className="text-gray-700 dark:text-slate-300 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TouchableOpacity onPress={onPress} className="flex-row items-center justify-between bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-700 rounded-xl px-4 py-3">
-            <Text className={`text-sm ${value ? 'text-gray-900 dark:text-white' : 'text-gray-400'}`}>{value || placeholder}</Text>
-            <ChevronDown size={18} color="gray" />
-        </TouchableOpacity>
-    </View>
+const SelectField = ({ label, value, onPress }: any) => (
+  <View className="flex-1 mb-4">
+    <Text className="text-[10px] font-outfit-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
+      {label}
+    </Text>
+    <TouchableOpacity
+      onPress={onPress}
+      className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3.5 flex-row justify-between items-center"
+    >
+      <Text
+        className={`font-outfit-medium text-sm ${value ? "text-slate-800 dark:text-white" : "text-slate-400"}`}
+      >
+        {value || "Select"}
+      </Text>
+      <ChevronDown size={16} color="#94a3b8" />
+    </TouchableOpacity>
+  </View>
 );
-
-
-const SelectionModal = ({ visible, title, options, onClose, onSelect }: any) => (
-    <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
-        <View className="flex-1 bg-black/50 justify-end">
-            <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[70%]">
-                <View className="flex-row justify-between items-center mb-4">
-                    <Text className="text-lg font-bold dark:text-white">{title}</Text>
-                    <TouchableOpacity onPress={onClose} className="p-1 bg-gray-100 dark:bg-slate-800 rounded-full"><X size={20} color="gray" /></TouchableOpacity>
-                </View>
-                <FlatList 
-                    data={options} 
-                    keyExtractor={(item) => item} 
-                    renderItem={({ item }) => (
-                        <TouchableOpacity onPress={() => onSelect(item)} className="py-3.5 border-b border-gray-100 dark:border-slate-800 active:bg-green-50 dark:active:bg-slate-800">
-                            <Text className="text-base text-gray-800 dark:text-slate-200">{item}</Text>
-                        </TouchableOpacity>
-                    )} 
-                />
-            </View>
-        </View>
-    </Modal>
-);
-
-// Simplified Calendar for Demo
-const CalendarModal = ({ visible, onClose, onSelect }: any) => {
-    const days = Array.from({length: 30}, (_, i) => i + 1);
-    return (
-        <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
-            <View className="flex-1 bg-black/50 justify-center items-center px-6">
-                <View className="bg-white dark:bg-slate-900 w-full rounded-3xl p-5">
-                    <View className="flex-row justify-between items-center mb-4">
-                        <Text className="text-lg font-bold dark:text-white">Select Date</Text>
-                        <TouchableOpacity onPress={onClose}><X size={20} color="gray" /></TouchableOpacity>
-                    </View>
-                    <View className="flex-row flex-wrap gap-2 justify-center">
-                        {days.map((d) => (
-                            <TouchableOpacity key={d} onPress={() => onSelect(`10/${d}/2023`)} className="w-10 h-10 items-center justify-center rounded-full bg-gray-50 dark:bg-slate-800 active:bg-green-600 dark:active:bg-green-600 active:text-white">
-                                <Text className="text-gray-700 dark:text-slate-300">{d}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-            </View>
-        </Modal>
-    );
-};

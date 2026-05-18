@@ -31,6 +31,9 @@ const PregnancySchema = new mongoose.Schema(
 
     // Optional target calving date
     targetCalvingDate: Date,
+
+    // Optional technician notes
+    technicianNote: String,
   },
   { timestamps: true },
 );

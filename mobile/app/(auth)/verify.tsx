@@ -9,17 +9,17 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { useUser, useAuth } from '@clerk/clerk-expo';
+import { useUser, useAuth, useSignUp } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { toast } from 'sonner-native';
 import { useApi } from '@/lib/api';
 import { Mail, ArrowRight, LogOut, RefreshCcw } from 'lucide-react-native';
 
-
 const PRIMARY = '#074033';
 
 export default function VerifyScreen() {
   const { user, isLoaded: isUserLoaded } = useUser();
+  const { signUp, isLoaded: isSignUpLoaded, setActive } = useSignUp();
   const { signOut } = useAuth();
   const router = useRouter();
   const api = useApi();
@@ -29,6 +29,9 @@ export default function VerifyScreen() {
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
+  const isSigningUp = isSignUpLoaded && signUp && signUp.status !== 'complete' && !!signUp.emailAddress;
+  const targetEmail = isSigningUp ? signUp.emailAddress : user?.primaryEmailAddress?.emailAddress;
+
   useEffect(() => {
     if (countdown > 0) {
       const timer = setInterval(() => setCountdown(c => c - 1), 1000);
@@ -37,10 +40,14 @@ export default function VerifyScreen() {
   }, [countdown]);
 
   const sendVerificationCode = useCallback(async () => {
-    if (!user || countdown > 0) return;
+    if (countdown > 0) return;
     setIsSendingCode(true);
     try {
-      await user.primaryEmailAddress?.prepareVerification({ strategy: 'email_code' });
+      if (isSigningUp) {
+        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      } else if (user) {
+        await user.primaryEmailAddress?.prepareVerification({ strategy: 'email_code' });
+      }
       toast.success('Verification code sent to your email.');
       setCountdown(60);
     } catch {
@@ -48,7 +55,7 @@ export default function VerifyScreen() {
     } finally {
       setIsSendingCode(false);
     }
-  }, [user, countdown]);
+  }, [user, signUp, countdown, isSigningUp]);
 
   useEffect(() => {
     if (isUserLoaded && user && user.primaryEmailAddress?.verification?.status !== 'verified') {
@@ -56,18 +63,26 @@ export default function VerifyScreen() {
     }
   }, [isUserLoaded, user, sendVerificationCode]);
 
-
   const onVerifyPress = async () => {
-    if (!user || code.length < 6) return;
+    if (code.length < 6) return;
     setIsVerifying(true);
     try {
-      const result = await user.primaryEmailAddress?.attemptVerification({ code });
-      
-      if (result?.verification.status === 'verified') {
-        // Now that Clerk is happy, tell our backend to flip the metadata bit
-        await api.post('/user/mark-verified');
-        toast.success('Email verified successfully!');
-        await user.reload();
+      if (isSigningUp) {
+        const completeSignUp = await signUp.attemptEmailAddressVerification({ code });
+        if (completeSignUp.status === 'complete') {
+          await setActive({ session: completeSignUp.createdSessionId });
+          toast.success('Registration successful!');
+          // Routing handles automatically via _layout
+        } else {
+          toast.error('Additional info required.', { description: 'Registration incomplete.'});
+        }
+      } else if (user) {
+        const result = await user.primaryEmailAddress?.attemptVerification({ code });
+        if (result?.verification.status === 'verified') {
+          await api.post('/user/mark-verified');
+          toast.success('Email verified successfully!');
+          await user.reload();
+        }
       }
     } catch (err: any) {
       console.error("Verification error:", err);
@@ -82,7 +97,7 @@ export default function VerifyScreen() {
     router.replace('/(auth)');
   };
 
-  if (!isUserLoaded) return null;
+  if (!isUserLoaded || !isSignUpLoaded) return null;
 
   return (
     <KeyboardAvoidingView
@@ -99,7 +114,7 @@ export default function VerifyScreen() {
             <Text className="text-3xl font-bold text-slate-800 text-center">Verify Email</Text>
             <Text className="text-slate-500 text-center mt-3 text-base leading-6">
               A 6-digit verification code was sent to{'\n'}
-              <Text className="font-bold text-slate-700">{user?.primaryEmailAddress?.emailAddress}</Text>
+              <Text className="font-bold text-slate-700">{targetEmail}</Text>
             </Text>
           </View>
 

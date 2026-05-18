@@ -41,11 +41,19 @@
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3fc4429f-8376-4203-808d-b8911ea21070"
+      }
+    },
+    "owner": "johndong28"
   }
 }

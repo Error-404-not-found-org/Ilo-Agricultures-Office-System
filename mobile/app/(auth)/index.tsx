@@ -5,14 +5,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSignIn } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
 import { useApi } from '@/lib/api';
+import { useRouter } from 'expo-router';
 
 const AuthScreen = () => {
 
   const api = useApi();
+  const router = useRouter();
   const { loadingStrategy, handleSocialAuth } = useSocialAuth();
   const { signIn, setActive, isLoaded } = useSignIn();
 
-  const [emailAddress, setEmailAddress] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -20,24 +22,17 @@ const AuthScreen = () => {
     if (!isLoaded) return;
     setLoading(true);
 
-    const cleanEmail = emailAddress.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const cleanIdentifier = identifier.trim();
     
-    if (!cleanEmail || !password) {
-      toast.error("Required Fields", { description: "Please enter both email and password." });
-      setLoading(false);
-      return;
-    }
-
-    if (!emailRegex.test(cleanEmail)) {
-      toast.error("Invalid Email", { description: "Please enter a valid email address format." });
+    if (!cleanIdentifier || !password) {
+      toast.error("Required Fields", { description: "Please enter both identifier and password." });
       setLoading(false);
       return;
     }
 
     try {
       const completeSignIn = await signIn.create({
-        identifier: cleanEmail,
+        identifier: cleanIdentifier,
         password,
       });
 
@@ -51,8 +46,6 @@ const AuthScreen = () => {
         } catch (syncErr) {
           console.warn("⚠️ Sync failed:", syncErr);
         }
-
-        toast.success('Successfully logged in!');
       } else {
         toast.error("Login Incomplete", { description: "Additional verification required." });
       }
@@ -60,10 +53,10 @@ const AuthScreen = () => {
       // Use warn instead of error to avoid intrusive console overlays on some mobile devs
       console.warn("Login attempt failed:", err.message || "Invalid credentials");
       
-      const errorMessage = err.errors?.[0]?.message || "Invalid email or password";
+      const errorMessage = err.errors?.[0]?.message || "Invalid credentials";
       toast.error("Login Failed", { 
         description: errorMessage === "Identifier is invalid." 
-          ? "No account found with this email." 
+          ? "No account found with this username or email." 
           : errorMessage 
       });
     } finally {
@@ -115,17 +108,16 @@ const AuthScreen = () => {
               <View className="flex-1 h-[1px] bg-gray-300" />
           </View>
           
-          {/* Email Field */}
+          {/* Identifier Field */}
           <View>
-            <Text className="text-base font-medium text-slate-700 mb-2">Email</Text>
+            <Text className="text-base font-medium text-slate-700 mb-2">Email or Username</Text>
             <TextInput
-              className="w-full border border-gray-300 rounded-xl p-4 bg-white focus:border-blue-500"
-              placeholder="Enter your email"
+              className="w-full border border-gray-300 rounded-xl p-4 bg-white focus:border-[#074033]"
+              placeholder="Enter your email or username"
               placeholderTextColor="#9CA3AF"
-              keyboardType="email-address"
               autoCapitalize="none"
-              value={emailAddress}
-              onChangeText={setEmailAddress}
+              value={identifier}
+              onChangeText={setIdentifier}
             />
           </View>
 
@@ -154,7 +146,7 @@ const AuthScreen = () => {
             {loading ? (
                 <ActivityIndicator color="#fff" />
             ) : (
-                <Text className="text-white text-lg font-bold">Sign in with Email</Text>
+                <Text className="text-white text-lg font-bold">Sign In</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -162,7 +154,7 @@ const AuthScreen = () => {
           {/* Footer Register Link */}
           <View className="flex-row justify-center mt-6">
             <Text className="text-gray-500">Don&apos;t have an account? </Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
               <Text className="text-blue-500 font-bold">Register</Text>
             </TouchableOpacity>
           </View>

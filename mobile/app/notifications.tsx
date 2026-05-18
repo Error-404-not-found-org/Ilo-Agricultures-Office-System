@@ -116,11 +116,11 @@ export default function NotificationsScreen() {
         
         <View className="flex-1 ml-4 justify-center">
             <View className="flex-row justify-between items-start mb-1">
-                <Text className={`text-base font-bold flex-1 mr-2 ${item.isRead ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-white'}`}>{item.title}</Text>
+                <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className={`text-base flex-1 mr-2 ${item.isRead ? 'text-slate-700 dark:text-slate-300' : 'text-slate-900 dark:text-white'}`}>{item.title}</Text>
                 {!item.isRead && <View className="w-2.5 h-2.5 rounded-full mt-1.5" style={{ backgroundColor: THEME.dot }} />}
             </View>
-            <Text className={`text-[13px] leading-5 ${item.isRead ? 'text-slate-500 dark:text-slate-400' : 'text-slate-600 dark:text-slate-300 font-medium'}`}>{item.message}</Text>
-            <Text className="text-slate-400 dark:text-slate-500 text-xs mt-2 font-medium">{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</Text>
+            <Text style={{ fontFamily: 'Outfit_500Medium' }} className={`text-[13px] leading-5 ${item.isRead ? 'text-slate-500 dark:text-slate-400' : 'text-slate-600 dark:text-slate-300 font-medium'}`}>{item.message}</Text>
+            <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-400 dark:text-slate-500 text-xs mt-2 font-medium">{formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</Text>
         </View>
     </TouchableOpacity>
   );
@@ -135,10 +135,10 @@ export default function NotificationsScreen() {
           <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 bg-white/20 rounded-full items-center justify-center">
               <ArrowLeft size={22} color="white" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-white tracking-wide">Notifications</Text>
+          <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-xl text-white tracking-wide">Notifications</Text>
           {/* Role badge */}
           <View className="bg-white/20 px-3 py-1 rounded-full">
-              <Text className="text-white text-xs font-bold uppercase tracking-wider">{role}</Text>
+              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white text-xs uppercase tracking-wider">{role}</Text>
           </View>
       </View>
 
@@ -147,9 +147,9 @@ export default function NotificationsScreen() {
         style={{ shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15, elevation: 8 }}
       >
         <View className="flex-row justify-between items-center mb-6">
-            <Text className="text-[20px] font-bold text-slate-800 dark:text-white">Recent Updates</Text>
+            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-[20px] text-slate-800 dark:text-white">Recent Updates</Text>
           <TouchableOpacity onPress={markAllAsRead}>
-              <Text className={`font-bold text-sm ${THEME.markRead}`}>Mark all as read</Text>
+              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className={`text-sm ${THEME.markRead}`}>Mark all as read</Text>
           </TouchableOpacity>
         </View>
 
@@ -171,7 +171,7 @@ export default function NotificationsScreen() {
         ) : (
             <View className="flex-1 items-center justify-center opacity-50 pb-20">
                 <Bell size={64} color="#94a3b8" />
-                <Text className="text-slate-500 font-medium text-lg mt-4">You&apos;re all caught up!</Text>
+                <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-500 text-lg mt-4">You&apos;re all caught up!</Text>
             </View>
         )}
       </View>

@@ -13,9 +13,9 @@ const LoadingView = ({ message = "Synchronizing Data..." }) => {
           {message}
         </p>
         <p className="text-base-content/20 font-black uppercase tracking-[0.2em] text-[8px]">
-          Secure Terminal Handshake
+          Secure Console Handshake
         </p>
-      </div>
+      </div>  
     </div>
   );
 };

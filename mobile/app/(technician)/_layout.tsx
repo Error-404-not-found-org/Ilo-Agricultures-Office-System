@@ -1,50 +1,96 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-import BottomNavigator from '../components/BottomNavigator';
+import { Tabs } from "expo-router";
+import React from "react";
+import BottomNavigator from "../components/BottomNavigator";
 
 export default function TabLayout() {
   return (
     <Tabs
-      // This line is the magic: it swaps the default tab bar for your custom component
       tabBar={(props) => <BottomNavigator {...props} />}
       screenOptions={{
-        headerShown: false, // We hide headers because your screens have their own custom headers
-
+        headerShown: false,
       }}
     >
-      {/* Route 1: Home/Dashboard */}
       <Tabs.Screen name="technician.dashboard" />
-
-      {/* Route 2: Clients */}
       <Tabs.Screen name="technician.clients" />
-
-      {/* Route 3: Animals */}
-      <Tabs.Screen 
-        name="technician.animals" 
-      />
-
-      {/* Route 4: Records */}
-      <Tabs.Screen 
-        name="technician.records" 
-        options={{
-            href: null,
-        }}
-      />
-
-      {/* Route 5: Profile (Hidden) */}
+      <Tabs.Screen name="technician.animals" />
+      <Tabs.Screen name="technician.records" />
+      
+      {/* Hidden Routes */}
       <Tabs.Screen 
         name="profile" 
-        options={{
-            href: null,
-        }}
+        options={{ href: null }} 
       />
-
-      {/* Route 6: Reports (Hidden) */}
       <Tabs.Screen 
         name="technician.reports" 
-        options={{
-            href: null,
-        }}
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="animal-details" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="client-details/index" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="edit-animal" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="create-task" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="register-client" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="register-animal" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="pregnancy-check" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="record-calf-drop" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="health-log" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="record-ai" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="technician.calendar" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="task-details" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="heat-map" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="performance" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="offline-maps" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="sync-history" 
+        options={{ href: null }} 
+      />
+      <Tabs.Screen 
+        name="photo-notes" 
+        options={{ href: null }} 
       />
     </Tabs>
   );

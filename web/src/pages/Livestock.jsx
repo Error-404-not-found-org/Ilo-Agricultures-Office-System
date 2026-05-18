@@ -3,9 +3,12 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import axios from "../lib/axios";
 import Skeleton, { CardSkeleton } from "../components/Skeleton";
+import { OTON_BARANGAYS } from "../constants/barangays";
+import { Filter } from "lucide-react";
 
 const Livestock = () => {
   const [search, setSearch] = React.useState("");
+  const [barangayFilter, setBarangayFilter] = React.useState("");
   const loadMoreRef = React.useRef(null);
   
   const {
@@ -16,10 +19,15 @@ const Livestock = () => {
     fetchNextPage,
     status,
   } = useInfiniteQuery({
-    queryKey: ["animals", "infinite", search],
+    queryKey: ["animals", "infinite", search, barangayFilter],
     queryFn: async ({ pageParam = 1 }) => {
       const res = await axios.get("/animals/all", {
-        params: { page: pageParam, limit: 12, search }
+        params: { 
+          page: pageParam, 
+          limit: 12, 
+          search,
+          ...(barangayFilter ? { barangay: barangayFilter } : {})
+        }
       });
       return res.data;
     },
@@ -71,25 +79,43 @@ const Livestock = () => {
   );
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center mb-4">
-          <h1 className="text-3xl font-black text-base-content/80 tracking-tighter uppercase">Animal Registry</h1>
-          <div className="join w-full max-w-md shadow-sm">
-              <input 
-                className="input input-bordered join-item w-full bg-base-100 rounded-2xl" 
-                placeholder="Instant search by Tag or Breed..." 
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-              <div className="btn join-item rounded-2xl bg-[#074033] text-white border-none no-animation">
-                  {status === 'pending' ? <span className="loading loading-spinner loading-xs"></span> : "🔍"}
+    <div className="space-y-6 pb-20">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+          <div>
+              <h1 className="text-3xl font-black text-base-content tracking-tight uppercase">Animal Registry</h1>
+              <p className="text-base-content/40 font-bold text-[10px] uppercase tracking-widest mt-1">Global Livestock Database</p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+              <div className="join w-full shadow-sm border border-base-300 rounded-none bg-base-100">
+                  <input 
+                    className="input input-sm h-10 join-item w-full bg-transparent border-none rounded-none focus:outline-none focus:ring-0 uppercase text-xs font-bold" 
+                    placeholder="Search Tag or Breed..." 
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                  <div className="btn btn-sm h-10 join-item rounded-none bg-base-200 text-base-content/60 border-none no-animation">
+                      {status === 'pending' ? <span className="loading loading-spinner loading-xs"></span> : "🔍"}
+                  </div>
+              </div>
+              <div className="flex items-center gap-2 bg-base-100 h-10 px-4 rounded-none border border-base-300 shadow-sm w-full sm:w-[200px]">
+                  <Filter size={14} className="text-base-content/40" />
+                  <select 
+                      className="bg-transparent border-none outline-none font-bold text-[10px] uppercase tracking-widest w-full cursor-pointer text-base-content/80"
+                      value={barangayFilter}
+                      onChange={(e) => setBarangayFilter(e.target.value)}
+                  >
+                      <option value="">ALL ZONES</option>
+                      {OTON_BARANGAYS.map(b => (
+                          <option key={b} value={b}>{b}</option>
+                      ))}
+                  </select>
               </div>
           </div>
       </div>
 
       {allAnimals.length === 0 ? (
-        <div className="text-center py-20 bg-base-100 rounded-4xl border-2 border-dashed border-base-300">
-          <p className="text-base-content/20 font-black uppercase tracking-widest text-sm">No livestock matched your criteria.</p>
+        <div className="text-center py-20 bg-base-100 rounded-none border border-dashed border-base-300">
+          <p className="text-base-content/40 font-black uppercase tracking-widest text-[10px]">No livestock matched your criteria.</p>
         </div>
       ) : (
         <>
@@ -97,35 +123,35 @@ const Livestock = () => {
             {allAnimals.map((animal) => (
               <div
                 key={animal._id || Math.random()}
-                className="card bg-base-100 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-3xl border border-base-300 group overflow-hidden"
+                className="card bg-base-100 shadow-sm hover:shadow-md transition-all duration-300 rounded-none border border-base-300 group overflow-hidden"
               >
                 <figure className="px-6 pt-6">
                   <div className="avatar">
-                    <div className="w-24 h-24 overflow-hidden rounded-full ring ring-[#074033] dark:ring-emerald-500 ring-offset-base-100 ring-offset-4 shadow-lg group-hover:scale-105 transition-transform">
+                    <div className="w-24 h-24 overflow-hidden rounded-none border border-base-300 shadow-sm group-hover:scale-105 transition-transform bg-base-200">
                       {renderAvatar(animal)}
                     </div>
                   </div>
                 </figure>
-                <div className="card-body items-center text-center">
-                  <h2 className="card-title text-xl font-black text-base-content uppercase tracking-tighter">
-                    Tag: {animal.earTag || "Unknown"}
+                <div className="card-body items-center text-center p-6">
+                  <h2 className="card-title text-lg font-black text-base-content uppercase tracking-widest">
+                    #{animal.earTag || "Unknown"}
                   </h2>
-                  <div className="badge bg-[#074033] dark:bg-emerald-600 border-none text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 mb-2">
+                  <div className="badge rounded-none bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 text-[8px] font-black uppercase tracking-[0.2em] px-3 py-2 mb-2">
                     {animal.species || "Unknown"}
                   </div>
 
-                  <div className="space-y-1 w-full text-[13px] text-base-content/60 mb-4">
+                  <div className="space-y-1 w-full text-[10px] text-base-content/60 mb-4 font-bold uppercase tracking-widest">
                     <div className="flex justify-between border-b border-base-200 pb-1">
-                      <span className="font-bold uppercase tracking-tighter opacity-50">Breed</span>
-                      <span className="font-bold text-base-content">{animal.breed || "N/A"}</span>
+                      <span className="opacity-50">Breed</span>
+                      <span className="text-base-content">{animal.breed || "N/A"}</span>
                     </div>
                     <div className="flex justify-between border-b border-base-200 pb-1">
-                      <span className="font-bold uppercase tracking-tighter opacity-50">Color</span>
-                      <span className="font-bold text-base-content">{animal.color || "N/A"}</span>
+                      <span className="opacity-50">Color</span>
+                      <span className="text-base-content">{animal.color || "N/A"}</span>
                     </div>
                     <div className="flex justify-between pb-1 mt-2">
-                      <span className="text-[10px] font-black uppercase tracking-widest opacity-30">Owner</span>
-                      <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-emerald-500 truncate max-w-[120px]">
+                      <span className="text-[9px] opacity-40">Owner</span>
+                      <span className="text-[9px] text-emerald-600 truncate max-w-[120px]">
                         {animal.farmerId?.name || "Unknown"}
                       </span>
                     </div>
@@ -134,9 +160,9 @@ const Livestock = () => {
                   <div className="card-actions w-full justify-center mt-2">
                     <Link
                       to={`/admin/livestock/${animal._id}`}
-                      className="h-10 px-6 rounded-xl text-[10px] font-black uppercase tracking-widest bg-base-200 text-base-content hover:bg-[#074033] hover:text-white dark:hover:bg-emerald-600 transition-all w-full flex items-center justify-center border-none shadow-sm"
+                      className="h-8 px-6 rounded-none text-[9px] font-black uppercase tracking-widest bg-base-200 text-base-content/60 hover:bg-[#074033] hover:text-white transition-all w-full flex items-center justify-center border border-base-300 shadow-sm"
                     >
-                      View Full Profile
+                      View Profile
                     </Link>
                   </div>
                 </div>

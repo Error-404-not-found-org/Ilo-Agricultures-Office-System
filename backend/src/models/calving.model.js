@@ -37,8 +37,15 @@ const CalvingSchema = new mongoose.Schema(
     }],
     calvingEase: {
       type: String,
-      enum: ["Normal", "Difficult", "Abortion", "Stillbirth"],
-      default: "Normal"
+      enum: ["Normal", "Natural", "Difficult", "Abortion", "Stillbirth", "Cesarean"],
+      default: "Natural"
+    },
+    technicianId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    locationAddress: {
+      type: String,
     },
     technicianNote: String,
   },

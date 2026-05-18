@@ -6,8 +6,13 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  Image,
 } from "react-native";
-import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
+import {
+  useRouter,
+  useLocalSearchParams,
+  useFocusEffect,
+} from "expo-router";
 import {
   ArrowLeft,
   User,
@@ -28,9 +33,9 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 
 export default function AnimalDetails() {
-  const router = useRouter();
   const { id } = useLocalSearchParams();
   const api = useApi();
+  const router = useRouter();
 
   const [activeTab, setActiveTab] = useState<"Info" | "History">("Info");
 
@@ -53,9 +58,12 @@ export default function AnimalDetails() {
           setMedicalRecords(medicalRes.data);
         } catch (error: any) {
           console.error("Failed to fetch animal details", error);
-          toast.error(
-            error.response?.data?.message || "Could not load animal details.",
-          );
+          if (error.response?.status === 404) {
+             toast.info("This animal record has been removed.");
+             router.replace("/(farmer)/farmer.records" as any);
+          } else {
+             toast.error(error.response?.data?.message || "Could not load animal details.");
+          }
         } finally {
           setLoading(false);
         }
@@ -104,15 +112,16 @@ export default function AnimalDetails() {
 
   if (!animal) {
     return (
-      <View className="flex-1 items-center justify-center bg-[#F9FAFB] dark:bg-slate-950">
-        <Text className="text-slate-500 dark:text-slate-400 font-bold">
-          Animal Not Found.
+      <View className="flex-1 items-center justify-center bg-[#F9FAFB] dark:bg-slate-950 px-8">
+        <MaterialCommunityIcons name="cow-off" size={64} color="#CBD5E1" />
+        <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-500 dark:text-slate-400 text-lg mt-4">
+          Animal Not Found
         </Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-4 px-6 py-3 bg-[#00643B] rounded-full"
+          className="mt-6 px-10 py-3.5 bg-[#00643B] rounded-full shadow-lg shadow-emerald-200"
         >
-          <Text className="text-white font-bold">Go Back</Text>
+          <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-white">Go Back</Text>
         </TouchableOpacity>
       </View>
     );
@@ -154,7 +163,7 @@ export default function AnimalDetails() {
     ...(animal.inseminations || []).map((i: any) => ({
       ...i,
       type: "insemination",
-      recordDate: i.dateOfAI || i.createdAt,
+      recordDate: i.inseminationDate || i.dateOfAI || i.createdAt,
     })),
     ...(animal.calvings || []).map((c: any) => ({
       ...c,
@@ -178,11 +187,11 @@ export default function AnimalDetails() {
       <View className="pt-14 px-6 flex-row justify-between items-center z-10">
         <TouchableOpacity
           onPress={() => router.push("/(farmer)/farmer.records" as any)}
-          className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
+          className="w-10 h-10 bg-white/20 rounded-full items-center justify-center border border-white/10"
         >
           <ArrowLeft size={22} color="white" />
         </TouchableOpacity>
-        <Text className="text-white font-bold text-lg tracking-wide border-b-2 border-emerald-400 pb-1">
+        <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-white text-lg tracking-wide">
           Animal Profile
         </Text>
         <View className="flex-row gap-3">
@@ -202,15 +211,23 @@ export default function AnimalDetails() {
 
       {/* Header Profile Section */}
       <View className="px-6 items-center mt-6 z-10">
-        <View className="w-24 h-24 bg-white dark:bg-slate-800 rounded-full items-center justify-center border-4 border-emerald-100 dark:border-emerald-900 shadow-lg mb-4">
-          <MaterialCommunityIcons name="cow" size={48} color="#00643B" />
+        <View className="w-28 h-28 bg-white dark:bg-slate-800 rounded-[32px] items-center justify-center border-4 border-emerald-100 dark:border-emerald-900 shadow-xl mb-4 overflow-hidden">
+          {animal.imageUrl ? (
+            <Image
+              source={{ uri: animal.imageUrl }}
+              className="w-full h-full"
+              resizeMode="cover"
+            />
+          ) : (
+            <MaterialCommunityIcons name="cow" size={56} color="#00643B" />
+          )}
         </View>
-        <Text className="text-2xl font-black text-white mb-1">
+        <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-white mb-1">
           Tag {animal.earTag ? `#${animal.earTag}` : "N/A"}
         </Text>
-        <View className="flex-row items-center bg-white/20 px-3 py-1 rounded-full mb-3">
-          <Text className="text-emerald-100 font-bold text-xs uppercase tracking-widest">
-            Active 🐄
+        <View className="flex-row items-center bg-white/20 px-4 py-1.5 rounded-full mb-3">
+          <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-100 text-[10px] uppercase tracking-widest">
+            {animal.status || "Active"} 🐄
           </Text>
         </View>
       </View>
@@ -229,29 +246,33 @@ export default function AnimalDetails() {
         <View className="flex-row px-6 mb-6">
           <TouchableOpacity
             onPress={() => setActiveTab("Info")}
-            className={`flex-1 py-3.5 border-b-2 items-center flex-row justify-center gap-2 ${activeTab === "Info" ? "border-[#00643B]" : "border-slate-200 dark:border-slate-800"}`}
+            className={`flex-1 py-4 border-b-[3px] items-center flex-row justify-center gap-2 ${activeTab === "Info" ? "border-[#00643B]" : "border-transparent"}`}
           >
             <InfoIcon
               size={18}
               color={activeTab === "Info" ? "#00643B" : "#94a3b8"}
             />
             <Text
-              className={`font-bold text-[15px] ${activeTab === "Info" ? "text-[#00643B]" : "text-slate-400 dark:text-slate-500"}`}
+              style={{ fontFamily: activeTab === 'Info' ? 'Outfit_800ExtraBold' : 'Outfit_600SemiBold' }}
+              className={`text-[15px] ${activeTab === "Info" ? "text-[#00643B]" : "text-slate-400 dark:text-slate-500"}`}
             >
               General Info
             </Text>
           </TouchableOpacity>
 
+          <View className="w-[1px] h-6 bg-slate-100 dark:bg-slate-800 self-center" />
+
           <TouchableOpacity
             onPress={() => setActiveTab("History")}
-            className={`flex-1 py-3.5 border-b-2 items-center flex-row justify-center gap-2 ${activeTab === "History" ? "border-[#00643B]" : "border-slate-200 dark:border-slate-800"}`}
+            className={`flex-1 py-4 border-b-[3px] items-center flex-row justify-center gap-2 ${activeTab === "History" ? "border-[#00643B]" : "border-transparent"}`}
           >
             <History
               size={18}
               color={activeTab === "History" ? "#00643B" : "#94a3b8"}
             />
             <Text
-              className={`font-bold text-[15px] ${activeTab === "History" ? "text-[#00643B]" : "text-slate-400 dark:text-slate-500"}`}
+              style={{ fontFamily: activeTab === 'History' ? 'Outfit_800ExtraBold' : 'Outfit_600SemiBold' }}
+              className={`text-[15px] ${activeTab === "History" ? "text-[#00643B]" : "text-slate-400 dark:text-slate-500"}`}
             >
               Medical History
             </Text>
@@ -263,6 +284,38 @@ export default function AnimalDetails() {
           contentContainerStyle={{ paddingBottom: 100 }}
           className="px-6"
         >
+          {/* --- MOOWIE GREETING SECTION --- */}
+          <View className="mb-8">
+            <View className="flex-row items-end">
+              {/* Mascot Container */}
+              <View className="w-24 h-24 -mb-2 z-10">
+                <Image
+                  source={{
+                    uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
+                  }}
+                  className="w-full h-full"
+                  resizeMode="contain"
+                />
+              </View>
+
+              {/* Speech Bubble */}
+              <View className="flex-1 bg-[#F0FDF4] dark:bg-emerald-900/10 rounded-[28px] rounded-bl-none p-5 ml-[-15px] border border-emerald-100 dark:border-emerald-900/20 shadow-sm">
+                <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-700 dark:text-emerald-400 text-[13px] mb-1">
+                  Moowie Insight
+                </Text>
+                <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-600 dark:text-slate-300 text-[12px] leading-[18px]">
+                  {animal.reproductiveStatus === "Pregnant"
+                    ? `I'm tracking ${animal.earTag || "this girl"}'s pregnancy closely. She's doing great! 🐮`
+                    : animal.reproductiveStatus === "In Heat"
+                      ? "She's showing signs of heat! 🐮 Perfect timing to request a technician for insemination."
+                      : animal.reproductiveStatus === "Inseminated" || animal.reproductiveStatus === "Likely Pregnant"
+                        ? `She was recently inseminated! 🐮 I'm tracking the days for you. We'll know more soon!`
+                        : `Looking at ${animal.earTag || "her"} details... ${ageDisplay} and ${animal.reproductiveStatus || "Healthy"}. She's in good hands!`}
+                </Text>
+              </View>
+            </View>
+          </View>
+
           {activeTab === "Info" ? (
             <View className="gap-y-6">
               {/* Reproductive Status Section (For Females) */}
@@ -282,13 +335,13 @@ export default function AnimalDetails() {
                       size={20}
                       color="#00643B"
                     />
-                    <Text className="text-lg font-bold text-slate-800 dark:text-white">
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-lg text-slate-800 dark:text-white">
                       Reproductive Health
                     </Text>
                   </View>
 
                   <View className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl mb-4 border border-slate-100 dark:border-slate-700">
-                    <Text className="text-slate-500 dark:text-slate-400 font-bold text-[11px] uppercase tracking-widest mb-1">
+                    <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest mb-1.5">
                       Current Status
                     </Text>
                     <View className="flex-row items-center gap-2">
@@ -303,111 +356,299 @@ export default function AnimalDetails() {
                                 : "bg-slate-300"
                         }`}
                       />
-                      <Text className="text-xl font-black text-slate-900 dark:text-white">
+                      <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-xl text-slate-900 dark:text-white">
                         {animal.reproductiveStatus || "Normal"}
                       </Text>
                     </View>
                   </View>
 
-                  {/* Actionable Alerts based on Status */}
-                  {animal.reproductiveStatus === "Inseminated" && (
-                    <View className="space-y-3">
-                      <View className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800">
-                        <Text className="text-blue-800 dark:text-blue-200 font-bold text-sm leading-5">
-                          It&apos;s been{" "}
-                          {Math.floor(
-                            (Date.now() -
-                              new Date(
-                                animal.inseminations?.[0]?.dateOfAI ||
-                                  animal.updatedAt,
-                              ).getTime()) /
-                              (1000 * 60 * 60 * 24),
-                          )}{" "}
-                          days since insemination.
-                        </Text>
-                        <Text className="text-blue-600 text-[12px] mt-1 font-medium italic">
-                          Is the animal showing signs of heat again?
-                        </Text>
-                      </View>
+                  {/* Insemination Timeline for "Inseminated" Animals */}
+                  {(animal.reproductiveStatus?.toLowerCase() === "inseminated") && (() => {
+                    const lastInsem = animal.inseminations?.[0];
+                    const aiDate = lastInsem?.dateOfAI || lastInsem?.createdAt || animal.updatedAt;
+                    const startDate = new Date(aiDate);
+                    const today = new Date();
+                    
+                    console.log(`[DEBUG] Animal: ${animal.earTag} | Status: ${animal.reproductiveStatus} | AI Date: ${aiDate}`);
 
-                      <View className="flex-row gap-3">
-                        <TouchableOpacity
-                          onPress={async () => {
-                            try {
-                              await api.patch(
-                                `/animals/${id}/reproductive-status`,
-                                {
-                                  status: "In Heat",
-                                  note: "Farmer observed heat signs (Recycle).",
-                                },
-                              );
-                              toast.success(
-                                "Status Updated. You can now request re-insemination.",
-                              );
-                              setAnimal({
-                                ...animal,
-                                reproductiveStatus: "In Heat",
-                              });
-                            } catch {
-                              toast.error("Update failed.");
-                            }
-                          }}
-                          className="flex-1 bg-white dark:bg-slate-800 border-2 border-orange-200 dark:border-orange-900/50 py-3 rounded-2xl items-center"
-                        >
-                          <Text className="text-orange-600 dark:text-orange-400 font-black text-xs uppercase">
-                            Yes - In Heat
+                    const diffTime = Math.abs(today.getTime() - startDate.getTime());
+                    const diffHours = Math.floor(diffTime / (1000 * 60 * 60));
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    // Phases:
+                    // 0-20 days: Recovery/Waiting
+                    // 21 days: Heat Watch
+                    // 22-59 days: Pre-Diagnosis
+                    // 60+ days: PD Due
+                    
+                    let phase = "Recovery";
+                    let advice = "The animal is in the recovery phase after insemination. Keep her calm and well-fed.";
+                    let color = "#3b82f6"; // blue
+                    let bg = "#eff6ff";
+                    let border = "#dbeafe";
+                    
+                    if (diffDays === 21) {
+                      phase = "Heat Watch";
+                      advice = "CRITICAL: Check for signs of heat today. If she 'reheats', the AI might have failed.";
+                      color = "#f59e0b"; // orange
+                      bg = "#fffbeb";
+                      border = "#fef3c7";
+                    } else if (diffDays > 21 && diffDays < 60) {
+                      phase = "Wait for PD";
+                      advice = "No signs of heat? Great! Now we wait until Day 60 for a professional pregnancy check.";
+                      color = "#6366f1"; // indigo
+                      bg = "#eef2ff";
+                      border = "#e0e7ff";
+                    } else if (diffDays >= 60) {
+                      phase = "PD Due";
+                      advice = "It's been 60+ days! Time to request a technician for a Pregnancy Diagnosis (PD).";
+                      color = "#9333ea"; // purple
+                      bg = "#f5f3ff";
+                      border = "#ede9fe";
+                    }
+
+                    return (
+                      <View 
+                        className="p-5 rounded-3xl border mb-4"
+                        style={{ backgroundColor: bg, borderColor: border }}
+                      >
+                        <View className="flex-row justify-between items-start mb-3">
+                          <View>
+                            <Text style={{ fontFamily: 'Outfit_900Black', color: color }} className="text-[9px] uppercase tracking-widest">
+                              {phase} Phase
+                            </Text>
+                            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-900 dark:text-white text-lg">
+                              Day {diffDays} Post-AI
+                            </Text>
+                            <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-slate-500 text-[11px]">
+                              Inseminated {diffHours < 24 ? `${diffHours} hours ago` : `${diffDays} days ago`}
+                            </Text>
+                          </View>
+                          <MaterialCommunityIcons name="timer-sand" size={24} color={color} />
+                        </View>
+                        
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-600 text-[12px] leading-4 italic mb-4">
+                          "{advice}"
+                        </Text>
+
+                        {/* Action Buttons based on phase */}
+                        <View className="flex-col gap-3">
+                          <View className="flex-row gap-3">
+                            {/* Reheat Button */}
+                            <TouchableOpacity
+                              onPress={() => {
+                                Alert.alert(
+                                  "Report Reheat",
+                                  "Did you observe signs of heat (estrus) in this animal? This means the AI was likely unsuccessful.",
+                                  [
+                                    { text: "Cancel", style: "cancel" },
+                                    { 
+                                      text: "Yes, Reheated", 
+                                      style: "destructive",
+                                      onPress: async () => {
+                                        try {
+                                          if (lastInsem?._id) {
+                                            await api.patch(`/ai-request/${lastInsem._id}/outcome`, {
+                                              isSuccess: false,
+                                              note: "Farmer manually logged reheat via profile."
+                                            });
+                                          } else {
+                                            await api.patch(`/animals/${id}/reproductive-status`, {
+                                              status: "In Heat",
+                                              note: "Farmer reported reheat."
+                                            });
+                                          }
+                                          toast.success("Status updated to In Heat.");
+                                          setAnimal({ ...animal, reproductiveStatus: "In Heat" });
+                                        } catch { toast.error("Failed to update."); }
+                                      }
+                                    }
+                                  ]
+                                );
+                              }}
+                              className="flex-1 bg-white/60 py-3 rounded-2xl items-center border border-orange-200"
+                            >
+                              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-orange-600 text-[10px] uppercase">Reheated (Empty)</Text>
+                            </TouchableOpacity>
+
+                            {/* Pregnant Button */}
+                            <TouchableOpacity
+                              onPress={() => {
+                                Alert.alert(
+                                  "Confirm Pregnancy",
+                                  "Are you sure you want to mark this animal as successfully pregnant? This will register a PD record for the technician.",
+                                  [
+                                    { text: "Cancel", style: "cancel" },
+                                    { 
+                                      text: "Yes, Pregnant", 
+                                      onPress: async () => {
+                                        try {
+                                          if (lastInsem?._id) {
+                                            await api.patch(`/ai-request/${lastInsem._id}/outcome`, {
+                                              isSuccess: true,
+                                              note: "Farmer confirmed pregnancy via profile."
+                                            });
+                                          } else {
+                                            await api.patch(`/animals/${id}/reproductive-status`, {
+                                              status: "Pregnant",
+                                              note: "Farmer confirmed pregnancy."
+                                            });
+                                          }
+                                          toast.success("Pregnancy Confirmed! 🎉");
+                                          setAnimal({ ...animal, reproductiveStatus: "Pregnant" });
+                                        } catch { toast.error("Failed to update pregnancy."); }
+                                      }
+                                    }
+                                  ]
+                                );
+                              }}
+                              className="flex-1 py-3 rounded-2xl items-center shadow-sm"
+                              style={{ backgroundColor: color }}
+                            >
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-white text-[10px] uppercase">Pregnant (Success)</Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {diffDays >= 60 && (
+                            <TouchableOpacity
+                              onPress={() => router.push({
+                                pathname: "/(farmer)/report-sickness",
+                                params: { 
+                                  animalId: animal._id,
+                                  type: "checkup",
+                                  note: "Requesting Pregnancy Diagnosis (Day 60+)"
+                                }
+                              } as any)}
+                              className="w-full py-3 mt-1 rounded-2xl items-center shadow-sm bg-slate-800"
+                            >
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-white text-[10px] uppercase tracking-widest">Request Professional PD Check</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })()}
+
+                  {/* Calving Countdown for Pregnant Animals */}
+                  {animal.reproductiveStatus === "Pregnant" &&
+                    (() => {
+                      const lastInsemDate =
+                        animal.inseminations?.[0]?.dateOfAI || animal.updatedAt;
+                      const startDate = new Date(lastInsemDate);
+                      const today = new Date();
+                      const gestationDays = 283; // Average for Cattle
+                      const dueDate = new Date(startDate);
+                      dueDate.setDate(startDate.getDate() + gestationDays);
+
+                      const daysPassed = Math.floor(
+                        (today.getTime() - startDate.getTime()) /
+                          (1000 * 60 * 60 * 24),
+                      );
+                      const daysRemaining = Math.max(
+                        0,
+                        gestationDays - daysPassed,
+                      );
+                      const progress = Math.min(
+                        100,
+                        Math.max(0, (daysPassed / gestationDays) * 100),
+                      );
+
+                      return (
+                        <View className="bg-purple-50 dark:bg-purple-900/10 p-5 rounded-3xl border border-purple-100 dark:border-purple-800 mb-4">
+                          <View className="flex-row justify-between items-end mb-3">
+                            <View>
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-purple-600 dark:text-purple-400 text-[9px] uppercase tracking-widest">
+                                Expected Calving
+                              </Text>
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-purple-900 dark:text-purple-100 text-lg">
+                                {dueDate.toLocaleDateString("en-US", {
+                                  month: "long",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                              </Text>
+                            </View>
+                            <View className="items-end">
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-purple-900 dark:text-purple-100 text-xl">
+                                {daysRemaining}
+                              </Text>
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-purple-600 dark:text-purple-400 text-[8px] uppercase">
+                                Days Left
+                              </Text>
+                            </View>
+                          </View>
+
+                          {/* Progress Bar */}
+                          <View className="w-full h-3 bg-purple-200 dark:bg-purple-900/50 rounded-full overflow-hidden shadow-inner">
+                            <View
+                              className="h-full bg-purple-600 rounded-full"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </View>
+                          <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-purple-500 text-[10px] mt-2 text-center uppercase tracking-tighter">
+                            {progress.toFixed(0)}% of Gestation Period Completed
                           </Text>
-                        </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => router.push({
+                              pathname: "/(farmer)/record-calving",
+                              params: { 
+                                animalId: animal._id,
+                                earTag: animal.earTag,
+                                pregnancyId: animal.inseminations?.[0]?.pregnancy?._id
+                              }
+                            } as any)}
+                            className="w-full py-3 mt-4 rounded-2xl items-center shadow-sm bg-purple-600"
+                          >
+                            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-white text-[11px] uppercase tracking-widest">Report Calf Drop (Testing)</Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })()}
+
+                  {/* Generic "Reheat" Action for other reproductive states (if needed) */}
+                  {animal.reproductiveStatus === "Likely Pregnant" && (
+                    <View className="space-y-3 mt-4">
+                       <View className="flex-row gap-3">
                         <TouchableOpacity
                           onPress={async () => {
-                            try {
-                              await api.patch(
-                                `/animals/${id}/reproductive-status`,
+                            Alert.alert(
+                              "Confirm Heat Signs",
+                              "Are you sure you observed heat signs? This will cancel the previous pregnancy status.",
+                              [
+                                { text: "Cancel", style: "cancel" },
                                 {
-                                  status: "Likely Pregnant",
-                                  note: "No heat signs observed. Likely successful.",
+                                  text: "Yes, In Heat",
+                                  onPress: async () => {
+                                    try {
+                                      await api.patch(
+                                        `/animals/${id}/reproductive-status`,
+                                        {
+                                          status: "In Heat",
+                                          note: "Farmer observed heat signs.",
+                                        },
+                                      );
+                                      toast.success("Status Updated.");
+                                      setAnimal({
+                                        ...animal,
+                                        reproductiveStatus: "In Heat",
+                                      });
+                                    } catch {
+                                      toast.error("Update failed.");
+                                    }
+                                  },
                                 },
-                              );
-                              toast.success(
-                                "Awesome! Technician will schedule a confirmation check.",
-                              );
-                              setAnimal({
-                                ...animal,
-                                reproductiveStatus: "Likely Pregnant",
-                              });
-                            } catch {
-                              toast.error("Update failed.");
-                            }
+                              ],
+                            );
                           }}
-                          className="flex-1 bg-emerald-600 py-3 rounded-2xl items-center shadow-md shadow-emerald-200"
+                          className="flex-1 bg-white dark:bg-slate-800 border-2 border-orange-200 dark:border-orange-900/50 py-3.5 rounded-2xl items-center"
                         >
-                          <Text className="text-white font-black text-xs uppercase">
-                            Likely Pregnant
+                          <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-orange-600 dark:text-orange-400 text-[10px] uppercase tracking-widest">
+                            Yes - In Heat
                           </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
-                  )}
-
-                  {animal.reproductiveStatus === "In Heat" && (
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(farmer)/request-ai" as any,
-                          params: { animalId: id, earTag: animal.earTag },
-                        })
-                      }
-                      className="w-full bg-[#00643B] py-4 rounded-2xl flex-row items-center justify-center gap-2 shadow-lg shadow-emerald-200"
-                    >
-                      <MaterialCommunityIcons
-                        name="needle"
-                        size={20}
-                        color="white"
-                      />
-                      <Text className="text-white font-black text-sm uppercase tracking-widest">
-                        Request Re-Insemination
-                      </Text>
-                    </TouchableOpacity>
                   )}
                 </View>
               )}
@@ -424,7 +665,7 @@ export default function AnimalDetails() {
               >
                 <View className="flex-row items-center mb-5 gap-2">
                   <Activity size={20} color="#00643B" />
-                  <Text className="text-lg font-bold text-slate-800 dark:text-white">
+                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-lg text-slate-800 dark:text-white">
                     Biological Details
                   </Text>
                 </View>
@@ -473,26 +714,26 @@ export default function AnimalDetails() {
               >
                 <View className="flex-row items-center mb-5 gap-2">
                   <User size={20} color="#00643B" />
-                  <Text className="text-lg font-bold text-slate-800 dark:text-white">
+                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-lg text-slate-800 dark:text-white">
                     Ownership Details
                   </Text>
                 </View>
 
                 <View className="flex-row items-center gap-4 mb-5 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700">
                   <View className="w-12 h-12 bg-emerald-100 rounded-full items-center justify-center">
-                    <Text className="text-emerald-800 font-black text-lg">
+                    <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 text-lg">
                       {(animal.farmerId?.name || "?").charAt(0).toUpperCase()}
                     </Text>
                   </View>
                   <View className="flex-1">
-                    <Text className="text-base font-bold text-slate-800">
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-base text-slate-800">
                       {farmerName}
                     </Text>
-                    <Text className="text-slate-500 font-medium text-[12px] mt-0.5">
+                    <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 text-[12px] mt-0.5">
                       {farmerPhone}
                     </Text>
-                    <View className="px-2 py-0.5 rounded-full bg-emerald-50 self-start mt-1.5">
-                      <Text className="text-[10px] font-bold text-emerald-700 uppercase tracking-widest">
+                    <View className="px-2.5 py-0.5 rounded-full bg-emerald-50 self-start mt-2 border border-emerald-100">
+                      <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-[9px] text-emerald-700 uppercase tracking-widest">
                         Registered Owner
                       </Text>
                     </View>
@@ -501,16 +742,16 @@ export default function AnimalDetails() {
 
                 <View className="gap-y-5">
                   <View className="flex-col gap-1">
-                    <Text className="text-slate-500 font-medium text-[13px]">
+                    <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-400 text-[10px] uppercase tracking-widest">
                       Location Address
                     </Text>
-                    <View className="flex-row items-start gap-2 mt-1 pr-4">
+                    <View className="flex-row items-start gap-2 mt-2 pr-4">
                       <MapPin
                         size={16}
                         color="#00643B"
                         style={{ marginTop: 2 }}
                       />
-                      <Text className="text-slate-800 dark:text-slate-200 font-semibold text-[15px] leading-5 w-11/12">
+                      <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-slate-800 dark:text-slate-200 text-[15px] leading-5 w-11/12">
                         {farmerAddress}
                       </Text>
                     </View>
@@ -583,7 +824,7 @@ export default function AnimalDetails() {
 
                       <View className="flex-1">
                         <View className="flex-row justify-between items-start mb-1">
-                          <Text className="font-bold text-[16px] text-slate-800">
+                          <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-[16px] text-slate-800 dark:text-white">
                             {record.type === "insemination"
                               ? `A.I. Attempt #${record.attemptNumber || 1}`
                               : record.type === "calving"
@@ -592,49 +833,54 @@ export default function AnimalDetails() {
                           </Text>
                           {record.type === "insemination" && (
                             <Text
-                              className={`text-[12px] font-bold capitalize ${
-                                record.result === "Positive"
+                              style={{ fontFamily: 'Outfit_800ExtraBold' }}
+                              className={`text-[12px] capitalize ${
+                                (record.outcome === "Pregnant" || record.outcome === "Successful")
                                   ? "text-emerald-600"
-                                  : record.result === "Negative"
+                                  : record.outcome?.startsWith("Failed")
                                     ? "text-red-500"
-                                    : "text-slate-400"
+                                    : record.status?.toLowerCase() === "done"
+                                      ? "text-blue-500"
+                                      : "text-slate-400"
                               }`}
                             >
-                              {record.result || "Pending"}
+                              {record.status?.toLowerCase() === "done" 
+                                ? (record.outcome === "Pending" ? "Inseminated" : record.outcome || "Inseminated") 
+                                : (record.status || "Pending")}
                             </Text>
                           )}
                         </View>
 
                         <View className="flex-row items-center gap-1 mb-2">
                           <Calendar size={12} color="#94a3b8" />
-                          <Text className="text-slate-500 text-xs">
+                          <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 dark:text-slate-400 text-xs">
                             {new Date(record.recordDate).toLocaleDateString()}
                           </Text>
                         </View>
 
                         {record.details?.medicineName && (
-                          <Text className="text-slate-600 text-sm mt-1">
+                          <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-600 dark:text-slate-300 text-sm mt-1">
                             Medicine:{" "}
-                            <Text className="font-semibold text-slate-800">
+                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white">
                               {record.details.medicineName}
                             </Text>
                           </Text>
                         )}
                         {record.details?.weight && (
-                          <Text className="text-indigo-600 text-sm mt-1">
+                          <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-indigo-600 dark:text-indigo-400 text-sm mt-1">
                             Weight:{" "}
-                            <Text className="font-black">
+                            <Text style={{ fontFamily: 'Outfit_900Black' }}>
                               {record.details.weight} kg
                             </Text>
                           </Text>
                         )}
                         {record.note && (
-                          <Text className="text-slate-400 text-[12px] mt-1 italic leading-4">
+                          <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] mt-1 italic leading-4">
                             &quot;{record.note}&quot;
                           </Text>
                         )}
                         {record.technicianId?.name && (
-                          <Text className="text-slate-400 text-[10px] mt-2 font-bold uppercase tracking-tighter">
+                          <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-400 dark:text-slate-500 text-[9px] mt-2 uppercase tracking-tight">
                             Recorded by {record.technicianId.name}
                           </Text>
                         )}
@@ -652,13 +898,13 @@ export default function AnimalDetails() {
                     elevation: 2,
                   }}
                 >
-                  <View className="w-20 h-20 bg-slate-50 rounded-full items-center justify-center mb-4">
+                  <View className="w-20 h-20 bg-slate-50 dark:bg-slate-800 rounded-full items-center justify-center mb-4">
                     <History size={32} color="#94a3b8" />
                   </View>
-                  <Text className="text-slate-700 font-bold text-lg mb-1">
+                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-700 dark:text-slate-200 text-lg mb-1">
                     No Medical Records
                   </Text>
-                  <Text className="text-slate-400 text-center text-sm px-4 leading-5">
+                  <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-center text-sm px-4 leading-5">
                     This animal does not have any recorded artificial
                     inseminations or pregnancy checks yet.
                   </Text>
@@ -672,12 +918,18 @@ export default function AnimalDetails() {
   );
 }
 
-// --- HELPER COMPONENT FOR ROWS ---
+// --- HELPER COMPONENTS ---
 const InfoRow = ({ label, value }: { label: string; value: string }) => (
   <View className="flex-row justify-between items-center">
-    <Text className="text-slate-500 font-medium text-[13px]">{label}</Text>
-    <Text className="text-slate-800 text-[15px] font-bold">{value}</Text>
+    <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[13px]">
+      {label}
+    </Text>
+    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[15px]">
+      {value}
+    </Text>
   </View>
 );
 
-const Divider = () => <View className="h-[1px] w-full bg-slate-100" />;
+const Divider = () => (
+  <View className="h-[1px] w-full bg-slate-50 dark:bg-slate-900/50" />
+);

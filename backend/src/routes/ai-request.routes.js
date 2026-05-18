@@ -4,6 +4,8 @@ import {
   getMyRequests,
   getAllRequests,
   updateRequestStatus,
+  confirmAIOutcome,
+  deleteRequest,
 } from "../controllers/ai-request.controllers.js";
 import { protectedRoute } from "../middleware/auth.middleware.js";
 import { requestLimiter } from "../middleware/rateLimit.middleware.js";
@@ -21,5 +23,11 @@ router.get("/", protectedRoute, getAllRequests);
 
 // Technician / Admin updates request status
 router.patch("/:id/status", protectedRoute, updateRequestStatus);
+
+// Farmer confirms AI outcome
+router.patch("/:id/outcome", protectedRoute, confirmAIOutcome);
+
+// Farmer removes/cancels a request
+router.delete("/:id", protectedRoute, deleteRequest);
 
 export default router;

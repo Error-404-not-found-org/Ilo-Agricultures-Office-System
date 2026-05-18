@@ -49,18 +49,12 @@ function useSocialAuth() {
         console.log("✅ Login Successful! Setting active...");
         await setActive({ session: createdSessionId });
         
-        // 🔄 Sync user metadata to MongoDB
         try {
           await api.post("/user/sync-manual");
           console.log("✅ User synced to MongoDB");
         } catch (syncErr) {
           console.warn("⚠️ Sync failed, but session is active:", syncErr);
         }
-
-        toast.success("Login Successful", {
-          description: "Welcome to BreedSmart!"
-        });
-        router.replace("/(auth)");
       }
 
     } catch (err: any) {
