@@ -6,7 +6,8 @@ import {
   updateInseminationStatus, getAnimalHistory, registerFarmer, recordPregnancyCheck,
   recordCalving, getDashboardStats, getDashboardFeed, getDashboardRegistry, walkInLivestock,
   toggleFarmerVerification, getTechnicianAnalytics, deleteAnimal,
-  deletePregnancyCheck, deleteCalving
+  deletePregnancyCheck, deleteCalving, getFieldNotes,
+  createFieldNote, getTechnicianFieldNotes, deleteFieldNote, deleteFieldNoteRecord
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import { getCleanupSurvey, executeCleanup } from "../controllers/maintenance.controllers.js";
@@ -21,6 +22,7 @@ router.post("/cleanup-execute", executeCleanup);
 
 // Get functions for technician
 router.get("/dashboard-data", getTechnicianDashboardData);
+router.get("/field-notes", getFieldNotes);
 router.get("/dashboard-stats", getDashboardStats);
 router.get("/dashboard-feed", getDashboardFeed);
 router.get("/dashboard-registry", getDashboardRegistry);
@@ -43,5 +45,11 @@ router.patch("/farmers/:id/verify", toggleFarmerVerification);
 router.delete("/animals/:id", deleteAnimal);
 router.delete("/pregnancy-checks/:id", deletePregnancyCheck);
 router.delete("/calvings/:id", deleteCalving);
+
+// Technician Photo Notes
+router.post("/photo-notes", createFieldNote);
+router.get("/photo-notes", getTechnicianFieldNotes);
+router.delete("/photo-notes/:id", deleteFieldNote);
+router.delete("/field-notes/:id", deleteFieldNoteRecord);
 
 export default router;

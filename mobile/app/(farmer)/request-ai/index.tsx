@@ -134,11 +134,6 @@ export default function RequestAI() {
           const found = (list as Animal[]).find(a => a._id === params.animalId);
           if (found) {
             setSelectedAnimal(found);
-            if (params.mode === 're-inseminate') {
-              setComment(`2nd Attempt: Re-insemination request for ${params.earTag || found.earTag || found.animalId}. Signs of heat observed after previous attempt.`);
-            } else {
-              setComment(`AI Request for ${found.earTag || found.animalId}. Signs of heat observed.`);
-            }
           }
         }
       }

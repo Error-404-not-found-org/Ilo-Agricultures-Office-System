@@ -21,6 +21,7 @@ import {
   MessageSquare,
   User,
   LogOut,
+  Image,
 } from "lucide-react";
 import NotificationBell from "./NotificationBell";
 import ThemeToggle from "./ThemeToggle";
@@ -71,6 +72,7 @@ const Layout = () => {
     { name: "Dashboard", path: "/technician/dashboard", icon: <LayoutDashboard size={24} /> },
     { name: "Service Ledger", path: "/technician/ledger", icon: <Database size={24} /> },
     { name: "Task Requests", path: "/technician/requests", icon: <ClipboardList size={24} /> },
+    { name: "Field Notes", path: "/technician/field-notes", icon: <Image size={24} /> },
     { name: "Farmer Registry", path: "/technician/farmers", icon: <Users size={24} /> },
     { name: "Livestock Registry", path: "/technician/animals", icon: <Tractor size={24} /> },
     { name: "Field Reports", path: "/technician/reports", icon: <FileText size={24} /> },

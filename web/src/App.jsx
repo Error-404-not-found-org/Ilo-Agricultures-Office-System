@@ -36,6 +36,7 @@ import TechnicianReports from "./pages/technician/Reports";
 import TechnicianSchedule from "./pages/technician/Schedule";
 import TechnicianRequests from "./pages/technician/Requests";
 import BreedingLedger from "./pages/technician/BreedingLedger";
+import FieldNotes from "./pages/technician/FieldNotes";
 import TestModalPage from "./pages/technician/TestModalPage";
 import FarmerDashboard from "./pages/FarmerDashboard";
 import ProtectedFarmerRoute from "./components/ProtectedFarmerRoute";
@@ -105,6 +106,7 @@ function App() {
         <Route path="reports" element={<TechnicianReports />} />
         <Route path="schedule" element={<TechnicianSchedule />} />
         <Route path="requests" element={<TechnicianRequests />} />
+        <Route path="field-notes" element={<FieldNotes />} />
         <Route path="settings" element={<Settings />} />
         <Route path="lab" element={<TestModalPage />} />
       </Route>

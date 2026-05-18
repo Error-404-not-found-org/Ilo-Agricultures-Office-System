@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
     ClipboardList, 
     Search, 
@@ -10,7 +11,8 @@ import {
     ChevronLeft,
     ChevronRight,
     Play,
-    CheckCircle
+    CheckCircle,
+    Trash2
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
@@ -56,6 +58,61 @@ const Requests = () => {
             toast.error('Failed to update status');
         }
     });
+
+    // Mutation for single deletion
+    const deleteMutation = useMutation({
+        mutationFn: async ({ id, type }) => {
+            const endpoint = type === 'insemination'
+                ? `/ai-request/${id}`
+                : `/health-request/${id}`;
+            return await axiosInstance.delete(endpoint);
+        },
+        onSuccess: (_, variables) => {
+            toast.success('Task request deleted successfully');
+            setSelectedIds(prev => prev.filter(selectedId => selectedId !== variables.id));
+            queryClient.invalidateQueries({ queryKey: ['technician', 'requests'] });
+        },
+        onError: (err) => {
+            toast.error(err.response?.data?.message || 'Failed to delete request');
+        }
+    });
+
+    // Mutation for bulk deletion
+    const deleteBulkMutation = useMutation({
+        mutationFn: async (items) => {
+            const promises = items.map(({ id, type }) => {
+                const endpoint = type === 'insemination'
+                    ? `/ai-request/${id}`
+                    : `/health-request/${id}`;
+                return axiosInstance.delete(endpoint);
+            });
+            return await Promise.all(promises);
+        },
+        onSuccess: () => {
+            toast.success('Selected task requests deleted successfully');
+            setSelectedIds([]);
+            queryClient.invalidateQueries({ queryKey: ['technician', 'requests'] });
+        },
+        onError: (err) => {
+            toast.error(err.response?.data?.message || 'Failed to delete selected requests');
+        }
+    });
+
+    const handleDeleteSingle = (id, type) => {
+        if (window.confirm('Are you sure you want to permanently delete this task request? This action cannot be undone.')) {
+            deleteMutation.mutate({ id, type });
+        }
+    };
+
+    const handleDeleteBulk = () => {
+        if (selectedIds.length === 0) return;
+        if (window.confirm(`Are you sure you want to permanently delete the ${selectedIds.length} selected task request(s)? This action cannot be undone.`)) {
+            const itemsToDelete = data
+                ?.filter(req => selectedIds.includes(req.id))
+                .map(req => ({ id: req.id, type: req.type })) || [];
+            deleteBulkMutation.mutate(itemsToDelete);
+        }
+    };
 
     const filteredRequests = data?.filter(req => {
         const matchesSearch = 
@@ -132,6 +189,8 @@ const Requests = () => {
                         value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                     {searchQuery && <button onClick={() => setSearchQuery("")} className="text-base-content/40 hover:text-error transition-colors">✕</button>}
                 </label>
+
+
                 
                 <span className="text-xs text-base-content/40 font-semibold shrink-0">{filteredRequests.length} tasks found</span>
             </div>
@@ -241,8 +300,8 @@ const Requests = () => {
                                                 {req.status === 'in-progress' && (
                                                     <div className="tooltip tooltip-left" data-tip="Finish">
                                                         <button onClick={() => updateMutation.mutate({ id: req.id, type: req.type, status: req.type === 'insemination' ? 'done' : 'resolved' })}
-                                                            className="btn btn-ghost btn-xs btn-square text-primary hover:bg-primary/10">
-                                                            <Play size={15} />
+                                                            className="btn btn-ghost btn-xs btn-square text-success hover:bg-success/10">
+                                                            <CheckCircle2 size={15} />
                                                         </button>
                                                     </div>
                                                 )}
@@ -282,6 +341,46 @@ const Requests = () => {
                 task={selectedTaskForModal}
                 onSuccess={() => queryClient.invalidateQueries({ queryKey: ['technician', 'requests'] })}
             />
+
+            {/* FLOATING ACTION DIALOG */}
+            <AnimatePresence>
+                {selectedIds.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 50, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 50, scale: 0.95 }}
+                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-base-100/90 backdrop-blur-md border border-base-300 shadow-2xl px-6 py-3 flex items-center gap-6 rounded-2xl min-w-[320px] max-w-[90vw]"
+                    >
+                        <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-error/10 text-error flex items-center justify-center text-[10px] font-black">
+                                {selectedIds.length}
+                            </span>
+                            <span className="text-[10px] font-black uppercase tracking-[0.15em] text-base-content/70">
+                                Selected Task{selectedIds.length > 1 ? 's' : ''}
+                            </span>
+                        </div>
+                        
+                        <div className="h-5 w-px bg-base-300" />
+                        
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setSelectedIds([])}
+                                className="btn btn-ghost btn-xs text-[9px] font-black uppercase tracking-widest text-base-content/40 hover:bg-base-200"
+                            >
+                                Clear
+                            </button>
+                            <button
+                                onClick={handleDeleteBulk}
+                                className="btn btn-error btn-xs text-white px-4 font-black uppercase tracking-widest flex items-center gap-1.5 rounded-lg shadow-md shadow-red-950/20"
+                            >
+                                <Trash2 size={12} />
+                                Delete
+                            </button>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };
