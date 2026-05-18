@@ -20,11 +20,26 @@ export default function AskMoowie() {
       id: '1', 
       role: 'ai', 
       text: role === 'technician' 
-        ? "Hello Tech! I'm Moowie, your AI assistant. I'm ready to help with diagnostic support, breeding data analysis, or field protocols. What's the situation today?"
-        : "Hi! I'm Moowie, your AI farming assistant. How can I help you with your cattle today? You can ask me about breeding, health signs, or nutrition!" 
+        ? "Hello! I'm Moowie, your AI assistant. I'm ready to help with diagnostic support, breeding data analysis, or field protocols. What's the situation today?"
+        : "Moo! Hello! I'm Moowie, your AI farming assistant. How can I help you with your cattle today? You can ask me about breeding, health signs, or nutrition!" 
     },
   ]);
   const scrollViewRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (user?.firstName) {
+      const name = user.firstName;
+      setChat([
+        {
+          id: '1',
+          role: 'ai',
+          text: role === 'technician'
+            ? `Hello ${name}! I'm Moowie, your AI assistant. I'm ready to help with diagnostic support, breeding data analysis, or field protocols. What's the situation today?`
+            : `Moo! Hello ${name}! I'm Moowie, your AI farming assistant. How can I help you with your cattle today? You can ask me about breeding, health signs, or nutrition!`
+        }
+      ]);
+    }
+  }, [user, role]);
 
   const handleSend = async () => {
     if (!message.trim() || loading) return;

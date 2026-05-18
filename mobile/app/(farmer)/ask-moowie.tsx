@@ -1,21 +1,35 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, KeyboardAvoidingView, Platform } from 'react-native';
 import { ChevronLeft, Send, Sparkles } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useUser } from '@clerk/clerk-expo';
 
 const PRIMARY = '#00643B';
 
 export default function AskMoowie() {
   const router = useRouter();
+  const { user } = useUser();
   const [message, setMessage] = useState('');
   const [chat, setChat] = useState([
     { 
       id: '1', 
       role: 'ai', 
-      text: "Hi! I'm Moowie, your AI farming assistant. How can I help you with your cattle today? You can ask me about breeding, health signs, or nutrition!" 
+      text: "Moo! Hello! I'm Moowie, your AI farming assistant. How can I help you with your cattle today? You can ask me about breeding, health signs, or nutrition!" 
     },
   ]);
+
+  useEffect(() => {
+    if (user?.firstName) {
+      setChat([
+        {
+          id: '1',
+          role: 'ai',
+          text: `Moo! Hello ${user.firstName}! I'm Moowie, your AI farming assistant. How can I help you with your cattle today? You can ask me about breeding, health signs, or nutrition!`
+        }
+      ]);
+    }
+  }, [user]);
   const scrollViewRef = useRef<ScrollView>(null);
 
   const handleSend = () => {
