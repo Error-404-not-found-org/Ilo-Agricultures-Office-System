@@ -4,13 +4,14 @@ import { ChevronLeft, Send, Sparkles } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useUser } from '@clerk/clerk-expo';
-import { api } from '../lib/api';
+import { useApi } from '../lib/api';
 
 const PRIMARY = '#00643B';
 
 export default function AskMoowie() {
   const router = useRouter();
   const { user } = useUser();
+  const api = useApi();
   const role = user?.publicMetadata?.role || 'farmer';
   
   const [message, setMessage] = useState('');
