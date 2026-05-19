@@ -6,7 +6,7 @@ import { useSocket } from '../contexts/SocketContext';
 import { toast } from 'sonner';
 import LoadingView from "../components/LoadingView";
 import { 
-    Users, ClipboardCheck, Activity, ArrowUpRight, Filter, 
+    Users, User, ClipboardCheck, Activity, ArrowUpRight, Filter, 
     TrendingUp, ShieldAlert, Calendar, ChevronRight, MapPin,
     Zap, Target, PieChart as PieChartIcon, Bell, Search, MoreVertical, Sparkles,
     BarChart3, LineChart, Map as MapIcon, RefreshCcw

@@ -20,42 +20,51 @@ const MoowieChat = () => {
     script.type = "text/javascript";
     script.src = "https://cdn.voiceflow.com/widget-next/bundle.mjs";
     script.onload = () => {
-        window.voiceflow.chat.load({
-          verify: { projectID: projectId },
-          url: "https://general-runtime.voiceflow.com",
-          voice: {
-            url: "https://runtime-api.voiceflow.com"
-          },
-          user: {
-            name: userName,
-          },
-          launch: {
-            event: {
-              type: "launch",
-              payload: {
+      let retries = 0;
+      const initVoiceflow = () => {
+        if (window.voiceflow?.chat?.load) {
+          window.voiceflow.chat.load({
+            verify: { projectID: projectId },
+            url: "https://general-runtime.voiceflow.com",
+            voice: {
+              url: "https://runtime-api.voiceflow.com"
+            },
+            user: {
+              name: userName,
+            },
+            launch: {
+              event: {
+                type: "launch",
+                payload: {
+                  user_name: userName,
+                  user_role: role,
+                }
+              }
+            },
+            render: {
+              variables: {
                 user_name: userName,
                 user_role: role,
-              }
-            }
-          },
-          render: {
-            variables: {
-              user_name: userName,
-              user_role: role,
+              },
             },
-          },
-        });
+          });
 
-        // Inject session variables directly into Voiceflow
-        setTimeout(() => {
-          if (window.voiceflow?.chat?.setVariables) {
-            window.voiceflow.chat.setVariables({
-              user_name: userName,
-              user_role: role,
-            });
-            console.log("[Voiceflow] Session variables injected successfully:", { userName, role });
-          }
-        }, 500);
+          // Inject session variables directly into Voiceflow
+          setTimeout(() => {
+            if (window.voiceflow?.chat?.setVariables) {
+              window.voiceflow.chat.setVariables({
+                user_name: userName,
+                user_role: role,
+              });
+              console.log("[Voiceflow] Session variables injected successfully:", { userName, role });
+            }
+          }, 500);
+        } else if (retries < 15) {
+          retries++;
+          setTimeout(initVoiceflow, 100);
+        }
+      };
+      initVoiceflow();
     };
 
     // 2. Append script to document body
