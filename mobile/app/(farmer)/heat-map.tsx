@@ -14,13 +14,39 @@ import {
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MapView, { UrlTile, Marker, Circle } from "react-native-maps";
-import { ArrowLeft, RefreshCw, Search, X } from "lucide-react-native";
+
+const CustomUrlTile = UrlTile as any;
+import { ArrowLeft, RefreshCw, Search, X, Home, MapPin, Compass } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { useApi } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-expo";
 
 const PRIMARY = "#00643B";
+
+const PUBLIC_HUBS = [
+  {
+    id: "hub-1",
+    title: "Oton Municipal Agriculture Office",
+    type: "office",
+    coords: { latitude: 10.6942, longitude: 122.4833 },
+    description: "Main veterinary services & program sign-ups",
+  },
+  {
+    id: "hub-2",
+    title: "Trapiche Livestock Center",
+    type: "clinic",
+    coords: { latitude: 10.6895, longitude: 122.4534 },
+    description: "Animal vaccination & diagnostics clinic",
+  },
+  {
+    id: "hub-3",
+    title: "Abilay Veterinary Feed Depot",
+    type: "depot",
+    coords: { latitude: 10.7250, longitude: 122.4938 },
+    description: "Emergency medicine & livestock feeds distribution",
+  }
+];
 
 export default function FarmerHeatMapScreen() {
   const router = useRouter();
@@ -32,7 +58,11 @@ export default function FarmerHeatMapScreen() {
   const [selectedBarangay, setSelectedBarangay] = useState("All");
   const [selectedSeverity, setSelectedSeverity] = useState("All");
   const [activePicker, setActivePicker] = useState<"barangay" | "severity" | null>(null);
-  const [tileTemplate, setTileTemplate] = useState("https://tile.openstreetmap.org/{z}/{x}/{y}.png");
+  
+  // Custom Layer Toggles
+  const [showOfflineOSM, setShowOfflineOSM] = useState(false);
+  const [showPublicHubs, setShowPublicHubs] = useState(true);
+  const [tileTemplate, setTileTemplate] = useState("https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png");
 
   useEffect(() => {
     const checkOfflineCache = async () => {
@@ -44,6 +74,16 @@ export default function FarmerHeatMapScreen() {
     };
     checkOfflineCache();
   }, []);
+
+  // Fetch current farmer user details
+  const { data: dbUser } = useQuery({
+    queryKey: ["user", "me"],
+    queryFn: async () => {
+      const res = await api.get("/user/me");
+      return res.data;
+    },
+    enabled: !!isLoaded && !!isSignedIn,
+  });
 
   // Fetch real-time health heatmap data
   const {
@@ -61,6 +101,17 @@ export default function FarmerHeatMapScreen() {
   });
 
   const allPoints = response.data || [];
+
+  // Farmer's farm address pin coordinates
+  const farmerCoords = useMemo(() => {
+    if (dbUser?.address?.coordinates?.lat && dbUser?.address?.coordinates?.lng) {
+      return {
+        latitude: Number(dbUser.address.coordinates.lat),
+        longitude: Number(dbUser.address.coordinates.lng),
+      };
+    }
+    return null;
+  }, [dbUser]);
 
   // Get unique list of Barangays from points
   const barangays = useMemo<string[]>(() => {
@@ -122,22 +173,32 @@ export default function FarmerHeatMapScreen() {
             <ArrowLeft size={20} color="#fff" />
           </TouchableOpacity>
           <View>
-            <Text style={styles.headerTitle}>GIS Field Hub</Text>
-            <Text style={styles.headerSubtitle}>Oton, Iloilo · Real-Time Operations</Text>
+            <Text style={styles.headerTitle}>Biosecurity Map</Text>
+            <Text style={styles.headerSubtitle}>Oton, Iloilo · Disease & Service Hub</Text>
           </View>
         </View>
 
-        <TouchableOpacity
-          onPress={() => refetch()}
-          disabled={isLoading || isRefetching}
-          style={styles.backButton}
-        >
-          {isRefetching ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <RefreshCw size={18} color="#fff" />
-          )}
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {/* OSM Toggle Button */}
+          <TouchableOpacity
+            onPress={() => setShowOfflineOSM(!showOfflineOSM)}
+            style={[styles.backButton, showOfflineOSM && { backgroundColor: "#00643B" }]}
+          >
+            <Compass size={18} color="#fff" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => refetch()}
+            disabled={isLoading || isRefetching}
+            style={styles.backButton}
+          >
+            {isRefetching ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <RefreshCw size={18} color="#fff" />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Species Filter Tabs */}
@@ -169,7 +230,7 @@ export default function FarmerHeatMapScreen() {
         <View style={styles.searchBar}>
           <Search size={16} color="rgba(255,255,255,0.4)" />
           <TextInput
-            placeholder="Search symptoms, farmer, tag, or brgy..."
+            placeholder="Search symptoms, tag, or barangay..."
             placeholderTextColor="rgba(255,255,255,0.4)"
             style={styles.searchInput}
             value={searchQuery}
@@ -202,6 +263,15 @@ export default function FarmerHeatMapScreen() {
             ⚠️ {selectedSeverity === "All" ? "All Severities" : `${selectedSeverity} Severity`}
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setShowPublicHubs(!showPublicHubs)}
+          style={[styles.pickerButton, showPublicHubs && { backgroundColor: "rgba(0,100,59,0.2)", borderColor: "#00643B" }]}
+        >
+          <Text numberOfLines={1} style={styles.pickerText}>
+            🏥 {showPublicHubs ? "Hide Hubs" : "Show Hubs"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Map View Area */}
@@ -209,34 +279,66 @@ export default function FarmerHeatMapScreen() {
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#fff" />
-            <Text style={styles.loadingText}>Syncing disease data...</Text>
+            <Text style={styles.loadingText}>Syncing biosecurity data...</Text>
           </View>
         ) : (
           <MapView
             style={{ flex: 1 }}
             initialRegion={{
-              latitude: 10.6942,
-              longitude: 122.4833,
+              latitude: farmerCoords?.latitude || 10.6942,
+              longitude: farmerCoords?.longitude || 122.4833,
               latitudeDelta: 0.12,
               longitudeDelta: 0.12,
             }}
           >
-            {/* Tile Layer (OSM Tiles / Cached Tiles) */}
-            <UrlTile
-              urlTemplate={tileTemplate}
-              maximumZ={19}
-              tileSize={256}
-              shouldReplaceMapContent={true}
-            />
+            {/* Tile Layer (Optional CartoDB Voyager Layer - shouldReplaceMapContent is false to avoid blank screens!) */}
+            {showOfflineOSM && (
+              <CustomUrlTile
+                urlTemplate={tileTemplate}
+                maximumZ={19}
+                tileSize={256}
+                shouldReplaceMapContent={false}
+                tileHeaders={{
+                  "User-Agent": "IloiloAgricultureMobileApp/1.0",
+                }}
+              />
+            )}
 
-            {/* Outbreak Heatspots */}
+            {/* Farmer's Own Registered Farm Marker */}
+            {farmerCoords && (
+              <Marker
+                coordinate={farmerCoords}
+                title="My Farm"
+                description={`${dbUser?.address?.street ? dbUser.address.street + ', ' : ''}${dbUser?.address?.barangay}`}
+              >
+                <View style={styles.farmerMarker}>
+                  <Home size={16} color="#fff" />
+                </View>
+              </Marker>
+            )}
+
+            {/* Public Service & Veterinary Hubs */}
+            {showPublicHubs && PUBLIC_HUBS.map(hub => (
+              <Marker
+                key={hub.id}
+                coordinate={hub.coords}
+                title={hub.title}
+                description={hub.description}
+              >
+                <View style={styles.hubMarker}>
+                  <MapPin size={16} color="#fff" />
+                </View>
+              </Marker>
+            ))}
+
+            {/* Outbreak Heatspots (Dynamic Warning circles around reported incidents) */}
             {filteredPoints.map((point: any) => {
               const color =
                 point.severity.toLowerCase() === "high"
-                  ? "rgba(244, 63, 94, 0.4)"
+                  ? "rgba(239, 68, 68, 0.25)"
                   : point.severity.toLowerCase() === "medium"
-                  ? "rgba(249, 115, 22, 0.4)"
-                  : "rgba(251, 191, 36, 0.4)";
+                  ? "rgba(249, 115, 22, 0.25)"
+                  : "rgba(234, 179, 8, 0.25)";
 
               return (
                 <Circle
@@ -245,15 +347,15 @@ export default function FarmerHeatMapScreen() {
                     latitude: point.coords[0],
                     longitude: point.coords[1],
                   }}
-                  radius={point.severity.toLowerCase() === "high" ? 400 : 250}
+                  radius={point.severity.toLowerCase() === "high" ? 600 : 350}
                   fillColor={color}
-                  strokeColor={color.replace("0.4", "0.8")}
-                  strokeWidth={1.5}
+                  strokeColor={color.replace("0.25", "0.7")}
+                  strokeWidth={1}
                 />
               );
             })}
 
-            {/* Pins */}
+            {/* Outbreak Pins (Secured with Privacy Mode for other farmers) */}
             {filteredPoints.map((point: any) => {
               const pinColor =
                 point.severity.toLowerCase() === "high"
@@ -261,6 +363,9 @@ export default function FarmerHeatMapScreen() {
                   : point.severity.toLowerCase() === "medium"
                   ? "#ea580c"
                   : "#eab308";
+
+              // Check if report belongs to the current farmer to determine details exposure
+              const isOwnReport = dbUser?.name && point.farmer?.toLowerCase() === dbUser.name.toLowerCase();
 
               return (
                 <Marker
@@ -270,8 +375,8 @@ export default function FarmerHeatMapScreen() {
                     longitude: point.coords[1],
                   }}
                   pinColor={pinColor}
-                  title={`${point.symptoms} (${point.barangay})`}
-                  description={`Farmer: ${point.farmer} · Tag: #${point.tag}`}
+                  title={isOwnReport ? `My Report: ${point.symptoms}` : `Outbreak Alert: ${point.symptoms}`}
+                  description={isOwnReport ? `Animal: ${point.animal} · Tag: #${point.tag}` : `Risk Level: ${point.severity} · Location: ${point.barangay}`}
                 />
               );
             })}
@@ -279,14 +384,14 @@ export default function FarmerHeatMapScreen() {
         )}
 
         {/* OSM Attribution */}
-        <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
+        {showOfflineOSM && <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>}
 
         {/* Custom Status Legend */}
         <View style={styles.legendContainer}>
           <View style={styles.legendCard}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <Text style={styles.legendTitle}>Oton District Status</Text>
-              <Text style={styles.totalBadge}>{stats.total} Incidents</Text>
+              <Text style={styles.legendTitle}>Local Area Biosecurity Status</Text>
+              <Text style={styles.totalBadge}>{stats.total} Active Cases</Text>
             </View>
 
             <View style={styles.legendGrid}>
@@ -606,7 +711,7 @@ const styles = StyleSheet.create({
   attributionText: {
     position: "absolute",
     right: 16,
-    bottom: 200, // Positioned above the status legend card
+    bottom: 200,
     fontSize: 9,
     fontFamily: "Outfit_500Medium",
     color: "rgba(255,255,255,0.45)",
@@ -615,5 +720,27 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 6,
     zIndex: 101,
+  },
+  farmerMarker: {
+    backgroundColor: "#00643B",
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  hubMarker: {
+    backgroundColor: "#2563eb",
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });

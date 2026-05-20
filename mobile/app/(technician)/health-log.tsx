@@ -21,10 +21,11 @@ import {
   Activity,
   Calendar,
   AlertTriangle,
+  Check,
+  Clock,
 } from "lucide-react-native";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { CATTLE_BREEDS, CATTLE_SPECIES, OTON_BARANGAYS } from "@/lib/constants";
 
@@ -320,28 +321,49 @@ export default function HealthLogScreen() {
                     </Text>
                   </View>
                 ) : (
-                  <View className="flex-row flex-wrap gap-2">
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                     {animals.map((a: any) => {
                       const isSelected = selectedAnimal?._id === a._id;
                       return (
                         <TouchableOpacity
                           key={a._id}
-                          className={`px-4 py-2.5 rounded-full flex-row items-center border ${
-                            isSelected 
-                              ? "bg-amber-600 border-amber-600 shadow-sm shadow-amber-100" 
-                              : "bg-white border-slate-200"
-                          }`}
+                          style={[
+                            {
+                              paddingHorizontal: 16,
+                              paddingVertical: 10,
+                              borderRadius: 9999,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              borderWidth: 1,
+                            },
+                            isSelected
+                              ? {
+                                  backgroundColor: "#d97706",
+                                  borderColor: "#d97706",
+                                  shadowColor: "#fef3c7",
+                                  shadowOffset: { width: 0, height: 1 },
+                                  shadowOpacity: 0.2,
+                                  shadowRadius: 1.41,
+                                  elevation: 2,
+                                }
+                              : {
+                                  backgroundColor: "#ffffff",
+                                  borderColor: "#cbd5e1",
+                                },
+                          ]}
                           onPress={() => setSelectedAnimal(isSelected ? null : a)}
                         >
                           <Text
-                            style={{ fontFamily: "Outfit_700Bold" }}
-                            className={`text-[13px] ${isSelected ? "text-white" : "text-slate-600"}`}
+                            style={{
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 13,
+                              color: isSelected ? "#ffffff" : "#475569",
+                            }}
                           >
                             {a.earTag || a.animalId}
                           </Text>
                           {isSelected && (
-                            <MaterialCommunityIcons
-                              name="check"
+                            <Check
                               size={14}
                               color="white"
                               style={{ marginLeft: 6 }}
@@ -553,7 +575,7 @@ export default function HealthLogScreen() {
                   <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-xs">
                     {preferredDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </Text>
-                  <MaterialCommunityIcons name="calendar" size={16} color="#94a3b8" />
+                  <Calendar size={16} color="#94a3b8" />
                 </TouchableOpacity>
               </View>
               <View className="flex-1">
@@ -565,7 +587,7 @@ export default function HealthLogScreen() {
                   <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-xs">
                     {preferredTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
-                  <MaterialCommunityIcons name="clock-outline" size={16} color="#94a3b8" />
+                  <Clock size={16} color="#94a3b8" />
                 </TouchableOpacity>
               </View>
             </View>

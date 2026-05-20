@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
 import { Plus, CheckCircle } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ export default function TasksScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('Urgent');
+  const [mounted, setMounted] = useState(false);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -26,11 +27,15 @@ export default function TasksScreen() {
     }
   }, [api]);
 
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
+      if (!mounted) return;
       fetchTasks();
-    }, [fetchTasks])
+    }, [mounted, fetchTasks])
   );
 
   const onRefresh = async () => {

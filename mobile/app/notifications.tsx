@@ -76,6 +76,17 @@ export default function NotificationsScreen() {
     }
   };
 
+  const handleClearAll = async () => {
+    try {
+      await api.delete('/notifications');
+      setNotifications([]);
+      toast.success("All notifications cleared.");
+    } catch (error: any) {
+      console.error("Failed to clear notifications:", error);
+      toast.error("Could not clear notifications.");
+    }
+  };
+
   const getIcon = (type: string, isRead: boolean) => {
     const opacity = isRead ? 0.6 : 1;
     if (type === 'ai-request') return (
@@ -148,9 +159,18 @@ export default function NotificationsScreen() {
       >
         <View className="flex-row justify-between items-center mb-6">
             <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-[20px] text-slate-800 dark:text-white">Recent Updates</Text>
-          <TouchableOpacity onPress={markAllAsRead}>
-              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className={`text-sm ${THEME.markRead}`}>Mark all as read</Text>
-          </TouchableOpacity>
+            
+            <View className="flex-row items-center gap-3">
+              <TouchableOpacity onPress={markAllAsRead}>
+                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className={`text-xs ${THEME.markRead}`}>Mark read</Text>
+              </TouchableOpacity>
+              
+              <Text className="text-slate-300 dark:text-slate-700 text-xs">•</Text>
+              
+              <TouchableOpacity onPress={handleClearAll}>
+                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-xs text-red-500">Clear all</Text>
+              </TouchableOpacity>
+            </View>
         </View>
 
         {loading ? (

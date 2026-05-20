@@ -30,10 +30,12 @@ import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator, Text, Image, useColorScheme } from "react-native";
-import { Toaster } from 'sonner-native';
+import { Toaster, toast } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColorScheme as useNativeWindColorScheme } from "nativewind";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NetInfo from "@react-native-community/netinfo";
 import { processOfflineQueue } from "../lib/offlineQueue";
 import { useApi } from "../lib/api";
@@ -55,8 +57,12 @@ function InitialLayout() {
   const { setColorScheme } = useNativeWindColorScheme();
   const api = useApi();
   const navigationState = useRootNavigationState();
+  const insets = useSafeAreaInsets();
 
   const isFullyLoaded = isLoaded && appReady;
+
+  const [isOffline, setIsOffline] = useState(false);
+  const [prevConnected, setPrevConnected] = useState<boolean | null>(null);
 
   // Initialization
   useEffect(() => {
@@ -72,13 +78,35 @@ function InitialLayout() {
     init();
   }, []);
 
-  // Offline Sync
+  // Clear query cache on sign-out to prevent data leakage between different accounts
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      queryClient.clear();
+      AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE').catch(err => 
+        console.error("Failed to clear AsyncStorage react-query cache", err)
+      );
+    }
+  }, [isLoaded, isSignedIn]);
+
+  // Offline Sync and Connection Monitoring
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
-      if (state.isConnected) processOfflineQueue(api);
+      const isConnected = state.isConnected ?? true;
+      const isOfflineMode = !isConnected;
+      setIsOffline(isOfflineMode);
+
+      if (prevConnected !== null && prevConnected !== isConnected) {
+        if (isConnected) {
+          toast.success("Connection restored! Syncing data...");
+          processOfflineQueue(api);
+        } else {
+          toast.error("Connection lost. Operating in offline mode.");
+        }
+      }
+      setPrevConnected(isConnected);
     });
     return () => unsubscribe();
-  }, [api]);
+  }, [api, prevConnected]);
 
   // Push Token Sync (runs only when signed-in user changes)
   useEffect(() => {
@@ -160,7 +188,38 @@ function InitialLayout() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return (
+    <View style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false }} />
+      {isOffline && (
+        <View style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          backgroundColor: '#ef4444',
+          paddingTop: 10,
+          paddingBottom: Math.max(insets.bottom, 10),
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'row',
+          gap: 8,
+          zIndex: 9999,
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          shadowColor: '#000',
+          shadowOpacity: 0.1,
+          shadowRadius: 5,
+          elevation: 5
+        }}>
+          <MaterialCommunityIcons name="wifi-off" size={16} color="#fff" />
+          <Text style={{ color: '#fff', fontFamily: 'Outfit_700Bold', fontSize: 12 }}>
+            Offline Mode. Changes will sync when reconnected.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
 }
 
 import { SafeAreaProvider } from "react-native-safe-area-context";
