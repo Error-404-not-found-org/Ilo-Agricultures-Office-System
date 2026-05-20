@@ -14,8 +14,6 @@ import {
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MapView, { UrlTile, Marker, Circle } from "react-native-maps";
-
-const CustomUrlTile = UrlTile as any;
 import {
   ArrowLeft,
   RefreshCw,
@@ -30,6 +28,8 @@ import * as FileSystem from "expo-file-system/legacy";
 import { useApi } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-expo";
+
+const CustomUrlTile = UrlTile as any;
 
 const OTON_CENTER = {
   latitude: 10.6942,
@@ -97,10 +97,10 @@ export default function HeatMapScreen() {
   // Get unique list of Barangays from all records
   const barangays = useMemo<string[]>(() => {
     const list = new Set<string>();
-    response.health?.forEach((p: any) => p.barangay && list.add(p.barangay));
-    response.breeding?.forEach((p: any) => p.barangay && list.add(p.barangay));
-    response.dispatches?.forEach((p: any) => p.barangay && list.add(p.barangay));
-    response.demographics?.forEach((p: any) => p.barangay && list.add(p.barangay));
+    response?.health?.forEach((p: any) => p.barangay && list.add(p.barangay));
+    response?.breeding?.forEach((p: any) => p.barangay && list.add(p.barangay));
+    response?.dispatches?.forEach((p: any) => p.barangay && list.add(p.barangay));
+    response?.demographics?.forEach((p: any) => p.barangay && list.add(p.barangay));
     return ["All", ...Array.from(list).sort()];
   }, [response]);
 
@@ -113,7 +113,7 @@ export default function HeatMapScreen() {
 
   // Combined Filters for Health
   const filteredHealth = useMemo(() => {
-    let list = response.health || [];
+    let list = response?.health || [];
     if (selectedBarangay !== "All") {
       list = list.filter((h: any) => h.barangay?.toLowerCase() === selectedBarangay.toLowerCase());
     }
@@ -131,11 +131,11 @@ export default function HeatMapScreen() {
       );
     }
     return list;
-  }, [response.health, selectedBarangay, selectedSeverity, searchQuery]);
+  }, [response, selectedBarangay, selectedSeverity, searchQuery]);
 
   // Combined Filters for Breeding
   const filteredBreeding = useMemo(() => {
-    let list = response.breeding || [];
+    let list = response?.breeding || [];
     if (selectedBarangay !== "All") {
       list = list.filter((b: any) => b.barangay?.toLowerCase() === selectedBarangay.toLowerCase());
     }
@@ -149,11 +149,11 @@ export default function HeatMapScreen() {
       );
     }
     return list;
-  }, [response.breeding, selectedBarangay, searchQuery]);
+  }, [response, selectedBarangay, searchQuery]);
 
   // Combined Filters for Dispatches (Tasks)
   const filteredDispatches = useMemo(() => {
-    let list = response.dispatches || [];
+    let list = response?.dispatches || [];
     if (selectedBarangay !== "All") {
       list = list.filter((d: any) => d.barangay?.toLowerCase() === selectedBarangay.toLowerCase());
     }
@@ -166,11 +166,11 @@ export default function HeatMapScreen() {
       );
     }
     return list;
-  }, [response.dispatches, selectedBarangay, searchQuery]);
+  }, [response, selectedBarangay, searchQuery]);
 
   // Combined Filters for Demographics
   const filteredDemographics = useMemo(() => {
-    let list = response.demographics || [];
+    let list = response?.demographics || [];
     if (selectedBarangay !== "All") {
       list = list.filter((d: any) => d.barangay?.toLowerCase() === selectedBarangay.toLowerCase());
     }
@@ -179,7 +179,7 @@ export default function HeatMapScreen() {
       list = list.filter((d: any) => d.barangay?.toLowerCase().includes(q));
     }
     return list;
-  }, [response.demographics, selectedBarangay, searchQuery]);
+  }, [response, selectedBarangay, searchQuery]);
 
   // Stats calculation
   const stats = useMemo(() => {

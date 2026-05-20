@@ -14,13 +14,13 @@ import {
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MapView, { UrlTile, Marker, Circle } from "react-native-maps";
-
-const CustomUrlTile = UrlTile as any;
 import { ArrowLeft, RefreshCw, Search, X, Home, MapPin, Compass } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { useApi } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-expo";
+
+const CustomUrlTile = UrlTile as any;
 
 const PRIMARY = "#00643B";
 
@@ -100,7 +100,7 @@ export default function FarmerHeatMapScreen() {
     enabled: !!isLoaded && !!isSignedIn,
   });
 
-  const allPoints = response.data || [];
+  const allPoints = response?.data || [];
 
   // Farmer's farm address pin coordinates
   const farmerCoords = useMemo(() => {
