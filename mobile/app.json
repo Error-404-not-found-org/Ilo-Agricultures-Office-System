@@ -20,7 +20,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.johndong28.mobile"
+      "package": "com.breedsmart.mobile",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "output": "static",

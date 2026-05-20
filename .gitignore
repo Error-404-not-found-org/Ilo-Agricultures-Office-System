@@ -19,4 +19,8 @@ error.log
 # Checklists & QA Checklists
 BreedSmart_QA_Checklist.txt
 *checklist*
-*Checklist*
+*Checklist*
+
+# Firebase Private Credentials
+*firebase-adminsdk*.json
+breedsmart-adcbb-firebase-adminsdk-fbsvc-1214b269c1.json

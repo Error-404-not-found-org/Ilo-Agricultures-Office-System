@@ -41,3 +41,7 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Firebase Private Credentials
+*firebase-adminsdk*.json
+breedsmart-adcbb-firebase-adminsdk-fbsvc-1214b269c1.json

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "303612440661",
+    "project_id": "breedsmart-adcbb",
+    "storage_bucket": "breedsmart-adcbb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:303612440661:android:b7646c71b43208c16de4dc",
+        "android_client_info": {
+          "package_name": "com.breedsmart.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB4Pk25WskKvhBz68u-8fOcPdVqAZDCTrs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
