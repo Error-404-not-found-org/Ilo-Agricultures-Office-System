@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle, AlertCircle, Users, HeartPulse } from 'lucide-react';
+import { X, CheckCircle, Users, HeartPulse } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { useToast } from '../../contexts/ToastContext';
@@ -12,7 +12,6 @@ const AssignTaskModal = ({ isOpen, onClose, taskData, onSuccess }) => {
     const { data: technicians = [] } = useQuery({
         queryKey: ['technicianList'],
         queryFn: async () => {
-            // Need a route to get techs. Assuming /admin/technicians or /user with role 'technician'
             const res = await axiosInstance.get('/users?role=technician');
             return res.data;
         },
@@ -29,7 +28,6 @@ const AssignTaskModal = ({ isOpen, onClose, taskData, onSuccess }) => {
             return;
         }
         try {
-            // Patch request to assign: Assuming the controller sets handledBy if patched
             await axiosInstance.patch(`/health-request/${taskData._id}/status`, {
                 status: 'in-progress',
                 handledBy: selectedTech,
@@ -46,60 +44,67 @@ const AssignTaskModal = ({ isOpen, onClose, taskData, onSuccess }) => {
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 bg-black/50 backdrop-blur-sm">
+            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md">
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="bg-white rounded-2xl max-w-lg w-full shadow-2xl relative overflow-hidden"
+                    className="bg-base-100 border border-base-300 rounded-3xl max-w-lg w-full shadow-2xl relative overflow-hidden"
                 >
-                    <div className={`p-6 border-b ${isUrgent ? 'bg-rose-50 border-rose-100' : 'bg-amber-50 border-amber-100'}`}>
-                        <div className="absolute top-4 right-4 block">
-                            <button onClick={onClose} className="p-2 rounded-full hover:bg-black/5 transition-colors">
-                                <X size={20} className={isUrgent ? 'text-rose-600' : 'text-amber-600'} />
-                            </button>
-                        </div>
+                    {/* Header */}
+                    <div className={`p-6 border-b border-base-300/80 flex items-center justify-between ${isUrgent ? 'bg-red-500/10' : 'bg-amber-500/10'}`}>
                         <div className="flex items-center gap-3">
-                            <div className={`p-3 rounded-xl ${isUrgent ? 'bg-rose-200 text-rose-700' : 'bg-amber-200 text-amber-700'}`}>
+                            <div className={`p-3 rounded-2xl ${isUrgent ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
                                 <HeartPulse size={24} />
                             </div>
                             <div>
-                                <h3 className={`font-black text-xl leading-none ${isUrgent ? 'text-rose-900' : 'text-amber-900'}`}>
+                                <h3 className={`font-black text-xl leading-none uppercase tracking-tight text-base-content`}>
                                     Assign Health Request
                                 </h3>
-                                <p className={`text-sm font-semibold mt-1 ${isUrgent ? 'text-rose-600' : 'text-amber-600'}`}>
+                                <p className={`text-[9px] font-black uppercase tracking-widest mt-1.5 ${isUrgent ? 'text-red-500 animate-pulse' : 'text-amber-500'}`}>
                                     {isUrgent ? '🚨 URGENT PRIORITY' : 'Standard Priority'}
                                 </p>
                             </div>
                         </div>
+                        <button 
+                            onClick={onClose} 
+                            className="p-2 rounded-full hover:bg-base-300/40 text-base-content/40 hover:text-base-content transition-colors cursor-pointer"
+                        >
+                            <X size={20} />
+                        </button>
                     </div>
 
+                    {/* Body */}
                     <div className="p-6 space-y-6">
                         <div>
-                            <h4 className="text-xs uppercase tracking-wider font-bold text-gray-500 mb-2">Request Details</h4>
-                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-2">
-                                <p className="text-sm font-medium text-gray-500">
-                                    <span className="font-bold text-gray-900">Farmer:</span> {taskData.farmerId?.name || 'Unknown'}
+                            <h4 className="text-[10px] uppercase tracking-[0.2em] font-black text-base-content/40 mb-2">Request Details</h4>
+                            <div className="bg-base-200/40 p-5 rounded-2xl border border-base-300/60 space-y-3">
+                                <p className="text-xs font-semibold text-base-content/60">
+                                    <span className="font-black text-base-content uppercase tracking-wider block text-[9px] mb-0.5">Farmer</span> 
+                                    {taskData.farmerId?.name || 'Unknown'}
                                 </p>
-                                <p className="text-sm font-medium text-gray-500">
-                                    <span className="font-bold text-gray-900">Animal Tag:</span> {taskData.animalId?.earTag || 'Unknown'}
+                                <p className="text-xs font-semibold text-base-content/60">
+                                    <span className="font-black text-base-content uppercase tracking-wider block text-[9px] mb-0.5">Animal Tag</span> 
+                                    <span className="inline-block bg-blue-500/10 border border-blue-500/25 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded text-[10px] font-black uppercase mt-0.5">
+                                        #{taskData.animalId?.earTag || 'Unknown'}
+                                    </span>
                                 </p>
-                                <div className="w-full h-px bg-gray-200 my-2"></div>
-                                <p className="text-sm font-medium text-gray-500">
-                                    <span className="font-bold text-rose-600">Symptoms:</span><br/>
+                                <div className="w-full h-px bg-base-300/40 my-2"></div>
+                                <p className="text-xs font-semibold text-base-content/60 leading-relaxed">
+                                    <span className="font-black text-red-500 uppercase tracking-wider block text-[9px] mb-0.5">Symptoms</span>
                                     {taskData.symptoms || 'None reported'}
                                 </p>
                             </div>
                         </div>
 
                         <div>
-                            <h4 className="text-xs uppercase tracking-wider font-bold text-gray-500 mb-2">Assignment</h4>
+                            <h4 className="text-[10px] uppercase tracking-[0.2em] font-black text-base-content/40 mb-2">Attending Officer assignment</h4>
                             <div className="relative">
-                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                    <Users size={18} className="text-gray-400" />
+                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-base-content/30">
+                                    <Users size={18} />
                                 </div>
                                 <select 
-                                    className="w-full pl-10 pr-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                                    className="w-full h-11 pl-10 pr-4 bg-base-200/60 border border-base-300 rounded-xl text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all cursor-pointer"
                                     value={selectedTech}
                                     onChange={(e) => setSelectedTech(e.target.value)}
                                 >
@@ -112,16 +117,17 @@ const AssignTaskModal = ({ isOpen, onClose, taskData, onSuccess }) => {
                         </div>
                     </div>
 
-                    <div className="p-6 bg-gray-50 border-t border-gray-100 flex gap-3">
+                    {/* Footer */}
+                    <div className="p-6 bg-base-200/30 border-t border-base-300/80 flex gap-3 justify-end">
                         <button 
                             onClick={onClose}
-                            className="flex-1 py-3 px-4 bg-white border border-gray-300 rounded-xl text-gray-700 font-bold hover:bg-gray-50 transition-colors"
+                            className="py-3 px-6 bg-base-200 hover:bg-base-300 border border-base-300 rounded-xl text-base-content/70 hover:text-base-content font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
                         >
                             Cancel
                         </button>
                         <button 
                             onClick={handleAssignTask}
-                            className={`flex-2 py-3 px-8 text-white rounded-xl font-bold transition-all shadow-sm flex items-center justify-center gap-2 bg-[#074033] hover:bg-[#06352a]`}
+                            className="py-3 px-8 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-emerald-500/10 flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
                         >
                             <CheckCircle size={18} /> Confirm Assignment
                         </button>

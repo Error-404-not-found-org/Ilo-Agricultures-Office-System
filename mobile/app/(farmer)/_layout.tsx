@@ -17,6 +17,12 @@ export default function FarmerLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen 
+        name="heat-map" 
+        options={{
+          href: null,
+        }}
+      />
       <Tabs.Screen name="profile" />
     </Tabs>
   );

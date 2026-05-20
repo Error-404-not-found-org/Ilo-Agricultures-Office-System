@@ -22,7 +22,7 @@ import { useAuth } from "@clerk/clerk-expo";
 
 const PRIMARY = "#00643B";
 
-export default function HeatMapScreen() {
+export default function FarmerHeatMapScreen() {
   const router = useRouter();
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();

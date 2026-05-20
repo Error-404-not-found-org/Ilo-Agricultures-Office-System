@@ -28,6 +28,7 @@ import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import Skeleton from "../../components/Skeleton";
 import RegisterFarmerModal from "../../components/modals/RegisterFarmerModal";
+import { OTON_BARANGAYS } from "../../constants/barangays";
 
 export default function FarmersDirectory() {
   const queryClient = useQueryClient();
@@ -41,6 +42,7 @@ export default function FarmersDirectory() {
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
   const [editData, setEditData] = useState({
     id: "",
     firstName: "",
@@ -119,12 +121,12 @@ export default function FarmersDirectory() {
     e.preventDefault();
     setIsUpdating(true);
     try {
-      await axiosInstance.put(`/technician/farmers/${editData.id}`, {
+      await axiosInstance.put(`/user/${editData.id}`, {
         name: `${editData.firstName} ${editData.lastName}`,
         phoneNumber: editData.phoneNumber,
         address: {
           barangay: editData.barangay,
-          city: "Iloilo",
+          city: "Oton",
           province: "Iloilo",
         },
         email: editData.email,
@@ -638,9 +640,9 @@ export default function FarmersDirectory() {
       )}
 
       {/* REGISTRATION MODAL */}
-      <RegisterFarmerModal 
-        isOpen={isRegisterModalOpen} 
-        onClose={() => setIsRegisterModalOpen(false)} 
+      <RegisterFarmerModal
+        isOpen={isRegisterModalOpen}
+        onClose={() => setIsRegisterModalOpen(false)}
       />
       {/* EDIT PARTNER MODAL */}
       <AnimatePresence>
@@ -734,19 +736,60 @@ export default function FarmersDirectory() {
                     />
                   </fieldset>
 
-                  <fieldset className="fieldset">
+                  <fieldset className="fieldset relative">
                     <legend className="fieldset-legend text-[9px] font-black uppercase tracking-widest text-base-content/40">
                       Barangay Location
                     </legend>
-                    <input
-                      type="text"
-                      required
-                      value={editData.barangay}
-                      onChange={(e) =>
-                        setEditData({ ...editData, barangay: e.target.value })
-                      }
-                      className="input input-bordered w-full rounded-none h-10 text-xs font-bold bg-base-200"
-                    />
+                    <div className="relative w-full">
+                      <input
+                        type="text"
+                        required
+                        value={editData.barangay}
+                        onChange={(e) => {
+                          setEditData({ ...editData, barangay: e.target.value });
+                          setIsBarangayDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsBarangayDropdownOpen(true)}
+                        onBlur={() => setTimeout(() => setIsBarangayDropdownOpen(false), 200)}
+                        className="input input-bordered w-full rounded-none h-10 text-xs font-bold bg-base-200"
+                      />
+                      <AnimatePresence>
+                        {isBarangayDropdownOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -5 }}
+                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-40 overflow-y-auto border border-base-300 bg-base-100 shadow-xl custom-scrollbar"
+                          >
+                            {OTON_BARANGAYS.filter((b) =>
+                              (b || "").toLowerCase().includes((editData.barangay || "").toLowerCase())
+                            ).length > 0 ? (
+                              OTON_BARANGAYS.filter((b) =>
+                                (b || "").toLowerCase().includes((editData.barangay || "").toLowerCase())
+                              ).map((b) => (
+                                <button
+                                  key={b}
+                                  onClick={() => {
+                                    setEditData({ ...editData, barangay: b });
+                                    setIsBarangayDropdownOpen(false);
+                                  }}
+                                  type="button"
+                                  className="w-full px-4 py-2 text-left transition-colors hover:bg-emerald-500/10 flex items-center border-b border-base-200/50 last:border-0 cursor-pointer"
+                                >
+                                  <span className="text-xs font-bold text-base-content block uppercase">
+                                    {b}
+                                  </span>
+                                </button>
+                              ))
+                            ) : (
+                              <div className="py-4 text-center text-[10px] font-black text-base-content/20 uppercase tracking-widest">
+                                No matching barangay
+                              </div>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </fieldset>
 
                   <fieldset className="fieldset">

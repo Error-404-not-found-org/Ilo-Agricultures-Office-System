@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, AlertCircle, Clock, Trash2, ChevronRight } from 'lucide-react';
+import { X, Calendar, Clock, Trash2, ChevronRight } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
@@ -43,7 +43,6 @@ const RescheduleCancelModal = ({ isOpen, onClose, taskData, onSuccess }) => {
         toast.promise(axiosInstance.patch(endpoint, payload), {
             loading: type === 'cancel' ? 'Cancelling request...' : 'Rescheduling request...',
             success: async () => {
-                // Wait for the data to actually refresh
                 queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
                 if (onSuccess) onSuccess();
                 onClose();
@@ -58,100 +57,93 @@ const RescheduleCancelModal = ({ isOpen, onClose, taskData, onSuccess }) => {
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={onClose}
-                    className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
-                />
+            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
                 
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                    className="bg-white rounded-[32px] max-w-lg w-full shadow-2xl relative overflow-hidden"
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    className="bg-base-100 border border-base-300 rounded-3xl max-w-lg w-full shadow-2xl relative overflow-hidden"
                 >
                     {/* Header */}
-                    <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+                    <div className="p-6 border-b border-base-300 bg-base-200/40 flex justify-between items-center">
                         <div>
-                            <h3 className="text-xl font-black text-slate-800">Manage Request</h3>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
+                            <h3 className="text-xl font-black text-base-content uppercase leading-none">Manage Request</h3>
+                            <p className="text-[10px] font-black text-base-content/40 uppercase tracking-widest mt-1.5 leading-none">
                                 {taskData.farmer} · {taskData.task}
                             </p>
                         </div>
-                        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                            <X size={20} className="text-slate-400" />
+                        <button onClick={onClose} className="p-2 hover:bg-base-200 rounded-full text-base-content/40 hover:text-base-content transition-colors cursor-pointer">
+                            <X size={20} />
                         </button>
                     </div>
 
-                    <div className="p-8">
+                    <div className="p-6 space-y-6">
                         {mode === 'select' && (
                             <div className="space-y-4">
-                                <p className="text-slate-500 font-medium text-center mb-6">
+                                <p className="text-base-content/60 font-semibold text-center text-xs tracking-wider uppercase mb-2">
                                     Why can't you fulfill this request at the requested time?
                                 </p>
                                 
                                 <button 
                                     onClick={() => setMode('reschedule')}
-                                    className="w-full group p-6 rounded-3xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50/50 transition-all flex items-center gap-4 text-left"
+                                    className="w-full group p-5 rounded-2xl border border-base-300 bg-base-200/30 hover:border-blue-500/30 hover:bg-blue-500/5 transition-all flex items-center gap-4 text-left cursor-pointer"
                                 >
-                                    <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center text-blue-600">
-                                        <Calendar size={24} />
+                                    <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600">
+                                        <Calendar size={22} />
                                     </div>
                                     <div className="flex-1">
-                                        <h4 className="font-black text-slate-800">Reschedule</h4>
-                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-tighter">Suggest a better time for the farmer</p>
+                                        <h4 className="font-black text-base-content uppercase text-sm">Reschedule</h4>
+                                        <p className="text-[10px] font-bold text-base-content/40 uppercase tracking-tight mt-0.5">Suggest a better time for the farmer</p>
                                     </div>
-                                    <ChevronRight size={20} className="text-slate-300 group-hover:text-blue-500" />
+                                    <ChevronRight size={18} className="text-base-content/30 group-hover:text-blue-500 transition-colors" />
                                 </button>
 
                                 <button 
                                     onClick={() => setMode('cancel')}
-                                    className="w-full group p-6 rounded-3xl border-2 border-slate-100 hover:border-rose-500 hover:bg-rose-50/50 transition-all flex items-center gap-4 text-left"
+                                    className="w-full group p-5 rounded-2xl border border-base-300 bg-base-200/30 hover:border-rose-500/30 hover:bg-rose-500/5 transition-all flex items-center gap-4 text-left cursor-pointer"
                                 >
-                                    <div className="w-12 h-12 rounded-2xl bg-rose-100 flex items-center justify-center text-rose-600">
-                                        <Trash2 size={24} />
+                                    <div className="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600">
+                                        <Trash2 size={22} />
                                     </div>
                                     <div className="flex-1">
-                                        <h4 className="font-black text-slate-800">Cancel Request</h4>
-                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-tighter">Decline this service entirely</p>
+                                        <h4 className="font-black text-base-content uppercase text-sm">Cancel Request</h4>
+                                        <p className="text-[10px] font-bold text-base-content/40 uppercase tracking-tight mt-0.5">Decline this service entirely</p>
                                     </div>
-                                    <ChevronRight size={20} className="text-slate-300 group-hover:text-rose-500" />
+                                    <ChevronRight size={18} className="text-base-content/30 group-hover:text-rose-500 transition-colors" />
                                 </button>
                             </div>
                         )}
 
                         {mode === 'reschedule' && (
-                            <div className="space-y-6 animate-fade-in">
+                            <div className="space-y-6">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Proposed Time</label>
+                                    <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1">New Proposed Time</label>
                                     <div className="relative">
-                                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                        <Clock className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/30" size={18} />
                                         <input 
                                             type="datetime-local"
                                             value={scheduledDate}
                                             onChange={(e) => setScheduledDate(e.target.value)}
-                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-4 text-sm font-bold focus:border-blue-500 focus:bg-white transition-all outline-none"
+                                            className="w-full h-12 bg-base-200 border border-base-300 rounded-2xl py-4 pl-12 pr-4 text-xs font-bold text-base-content focus:border-blue-500 focus:outline-none transition-all cursor-pointer"
                                         />
                                     </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Reason for Reschedule</label>
+                                    <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1">Reason for Reschedule</label>
                                     <textarea 
                                         placeholder="e.g. Technician is attending another emergency..."
                                         value={reason}
                                         onChange={(e) => setReason(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-sm font-medium focus:border-blue-500 focus:bg-white transition-all outline-none min-h-[100px] resize-none"
+                                        className="w-full bg-base-200 border border-base-300 rounded-2xl p-4 text-xs font-bold text-base-content placeholder:text-base-content/30 focus:border-blue-500 focus:outline-none transition-all min-h-[100px] resize-none"
                                     />
                                 </div>
-                                <div className="flex gap-3">
-                                    <button onClick={() => setMode('select')} className="flex-1 py-4 font-black text-slate-400 uppercase tracking-widest text-xs hover:bg-slate-100 rounded-2xl transition-colors">Back</button>
+                                <div className="flex gap-3 pt-2">
+                                    <button onClick={() => setMode('select')} className="flex-1 h-12 font-black text-base-content/50 hover:text-base-content uppercase tracking-widest text-[10px] bg-base-200 hover:bg-base-300 rounded-2xl transition-colors cursor-pointer">Back</button>
                                     <button 
                                         onClick={() => handleAction('reschedule')}
                                         disabled={isSubmitting}
-                                        className="flex-2 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-blue-200"
+                                        className="flex-2 bg-blue-600 hover:bg-blue-700 text-white h-12 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-blue-500/10 cursor-pointer"
                                     >
                                         {isSubmitting ? 'Processing...' : 'Confirm Reschedule'}
                                     </button>
@@ -160,22 +152,22 @@ const RescheduleCancelModal = ({ isOpen, onClose, taskData, onSuccess }) => {
                         )}
 
                         {mode === 'cancel' && (
-                            <div className="space-y-6 animate-fade-in">
+                            <div className="space-y-6">
                                 <div className="space-y-2">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Reason for Cancellation</label>
+                                    <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1">Reason for Cancellation</label>
                                     <textarea 
                                         placeholder="e.g. Service not available in this area..."
                                         value={reason}
                                         onChange={(e) => setReason(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 text-sm font-medium focus:border-rose-500 focus:bg-white transition-all outline-none min-h-[100px] resize-none"
+                                        className="w-full bg-base-200 border border-base-300 rounded-2xl p-4 text-xs font-bold text-base-content placeholder:text-base-content/30 focus:border-rose-500 focus:outline-none transition-all min-h-[100px] resize-none"
                                     />
                                 </div>
-                                <div className="flex gap-3">
-                                    <button onClick={() => setMode('select')} className="flex-1 py-4 font-black text-slate-400 uppercase tracking-widest text-xs hover:bg-slate-100 rounded-2xl transition-colors">Back</button>
+                                <div className="flex gap-3 pt-2">
+                                    <button onClick={() => setMode('select')} className="flex-1 h-12 font-black text-base-content/50 hover:text-base-content uppercase tracking-widest text-[10px] bg-base-200 hover:bg-base-300 rounded-2xl transition-colors cursor-pointer">Back</button>
                                     <button 
                                         onClick={() => handleAction('cancel')}
                                         disabled={isSubmitting}
-                                        className="flex-2 bg-rose-600 hover:bg-rose-700 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl shadow-rose-200"
+                                        className="flex-2 bg-rose-600 hover:bg-rose-700 text-white h-12 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-rose-500/10 cursor-pointer"
                                     >
                                         {isSubmitting ? 'Processing...' : 'Yes, Cancel Request'}
                                     </button>

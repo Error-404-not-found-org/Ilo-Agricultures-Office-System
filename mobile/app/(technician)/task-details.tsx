@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Platform, Linking } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, CheckCircle, MapPin, Phone, User, Info, Navigation } from 'lucide-react-native';
@@ -101,13 +101,17 @@ export default function TaskDetailsScreen() {
                 </View>
             </Marker>
           </MapView>
+
+          <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
           
           <TouchableOpacity 
             style={styles.floatingNav}
-            onPress={() => {
-                const url = `https://www.google.com/maps/dir/?api=1&destination=${farmerCoords.lat},${farmerCoords.lng}`;
-                router.push(url as any);
-            }}
+             onPress={() => {
+                 const url = `https://www.google.com/maps/dir/?api=1&destination=${farmerCoords.lat},${farmerCoords.lng}`;
+                 Linking.openURL(url).catch((err) =>
+                   console.error("Failed to open maps", err)
+                 );
+             }}
           >
              <Navigation size={20} color="#fff" />
              <Text style={styles.navText}>Navigate</Text>
@@ -317,5 +321,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontFamily: 'Outfit_800ExtraBold',
     fontSize: 16,
+  },
+  attributionText: {
+    position: 'absolute',
+    left: 12,
+    bottom: 12,
+    fontSize: 9,
+    fontFamily: 'Outfit_500Medium',
+    color: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    zIndex: 101,
   },
 });

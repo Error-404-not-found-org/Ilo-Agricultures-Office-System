@@ -74,7 +74,11 @@ export const downloadOtonTiles = async (
     const tileInfo = await FileSystem.getInfoAsync(localPath);
     if (!tileInfo.exists) {
       try {
-        await FileSystem.downloadAsync(getTileUrl(x, y, z), localPath);
+        await FileSystem.downloadAsync(getTileUrl(x, y, z), localPath, {
+          headers: {
+            "User-Agent": "IloiloAgricultureOfficeSystem/1.0 (mobile; contact: office-system@ilo-oton.gov.ph)",
+          },
+        });
       } catch (e) {
         console.error(`Failed to download tile ${z}/${x}/${y}`, e);
       }

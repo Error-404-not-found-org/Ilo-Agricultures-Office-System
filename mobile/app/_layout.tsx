@@ -63,8 +63,10 @@ function InitialLayout() {
     async function init() {
       try {
         const savedTheme = await AsyncStorage.getItem("theme_preference");
-        if (savedTheme) setColorScheme(savedTheme as any);
-      } catch (e) {}
+        setColorScheme((savedTheme || "light") as any);
+      } catch (e) {
+        setColorScheme("light");
+      }
       setTimeout(() => setAppReady(true), 2000);
     }
     init();
@@ -77,6 +79,18 @@ function InitialLayout() {
     });
     return () => unsubscribe();
   }, [api]);
+
+  // Push Token Sync (runs only when signed-in user changes)
+  useEffect(() => {
+    if (isSignedIn && user) {
+      registerForPushNotificationsAsync().then(token => {
+        if (token) {
+          api.post('/user/push-token', { pushToken: token })
+            .catch(err => console.error("Push token sync failed", err));
+        }
+      });
+    }
+  }, [isSignedIn, user?.id]);
 
   // Auth Guard Logic
   useEffect(() => {
@@ -91,16 +105,6 @@ function InitialLayout() {
     const isActuallySignedIn = isSignedIn && !!user;
 
     if (isActuallySignedIn) {
-      // --- REGISTER PUSH TOKEN (DISABLED FOR EXPO GO STABILITY) ---
-      /*
-      registerForPushNotificationsAsync().then(token => {
-        if (token) {
-          api.post('/user/push-token', { pushToken: token })
-            .catch(err => console.error("Push token sync failed", err));
-        }
-      });
-      */
-
       const role = user?.publicMetadata?.role;
       const verified = user?.publicMetadata?.isVerified === true || 
                        user?.primaryEmailAddress?.verification.status === 'verified';
@@ -161,9 +165,8 @@ function InitialLayout() {
 
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-/*
 // Only set handler if not in Expo Go to avoid SDK 53+ warnings
-if (Constants.appOwnership !== 'expo') {
+if (Constants.executionEnvironment !== 'storeClient') {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -174,7 +177,6 @@ if (Constants.appOwnership !== 'expo') {
     }),
   });
 }
-*/
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({

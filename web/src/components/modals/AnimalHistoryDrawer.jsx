@@ -3,14 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   History,
-  Calendar,
   Syringe,
   HeartPulse,
   ChevronRight,
-  Info,
   MapPin,
   Activity,
-  ClipboardList,
   AlertCircle
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
@@ -18,7 +15,6 @@ import axiosInstance from "../../lib/axios";
 const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
   const [animal, setAnimal] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("Timeline");
 
   useEffect(() => {
     if (isOpen && animalId) {
@@ -47,7 +43,6 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
     }).format(new Date(dateString));
   };
 
-  // Compile a unified timeline of events
   const timelineEvents = animal ? [
     ...(animal.breedingRecords || []).map(r => ({
       type: 'breeding',
@@ -91,7 +86,7 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-slate-950/80 z-999"
+            className="fixed inset-0 bg-black/60 backdrop-blur-md z-99"
           />
 
           {/* Drawer */}
@@ -100,22 +95,21 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 25, stiffness: 200 }}
-            className="fixed right-0 top-0 h-screen w-full max-w-md bg-base-200 shadow-2xl z-1000 flex flex-col border-l border-base-300"
+            className="fixed right-0 top-0 h-screen w-full max-w-md bg-base-100 shadow-2xl z-100 flex flex-col border-l border-base-300"
           >
-            {/* Header */}
-            <div className="p-8 bg-[#074033] text-white">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md">
-                  <History size={24} />
+            <div className="p-6 bg-linear-to-r from-[#074033] to-[#0d5948] text-white">
+              <div className="flex justify-between items-start mb-4">
+                <div className="w-11 h-11 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md">
+                  <History size={22} />
                 </div>
                 <button
                   onClick={onClose}
-                  className="p-2 hover:bg-white/10 rounded-xl transition-colors"
+                  className="p-2 bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer"
                 >
-                  <X size={20} />
+                  <X size={18} />
                 </button>
               </div>
-              <h2 className="text-2xl font-black tracking-tighter uppercase mb-1">
+              <h2 className="text-xl font-black tracking-tighter uppercase mb-1">
                 Activity Timeline
               </h2>
               <p className="text-white/40 text-[9px] font-black uppercase tracking-[0.2em]">
@@ -124,7 +118,7 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-base-200/20">
               {loading ? (
                 <div className="flex flex-col items-center justify-center h-full gap-4 py-20">
                   <span className="loading loading-infinity loading-lg text-emerald-600"></span>
@@ -136,10 +130,10 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
                   <p className="text-sm font-black text-base-content/20 uppercase">Data Unavailable</p>
                 </div>
               ) : (
-                <div className="space-y-8">
+                <div className="space-y-6">
                    {/* Animal Summary Card */}
-                   <div className="bg-base-100 rounded-3xl p-6 border border-base-300 shadow-sm">
-                      <div className="grid grid-cols-2 gap-6">
+                   <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm">
+                      <div className="grid grid-cols-2 gap-4">
                          <div>
                             <p className="text-[8px] font-black uppercase tracking-widest text-base-content/30 mb-1">Registration</p>
                             <p className="text-xs font-black text-base-content">{formatDate(animal.registrationDate)}</p>
@@ -160,13 +154,13 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
                    </div>
 
                    {/* Timeline */}
-                   <div className="space-y-6">
+                   <div className="space-y-4">
                       <div className="flex items-center gap-2">
                          <Activity size={16} className="text-emerald-500" />
                          <h3 className="text-[10px] font-black uppercase tracking-widest text-base-content/60">Event Timeline</h3>
                       </div>
 
-                      <div className="relative pl-6 space-y-8">
+                      <div className="relative pl-6 space-y-6">
                          {/* Vertical Line */}
                          <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-base-300" />
 
@@ -180,9 +174,9 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
                                className="relative"
                              >
                                {/* Timeline Dot */}
-                               <div className={`absolute -left-[21px] w-4 h-4 rounded-full border-4 border-base-200 ${event.bg} ring-2 ring-base-300 z-10`} />
+                               <div className={`absolute -left-[21px] w-4 h-4 rounded-full border-4 border-base-100 ${event.bg} ring-2 ring-base-300 z-10`} />
                                
-                               <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm group hover:border-emerald-500/30 transition-all">
+                               <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm hover:border-emerald-500/30 transition-all">
                                   <div className="flex justify-between items-start mb-3">
                                      <div className={`p-2 rounded-xl ${event.bg} ${event.color}`}>
                                         <event.icon size={16} />
@@ -220,10 +214,10 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
             </div>
 
             {/* Footer */}
-            <div className="p-8 bg-base-300/50 border-t border-base-300">
+            <div className="p-6 bg-base-200/50 border-t border-base-300">
                <button 
                  onClick={onClose}
-                 className="w-full h-12 bg-white dark:bg-slate-900 border border-base-300 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-base-200 transition-all"
+                 className="w-full h-12 bg-base-200 hover:bg-base-300 border border-base-300 text-base-content/70 hover:text-base-content font-black rounded-xl text-[10px] uppercase tracking-widest transition-all cursor-pointer"
                >
                  Dismiss History
                </button>

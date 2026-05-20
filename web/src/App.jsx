@@ -29,6 +29,7 @@ import FarmerProfile from "./pages/technician/FarmerProfile";
 import TechnicianAnimals from "./pages/technician/Animals";
 import TechnicianInseminations from "./pages/technician/Inseminations";
 import TechnicianHealth from "./pages/technician/Health";
+import TechnicianHealthMap from "./pages/technician/HealthMap";
 import WalkInInsemination from "./pages/technician/WalkInInsemination";
 import TechMyProfile from "./pages/technician/Profile";
 import TechnicianAnalytics from "./pages/technician/Analytics";
@@ -37,7 +38,6 @@ import TechnicianSchedule from "./pages/technician/Schedule";
 import TechnicianRequests from "./pages/technician/Requests";
 import BreedingLedger from "./pages/technician/BreedingLedger";
 import FieldNotes from "./pages/technician/FieldNotes";
-import TestModalPage from "./pages/technician/TestModalPage";
 import FarmerDashboard from "./pages/FarmerDashboard";
 import ProtectedFarmerRoute from "./components/ProtectedFarmerRoute";
 
@@ -99,6 +99,7 @@ function App() {
         <Route path="animals/:id" element={<LivestockProfile />} />
         <Route path="inseminations" element={<TechnicianInseminations />} />
         <Route path="health" element={<TechnicianHealth />} />
+        <Route path="health-map" element={<TechnicianHealthMap />} />
         <Route path="ledger" element={<BreedingLedger />} />
         <Route path="walk-in" element={<WalkInInsemination />} />
         <Route path="profile" element={<TechMyProfile />} />
@@ -108,7 +109,6 @@ function App() {
         <Route path="requests" element={<TechnicianRequests />} />
         <Route path="field-notes" element={<FieldNotes />} />
         <Route path="settings" element={<Settings />} />
-        <Route path="lab" element={<TestModalPage />} />
       </Route>
 
       {/* Protected Farmer Routes */}

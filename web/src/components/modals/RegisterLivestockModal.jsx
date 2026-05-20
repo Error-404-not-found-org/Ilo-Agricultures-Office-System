@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
-  Plus,
   Search,
   Upload,
   CalendarDays,
@@ -12,7 +11,6 @@ import {
   Camera,
   BadgeInfo,
   BadgeCheck,
-  Zap,
   Info,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,8 +18,8 @@ import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "../../constants/breeds";
 
-const inputClass = `w-full h-11 bg-base-200/50 border border-base-200 rounded-none px-4 text-xs font-bold text-base-content placeholder:text-base-content/20 focus:border-emerald-500/30 focus:outline-none transition-all`;
-const labelClass = `text-[9px] font-black text-base-content/30 uppercase tracking-[0.2em] ml-1`;
+const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
+const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
 
 const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
   const queryClient = useQueryClient();
@@ -42,7 +40,6 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
     farmerName: "",
   });
 
-  // FETCH FARMERS
   const { data: farmers = [] } = useQuery({
     queryKey: ["farmers", "list"],
     queryFn: async () => {
@@ -52,7 +49,6 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
     enabled: isOpen,
   });
 
-  // REGISTER
   const mutation = useMutation({
     mutationFn: async (data) => {
       const res = await axiosInstance.post(
@@ -77,7 +73,6 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
 
   if (!isOpen) return null;
 
-  // IMAGE
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -89,7 +84,6 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
     }
   };
 
-  // SUBMIT
   const handleRegister = () => {
     if (!formData.farmerName)
       return toast.error("Please select a livestock owner.");
@@ -104,35 +98,26 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-120 flex items-center justify-center p-4">
-        {/* BACKDROP */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]"
-        />
-
+      <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+        
         {/* MODAL */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.97, y: 10 }}
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.97, y: 10 }}
-          transition={{ duration: 0.15 }}
-          className="relative w-full max-w-6xl overflow-hidden rounded-none border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          className="relative w-full max-w-6xl overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
         >
           {/* HEADER */}
-          <div className="flex items-center justify-between border-b border-base-200 bg-base-200/30 px-8 py-5">
-            <div className="flex items-center gap-5">
-              <div className="w-14 h-14 bg-emerald-500/5 border border-emerald-500/10 rounded-none flex items-center justify-center text-emerald-600 shadow-sm">
-                <PawPrint size={24} />
+          <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
+                <PawPrint size={20} />
               </div>
               <div>
-                <h3 className="text-xl font-black uppercase tracking-tighter text-base-content">
+                <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
                   Livestock Registry
                 </h3>
-                <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.3em] text-base-content/25">
+                <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
                   Municipal Asset Identification Protocol
                 </p>
               </div>
@@ -140,22 +125,22 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
 
             <button
               onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-none bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content cursor-pointer"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
 
           {/* SCROLLABLE CONTENT */}
-          <div className="overflow-y-auto flex-1 custom-scrollbar px-8 py-8">
-            <div className="grid grid-cols-1 xl:grid-cols-[400px_1fr] gap-8">
+          <div className="overflow-y-auto flex-1 custom-scrollbar p-6 bg-base-100">
+            <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-6">
               {/* LEFT PANEL: PROFILE ASSETS */}
-              <div className="bg-base-200/20 border border-base-200 rounded-none p-6 space-y-6">
+              <div className="bg-base-200/30 border border-base-300 rounded-2xl p-5 space-y-6">
                 <div>
-                  <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center gap-2 mb-3">
                     <Camera size={14} className="text-emerald-500" />
-                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">
-                      Identification asset
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Identification Asset
                     </h4>
                   </div>
 
@@ -163,7 +148,7 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                     onClick={() =>
                       document.getElementById("animal-photo").click()
                     }
-                    className="relative aspect-square rounded-none overflow-hidden border-2 border-dashed border-base-200 hover:border-emerald-500 transition-all bg-base-200/50 cursor-pointer group"
+                    className="relative aspect-square rounded-xl overflow-hidden border border-base-300 hover:border-emerald-500/50 transition-all bg-base-200 cursor-pointer group"
                   >
                     {imagePreview ? (
                       <img
@@ -173,14 +158,14 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                       />
                     ) : (
                       <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                        <div className="w-16 h-16 rounded-none bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-center group-hover:scale-105 transition-all">
-                          <Upload size={24} className="text-emerald-600" />
+                        <div className="w-14 h-14 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center group-hover:scale-105 transition-all">
+                          <Upload size={20} className="text-emerald-600" />
                         </div>
                         <div className="text-center px-4">
-                          <p className="text-[10px] font-black text-base-content/40 uppercase tracking-widest">
+                          <p className="text-[9px] font-black text-base-content/40 uppercase tracking-widest leading-none">
                             Upload Field Capture
                           </p>
-                          <p className="text-[8px] font-bold text-base-content/20 uppercase mt-1">
+                          <p className="text-[8px] font-bold text-base-content/20 uppercase mt-1.5 leading-none">
                             PNG / JPG / WEBP
                           </p>
                         </div>
@@ -198,12 +183,12 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
               </div>
 
               {/* RIGHT PANEL: TECHNICAL SPECS */}
-              <div className="bg-base-200/20 border border-base-200 rounded-none p-8 space-y-8">
+              <div className="bg-base-200/30 border border-base-300 rounded-2xl p-6 space-y-6">
                 {/* OWNER SELECTION */}
-                <div className="space-y-3 relative">
+                <div className="space-y-2.5 relative">
                   <div className="flex items-center gap-2">
                     <User2 size={14} className="text-emerald-500" />
-                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
                       Municipal Ownership
                     </h4>
                   </div>
@@ -229,7 +214,7 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                         initial={{ opacity: 0, y: -5 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -5 }}
-                        className="absolute top-full left-0 w-full mt-1 bg-base-100 border border-base-300 rounded-none overflow-hidden shadow-2xl z-50 max-h-72 overflow-y-auto"
+                        className="absolute top-full left-0 w-full mt-1 bg-base-100 border border-base-300 rounded-xl overflow-hidden shadow-2xl z-50 max-h-60 overflow-y-auto custom-scrollbar"
                       >
                         {farmers.filter((f) =>
                           f.name
@@ -253,16 +238,16 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                                   setSearchFarmer(farmer.name);
                                   setIsDropdownOpen(false);
                                 }}
-                                className="w-full px-6 py-4 flex items-center gap-4 hover:bg-base-200 transition-all text-left border-b border-base-200 last:border-none"
+                                className="w-full px-5 py-3 flex items-center gap-3.5 hover:bg-base-200 transition-all text-left border-b border-base-200 last:border-none cursor-pointer"
                               >
-                                <div className="w-10 h-10 rounded-none bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-center text-[10px] font-black text-emerald-600">
-                                  {farmer.name.substring(0, 2).toUpperCase()}
+                                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-[10px] font-black text-emerald-600 uppercase">
+                                  {farmer.name.substring(0, 2)}
                                 </div>
                                 <div>
-                                  <p className="text-[11px] font-black text-base-content uppercase tracking-tight">
+                                  <p className="text-xs font-black text-base-content uppercase tracking-tight">
                                     {farmer.name}
                                   </p>
-                                  <p className="text-[8px] font-bold text-base-content/30 uppercase tracking-widest">
+                                  <p className="text-[8px] font-bold text-base-content/30 uppercase tracking-widest mt-0.5">
                                     {farmer.role || "FARMER"}
                                   </p>
                                 </div>
@@ -279,10 +264,9 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                 </div>
 
                 {/* TECHNICAL PROFILE */}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-base-200/50">
-                  <div className="space-y-2">
-                    <label className={labelClass}>EarTag</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6 border-t border-base-300">
+                  <div className="space-y-1.5">
+                    <label className={labelClass}>Ear Tag</label>
                     <div className="relative">
                       <BadgeInfo
                         size={16}
@@ -300,14 +284,14 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Species</label>
                     <select
                       value={formData.species}
                       onChange={(e) =>
                         setFormData({ ...formData, species: e.target.value })
                       }
-                      className={`${inputClass} appearance-none`}
+                      className={`${inputClass} cursor-pointer`}
                     >
                       {CATTLE_SPECIES.map((s) => (
                         <option key={s} value={s}>
@@ -317,14 +301,14 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                     </select>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Genetic Breed</label>
                     <select
                       value={formData.breed}
                       onChange={(e) =>
                         setFormData({ ...formData, breed: e.target.value })
                       }
-                      className={`${inputClass} appearance-none`}
+                      className={`${inputClass} cursor-pointer`}
                     >
                       <option value="" disabled>
                         Select Breed
@@ -337,14 +321,14 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                     </select>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Color</label>
                     <select
                       value={formData.color}
                       onChange={(e) =>
                         setFormData({ ...formData, color: e.target.value })
                       }
-                      className={`${inputClass} appearance-none`}
+                      className={`${inputClass} cursor-pointer`}
                     >
                       <option value="" disabled>Select Color</option>
                       {CATTLE_COLORS.map(c => (
@@ -353,7 +337,7 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                     </select>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Brand (Optional)</label>
                     <input
                       value={formData.brand}
@@ -366,7 +350,7 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                     />
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Birth Date</label>
                     <div className="relative">
                       <CalendarDays
@@ -379,20 +363,20 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                         onChange={(e) =>
                           setFormData({ ...formData, dob: e.target.value })
                         }
-                        className={`${inputClass} pl-11`}
+                        className={`${inputClass} pl-11 cursor-pointer`}
                       />
                     </div>
                   </div>
                 </div>
 
                 {/* SYSTEM ADVISORY */}
-                <div className="rounded-none p-5 border border-emerald-500/10 bg-emerald-500/5 flex items-start gap-4">
-                  <Info size={18} className="text-emerald-600 shrink-0" />
+                <div className="rounded-2xl p-5 border border-emerald-500/20 bg-emerald-500/5 flex items-start gap-3">
+                  <Info size={16} className="text-emerald-600 shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="text-[10px] font-black text-base-content uppercase tracking-widest">
+                    <h4 className="text-[10px] font-black text-base-content uppercase tracking-widest leading-none">
                       Registry Synchronization
                     </h4>
-                    <p className="text-[9px] font-bold text-base-content/40 uppercase mt-1 leading-relaxed tracking-wider">
+                    <p className="text-[9px] font-bold text-base-content/40 uppercase mt-2 leading-relaxed tracking-wider">
                       This biological asset will be synchronized with the
                       municipal field operations registry and linked to the
                       selected ownership profile for future auditing.
@@ -404,10 +388,10 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
           </div>
 
           {/* FOOTER */}
-          <div className="px-8 py-5 border-t border-base-200 bg-base-200/20 flex justify-end gap-3">
+          <div className="px-6 py-4 border-t border-base-300 bg-base-200/20 flex justify-end gap-3">
             <button
               onClick={onClose}
-              className="h-11 px-8 rounded-none bg-base-200 hover:bg-base-300 text-[9px] font-black uppercase tracking-widest transition-all text-base-content/40"
+              className="h-11 px-6 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
             >
               Cancel
             </button>
@@ -415,7 +399,7 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
             <button
               onClick={handleRegister}
               disabled={mutation.isPending}
-              className="h-11 px-10 rounded-none bg-[#074033] hover:bg-[#0a5242] text-white text-[9px] font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-950/20 flex items-center gap-3 disabled:opacity-50"
+              className="h-11 px-8 rounded-xl bg-[#074033] hover:bg-[#0d5948] text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-md flex items-center gap-2.5 disabled:opacity-50 cursor-pointer"
             >
               {mutation.isPending ? (
                 <>

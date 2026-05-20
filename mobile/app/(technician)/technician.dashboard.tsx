@@ -715,7 +715,9 @@ export default function TechnicianDashboard() {
 
                 const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}&travelmode=driving`;
 
-                router.push(url as any);
+                Linking.openURL(url).catch((err) =>
+                  console.error("Failed to open maps", err)
+                );
               }}
               style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
             >

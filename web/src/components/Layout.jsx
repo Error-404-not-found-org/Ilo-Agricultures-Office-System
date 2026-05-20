@@ -71,6 +71,7 @@ const Layout = () => {
   const technicianNavItems = [
     { name: "Dashboard", path: "/technician/dashboard", icon: <LayoutDashboard size={24} /> },
     { name: "Service Ledger", path: "/technician/ledger", icon: <Database size={24} /> },
+    { name: "GIS Field Hub", path: "/technician/health-map", icon: <MapPin size={24} /> },
     { name: "Task Requests", path: "/technician/requests", icon: <ClipboardList size={24} /> },
     { name: "Field Notes", path: "/technician/field-notes", icon: <Image size={24} /> },
     { name: "Farmer Registry", path: "/technician/farmers", icon: <Users size={24} /> },

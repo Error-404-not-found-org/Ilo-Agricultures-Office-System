@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Baby, Plus, Trash2, Calendar, ClipboardCheck } from 'lucide-react';
+import { X, Baby, Calendar, ClipboardCheck } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
@@ -72,52 +72,53 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+                
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                    initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                    className="bg-white rounded-4xl max-w-4xl w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
+                    exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                    className="bg-base-100 border border-base-300 rounded-3xl max-w-4xl w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
                 >
                     {/* Header */}
-                    <div className="p-8 pb-4 flex justify-between items-start border-b border-slate-100">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center">
-                                <Baby size={24} className="text-emerald-600" />
+                    <div className="p-6 border-b border-base-300 bg-base-200/40 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                                <Baby size={20} />
                             </div>
                             <div>
-                                <h2 className="text-2xl font-black text-slate-900 leading-tight tracking-tight">Record Calf Drop</h2>
-                                <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">
+                                <h2 className="text-lg font-black text-base-content leading-none uppercase">Record Calf Drop</h2>
+                                <p className="text-[10px] font-black text-base-content/40 uppercase tracking-widest mt-1.5 leading-none">
                                     Registering offspring for {pregnancyData?.animalId?.earTag || "Selected Animal"}
                                 </p>
                             </div>
                         </div>
-                        <button onClick={onClose} className="p-2 bg-slate-100 text-slate-400 rounded-full hover:bg-slate-200 transition-all">
-                            <X size={20} />
+                        <button onClick={onClose} className="p-2 bg-base-200 text-base-content/40 hover:text-base-content rounded-full transition-colors cursor-pointer">
+                            <X size={18} />
                         </button>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                    <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-base-100">
                         {/* Basic Info Section */}
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Drop Date</label>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">Drop Date</label>
                                 <div className="relative">
-                                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/30" size={16} />
                                     <input 
                                         type="date"
                                         value={formData.date}
                                         onChange={(e) => setFormData({...formData, date: e.target.value})}
-                                        className="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 pl-12 pr-4 text-[13px] font-black text-slate-900 focus:bg-white focus:border-blue-500 transition-all outline-none"
+                                        className="w-full h-11 bg-base-200 border border-base-300 rounded-xl pl-10 pr-4 text-xs font-bold text-base-content focus:outline-none transition-all cursor-pointer"
                                     />
                                 </div>
                             </div>
-                            <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Calving Ease (CD)</label>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">Calving Ease (CD)</label>
                                 <select 
                                     value={formData.calvingEase}
                                     onChange={(e) => setFormData({...formData, calvingEase: e.target.value})}
-                                    className="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 text-[13px] font-black text-slate-900 focus:bg-white focus:border-blue-500 transition-all outline-none appearance-none"
+                                    className="w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:outline-none transition-all cursor-pointer"
                                 >
                                     <option value="Natural">Natural</option>
                                     <option value="Difficult">Difficult</option>
@@ -125,8 +126,8 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                     <option value="Stillbirth">Stillbirth</option>
                                 </select>
                             </div>
-                            <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">No. of Calving</label>
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">No. of Calving</label>
                                 <div className="flex items-center gap-2">
                                     <input 
                                         type="number"
@@ -134,82 +135,82 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                         max="5"
                                         value={formData.numberOfCalves}
                                         onChange={(e) => handleNumCalvesChange(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-transparent rounded-2xl py-3 px-5 text-[13px] font-black text-slate-900 focus:bg-white focus:border-blue-500 transition-all outline-none"
+                                        className="w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:outline-none transition-all"
                                     />
-                                    <span className="text-[10px] font-black text-slate-400 uppercase">Head</span>
+                                    <span className="text-[10px] font-black text-base-content/40 uppercase">Head</span>
                                 </div>
                             </div>
                         </div>
 
                         {/* Offspring Details Section */}
-                        <div className="space-y-6">
-                            <div className="flex justify-between items-end">
-                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest border-l-4 border-emerald-500 pl-4 py-1">Offspring Registry</h3>
-                                <div className="bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-xl border border-emerald-100 flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                                    <span className="text-[9px] font-black uppercase tracking-widest">Auto-creating Animal Records</span>
+                        <div className="space-y-4">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-[10px] font-black text-base-content/50 uppercase tracking-widest pl-2 border-l-4 border-emerald-500 py-0.5">Offspring Registry</h3>
+                                <div className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3 py-1 rounded-md border border-emerald-500/20 flex items-center gap-1.5">
+                                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                                    <span className="text-[8px] font-black uppercase tracking-widest leading-none">Auto-creating Animal Records</span>
                                 </div>
                             </div>
                             
-                            <div className="bg-blue-50/30 p-4 rounded-2xl border border-blue-100/50 mb-4">
-                                <p className="text-[10px] font-bold text-blue-600 leading-relaxed">
+                            <div className="bg-blue-500/5 p-4 rounded-2xl border border-blue-500/10">
+                                <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 leading-relaxed">
                                     Each calf registered below will automatically be added to the municipality's animal registry and linked to mother 
                                     <span className="font-black mx-1 underline">#{pregnancyData?.animalId?.earTag || "---"}</span>.
                                 </p>
                             </div>
                             
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {formData.calves.map((calf, index) => (
                                     <motion.div 
                                         key={index}
                                         initial={{ opacity: 0, x: -10 }}
                                         animate={{ opacity: 1, x: 0 }}
-                                        className="bg-slate-50 border border-slate-100 rounded-3xl p-6 relative group hover:border-emerald-200 transition-all"
+                                        className="bg-base-200/40 border border-base-300 rounded-2xl p-5 relative group hover:border-emerald-500/30 transition-all"
                                     >
-                                        <div className="absolute -top-3 -left-3 w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-black shadow-lg">
+                                        <div className="absolute -top-2.5 -left-2.5 w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-black shadow-md">
                                             {index + 1}
                                         </div>
                                         
                                         <div className="space-y-4">
-                                            <div className="grid grid-cols-2 gap-4">
+                                            <div className="grid grid-cols-2 gap-3">
                                                 <div>
-                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Sex</label>
-                                                    <div className="flex p-1 bg-white rounded-xl border border-slate-200">
+                                                    <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest mb-1.5 block">Sex</label>
+                                                    <div className="flex p-0.5 bg-base-100 rounded-lg border border-base-300">
                                                         <button 
                                                             type="button"
                                                             onClick={() => updateCalf(index, 'sex', 'F')}
-                                                            className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${calf.sex === 'F' ? 'bg-rose-100 text-rose-600' : 'text-slate-400 hover:bg-slate-50'}`}
+                                                            className={`flex-1 py-1 rounded text-[9px] font-black transition-all cursor-pointer ${calf.sex === 'F' ? 'bg-rose-500/15 text-rose-600' : 'text-base-content/40 hover:bg-base-200'}`}
                                                         >
                                                             Female
                                                         </button>
                                                         <button 
                                                             type="button"
                                                             onClick={() => updateCalf(index, 'sex', 'M')}
-                                                            className={`flex-1 py-2 rounded-lg text-[10px] font-black transition-all ${calf.sex === 'M' ? 'bg-blue-100 text-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}
+                                                            className={`flex-1 py-1 rounded text-[9px] font-black transition-all cursor-pointer ${calf.sex === 'M' ? 'bg-blue-500/15 text-blue-600' : 'text-base-content/40 hover:bg-base-200'}`}
                                                         >
                                                             Male
                                                         </button>
                                                     </div>
                                                 </div>
                                                 <div>
-                                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Birth Weight (kg)</label>
+                                                    <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest mb-1.5 block">Birth Weight (kg)</label>
                                                     <input 
                                                         type="number"
                                                         value={calf.weight}
                                                         onChange={(e) => updateCalf(index, 'weight', e.target.value)}
                                                         placeholder="0.00"
-                                                        className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all"
+                                                        className="w-full bg-base-100 border border-base-300 rounded-lg py-1 px-2.5 text-xs font-bold text-base-content outline-none focus:border-emerald-500 transition-all"
                                                     />
                                                 </div>
                                             </div>
                                             <div>
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block">Calf's ID No.</label>
+                                                <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest mb-1.5 block">Calf's ID No.</label>
                                                 <input 
                                                     type="text"
                                                     value={calf.earTag}
                                                     onChange={(e) => updateCalf(index, 'earTag', e.target.value)}
                                                     placeholder="TAG-XXXXX"
-                                                    className="w-full bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs font-black text-slate-900 outline-none focus:border-emerald-500 transition-all uppercase"
+                                                    className="w-full bg-base-100 border border-base-300 rounded-lg py-1 px-2.5 text-xs font-black text-base-content outline-none focus:border-emerald-500 transition-all uppercase"
                                                 />
                                             </div>
                                         </div>
@@ -219,35 +220,35 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                         </div>
 
                         {/* Notes Section */}
-                        <div className="bg-blue-50/50 rounded-3xl p-6 border border-blue-100">
-                            <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest ml-1 block mb-2">Technical Observations</label>
+                        <div className="bg-base-200/40 rounded-2xl p-5 border border-base-300">
+                            <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block mb-2">Technical Observations</label>
                             <textarea 
                                 placeholder="Describe any complications, vaccinations given at birth, or specific observations..."
                                 value={formData.technicianNote}
                                 onChange={(e) => setFormData({...formData, technicianNote: e.target.value})}
-                                className="w-full bg-white border-2 border-transparent rounded-2xl py-4 px-5 text-[13px] font-bold text-slate-900 focus:border-blue-400 transition-all outline-none min-h-[100px] resize-none"
+                                className="w-full bg-base-100 border border-base-300 rounded-2xl py-3 px-4 text-xs font-bold text-base-content focus:border-emerald-500 transition-all outline-none min-h-[90px] resize-none"
                             />
                         </div>
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="p-8 border-t border-slate-100 bg-slate-50 flex gap-4">
+                    <div className="p-6 border-t border-base-300 bg-base-200/20 flex gap-4">
                         <button 
                             onClick={onClose}
-                            className="flex-1 h-14 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400 hover:bg-slate-200 transition-all"
+                            className="flex-1 h-12 rounded-xl font-black text-[10px] uppercase tracking-widest text-base-content/50 hover:bg-base-200 transition-all cursor-pointer"
                         >
                             Discard
                         </button>
                         <button 
                             onClick={() => mutation.mutate(formData)}
                             disabled={mutation.isPending}
-                            className="flex-2 h-14 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl shadow-emerald-200 flex items-center justify-center gap-3 disabled:opacity-50"
+                            className="flex-2 h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                         >
                             {mutation.isPending ? (
-                                <span className="loading loading-spinner loading-md"></span>
+                                <span className="loading loading-spinner loading-xs"></span>
                             ) : (
                                 <>
-                                    <ClipboardCheck size={20} />
+                                    <ClipboardCheck size={16} />
                                     <span>Register Offspring & Update Ledger</span>
                                 </>
                             )}

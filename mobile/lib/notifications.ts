@@ -37,7 +37,7 @@ export async function registerForPushNotificationsAsync() {
     }
 
     // NEW: Check if running in Expo Go (SDK 53+ does not support remote push in Go)
-    if (Constants.appOwnership === 'expo') {
+    if (Constants.executionEnvironment === 'storeClient') {
       console.warn('Skipping push token fetch: Not supported in Expo Go (SDK 53+). Everything else will work fine!');
       return;
     }

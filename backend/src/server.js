@@ -25,6 +25,7 @@ import medicalRoutes from "./routes/medical.routes.js";
 import reportRoutes from "./routes/report.routes.js";
 import analyticsRoutes from "./routes/analytics.routes.js";
 import moowieRoutes from "./routes/moowie.routes.js";
+import gisRoutes from "./routes/gis.routes.js";
 
 
 
@@ -89,6 +90,7 @@ app.use("/api/medical", medicalRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/moowie", moowieRoutes);
+app.use("/api/gis", gisRoutes);
 
 
 

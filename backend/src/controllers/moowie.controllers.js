@@ -1,6 +1,8 @@
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { User } from "../models/user.model.js";
+import { Task } from "../models/task.model.js";
 import { ENV } from "../config/env.js";
 import axios from "axios";
 
@@ -139,3 +141,125 @@ export const queryAnimalForVoiceflow = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+export const getUserSummaryForVoiceflow = async (req, res) => {
+  try {
+    const { user_name, user_role } = req.body;
+    const role = user_role || 'farmer';
+    const name = user_name || 'Partner';
+
+    let message = "";
+    
+    // Find the user document if possible
+    const userDoc = await User.findOne({ name: { $regex: new RegExp(name, "i") } }).lean();
+    
+    if (role === 'technician' || role === 'admin') {
+      // Get counts of pending/in progress tasks
+      const activeTasksCount = await Task.countDocuments({ status: { $in: ["Pending", "In Progress"] } });
+      const totalAnimals = await Animal.countDocuments({});
+      const totalFarmers = await User.countDocuments({ role: 'farmer' });
+
+      message = `Moo! Hello ${name}. As an authorized ${role}, you currently have ${activeTasksCount} active tasks pending in your dashboard. Our database registers a total of ${totalAnimals} livestock and ${totalFarmers} local farmers in Oton, Iloilo.`;
+      
+      return res.status(200).json({
+        success: true,
+        totalAnimals,
+        activeTasks: activeTasksCount,
+        message
+      });
+    } else {
+      // User is a farmer
+      let animalCount = 0;
+      let pendingRequestsCount = 0;
+      
+      if (userDoc) {
+        animalCount = await Animal.countDocuments({ farmerId: userDoc._id });
+        pendingRequestsCount = await HealthRequest.countDocuments({ 
+          farmerId: userDoc._id, 
+          status: "Pending" 
+        });
+      }
+
+      message = `Moo! Hello ${name}. You currently have ${animalCount} registered livestock animal(s) on file with the Municipal Agriculture's Office, with ${pendingRequestsCount} active veterinary dispatches pending.`;
+      
+      return res.status(200).json({
+        success: true,
+        totalAnimals: animalCount,
+        activeTasks: pendingRequestsCount,
+        message
+      });
+    }
+  } catch (error) {
+    console.error("[getUserSummaryForVoiceflow ERROR]", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getActiveTasksForVoiceflow = async (req, res) => {
+  try {
+    const { user_name, user_role } = req.body;
+    const role = user_role || 'farmer';
+    
+    let message = "";
+
+    if (role === 'technician' || role === 'admin') {
+      const activeTasks = await Task.find({ status: { $in: ["Pending", "In Progress"] } })
+        .populate("farmerId", "name")
+        .sort({ priority: 1, createdAt: -1 })
+        .limit(5)
+        .lean();
+
+      if (activeTasks.length === 0) {
+        message = "Moo! You have no pending dispatches or tasks at the moment. Excellent job keeping the fields clear!";
+      } else {
+        message = `Moo! Here are your active tasks:\n` + activeTasks.map((t, idx) => {
+          const type = t.taskType || "Dispatch";
+          const priority = t.priority === 1 ? "🚨 URGENT" : "📋 Routine";
+          const farmerName = t.farmerId?.name || "Farmer";
+          return `${idx + 1}. [${type} - ${priority}] for ${farmerName}: "${t.notes}"`;
+        }).join("\n");
+      }
+
+      return res.status(200).json({
+        success: true,
+        tasksCount: activeTasks.length,
+        message
+      });
+    } else {
+      // Farmer asks for tasks (breeding requests / calving)
+      const userDoc = await User.findOne({ name: { $regex: new RegExp(user_name || "", "i") } }).lean();
+      
+      if (!userDoc) {
+        return res.status(200).json({
+          success: false,
+          message: "Moo! I couldn't find your client record. Please register with the Agriculture Office to view tasks."
+        });
+      }
+
+      const activeTasks = await Task.find({ farmerId: userDoc._id, status: { $in: ["Pending", "In Progress"] } })
+        .sort({ createdAt: -1 })
+        .limit(3)
+        .lean();
+
+      if (activeTasks.length === 0) {
+        message = "Moo! You have no active health requests or breeding dispatches on file. Your herd is in tip-top shape!";
+      } else {
+        message = `Moo! Here are your active requests:\n` + activeTasks.map((t, idx) => {
+          return `${idx + 1}. [${t.taskType}] Status: ${t.status} - "${t.notes}"`;
+        }).join("\n");
+      }
+
+      return res.status(200).json({
+        success: true,
+        tasksCount: activeTasks.length,
+        message
+      });
+    }
+  } catch (error) {
+    console.error("[getActiveTasksForVoiceflow ERROR]", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+
+

@@ -17,6 +17,8 @@ import {
   X,
   Syringe,
   MessageCircleQuestion,
+  Map,
+  Sparkles,
 } from "lucide-react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
@@ -89,6 +91,16 @@ const FarmerBottomNavigator = ({
                   icon={<Plus size={24} color={COLORS.primary} />}
                   label="Add Animal"
                   onPress={() => handleModalAction("/(farmer)/add-animal")}
+                />
+                <ModalAction
+                  icon={<Map size={24} color={COLORS.primary} />}
+                  label="Disease Map"
+                  onPress={() => handleModalAction("/(farmer)/heat-map")}
+                />
+                <ModalAction
+                  icon={<Sparkles size={24} color={COLORS.primary} />}
+                  label="Ask Moowie"
+                  onPress={() => handleModalAction("/ask-moowie")}
                 />
               </View>
             </View>

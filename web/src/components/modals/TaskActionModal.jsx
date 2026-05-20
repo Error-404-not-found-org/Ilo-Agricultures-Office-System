@@ -2,38 +2,27 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
-  CheckCircle2,
-  AlertTriangle,
   Clock3,
   HeartPulse,
-  MapPin,
   User,
   CalendarDays,
   ClipboardPen,
-  ShieldAlert,
   BadgeCheck,
-  Stethoscope,
   Syringe,
   Loader2,
   Trash2,
   Calendar,
-  ExternalLink,
-  ChevronRight,
 } from "lucide-react";
-
 import { useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { toast } from "sonner";
-import {
-  SIRE_REGISTRY,
-  getSireCodeByBreed,
-} from "../../constants/sireRegistry";
+import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { CATTLE_BREEDS } from "../../constants/breeds";
 
-const inputClass = `w-full h-11 bg-base-200/50 border border-base-200 rounded-none px-4 text-xs font-bold text-base-content placeholder:text-base-content/20 focus:border-emerald-500/30 focus:outline-none transition-all`;
-const selectClass = `w-full h-11 bg-base-200/50 border border-base-200 rounded-none px-10 text-xs font-bold text-base-content focus:border-emerald-500/30 focus:outline-none transition-all appearance-none`;
-const labelClass = `text-[9px] font-black text-base-content/30 uppercase tracking-[0.2em] ml-1`;
-const sectionClass = `bg-base-200/20 border border-base-200 rounded-none p-6 space-y-5`;
+const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
+const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
+const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
+const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
 
 const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   const queryClient = useQueryClient();
@@ -50,11 +39,9 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const isHealth = taskData?.type === "health";
-  const isUrgent = taskData?.urgent;
 
   const isPending = taskData?.status?.toLowerCase() === "pending";
   const isApproved = taskData?.status?.toLowerCase() === "approved";
-  const isInProgress = taskData?.status?.toLowerCase() === "in-progress";
 
   const isCompleted = ["done", "resolved", "completed"].includes(
     taskData?.status?.toLowerCase(),
@@ -182,64 +169,53 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-          {/* BACKDROP */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]"
-          />
-
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+          
           {/* MODAL CONTAINER */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.98, y: 10 }}
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98, y: 10 }}
-            transition={{ duration: 0.15 }}
-            className="relative w-full max-w-2xl overflow-hidden rounded-none border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
           >
             {/* HEADER */}
-            <div className="flex items-center justify-between border-b border-base-200 bg-base-200/30 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
               <div className="flex items-center gap-4">
-                <div className="w-11 h-11 bg-emerald-500/5 border border-emerald-500/10 rounded-none flex items-center justify-center text-emerald-600 shadow-sm">
+                <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
                   {isHealth ? <HeartPulse size={20} /> : <Syringe size={20} />}
                 </div>
                 <div>
-                  <h3 className="text-sm font-black uppercase tracking-tighter text-base-content">
+                  <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
                     {isHealth
-                      ? "Medical Diagnostic Protocol"
-                      : "Artificial Insemination Protocol"}
+                      ? "Medical Diagnostic"
+                      : "Artificial Insemination"}
                   </h3>
-                  <p className="mt-0.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25">
+                  <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
                     Field Mission Operations
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={onClose}
-                  className="flex h-8 w-8 items-center justify-center rounded-none bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content"
-                >
-                  <X size={14} />
-                </button>
-              </div>
+              <button
+                onClick={onClose}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content cursor-pointer"
+              >
+                <X size={16} />
+              </button>
             </div>
 
             {/* SCROLLABLE BODY */}
-            <div className="overflow-y-auto flex-1 custom-scrollbar px-6 py-6 space-y-6">
+            <div className="overflow-y-auto flex-1 custom-scrollbar p-6 space-y-6 bg-base-100">
               {/* SECTION 1: REGISTRY & ASSET PROFILE */}
               <section className={sectionClass}>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-1">
                   <User size={14} className="text-emerald-600" />
-                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">
+                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
                     Registry Selection
                   </h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Farmer Record</label>
                     <div className="relative">
                       <User
@@ -250,12 +226,12 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                         type="text"
                         readOnly
                         value={taskData.farmer || "Unknown Farmer"}
-                        className={`${inputClass} pl-11 bg-base-200/30 cursor-not-allowed`}
+                        className={`${inputClass} pl-11 bg-base-200/50 cursor-not-allowed`}
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Animal Asset (Ear Tag)</label>
                     <div className="relative">
                       <HeartPulse
@@ -266,16 +242,16 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                         type="text"
                         readOnly
                         value={`Tag #${animal.earTag || "No Tag"} — ${animal.breed || "Unknown Breed"}`}
-                        className={`${inputClass} pl-11 bg-base-200/30 cursor-not-allowed`}
+                        className={`${inputClass} pl-11 bg-base-200/50 cursor-not-allowed`}
                       />
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-base-200/50">
-                  <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-base-300">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Mission Status</label>
-                    <div className="relative flex items-center h-11 bg-base-200/30 border border-base-200 px-4">
+                    <div className="relative flex items-center h-11 bg-base-200 border border-base-300 rounded-xl px-4">
                       <span
                         className={`text-[10px] font-black uppercase tracking-widest
                         ${isPending ? "text-amber-500" : isApproved ? "text-emerald-500" : "text-blue-500"}
@@ -287,11 +263,11 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                   </div>
 
                   {isPending && preferredDateTime && (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>
                         Farmer Preferred Time
                       </label>
-                      <div className="relative flex items-center h-11 bg-amber-500/5 border border-amber-500/20 px-4 text-[10px] font-black uppercase tracking-widest text-amber-600 gap-2">
+                      <div className="relative flex items-center h-11 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest text-amber-600 gap-2">
                         <Clock3 size={12} />
                         {new Date(preferredDateTime).toLocaleString()}
                       </div>
@@ -302,23 +278,19 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
               {/* SECTION 2: SERVICE METRICS & PARAMETERS */}
               <section className={sectionClass}>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-1">
                   <ClipboardPen size={14} className="text-emerald-600" />
-                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">
+                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
                     Service Metrics
                   </h4>
                 </div>
 
                 {/* AI SPECIFIC FIELDS */}
                 {!isHealth && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <div className="space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Sire Breed</label>
                       <div className="relative">
-                        <User
-                          size={16}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
-                        />
                         <select
                           disabled={isReadOnly}
                           value={sireBreed}
@@ -328,10 +300,10 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                             const code = getSireCodeByBreed(breed);
                             if (code) setSireCode(code);
                           }}
-                          className={selectClass}
+                          className={`${selectClass} cursor-pointer`}
                         >
                           <option value="" disabled>
-                            Select Sire Breed
+                            Select Breed
                           </option>
                           {CATTLE_BREEDS.map((b) => (
                             <option key={b} value={b}>
@@ -342,7 +314,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Sire Code</label>
                       <input
                         type="text"
@@ -354,18 +326,14 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Estrus Cycle</label>
                       <div className="relative">
-                        <User
-                          size={16}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
-                        />
                         <select
                           disabled={isReadOnly}
                           value={estrus}
                           onChange={(e) => setEstrus(e.target.value)}
-                          className={selectClass}
+                          className={`${selectClass} cursor-pointer`}
                         >
                           <option value="Natural">Natural</option>
                           <option value="Synchronized">Synchronized</option>
@@ -378,8 +346,8 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
                 {/* HEALTH SPECIFIC FIELDS */}
                 {isHealth && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="space-y-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Medical Diagnosis</label>
                       <input
                         type="text"
@@ -391,7 +359,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Prescribed Treatment</label>
                       <input
                         type="text"
@@ -408,15 +376,15 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
               {/* SECTION 3: SCHEDULE & OBSERVATIONS */}
               <section className={sectionClass}>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-1">
                   <CalendarDays size={14} className="text-emerald-600" />
-                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">
+                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
                     Schedule & Findings
                   </h4>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Scheduled Date & Time</label>
                     <div className="relative">
                       <Calendar
@@ -428,21 +396,21 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                         disabled={isReadOnly}
                         value={scheduledDate}
                         onChange={(e) => setScheduledDate(e.target.value)}
-                        className={`${inputClass} pl-11`}
+                        className={`${inputClass} pl-11 cursor-pointer`}
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>
-                      Technician Notes & Observations
+                      Observations
                     </label>
                     <textarea
                       disabled={isReadOnly}
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      placeholder="Enter technician observations or mission notes..."
-                      className="w-full min-h-[44px] max-h-[120px] bg-base-200/50 border border-base-200 rounded-none p-3 text-xs font-bold text-base-content placeholder:text-base-content/20 focus:border-emerald-500/30 focus:outline-none transition-all resize-y"
+                      placeholder="Enter observations..."
+                      className="w-full h-11 bg-base-200 border border-base-300 rounded-xl p-3 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all resize-none"
                     />
                   </div>
                 </div>
@@ -450,11 +418,11 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
             </div>
 
             {/* FOOTER */}
-            <div className="bg-base-200/20 border-t border-base-200 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="bg-base-200/20 border-t border-base-300 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
               <button
                 onClick={handleRejectTask}
                 disabled={isSubmitting || isReadOnly}
-                className="flex items-center gap-2 px-6 py-3 rounded-none hover:bg-red-800 hover:text-white text-rose-500 bg-rose-500/10 transition-all text-[9px] font-black uppercase tracking-widest disabled:opacity-30"
+                className="flex items-center gap-2 px-5 h-11 rounded-xl hover:bg-red-800 hover:text-white text-rose-500 bg-rose-500/10 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-30 cursor-pointer w-full sm:w-auto justify-center"
               >
                 <Trash2 size={14} />
                 Decline
@@ -463,14 +431,14 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
               <div className="flex gap-3 w-full sm:w-auto">
                 <button
                   onClick={onClose}
-                  className="flex-1 sm:flex-none h-11 px-8 rounded-none bg-base-200 hover:bg-base-300 text-[9px] font-black uppercase tracking-widest transition-all text-base-content/40"
+                  className="flex-1 sm:flex-none h-11 px-6 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
                 >
                   Close
                 </button>
                 <button
                   onClick={handleAction}
                   disabled={isSubmitting || isReadOnly}
-                  className="flex-1 sm:flex-none h-11 px-10 rounded-none text-white text-[9px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-3 shadow-lg shadow-emerald-950/20 bg-[#074033] hover:bg-[#0a5242]"
+                  className="flex-2 sm:flex-none h-11 px-8 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2.5 shadow-md bg-[#074033] hover:bg-[#0d5948] cursor-pointer"
                 >
                   {isSubmitting ? (
                     <>

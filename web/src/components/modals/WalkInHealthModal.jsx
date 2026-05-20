@@ -7,14 +7,12 @@ import {
   Activity,
   ClipboardList,
   Search,
-  AlertCircle,
   Phone,
   MapPin,
   Calendar,
   Clock,
   Stethoscope,
   BadgeCheck,
-  Zap,
   StickyNote,
   Mail
 } from "lucide-react";
@@ -24,11 +22,11 @@ import { useToast } from "../../contexts/ToastContext";
 import { CATTLE_BREEDS, CATTLE_SPECIES } from "../../constants/breeds";
 import { OTON_BARANGAYS } from "../../constants/barangays";
 
-const inputClass = `w-full h-11 bg-base-200/50 border border-base-200 rounded-none px-4 text-xs font-bold text-base-content placeholder:text-base-content/20 focus:border-emerald-500/30 focus:outline-none transition-all`;
-const selectClass = `w-full h-11 bg-base-200/50 border border-base-200 rounded-none px-10 text-xs font-bold text-base-content focus:border-emerald-500/30 focus:outline-none transition-all appearance-none`;
-const textareaClass = `w-full min-h-[140px] bg-base-200/50 border border-base-200 rounded-none pl-12 pr-4 py-4 text-xs font-bold text-base-content placeholder:text-base-content/20 focus:border-emerald-500/30 focus:outline-none transition-all resize-none`;
-const labelClass = `text-[9px] font-black text-base-content/30 uppercase tracking-[0.2em] ml-1`;
-const sectionClass = `bg-base-200/20 border border-base-200 rounded-none p-6 space-y-5`;
+const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
+const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
+const textareaClass = `w-full min-h-[120px] bg-base-200 border border-base-300 rounded-xl pl-12 pr-4 py-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all resize-none`;
+const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
+const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
 
 const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
   const queryClient = useQueryClient();
@@ -47,7 +45,6 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     phoneNumber: "",
     email: "",
     address: {
-
       barangay: "",
       city: "Oton"
     },
@@ -104,7 +101,6 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
         phoneNumber: "",
         email: "",
         address: {
-
           barangay: "",
           city: "Oton"
         },
@@ -186,35 +182,26 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-100 flex items-center justify-center p-4">
-        {/* BACKDROP */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={onClose}
-          className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]"
-        />
-
+      <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+        
         {/* MODAL */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.98, y: 10 }}
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.98, y: 10 }}
-          transition={{ duration: 0.15 }}
-          className="relative w-full max-w-4xl overflow-hidden rounded-none border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
         >
           {/* HEADER */}
-          <div className="flex items-center justify-between border-b border-base-200 bg-base-200/30 px-6 py-4">
+          <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
             <div className="flex items-center gap-4">
-               <div className="w-11 h-11 bg-emerald-500/5 border border-emerald-500/10 rounded-none flex items-center justify-center text-emerald-600 shadow-sm">
+               <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
                   <HeartPulse size={20} />
                </div>
                <div>
-                  <h3 className="text-sm font-black uppercase tracking-tighter text-base-content">
+                  <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
                     Livestock Health Hub
                   </h3>
-                  <p className="mt-0.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25">
+                  <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
                     Veterinary Field Protocol
                   </p>
                </div>
@@ -222,26 +209,26 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
             <button
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-none bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content cursor-pointer"
             >
-              <X size={14} />
+              <X size={16} />
             </button>
           </div>
 
           {/* SCROLLABLE CONTENT */}
-          <div className="overflow-y-auto flex-1 custom-scrollbar px-6 py-6 space-y-6">
+          <div className="overflow-y-auto flex-1 custom-scrollbar p-6 space-y-6 bg-base-100">
             {/* TOGGLES */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-base-200/50 p-3 rounded-none border border-base-200">
-              <div className="inline-flex p-1 rounded-none bg-base-100 border border-base-200">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-base-200/30 p-3 rounded-2xl border border-base-300">
+              <div className="inline-flex p-1 rounded-xl bg-base-100 border border-base-300">
                 <button
                   onClick={() => setIsExistingRecord(true)}
-                  className={`px-5 h-9 rounded-none text-[9px] font-black uppercase tracking-widest transition-all ${isExistingRecord ? "bg-[#074033] text-white shadow-lg shadow-emerald-950/20" : "text-base-content/30 hover:text-base-content"}`}
+                  className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
                 >
                   Existing Record
                 </button>
                 <button
                   onClick={() => setIsExistingRecord(false)}
-                  className={`px-5 h-9 rounded-none text-[9px] font-black uppercase tracking-widest transition-all ${!isExistingRecord ? "bg-[#074033] text-white shadow-lg shadow-emerald-950/20" : "text-base-content/30 hover:text-base-content"}`}
+                  className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${!isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
                 >
                   Manual Entry
                 </button>
@@ -250,13 +237,13 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
               <div className="flex gap-2">
                 <button
                   onClick={() => setFormData({ ...formData, status: "resolved" })}
-                  className={`px-4 h-9 rounded-none text-[9px] font-black uppercase tracking-widest border transition-all ${formData.status === "resolved" ? "bg-emerald-500/10 border-emerald-500 text-emerald-600" : "border-transparent text-base-content/20"}`}
+                  className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.status === "resolved" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600" : "border-transparent text-base-content/20"}`}
                 >
                   Service Completed
                 </button>
                 <button
                   onClick={() => setFormData({ ...formData, status: "in-progress" })}
-                  className={`px-4 h-9 rounded-none text-[9px] font-black uppercase tracking-widest border transition-all ${formData.status === "in-progress" ? "bg-blue-500/10 border-blue-500 text-blue-600" : "border-transparent text-base-content/20"}`}
+                  className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.status === "in-progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-600" : "border-transparent text-base-content/20"}`}
                 >
                   Schedule Visit
                 </button>
@@ -265,12 +252,12 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
             {isExistingRecord ? (
               <section className={sectionClass}>
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-1">
                    <BadgeCheck size={14} className="text-emerald-500" />
-                   <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">Asset selection</h4>
+                   <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Asset Selection</h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="space-y-2">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Farmer Record</label>
                     <div className="relative">
                       <Search
@@ -293,7 +280,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                             initial={{ opacity: 0, y: -5 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -5 }}
-                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-200 bg-base-100 shadow-xl custom-scrollbar"
+                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
                           >
                             {farmers.filter((f) =>
                               f.name
@@ -315,12 +302,12 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                                       setSearchFarmer(farmer.name);
                                       setIsDropdownOpen(false);
                                     }}
-                                    className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 flex flex-col gap-1 border-b border-base-200/50 last:border-0"
+                                    className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 flex flex-col gap-1 border-b border-base-200/50 last:border-0 cursor-pointer"
                                   >
                                     <span className="text-xs font-bold text-base-content block">
                                       {farmer.name}
                                     </span>
-                                    <span className="text-[9px] font-black tracking-widest text-base-content/40 uppercase">
+                                    <span className="text-[9px] font-black tracking-widest text-base-content/40 uppercase leading-none mt-0.5">
                                       {farmer.phoneNumber || "No Contact"} •{" "}
                                       {typeof farmer.address === "string"
                                         ? farmer.address
@@ -339,15 +326,14 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                       </AnimatePresence>
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Animal Asset</label>
                     <div className="relative">
-                      <Activity size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
                       <select
                         disabled={!selectedFarmerId || isLoadingAnimals}
                         value={selectedAnimalId}
                         onChange={(e) => setSelectedAnimalId(e.target.value)}
-                        className={`${selectClass} disabled:opacity-50`}
+                        className={`${selectClass} disabled:opacity-50 cursor-pointer`}
                       >
                         <option value="">{isLoadingAnimals ? "Synchronizing..." : "Select animal"}</option>
                         {animals.map((a) => (
@@ -361,34 +347,34 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                 </div>
               </section>
             ) : (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <section className={sectionClass}>
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-1">
                      <User size={14} className="text-emerald-500" />
-                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">Owner Data</h4>
+                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Owner Data</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>First Name</label>
                       <input type="text" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} placeholder="JUAN" className={inputClass} />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Last Name</label>
                       <input type="text" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} placeholder="DELA CRUZ" className={inputClass} />
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Email (For App Access)</label>
                     <div className="relative">
                       <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
                       <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="juan@example.com" className={`${inputClass} pl-11`} />
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Contact Number</label>
                     <div className="relative flex items-center">
                       <Phone size={16} className="absolute left-4 z-10 text-base-content/20" />
-                      <div className="absolute left-10 z-10 text-xs font-bold text-base-content/50 border-r border-base-200/50 pr-2 py-1">+63</div>
+                      <div className="absolute left-10 z-10 text-xs font-bold text-base-content/50 border-r border-base-300 pr-2 py-1">+63</div>
                       <input 
                         type="tel" 
                         maxLength={10}
@@ -403,19 +389,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-
-
-
-
-
-
-
-
-
-
-
-                    <div className="space-y-2 relative">
+                    <div className="space-y-1.5 relative">
                       <label className={labelClass}>Barangay</label>
                       <div className="relative">
                         <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
@@ -436,7 +410,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                               initial={{ opacity: 0, y: -5 }}
                               animate={{ opacity: 1, y: 0 }}
                               exit={{ opacity: 0, y: -5 }}
-                              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-200 bg-base-100 shadow-xl custom-scrollbar"
+                              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
                             >
                               {OTON_BARANGAYS.filter((b) =>
                                 b.toLowerCase().includes(formData.address.barangay.toLowerCase())
@@ -450,7 +424,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                                         setFormData({ ...formData, address: { ...formData.address, barangay: brgy } });
                                         setIsBarangayDropdownOpen(false);
                                       }}
-                                      className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 border-b border-base-200/50 last:border-0"
+                                      className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 border-b border-base-200/50 last:border-0 cursor-pointer"
                                     >
                                       <span className="text-xs font-bold text-base-content block">
                                         {brgy}
@@ -469,7 +443,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                         </AnimatePresence>
                       </div>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Municipality</label>
                       <div className="relative">
                         <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
@@ -480,21 +454,21 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                 </section>
 
                 <section className={sectionClass}>
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-1">
                      <Activity size={14} className="text-emerald-500" />
-                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">Asset Profile</h4>
+                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Asset Profile</h4>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Ear Tag</label>
                       <input type="text" maxLength={3} value={formData.animalDetails.earTag} onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, earTag: e.target.value.toUpperCase() } })} placeholder="104" className={inputClass} />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <label className={labelClass}>Species</label>
                       <select
                         value={formData.animalDetails.species}
                         onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, species: e.target.value } })}
-                        className={selectClass.replace('px-10', 'px-4')}
+                        className={`${selectClass} cursor-pointer`}
                       >
                         {CATTLE_SPECIES.map(s => (
                             <option key={s} value={s}>{s}</option>
@@ -502,12 +476,12 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                       </select>
                     </div>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <label className={labelClass}>Breed</label>
                     <select
                       value={formData.animalDetails.breed}
                       onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, breed: e.target.value } })}
-                      className={selectClass.replace('px-10', 'px-4')}
+                      className={`${selectClass} cursor-pointer`}
                     >
                       <option value="" disabled>Select Breed</option>
                       {CATTLE_BREEDS.map(b => (
@@ -521,20 +495,19 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
             {/* Service Logistics */}
             <section className={sectionClass}>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                  <Calendar size={14} className="text-emerald-500" />
-                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">Service Logistics</h4>
+                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Service Logistics</h4>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                <div className="space-y-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
                   <label className={labelClass}>Service Type</label>
                   <div className="relative">
-                    <Stethoscope size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
                     <select
                       value={formData.requestType}
                       onChange={(e) => setFormData({ ...formData, requestType: e.target.value })}
-                      className={selectClass}
+                      className={`${selectClass} cursor-pointer`}
                     >
                       <option value="disease">Disease Control</option>
                       <option value="medicine">Medicine/Supplies</option>
@@ -544,45 +517,43 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                     </select>
                   </div>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <label className={labelClass}>Mission Date</label>
                   <div className="relative">
-                    <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
                     <input 
                       type="date" 
                       value={formData.preferredDate} 
                       onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })} 
-                      className={`${inputClass} pl-11`} 
+                      className={`${inputClass} cursor-pointer`} 
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <label className={labelClass}>Expected T-Time</label>
                   <div className="relative">
-                    <Clock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
                     <input 
                       type="time" 
                       value={formData.preferredTime} 
                       onChange={(e) => setFormData({ ...formData, preferredTime: e.target.value })} 
-                      className={`${inputClass} pl-11`} 
+                      className={`${inputClass} cursor-pointer`} 
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-2 pt-2 border-t border-base-200/50 mt-2">
+              <div className="space-y-1.5 pt-4 border-t border-base-300">
                 <label className={labelClass}>Priority Protocol</label>
                 <div className="flex gap-4">
                   {["low", "medium", "high"].map((u) => (
                     <button
                       key={u}
                       onClick={() => setFormData({ ...formData, urgency: u })}
-                      className={`flex-1 h-11 rounded-none border text-[10px] font-black uppercase tracking-widest transition-all ${
+                      className={`flex-1 h-11 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
                         formData.urgency === u
-                          ? u === "high" ? "bg-rose-500/10 border-rose-500 text-rose-600" :
-                            u === "medium" ? "bg-amber-500/10 border-amber-500 text-amber-600" :
-                            "bg-emerald-500/10 border-emerald-500 text-emerald-600"
-                          : "border-base-200 text-base-content/20 hover:bg-base-200/50"
+                          ? u === "high" ? "bg-rose-500/10 border-rose-500/30 text-rose-600" :
+                            u === "medium" ? "bg-amber-500/10 border-amber-500/30 text-amber-600" :
+                            "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
+                          : "border-base-300 text-base-content/40 hover:bg-base-200"
                       }`}
                     >
                       {u} Priority
@@ -594,12 +565,11 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
             {/* Medical Findings */}
             <section className={sectionClass}>
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                  <StickyNote size={14} className="text-emerald-500" />
-                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em]">Field Findings & Symptoms</h4>
+                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Field Findings & Symptoms</h4>
               </div>
               <div className="relative">
-                <ClipboardList size={16} className="absolute left-4 top-4 text-base-content/20" />
                 <textarea 
                   value={formData.diagnosis} 
                   onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })} 
@@ -611,19 +581,19 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
           </div>
 
           {/* FOOTER */}
-          <div className="bg-base-200/20 border-t border-base-200 px-6 py-4 flex justify-end gap-3">
+          <div className="bg-base-200/20 border-t border-base-300 px-6 py-4 flex justify-end gap-3">
             <button 
               onClick={onClose} 
-              className="h-11 px-8 rounded-none bg-base-200 hover:bg-base-300 text-[9px] font-black uppercase tracking-widest transition-all text-base-content/40"
+              className="h-11 px-8 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
             >
               Cancel
             </button>
             <button
               disabled={mutation.isPending}
               onClick={handleSubmit}
-              className={`h-11 px-10 rounded-none text-white text-[9px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center gap-2 shadow-lg shadow-emerald-950/20 ${
+              className={`h-11 px-8 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center gap-2 shadow-md cursor-pointer ${
                 formData.status === 'resolved' 
-                  ? "bg-[#074033] hover:bg-[#0a5242]"
+                  ? "bg-[#074033] hover:bg-[#0d5948]"
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
