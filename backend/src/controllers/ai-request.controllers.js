@@ -86,6 +86,17 @@ export const createAIRequest = async (req, res) => {
       );
 
       await Promise.all([...techNotifs, ...adminNotifs]);
+
+      // --- MOBILE PUSH NOTIFICATIONS TO TECHNICIANS ---
+      for (const t of technicians) {
+        if (t.pushToken) {
+          await sendPushNotification(
+            t.pushToken,
+            "📋 New AI Request",
+            `${req.user.name} has requested an AI service for animal ${animal.earTag || animal.animalId}.`
+          );
+        }
+      }
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
@@ -381,14 +392,16 @@ export const confirmAIOutcome = async (req, res) => {
 export const deleteRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const request = await Insemination.findById(id);
+    const request = await Insemination.findById(id)
+      .populate("farmerId", "name")
+      .populate("animalId", "earTag animalId");
 
     if (!request) {
       return res.status(404).json({ message: "Request not found." });
     }
 
     // Permission Check: Allow owner OR Technician
-    const isOwner = request.farmerId.toString() === req.user._id.toString();
+    const isOwner = request.farmerId && request.farmerId._id.toString() === req.user._id.toString();
     const isTechnician = req.user.role === "technician";
 
     if (!isOwner && !isTechnician) {
@@ -409,6 +422,24 @@ export const deleteRequest = async (req, res) => {
           message:
             "Only pending or rejected requests can be removed by farmers.",
         });
+    }
+
+    // --- SEND CANCELLED PUSH NOTIFICATION TO TECHNICIANS ---
+    try {
+      if (isOwner && request.status === "pending") {
+        const technicians = await User.find({ role: "technician" });
+        for (const t of technicians) {
+          if (t.pushToken) {
+            await sendPushNotification(
+              t.pushToken,
+              "❌ AI Request Cancelled",
+              `${request.farmerId?.name} has cancelled the AI request for animal ${request.animalId?.earTag || request.animalId?.animalId}.`
+            );
+          }
+        }
+      }
+    } catch (notifyErr) {
+      console.error("[Notification Trigger Error]", notifyErr.message);
     }
 
     await Insemination.findByIdAndDelete(id);

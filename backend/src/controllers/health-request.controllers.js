@@ -63,6 +63,15 @@ export const createHealthRequest = async (req, res) => {
       );
 
       await Promise.all([...techNotifs, ...adminNotifs]);
+
+      // --- MOBILE PUSH NOTIFICATIONS TO TECHNICIANS ---
+      for (const t of technicians) {
+        if (t.pushToken) {
+          const title = urgency === "high" ? "🚨 Emergency Health Request" : "New Health Request";
+          const body = `${req.user.name} reported ${urgency} urgency symptoms for animal ${animal.earTag || animal.animalId}: ${symptoms.substring(0, 60)}...`;
+          await sendPushNotification(t.pushToken, title, body);
+        }
+      }
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
@@ -365,14 +374,16 @@ export const walkInHealthRequest = async (req, res) => {
 export const deleteHealthRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const request = await HealthRequest.findById(id);
+    const request = await HealthRequest.findById(id)
+      .populate("farmerId", "name")
+      .populate("animalId", "earTag animalId");
 
     if (!request) {
       return res.status(404).json({ message: "Health request not found." });
     }
 
     // Permission Check: Allow owner OR Technician
-    const isOwner = request.farmerId.toString() === req.user._id.toString();
+    const isOwner = request.farmerId && request.farmerId._id.toString() === req.user._id.toString();
     const isTechnician = req.user.role === 'technician';
 
     if (!isOwner && !isTechnician) {
@@ -382,6 +393,24 @@ export const deleteHealthRequest = async (req, res) => {
     // Status restriction: Only for farmers. Technicians can delete any (for testing/cleanup)
     if (isOwner && request.status !== "pending" && request.status !== "rejected") {
       return res.status(400).json({ message: "Only pending or rejected requests can be removed by farmers." });
+    }
+
+    // --- SEND CANCELLED PUSH NOTIFICATION TO TECHNICIANS ---
+    try {
+      if (isOwner && request.status === "pending") {
+        const technicians = await User.find({ role: "technician" });
+        for (const t of technicians) {
+          if (t.pushToken) {
+            await sendPushNotification(
+              t.pushToken,
+              "❌ Health Request Cancelled",
+              `${request.farmerId?.name} has cancelled the health request for animal ${request.animalId?.earTag || request.animalId?.animalId}.`
+            );
+          }
+        }
+      }
+    } catch (notifyErr) {
+      console.error("[Notification Trigger Error]", notifyErr.message);
     }
 
     await HealthRequest.findByIdAndDelete(id);

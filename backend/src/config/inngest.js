@@ -3,10 +3,12 @@ import { connectDB } from "./db.js";
 import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
+import { HealthRequest } from "../models/health-request.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Notification } from "../models/notification.model.js";
 import { Config } from "../models/config.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import { sendPushNotification } from "../lib/push-notifications.js";
 
 export const inngest = new Inngest({
   id: "ilo-agricultures-office-system-backend",
@@ -111,14 +113,22 @@ const onInseminationApproved = inngest.createFunction(
     if (stillRelevant18) {
       await step.run("send-heat-reminder", async () => {
         const animal = await Animal.findById(animalId);
+        const title = "🔥 Heat Detection Reminder";
+        const body = `It has been 18 days since the insemination of ${animal?.earTag || 'your animal'}. Please observe for signs of heat (estrus) over the next 3 days.`;
+
         await Notification.create({
           recipientId: farmerId,
           senderId: "000000000000000000000000",
           type: "system",
           relatedId: animalId,
-          title: "🔥 Heat Detection Reminder",
-          message: `It has been 18 days since the insemination of ${animal?.earTag || 'your animal'}. Please observe for signs of heat (estrus) over the next 3 days.`,
+          title,
+          message: body,
         });
+
+        const farmer = await User.findById(farmerId);
+        if (farmer?.pushToken) {
+          await sendPushNotification(farmer.pushToken, title, body);
+        }
       });
     }
 
@@ -133,14 +143,22 @@ const onInseminationApproved = inngest.createFunction(
     if (stillRelevant21) {
       await step.run("ask-farmer-success", async () => {
         const animal = await Animal.findById(animalId);
+        const title = "🐮 AI Outcome Confirmation";
+        const body = `It has been 21 days since the insemination of ${animal?.earTag || 'your animal'}. Is she still in heat, or do you think she conceived? Click to confirm.`;
+
         await Notification.create({
           recipientId: farmerId,
           senderId: "000000000000000000000000",
           type: "ai-request",
           relatedId: inseminationId,
-          title: "🐮 AI Outcome Confirmation",
-          message: `It has been 21 days since the insemination of ${animal?.earTag}. Is she still in heat, or do you think she conceived? Click to confirm.`,
+          title,
+          message: body,
         });
+
+        const farmer = await User.findById(farmerId);
+        if (farmer?.pushToken) {
+          await sendPushNotification(farmer.pushToken, title, body);
+        }
       });
     }
 
@@ -151,17 +169,22 @@ const onInseminationApproved = inngest.createFunction(
       await step.run("nudge-technician", async () => {
         const ins = await Insemination.findById(inseminationId).populate("farmerId", "name");
         const technicians = await User.find({ role: "technician" });
+        const title = "📞 Follow-up Required";
+        const body = `Farmer ${ins.farmerId?.name} has not confirmed the outcome for AI attempt #${ins.attemptNumber}. Please contact them for an update.`;
         
-        await Promise.all(technicians.map(tech => 
-          Notification.create({
+        await Promise.all(technicians.map(async (tech) => {
+          await Notification.create({
             recipientId: tech._id,
             senderId: "000000000000000000000000",
             type: "system",
             relatedId: inseminationId,
-            title: "📞 Follow-up Required",
-            message: `Farmer ${ins.farmerId?.name} has not confirmed the outcome for AI attempt #${ins.attemptNumber}. Please contact them for an update.`,
-          })
-        ));
+            title,
+            message: body,
+          });
+          if (tech.pushToken) {
+            await sendPushNotification(tech.pushToken, title, body);
+          }
+        }));
       });
     }
 
@@ -177,17 +200,22 @@ const onInseminationApproved = inngest.createFunction(
       await step.run("send-pd-reminder", async () => {
         const ins = await Insemination.findById(inseminationId).populate("animalId", "earTag");
         const technicians = await User.find({ role: "technician" });
+        const title = "🧪 Pregnancy Diagnosis Due";
+        const body = `Animal ${ins.animalId?.earTag || 'the animal'} is now at Day 60 post-AI. Rectal palpation or PD is recommended.`;
 
-        await Promise.all(technicians.map(tech => 
-          Notification.create({
+        await Promise.all(technicians.map(async (tech) => {
+          await Notification.create({
             recipientId: tech._id,
             senderId: "000000000000000000000000",
             type: "system",
             relatedId: inseminationId,
-            title: "🧪 Pregnancy Diagnosis Due",
-            message: `Animal ${ins.animalId?.earTag} is now at Day 60 post-AI. Rectal palpation or PD is recommended.`,
-          })
-        ));
+            title,
+            message: body,
+          });
+          if (tech.pushToken) {
+            await sendPushNotification(tech.pushToken, title, body);
+          }
+        }));
       });
     }
   }
@@ -212,28 +240,42 @@ const onPregnancyConfirmed = inngest.createFunction(
       const animal = await Animal.findById(animalId);
       const farmer = await User.findById(farmerId);
 
-      // Notify Farmer
+      const farmerTitle = "🍼 Calving Imminent";
+      const farmerBody = `Reminder: ${animal?.earTag || 'Your animal'} is approaching the 280-day gestation mark. Please prepare the calving area.`;
+
+      // Notify Farmer (In-app)
       await Notification.create({
         recipientId: farmerId,
         senderId: "000000000000000000000000",
         type: "system",
         relatedId: animalId,
-        title: "🍼 Calving Imminent",
-        message: `Reminder: ${animal?.earTag || 'Your animal'} is approaching the 280-day gestation mark. Please prepare the calving area.`,
+        title: farmerTitle,
+        message: farmerBody,
       });
+
+      // Notify Farmer (Push)
+      if (farmer?.pushToken) {
+        await sendPushNotification(farmer.pushToken, farmerTitle, farmerBody);
+      }
 
       // Notify all technicians
       const technicians = await User.find({ role: "technician" });
-      await Promise.all(technicians.map(tech => 
-        Notification.create({
+      const techTitle = "⚠️ Upcoming Calving";
+      const techBody = `Farmer ${farmer?.name || 'Farmer'}'s animal (${animal?.earTag || 'animal'}) is due for calving soon.`;
+
+      await Promise.all(technicians.map(async (tech) => {
+        await Notification.create({
           recipientId: tech._id,
           senderId: "000000000000000000000000",
           type: "system",
           relatedId: animalId,
-          title: "⚠️ Upcoming Calving",
-          message: `Farmer ${farmer?.name}'s animal (${animal?.earTag}) is due for calving soon.`,
-        })
-      ));
+          title: techTitle,
+          message: techBody,
+        });
+        if (tech.pushToken) {
+          await sendPushNotification(tech.pushToken, techTitle, techBody);
+        }
+      }));
     });
   }
 );
@@ -257,22 +299,29 @@ const automatedGestationLifecycle = inngest.createFunction(
         lastInseminationDate: { $lte: sixtyDaysAgo }
       });
 
+      const technicians = await User.find({ role: "technician" });
+      const title = "⏱️ Pregnancy Diagnosis Due";
+
       for (const animal of animals) {
         animal.reproductiveStatus = "Likely Pregnant";
         await animal.save();
 
-        // Notify technician
-        const technicians = await User.find({ role: "technician" });
-        await Promise.all(technicians.map(tech => 
-          Notification.create({
+        const body = `Animal ${animal.earTag || 'the animal'} was inseminated 60+ days ago. PD is now due.`;
+
+        // Notify technicians
+        await Promise.all(technicians.map(async (tech) => {
+          await Notification.create({
             recipientId: tech._id,
             senderId: "000000000000000000000000",
             type: "system",
             relatedId: animal._id,
-            title: "⏱️ Pregnancy Diagnosis Due",
-            message: `Animal ${animal.earTag} was inseminated 60+ days ago. PD is now due.`,
-          })
-        ));
+            title,
+            message: body,
+          });
+          if (tech.pushToken) {
+            await sendPushNotification(tech.pushToken, title, body);
+          }
+        }));
       }
       return { flagged: animals.length };
     });
@@ -285,17 +334,49 @@ const automatedGestationLifecycle = inngest.createFunction(
       const animals = await Animal.find({
         reproductiveStatus: "Pregnant",
         expectedCalvingDate: { $lte: sevenDaysFromNow, $gt: new Date() }
-      });
+      }).populate("farmerId");
+
+      const technicians = await User.find({ role: "technician" });
 
       for (const animal of animals) {
-        await Notification.create({
-          recipientId: animal.farmerId,
-          senderId: "000000000000000000000000",
-          type: "system",
-          relatedId: animal._id,
-          title: "🍼 Calving within 7 days",
-          message: `Your animal (${animal.earTag}) is expected to calve around ${animal.expectedCalvingDate.toLocaleDateString()}.`,
-        });
+        const farmer = animal.farmerId;
+        const farmerTitle = "🍼 Calving within 7 days";
+        const farmerBody = `Your animal (${animal.earTag || 'your animal'}) is expected to calve around ${new Date(animal.expectedCalvingDate).toLocaleDateString()}.`;
+
+        if (farmer) {
+          // Notify Farmer (In-app)
+          await Notification.create({
+            recipientId: farmer._id,
+            senderId: "000000000000000000000000",
+            type: "system",
+            relatedId: animal._id,
+            title: farmerTitle,
+            message: farmerBody,
+          });
+
+          // Notify Farmer (Push)
+          if (farmer.pushToken) {
+            await sendPushNotification(farmer.pushToken, farmerTitle, farmerBody);
+          }
+        }
+
+        // Notify Technicians (In-app & Push)
+        const techTitle = "⚠️ Upcoming Calving";
+        const techBody = `Farmer ${farmer?.name || 'Farmer'}'s cow (${animal.earTag || 'animal'}) is expected to calve around ${new Date(animal.expectedCalvingDate).toLocaleDateString()}.`;
+        
+        for (const tech of technicians) {
+          await Notification.create({
+            recipientId: tech._id,
+            senderId: "000000000000000000000000",
+            type: "system",
+            relatedId: animal._id,
+            title: techTitle,
+            message: techBody,
+          });
+          if (tech.pushToken) {
+            await sendPushNotification(tech.pushToken, techTitle, techBody);
+          }
+        }
       }
       return { alertsSent: animals.length };
     });
@@ -335,6 +416,52 @@ const dailyStatsAggregation = inngest.createFunction(
   }
 );
 
+/**
+ * Daily job at 4:00 PM to remind technicians of pending scheduled visits.
+ */
+const remindPendingServices = inngest.createFunction(
+  { id: "livestock/pending-service-reminder" },
+  { cron: "0 16 * * *" }, // Run at 4:00 PM daily
+  async ({ step }) => {
+    await connectDB();
+
+    await step.run("remind-technicians", async () => {
+      // Find all AI/Health requests scheduled for today or earlier that are not done/resolved/cancelled
+      const pendingAI = await Insemination.find({
+        status: { $in: ["approved", "in-progress"] },
+        scheduledDate: { $lte: new Date() }
+      }).populate("farmerId", "name").populate("animalId", "earTag animalId").populate("approvedBy");
+
+      const pendingHealth = await HealthRequest.find({
+        status: { $in: ["approved", "in-progress"] },
+        scheduledDate: { $lte: new Date() }
+      }).populate("farmerId", "name").populate("animalId", "earTag animalId").populate("handledBy");
+
+      // Notify Technicians for pending AI
+      for (const request of pendingAI) {
+        const tech = request.approvedBy;
+        if (tech && tech.pushToken) {
+          const title = "⏰ Pending AI Service Log";
+          const body = `Your AI visit today for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is pending. Please log the results.`;
+          await sendPushNotification(tech.pushToken, title, body);
+        }
+      }
+
+      // Notify Technicians for pending Health
+      for (const request of pendingHealth) {
+        const tech = request.handledBy;
+        if (tech && tech.pushToken) {
+          const title = "⏰ Pending Health Visit Log";
+          const body = `Your health visit today for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is pending. Please log the results.`;
+          await sendPushNotification(tech.pushToken, title, body);
+        }
+      }
+
+      return { AI_reminded: pendingAI.length, Health_reminded: pendingHealth.length };
+    });
+  }
+);
+
 export const functions = [
   syncUserCreated,
   syncUserUpdated,
@@ -342,5 +469,6 @@ export const functions = [
   onInseminationApproved, 
   onPregnancyConfirmed, 
   dailyStatsAggregation,
-  automatedGestationLifecycle
+  automatedGestationLifecycle,
+  remindPendingServices
 ];
