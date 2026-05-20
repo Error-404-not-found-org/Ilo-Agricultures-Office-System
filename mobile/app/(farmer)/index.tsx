@@ -499,7 +499,7 @@ export default function FarmerHome() {
             </Text>
             <View className="bg-white dark:bg-slate-800 rounded-[32px] p-4 shadow-sm border border-gray-100 dark:border-slate-700">
               {milestones.map((m: any, idx: number) => (
-                <View key={`${m.type}-${m.animal?._id}`}>
+                <View key={`${m.type}-${m.animal?._id}-${idx}`}>
                   <AlertItem
                     title={`${m.animal?.earTag || "Animal"} — ${m.title}`}
                     subtitle={`${m.daysLeft > 0 ? `Due in ${m.daysLeft} days` : "Due today"} • ${format(new Date(m.date), "MMM d")}`}

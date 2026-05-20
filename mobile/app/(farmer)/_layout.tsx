@@ -23,6 +23,25 @@ export default function FarmerLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen 
+        name="help-center" 
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen 
+        name="ask-moowie" 
+        options={{
+          href: null,
+          tabBarStyle: { display: "none" }
+        }}
+      />
+      <Tabs.Screen 
+        name="settings" 
+        options={{
+          href: null,
+        }}
+      />
       <Tabs.Screen name="profile" />
     </Tabs>
   );

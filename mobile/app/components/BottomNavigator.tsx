@@ -44,6 +44,13 @@ const BottomNavigator = ({
   descriptors,
   navigation,
 }: BottomTabBarProps) => {
+  const focusedRouteKey = state.routes[state.index].key;
+  const focusedOptions = descriptors[focusedRouteKey].options;
+
+  if ((focusedOptions.tabBarStyle as any)?.display === "none") {
+    return null;
+  }
+
   const [modalVisible, setModalVisible] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
