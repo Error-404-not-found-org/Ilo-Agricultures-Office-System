@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "ilo-agriculture",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "supportsTablet": true
     },
