@@ -14,13 +14,15 @@ import {
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import MapView, { UrlTile, Marker, Circle } from "react-native-maps";
-
-const CustomUrlTile = UrlTile as any;
 import { ArrowLeft, RefreshCw, Search, X, Home, MapPin, Compass } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { useApi } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-expo";
+
+// Must be declared AFTER all imports — Hermes (production APK engine) does not
+// allow any executable code between static import statements.
+const CustomUrlTile = UrlTile as any;
 
 const PRIMARY = "#00643B";
 

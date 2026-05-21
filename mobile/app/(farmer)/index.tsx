@@ -70,6 +70,7 @@ export default function FarmerHome() {
 
   useFocusEffect(
     React.useCallback(() => {
+      queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
       queryClient.invalidateQueries({ queryKey: ['visits', 'upcoming'] });
       queryClient.invalidateQueries({ queryKey: ['ai-requests'] });
       queryClient.invalidateQueries({ queryKey: ['user', 'activity'] });

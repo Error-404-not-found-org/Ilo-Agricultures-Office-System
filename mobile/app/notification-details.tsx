@@ -75,7 +75,7 @@ export default function NotificationDetailsScreen() {
   }, [id, api]);
 
   const handleAction = async () => {
-    if (!data || isUpdating) return;
+    if (!data || isUpdating || !data.relatedData) return;
     setIsUpdating(true);
     try {
       const { notification, relatedData } = data;
@@ -180,50 +180,61 @@ export default function NotificationDetailsScreen() {
         </View>
 
         {/* Animal Details */}
-        <View className="p-6 bg-white mb-2 border-b border-slate-100">
-            <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Animal Environment</Text>
-            <View className="flex-row bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                <View className="w-20 h-20 rounded-xl bg-white items-center justify-center overflow-hidden border border-slate-100">
-                    {relatedData.animalId.imageUrl ? (
-                        <Image source={{ uri: relatedData.animalId.imageUrl }} className="w-full h-full" />
-                    ) : (
-                        <View className="items-center justify-center"><Text className="text-slate-300 text-[10px] font-bold">No Image</Text></View>
-                    )}
-                </View>
-                <View className="ml-4 flex-1 justify-center">
-                    <Text className="text-base font-bold text-slate-800">{relatedData.animalId.species} - {relatedData.animalId.breed}</Text>
-                    <Text className="text-slate-500 text-sm mt-1">Tag: <Text className="font-bold text-slate-700">{relatedData.animalId.earTag || relatedData.animalId.animalId}</Text></Text>
-                </View>
-            </View>
-        </View>
+        {relatedData?.animalId ? (
+          <View className="p-6 bg-white mb-2 border-b border-slate-100">
+              <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Animal Details</Text>
+              <View className="flex-row bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                  <View className="w-20 h-20 rounded-xl bg-white items-center justify-center overflow-hidden border border-slate-100">
+                      {relatedData.animalId.imageUrl ? (
+                          <Image source={{ uri: relatedData.animalId.imageUrl }} className="w-full h-full" />
+                      ) : (
+                          <View className="items-center justify-center"><Text className="text-slate-300 text-[10px] font-bold">No Image</Text></View>
+                      )}
+                  </View>
+                  <View className="ml-4 flex-1 justify-center">
+                      <Text className="text-base font-bold text-slate-800">{relatedData.animalId.species} - {relatedData.animalId.breed}</Text>
+                      <Text className="text-slate-500 text-sm mt-1">Tag: <Text className="font-bold text-slate-700">{relatedData.animalId.earTag || relatedData.animalId.animalId || 'N/A'}</Text></Text>
+                  </View>
+              </View>
+          </View>
+        ) : null}
 
         {/* Request Content */}
-        <View className="p-6 bg-white mb-2 border-b border-slate-100">
-            <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Message / Symptoms</Text>
-            <Text className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
-                &quot;{isAI ? relatedData.comment : relatedData.symptoms || 'No additional details provided.'}&quot;
-            </Text>
-            
-            {relatedData.imageUrl ? (
-                <View className="mt-4">
-                    <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Farmer&apos;s Attached Image</Text>
-                    <Image 
-                        source={{ uri: relatedData.imageUrl }} 
-                        className="w-full h-64 rounded-3xl" 
-                        resizeMode="cover"
-                    />
-                </View>
-            ) : null}
+        {relatedData ? (
+          <View className="p-6 bg-white mb-2 border-b border-slate-100">
+              <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Message / Symptoms</Text>
+              <Text className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
+                  &quot;{isAI ? relatedData.comment : relatedData.symptoms || 'No additional details provided.'}&quot;
+              </Text>
+              
+              {relatedData.imageUrl ? (
+                  <View className="mt-4">
+                      <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Farmer&apos;s Attached Image</Text>
+                      <Image 
+                          source={{ uri: relatedData.imageUrl }} 
+                          className="w-full h-64 rounded-3xl" 
+                          resizeMode="cover"
+                      />
+                  </View>
+              ) : null}
 
-            {isFarmer && relatedData.technicianNote ? (
-                <View className="mt-6 pt-6 border-t border-slate-100">
-                    <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Technician&apos;s Note</Text>
-                    <Text className="text-slate-700 text-base leading-6 bg-emerald-50 p-4 rounded-2xl border border-emerald-100 italic">
-                        &quot;{relatedData.technicianNote}&quot;
-                    </Text>
-                </View>
-            ) : null}
-        </View>
+              {isFarmer && relatedData.technicianNote ? (
+                  <View className="mt-6 pt-6 border-t border-slate-100">
+                      <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Technician&apos;s Note</Text>
+                      <Text className="text-slate-700 text-base leading-6 bg-emerald-50 p-4 rounded-2xl border border-emerald-100 italic">
+                          &quot;{relatedData.technicianNote}&quot;
+                      </Text>
+                  </View>
+              ) : null}
+          </View>
+        ) : (
+          <View className="p-6 bg-white mb-2 border-b border-slate-100">
+              <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Message</Text>
+              <Text className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
+                  &quot;{notification.message}&quot;
+              </Text>
+          </View>
+        )}
 
         {/* Metadata */}
         <View className="p-6">
@@ -244,7 +255,7 @@ export default function NotificationDetailsScreen() {
         </View>
 
         {/* Action Button */}
-        {!isFarmer && (
+        {!isFarmer && relatedData && (
             <View className="px-6 mt-4">
                 <TouchableOpacity 
                     disabled={isUpdating || relatedData.status !== 'pending'}

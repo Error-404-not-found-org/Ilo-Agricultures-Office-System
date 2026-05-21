@@ -30,12 +30,14 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useCallback } from "react";
 import { useApi } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 
 export default function AnimalDetails() {
   const { id } = useLocalSearchParams();
   const api = useApi();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState<"Info" | "History">("Info");
 
@@ -86,6 +88,9 @@ export default function AnimalDetails() {
             try {
               setDeleting(true);
               await api.delete(`/animals/${id}`);
+              // Invalidate caches so the dashboard stats update immediately
+              queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
+              queryClient.invalidateQueries({ queryKey: ['animals', 'my'] });
               toast.success("Animal deleted successfully");
               router.replace("/(farmer)/farmer.records" as any);
             } catch (error: any) {
