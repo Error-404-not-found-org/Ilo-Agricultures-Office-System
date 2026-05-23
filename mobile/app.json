@@ -12,7 +12,6 @@
       "supportsTablet": true
     },
     "android": {
-
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -54,6 +53,12 @@
         "projectId": "3fc4429f-8376-4203-808d-b8911ea21070"
       }
     },
-    "owner": "johndong28"
+    "owner": "johndong28",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/3fc4429f-8376-4203-808d-b8911ea21070"
+    }
   }
 }
