@@ -28,6 +28,7 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
+import { useTheme } from "@/lib/theme";
 
 interface CalfEntry {
   sex: "M" | "F";
@@ -41,6 +42,9 @@ export default function RecordCalving() {
   const api = useApi();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { colors, isDark } = useTheme();
+
+  const primaryColor = isDark ? colors.primary : '#00643B';
 
   const pregnancyId = params.pregnancyId as string;
   const animalId = params.animalId as string;
@@ -111,24 +115,26 @@ export default function RecordCalving() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-[#F9FAFB] dark:bg-slate-950"
+      className="flex-1"
+      style={{ backgroundColor: colors.background }}
     >
       <View
-        style={{ paddingTop: insets.top }}
-        className="bg-white dark:bg-slate-800 border-b border-gray-100 dark:border-slate-700"
+        style={{ paddingTop: insets.top, backgroundColor: colors.card, borderBottomColor: colors.border }}
+        className="border-b"
       >
         <View className="px-6 py-4 flex-row items-center justify-between">
           <TouchableOpacity
             onPress={() => router.back()}
-            className="w-10 h-10 items-center justify-center bg-slate-50 dark:bg-slate-700 rounded-full"
+            className="w-10 h-10 items-center justify-center rounded-full"
+            style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}
           >
-            <ArrowLeft size={20} color="#00643B" />
+            <ArrowLeft size={20} color={primaryColor} />
           </TouchableOpacity>
           <View className="items-center">
-            <Text className="text-lg font-black text-slate-800 dark:text-white">
+            <Text className="text-lg font-black" style={{ color: colors.textPrimary }}>
               Record Calving
             </Text>
-            <Text className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+            <Text className="text-[10px] font-bold uppercase tracking-widest mt-0.5" style={{ color: colors.textMuted }}>
               Mother: {earTag || "N/A"}
             </Text>
           </View>
@@ -139,37 +145,42 @@ export default function RecordCalving() {
       <ScrollView
         className="flex-1 px-6"
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 150 }}
+        contentContainerStyle={{ paddingBottom: 220 }}
       >
         {/* Info Box */}
-        <View className="mt-6 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-3xl border border-blue-100 dark:border-blue-800 flex-row items-start">
-          <Info size={18} color="#3B82F6" style={{ marginTop: 2 }} />
-          <Text className="ml-3 flex-1 text-[12px] leading-5 text-blue-900 dark:text-blue-100 font-medium">
+        <View 
+          className="mt-6 p-4 rounded-3xl border flex-row items-start"
+          style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff', borderColor: isDark ? 'transparent' : '#bfdbfe' }}
+        >
+          <Info size={18} color={isDark ? '#60a5fa' : '#3B82F6'} style={{ marginTop: 2 }} />
+          <Text className="ml-3 flex-1 text-[12px] leading-5 font-medium" style={{ color: isDark ? '#dbeafe' : '#1e3a8a' }}>
             Recording a calving will automatically register the new offspring
             into your animal list.
           </Text>
         </View>
 
         {/* Date & Ease Section */}
-        <View className="mt-8 grid grid-cols-2 gap-4">
+        <View className="mt-8">
           <View>
-            <Text className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest ml-1 mb-2">
+            <Text className="text-[10px] font-black uppercase tracking-widest ml-1 mb-2" style={{ color: colors.textMuted }}>
               Calving Date
             </Text>
-            <View className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl px-4 py-3 flex-row items-center">
-              <Calendar size={16} color="#94a3b8" />
+            <View className="border rounded-2xl px-4 py-3 flex-row items-center" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+              <Calendar size={16} color={colors.textMuted} />
               <TextInput
-                className="flex-1 ml-3 text-slate-800 dark:text-white font-bold"
+                className="flex-1 ml-3 font-bold"
+                style={{ color: colors.textPrimary }}
                 value={date}
                 onChangeText={setDate}
                 placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textMuted}
               />
             </View>
           </View>
         </View>
 
         <View className="mt-6">
-          <Text className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest ml-1 mb-2">
+          <Text className="text-[10px] font-black uppercase tracking-widest ml-1 mb-2" style={{ color: colors.textMuted }}>
             Calving Ease
           </Text>
           <View className="flex-row gap-2">
@@ -178,10 +189,15 @@ export default function RecordCalving() {
                 <TouchableOpacity
                   key={option}
                   onPress={() => setCalvingEase(option)}
-                  className={`flex-1 py-3 rounded-2xl items-center border ${calvingEase === option ? "bg-emerald-50 border-emerald-500" : "bg-white border-gray-100 dark:bg-slate-800 dark:border-slate-700"}`}
+                  className="flex-1 py-3 rounded-2xl items-center border"
+                  style={{
+                    backgroundColor: calvingEase === option ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5') : colors.card,
+                    borderColor: calvingEase === option ? (isDark ? colors.primary : '#10b981') : colors.border
+                  }}
                 >
                   <Text
-                    className={`text-[11px] font-black ${calvingEase === option ? "text-emerald-700" : "text-slate-400"}`}
+                    className="text-[11px] font-black"
+                    style={{ color: calvingEase === option ? (isDark ? colors.primary : '#065f46') : colors.textMuted }}
                   >
                     {option}
                   </Text>
@@ -193,15 +209,16 @@ export default function RecordCalving() {
 
         {/* Offspring List */}
         <View className="mt-10 flex-row justify-between items-center mb-4">
-          <Text className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest">
+          <Text className="text-sm font-black uppercase tracking-widest" style={{ color: colors.textPrimary }}>
             Offspring Registry
           </Text>
           <TouchableOpacity
             onPress={addCalf}
-            className="bg-emerald-50 dark:bg-emerald-900/30 px-4 py-2 rounded-full flex-row items-center gap-2"
+            className="px-4 py-2 rounded-full flex-row items-center gap-2"
+            style={{ backgroundColor: colors.tint }}
           >
-            <Plus size={14} color="#00643B" />
-            <Text className="text-[11px] font-black text-[#00643B]">
+            <Plus size={14} color={primaryColor} />
+            <Text className="text-[11px] font-black" style={{ color: primaryColor }}>
               Add Multiple
             </Text>
           </TouchableOpacity>
@@ -210,9 +227,10 @@ export default function RecordCalving() {
         {calves.map((calf, index) => (
           <View
             key={index}
-            className="bg-white dark:bg-slate-800 rounded-[32px] p-6 mb-6 border border-gray-50 dark:border-slate-700 shadow-sm relative"
+            className="rounded-[32px] p-6 mb-6 border shadow-sm relative"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
-            <View className="absolute -top-3 -left-2 w-8 h-8 rounded-full bg-[#00643B] items-center justify-center shadow-md">
+            <View className="absolute -top-3 -left-2 w-8 h-8 rounded-full items-center justify-center shadow-md" style={{ backgroundColor: primaryColor }}>
               <Text className="text-white text-[10px] font-black">
                 {index + 1}
               </Text>
@@ -221,35 +239,46 @@ export default function RecordCalving() {
             {calves.length > 1 && (
               <TouchableOpacity
                 onPress={() => removeCalf(index)}
-                className="absolute top-4 right-4 p-2 bg-red-50 dark:bg-red-900/20 rounded-full"
+                className="absolute top-4 right-4 p-2 rounded-full"
+                style={{ backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2' }}
               >
-                <Trash2 size={16} color="#EF4444" />
+                <Trash2 size={16} color={colors.error} />
               </TouchableOpacity>
             )}
 
             <View className="gap-5">
               {/* Sex Toggle */}
               <View>
-                <Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
                   Gender / Sex
                 </Text>
                 <View className="flex-row gap-2">
                   <TouchableOpacity
                     onPress={() => updateCalf(index, "sex", "F")}
-                    className={`flex-1 py-3 rounded-xl items-center border ${calf.sex === "F" ? "bg-rose-50 border-rose-400" : "bg-slate-50 dark:bg-slate-700 border-transparent"}`}
+                    className="flex-1 py-3 rounded-xl items-center border"
+                    style={{
+                      backgroundColor: calf.sex === "F" ? (isDark ? 'rgba(244, 63, 94, 0.15)' : '#fff5f5') : (isDark ? colors.background : '#f8fafc'),
+                      borderColor: calf.sex === "F" ? '#f43f5e' : 'transparent'
+                    }}
                   >
                     <Text
-                      className={`text-[10px] font-black ${calf.sex === "F" ? "text-rose-600" : "text-slate-400"}`}
+                      className="text-[10px] font-black"
+                      style={{ color: calf.sex === "F" ? '#f43f5e' : colors.textMuted }}
                     >
                       Female
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => updateCalf(index, "sex", "M")}
-                    className={`flex-1 py-3 rounded-xl items-center border ${calf.sex === "M" ? "bg-blue-50 border-blue-400" : "bg-slate-50 dark:bg-slate-700 border-transparent"}`}
+                    className="flex-1 py-3 rounded-xl items-center border"
+                    style={{
+                      backgroundColor: calf.sex === "M" ? (isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff') : (isDark ? colors.background : '#f8fafc'),
+                      borderColor: calf.sex === "M" ? '#3b82f6' : 'transparent'
+                    }}
                   >
                     <Text
-                      className={`text-[10px] font-black ${calf.sex === "M" ? "text-blue-600" : "text-slate-400"}`}
+                      className="text-[10px] font-black"
+                      style={{ color: calf.sex === "M" ? '#3b82f6' : colors.textMuted }}
                     >
                       Male
                     </Text>
@@ -260,32 +289,34 @@ export default function RecordCalving() {
               {/* Tag & Weight */}
               <View className="flex-row gap-4">
                 <View className="flex-1">
-                  <Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                  <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
                     Ear Tag #
                   </Text>
-                  <View className="bg-slate-50 dark:bg-slate-700 rounded-xl px-4 py-3 flex-row items-center">
-                    <Hash size={14} color="#94a3b8" />
+                  <View className="rounded-xl px-4 py-3 flex-row items-center" style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}>
+                    <Hash size={14} color={colors.textMuted} />
                     <TextInput
-                      className="flex-1 ml-2 text-slate-800 dark:text-white font-bold text-xs"
+                      className="flex-1 ml-2 font-bold text-xs"
+                      style={{ color: colors.textPrimary }}
                       value={calf.earTag}
                       onChangeText={(val) => updateCalf(index, "earTag", val)}
                       placeholder="TAG-XXX"
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor={colors.textMuted}
                     />
                   </View>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-2 ml-1">
+                  <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
                     Weight (kg)
                   </Text>
-                  <View className="bg-slate-50 dark:bg-slate-700 rounded-xl px-4 py-3 flex-row items-center">
-                    <Scale size={14} color="#94a3b8" />
+                  <View className="rounded-xl px-4 py-3 flex-row items-center" style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}>
+                    <Scale size={14} color={colors.textMuted} />
                     <TextInput
-                      className="flex-1 ml-2 text-slate-800 dark:text-white font-bold text-xs"
+                      className="flex-1 ml-2 font-bold text-xs"
+                      style={{ color: colors.textPrimary }}
                       value={calf.weight}
                       onChangeText={(val) => updateCalf(index, "weight", val)}
                       placeholder="0.0"
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor={colors.textMuted}
                       keyboardType="numeric"
                     />
                   </View>
@@ -297,51 +328,53 @@ export default function RecordCalving() {
 
         {/* Note Box */}
         <View className="mt-4">
-          <Text className="text-[10px] font-black text-gray-400 dark:text-slate-500 uppercase tracking-widest ml-1 mb-2">
+          <Text className="text-[10px] font-black uppercase tracking-widest ml-1 mb-2" style={{ color: colors.textMuted }}>
             Observations (Optional)
           </Text>
           <TextInput
-            className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-[28px] p-5 text-slate-800 dark:text-white text-xs min-h-[120px]"
+            className="border rounded-[28px] p-5 text-xs min-h-[120px]"
+            style={{ backgroundColor: colors.card, borderColor: colors.border, color: colors.textPrimary }}
             multiline
             numberOfLines={4}
             textAlignVertical="top"
             placeholder="Any special notes about the birth or the offspring's condition..."
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={colors.textMuted}
             value={technicianNote}
             onChangeText={setTechnicianNote}
           />
         </View>
-        <View
-          style={{ paddingBottom: Math.max(insets.bottom + 16, 90) }}
-          className="px-6 pt-4 bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 absolute bottom-0 left-0 right-0"
-        >
-          <TouchableOpacity
-            onPress={handleSubmit}
-            disabled={isSubmitting}
-            className={`h-16 rounded-[24px] flex-row items-center justify-center gap-3 ${isSubmitting ? "bg-emerald-400" : "bg-[#00643B]"}`}
-            style={{
-              elevation: 8,
-              shadowColor: "#00643B",
-              shadowOpacity: 0.3,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 4 },
-            }}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <>
-                <ClipboardCheck size={20} color="white" />
-                <Text className="text-white font-black text-base uppercase tracking-widest">
-                  Register Offspring
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
       </ScrollView>
 
-      {/* Footer Button */}
+      {/* Floating Save Button */}
+      <View
+        style={{ paddingBottom: Math.max(insets.bottom + 16, 24), backgroundColor: colors.card, borderTopColor: colors.border }}
+        className="px-6 pt-4 border-t absolute bottom-0 left-0 right-0"
+      >
+        <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={isSubmitting}
+          className="h-16 rounded-[24px] flex-row items-center justify-center gap-3"
+          style={{
+            backgroundColor: isSubmitting ? '#34d399' : primaryColor,
+            elevation: 8,
+            shadowColor: primaryColor,
+            shadowOpacity: 0.3,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: 4 },
+          }}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator color="white" />
+          ) : (
+            <>
+              <ClipboardCheck size={20} color="white" />
+              <Text className="text-white font-black text-base uppercase tracking-widest">
+                Register Offspring
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }

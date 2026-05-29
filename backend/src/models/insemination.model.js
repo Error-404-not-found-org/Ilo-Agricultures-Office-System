@@ -84,6 +84,7 @@ const InseminationSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -94,5 +95,6 @@ InseminationSchema.index({ farmerId: 1 });
 InseminationSchema.index({ status: 1 });
 InseminationSchema.index({ scheduledDate: 1 });
 InseminationSchema.index({ inseminationDate: -1 });
+InseminationSchema.index({ deletedAt: 1 });
 
 export const Insemination = mongoose.model("Insemination", InseminationSchema);

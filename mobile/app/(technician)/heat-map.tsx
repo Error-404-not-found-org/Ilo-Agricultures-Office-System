@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { UrlTile, Marker, Circle } from "react-native-maps";
+import MapView, { UrlTile, Marker, Circle } from "@/components/MapShim";
 import {
   ArrowLeft,
   RefreshCw,

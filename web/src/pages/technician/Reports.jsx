@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Calendar, Download, FileText, Filter, Printer, Table, ChevronRight, CheckCircle2, ClipboardList, Database, ArrowUpRight, Activity, Syringe } from 'lucide-react';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const TechnicianReports = () => {
   const [loading, setLoading] = useState(false);
@@ -85,6 +87,158 @@ const TechnicianReports = () => {
     toast.success("Report exported successfully!");
   };
 
+  const exportToPDF = () => {
+    if (reportData.length === 0) return toast.error("No data to export.");
+
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4'
+    });
+
+    const monthLabel = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ][parseInt(selectedMonth) - 1] || "Selected Month";
+
+    // Header metadata
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text("Department of Agriculture", 148, 12, { align: "center" });
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text("UNIFIED NATIONAL ARTIFICIAL INSEMINATION PROGRAM", 148, 17, { align: "center" });
+    doc.setFontSize(11);
+    doc.text("Monthly Accomplishment Report", 148, 23, { align: "center" });
+    
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text(`For the Month of: ${monthLabel}, ${selectedYear}`, 148, 28, { align: "center" });
+
+    // Table headers matching standard UNAIP 23 columns
+    const headers = [
+      [
+        { content: "Data", rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
+        { content: "Animal Identification", colSpan: 8, styles: { halign: 'center' } },
+        { content: "Artificial Insemination (AI)", colSpan: 5, styles: { halign: 'center' } },
+        { content: "Pregnancy Diagnosis (PD)", colSpan: 2, styles: { halign: 'center' } },
+        { content: "Calf Drop (CD)", colSpan: 7, styles: { halign: 'center' } }
+      ],
+      [
+        "Animal ID", "Ear tag No", "Brand", "Species", "Breed", "Color", "Barangay", "Farmer",
+        "Date", "No. AI", "Estrus", "Sire Breed", "Sire Code",
+        "Date", "Result",
+        "Date", "No. Calving", "Calf 1 ID", "Sex 1", "Calf 2 ID", "Sex 2", "Ease"
+      ]
+    ];
+
+    const rows = reportData.map(item => {
+      const barangay = typeof item.farmer?.address === "object" ? item.farmer.address?.barangay || "Local" : "Local";
+      const pdResult = item.pd?.result === "Pregnant" ? "Positive" : item.pd?.result === "Empty" ? "Negative" : "";
+      
+      const calf1Tag = item.cd?.calves?.[0]?.earTag || "";
+      const calf1Sex = item.cd?.calves?.[0]?.sex || "";
+      const calf2Tag = item.cd?.calves?.[1]?.earTag || "";
+      const calf2Sex = item.cd?.calves?.[1]?.sex || "";
+
+      return [
+        item.type || "",
+        item.animal?.animalId || "",
+        item.animal?.earTag || "",
+        item.animal?.brand || "",
+        item.animal?.species || "",
+        item.animal?.breed || "",
+        item.animal?.color || "",
+        barangay,
+        item.farmer?.name || "",
+        // AI
+        item.ai ? new Date(item.date).toLocaleDateString() : "",
+        item.ai?.attempt || "",
+        item.ai?.estrus || "",
+        item.ai?.sireBreed || "",
+        item.ai?.sireCode || "",
+        // PD
+        item.pd?.date ? new Date(item.pd.date).toLocaleDateString() : "",
+        pdResult,
+        // CD
+        item.cd ? new Date(item.date).toLocaleDateString() : "",
+        item.cd?.count || "",
+        calf1Tag,
+        calf1Sex,
+        calf2Tag,
+        calf2Sex,
+        item.cd?.ease || ""
+      ];
+    });
+
+    doc.autoTable({
+      head: headers,
+      body: rows,
+      startY: 34,
+      theme: 'grid',
+      styles: {
+        fontSize: 5.5,
+        cellPadding: 1.5,
+        lineColor: [0, 0, 0],
+        lineWidth: 0.1
+      },
+      headStyles: {
+        fillColor: [240, 240, 240],
+        textColor: [0, 0, 0],
+        fontStyle: 'bold',
+        lineWidth: 0.1,
+        lineColor: [0, 0, 0]
+      },
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 12 },
+        2: { cellWidth: 12 },
+        3: { cellWidth: 10 },
+        4: { cellWidth: 12 },
+        5: { cellWidth: 12 },
+        6: { cellWidth: 10 },
+        7: { cellWidth: 12 },
+        8: { cellWidth: 15 },
+        9: { cellWidth: 14 },
+        10: { cellWidth: 7 },
+        11: { cellWidth: 10 },
+        12: { cellWidth: 12 },
+        13: { cellWidth: 12 },
+        14: { cellWidth: 14 },
+        15: { cellWidth: 11 },
+        16: { cellWidth: 14 },
+        17: { cellWidth: 8 },
+        18: { cellWidth: 10 },
+        19: { cellWidth: 8 },
+        20: { cellWidth: 10 },
+        21: { cellWidth: 8 },
+        22: { cellWidth: 10 }
+      },
+      didDrawPage: (data) => {
+        const totalPages = doc.internal.getNumberOfPages();
+        if (data.pageNumber === totalPages) {
+          const finalY = data.cursor.y + 12;
+          doc.setFont("Helvetica", "normal");
+          doc.setFontSize(8);
+          
+          doc.text("Prepared by:", 30, finalY);
+          doc.line(30, finalY + 8, 90, finalY + 8);
+          doc.setFont("Helvetica", "bold");
+          doc.text("TECHNICIAN / AI COORDINATOR", 30, finalY + 12);
+          
+          doc.setFont("Helvetica", "normal");
+          doc.text("Noted by:", 200, finalY);
+          doc.line(200, finalY + 8, 260, finalY + 8);
+          doc.setFont("Helvetica", "bold");
+          doc.text("SUPERVISING AGRICULTURIST", 200, finalY + 12);
+        }
+      }
+    });
+
+    doc.save(`UNAIP_Accomplishment_Report_${monthLabel}_${selectedYear}.pdf`);
+    toast.success("Accomplishment PDF Report exported!");
+  };
+
   return (
     <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* Header Section */}
@@ -128,13 +282,18 @@ const TechnicianReports = () => {
         <div className="lg:col-span-12 space-y-6">
            <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1 bg-slate-900 dark:bg-emerald-950/40 rounded-3xl p-6 text-white shadow-xl flex items-center justify-between">
-                 <div>
+                  <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-50">Total Records</p>
                     <p className="text-4xl font-black mt-1">{reportData.length}</p>
-                 </div>
-                 <button onClick={exportToCSV} disabled={reportData.length === 0} className="px-6 py-3 bg-white text-slate-900 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2">
-                    <Download size={16} /> Export to Excel (CSV)
-                 </button>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={exportToCSV} disabled={reportData.length === 0} className="px-5 py-3 bg-white text-slate-900 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                       <Download size={16} /> Export CSV
+                    </button>
+                    <button onClick={exportToPDF} disabled={reportData.length === 0} className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+                       <FileText size={16} /> Export PDF
+                    </button>
+                  </div>
               </div>
               <div className="flex gap-4">
                  <div className="bg-white dark:bg-slate-900/40 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 text-center min-w-[120px]">

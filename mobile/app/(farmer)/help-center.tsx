@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
-import { ChevronLeft, Phone, Mail, MessageSquare, ChevronUp, ChevronDown, HelpCircle } from 'lucide-react-native';
+import { ChevronLeft, Phone, Mail, MessageSquare, ChevronUp, ChevronDown } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useUser } from '@clerk/clerk-expo';
-import { useColorScheme } from 'nativewind';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
+import { useTheme } from '@/lib/theme';
 
 export default function HelpCenter() {
   const router = useRouter();
   const { user: clerkUser } = useUser();
-  const { colorScheme } = useColorScheme();
   const api = useApi();
+  const { colors, isDark } = useTheme();
+
+  const primaryColor = isDark ? colors.primary : '#00643B';
 
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [supportMessage, setSupportMessage] = useState('');
@@ -58,11 +60,14 @@ export default function HelpCenter() {
   };
 
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <StatusBar style="light" />
       
       {/* Header */}
-      <View className="pt-14 pb-6 px-6 bg-[#00643B] rounded-b-[32px] flex-row items-center">
+      <View 
+        className="pt-14 pb-6 px-6 rounded-b-[32px] flex-row items-center"
+        style={{ backgroundColor: '#00643B' }}
+      >
         <TouchableOpacity 
           onPress={() => router.back()}
           className="w-10 h-10 bg-white/10 rounded-full items-center justify-center"
@@ -80,25 +85,35 @@ export default function HelpCenter() {
         <View style={{ gap: 24 }}>
 
           {/* Contact Support Info */}
-          <View style={{ padding: 20, borderRadius: 24, backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#fff', borderWidth: 1, borderColor: colorScheme === 'dark' ? '#334155' : '#f1f5f9', borderLeftWidth: 5, borderLeftColor: '#00643B' }}>
-            <Text style={{ fontFamily: 'Outfit_800ExtraBold', fontSize: 16, color: colorScheme === 'dark' ? '#fff' : '#1e293b', marginBottom: 4 }}>Oton Agriculture Office</Text>
-            <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>Open Monday - Friday, 8:00 AM - 5:00 PM</Text>
+          <View 
+            style={{ 
+              padding: 20, 
+              borderRadius: 24, 
+              backgroundColor: colors.card, 
+              borderWidth: 1, 
+              borderColor: colors.border, 
+              borderLeftWidth: 5, 
+              borderLeftColor: primaryColor 
+            }}
+          >
+            <Text style={{ fontFamily: 'Outfit_800ExtraBold', fontSize: 16, color: colors.textPrimary, marginBottom: 4 }}>Oton Agriculture Office</Text>
+            <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 12, color: colors.textMuted, marginBottom: 16 }}>Open Monday - Friday, 8:00 AM - 5:00 PM</Text>
             
             <View style={{ gap: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Phone size={16} color="#00643B" />
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 14, color: colorScheme === 'dark' ? '#cbd5e1' : '#475569' }}>(033) 336-1234 / +63 912 345 6789</Text>
+                <Phone size={16} color={primaryColor} />
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 14, color: colors.textSecondary }}>(033) 336-1234 / +63 912 345 6789</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Mail size={16} color="#00643B" />
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 14, color: colorScheme === 'dark' ? '#cbd5e1' : '#475569' }}>oton.agri@gmail.com</Text>
+                <Mail size={16} color={primaryColor} />
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 14, color: colors.textSecondary }}>oton.agri@gmail.com</Text>
               </View>
             </View>
           </View>
 
           {/* FAQs Section */}
           <View>
-            <Text style={{ fontFamily: 'Outfit_800ExtraBold', fontSize: 18, color: colorScheme === 'dark' ? '#fff' : '#1e293b', marginBottom: 16 }}>Frequently Asked Questions</Text>
+            <Text style={{ fontFamily: 'Outfit_800ExtraBold', fontSize: 18, color: colors.textPrimary, marginBottom: 16 }}>Frequently Asked Questions</Text>
             
             <View style={{ gap: 12 }}>
               {FAQs.map((faq, idx) => (
@@ -106,9 +121,9 @@ export default function HelpCenter() {
                   key={idx} 
                   style={{ 
                     borderWidth: 1, 
-                    borderColor: colorScheme === 'dark' ? '#334155' : '#e2e8f0', 
+                    borderColor: colors.border, 
                     borderRadius: 20, 
-                    backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#fff',
+                    backgroundColor: colors.card,
                     overflow: 'hidden' 
                   }}
                 >
@@ -119,16 +134,16 @@ export default function HelpCenter() {
                       flexDirection: 'row', 
                       justifyContent: 'space-between', 
                       alignItems: 'center',
-                      backgroundColor: activeFaq === idx ? 'rgba(0,100,59,0.03)' : 'transparent'
+                      backgroundColor: activeFaq === idx ? (isDark ? 'rgba(16, 185, 129, 0.05)' : 'rgba(0,100,59,0.03)') : 'transparent'
                     }}
                   >
-                    <Text style={{ flex: 1, fontFamily: 'Outfit_700Bold', fontSize: 14, color: colorScheme === 'dark' ? '#f1f5f9' : '#334155', marginRight: 10 }}>{faq.q}</Text>
-                    {activeFaq === idx ? <ChevronUp size={18} color="#94a3b8" /> : <ChevronDown size={18} color="#94a3b8" />}
+                    <Text style={{ flex: 1, fontFamily: 'Outfit_700Bold', fontSize: 14, color: colors.textPrimary, marginRight: 10 }}>{faq.q}</Text>
+                    {activeFaq === idx ? <ChevronUp size={18} color={colors.textMuted} /> : <ChevronDown size={18} color={colors.textMuted} />}
                   </TouchableOpacity>
                   
                   {activeFaq === idx && (
-                    <View style={{ padding: 18, backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#f8fafc', borderTopWidth: 1, borderTopColor: colorScheme === 'dark' ? '#334155' : '#e2e8f0' }}>
-                      <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 13, color: colorScheme === 'dark' ? '#94a3b8' : '#475569', lineHeight: 20 }}>{faq.a}</Text>
+                    <View style={{ padding: 18, backgroundColor: isDark ? colors.background : '#f8fafc', borderTopWidth: 1, borderTopColor: colors.border }}>
+                      <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 13, color: colors.textSecondary, lineHeight: 20 }}>{faq.a}</Text>
                     </View>
                   )}
                 </View>
@@ -138,15 +153,15 @@ export default function HelpCenter() {
 
           {/* Support Ticket Section */}
           <View>
-            <Text style={{ fontFamily: 'Outfit_800ExtraBold', fontSize: 18, color: colorScheme === 'dark' ? '#fff' : '#1e293b', marginBottom: 6 }}>Direct Support Message</Text>
-            <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 12, color: '#94a3b8', marginBottom: 16 }}>Need more help? Send a message directly to our technicians.</Text>
+            <Text style={{ fontFamily: 'Outfit_800ExtraBold', fontSize: 18, color: colors.textPrimary, marginBottom: 6 }}>Direct Support Message</Text>
+            <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 12, color: colors.textMuted, marginBottom: 16 }}>Need more help? Send a message directly to our technicians.</Text>
             
             <View style={{ gap: 12 }}>
               <View style={{ 
                 borderWidth: 1, 
-                borderColor: colorScheme === 'dark' ? '#334155' : '#e2e8f0', 
+                borderColor: colors.border, 
                 borderRadius: 20, 
-                backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#fff',
+                backgroundColor: colors.card,
                 padding: 16,
                 height: 140
               }}>
@@ -154,14 +169,14 @@ export default function HelpCenter() {
                   multiline
                   numberOfLines={4}
                   placeholder="Write your concern or question here..."
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={colors.textMuted}
                   value={supportMessage}
                   onChangeText={setSupportMessage}
                   style={{ 
                     flex: 1, 
                     fontFamily: 'Outfit_600SemiBold', 
                     fontSize: 14, 
-                    color: colorScheme === 'dark' ? '#fff' : '#1e293b',
+                    color: colors.textPrimary,
                     textAlignVertical: 'top'
                   }}
                 />
@@ -175,10 +190,10 @@ export default function HelpCenter() {
                   alignItems: 'center', 
                   justifyContent: 'center', 
                   gap: 8, 
-                  backgroundColor: '#00643B', 
+                  backgroundColor: primaryColor, 
                   paddingVertical: 16, 
                   borderRadius: 20,
-                  shadowColor: '#00643B',
+                  shadowColor: primaryColor,
                   shadowOpacity: 0.15,
                   shadowRadius: 10,
                   shadowOffset: { width: 0, height: 4 },

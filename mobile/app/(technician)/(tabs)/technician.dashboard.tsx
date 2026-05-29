@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
-  Text,
   ScrollView,
   TouchableOpacity,
   TextInput,
@@ -12,6 +11,9 @@ import {
   Image,
   Linking,
 } from "react-native";
+import { Text } from "@/components/ui/Text";
+import { Card } from "@/components/ui/Card";
+import { useTheme } from "@/lib/theme";
 import {
   Syringe,
   UserPlus,
@@ -36,15 +38,15 @@ import { useRouter, usePathname } from "expo-router";
 import { useApi } from "@/lib/api";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { toast } from "sonner-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import NetInfo from "@react-native-community/netinfo";
 import { addToOfflineQueue } from "@/lib/offlineQueue";
 import { CATTLE_BREEDS } from "@/lib/constants";
 import { getSireCodeByBreed } from "@/lib/sireRegistry";
-
-const PRIMARY = "#00643B";
 
 export default function TechnicianDashboard() {
   const router = useRouter();
@@ -53,6 +55,7 @@ export default function TechnicianDashboard() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user: clerkUser } = useUser();
   const queryClient = useQueryClient();
+  const { colors, isDark } = useTheme();
 
   const {
     data,
@@ -123,16 +126,22 @@ export default function TechnicianDashboard() {
       pregnantCount: 1,
       insemCount: 1,
       normalCount: 3,
-    }
+    },
   ];
 
-  const { data: clientsData, isLoading: loadingClients, refetch: refetchClients } = useQuery({
+  const {
+    data: clientsData,
+    isLoading: loadingClients,
+    refetch: refetchClients,
+  } = useQuery({
     queryKey: ["technician", "assigned-farmers"],
     queryFn: async () => {
       try {
         const response = await api.get("/user?role=farmer");
-        const farmers = Array.isArray(response.data) ? response.data : (response.data?.data || []);
-        
+        const farmers = Array.isArray(response.data)
+          ? response.data
+          : response.data?.data || [];
+
         if (farmers.length === 0) {
           return { data: getMockupStandings() };
         }
@@ -144,16 +153,26 @@ export default function TechnicianDashboard() {
               const detailData = detailRes.data || {};
               const stats = detailData.stats || {};
               const animals = stats.animals || [];
-              
+
               return {
                 ...farmer,
                 totalAnimals: animals.length,
-                pregnantCount: animals.filter((a: any) => a.reproductiveStatus === "Pregnant").length,
-                insemCount: animals.filter((a: any) => a.reproductiveStatus === "Inseminated").length,
-                normalCount: animals.filter((a: any) => !a.reproductiveStatus || a.reproductiveStatus === "Normal").length,
+                pregnantCount: animals.filter(
+                  (a: any) => a.reproductiveStatus === "Pregnant",
+                ).length,
+                insemCount: animals.filter(
+                  (a: any) => a.reproductiveStatus === "Inseminated",
+                ).length,
+                normalCount: animals.filter(
+                  (a: any) =>
+                    !a.reproductiveStatus || a.reproductiveStatus === "Normal",
+                ).length,
               };
             } catch (err) {
-              console.warn(`Failed to fetch details for farmer ${farmer._id}:`, err);
+              console.warn(
+                `Failed to fetch details for farmer ${farmer._id}:`,
+                err,
+              );
               return {
                 ...farmer,
                 totalAnimals: 0,
@@ -162,11 +181,13 @@ export default function TechnicianDashboard() {
                 normalCount: 0,
               };
             }
-          })
+          }),
         );
-        
+
         // Sort by totalAnimals descending (most animals first)
-        const sortedFarmers = detailedFarmers.sort((a, b) => b.totalAnimals - a.totalAnimals);
+        const sortedFarmers = detailedFarmers.sort(
+          (a: any, b: any) => b.totalAnimals - a.totalAnimals,
+        );
         return { data: sortedFarmers };
       } catch (globalErr) {
         console.error("Global Assigned Farmers Query Error:", globalErr);
@@ -179,7 +200,6 @@ export default function TechnicianDashboard() {
 
   const [farmerSearch, setFarmerSearch] = useState("");
 
-
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [scheduledDate, setScheduledDate] = useState(new Date());
@@ -191,8 +211,8 @@ export default function TechnicianDashboard() {
   const [sireCode, setSireCode] = useState("");
   const [estrus, setEstrus] = useState("Natural");
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showBreedModal, setShowBreedModal] = useState(false);
-
 
   const pathname = usePathname();
 
@@ -209,11 +229,11 @@ export default function TechnicianDashboard() {
 
   const handleAction = (item: any) => {
     setSelectedItem(item);
-    
+
     // Prioritize existing schedule, then farmer's preference, then current time
-    const initialDate = item.scheduledDate 
-      ? new Date(item.scheduledDate) 
-      : (item.raw?.preferredDate || item.displayDate)
+    const initialDate = item.scheduledDate
+      ? new Date(item.scheduledDate)
+      : item.raw?.preferredDate || item.displayDate
         ? new Date(item.raw?.preferredDate || item.displayDate)
         : new Date();
 
@@ -329,11 +349,16 @@ export default function TechnicianDashboard() {
   const agendaItems = data?.agendaItems || [];
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f8fafc" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" />
 
       {/* Persistent Status Bar Safety Zone */}
-      <View style={{ height: insets.top, backgroundColor: PRIMARY }} />
+      <View
+        style={{
+          height: insets.top,
+          backgroundColor: isDark ? "#064e3e" : "#00643B",
+        }}
+      />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -342,7 +367,8 @@ export default function TechnicianDashboard() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[PRIMARY]}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         }
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -350,7 +376,7 @@ export default function TechnicianDashboard() {
         {/* Premium Technician Header - Now scrolls under the safety zone */}
         <View
           style={{
-            backgroundColor: PRIMARY,
+            backgroundColor: isDark ? "#064e3e" : "#00643B",
             paddingBottom: 80,
             borderBottomLeftRadius: 48,
             borderBottomRightRadius: 48,
@@ -359,10 +385,10 @@ export default function TechnicianDashboard() {
           }}
         >
           <Text
+            variant="medium"
+            size={12}
             style={{
               color: "rgba(255,255,255,0.7)",
-              fontFamily: "Outfit_500Medium",
-              fontSize: 12,
               marginBottom: 8,
               marginLeft: 4,
             }}
@@ -385,7 +411,7 @@ export default function TechnicianDashboard() {
             {/* Profile + Label (Left) */}
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => router.push("/(technician)/profile" as any)}
+              onPress={() => router.push("/(technician)/(tabs)/profile" as any)}
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -417,20 +443,20 @@ export default function TechnicianDashboard() {
               </View>
               <View>
                 <Text
+                  variant="extrabold"
+                  size={13}
                   style={{
                     color: "#fff",
-                    fontFamily: "Outfit_800ExtraBold",
-                    fontSize: 13,
                     lineHeight: 14,
                   }}
                 >
                   Hello, {clerkUser?.firstName || "User"}
                 </Text>
                 <Text
+                  variant="medium"
+                  size={10}
                   style={{
                     color: "rgba(255,255,255,0.6)",
-                    fontFamily: "Outfit_500Medium",
-                    fontSize: 10,
                   }}
                 >
                   Technician
@@ -471,14 +497,14 @@ export default function TechnicianDashboard() {
                     alignItems: "center",
                     justifyContent: "center",
                     borderWidth: 1.5,
-                    borderColor: PRIMARY,
+                    borderColor: isDark ? "#064e3b" : "#00643B",
                   }}
                 >
                   <Text
+                    variant="black"
+                    size={8}
                     style={{
                       color: "#fff",
-                      fontSize: 8,
-                      fontFamily: "Outfit_900Black",
                     }}
                   >
                     {unreadCount > 9 ? "9+" : unreadCount}
@@ -512,19 +538,19 @@ export default function TechnicianDashboard() {
             </View>
             <View style={{ flex: 1 }}>
               <Text
+                variant="extrabold"
+                size={14}
                 style={{
                   color: "#fff",
-                  fontFamily: "Outfit_800ExtraBold",
-                  fontSize: 14,
                 }}
               >
                 Greetings
               </Text>
               <Text
+                variant="medium"
+                size={11}
                 style={{
                   color: "rgba(255,255,255,0.8)",
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 11,
                   lineHeight: 15,
                   marginTop: 2,
                 }}
@@ -539,73 +565,60 @@ export default function TechnicianDashboard() {
 
         <View style={{ paddingHorizontal: 24, marginTop: -40 }}>
           {/* Operations Stats */}
-          <View
+          <Card
             style={{
-              backgroundColor: "#fff",
-              borderRadius: 24,
               padding: 20,
               flexDirection: "row",
-              shadowColor: "#000",
-              shadowOpacity: 0.05,
-              shadowRadius: 15,
-              elevation: 5,
               marginBottom: 24,
             }}
           >
             <StatBox
               label="Missions"
               value={stats.todayActivities || "0"}
-              color={PRIMARY}
+              color={isDark ? colors.primary : "#00643B"}
               icon="calendar-check"
             />
             <View
               style={{
                 width: 1,
                 height: "60%",
-                backgroundColor: "#f1f5f9",
+                backgroundColor: colors.border,
                 alignSelf: "center",
               }}
             />
             <StatBox
               label="AI Cycle"
               value={analytics.totalAI_Week || "0"}
-              color="#EAB308"
+              color={isDark ? "#facc15" : "#EAB308"}
               icon="flash"
             />
             <View
               style={{
                 width: 1,
                 height: "60%",
-                backgroundColor: "#f1f5f9",
+                backgroundColor: colors.border,
                 alignSelf: "center",
               }}
             />
             <StatBox
               label="Clinical"
               value={analytics.totalHealth_Month || "0"}
-              color="#2563EB"
+              color={isDark ? "#60a5fa" : "#2563EB"}
               icon="heart-pulse"
             />
-          </View>
+          </Card>
 
           {/* Premium Quick Actions Container */}
-          <View
+          <Card
             style={{
-              backgroundColor: "#fff",
-              borderRadius: 32,
               padding: 24,
               marginBottom: 24,
-              shadowColor: "#000",
-              shadowOpacity: 0.05,
-              shadowRadius: 15,
-              elevation: 4,
             }}
           >
             <Text
+              variant="extrabold"
+              size={17}
               style={{
-                fontFamily: "Outfit_800ExtraBold",
-                color: "#1e293b",
-                fontSize: 17,
                 marginBottom: 20,
               }}
             >
@@ -623,22 +636,22 @@ export default function TechnicianDashboard() {
               <ActionCard
                 label="Record AI"
                 icon="needle"
-                color="#10b981"
-                bg="#f0fdf4"
+                color={isDark ? "#34d399" : "#10b981"}
+                bg={isDark ? "#064e3b" : "#f0fdf4"}
                 onPress={() => router.push("/(technician)/record-ai" as any)}
               />
               <ActionCard
                 label="Health Log"
                 icon="stethoscope"
-                color="#f59e0b"
-                bg="#fffbeb"
+                color={isDark ? "#fbbf24" : "#f59e0b"}
+                bg={isDark ? "#78350f" : "#fffbeb"}
                 onPress={() => router.push("/(technician)/health-log" as any)}
               />
               <ActionCard
                 label="Add Client"
                 icon="account-plus-outline"
-                color="#3b82f6"
-                bg="#eff6ff"
+                color={isDark ? "#60a5fa" : "#3b82f6"}
+                bg={isDark ? "#1e3a8a" : "#eff6ff"}
                 onPress={() =>
                   router.push("/(technician)/register-client" as any)
                 }
@@ -646,8 +659,8 @@ export default function TechnicianDashboard() {
               <ActionCard
                 label="Add Animal"
                 icon="cow"
-                color="#8b5cf6"
-                bg="#f5f3ff"
+                color={isDark ? "#a78bfa" : "#8b5cf6"}
+                bg={isDark ? "#4c1d95" : "#f5f3ff"}
                 onPress={() =>
                   router.push("/(technician)/register-animal" as any)
                 }
@@ -655,8 +668,8 @@ export default function TechnicianDashboard() {
               <ActionCard
                 label="Pregnancy"
                 icon="heart-pulse"
-                color="#ec4899"
-                bg="#fdf2f8"
+                color={isDark ? "#f472b6" : "#ec4899"}
+                bg={isDark ? "#831843" : "#fdf2f8"}
                 onPress={() =>
                   router.push("/(technician)/pregnancy-check" as any)
                 }
@@ -664,14 +677,14 @@ export default function TechnicianDashboard() {
               <ActionCard
                 label="Calf Drop"
                 icon="baby-carriage"
-                color="#06b6d4"
-                bg="#ecfeff"
+                color={isDark ? "#22d3ee" : "#06b6d4"}
+                bg={isDark ? "#164e63" : "#ecfeff"}
                 onPress={() =>
                   router.push("/(technician)/record-calf-drop" as any)
                 }
               />
             </View>
-          </View>
+          </Card>
 
           {/* Today's Route Section */}
           <View
@@ -682,14 +695,8 @@ export default function TechnicianDashboard() {
               marginBottom: 16,
             }}
           >
-            <Text
-              style={{
-                fontFamily: "Outfit_800ExtraBold",
-                color: "#1e293b",
-                fontSize: 18,
-              }}
-            >
-              Today's Route
+            <Text variant="extrabold" size={18}>
+              Today&apos;s Route
             </Text>
             <TouchableOpacity
               onPress={() => {
@@ -716,7 +723,7 @@ export default function TechnicianDashboard() {
                 const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints ? `&waypoints=${waypoints}` : ""}&travelmode=driving`;
 
                 Linking.openURL(url).catch((err) =>
-                  console.error("Failed to open maps", err)
+                  console.error("Failed to open maps", err),
                 );
               }}
               style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
@@ -724,48 +731,41 @@ export default function TechnicianDashboard() {
               <MaterialCommunityIcons
                 name="near-me"
                 size={16}
-                color={PRIMARY}
+                color={colors.primary}
               />
-              <Text
-                style={{
-                  fontFamily: "Outfit_700Bold",
-                  color: PRIMARY,
-                  fontSize: 13,
-                }}
-              >
+              <Text variant="bold" color="brand" size={13}>
                 Map
               </Text>
             </TouchableOpacity>
           </View>
 
           {loading ? (
-            <ActivityIndicator color={PRIMARY} style={{ marginTop: 20 }} />
+            <ActivityIndicator
+              color={colors.primary}
+              style={{ marginTop: 20 }}
+            />
           ) : agendaItems.length === 0 ? (
-            <View
+            <Card
               style={{
-                backgroundColor: "#fff",
-                borderRadius: 24,
                 padding: 32,
                 alignItems: "center",
-                borderWidth: 1,
-                borderColor: "#f1f5f9",
               }}
             >
               <MaterialCommunityIcons
                 name="calendar-blank"
                 size={48}
-                color="#cbd5e1"
+                color={colors.textMuted}
               />
               <Text
+                variant="bold"
+                color="muted"
                 style={{
-                  fontFamily: "Outfit_700Bold",
-                  color: "#94a3b8",
                   marginTop: 12,
                 }}
               >
                 No field visits today
               </Text>
-            </View>
+            </Card>
           ) : (
             agendaItems.map((item: any, idx: number) => (
               <AgendaCard
@@ -787,13 +787,7 @@ export default function TechnicianDashboard() {
               marginTop: 24,
             }}
           >
-            <Text
-              style={{
-                fontFamily: "Outfit_800ExtraBold",
-                color: "#1e293b",
-                fontSize: 18,
-              }}
-            >
+            <Text variant="extrabold" size={18}>
               Farmer Requests
             </Text>
             {(data?.pendingRequests || []).filter(
@@ -801,17 +795,17 @@ export default function TechnicianDashboard() {
             ).length > 0 && (
               <View
                 style={{
-                  backgroundColor: "#ffedd5",
+                  backgroundColor: isDark ? "#7c2d12" : "#ffedd5",
                   paddingHorizontal: 8,
                   paddingVertical: 4,
                   borderRadius: 8,
                 }}
               >
                 <Text
+                  variant="black"
+                  size={10}
                   style={{
-                    color: "#d97706",
-                    fontSize: 10,
-                    fontFamily: "Outfit_900Black",
+                    color: isDark ? "#fdba74" : "#d97706",
                   }}
                 >
                   {
@@ -826,35 +820,34 @@ export default function TechnicianDashboard() {
           </View>
 
           {loading ? (
-            <ActivityIndicator color={PRIMARY} style={{ marginTop: 20 }} />
+            <ActivityIndicator
+              color={colors.primary}
+              style={{ marginTop: 20 }}
+            />
           ) : (data?.pendingRequests || []).filter(
               (r: any) => r.status === "pending",
             ).length === 0 ? (
-            <View
+            <Card
               style={{
-                backgroundColor: "#fff",
-                borderRadius: 24,
                 padding: 32,
                 alignItems: "center",
-                borderWidth: 1,
-                borderColor: "#f1f5f9",
               }}
             >
               <MaterialCommunityIcons
                 name="clipboard-check-outline"
                 size={48}
-                color="#cbd5e1"
+                color={colors.textMuted}
               />
               <Text
+                variant="bold"
+                color="muted"
                 style={{
-                  fontFamily: "Outfit_700Bold",
-                  color: "#94a3b8",
                   marginTop: 12,
                 }}
               >
                 All requests processed! 🐮
               </Text>
-            </View>
+            </Card>
           ) : (
             (data?.pendingRequests || [])
               .filter((r: any) => r.status === "pending")
@@ -870,17 +863,10 @@ export default function TechnicianDashboard() {
           )}
 
           {/* Performance Hub (This Month Card) - Moved to bottom */}
-          <TouchableOpacity
+          <Card
             onPress={() => router.push("/(technician)/performance" as any)}
-            activeOpacity={0.9}
             style={{
-              backgroundColor: "#fff",
-              borderRadius: 32,
               padding: 24,
-              shadowColor: "#000",
-              shadowOpacity: 0.08,
-              shadowRadius: 20,
-              elevation: 6,
               marginBottom: 24,
               marginTop: 24,
             }}
@@ -893,43 +879,37 @@ export default function TechnicianDashboard() {
                 marginBottom: 24,
               }}
             >
-              <Text
-                style={{
-                  fontFamily: "Outfit_900Black",
-                  color: "#1e293b",
-                  fontSize: 20,
-                }}
-              >
+              <Text variant="black" size={20}>
                 This Month
               </Text>
-              <TrendingUp size={20} color={PRIMARY} />
+              <TrendingUp size={20} color={colors.primary} />
             </View>
 
             <View style={{ flexDirection: "row", gap: 10, marginBottom: 20 }}>
               <View
                 style={{
                   flex: 1,
-                  backgroundColor: "#FAF7F2",
+                  backgroundColor: isDark ? "#1f2937" : "#FAF7F2",
                   borderRadius: 16,
                   padding: 12,
                   borderWidth: 1,
-                  borderColor: "#f3f0e9",
+                  borderColor: isDark ? "#374151" : "#f3f0e9",
                 }}
               >
                 <Text
+                  variant="black"
+                  size={20}
                   style={{
-                    fontSize: 20,
-                    fontFamily: "Outfit_900Black",
-                    color: PRIMARY,
+                    color: colors.primary,
                   }}
                 >
                   {stats.totalInsemMonth || "0"}
                 </Text>
                 <Text
+                  variant="bold"
+                  color="secondary"
+                  size={10}
                   style={{
-                    fontSize: 10,
-                    fontFamily: "Outfit_700Bold",
-                    color: "#475569",
                     textTransform: "uppercase",
                     marginTop: 2,
                   }}
@@ -937,10 +917,10 @@ export default function TechnicianDashboard() {
                   AI Sessions
                 </Text>
                 <Text
+                  variant="medium"
+                  color="muted"
+                  size={9}
                   style={{
-                    fontSize: 9,
-                    fontFamily: "Outfit_500Medium",
-                    color: "#94a3b8",
                     marginTop: 4,
                   }}
                 >
@@ -950,27 +930,27 @@ export default function TechnicianDashboard() {
               <View
                 style={{
                   flex: 1,
-                  backgroundColor: "#FAF7F2",
+                  backgroundColor: isDark ? "#1f2937" : "#FAF7F2",
                   borderRadius: 16,
                   padding: 12,
                   borderWidth: 1,
-                  borderColor: "#f3f0e9",
+                  borderColor: isDark ? "#374151" : "#f3f0e9",
                 }}
               >
                 <Text
+                  variant="black"
+                  size={20}
                   style={{
-                    fontSize: 20,
-                    fontFamily: "Outfit_900Black",
-                    color: PRIMARY,
+                    color: colors.primary,
                   }}
                 >
                   {stats.successRate || "78%"}
                 </Text>
                 <Text
+                  variant="bold"
+                  color="secondary"
+                  size={10}
                   style={{
-                    fontSize: 10,
-                    fontFamily: "Outfit_700Bold",
-                    color: "#475569",
                     textTransform: "uppercase",
                     marginTop: 2,
                   }}
@@ -978,10 +958,10 @@ export default function TechnicianDashboard() {
                   Conception
                 </Text>
                 <Text
+                  variant="medium"
+                  size={9}
                   style={{
-                    fontSize: 9,
-                    fontFamily: "Outfit_500Medium",
-                    color: "#059669",
+                    color: isDark ? "#34d399" : "#059669",
                     marginTop: 4,
                   }}
                 >
@@ -991,27 +971,27 @@ export default function TechnicianDashboard() {
               <View
                 style={{
                   flex: 1,
-                  backgroundColor: "#FAF7F2",
+                  backgroundColor: isDark ? "#1f2937" : "#FAF7F2",
                   borderRadius: 16,
                   padding: 12,
                   borderWidth: 1,
-                  borderColor: "#f3f0e9",
+                  borderColor: isDark ? "#374151" : "#f3f0e9",
                 }}
               >
                 <Text
+                  variant="black"
+                  size={20}
                   style={{
-                    fontSize: 20,
-                    fontFamily: "Outfit_900Black",
-                    color: PRIMARY,
+                    color: colors.primary,
                   }}
                 >
                   34
                 </Text>
                 <Text
+                  variant="bold"
+                  color="secondary"
+                  size={10}
                   style={{
-                    fontSize: 10,
-                    fontFamily: "Outfit_700Bold",
-                    color: "#475569",
                     textTransform: "uppercase",
                     marginTop: 2,
                   }}
@@ -1019,10 +999,10 @@ export default function TechnicianDashboard() {
                   Farms Served
                 </Text>
                 <Text
+                  variant="medium"
+                  color="muted"
+                  size={9}
                   style={{
-                    fontSize: 9,
-                    fontFamily: "Outfit_500Medium",
-                    color: "#94a3b8",
                     marginTop: 4,
                   }}
                 >
@@ -1031,21 +1011,22 @@ export default function TechnicianDashboard() {
               </View>
             </View>
 
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontFamily: "Outfit_700Bold",
-                  color: "#475569",
-                }}
-              >
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 8,
+              }}
+            >
+              <Text variant="bold" color="secondary" size={11}>
                 Target Progress
               </Text>
               <Text
+                variant="extrabold"
+                size={11}
                 style={{
-                  fontSize: 11,
-                  fontFamily: "Outfit_800ExtraBold",
-                  color: PRIMARY,
+                  color: colors.primary,
                 }}
               >
                 36 / 50 Sessions (72%)
@@ -1055,7 +1036,7 @@ export default function TechnicianDashboard() {
             <View
               style={{
                 height: 8,
-                backgroundColor: "#f1f5f9",
+                backgroundColor: isDark ? "#374151" : "#f1f5f9",
                 borderRadius: 4,
                 overflow: "hidden",
               }}
@@ -1064,24 +1045,18 @@ export default function TechnicianDashboard() {
                 style={{
                   width: "72%",
                   height: "100%",
-                  backgroundColor: PRIMARY,
+                  backgroundColor: colors.primary,
                   borderRadius: 4,
                 }}
               />
             </View>
-          </TouchableOpacity>
+          </Card>
 
           {/* Assigned Farmers Section - Moved to bottom */}
-          <View
+          <Card
             style={{
-              backgroundColor: "#fff",
-              borderRadius: 32,
               padding: 24,
               marginBottom: 24,
-              shadowColor: "#000",
-              shadowOpacity: 0.05,
-              shadowRadius: 15,
-              elevation: 4,
             }}
           >
             <View
@@ -1092,13 +1067,7 @@ export default function TechnicianDashboard() {
                 marginBottom: 20,
               }}
             >
-              <Text
-                style={{
-                  fontFamily: "Outfit_900Black",
-                  color: "#1e293b",
-                  fontSize: 18,
-                }}
-              >
+              <Text variant="black" size={18}>
                 Farmer Standings
               </Text>
               <TouchableOpacity
@@ -1107,10 +1076,10 @@ export default function TechnicianDashboard() {
                 }
               >
                 <Text
+                  variant="extrabold"
+                  size={13}
                   style={{
-                    fontFamily: "Outfit_800ExtraBold",
-                    color: PRIMARY,
-                    fontSize: 13,
+                    color: colors.primary,
                   }}
                 >
                   View all
@@ -1121,20 +1090,20 @@ export default function TechnicianDashboard() {
             {/* Search Inner Bar */}
             <View
               style={{
-                backgroundColor: "#FAF7F2",
+                backgroundColor: isDark ? "#1f2937" : "#FAF7F2",
                 borderRadius: 16,
                 padding: 12,
                 flexDirection: "row",
                 alignItems: "center",
                 marginBottom: 20,
                 borderWidth: 1,
-                borderColor: "#f3f0e9",
+                borderColor: isDark ? "#374151" : "#f3f0e9",
               }}
             >
-              <Search size={18} color="#94a3b8" />
+              <Search size={18} color={colors.textMuted} />
               <TextInput
                 placeholder="Search farmer or address..."
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.textMuted}
                 value={farmerSearch}
                 onChangeText={setFarmerSearch}
                 style={{
@@ -1142,20 +1111,31 @@ export default function TechnicianDashboard() {
                   marginLeft: 10,
                   fontFamily: "Outfit_600SemiBold",
                   fontSize: 13,
-                  color: "#1e293b",
+                  color: colors.textPrimary,
                 }}
               />
             </View>
 
             <View style={{ gap: 12 }}>
               {loadingClients ? (
-                <ActivityIndicator color={PRIMARY} style={{ marginVertical: 12 }} />
+                <ActivityIndicator
+                  color={colors.primary}
+                  style={{ marginVertical: 12 }}
+                />
               ) : (
                 (clientsData?.data || [])
                   .filter((farmer: any) => {
                     if (!farmerSearch) return true;
-                    const addr = typeof farmer.address === "string" ? farmer.address : (farmer.address?.barangay || "");
-                    return farmer.name?.toLowerCase().includes(farmerSearch.toLowerCase()) || addr.toLowerCase().includes(farmerSearch.toLowerCase());
+                    const addr =
+                      typeof farmer.address === "string"
+                        ? farmer.address
+                        : farmer.address?.barangay || "";
+                    return (
+                      farmer.name
+                        ?.toLowerCase()
+                        .includes(farmerSearch.toLowerCase()) ||
+                      addr.toLowerCase().includes(farmerSearch.toLowerCase())
+                    );
                   })
                   .slice(0, 3)
                   .map((farmer: any) => (
@@ -1163,7 +1143,11 @@ export default function TechnicianDashboard() {
                       key={farmer._id}
                       id={farmer._id}
                       name={farmer.name}
-                      location={typeof farmer.address === "string" ? farmer.address : (farmer.address?.barangay || "Oton, Iloilo")}
+                      location={
+                        typeof farmer.address === "string"
+                          ? farmer.address
+                          : farmer.address?.barangay || "Oton, Iloilo"
+                      }
                       phone={farmer.phone}
                       imageUrl={farmer.imageUrl}
                       totalAnimals={farmer.totalAnimals}
@@ -1176,17 +1160,19 @@ export default function TechnicianDashboard() {
               )}
               {!loadingClients && (clientsData?.data || []).length === 0 && (
                 <View style={{ paddingVertical: 12, alignItems: "center" }}>
-                  <Text style={{ fontFamily: "Outfit_700Bold", color: "#94a3b8", fontSize: 13 }}>No assigned farmers yet</Text>
+                  <Text variant="bold" color="muted" size={13}>
+                    No assigned farmers yet
+                  </Text>
                 </View>
               )}
             </View>
-          </View>
+          </Card>
 
           {/* Moowie Help Banner */}
-          <TouchableOpacity
-            activeOpacity={0.9}
+          <Card
+            onPress={() => {}}
             style={{
-              backgroundColor: "#FAF7F2",
+              backgroundColor: isDark ? "#1f2937" : "#FAF7F2",
               borderRadius: 28,
               padding: 20,
               marginTop: 12,
@@ -1194,10 +1180,7 @@ export default function TechnicianDashboard() {
               alignItems: "center",
               gap: 16,
               borderWidth: 1,
-              borderColor: "#f3f0e9",
-              shadowColor: "#000",
-              shadowOpacity: 0.03,
-              shadowRadius: 10,
+              borderColor: isDark ? "#374151" : "#f3f0e9",
             }}
           >
             <View style={{ width: 60, height: 60 }}>
@@ -1210,20 +1193,14 @@ export default function TechnicianDashboard() {
               />
             </View>
             <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontFamily: "Outfit_900Black",
-                  color: "#1e293b",
-                  fontSize: 16,
-                }}
-              >
+              <Text variant="black" size={16}>
                 Need a second opinion?
               </Text>
               <Text
+                variant="medium"
+                color="secondary"
+                size={11}
                 style={{
-                  fontFamily: "Outfit_500Medium",
-                  color: "#64748b",
-                  fontSize: 11,
                   lineHeight: 15,
                   marginTop: 2,
                 }}
@@ -1236,19 +1213,20 @@ export default function TechnicianDashboard() {
                 width: 44,
                 height: 44,
                 borderRadius: 22,
-                backgroundColor: PRIMARY,
+                backgroundColor: colors.primary,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <ChevronRight size={24} color="#fff" />
             </View>
-          </TouchableOpacity>
+          </Card>
         </View>
 
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {/* Modal logic preserved */}
       {/* Modal logic preserved */}
       {modalVisible && (
         <View
@@ -1267,12 +1245,12 @@ export default function TechnicianDashboard() {
           />
           <View
             style={{
-              backgroundColor: "#fff",
+              backgroundColor: colors.card,
               borderTopLeftRadius: 32,
               borderTopRightRadius: 32,
               padding: 20,
               paddingBottom: Math.max(insets.bottom, 20) + 12,
-              maxHeight: '85%',
+              maxHeight: "85%",
             }}
           >
             <View
@@ -1283,141 +1261,198 @@ export default function TechnicianDashboard() {
                 marginBottom: 16,
               }}
             >
-              <Text
-                style={{
-                  fontFamily: "Outfit_900Black",
-                  fontSize: 20,
-                  color: "#1e293b",
-                }}
-              >
-                {selectedItem?.status === 'pending' ? 'Confirm Dispatch' : 'Service Update'}
+              <Text variant="black" size={20}>
+                {selectedItem?.status === "pending"
+                  ? "Confirm Dispatch"
+                  : "Service Update"}
               </Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X size={24} color="#94a3b8" />
+                <X size={24} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView 
-              showsVerticalScrollIndicator={false} 
+            <ScrollView
+              showsVerticalScrollIndicator={false}
               style={{ marginBottom: 16 }}
               contentContainerStyle={{ gap: 10 }}
             >
-            <View
-              style={{
-                backgroundColor: "#f8fafc",
-                borderRadius: 16,
-                padding: 12,
-                borderLeftWidth: 4,
-                borderLeftColor: PRIMARY,
-              }}
-            >
-              <Text
+              <View
                 style={{
-                  fontFamily: "Outfit_800ExtraBold",
-                  color: "#64748b",
-                  fontSize: 10,
-                  textTransform: "uppercase",
-                }}
-              >
-                Target Service
-              </Text>
-              <Text
-                style={{
-                  fontFamily: "Outfit_700Bold",
-                  color: "#1e293b",
-                  fontSize: 15,
-                  marginTop: 2,
-                }}
-              >
-                {selectedItem?.task}
-              </Text>
-              <Text
-                style={{
-                  fontFamily: "Outfit_500Medium",
-                  color: "#64748b",
-                  fontSize: 12,
-                  marginTop: 2,
-                }}
-              >
-                {selectedItem?.farmer} · {selectedItem?.location}
-              </Text>
-            </View>
-
-              <TouchableOpacity
-                onPress={() => setShowDatePicker(true)}
-                activeOpacity={0.7}
-                style={{
-                  backgroundColor: "#fff",
+                  backgroundColor: isDark ? "#1f2937" : "#f8fafc",
                   borderRadius: 16,
-                  padding: 16,
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: "#f1f5f9",
-                  shadowColor: "#000",
-                  shadowOpacity: 0.03,
-                  shadowRadius: 10,
-                  elevation: 2
+                  padding: 12,
+                  borderLeftWidth: 4,
+                  borderLeftColor: colors.primary,
                 }}
               >
-                <View>
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_800ExtraBold",
-                      color: "#94a3b8",
-                      fontSize: 9,
-                      textTransform: "uppercase",
-                      letterSpacing: 1,
-                      marginBottom: 4
-                    }}
-                  >
-                    Visit Schedule
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_800ExtraBold",
-                      color: "#1e293b",
-                      fontSize: 15,
-                    }}
-                  >
-                    {scheduledDate.toLocaleString([], {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </Text>
-                </View>
-                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "#f0fdf4", alignItems: 'center', justifyContent: 'center' }}>
-                  <Clock3 size={20} color={PRIMARY} />
-                </View>
-              </TouchableOpacity>
+                <Text
+                  variant="extrabold"
+                  color="secondary"
+                  size={10}
+                  style={{
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Target Service
+                </Text>
+                <Text
+                  variant="bold"
+                  size={15}
+                  style={{
+                    marginTop: 2,
+                  }}
+                >
+                  {selectedItem?.task}
+                </Text>
+                <Text
+                  variant="medium"
+                  color="secondary"
+                  size={12}
+                  style={{
+                    marginTop: 2,
+                  }}
+                >
+                  {selectedItem?.farmer} · {selectedItem?.location}
+                </Text>
+              </View>
 
-              {selectedItem?.status === "pending" &&
-                (selectedItem?.raw?.preferredDate || selectedItem?.displayDate) && (
+              <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
+                <TouchableOpacity
+                  onPress={() => setShowDatePicker(true)}
+                  activeOpacity={0.7}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.card,
+                    borderRadius: 16,
+                    padding: 16,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    shadowColor: "#000",
+                    shadowOpacity: isDark ? 0 : 0.03,
+                    shadowRadius: 10,
+                    elevation: isDark ? 0 : 2,
+                  }}
+                >
+                  <View>
+                    <Text
+                      variant="extrabold"
+                      color="muted"
+                      size={9}
+                      style={{
+                        textTransform: "uppercase",
+                        letterSpacing: 1,
+                        marginBottom: 4,
+                      }}
+                    >
+                      Visit Date
+                    </Text>
+                    <Text variant="extrabold" size={14}>
+                      {scheduledDate.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })}
+                    </Text>
+                  </View>
                   <View
                     style={{
-                      backgroundColor: "#fffbeb",
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: isDark ? "#064e3b" : "#f0fdf4",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <CalendarDays size={16} color={colors.primary} />
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setShowTimePicker(true)}
+                  activeOpacity={0.7}
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.card,
+                    borderRadius: 16,
+                    padding: 16,
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    shadowColor: "#000",
+                    shadowOpacity: isDark ? 0 : 0.03,
+                    shadowRadius: 10,
+                    elevation: isDark ? 0 : 2,
+                  }}
+                >
+                  <View>
+                    <Text
+                      variant="extrabold"
+                      color="muted"
+                      size={9}
+                      style={{
+                        textTransform: "uppercase",
+                        letterSpacing: 1,
+                        marginBottom: 4,
+                      }}
+                    >
+                      Visit Time
+                    </Text>
+                    <Text variant="extrabold" size={14}>
+                      {scheduledDate.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: isDark ? "#064e3b" : "#f0fdf4",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Clock3 size={16} color={colors.primary} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+
+              {(selectedItem?.status === "pending" || selectedItem?.status === "approved") &&
+                (selectedItem?.raw?.preferredDate ||
+                  selectedItem?.displayDate) && (
+                  <View
+                    style={{
+                      backgroundColor: isDark ? "#78350f" : "#fffbeb",
                       padding: 12,
                       borderRadius: 16,
                       borderWidth: 1,
-                      borderColor: "#fef3c7",
+                      borderColor: isDark ? "#b45309" : "#fef3c7",
                       flexDirection: "row",
                       alignItems: "center",
                       gap: 10,
                     }}
                   >
-                    <Clock3 size={14} color="#d97706" />
+                    <Clock3 size={14} color={isDark ? "#fbbf24" : "#d97706"} />
                     <Text
+                      variant="bold"
+                      size={11}
                       style={{
-                        fontFamily: "Outfit_700Bold",
-                        fontSize: 11,
-                        color: "#d97706",
+                        color: isDark ? "#fbbf24" : "#d97706",
                         flex: 1,
                       }}
                     >
                       Farmer Request:{" "}
                       {new Date(
-                        selectedItem.raw?.preferredDate || selectedItem.displayDate,
+                        selectedItem.raw?.preferredDate ||
+                          selectedItem.displayDate,
                       ).toLocaleString([], {
                         dateStyle: "medium",
                         timeStyle: "short",
@@ -1426,110 +1461,130 @@ export default function TechnicianDashboard() {
                   </View>
                 )}
 
-              <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: '#94a3b8', fontSize: 10, textTransform: 'uppercase', marginBottom: 8, marginLeft: 4 }}>
-                {selectedItem?.status === 'pending' ? 'Notes' : 'Findings'}
+              <Text
+                variant="extrabold"
+                color="muted"
+                size={10}
+                style={{
+                  textTransform: "uppercase",
+                  marginBottom: 8,
+                  marginLeft: 4,
+                }}
+              >
+                {(selectedItem?.status === "pending" || selectedItem?.status === "approved") ? "Notes" : "Findings"}
               </Text>
               <TextInput
-                placeholder={selectedItem?.status === 'pending' ? "Add field notes (optional)..." : "Enter findings / observations..."}
-                placeholderTextColor="#94a3b8"
+                placeholder={
+                  (selectedItem?.status === "pending" || selectedItem?.status === "approved")
+                    ? "Add field notes (optional)..."
+                    : "Enter findings / observations..."
+                }
+                placeholderTextColor={colors.textMuted}
                 multiline
                 style={{
-                  backgroundColor: "#f8fafc",
+                  backgroundColor: isDark ? "#1f2937" : "#f8fafc",
                   borderRadius: 14,
                   padding: 12,
                   height: 64,
                   textAlignVertical: "top",
                   fontFamily: "Outfit_600SemiBold",
-                  color: "#1e293b",
+                  color: colors.textPrimary,
                   borderWidth: 1,
-                  borderColor: "#e2e8f0",
+                  borderColor: colors.border,
                 }}
                 value={note}
                 onChangeText={setNote}
               />
 
               {selectedItem?.type === "health" &&
-                selectedItem?.status !== "pending" && (
+                selectedItem?.status !== "pending" &&
+                selectedItem?.status !== "approved" && (
                   <>
                     <Text
+                      variant="extrabold"
+                      color="muted"
+                      size={10}
                       style={{
-                        fontFamily: "Outfit_800ExtraBold",
-                        color: "#94a3b8",
-                        fontSize: 10,
                         textTransform: "uppercase",
                         marginLeft: 4,
+                        marginBottom: 8,
+                        marginTop: 10,
                       }}
                     >
                       Diagnosis
                     </Text>
                     <TextInput
                       placeholder="Enter diagnosis..."
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor={colors.textMuted}
                       style={{
-                        backgroundColor: "#f8fafc",
+                        backgroundColor: isDark ? "#1f2937" : "#f8fafc",
                         borderRadius: 14,
                         padding: 12,
                         fontFamily: "Outfit_600SemiBold",
-                        color: "#1e293b",
+                        color: colors.textPrimary,
                         borderWidth: 1,
-                        borderColor: "#e2e8f0",
+                        borderColor: colors.border,
                       }}
                       value={diagnosis}
                       onChangeText={setDiagnosis}
                     />
 
                     <Text
+                      variant="extrabold"
+                      color="muted"
+                      size={10}
                       style={{
-                        fontFamily: "Outfit_800ExtraBold",
-                        color: "#94a3b8",
-                        fontSize: 10,
                         textTransform: "uppercase",
                         marginLeft: 4,
+                        marginBottom: 8,
+                        marginTop: 10,
                       }}
                     >
                       Prescription / Treatment
                     </Text>
                     <TextInput
                       placeholder="Medicines or treatment given..."
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor={colors.textMuted}
                       style={{
-                        backgroundColor: "#f8fafc",
+                        backgroundColor: isDark ? "#1f2937" : "#f8fafc",
                         borderRadius: 14,
                         padding: 12,
                         fontFamily: "Outfit_600SemiBold",
-                        color: "#1e293b",
+                        color: colors.textPrimary,
                         borderWidth: 1,
-                        borderColor: "#e2e8f0",
+                        borderColor: colors.border,
                       }}
                       value={treatment}
                       onChangeText={setTreatment}
                     />
 
                     <Text
+                      variant="extrabold"
+                      color="muted"
+                      size={10}
                       style={{
-                        fontFamily: "Outfit_800ExtraBold",
-                        color: "#94a3b8",
-                        fontSize: 10,
                         textTransform: "uppercase",
                         marginLeft: 4,
+                        marginBottom: 8,
+                        marginTop: 10,
                       }}
                     >
                       Advice for Farmer
                     </Text>
                     <TextInput
                       placeholder="e.g. Keep isolated, provide water..."
-                      placeholderTextColor="#94a3b8"
+                      placeholderTextColor={colors.textMuted}
                       multiline
                       style={{
-                        backgroundColor: "#f8fafc",
+                        backgroundColor: isDark ? "#1f2937" : "#f8fafc",
                         borderRadius: 14,
                         padding: 12,
                         height: 64,
                         textAlignVertical: "top",
                         fontFamily: "Outfit_600SemiBold",
-                        color: "#1e293b",
+                        color: colors.textPrimary,
                         borderWidth: 1,
-                        borderColor: "#e2e8f0",
+                        borderColor: colors.border,
                       }}
                       value={advice}
                       onChangeText={setAdvice}
@@ -1538,15 +1593,18 @@ export default function TechnicianDashboard() {
                 )}
 
               {selectedItem?.type === "insemination" &&
-                selectedItem?.status !== "pending" && (
+                selectedItem?.status !== "pending" &&
+                selectedItem?.status !== "approved" && (
                   <>
                     <Text
+                      variant="extrabold"
+                      color="muted"
+                      size={10}
                       style={{
-                        fontFamily: "Outfit_800ExtraBold",
-                        color: "#94a3b8",
-                        fontSize: 10,
                         textTransform: "uppercase",
                         marginLeft: 4,
+                        marginBottom: 8,
+                        marginTop: 10,
                       }}
                     >
                       Sire Breed
@@ -1555,117 +1613,189 @@ export default function TechnicianDashboard() {
                       onPress={() => setShowBreedModal(true)}
                       activeOpacity={0.7}
                       style={{
-                        backgroundColor: "#fff",
+                        backgroundColor: colors.card,
                         borderRadius: 16,
                         padding: 14,
                         borderWidth: 1,
-                        borderColor: "#f1f5f9",
+                        borderColor: colors.border,
                         shadowRadius: 10,
-                        elevation: 1
+                        elevation: 1,
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
                       }}
                     >
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                        <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center' }}>
-                          <Syringe size={18} color={PRIMARY} />
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 12,
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 12,
+                            backgroundColor: isDark ? "#064e3b" : "#f0fdf4",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Syringe size={18} color={colors.primary} />
                         </View>
                         <View>
-                           <Text style={{ fontFamily: 'Outfit_500Medium', color: '#94a3b8', fontSize: 9, textTransform: 'uppercase' }}>Selected Breed</Text>
-                           <Text style={{ 
-                              fontFamily: "Outfit_800ExtraBold",
-                              color: sireBreed ? "#1e293b" : "#cbd5e1",
-                              fontSize: 14
-                           }}>
-                              {sireBreed || "Choose Sire Breed"}
-                           </Text>
+                          <Text
+                            variant="medium"
+                            color="muted"
+                            size={9}
+                            style={{
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Selected Breed
+                          </Text>
+                          <Text
+                            variant="extrabold"
+                            size={14}
+                            style={{
+                              color: sireBreed
+                                ? colors.textPrimary
+                                : colors.textMuted,
+                            }}
+                          >
+                            {sireBreed || "Choose Sire Breed"}
+                          </Text>
                         </View>
                       </View>
-                      <MaterialCommunityIcons name="chevron-down" size={20} color="#94a3b8" />
+                      <MaterialCommunityIcons
+                        name="chevron-down"
+                        size={20}
+                        color={colors.textMuted}
+                      />
                     </TouchableOpacity>
 
                     <Text
+                      variant="extrabold"
+                      color="muted"
+                      size={10}
                       style={{
-                        fontFamily: "Outfit_800ExtraBold",
-                        color: "#94a3b8",
-                        fontSize: 10,
                         textTransform: "uppercase",
                         marginLeft: 4,
+                        marginBottom: 8,
+                        marginTop: 10,
                       }}
                     >
                       Sire Code
                     </Text>
                     <View
                       style={{
-                        backgroundColor: "#f8fafc",
+                        backgroundColor: isDark ? "#1f2937" : "#f8fafc",
                         borderRadius: 14,
                         paddingHorizontal: 16,
                         height: 52,
                         borderWidth: 1,
-                        borderColor: "#e2e8f0",
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 12
+                        borderColor: colors.border,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
                       }}
                     >
-                      <MaterialCommunityIcons name="shield-check-outline" size={20} color={PRIMARY} style={{ opacity: 0.5 }} />
+                      <MaterialCommunityIcons
+                        name="shield-check-outline"
+                        size={20}
+                        color={colors.primary}
+                        style={{ opacity: 0.5 }}
+                      />
                       <View>
-                        <Text style={{ fontFamily: 'Outfit_500Medium', color: '#94a3b8', fontSize: 9, textTransform: 'uppercase' }}>
+                        <Text
+                          variant="medium"
+                          color="muted"
+                          size={9}
+                          style={{
+                            textTransform: "uppercase",
+                          }}
+                        >
                           Authorized Code
                         </Text>
-                        <Text style={{ 
-                          fontFamily: "Outfit_800ExtraBold",
-                          color: sireCode ? "#1e293b" : "#cbd5e1",
-                          fontSize: 13,
-                          letterSpacing: 1
-                        }}>
+                        <Text
+                          variant="extrabold"
+                          size={13}
+                          style={{
+                            color: sireCode
+                              ? colors.textPrimary
+                              : colors.textMuted,
+                            letterSpacing: 1,
+                          }}
+                        >
                           {sireCode || "--- --- ---"}
                         </Text>
                       </View>
                     </View>
 
                     <Text
+                      variant="extrabold"
+                      color="muted"
+                      size={10}
                       style={{
-                        fontFamily: "Outfit_800ExtraBold",
-                        color: "#94a3b8",
-                        fontSize: 10,
                         textTransform: "uppercase",
                         marginLeft: 4,
+                        marginBottom: 8,
+                        marginTop: 10,
                       }}
                     >
                       Estrus Type
                     </Text>
                     <View
                       style={{
-                        backgroundColor: "#f8fafc",
+                        backgroundColor: isDark ? "#1f2937" : "#f8fafc",
                         borderRadius: 14,
                         borderWidth: 1,
-                        borderColor: "#e2e8f0",
-                        overflow: 'hidden'
+                        borderColor: colors.border,
+                        overflow: "hidden",
                       }}
                     >
-                       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 8, gap: 8 }}>
-                          {["Natural", "Synchronized", "Induced"].map((type) => (
-                            <TouchableOpacity
-                              key={type}
-                              onPress={() => setEstrus(type)}
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={{ padding: 8, gap: 8 }}
+                      >
+                        {["Natural", "Synchronized", "Induced"].map((type) => (
+                          <TouchableOpacity
+                            key={type}
+                            onPress={() => setEstrus(type)}
+                            style={{
+                              paddingHorizontal: 16,
+                              paddingVertical: 8,
+                              borderRadius: 12,
+                              backgroundColor:
+                                estrus === type
+                                  ? colors.primary
+                                  : isDark
+                                    ? "#111827"
+                                    : "#fff",
+                              borderWidth: 1,
+                              borderColor:
+                                estrus === type
+                                  ? colors.primary
+                                  : colors.border,
+                            }}
+                          >
+                            <Text
+                              variant="bold"
+                              size={11}
                               style={{
-                                paddingHorizontal: 16,
-                                paddingVertical: 8,
-                                borderRadius: 12,
-                                backgroundColor: estrus === type ? PRIMARY : "#fff",
-                                borderWidth: 1,
-                                borderColor: estrus === type ? PRIMARY : "#e2e8f0",
+                                color:
+                                  estrus === type
+                                    ? "#fff"
+                                    : colors.textSecondary,
                               }}
                             >
-                              <Text style={{ 
-                                fontSize: 11, 
-                                fontFamily: "Outfit_700Bold", 
-                                color: estrus === type ? "#fff" : "#64748b" 
-                              }}>
-                                {type}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                       </ScrollView>
+                              {type}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
                     </View>
                   </>
                 )}
@@ -1675,27 +1805,29 @@ export default function TechnicianDashboard() {
               onPress={confirmAction}
               disabled={scheduleMutation.isPending}
               style={{
-                backgroundColor: PRIMARY,
+                backgroundColor: colors.primary,
                 paddingVertical: 16,
                 borderRadius: 18,
                 alignItems: "center",
-                shadowColor: PRIMARY,
-                shadowOpacity: 0.3,
+                shadowColor: colors.primary,
+                shadowOpacity: isDark ? 0 : 0.3,
                 shadowRadius: 10,
-                elevation: 8,
+                elevation: isDark ? 0 : 8,
               }}
             >
               {scheduleMutation.isPending ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text
+                  variant="extrabold"
+                  size={16}
                   style={{
                     color: "#fff",
-                    fontFamily: "Outfit_800ExtraBold",
-                    fontSize: 16,
                   }}
                 >
-                  {selectedItem?.status === 'pending' ? 'Accept Mission' : 'Update & Complete'}
+                  {(selectedItem?.status === "pending" || selectedItem?.status === "approved")
+                    ? "Accept Mission"
+                    : "Update & Complete"}
                 </Text>
               )}
             </TouchableOpacity>
@@ -1706,16 +1838,46 @@ export default function TechnicianDashboard() {
       {showDatePicker && (
         <DateTimePicker
           value={scheduledDate}
-          mode="datetime"
+          mode="date"
           display="default"
-          minimumDate={new Date()}
-          onChange={(e, d) => {
+          onChange={(event: DateTimePickerEvent, date?: Date) => {
+            if (event.type === "dismissed") {
+              setShowDatePicker(false);
+              return;
+            }
+            if (date) {
+              const newDate = new Date(scheduledDate);
+              newDate.setFullYear(
+                date.getFullYear(),
+                date.getMonth(),
+                date.getDate(),
+              );
+              setScheduledDate(newDate);
+            }
             setShowDatePicker(false);
-            if (d) setScheduledDate(d);
           }}
         />
       )}
 
+      {showTimePicker && (
+        <DateTimePicker
+          value={scheduledDate}
+          mode="time"
+          display="default"
+          onChange={(event: DateTimePickerEvent, time?: Date) => {
+            if (event.type === "dismissed") {
+              setShowTimePicker(false);
+              return;
+            }
+            if (time) {
+              const newDate = new Date(scheduledDate);
+              newDate.setHours(time.getHours(), time.getMinutes());
+              setScheduledDate(newDate);
+            }
+            setShowTimePicker(false);
+          }}
+        />
+      )}
       {/* Breed Selection Modal */}
       <Modal
         visible={showBreedModal}
@@ -1723,23 +1885,74 @@ export default function TechnicianDashboard() {
         animationType="slide"
         onRequestClose={() => setShowBreedModal(false)}
       >
-        <View style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.6)', justifyContent: 'flex-end' }}>
-          <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 40, borderTopRightRadius: 40, maxHeight: '85%' }}>
-            <View style={{ padding: 24, borderBottomWidth: 1, borderBottomColor: '#f8fafc', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-               <View>
-                  <Text style={{ fontSize: 20, fontFamily: 'Outfit_900Black', color: '#1e293b' }}>Sire Registry</Text>
-                  <Text style={{ fontSize: 10, fontFamily: 'Outfit_700Bold', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>Official Breed List</Text>
-               </View>
-              <TouchableOpacity 
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 23, 42, 0.6)",
+            justifyContent: "flex-end",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 40,
+              borderTopRightRadius: 40,
+              maxHeight: "85%",
+            }}
+          >
+            <View
+              style={{
+                padding: 24,
+                borderBottomWidth: 1,
+                borderBottomColor: colors.border,
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <View>
+                <Text variant="black" size={20}>
+                  Sire Registry
+                </Text>
+                <Text
+                  variant="bold"
+                  color="muted"
+                  size={10}
+                  style={{
+                    textTransform: "uppercase",
+                    letterSpacing: 1,
+                  }}
+                >
+                  Official Breed List
+                </Text>
+              </View>
+              <TouchableOpacity
                 onPress={() => setShowBreedModal(false)}
-                style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: isDark ? "#1f2937" : "#f1f5f9",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               >
-                <X size={20} color="#64748b" />
+                <X size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ padding: 20 }} showsVerticalScrollIndicator={false}>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between' }}>
-                {CATTLE_BREEDS.map((breed) => (
+            <ScrollView
+              style={{ padding: 20 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  justifyContent: "space-between",
+                }}
+              >
+                {CATTLE_BREEDS.map((breed: string) => (
                   <TouchableOpacity
                     key={breed}
                     activeOpacity={0.7}
@@ -1751,33 +1964,48 @@ export default function TechnicianDashboard() {
                     style={{
                       padding: 16,
                       borderRadius: 20,
-                      backgroundColor: sireBreed === breed ? PRIMARY : '#f8fafc',
+                      backgroundColor:
+                        sireBreed === breed
+                          ? colors.primary
+                          : isDark
+                            ? "#1f2937"
+                            : "#f8fafc",
                       borderWidth: 1,
-                      borderColor: sireBreed === breed ? PRIMARY : '#f1f5f9',
-                      width: '48%',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      shadowColor: sireBreed === breed ? PRIMARY : "#000",
+                      borderColor:
+                        sireBreed === breed ? colors.primary : colors.border,
+                      width: "48%",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      shadowColor:
+                        sireBreed === breed ? colors.primary : "#000",
                       shadowOpacity: sireBreed === breed ? 0.1 : 0,
                       shadowRadius: 10,
-                      elevation: sireBreed === breed ? 2 : 0
+                      elevation: sireBreed === breed ? 2 : 0,
                     }}
                   >
-                    <Text style={{
-                      fontSize: 14,
-                      fontFamily: 'Outfit_800ExtraBold',
-                      color: sireBreed === breed ? '#fff' : '#1e293b',
-                      textAlign: 'center'
-                    }}>
+                    <Text
+                      variant="extrabold"
+                      size={14}
+                      style={{
+                        color:
+                          sireBreed === breed ? "#fff" : colors.textPrimary,
+                        textAlign: "center",
+                      }}
+                    >
                       {breed}
                     </Text>
-                    <Text style={{
-                      fontSize: 9,
-                      fontFamily: 'Outfit_600SemiBold',
-                      color: sireBreed === breed ? 'rgba(255,255,255,0.7)' : '#94a3b8',
-                      textTransform: 'uppercase',
-                      marginTop: 2
-                    }}>
+                    <Text
+                      variant="semibold"
+                      size={9}
+                      style={{
+                        color:
+                          sireBreed === breed
+                            ? "rgba(255,255,255,0.7)"
+                            : colors.textMuted,
+                        textTransform: "uppercase",
+                        marginTop: 2,
+                      }}
+                    >
                       {getSireCodeByBreed(breed) || "N/A"}
                     </Text>
                   </TouchableOpacity>
@@ -1792,359 +2020,484 @@ export default function TechnicianDashboard() {
   );
 }
 
-const StatBox = ({ label, value, icon, color }: any) => (
-  <View style={{ flex: 1, alignItems: "center" }}>
-    <MaterialCommunityIcons name={icon} size={20} color={color} />
-    <Text
-      style={{
-        fontSize: 18,
-        fontFamily: "Outfit_900Black",
-        color: "#1e293b",
-        marginTop: 4,
-      }}
-    >
-      {value}
-    </Text>
-    <Text
-      style={{
-        fontSize: 9,
-        fontFamily: "Outfit_700Bold",
-        color: "#94a3b8",
-        textTransform: "uppercase",
-      }}
-    >
-      {label}
-    </Text>
-  </View>
-);
-
-const ActionCard = ({ label, icon, color, bg, onPress }: any) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.7}
-    style={{ alignItems: "center", width: "30%", marginBottom: 8 }}
-  >
-    <View
-      style={{
-        width: 62,
-        height: 62,
-        borderRadius: 31,
-        backgroundColor: bg,
-        alignItems: "center",
-        justifyContent: "center",
-        marginBottom: 10,
-        shadowColor: color,
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 2,
-      }}
-    >
-      <MaterialCommunityIcons name={icon as any} size={28} color={color} />
-    </View>
-    <Text
-      style={{
-        fontFamily: "Outfit_700Bold",
-        color: "#64748b",
-        fontSize: 10,
-        textAlign: "center",
-      }}
-    >
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
-
-const AgendaCard = ({ item, onPress, isFirst }: any) => (
-  <TouchableOpacity
-    onPress={onPress}
-    activeOpacity={0.8}
-    style={{
-      backgroundColor: isFirst ? "#f0fdf4" : "#fff",
-      borderRadius: 24,
-      padding: 16,
-      marginBottom: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: isFirst ? "#bbf7d0" : "#f1f5f9",
-      shadowColor: "#000",
-      shadowOpacity: 0.02,
-      shadowRadius: 10,
-      elevation: 2,
-    }}
-  >
-    <View
-      style={{
-        width: 70,
-        borderRightWidth: 1,
-        borderRightColor: isFirst ? "#86efac" : "#f1f5f9",
-        paddingRight: 10,
-        marginRight: 15,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: 10,
-          fontFamily: "Outfit_700Bold",
-          color: "#94a3b8",
-          textTransform: "uppercase",
-        }}
-      >
-        Time
+const StatBox = ({ label, value, icon, color }: any) => {
+  return (
+    <View style={{ flex: 1, alignItems: "center" }}>
+      <MaterialCommunityIcons name={icon} size={20} color={color} />
+      <Text variant="black" size={18} style={{ marginTop: 4 }}>
+        {value}
       </Text>
       <Text
-        style={{
-          fontSize: 13,
-          fontFamily: "Outfit_800ExtraBold",
-          color: "#1e293b",
-          marginTop: 2,
-        }}
+        variant="bold"
+        color="muted"
+        size={9}
+        style={{ textTransform: "uppercase" }}
       >
-        {item.time || "8:00 AM"}
+        {label}
       </Text>
     </View>
+  );
+};
 
-    <View style={{ flex: 1 }}>
-      <Text
-        style={{ fontSize: 16, fontFamily: "Outfit_700Bold", color: "#1e293b" }}
-      >
-        {item.farmer || item.location}
-      </Text>
-      <Text
-        style={{
-          fontSize: 12,
-          fontFamily: "Outfit_500Medium",
-          color: "#64748b",
-          marginTop: 2,
-        }}
-      >
-        {item.task} {item.animalName ? `— ${item.animalName}` : ""}
-      </Text>
-    </View>
-
-    {isFirst ? (
+const ActionCard = ({ label, icon, color, bg, onPress }: any) => {
+  const { isDark } = useTheme();
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.7}
+      style={{ alignItems: "center", width: "30%", marginBottom: 8 }}
+    >
       <View
         style={{
-          backgroundColor: "#00643B",
-          paddingHorizontal: 12,
-          paddingVertical: 4,
-          borderRadius: 12,
-        }}
-      >
-        <Text
-          style={{ color: "#fff", fontSize: 10, fontFamily: "Outfit_900Black" }}
-        >
-          NEXT
-        </Text>
-      </View>
-    ) : (
-      <MaterialCommunityIcons name="clock-outline" size={20} color="#cbd5e1" />
-    )}
-  </TouchableOpacity>
-);
-
-const RequestCard = ({ item, onAccept, onDecline }: any) => (
-  <View
-    style={{
-      backgroundColor: "#fff",
-      borderRadius: 24,
-      padding: 16,
-      marginBottom: 12,
-      flexDirection: "row",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: "#f1f5f9",
-      shadowColor: "#000",
-      shadowOpacity: 0.02,
-      shadowRadius: 10,
-      elevation: 2,
-    }}
-  >
-    <View
-      style={{
-        width: 52,
-        height: 52,
-        borderRadius: 26,
-        backgroundColor: item.type === "health" ? "#fffbeb" : "#f0fdf4",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <MaterialCommunityIcons
-        name={item.type === "health" ? "stethoscope" : "needle"}
-        size={24}
-        color={item.type === "health" ? "#d97706" : PRIMARY}
-      />
-    </View>
-
-    <View style={{ flex: 1, marginLeft: 16 }}>
-      <Text
-        style={{ fontSize: 16, fontFamily: "Outfit_700Bold", color: "#1e293b" }}
-      >
-        {item.farmer}
-      </Text>
-      <Text
-        style={{
-          fontSize: 12,
-          fontFamily: "Outfit_500Medium",
-          color: "#64748b",
-          marginTop: 2,
-        }}
-        numberOfLines={1}
-      >
-        {item.task}
-      </Text>
-    </View>
-
-    <View style={{ gap: 8, alignItems: "flex-end" }}>
-      <TouchableOpacity
-        onPress={onAccept}
-        style={{
-          backgroundColor: PRIMARY,
-          paddingHorizontal: 16,
-          paddingVertical: 8,
-          borderRadius: 12,
-          minWidth: 80,
-          alignItems: "center",
-        }}
-      >
-        <Text
-          style={{
-            color: "#fff",
-            fontSize: 10,
-            fontFamily: "Outfit_900Black",
-            textTransform: 'uppercase'
-          }}
-        >
-          Accept
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={onDecline}
-        style={{
-          backgroundColor: "#fef2f2",
-          paddingHorizontal: 16,
-          paddingVertical: 6,
-          borderRadius: 10,
-          minWidth: 80,
-          alignItems: "center",
-        }}
-      >
-        <Text
-          style={{
-            color: "#ef4444",
-            fontSize: 9,
-            fontFamily: "Outfit_900Black",
-            textTransform: 'uppercase'
-          }}
-        >
-          Decline
-        </Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-);
-
-const FarmerCompactCard = ({ id, name, location, phone, imageUrl, totalAnimals, pregnantCount, insemCount, normalCount, router }: any) => (
-  <TouchableOpacity
-    activeOpacity={0.8}
-    onPress={() => router.push(`/(technician)/client-details?id=${id}`)}
-    style={{
-      backgroundColor: "#fff",
-      borderRadius: 24,
-      padding: 16,
-      marginBottom: 12,
-      borderWidth: 1,
-      borderColor: "#f1f5f9",
-      shadowColor: "#000",
-      shadowOpacity: 0.01,
-      shadowRadius: 10,
-      elevation: 1,
-    }}
-  >
-    {/* Top Row: Profile, Info, and Call Button */}
-    <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-      <View
-        style={{
-          width: 48,
-          height: 48,
-          borderRadius: 24,
-          backgroundColor: "#FAF7F2",
+          width: 62,
+          height: 62,
+          borderRadius: 31,
+          backgroundColor: bg,
           alignItems: "center",
           justifyContent: "center",
-          overflow: "hidden",
+          marginBottom: 10,
+          shadowColor: color,
+          shadowOpacity: isDark ? 0 : 0.1,
+          shadowRadius: 8,
+          elevation: isDark ? 0 : 2,
         }}
       >
-        {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={{ width: "100%", height: "100%" }} />
-        ) : (
-          <Text
-            style={{ fontFamily: "Outfit_900Black", color: PRIMARY, fontSize: 16 }}
-          >
-            {name ? name.charAt(0) : "F"}
-          </Text>
-        )}
+        <MaterialCommunityIcons name={icon as any} size={28} color={color} />
       </View>
-      
-      <View style={{ flex: 1, marginLeft: 14 }}>
+      <Text
+        variant="bold"
+        color="secondary"
+        size={10}
+        style={{ textAlign: "center" }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
+const AgendaCard = ({ item, onPress, isFirst }: any) => {
+  const { colors, isDark } = useTheme();
+  const isOverdue = item.overdue === true;
+
+  const getCardBg = () => {
+    if (isOverdue) return isDark ? "#450a0a" : "#fff5f5";
+    if (isFirst) return colors.tint;
+    return colors.card;
+  };
+
+  const getCardBorder = () => {
+    if (isOverdue) return isDark ? "#7f1d1d" : "#fee2e2";
+    if (isFirst) return isDark ? "#064e3b" : "#bbf7d0";
+    return colors.border;
+  };
+
+  const getDividerColor = () => {
+    if (isOverdue) return isDark ? "#991b1b" : "#fca5a5";
+    if (isFirst) return isDark ? "#059669" : "#86efac";
+    return colors.border;
+  };
+
+  return (
+    <Card
+      onPress={onPress}
+      style={{
+        backgroundColor: getCardBg(),
+        borderColor: getCardBorder(),
+        borderWidth: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 12,
+        padding: 16,
+      }}
+    >
+      <View
+        style={{
+          width: 75,
+          borderRightWidth: 1,
+          borderRightColor: getDividerColor(),
+          paddingRight: 10,
+          marginRight: 15,
+        }}
+      >
         <Text
+          variant="bold"
+          size={10}
           style={{
-            fontFamily: "Outfit_900Black",
-            color: "#1e293b",
-            fontSize: 15,
+            color: isOverdue ? colors.error : colors.textMuted,
+            textTransform: "uppercase",
           }}
         >
-          {name}
+          {isOverdue ? "Missed" : "Time"}
         </Text>
         <Text
+          variant="extrabold"
+          size={isOverdue ? 11 : 13}
           style={{
-            fontFamily: "Outfit_600SemiBold",
-            color: "#94a3b8",
-            fontSize: 11,
-            marginTop: 1,
+            color: isOverdue ? colors.error : colors.textPrimary,
+            marginTop: 2,
           }}
         >
-          {location} · <Text style={{ color: PRIMARY, fontFamily: "Outfit_800ExtraBold" }}>{totalAnimals || 0} head</Text>
+          {isOverdue
+            ? new Date(item.displayDate).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })
+            : item.time || "8:00 AM"}
         </Text>
       </View>
 
-      {phone && (
-        <TouchableOpacity
-          onPress={(e) => {
-            e.stopPropagation();
-            Linking.openURL(`tel:${phone}`);
-          }}
+      <View style={{ flex: 1 }}>
+        <Text variant="bold" size={16} style={{ color: colors.textPrimary }}>
+          {item.farmer || item.location}
+        </Text>
+        <Text
+          variant="medium"
+          size={12}
+          style={{ color: colors.textSecondary, marginTop: 2 }}
+        >
+          {item.task} {item.animalName ? `— ${item.animalName}` : ""}
+        </Text>
+      </View>
+
+      {isOverdue ? (
+        <View
           style={{
-            width: 38,
-            height: 38,
-            borderRadius: 19,
-            backgroundColor: "#f0fdf4",
+            backgroundColor: colors.error,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 12,
+          }}
+        >
+          <Text variant="black" size={10} style={{ color: "#fff" }}>
+            OVERDUE
+          </Text>
+        </View>
+      ) : isFirst ? (
+        <View
+          style={{
+            backgroundColor: colors.primary,
+            paddingHorizontal: 12,
+            paddingVertical: 4,
+            borderRadius: 12,
+          }}
+        >
+          <Text variant="black" size={10} style={{ color: "#fff" }}>
+            NEXT
+          </Text>
+        </View>
+      ) : (
+        <MaterialCommunityIcons
+          name="clock-outline"
+          size={20}
+          color={colors.textMuted}
+        />
+      )}
+    </Card>
+  );
+};
+
+const RequestCard = ({ item, onAccept, onDecline }: any) => {
+  const { colors, isDark } = useTheme();
+
+  const isHealth = item.type === "health";
+  const iconBg = isHealth
+    ? isDark
+      ? "#78350f"
+      : "#fffbeb"
+    : isDark
+      ? "#064e3b"
+      : "#f0fdf4";
+  const iconColor = isHealth
+    ? isDark
+      ? "#fbbf24"
+      : "#d97706"
+    : isDark
+      ? "#34d399"
+      : colors.primary;
+
+  return (
+    <Card
+      style={{
+        marginBottom: 12,
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
+      <View
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: 26,
+          backgroundColor: iconBg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <MaterialCommunityIcons
+          name={isHealth ? "stethoscope" : "needle"}
+          size={24}
+          color={iconColor}
+        />
+      </View>
+
+      <View style={{ flex: 1, marginLeft: 16 }}>
+        <Text variant="bold" size={16}>
+          {item.farmer}
+        </Text>
+        <Text
+          variant="medium"
+          color="secondary"
+          size={12}
+          style={{ marginTop: 2 }}
+          numberOfLines={1}
+        >
+          {item.task}
+        </Text>
+      </View>
+
+      <View style={{ gap: 8, alignItems: "flex-end" }}>
+        <TouchableOpacity
+          onPress={onAccept}
+          style={{
+            backgroundColor: colors.primary,
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            borderRadius: 12,
+            minWidth: 80,
+            alignItems: "center",
+          }}
+        >
+          <Text
+            variant="black"
+            size={10}
+            style={{
+              color: "#fff",
+              textTransform: "uppercase",
+            }}
+          >
+            Accept
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={onDecline}
+          style={{
+            backgroundColor: isDark ? "#450a0a" : "#fef2f2",
+            paddingHorizontal: 16,
+            paddingVertical: 6,
+            borderRadius: 10,
+            minWidth: 80,
+            alignItems: "center",
+          }}
+        >
+          <Text
+            variant="black"
+            size={9}
+            style={{
+              color: isDark ? "#f87171" : "#ef4444",
+              textTransform: "uppercase",
+            }}
+          >
+            Decline
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </Card>
+  );
+};
+
+const FarmerCompactCard = ({
+  id,
+  name,
+  location,
+  phone,
+  imageUrl,
+  totalAnimals,
+  pregnantCount,
+  insemCount,
+  normalCount,
+  router,
+}: any) => {
+  const { colors, isDark } = useTheme();
+  return (
+    <Card
+      onPress={() => router.push(`/(technician)/client.profile?id=${id}`)}
+      style={{ marginBottom: 12 }}
+    >
+      {/* Top Row: Profile, Info, and Call Button */}
+      <View
+        style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}
+      >
+        <View
+          style={{
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            backgroundColor: isDark ? "#1f2937" : "#FAF7F2",
             alignItems: "center",
             justifyContent: "center",
-            borderWidth: 1,
-            borderColor: "#dcfce7",
+            overflow: "hidden",
           }}
         >
-          <Phone size={16} color={PRIMARY} />
-        </TouchableOpacity>
-      )}
-    </View>
+          {imageUrl ? (
+            <Image
+              source={{ uri: imageUrl }}
+              style={{ width: "100%", height: "100%" }}
+            />
+          ) : (
+            <Text variant="black" size={16} style={{ color: colors.primary }}>
+              {name ? name.charAt(0) : "F"}
+            </Text>
+          )}
+        </View>
 
-    {/* Bottom Row: High-fidelity status badges */}
-    <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap", paddingTop: 4 }}>
-      <View style={{ backgroundColor: "#eff6ff", borderRadius: 10, paddingVertical: 4, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 0.5, borderColor: "#dbeafe" }}>
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#3b82f6" }} />
-        <Text style={{ fontFamily: "Outfit_700Bold", color: "#1d4ed8", fontSize: 10 }}>Pregnant: {pregnantCount || 0}</Text>
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <Text variant="black" size={15}>
+            {name}
+          </Text>
+          <Text
+            variant="semibold"
+            color="muted"
+            size={11}
+            style={{ marginTop: 1 }}
+          >
+            {location} ·{" "}
+            <Text
+              variant="extrabold"
+              size={11}
+              style={{ color: colors.primary }}
+            >
+              {totalAnimals || 0} head
+            </Text>
+          </Text>
+        </View>
+
+        {phone && (
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              Linking.openURL(`tel:${phone}`);
+            }}
+            style={{
+              width: 38,
+              height: 38,
+              borderRadius: 19,
+              backgroundColor: isDark ? "#064e3b" : "#f0fdf4",
+              alignItems: "center",
+              justifyContent: "center",
+              borderWidth: 1,
+              borderColor: isDark ? "#047857" : "#dcfce7",
+            }}
+          >
+            <Phone size={16} color={colors.primary} />
+          </TouchableOpacity>
+        )}
       </View>
-      <View style={{ backgroundColor: "#f0fdf4", borderRadius: 10, paddingVertical: 4, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 0.5, borderColor: "#dcfce7" }}>
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#10b981" }} />
-        <Text style={{ fontFamily: "Outfit_700Bold", color: "#047857", fontSize: 10 }}>Normal: {normalCount || 0}</Text>
+
+      {/* Bottom Row: High-fidelity status badges */}
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 8,
+          flexWrap: "wrap",
+          paddingTop: 4,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: isDark ? "#1e3a8a" : "#eff6ff",
+            borderRadius: 10,
+            paddingVertical: 4,
+            paddingHorizontal: 10,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            borderWidth: 0.5,
+            borderColor: isDark ? "#1d4ed8" : "#dbeafe",
+          }}
+        >
+          <View
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: isDark ? "#60a5fa" : "#3b82f6",
+            }}
+          />
+          <Text
+            variant="bold"
+            size={10}
+            style={{
+              color: isDark ? "#60a5fa" : "#1d4ed8",
+            }}
+          >
+            Pregnant: {pregnantCount || 0}
+          </Text>
+        </View>
+        <View
+          style={{
+            backgroundColor: isDark ? "#064e3b" : "#f0fdf4",
+            borderRadius: 10,
+            paddingVertical: 4,
+            paddingHorizontal: 10,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            borderWidth: 0.5,
+            borderColor: isDark ? "#047857" : "#dcfce7",
+          }}
+        >
+          <View
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: isDark ? "#34d399" : "#10b981",
+            }}
+          />
+          <Text
+            variant="bold"
+            size={10}
+            style={{
+              color: isDark ? "#34d399" : "#047857",
+            }}
+          >
+            Normal: {normalCount || 0}
+          </Text>
+        </View>
+        <View
+          style={{
+            backgroundColor: isDark ? "#78350f" : "#fffbeb",
+            borderRadius: 10,
+            paddingVertical: 4,
+            paddingHorizontal: 10,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            borderWidth: 0.5,
+            borderColor: isDark ? "#b45309" : "#fef3c7",
+          }}
+        >
+          <View
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor: isDark ? "#fbbf24" : "#eab308",
+            }}
+          />
+          <Text
+            variant="bold"
+            size={10}
+            style={{
+              color: isDark ? "#fbbf24" : "#b45309",
+            }}
+          >
+            A.I.: {insemCount || 0}
+          </Text>
+        </View>
       </View>
-      <View style={{ backgroundColor: "#fffbeb", borderRadius: 10, paddingVertical: 4, paddingHorizontal: 10, flexDirection: "row", alignItems: "center", gap: 4, borderWidth: 0.5, borderColor: "#fef3c7" }}>
-        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#eab308" }} />
-        <Text style={{ fontFamily: "Outfit_700Bold", color: "#b45309", fontSize: 10 }}>A.I.: {insemCount || 0}</Text>
-      </View>
-    </View>
-  </TouchableOpacity>
-);
+    </Card>
+  );
+};

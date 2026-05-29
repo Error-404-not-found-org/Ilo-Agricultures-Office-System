@@ -7,6 +7,7 @@ import { Pregnancy } from "../models/pregnancy.model.js";
 import { Notification } from "../models/notification.model.js";
 import cloudinary from "../config/cloudinary.js";
 import { inngest } from "../config/inngest.js";
+import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../utils/cattleCore.js";
 
 export const registerAnimal = async (req, res) => {
   try {
@@ -68,6 +69,7 @@ export const registerAnimal = async (req, res) => {
       gender: gender || "Female",
       imageUrl: finalImageUrl || "",
       birthDate: birthDate ? new Date(birthDate) : undefined,
+      barangay: farmer.address?.barangay || "Not Provided",
     });
 
     console.log(`[Animal Registered] ID: ${animal._id} | AnimalID: ${animalId} | Farmer: ${farmer.name}`);
@@ -81,25 +83,20 @@ export const registerAnimal = async (req, res) => {
 export const getAllAnimals = async (req, res) => {
   try {
     const { page, limit, search, barangay } = req.query;
-    let query = {};
+    let query = { deletedAt: null };
     
     // Construct filter based on owner's location if barangay is provided
     if (barangay) {
-      const farmersInBarangay = await User.find({ 
-          "address.barangay": barangay,
-          role: "farmer" 
-      }).select("_id");
-      const farmerIds = farmersInBarangay.map(f => f._id);
-      query.farmerId = { $in: farmerIds };
+      query.barangay = barangay;
     }
-
+ 
     if (search) {
       const matchedFarmers = await User.find({ 
           name: { $regex: search, $options: "i" },
           role: "farmer" 
       }).select("_id");
       const farmerIds = matchedFarmers.map(f => f._id);
-
+ 
       const searchFilter = {
         $or: [
           { animalId: { $regex: search, $options: "i" } },
@@ -109,29 +106,24 @@ export const getAllAnimals = async (req, res) => {
           { farmerId: { $in: farmerIds } }
         ]
       };
-
-      // Combine with barangay filter if exists
-      if (query.farmerId) {
-          query = { $and: [{ farmerId: query.farmerId }, searchFilter] };
-      } else {
-          query = searchFilter;
-      }
+ 
+      query = { $and: [query, searchFilter] };
     }
-
+ 
     if (page && limit) {
       const pageNum = parseInt(page, 10) || 1;
       const limitNum = parseInt(limit, 10) || 10;
       const skip = (pageNum - 1) * limitNum;
-
+ 
       const animals = await Animal.find(query)
         .populate("farmerId", "name")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
         .lean();
-
+ 
       const total = await Animal.countDocuments(query);
-
+ 
       res.status(200).json({
         animals,
         total,
@@ -162,8 +154,8 @@ export const getMyAnimals = async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
 
     const [animals, total] = await Promise.all([
-      Animal.find({ farmerId }).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
-      Animal.countDocuments({ farmerId }),
+      Animal.find({ farmerId, deletedAt: null }).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Animal.countDocuments({ farmerId, deletedAt: null }),
     ]);
 
     res.status(200).json({
@@ -183,13 +175,13 @@ export const getAnimalById = async (req, res) => {
     const { id } = req.params;
 
     const [animal, inseminationsList, calvings, pregnancies, healthRecords] = await Promise.all([
-      Animal.findById(id).populate("farmerId", "-password"),
-      Insemination.find({ animalId: id })
+      Animal.findOne({ _id: id, deletedAt: null }).populate("farmerId", "-password"),
+      Insemination.find({ animalId: id, deletedAt: null })
         .populate("approvedBy", "name email imageUrl")
         .sort({ attemptNumber: -1 }),
-      Calving.find({ animalId: id }).populate("pregnancyId").sort({ date: -1 }),
-      Pregnancy.find({ animalId: id }),
-      HealthRequest.find({ animalId: id }).populate("handledBy", "name").sort({ createdAt: -1 })
+      Calving.find({ animalId: id, deletedAt: null }).populate("pregnancyId").sort({ date: -1 }),
+      Pregnancy.find({ animalId: id, deletedAt: null }),
+      HealthRequest.find({ animalId: id, deletedAt: null }).populate("handledBy", "name").sort({ createdAt: -1 })
     ]);
 
     if (!animal) {
@@ -222,9 +214,9 @@ export const updateAnimalWizard = async (req, res) => {
     const payload = req.body;
     
     // Step 1: Handle Animal identity
-    const animal = await Animal.findById(id);
+    const animal = await Animal.findOne({ _id: id, deletedAt: null });
     if (!animal) return res.status(404).json({ message: "Animal not found" });
-
+ 
     if (payload.animalId) animal.animalId = payload.animalId;
     if (payload.earTag) animal.earTag = payload.earTag;
     if (payload.brand) animal.brand = payload.brand;
@@ -233,6 +225,11 @@ export const updateAnimalWizard = async (req, res) => {
     if (payload.color) animal.color = payload.color;
     if (payload.birthDate) animal.birthDate = new Date(payload.birthDate);
     if (payload.imageUrl) animal.imageUrl = payload.imageUrl;
+
+    if (!animal.barangay) {
+      const farmer = await User.findById(animal.farmerId);
+      if (farmer) animal.barangay = farmer.address?.barangay || "Not Provided";
+    }
     
     await animal.save();
 
@@ -298,24 +295,26 @@ export const updateAnimalWizard = async (req, res) => {
 export const deleteAnimal = async (req, res) => {
   try {
     const { id } = req.params;
-    const animal = await Animal.findById(id);
-
+    const animal = await Animal.findOne({ _id: id, deletedAt: null });
+ 
     if (!animal) {
       return res.status(404).json({ message: "Animal not found" });
     }
-
+ 
     // Permission Check: Only the owner (farmer) or an admin/tech can delete.
     if (req.user.role === "farmer" && animal.farmerId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Unauthorized to delete this animal" });
     }
-
-    // Cleanup related records
+ 
+    const deleteTime = new Date();
+    // Cleanup related records - Soft Delete
     await Promise.all([
-      Insemination.deleteMany({ animalId: id }),
-      Calving.deleteMany({ animalId: id }),
-      HealthRequest.deleteMany({ animalId: id })
+      Insemination.updateMany({ animalId: id }, { $set: { deletedAt: deleteTime } }),
+      Calving.updateMany({ animalId: id }, { $set: { deletedAt: deleteTime } }),
+      HealthRequest.updateMany({ animalId: id }, { $set: { deletedAt: deleteTime } }),
+      Pregnancy.updateMany({ animalId: id }, { $set: { deletedAt: deleteTime } })
     ]);
-
+ 
     // Cleanup Cloudinary Image
     if (animal.imageUrl && animal.imageUrl.includes("cloudinary.com")) {
       try {
@@ -327,8 +326,9 @@ export const deleteAnimal = async (req, res) => {
         console.error("[Cloudinary Cleanup Error]", cloudinaryError);
       }
     }
-
-    await Animal.findByIdAndDelete(id);
+ 
+    animal.deletedAt = deleteTime;
+    await animal.save();
 
     req.app.get("io").emit("dashboardUpdate", {
       type: "ANIMAL_DELETED",
@@ -357,7 +357,7 @@ export const updateReproductiveStatus = async (req, res) => {
     // --- HARDENED REHEAT LOGIC ---
     if (status === "In Heat") {
         // If they observed a reheat, the last insemination attempt is officially a failure
-        const lastInsem = await Insemination.findOne({ animalId: id, status: "done" }).sort({ createdAt: -1 });
+        const lastInsem = await Insemination.findOne({ animalId: id, status: "done", deletedAt: null }).sort({ createdAt: -1 });
         if (lastInsem) {
             lastInsem.isSuccess = false;
             lastInsem.outcome = "Failed (Re-heat)";
@@ -392,23 +392,23 @@ export const requestReInsemination = async (req, res) => {
   try {
     const { animalId, preferredDate, comment } = req.body;
     
-    const animal = await Animal.findById(animalId);
+    const animal = await Animal.findOne({ _id: animalId, deletedAt: null });
     if (!animal) return res.status(404).json({ message: "Animal not found" });
-
-    // Age Check: Prevent Insemination for Newborns/Young animals
-    if (animal.birthDate) {
-        const birth = new Date(animal.birthDate);
-        const now = new Date();
-        const diffMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
-        
-        if (diffMonths < 12) {
-            return res.status(400).json({ 
-              message: `Animal is too young for insemination. Age: ${diffMonths === 0 ? "Newborn" : diffMonths + " months"}. Minimum age is 12 months.` 
-            });
-        }
+ 
+    // Gender check
+    if (animal.gender !== "Female") {
+      return res.status(400).json({
+        message: "Insemination is restricted to female animals only. This animal is registered as Male."
+      });
     }
-
-    const lastInsem = await Insemination.findOne({ animalId }).sort({ attemptNumber: -1 });
+ 
+    // Age Check Check
+    const ageCheck = checkInseminationAgeEligibility(animal.birthDate, animal.species);
+    if (!ageCheck.isEligible) {
+        return res.status(400).json({ message: ageCheck.reason });
+    }
+ 
+    const lastInsem = await Insemination.findOne({ animalId, deletedAt: null }).sort({ attemptNumber: -1 });
     const nextAttempt = (lastInsem?.attemptNumber || 0) + 1;
 
     const newRequest = await Insemination.create({
@@ -441,7 +441,7 @@ export const requestReInsemination = async (req, res) => {
 export const getAnimalsByFarmer = async (req, res) => {
   try {
     const { farmerId } = req.params;
-    const animals = await Animal.find({ farmerId }).sort({ earTag: 1 }).lean();
+    const animals = await Animal.find({ farmerId, deletedAt: null }).sort({ earTag: 1 }).lean();
     res.status(200).json({ data: animals });
   } catch (error) {
     console.error("[getAnimalsByFarmer ERROR]", error);
@@ -462,7 +462,7 @@ export const recordCalving = async (req, res) => {
     } = req.body;
 
     // 1. Validate Mother & Pregnancy
-    const mother = await Animal.findById(animalId);
+    const mother = await Animal.findOne({ _id: animalId, deletedAt: null });
     if (!mother) return res.status(404).json({ message: "Mother animal not found" });
 
     // Permission check: Farmer can only record for their own animals
@@ -470,17 +470,27 @@ export const recordCalving = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized." });
     }
 
+    // Chronological Calving Postpartum Firewall
+    if (mother.lastCalvingDate) {
+      const windowCheck = verifyPostpartumWindow(mother.lastCalvingDate, date || new Date(), mother.species);
+      if (!windowCheck.isSafe) {
+        return res.status(422).json({ 
+          message: `Warning: Calving event occurs too close to the previous calving event. Only ${windowCheck.daysPassed} days have passed, but the voluntary waiting period for ${mother.species} is ${windowCheck.requiredDays} days.` 
+        });
+      }
+    }
+
     let pregnancy = null;
     if (pregnancyId) {
-        pregnancy = await Pregnancy.findById(pregnancyId).populate("inseminationId");
+        pregnancy = await Pregnancy.findOne({ _id: pregnancyId, deletedAt: null }).populate("inseminationId");
     } else {
-        pregnancy = await Pregnancy.findOne({ animalId, "pregnancyDiagnosis.result": "Pregnant" }).populate("inseminationId").sort({ createdAt: -1 });
+        pregnancy = await Pregnancy.findOne({ animalId, "pregnancyDiagnosis.result": "Pregnant", deletedAt: null }).populate("inseminationId").sort({ createdAt: -1 });
     }
     
     if (!pregnancy) return res.status(404).json({ message: "Pregnancy record not found. Please ensure the animal is confirmed pregnant first." });
 
     // Check if calving record already exists to prevent E11000 duplicate key error
-    const existingCalving = await Calving.findOne({ pregnancyId: pregnancy._id });
+    const existingCalving = await Calving.findOne({ pregnancyId: pregnancy._id, deletedAt: null });
     if (existingCalving) {
       // If the calving was recorded but the mother's status didn't update previously, fix it now
       if (mother.reproductiveStatus === "Pregnant") {
@@ -510,6 +520,7 @@ export const recordCalving = async (req, res) => {
         isVerified: req.user.role === "technician", // Auto-verify if technician records it
         gender: calfData.sex === "M" ? "Male" : "Female",
         birthDate: date || new Date(),
+        barangay: mother.barangay || "Not Provided",
         activityLogs: [{
           event: "Initial Registration",
           date: new Date(),
@@ -539,9 +550,12 @@ export const recordCalving = async (req, res) => {
       technicianNote,
     });
 
-    // 4. Update Mother's Status & Increment Parity
+    // 4. Update Mother's Status, lastCalvingDate & Increment Parity
     await Animal.findByIdAndUpdate(animalId, {
-      $set: { reproductiveStatus: "Normal" },
+      $set: { 
+        reproductiveStatus: "Normal",
+        lastCalvingDate: date || new Date()
+      },
       $inc: { parity: 1 },
       $push: {
         activityLogs: {
@@ -554,12 +568,13 @@ export const recordCalving = async (req, res) => {
 
     // 5. Notify involved parties
     if (req.user.role === "technician" && mother.farmerId) {
+       const calfSexList = calves.map(c => c.sex === "M" ? "Male" : "Female").join(", ");
        await Notification.create({
         recipientId: mother.farmerId,
         senderId: req.user._id,
         type: "system",
         title: "🍼 New Calving Recorded",
-        message: `Congratulations! ${mother.earTag || "Your animal"} has successfully calved. ${registeredCalves.length} new calf/calves added to your registry.`,
+        message: `Congratulations! Your animal Tag #${mother.earTag || mother.animalId} successfully calved ${registeredCalves.length} offspring (${calfSexList}).`,
       });
     }
 

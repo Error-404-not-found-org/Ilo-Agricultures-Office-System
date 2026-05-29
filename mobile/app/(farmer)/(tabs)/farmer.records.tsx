@@ -7,6 +7,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { format } from 'date-fns';
+import { useTheme } from '@/lib/theme';
 
 interface Animal {
   _id: string;
@@ -39,41 +40,50 @@ const STATUS_CFG: Record<string, { color: string, bg: string, label: string }> =
 // ─── Sub-Components ──────────────────────────────────────────────────────────
 
 const StatusBadge = ({ status }: { status: string }) => {
+  const { colors, isDark } = useTheme();
   const c = STATUS_CFG[status?.toLowerCase()] || STATUS_CFG.pending;
+  
+  const bgColor = isDark ? (c.color === '#00643B' ? 'rgba(52,211,153,0.15)' : c.color + '22') : c.bg;
+  const textColor = isDark ? (c.color === '#00643B' ? '#34d399' : c.color === '#059669' ? '#34d399' : c.color === '#dc2626' ? '#f87171' : c.color) : c.color;
+
   return (
-    <View style={{ backgroundColor: c.bg, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
-      <Text style={{ fontSize: 9, fontFamily: 'Outfit_800ExtraBold', color: c.color, textTransform: 'uppercase', letterSpacing: 0.5 }}>{c.label}</Text>
+    <View style={{ backgroundColor: bgColor, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12 }}>
+      <Text style={{ fontSize: 9, fontFamily: 'Outfit_800ExtraBold', color: textColor, textTransform: 'uppercase', letterSpacing: 0.5 }}>{c.label}</Text>
     </View>
   );
 };
 
-const AnimalCard = ({ item, onPress }: { item: Animal, onPress?: () => void }) => (
-  <TouchableOpacity 
-    activeOpacity={0.8} 
-    onPress={onPress}
-    style={{ backgroundColor: '#fff', borderRadius: 24, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2, borderWidth: 1, borderColor: '#f1f5f9' }}
-  >
-    <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center' }}>
-       <MaterialCommunityIcons name="cow" size={30} color="#059669" />
-    </View>
-    <View style={{ flex: 1, marginLeft: 16 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <Text style={{ fontSize: 16, fontFamily: 'Outfit_700Bold', color: '#1e293b' }}>{item.animalId}</Text>
-        {item.reproductiveStatus === 'Pregnant' && (
-          <View style={{ backgroundColor: '#f5f3ff', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-            <Text style={{ fontSize: 8, fontFamily: 'Outfit_800ExtraBold', color: '#7c3aed', textTransform: 'uppercase' }}>Pregnant</Text>
-          </View>
-        )}
+const AnimalCard = ({ item, onPress }: { item: Animal, onPress?: () => void }) => {
+  const { colors, isDark } = useTheme();
+  return (
+    <TouchableOpacity 
+      activeOpacity={0.8} 
+      onPress={onPress}
+      style={{ backgroundColor: colors.card, borderRadius: 24, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: isDark ? 0 : 0.04, shadowRadius: 8, elevation: isDark ? 0 : 2, borderWidth: 1, borderColor: colors.border }}
+    >
+      <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#f0fdf4', alignItems: 'center', justifyContent: 'center' }}>
+         <MaterialCommunityIcons name="cow" size={30} color={isDark ? colors.primary : "#059669"} />
       </View>
-      <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: '#64748b', marginTop: 2 }}>
-        {item.species} • {item.breed} {item.earTag ? `• #${item.earTag}` : ''}
-      </Text>
-    </View>
-    <ChevronRight size={18} color="#cbd5e1" />
-  </TouchableOpacity>
-);
+      <View style={{ flex: 1, marginLeft: 16 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <Text style={{ fontSize: 16, fontFamily: 'Outfit_700Bold', color: colors.textPrimary }}>{item.animalId}</Text>
+          {item.reproductiveStatus === 'Pregnant' && (
+            <View style={{ backgroundColor: isDark ? 'rgba(124,58,237,0.15)' : '#f5f3ff', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 8, fontFamily: 'Outfit_800ExtraBold', color: isDark ? '#a78bfa' : '#7c3aed', textTransform: 'uppercase' }}>Pregnant</Text>
+            </View>
+          )}
+        </View>
+        <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: colors.textSecondary, marginTop: 2 }}>
+          {item.species} • {item.breed} {item.earTag ? `• #${item.earTag}` : ''}
+        </Text>
+      </View>
+      <ChevronRight size={18} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
+};
 
 const RecordCard = ({ item, onPress }: { item: InseminationRecord, onPress?: () => void }) => {
+  const { colors, isDark } = useTheme();
   const animal = item.animalId;
   const dateStr = item.inseminationDate ? format(new Date(item.inseminationDate), 'MMM dd, yyyy') : 'No Date';
   
@@ -81,43 +91,43 @@ const RecordCard = ({ item, onPress }: { item: InseminationRecord, onPress?: () 
     <TouchableOpacity 
       activeOpacity={0.8} 
       onPress={onPress}
-      style={{ backgroundColor: '#fff', borderRadius: 24, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: '#f1f5f9' }}
+      style={{ backgroundColor: colors.card, borderRadius: 24, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0 : 0.05, shadowRadius: 12, elevation: isDark ? 0 : 3, borderWidth: 1, borderColor: colors.border }}
     >
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
         <View style={{ flexDirection: 'row', gap: 12 }}>
-          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
-            <CalendarDays size={20} color="#64748b" />
+          <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: isDark ? colors.background : '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
+            <CalendarDays size={20} color={colors.textSecondary} />
           </View>
           <View>
-            <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 1 }}>{dateStr}</Text>
-            <Text style={{ fontSize: 16, fontFamily: 'Outfit_700Bold', color: '#1e293b', marginTop: 2 }}>{animal?.animalId || 'Animal Profile'}</Text>
+            <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 1 }}>{dateStr}</Text>
+            <Text style={{ fontSize: 16, fontFamily: 'Outfit_700Bold', color: colors.textPrimary, marginTop: 2 }}>{animal?.animalId || 'Animal Profile'}</Text>
           </View>
         </View>
         <StatusBadge status={item.status} />
       </View>
       
-      <View style={{ backgroundColor: '#f8fafc', borderRadius: 16, padding: 12, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+      <View style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderRadius: 16, padding: 12, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
          <View>
-            <Text style={{ fontSize: 9, fontFamily: 'Outfit_600SemiBold', color: '#94a3b8', textTransform: 'uppercase' }}>Sire / Breed</Text>
-            <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: '#475569', marginTop: 2 }}>{item.sireCode || 'AI-S1'} / {item.sireBreed}</Text>
+            <Text style={{ fontSize: 9, fontFamily: 'Outfit_600SemiBold', color: colors.textMuted, textTransform: 'uppercase' }}>Sire / Breed</Text>
+            <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: colors.textSecondary, marginTop: 2 }}>{item.sireCode || 'AI-S1'} / {item.sireBreed}</Text>
          </View>
          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ fontSize: 9, fontFamily: 'Outfit_600SemiBold', color: '#94a3b8', textTransform: 'uppercase' }}>Attempt</Text>
-            <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: '#00643B', marginTop: 2 }}>#{item.attemptNumber}</Text>
+            <Text style={{ fontSize: 9, fontFamily: 'Outfit_600SemiBold', color: colors.textMuted, textTransform: 'uppercase' }}>Attempt</Text>
+            <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: isDark ? colors.primary : '#00643B', marginTop: 2 }}>#{item.attemptNumber}</Text>
          </View>
       </View>
 
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: '#ecfdf5', alignItems: 'center', justifyContent: 'center' }}>
-            <User size={12} color="#059669" />
+          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5', alignItems: 'center', justifyContent: 'center' }}>
+            <User size={12} color={isDark ? colors.primary : "#059669"} />
           </View>
-          <Text style={{ fontSize: 11, fontFamily: 'Outfit_500Medium', color: '#64748b' }}>
-            Handled by <Text style={{ fontFamily: 'Outfit_700Bold', color: '#334155' }}>{item.approvedBy?.name || 'Technician'}</Text>
+          <Text style={{ fontSize: 11, fontFamily: 'Outfit_500Medium', color: colors.textSecondary }}>
+            Handled by <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textPrimary }}>{item.approvedBy?.name || 'Technician'}</Text>
           </Text>
         </View>
         <TouchableOpacity onPress={onPress}>
-           <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: '#00643B' }}>Details</Text>
+           <Text style={{ fontSize: 12, fontFamily: 'Outfit_700Bold', color: isDark ? colors.primary : '#00643B' }}>Details</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -126,6 +136,7 @@ const RecordCard = ({ item, onPress }: { item: InseminationRecord, onPress?: () 
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function FarmerReports() {
+  const { colors, isDark } = useTheme();
   const api    = useApi();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -185,7 +196,7 @@ export default function FarmerReports() {
   }, [fetchAnimals, fetchRecords]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" />
       
       {/* Premium Header */}
@@ -211,7 +222,7 @@ export default function FarmerReports() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ color: '#fff', fontFamily: 'Outfit_800ExtraBold', fontSize: 14 }}>Moowie Analysis</Text>
-            <Text style={{ color: 'rgba(255,255,255,0.8)', fontFamily: 'Outfit_500Medium', fontSize: 11, lineHeight: 15, marginTop: 2 }}>
+            <Text style={{ color: isDark ? colors.textSecondary : 'rgba(255,255,255,0.8)', fontFamily: 'Outfit_500Medium', fontSize: 11, lineHeight: 15, marginTop: 2 }}>
               {activeTab === 'animals' 
                 ? `Scanning your herd... You have ${animals.length} cattle registered. Check their breeding cycles for optimal production!`
                 : `Analyzing history... ${recordStats.total} total attempts found. Your success rate is looking promising!`}
@@ -223,44 +234,44 @@ export default function FarmerReports() {
       {/* Main Content */}
       <View style={{ flex: 1, marginTop: -60, paddingHorizontal: 24 }}>
         {/* Tab Switcher */}
-        <View style={{ flexDirection: 'row', backgroundColor: '#fff', borderRadius: 24, padding: 6, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 10, elevation: 4 }}>
+        <View style={{ flexDirection: 'row', backgroundColor: colors.card, borderRadius: 24, padding: 6, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: isDark ? 0 : 0.05, shadowRadius: 10, elevation: 4, borderWidth: isDark ? 1 : 0, borderColor: colors.border }}>
           <TouchableOpacity 
             onPress={() => setActiveTab('animals')}
-            style={{ flex: 1, paddingVertical: 12, borderRadius: 18, alignItems: 'center', backgroundColor: activeTab === 'animals' ? '#00643B' : 'transparent', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+            style={{ flex: 1, paddingVertical: 12, borderRadius: 18, alignItems: 'center', backgroundColor: activeTab === 'animals' ? (isDark ? colors.primary : '#00643B') : 'transparent', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
           >
-            <Dog size={16} color={activeTab === 'animals' ? '#fff' : '#94a3b8'} />
-            <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: activeTab === 'animals' ? '#fff' : '#64748b' }}>Cattle Hub</Text>
+            <Dog size={16} color={activeTab === 'animals' ? '#fff' : colors.textSecondary} />
+            <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: activeTab === 'animals' ? '#fff' : colors.textSecondary }}>Cattle Hub</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             onPress={() => setActiveTab('records')}
-            style={{ flex: 1, paddingVertical: 12, borderRadius: 18, alignItems: 'center', backgroundColor: activeTab === 'records' ? '#00643B' : 'transparent', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+            style={{ flex: 1, paddingVertical: 12, borderRadius: 18, alignItems: 'center', backgroundColor: activeTab === 'records' ? (isDark ? colors.primary : '#00643B') : 'transparent', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
           >
-            <ActivityIcon size={16} color={activeTab === 'records' ? '#fff' : '#94a3b8'} />
-            <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: activeTab === 'records' ? '#fff' : '#64748b' }}>Activity Feed</Text>
+            <ActivityIcon size={16} color={activeTab === 'records' ? '#fff' : colors.textSecondary} />
+            <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: activeTab === 'records' ? '#fff' : colors.textSecondary }}>Activity Feed</Text>
           </TouchableOpacity>
         </View>
 
         {activeTab === 'animals' ? (
           isLoadingAnimals ? (
-            <ActivityIndicator color="#00643B" style={{ marginTop: 40 }} />
+            <ActivityIndicator color={isDark ? colors.primary : "#00643B"} style={{ marginTop: 40 }} />
           ) : (
             <FlatList
               data={animals}
               keyExtractor={(item) => item._id}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => <AnimalCard item={item} onPress={() => router.push(`/(farmer)/animal-details?id=${item._id}`)} />}
-              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={['#00643B']} />}
+              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={[isDark ? colors.primary : '#00643B']} />}
               ListEmptyComponent={
                 <View style={{ alignItems: 'center', marginTop: 60, opacity: 0.4 }}>
-                  <MaterialCommunityIcons name="cow-off" size={60} color="#64748b" />
-                  <Text style={{ fontFamily: 'Outfit_700Bold', color: '#64748b', marginTop: 12 }}>No cattle found</Text>
+                  <MaterialCommunityIcons name="cow-off" size={60} color={colors.textMuted} />
+                  <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary, marginTop: 12 }}>No cattle found</Text>
                 </View>
               }
             />
           )
         ) : (
           isLoadingRecords ? (
-            <ActivityIndicator color="#00643B" style={{ marginTop: 40 }} />
+            <ActivityIndicator color={isDark ? colors.primary : "#00643B"} style={{ marginTop: 40 }} />
           ) : (
             <FlatList
               data={records}
@@ -269,12 +280,12 @@ export default function FarmerReports() {
               ListHeaderComponent={
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
                   {[
-                    { label: 'Total', val: recordStats.total, color: '#00643B', bg: '#ecfdf5', icon: TrendingUp },
-                    { label: 'Active', val: recordStats.approved, color: '#059669', bg: '#f0fdf4', icon: ClipboardCheck },
-                    { label: 'Wait', val: recordStats.pending, color: '#d97706', bg: '#fffbeb', icon: ActivityIcon },
-                    { label: 'Closed', val: recordStats.rejected, color: '#64748b', bg: '#f1f5f9', icon: AlertCircle },
+                    { label: 'Total', val: recordStats.total, color: isDark ? colors.primary : '#00643B', bg: isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5', icon: TrendingUp },
+                    { label: 'Active', val: recordStats.approved, color: isDark ? '#34d399' : '#059669', bg: isDark ? 'rgba(52,211,153,0.15)' : '#f0fdf4', icon: ClipboardCheck },
+                    { label: 'Wait', val: recordStats.pending, color: isDark ? '#fbbf24' : '#d97706', bg: isDark ? 'rgba(251,191,36,0.15)' : '#fffbeb', icon: ActivityIcon },
+                    { label: 'Closed', val: recordStats.rejected, color: isDark ? colors.textSecondary : '#64748b', bg: isDark ? 'rgba(255,255,255,0.05)' : '#f1f5f9', icon: AlertCircle },
                   ].map((s, i) => (
-                    <View key={i} style={{ flex: 1, backgroundColor: s.bg, borderRadius: 20, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: s.color + '15' }}>
+                    <View key={i} style={{ flex: 1, backgroundColor: s.bg, borderRadius: 20, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: isDark ? colors.border : s.color + '15' }}>
                       <s.icon size={11} color={s.color} style={{ marginBottom: 4 }} />
                       <Text style={{ fontSize: 16, fontFamily: 'Outfit_900Black', color: s.color }}>{s.val}</Text>
                       <Text style={{ fontSize: 7, fontFamily: 'Outfit_800ExtraBold', color: s.color, textTransform: 'uppercase' }}>{s.label}</Text>
@@ -283,11 +294,11 @@ export default function FarmerReports() {
                 </View>
               }
               renderItem={({ item }) => <RecordCard item={item} onPress={() => router.push(`/(farmer)/animal-details?id=${item.animalId?._id}`)} />}
-              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={['#00643B']} />}
+              refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} colors={[isDark ? colors.primary : '#00643B']} />}
               ListEmptyComponent={
                 <View style={{ alignItems: 'center', marginTop: 60, opacity: 0.4 }}>
-                  <MaterialCommunityIcons name="clipboard-text-off-outline" size={60} color="#64748b" />
-                  <Text style={{ fontFamily: 'Outfit_700Bold', color: '#64748b', marginTop: 12 }}>No records found</Text>
+                  <MaterialCommunityIcons name="clipboard-text-off-outline" size={60} color={colors.textMuted} />
+                  <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary, marginTop: 12 }}>No records found</Text>
                 </View>
               }
             />

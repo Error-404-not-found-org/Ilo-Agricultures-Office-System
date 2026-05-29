@@ -74,9 +74,9 @@ export default function Header() {
         {/* User Avatar Section */}
         <TouchableOpacity
           onPress={() => {
-            if (isAdmin) router.push('/(admin)/profile' as any);
-            else if (isFarmer) router.push('/(farmer)/profile');
-            else router.push('/(technician)/profile');
+            if (isAdmin) router.push('/(admin)/profile');
+            else if (isFarmer) router.push('/(farmer)/(tabs)/profile');
+            else router.push('/(technician)/(tabs)/profile');
           }}
           activeOpacity={0.8}
         >

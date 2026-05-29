@@ -6,7 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft, Syringe, User, MapPin,
-  ChevronDown, Camera, X, Check, AlertCircle, Clock, Activity
+  ChevronDown, Camera, X, Check, AlertCircle, Clock
 } from 'lucide-react-native';
 import React, { useState, useEffect, useRef } from 'react';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,9 +16,10 @@ import { validateRequestTime } from '@/lib/utils';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useOfflineMutation } from '@/hooks/useOfflineMutation';
+import { useTheme } from '@/lib/theme';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Animal { _id: string; animalId: string; earTag?: string; species: string; breed: string; reproductiveStatus?: string; }
+interface Animal { _id: string; animalId: string; earTag?: string; species: string; breed: string; reproductiveStatus?: string; gender?: string; }
 interface FarmerProfile {
   _id: string; name: string; imageUrl?: string; phoneNumber?: string;
   address?: { houseNumber?: string; street: string; barangay: string; city: string; province: string; };
@@ -39,6 +40,9 @@ export default function RequestAI() {
   const api        = useApi();
   const insets     = useSafeAreaInsets();
   const scrollRef  = useRef<ScrollView>(null);
+  const { colors, isDark } = useTheme();
+
+  const primaryColor = isDark ? colors.primary : '#00643B';
 
   // Data states
   const [farmer, setFarmer]       = useState<FarmerProfile | null>(null);
@@ -81,7 +85,6 @@ export default function RequestAI() {
       if (error.message !== 'OFFLINE_SAVED') {
         toast.error(error.response?.data?.message || 'Failed to submit request. Please try again.');
       } else {
-        // If offline saved, still navigate back
         router.back();
       }
     }
@@ -113,11 +116,9 @@ export default function RequestAI() {
     }
   }, [profile]);
 
-  // Fetch farmer's animals for the dropdown
   const { data: animalsData, isLoading: isLoadingAnimals } = useQuery({
     queryKey: ['animals', 'my-all'],
     queryFn: async () => {
-      // Fetch up to 100 animals for the picker
       const res = await api.get('/animals/my?limit=100');
       return res.data;
     }
@@ -128,8 +129,6 @@ export default function RequestAI() {
       const list = Array.isArray(animalsData) ? animalsData : animalsData.data;
       if (Array.isArray(list)) {
         setAnimals(list);
-        
-        // Pre-fill if coming from animal-details OR Re-inseminate flow
         if (params.animalId) {
           const found = (list as Animal[]).find(a => a._id === params.animalId);
           if (found) {
@@ -140,7 +139,6 @@ export default function RequestAI() {
     }
   }, [animalsData, params.animalId, params.mode]);
 
-  // ── Image Picker ────────────────────────────────────────────────────────────
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
@@ -158,10 +156,7 @@ export default function RequestAI() {
 
   const removeImage = () => { setImageUri(null); setImageBase64(null); };
 
-  // ── Submit ──────────────────────────────────────────────────────────────────
-  // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    // 1. Profile Completeness Check
     const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
     const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
 
@@ -171,7 +166,7 @@ export default function RequestAI() {
         "Please provide your contact number and home address in your profile before requesting AI services.",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Go to Profile", onPress: () => router.push('/(farmer)/profile') }
+          { text: "Go to Profile", onPress: () => router.push('/(farmer)/(tabs)/profile') }
         ]
       );
       return;
@@ -179,7 +174,6 @@ export default function RequestAI() {
 
     if (!selectedAnimal) return toast.error('Please select an animal for this request.');
     
-    // Safety check: Don't allow AI request for pregnant animals
     if (selectedAnimal.reproductiveStatus === 'Pregnant') {
       return Alert.alert(
         "Action Blocked",
@@ -225,12 +219,10 @@ export default function RequestAI() {
     setPreferredDate(newDate);
   };
 
-  // ── UI ──────────────────────────────────────────────────────────────────────
   return (
-    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" />
-      {/* Green top bar */}
-      <View className="absolute top-0 left-0 right-0 h-[230px] bg-[#00643B]" />
+      <View className="absolute top-0 left-0 right-0 h-[230px]" style={{ backgroundColor: '#00643B' }} />
 
       {/* Header */}
       <View style={{ paddingTop: insets.top + 16 }} className="px-6 pb-6 flex-row items-center gap-4 z-10">
@@ -248,7 +240,10 @@ export default function RequestAI() {
       </View>
 
       {/* Content card */}
-      <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-6 mt-2" style={{ shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 15, elevation: 8 }}>
+      <View 
+        className="flex-1 rounded-t-[32px] px-6 pt-6 mt-2" 
+        style={{ shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 15, elevation: 8, backgroundColor: colors.background }}
+      >
           <ScrollView
             ref={scrollRef}
             showsVerticalScrollIndicator={false}
@@ -257,91 +252,94 @@ export default function RequestAI() {
           >
 
             {/* ── Farmer Info Card ─────────────────────────────────────────── */}
-            <View className="bg-white dark:bg-slate-800 rounded-3xl p-5 mb-5 border border-gray-100 dark:border-slate-700" style={{ elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8 }}>
-              <Text className="text-xs font-bold text-gray-400 dark:text-slate-400 uppercase tracking-widest mb-4">Your Information</Text>
+            <View 
+              className="rounded-3xl p-5 mb-5 border" 
+              style={{ elevation: 2, shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, backgroundColor: colors.card, borderColor: colors.border }}
+            >
+              <Text className="text-xs font-bold uppercase tracking-widest mb-4" style={{ color: colors.textMuted }}>Your Information</Text>
 
               {(loadingProfile && !farmer) ? (
-                <ActivityIndicator color="#00643B" />
+                <ActivityIndicator color={primaryColor} />
               ) : farmer ? (
                 <View className="gap-3">
                   {/* Name */}
                   <View className="flex-row items-center gap-3">
-                    <View className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center">
-                      <User size={15} color="#00643B" />
+                    <View className="w-8 h-8 rounded-full items-center justify-center" style={{ backgroundColor: colors.tint }}>
+                      <User size={15} color={primaryColor} />
                     </View>
                     <View>
-                      <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium">Full Name</Text>
-                      <Text className="text-[14px] font-semibold text-gray-800 dark:text-white">{farmer.name}</Text>
+                      <Text className="text-[11px] font-medium" style={{ color: colors.textMuted }}>Full Name</Text>
+                      <Text className="text-[14px] font-semibold" style={{ color: colors.textPrimary }}>{farmer.name}</Text>
                     </View>
                   </View>
 
                   {/* Address */}
                   <View className="flex-row items-start gap-3">
-                    <View className="w-8 h-8 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mt-0.5">
-                      <MapPin size={15} color="#00643B" />
+                    <View className="w-8 h-8 rounded-full items-center justify-center mt-0.5" style={{ backgroundColor: colors.tint }}>
+                      <MapPin size={15} color={primaryColor} />
                     </View>
                     <View className="flex-1">
-                      <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium">Address</Text>
-                      <Text className="text-[14px] font-semibold text-gray-800 dark:text-slate-200 leading-tight">{formatAddress(farmer.address)}</Text>
+                      <Text className="text-[11px] font-medium" style={{ color: colors.textMuted }}>Address</Text>
+                      <Text className="text-[14px] font-semibold leading-tight" style={{ color: colors.textSecondary }}>{formatAddress(farmer.address)}</Text>
                     </View>
                   </View>
                 </View>
               ) : (
                 <View className="flex-row items-center gap-2">
-                  <AlertCircle size={16} color="#ef4444" />
-                  <Text className="text-red-500 text-sm">Could not load profile</Text>
+                  <AlertCircle size={16} color={colors.error} />
+                  <Text className="text-sm" style={{ color: colors.error }}>Could not load profile</Text>
                 </View>
               )}
             </View>
 
             {/* ── Animal Picker ─────────────────────────────────────────────── */}
-            <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Select Animal *</Text>
+            <Text className="text-xs font-bold uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>Select Animal *</Text>
             <TouchableOpacity
               onPress={() => setAnimalModalVisible(true)}
-              className={`bg-white dark:bg-slate-800 border rounded-2xl px-4 py-4 flex-row items-center justify-between mb-5 ${selectedAnimal ? 'border-emerald-400 dark:border-emerald-500' : 'border-gray-200 dark:border-slate-700'}`}
-              style={{ elevation: 1 }}
+              className="border rounded-2xl px-4 py-4 flex-row items-center justify-between mb-5"
+              style={{ elevation: 1, backgroundColor: colors.card, borderColor: selectedAnimal ? primaryColor : colors.border }}
             >
               {selectedAnimal ? (
                 <View>
-                  <Text className="text-[15px] font-bold text-gray-800 dark:text-white">
+                  <Text className="text-[15px] font-bold" style={{ color: colors.textPrimary }}>
                     {selectedAnimal.animalId}
                     {selectedAnimal.earTag ? ` · ${selectedAnimal.earTag}` : ''}
                   </Text>
-                  <Text className="text-sm text-gray-400 dark:text-slate-400">{selectedAnimal.species} — {selectedAnimal.breed}</Text>
+                  <Text className="text-sm" style={{ color: colors.textSecondary }}>{selectedAnimal.species} — {selectedAnimal.breed}</Text>
                 </View>
               ) : (
-                <Text className="text-gray-400 text-sm">Tap to choose an animal</Text>
+                <Text className="text-sm" style={{ color: colors.textMuted }}>Tap to choose an animal</Text>
               )}
-              <ChevronDown size={20} color={selectedAnimal ? '#00643B' : '#9ca3af'} />
+              <ChevronDown size={20} color={selectedAnimal ? primaryColor : colors.textMuted} />
             </TouchableOpacity>
 
             {/* ── Preferred Date/Time Picker ───────────────────────────────── */}
-            <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Preferred Visit Date/Time *</Text>
+            <Text className="text-xs font-bold uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>Preferred Visit Date/Time *</Text>
             <View className="flex-row gap-3 mb-5">
               <TouchableOpacity
                 onPress={() => setShowDatePicker(true)}
-                className="flex-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 flex-row items-center justify-between"
-                style={{ elevation: 1 }}
+                className="flex-1 border rounded-2xl px-4 py-4 flex-row items-center justify-between"
+                style={{ elevation: 1, backgroundColor: colors.card, borderColor: colors.border }}
               >
                 <View>
-                  <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium uppercase tracking-widest">Date</Text>
-                  <Text className="text-[15px] font-bold text-gray-800 dark:text-white">{preferredDate.toLocaleDateString()}</Text>
+                  <Text className="text-[11px] font-medium uppercase tracking-widest" style={{ color: colors.textMuted }}>Date</Text>
+                  <Text className="text-[15px] font-bold" style={{ color: colors.textPrimary }}>{preferredDate.toLocaleDateString()}</Text>
                 </View>
-                <Clock size={16} color="#9ca3af" />
+                <Clock size={16} color={colors.textMuted} />
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={() => setTimeModalVisible(true)}
-                className="flex-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 flex-row items-center justify-between"
-                style={{ elevation: 1 }}
+                className="flex-1 border rounded-2xl px-4 py-4 flex-row items-center justify-between"
+                style={{ elevation: 1, backgroundColor: colors.card, borderColor: colors.border }}
               >
                 <View>
-                  <Text className="text-[11px] text-gray-400 dark:text-slate-400 font-medium uppercase tracking-widest">Time Slot</Text>
-                  <Text className="text-[15px] font-bold text-gray-800 dark:text-white">
+                  <Text className="text-[11px] font-medium uppercase tracking-widest" style={{ color: colors.textMuted }}>Time Slot</Text>
+                  <Text className="text-[15px] font-bold" style={{ color: colors.textPrimary }}>
                     {preferredDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 </View>
-                <Clock size={16} color="#9ca3af" />
+                <Clock size={16} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -355,9 +353,8 @@ export default function RequestAI() {
               />
             )}
 
-
             {/* ── Photo Attachment ─────────────────────────────────────────── */}
-            <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Attach Photo (Optional)</Text>
+            <Text className="text-xs font-bold uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>Attach Photo (Optional)</Text>
             {imageUri ? (
               <View className="mb-5 relative">
                 <Image
@@ -375,27 +372,27 @@ export default function RequestAI() {
             ) : (
               <TouchableOpacity
                 onPress={pickImage}
-                className="w-full h-36 bg-white dark:bg-slate-800 border-2 border-dashed border-gray-200 dark:border-slate-700 rounded-2xl items-center justify-center mb-5 gap-2"
+                className="w-full h-36 border-2 border-dashed rounded-2xl items-center justify-center mb-5 gap-2"
+                style={{ backgroundColor: colors.card, borderColor: colors.border }}
               >
-                <Camera size={28} color="#9ca3af" />
-                <Text className="text-sm text-gray-400 dark:text-slate-400 font-medium">Tap to attach a photo</Text>
-                <Text className="text-xs text-gray-300 dark:text-slate-500">of the animal in heat</Text>
+                <Camera size={28} color={colors.textMuted} />
+                <Text className="text-sm font-medium" style={{ color: colors.textSecondary }}>Tap to attach a photo</Text>
+                <Text className="text-xs" style={{ color: colors.textMuted }}>of the animal in heat</Text>
               </TouchableOpacity>
             )}
 
             {/* ── Comment Box ──────────────────────────────────────────────── */}
-            <Text className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">Comment / Notes *</Text>
+            <Text className="text-xs font-bold uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>Comment / Notes *</Text>
             <TextInput
-              className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl px-4 py-4 text-gray-800 dark:text-white text-sm mb-6"
-              style={{ minHeight: 120, textAlignVertical: 'top', elevation: 1 }}
+              className="border rounded-2xl px-4 py-4 text-sm mb-6"
+              style={{ minHeight: 120, textAlignVertical: 'top', elevation: 1, backgroundColor: colors.card, borderColor: colors.border, color: colors.textPrimary }}
               value={comment}
               onChangeText={setComment}
               onFocus={() => {
-                // Give the keyboard time to appear, then scroll down so the comment box is visible
                 setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 350);
               }}
               placeholder="Describe the animal's condition, heat signs, or any other relevant details for the technician..."
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor={colors.textMuted}
               multiline
               numberOfLines={5}
               blurOnSubmit={false}
@@ -406,7 +403,8 @@ export default function RequestAI() {
               onPress={handleSubmit}
               disabled={submitting}
               activeOpacity={0.85}
-              className={`rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg ${submitting ? 'bg-emerald-400' : 'bg-[#00643B] shadow-green-200'}`}
+              className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
+              style={{ backgroundColor: submitting ? '#34d399' : primaryColor, shadowColor: primaryColor }}
             >
               {submitting ? (
                 <ActivityIndicator color="white" size="small" />
@@ -424,24 +422,28 @@ export default function RequestAI() {
       {/* ── Animal Selection Modal ──────────────────────────────────────────── */}
       <Modal animationType="slide" transparent visible={animalModalVisible} onRequestClose={() => setAnimalModalVisible(false)}>
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-12 max-h-[75%]">
+          <View className="rounded-t-[32px] p-6 pb-12 max-h-[75%]" style={{ backgroundColor: colors.card }}>
             <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-lg font-bold text-gray-800 dark:text-white">Select Animal</Text>
-              <TouchableOpacity onPress={() => setAnimalModalVisible(false)} className="p-1 bg-gray-100 dark:bg-slate-800 rounded-full">
-                <X size={20} color="gray" />
+              <Text className="text-lg font-bold" style={{ color: colors.textPrimary }}>Select Animal</Text>
+              <TouchableOpacity 
+                onPress={() => setAnimalModalVisible(false)} 
+                className="p-1 rounded-full"
+                style={{ backgroundColor: isDark ? colors.background : '#f1f5f9' }}
+              >
+                <X size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
             {isLoadingAnimals ? (
               <View className="items-center py-20">
-                <ActivityIndicator color="#00643B" size="large" />
-                <Text className="text-gray-400 mt-4 font-medium">Loading your animals...</Text>
+                <ActivityIndicator color={primaryColor} size="large" />
+                <Text className="mt-4 font-medium" style={{ color: colors.textMuted }}>Loading your animals...</Text>
               </View>
             ) : animals.length === 0 ? (
               <View className="items-center py-10 gap-3">
-                <AlertCircle size={36} color="#9ca3af" />
-                <Text className="text-gray-400 text-center font-medium">You have no registered animals yet.</Text>
-                <Text className="text-gray-300 text-xs text-center">Please register an animal first before requesting AI.</Text>
+                <AlertCircle size={36} color={colors.textMuted} />
+                <Text className="text-center font-medium" style={{ color: colors.textSecondary }}>You have no registered animals yet.</Text>
+                <Text className="text-xs text-center" style={{ color: colors.textMuted }}>Please register an animal first before requesting AI.</Text>
               </View>
             ) : (
               <FlatList
@@ -454,27 +456,42 @@ export default function RequestAI() {
                         Alert.alert("Selection Unavailable", "This animal is currently pregnant and cannot be selected for A.I. services.");
                         return;
                       }
+                      if (item.gender === 'Male') {
+                        Alert.alert("Selection Unavailable", "This animal is Male. Insemination is restricted to female animals only.");
+                        return;
+                      }
                       setSelectedAnimal(item); 
                       setAnimalModalVisible(false); 
                     }}
-                    className={`py-4 px-3 border-b border-gray-50 dark:border-slate-800 flex-row items-center justify-between ${selectedAnimal?._id === item._id ? 'bg-emerald-50 dark:bg-emerald-900/30 rounded-xl' : ''} ${item.reproductiveStatus === 'Pregnant' ? 'opacity-50' : ''}`}
+                    className={`py-4 px-3 border-b flex-row items-center justify-between ${item.reproductiveStatus === 'Pregnant' || item.gender === 'Male' ? 'opacity-50' : ''}`}
+                    style={{
+                      borderBottomColor: colors.border,
+                      backgroundColor: selectedAnimal?._id === item._id ? colors.tint : undefined,
+                      borderRadius: selectedAnimal?._id === item._id ? 16 : 0
+                    }}
                   >
                     <View className="flex-row items-center gap-3">
                       <View className="flex-1">
-                        <Text className="text-[15px] font-bold text-gray-800 dark:text-white">
+                        <Text className="text-[15px] font-bold" style={{ color: colors.textPrimary }}>
                           {item.animalId}{item.earTag ? ` · ${item.earTag}` : ''}
                         </Text>
                         <View className="flex-row items-center gap-2 mt-1">
-                          <Text className="text-xs text-gray-400 dark:text-slate-400">{item.species} · {item.breed}</Text>
+                          <Text className="text-xs" style={{ color: colors.textMuted }}>{item.species} · {item.breed}</Text>
                           {item.reproductiveStatus && (
                             <View className={`px-2 py-0.5 rounded-full ${item.reproductiveStatus === 'Pregnant' ? 'bg-purple-100 dark:bg-purple-900/30 border border-purple-200' : 'bg-gray-100 dark:bg-slate-800'}`}>
                               <Text className={`text-[9px] font-black uppercase ${item.reproductiveStatus === 'Pregnant' ? 'text-purple-600' : 'text-gray-500'}`}>{item.reproductiveStatus}</Text>
                             </View>
                           )}
+                          {item.gender === 'Male' && (
+                            <View className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200">
+                              <Text className="text-[9px] font-black uppercase text-red-600">Male</Text>
+                            </View>
+                          )}
                         </View>
                       </View>
                       {item.reproductiveStatus === 'Pregnant' && <AlertCircle size={16} color="#9333ea" />}
-                      {selectedAnimal?._id === item._id && <Check size={18} color="#00643B" />}
+                      {item.gender === 'Male' && <AlertCircle size={16} color="#ef4444" />}
+                      {selectedAnimal?._id === item._id && <Check size={18} color={primaryColor} />}
                     </View>
                   </TouchableOpacity>
                 )}
@@ -487,14 +504,18 @@ export default function RequestAI() {
       {/* ── Time Slot Selection Modal ─────────────────────────────────────────── */}
       <Modal animationType="fade" transparent visible={timeModalVisible} onRequestClose={() => setTimeModalVisible(false)}>
         <View className="flex-1 bg-black/40 justify-center px-6">
-          <View className="bg-white dark:bg-slate-900 rounded-[32px] p-6 shadow-2xl">
+          <View className="rounded-[32px] p-6 shadow-2xl" style={{ backgroundColor: colors.card }}>
             <View className="flex-row justify-between items-center mb-6">
               <View>
-                <Text className="text-xl font-bold text-gray-800 dark:text-white">Select Time Slot</Text>
-                <Text className="text-xs text-gray-400 dark:text-slate-400 mt-1">Available service hours: 8 AM - 5 PM</Text>
+                <Text className="text-xl font-bold" style={{ color: colors.textPrimary }}>Select Time Slot</Text>
+                <Text className="text-xs mt-1" style={{ color: colors.textMuted }}>Available service hours: 8 AM - 5 PM</Text>
               </View>
-              <TouchableOpacity onPress={() => setTimeModalVisible(false)} className="p-2 bg-gray-50 dark:bg-slate-800 rounded-full">
-                <X size={20} color="gray" />
+              <TouchableOpacity 
+                onPress={() => setTimeModalVisible(false)} 
+                className="p-2 rounded-full"
+                style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}
+              >
+                <X size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -505,9 +526,13 @@ export default function RequestAI() {
                   <TouchableOpacity
                     key={slot}
                     onPress={() => handleSelectTime(slot)}
-                    className={`w-[30%] py-3 rounded-2xl items-center border ${isSelected ? 'bg-emerald-600 border-emerald-600' : 'bg-gray-50 dark:bg-slate-800 border-gray-100 dark:border-slate-700'}`}
+                    className="w-[30%] py-3 rounded-2xl items-center border"
+                    style={{
+                      backgroundColor: isSelected ? (isDark ? colors.primary : '#00643B') : (isDark ? colors.background : '#f8fafc'),
+                      borderColor: isSelected ? (isDark ? colors.primary : '#00643B') : colors.border
+                    }}
                   >
-                    <Text className={`text-[12px] font-bold ${isSelected ? 'text-white' : 'text-gray-600 dark:text-slate-300'}`}>{slot}</Text>
+                    <Text className="text-[12px] font-bold" style={{ color: isSelected ? '#fff' : colors.textPrimary }}>{slot}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -515,9 +540,10 @@ export default function RequestAI() {
 
             <TouchableOpacity
               onPress={() => setTimeModalVisible(false)}
-              className="mt-8 py-4 bg-gray-100 dark:bg-slate-800 rounded-2xl items-center"
+              className="mt-8 py-4 rounded-2xl items-center"
+              style={{ backgroundColor: isDark ? colors.background : '#f1f5f9' }}
             >
-              <Text className="text-gray-600 dark:text-slate-400 font-bold">Close</Text>
+              <Text className="font-bold" style={{ color: colors.textSecondary }}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>

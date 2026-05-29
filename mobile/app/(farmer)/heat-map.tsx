@@ -13,7 +13,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import MapView, { UrlTile, Marker, Circle } from "react-native-maps";
+import MapView, { UrlTile, Marker, Circle } from "@/components/MapShim";
 import { ArrowLeft, RefreshCw, Search, X, Home, MapPin, Compass } from "lucide-react-native";
 import * as FileSystem from "expo-file-system/legacy";
 import { useApi } from "@/lib/api";

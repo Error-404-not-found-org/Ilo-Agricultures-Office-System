@@ -3,6 +3,7 @@ import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
+import { checkInseminationAgeEligibility } from "../utils/cattleCore.js";
 
 export const createInsemination = async (req, res) => {
   try {
@@ -21,17 +22,15 @@ export const createInsemination = async (req, res) => {
       return res.status(404).json({ message: "Animal not found" });
     }
 
-    // Age Check: Prevent Insemination for Newborns/Young animals
-    if (animal.birthDate) {
-        const birth = new Date(animal.birthDate);
-        const now = new Date();
-        const diffMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
-        
-        if (diffMonths < 12) {
-            return res.status(400).json({ 
-              message: `Animal is too young for insemination. Age: ${diffMonths === 0 ? "Newborn" : diffMonths + " months"}. Minimum age is 12 months.` 
-            });
-        }
+    // Gender check
+    if (animal.gender !== "Female") {
+      return res.status(400).json({ message: "Insemination is restricted to female animals only. This animal is registered as Male." });
+    }
+
+    // Age Check Check
+    const ageCheck = checkInseminationAgeEligibility(animal.birthDate, animal.species);
+    if (!ageCheck.isEligible) {
+        return res.status(400).json({ message: ageCheck.reason });
     }
 
     // 2. Get last insemination attempt
@@ -99,10 +98,11 @@ export const updateInsemination = async (req, res) => {
 
 export const getAllInseminations = async (req, res) => {
   try {
-    const inseminations = await Insemination.find()
+    const inseminations = await Insemination.find({ deletedAt: null })
       .populate("animalId", "earTag species breed color animalId")
       .populate("farmerId", "name email phoneNumber")
       .populate("approvedBy", "name email")
+      .populate("technicianId", "name email")
       .sort({ createdAt: -1 });
 
     res.status(200).json(inseminations);
@@ -124,16 +124,17 @@ export const getMyInseminations = async (req, res) => {
 
     // FETCH ALL DATA IN PARALLEL FOR MAXIMUM PERFORMANCE
     const [records, total, approved, pending] = await Promise.all([
-      Insemination.find({ farmerId })
+      Insemination.find({ farmerId, deletedAt: null })
         .populate("animalId", "animalId earTag species breed imageUrl")
         .populate("approvedBy", "name")
+        .populate("technicianId", "name")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)
         .lean(),
-      Insemination.countDocuments({ farmerId }),
-      Insemination.countDocuments({ farmerId, status: "approved" }),
-      Insemination.countDocuments({ farmerId, status: "pending" }),
+      Insemination.countDocuments({ farmerId, deletedAt: null }),
+      Insemination.countDocuments({ farmerId, status: "approved", deletedAt: null }),
+      Insemination.countDocuments({ farmerId, status: "pending", deletedAt: null }),
     ]);
 
     res.status(200).json({
@@ -153,26 +154,27 @@ export const getMyInseminations = async (req, res) => {
 export const deleteInsemination = async (req, res) => {
   try {
     const { id } = req.params;
+    const deleteTime = new Date();
 
     // 1. Find and Cascade Delete Children
-    const pregnancies = await Pregnancy.find({ inseminationId: id });
+    const pregnancies = await Pregnancy.find({ inseminationId: id, deletedAt: null });
     const pregIds = pregnancies.map(p => p._id);
 
-    // Delete linked pregnancies and any calvings resulting from them
+    // Soft delete linked pregnancies and any calvings resulting from them
     await Promise.all([
-      Pregnancy.deleteMany({ inseminationId: id }),
-      Calving.deleteMany({ pregnancyId: { $in: pregIds } })
+      Pregnancy.updateMany({ inseminationId: id }, { $set: { deletedAt: deleteTime } }),
+      Calving.updateMany({ pregnancyId: { $in: pregIds } }, { $set: { deletedAt: deleteTime } })
     ]);
 
-    // 2. Delete the Insemination itself
-    const record = await Insemination.findByIdAndDelete(id);
+    // 2. Soft delete the Insemination itself
+    const record = await Insemination.findByIdAndUpdate(id, { $set: { deletedAt: deleteTime } }, { new: true });
 
     if (!record) {
       return res.status(404).json({ message: "Insemination record not found." });
     }
 
-    console.log(`[Insemination & Cascade Deleted] ${id}`);
-    res.status(200).json({ message: "Insemination and all linked breeding data deleted successfully." });
+    console.log(`[Insemination & Cascade Soft-Deleted] ${id}`);
+    res.status(200).json({ message: "Insemination and all linked breeding data soft-deleted successfully." });
   } catch (error) {
     console.error("[deleteInsemination ERROR]", error.message);
     res.status(500).json({ message: "Failed to delete insemination record.", error: error.message });

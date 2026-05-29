@@ -9,10 +9,12 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { CATTLE_BREEDS, CATTLE_SPECIES, OTON_BARANGAYS } from '@/lib/constants';
 import { getSireCodeByBreed } from '@/lib/sireRegistry';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useTheme } from '@/lib/theme';
 
 export default function RecordAIScreen() {
   const router = useRouter();
   const api = useApi();
+  const { isDark, colors } = useTheme();
   
   const [farmers, setFarmers] = useState<any[]>([]);
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
@@ -27,7 +29,7 @@ export default function RecordAIScreen() {
   const [estrus, setEstrus] = useState('Natural');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [status, setStatus] = useState<'done' | 'pending'>('done');
+  const [status, setStatus] = useState<'done' | 'in-progress'>('done');
   const [showBreedModal, setShowBreedModal] = useState(false);
   const [showAnimalModal, setShowAnimalModal] = useState(false);
   const [showSpeciesModal, setShowSpeciesModal] = useState(false);
@@ -195,25 +197,25 @@ export default function RecordAIScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8FAFC]">
-      <View className="flex-row items-center px-6 py-4 bg-white border-b border-gray-100 shadow-sm z-10">
-        <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2 bg-slate-50 rounded-full">
-          <ArrowLeft size={20} color="#1e2937" />
+    <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
+      <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
+        <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
+          <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e2937'} />
         </TouchableOpacity>
-        <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: '#1e293b' }}>Record AI</Text>
+        <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: colors.textPrimary }}>Record AI</Text>
       </View>
 
       <ScrollView className="flex-1 px-6 pt-6" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         {/* FARMER SELECTION / REGISTRATION */}
         <View className="flex-row justify-between items-center mb-3 ml-1">
-          <Text className="font-outfit-bold text-slate-400 uppercase text-[10px] tracking-widest">Farmer Selection</Text>
+          <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest">Farmer Selection</Text>
           <TouchableOpacity 
             onPress={() => {
               setIsNewFarmer(!isNewFarmer);
               if (!isNewFarmer) setSelectedFarmer(null);
             }}
           >
-            <Text className="text-[#00643B] font-outfit-bold text-[10px] uppercase tracking-wider">
+            <Text className="text-[#00643B] dark:text-emerald-400 font-outfit-bold text-[10px] uppercase tracking-wider">
               {isNewFarmer ? '← Back to List' : '+ Register New'}
             </Text>
           </TouchableOpacity>
@@ -222,39 +224,41 @@ export default function RecordAIScreen() {
         {!isNewFarmer ? (
           <TouchableOpacity 
              onPress={() => setShowFarmerModal(true)} 
-             className="bg-white border border-slate-100 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
+             className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
           >
              <View className="flex-row items-center flex-1">
-                <View className="w-10 h-10 bg-emerald-50 rounded-full items-center justify-center mr-3">
-                   <User size={20} color="#00643B" />
+                <View className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
+                   <User size={20} color={isDark ? '#34d399' : '#00643B'} />
                 </View>
                 <View className="flex-1">
-                   <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-base ${selectedFarmer ? 'text-slate-800' : 'text-slate-300'}`}>
+                   <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-base ${selectedFarmer ? 'text-slate-800 dark:text-white' : 'text-slate-300 dark:text-slate-600'}`}>
                       {selectedFarmer ? selectedFarmer.name : 'Select Farmer...'}
                    </Text>
                 </View>
              </View>
-             <ChevronDown size={20} color="#94a3b8" />
+             <ChevronDown size={20} color={isDark ? '#6b7280' : '#94a3b8'} />
           </TouchableOpacity>
         ) : (
-          <View className="bg-white border border-emerald-100 rounded-[32px] p-6 mb-8 shadow-sm">
-            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-900 text-sm mb-4">Quick Farmer Registration</Text>
+          <View className="bg-white dark:bg-slate-900 border border-emerald-100 dark:border-slate-800 rounded-[32px] p-6 mb-8 shadow-sm">
+            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-900 dark:text-emerald-400 text-sm mb-4">Quick Farmer Registration</Text>
             <View className="gap-y-4">
                <View className="flex-row gap-3">
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">First Name</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">First Name</Text>
                     <TextInput
-                      className="bg-slate-55 border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-medium bg-slate-50"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                       placeholder="Juan"
+                      placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                       value={newFarmer.firstName}
                       onChangeText={(v) => setNewFarmer({...newFarmer, firstName: v})}
                     />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Last Name</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Last Name</Text>
                     <TextInput
-                      className="bg-slate-55 border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-medium bg-slate-50"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                       placeholder="Dela Cruz"
+                      placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                       value={newFarmer.lastName}
                       onChangeText={(v) => setNewFarmer({...newFarmer, lastName: v})}
                     />
@@ -262,10 +266,11 @@ export default function RecordAIScreen() {
                </View>
                <View className="flex-row gap-3">
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Email (Optional)</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Email (Optional)</Text>
                     <TextInput
-                      className="bg-slate-55 border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-medium bg-slate-50"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                       placeholder="juan@example.com"
+                      placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                       keyboardType="email-address"
                       autoCapitalize="none"
                       value={newFarmer.email}
@@ -273,10 +278,11 @@ export default function RecordAIScreen() {
                     />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Contact Number</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Contact Number</Text>
                     <TextInput
-                      className="bg-slate-55 border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-medium bg-slate-50"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                       placeholder="0912 345..."
+                      placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                       keyboardType="phone-pad"
                       value={newFarmer.phone}
                       onChangeText={(v) => setNewFarmer({...newFarmer, phone: v})}
@@ -285,21 +291,21 @@ export default function RecordAIScreen() {
                </View>
                <View className="flex-row gap-3">
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Barangay</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Barangay</Text>
                     <TouchableOpacity
                       onPress={() => setShowBrgyModal(true)}
-                      className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex-row justify-between items-center"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                     >
-                      <Text className={`font-outfit-medium ${newFarmer.barangay ? 'text-slate-800' : 'text-slate-400'}`}>
+                      <Text className={`font-outfit-medium ${newFarmer.barangay ? 'text-slate-800 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
                         {newFarmer.barangay || 'Select...'}
                       </Text>
-                      <ChevronDown size={14} color="#94a3b8" />
+                      <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} />
                     </TouchableOpacity>
                   </View>
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Municipality</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Municipality</Text>
                     <TextInput
-                      className="bg-slate-100 border border-slate-100 rounded-xl p-3 text-slate-400 font-outfit-medium"
+                      className="bg-slate-100 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-400 dark:text-slate-500 font-outfit-medium"
                       value="OTON"
                       editable={false}
                     />
@@ -307,58 +313,61 @@ export default function RecordAIScreen() {
                </View>
             </View>
 
-            <View style={{ height: 1, backgroundColor: '#f1f5f9', marginVertical: 20 }} />
+            <View style={{ height: 1, backgroundColor: isDark ? '#1f2937' : '#f1f5f9', marginVertical: 20 }} />
 
-            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-900 text-sm mb-4">Quick Animal Registration</Text>
+            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-900 dark:text-emerald-400 text-sm mb-4">Quick Animal Registration</Text>
             <View className="gap-y-4">
                <View className="flex-row gap-3">
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Animal ID</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Animal ID</Text>
                     <TextInput
-                      className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                       placeholder="e.g. ANM-001"
+                      placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                       value={newAnimal.animalId}
                       onChangeText={(v) => setNewAnimal({...newAnimal, animalId: v})}
                     />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Ear Tag</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Ear Tag</Text>
                     <TextInput
-                      className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                       placeholder="104"
+                      placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                       value={newAnimal.earTag}
                       onChangeText={(v) => setNewAnimal({...newAnimal, earTag: v})}
                     />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Species</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Species</Text>
                     <TouchableOpacity 
                         onPress={() => setShowSpeciesModal(true)}
-                        className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex-row justify-between items-center"
+                        className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                     >
-                        <Text className="text-slate-800 font-outfit-medium">{newAnimal.species}</Text>
-                        <ChevronDown size={14} color="#94a3b8" />
+                        <Text className="text-slate-800 dark:text-white font-outfit-medium">{newAnimal.species}</Text>
+                        <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} />
                     </TouchableOpacity>
                   </View>
                </View>
                <View className="flex-row gap-3">
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Breed</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Breed</Text>
                     <TouchableOpacity 
                         onPress={() => setShowQuickBreedModal(true)}
-                        className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex-row justify-between items-center"
+                        className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                     >
-                        <Text className={`font-outfit-medium ${newAnimal.breed ? 'text-slate-800' : 'text-slate-400'}`}>
+                        <Text className={`font-outfit-medium ${newAnimal.breed ? 'text-slate-800 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
                             {newAnimal.breed || 'Select...'}
                         </Text>
-                        <ChevronDown size={14} color="#94a3b8" />
+                        <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} />
                     </TouchableOpacity>
                   </View>
                   <View className="flex-1">
-                    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Color</Text>
+                    <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Color</Text>
                     <TextInput
-                      className="bg-slate-50 border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                       placeholder="White"
+                      placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                       value={newAnimal.color}
                       onChangeText={(v) => setNewAnimal({...newAnimal, color: v})}
                     />
@@ -372,7 +381,7 @@ export default function RecordAIScreen() {
         {!isNewFarmer && selectedFarmer && (
             <View className="mb-8">
               <View className="flex-row justify-between items-center mb-3 ml-1">
-                <Text className="font-outfit-bold text-slate-400 uppercase text-[10px] tracking-widest">Select Animal</Text>
+                <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest">Select Animal</Text>
                 <TouchableOpacity onPress={() => {
                    if (newAnimal.animalId) {
                       setNewAnimal({ animalId: '', earTag: '', species: CATTLE_SPECIES[0], breed: '', color: '' });
@@ -381,65 +390,68 @@ export default function RecordAIScreen() {
                       setSelectedAnimal(null);
                       // Clear and show registration fields below
                    }
-                }}>
-                    <Text className="text-emerald-600 font-outfit-bold text-[10px] uppercase tracking-wider">
+                }}> 
+                    <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[10px] uppercase tracking-wider">
                         {newAnimal.animalId ? '← Back to Selection' : '+ Register New for this Farmer'}
                     </Text>
                 </TouchableOpacity>
               </View>
 
               {newAnimal.animalId || !selectedAnimal && !animals.length && !loadingAnimals ? (
-                 <View className="bg-emerald-50/30 border border-dashed border-emerald-200 rounded-[32px] p-6">
-                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-900 text-sm mb-4">On-the-fly Animal Registration</Text>
+                 <View className="bg-emerald-50/30 dark:bg-emerald-900/10 border border-dashed border-emerald-200 dark:border-emerald-800 rounded-[32px] p-6">
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-900 dark:text-emerald-400 text-sm mb-4">On-the-fly Animal Registration</Text>
                     <View className="gap-y-4">
                         <View className="flex-row gap-3">
                             <View className="flex-1">
-                                <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Animal ID</Text>
+                                <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Animal ID</Text>
                                 <TextInput
-                                    className="bg-white border border-emerald-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                                     placeholder="e.g. ID-123"
+                                    placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                                     value={newAnimal.animalId}
                                     onChangeText={(v) => setNewAnimal({...newAnimal, animalId: v})}
                                 />
                             </View>
                             <View className="flex-1">
-                                <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Ear Tag</Text>
+                                <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Ear Tag</Text>
                                 <TextInput
-                                    className="bg-white border border-emerald-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                                     placeholder="104"
+                                    placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                                     value={newAnimal.earTag}
                                     onChangeText={(v) => setNewAnimal({...newAnimal, earTag: v})}
                                 />
                             </View>
                             <View className="flex-1">
-                                <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Species</Text>
+                                <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Species</Text>
                                 <TouchableOpacity 
                                     onPress={() => setShowSpeciesModal(true)}
-                                    className="bg-white border border-emerald-100 rounded-xl p-3 flex-row justify-between items-center"
+                                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                                 >
-                                    <Text className="text-slate-800 font-outfit-medium">{newAnimal.species}</Text>
-                                    <ChevronDown size={14} color="#94a3b8" />
+                                    <Text className="text-slate-800 dark:text-white font-outfit-medium">{newAnimal.species}</Text>
+                                    <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} />
                                 </TouchableOpacity>
                             </View>
                         </View>
                         <View className="flex-row gap-3">
                             <View className="flex-1">
-                                <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Breed</Text>
+                                <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Breed</Text>
                                 <TouchableOpacity 
                                     onPress={() => setShowQuickBreedModal(true)}
-                                    className="bg-white border border-emerald-100 rounded-xl p-3 flex-row justify-between items-center"
+                                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                                 >
-                                    <Text className={`font-outfit-medium ${newAnimal.breed ? 'text-slate-800' : 'text-slate-400'}`}>
+                                    <Text className={`font-outfit-medium ${newAnimal.breed ? 'text-slate-800 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
                                         {newAnimal.breed || 'Select...'}
                                     </Text>
-                                    <ChevronDown size={14} color="#94a3b8" />
+                                    <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} />
                                 </TouchableOpacity>
                             </View>
                             <View className="flex-1">
-                                <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Color</Text>
+                                <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Color</Text>
                                 <TextInput
-                                    className="bg-white border border-emerald-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                                     placeholder="White"
+                                    placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                                     value={newAnimal.color}
                                     onChangeText={(v) => setNewAnimal({...newAnimal, color: v})}
                                 />
@@ -450,73 +462,73 @@ export default function RecordAIScreen() {
               ) : (
                 <TouchableOpacity 
                     onPress={() => setShowAnimalModal(true)}
-                    className="bg-white border border-slate-100 rounded-2xl p-5 flex-row items-center justify-between shadow-sm"
+                    className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-5 flex-row items-center justify-between shadow-sm"
                 >
                     <View className="flex-row items-center flex-1">
-                        <View className="w-10 h-10 bg-blue-50 rounded-full items-center justify-center mr-3">
-                            <MaterialCommunityIcons name="cow" size={20} color="#3b82f6" />
+                        <View className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-full items-center justify-center mr-3">
+                            <MaterialCommunityIcons name="cow" size={20} color={isDark ? '#60a5fa' : '#3b82f6'} />
                         </View>
                         <View className="flex-1">
-                            <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-base ${selectedAnimal ? 'text-slate-800' : 'text-slate-300'}`}>
+                            <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-base ${selectedAnimal ? 'text-slate-800 dark:text-white' : 'text-slate-300 dark:text-slate-600'}`}>
                                 {selectedAnimal ? (selectedAnimal.earTag || selectedAnimal.animalId) : 'Choose Animal...'}
                             </Text>
                             {selectedAnimal && (
-                                <Text className="text-slate-400 text-xs">{selectedAnimal.breed} · {selectedAnimal.species}</Text>
+                                <Text className="text-slate-400 dark:text-slate-500 text-xs">{selectedAnimal.breed} · {selectedAnimal.species}</Text>
                             )}
                         </View>
                     </View>
-                    {loadingAnimals ? <ActivityIndicator size="small" color="#00643B" /> : <ChevronDown size={20} color="#94a3b8" />}
+                    {loadingAnimals ? <ActivityIndicator size="small" color={isDark ? '#34d399' : '#00643B'} /> : <ChevronDown size={20} color={isDark ? '#6b7280' : '#94a3b8'} />}
                 </TouchableOpacity>
               )}
             </View>
         )}
 
         {/* AI DETAILS */}
-        <View className="bg-emerald-50/50 p-6 rounded-[32px] mb-8 border border-emerald-100">
+        <View className="bg-emerald-50/50 dark:bg-emerald-900/10 p-6 rounded-[32px] mb-8 border border-emerald-100 dark:border-emerald-800/50">
             <View className="flex-row items-center gap-2 mb-4">
-                <MaterialCommunityIcons name="needle" size={20} color="#00643B" />
-                <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 text-sm uppercase tracking-widest">A.I. Procedure Details</Text>
+                <MaterialCommunityIcons name="needle" size={20} color={isDark ? '#34d399' : '#00643B'} />
+                <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 dark:text-emerald-400 text-sm uppercase tracking-widest">A.I. Procedure Details</Text>
             </View>
             
             <View className="gap-y-5">
               <View>
-                <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Service Mode</Text>
+                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Service Mode</Text>
                 <View className="flex-row gap-3">
                   <TouchableOpacity
                     onPress={() => setStatus('done')}
-                    className={`flex-1 py-3.5 rounded-2xl border items-center ${status === 'done' ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-emerald-100'}`}
+                    className={`flex-1 py-3.5 rounded-2xl border items-center ${status === 'done' ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-800 border-emerald-100 dark:border-slate-700'}`}
                     style={status === 'done' ? { shadowColor: '#059669', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 } : {}}
                   >
-                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[12px] ${status === 'done' ? 'text-white' : 'text-emerald-700'}`}>Complete</Text>
+                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[12px] ${status === 'done' ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>Complete</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => setStatus('pending')}
-                    className={`flex-1 py-3.5 rounded-2xl border items-center ${status === 'pending' ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-emerald-100'}`}
-                    style={status === 'pending' ? { shadowColor: '#059669', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 } : {}}
+                    onPress={() => setStatus('in-progress')}
+                    className={`flex-1 py-3.5 rounded-2xl border items-center ${status === 'in-progress' ? 'bg-blue-600 border-blue-600' : 'bg-white dark:bg-slate-800 border-blue-100 dark:border-slate-700'}`}
+                    style={status === 'in-progress' ? { shadowColor: '#2563eb', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 } : {}}
                   >
-                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[12px] ${status === 'pending' ? 'text-white' : 'text-emerald-700'}`}>Schedule</Text>
+                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[12px] ${status === 'in-progress' ? 'text-white' : 'text-blue-700 dark:text-blue-400'}`}>Schedule</Text>
                   </TouchableOpacity>
                 </View>
               </View>
 
               <View>
-                <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Sire Breed</Text>
+                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Sire Breed</Text>
                 <TouchableOpacity 
                     onPress={() => setShowBreedModal(true)}
-                    className="bg-white border border-emerald-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
+                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
                 >
-                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className={sireBreed ? 'text-slate-800' : 'text-slate-300'}>
+                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className={sireBreed ? 'text-slate-800 dark:text-white' : 'text-slate-300 dark:text-slate-600'}>
                         {sireBreed || 'Select Sire Breed...'}
                     </Text>
-                    <ChevronDown size={18} color="#94a3b8" />
+                    <ChevronDown size={18} color={isDark ? '#6b7280' : '#94a3b8'} />
                 </TouchableOpacity>
               </View>
 
               <View>
-                <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Sire Code / Bull ID</Text>
+                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Sire Code / Bull ID</Text>
                 <View className="flex-row gap-2">
                     <TextInput
-                        className="bg-slate-100 border border-emerald-50 rounded-2xl p-4 text-slate-500 font-outfit-medium shadow-sm flex-1"
+                        className="bg-slate-100 dark:bg-slate-800 border border-emerald-50 dark:border-slate-700 rounded-2xl p-4 text-slate-500 dark:text-slate-400 font-outfit-medium shadow-sm flex-1"
                         placeholder="Automatic Code"
                         value={sireCode}
                         editable={false}
@@ -527,42 +539,42 @@ export default function RecordAIScreen() {
               {/* Mission Date & Time Selectors */}
               <View className="flex-row gap-3">
                 <View className="flex-1">
-                  <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Mission Date</Text>
+                  <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Mission Date</Text>
                   <TouchableOpacity
                     onPress={() => setShowDatePicker(true)}
-                    className="bg-white border border-emerald-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
+                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
                   >
-                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-xs">
+                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 dark:text-white text-xs">
                       {inseminationDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </Text>
-                    <MaterialCommunityIcons name="calendar" size={16} color="#94a3b8" />
+                    <MaterialCommunityIcons name="calendar" size={16} color={isDark ? '#6b7280' : '#94a3b8'} />
                   </TouchableOpacity>
                 </View>
                 <View className="flex-1">
-                  <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">T-Time</Text>
+                  <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">T-Time</Text>
                   <TouchableOpacity
                     onPress={() => setShowTimePicker(true)}
-                    className="bg-white border border-emerald-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
+                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
                   >
-                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-xs">
+                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 dark:text-white text-xs">
                       {inseminationTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </Text>
-                    <MaterialCommunityIcons name="clock-outline" size={16} color="#94a3b8" />
+                    <MaterialCommunityIcons name="clock-outline" size={16} color={isDark ? '#6b7280' : '#94a3b8'} />
                   </TouchableOpacity>
                 </View>
               </View>
 
               <View>
-                <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Estrus Cycle / Type</Text>
+                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Estrus Cycle / Type</Text>
                 <View className="flex-row gap-2">
                   {['Natural', 'Synchronized', 'Induced'].map(opt => (
                     <TouchableOpacity
                       key={opt}
                       onPress={() => setEstrus(opt)}
-                      className={`flex-1 py-3.5 rounded-xl border items-center ${estrus === opt ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-emerald-100'}`}
+                      className={`flex-1 py-3.5 rounded-xl border items-center ${estrus === opt ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-800 border-emerald-100 dark:border-slate-700'}`}
                       style={estrus === opt ? { shadowColor: '#059669', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 } : {}}
                     >
-                      <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[10px] ${estrus === opt ? 'text-white' : 'text-emerald-700'}`}>{opt}</Text>
+                      <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[10px] ${estrus === opt ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>{opt}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -570,13 +582,13 @@ export default function RecordAIScreen() {
             </View>
         </View>
 
-        <Text className="font-outfit-bold text-slate-400 uppercase text-[10px] tracking-widest mb-3 ml-1">Additional Notes</Text>
+        <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Additional Notes</Text>
         <TextInput
-            className="bg-white border border-slate-100 rounded-2xl p-4 h-32 text-slate-800 shadow-sm mb-10 font-outfit-medium"
+            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 h-32 text-slate-800 dark:text-white shadow-sm mb-10 font-outfit-medium"
             multiline
             textAlignVertical="top"
             placeholder="Any other details about the procedure..."
-            placeholderTextColor="#cbd5e1"
+            placeholderTextColor={isDark ? '#6b7280' : '#cbd5e1'}
             value={notes}
             onChangeText={setNotes}
         />
@@ -614,16 +626,16 @@ export default function RecordAIScreen() {
       {/* FARMER SELECTION MODAL */}
       <Modal animationType="slide" transparent={true} visible={showFarmerModal} onRequestClose={() => setShowFarmerModal(false)}>
          <View className="flex-1 bg-slate-900/40 justify-end">
-            <View className="bg-white rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
                <View className="flex-row justify-between items-center mb-6">
-                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800">Select Farmer</Text>
-                   <TouchableOpacity onPress={() => setShowFarmerModal(false)} className="bg-slate-100 p-2.5 rounded-full">
-                       <X size={22} color="#64748b" />
+                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white">Select Farmer</Text>
+                   <TouchableOpacity onPress={() => setShowFarmerModal(false)} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
+                       <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
                    </TouchableOpacity>
                </View>
 
                {farmers.length === 0 ? (
-                   <ActivityIndicator size="large" color="#00643B" className="mt-10" />
+                   <ActivityIndicator size="large" color={isDark ? '#34d399' : '#00643B'} className="mt-10" />
                ) : (
                    <FlatList 
                       data={farmers}
@@ -632,14 +644,14 @@ export default function RecordAIScreen() {
                       renderItem={({ item }) => (
                           <TouchableOpacity 
                              onPress={() => handleFarmerSelect(item)}
-                             className="flex-row items-center bg-slate-50 border border-slate-100 p-5 rounded-[24px] mb-3"
+                             className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-5 rounded-[24px] mb-3"
                           >
-                             <View className="w-12 h-12 bg-emerald-100 rounded-full items-center justify-center mr-4">
-                                <User size={24} color="#00643B" />
+                             <View className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-4">
+                                <User size={24} color={isDark ? '#34d399' : '#00643B'} />
                              </View>
                              <View className="flex-1">
-                                <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-base">{item.name}</Text>
-                                <Text className="text-slate-500 text-xs mt-0.5" numberOfLines={1}>{getAddressStr(item.address)}</Text>
+                                <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 dark:text-white text-base">{item.name}</Text>
+                                <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5" numberOfLines={1}>{getAddressStr(item.address)}</Text>
                              </View>
                           </TouchableOpacity>
                       )}
@@ -652,17 +664,18 @@ export default function RecordAIScreen() {
       {/* BARANGAY SELECTION MODAL */}
       <Modal animationType="slide" transparent={true} visible={showBrgyModal} onRequestClose={() => setShowBrgyModal(false)}>
          <View className="flex-1 bg-slate-900/40 justify-end">
-            <View className="bg-white rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
                <View className="flex-row justify-between items-center mb-6">
-                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800">Select Barangay</Text>
-                   <TouchableOpacity onPress={() => { setShowBrgyModal(false); setSearchBrgy(''); }} className="bg-slate-100 p-2.5 rounded-full">
-                       <X size={22} color="#64748b" />
+                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white">Select Barangay</Text>
+                   <TouchableOpacity onPress={() => { setShowBrgyModal(false); setSearchBrgy(''); }} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
+                       <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
                    </TouchableOpacity>
                </View>
 
                <TextInput
-                 className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 text-slate-800 font-outfit-medium mb-4"
+                 className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium mb-4"
                  placeholder="Search barangay..."
+                 placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                  value={searchBrgy}
                  onChangeText={setSearchBrgy}
                />
@@ -678,9 +691,9 @@ export default function RecordAIScreen() {
                             setShowBrgyModal(false);
                             setSearchBrgy('');
                          }}
-                         className="py-4 border-b border-slate-50"
+                         className="py-4 border-b border-slate-50 dark:border-slate-800"
                       >
-                         <Text className="font-outfit-bold text-slate-700 text-base">{item}</Text>
+                         <Text className="font-outfit-bold text-slate-700 dark:text-slate-200 text-base">{item}</Text>
                       </TouchableOpacity>
                   )}
                />
@@ -691,18 +704,18 @@ export default function RecordAIScreen() {
       {/* ANIMAL SELECTION MODAL */}
       <Modal animationType="slide" transparent={true} visible={showAnimalModal} onRequestClose={() => setShowAnimalModal(false)}>
          <View className="flex-1 bg-slate-900/40 justify-end">
-            <View className="bg-white rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
                <View className="flex-row justify-between items-center mb-6">
-                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800">Select Animal</Text>
-                   <TouchableOpacity onPress={() => setShowAnimalModal(false)} className="bg-slate-100 p-2.5 rounded-full">
-                       <X size={22} color="#64748b" />
+                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white">Select Animal</Text>
+                   <TouchableOpacity onPress={() => setShowAnimalModal(false)} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
+                       <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
                    </TouchableOpacity>
                </View>
 
                {animals.length === 0 ? (
                    <View className="items-center py-10">
-                      <MaterialCommunityIcons name="cow-off" size={48} color="#cbd5e1" />
-                      <Text className="text-slate-400 font-outfit-medium mt-4">No animals found for this farmer.</Text>
+                      <MaterialCommunityIcons name="cow-off" size={48} color={isDark ? '#4b5563' : '#cbd5e1'} />
+                      <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium mt-4">No animals found for this farmer.</Text>
                    </View>
                 ) : (
                    <FlatList 
@@ -715,16 +728,16 @@ export default function RecordAIScreen() {
                                 setSelectedAnimal(item);
                                 setShowAnimalModal(false);
                              }}
-                             className={`flex-row items-center bg-slate-50 border p-5 rounded-[24px] mb-3 ${selectedAnimal?._id === item._id ? 'border-emerald-500 bg-emerald-50/50' : 'border-slate-100'}`}
+                             className={`flex-row items-center bg-slate-50 dark:bg-slate-800 border p-5 rounded-[24px] mb-3 ${selectedAnimal?._id === item._id ? 'border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20' : 'border-slate-100 dark:border-slate-700'}`}
                           >
-                             <View className="w-12 h-12 bg-blue-50 rounded-full items-center justify-center mr-4">
-                                <MaterialCommunityIcons name="cow" size={24} color="#3b82f6" />
+                             <View className="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 rounded-full items-center justify-center mr-4">
+                                <MaterialCommunityIcons name="cow" size={24} color={isDark ? '#60a5fa' : '#3b82f6'} />
                              </View>
                              <View className="flex-1">
-                                <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-base">{item.earTag || item.animalId}</Text>
-                                <Text className="text-slate-500 text-xs mt-0.5">{item.breed} · {item.species}</Text>
+                                <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 dark:text-white text-base">{item.earTag || item.animalId}</Text>
+                                <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">{item.breed} · {item.species}</Text>
                              </View>
-                             {selectedAnimal?._id === item._id && <MaterialCommunityIcons name="check-circle" size={24} color="#00643B" />}
+                             {selectedAnimal?._id === item._id && <MaterialCommunityIcons name="check-circle" size={24} color={isDark ? '#34d399' : '#00643B'} />}
                           </TouchableOpacity>
                       )}
                    />
@@ -736,11 +749,11 @@ export default function RecordAIScreen() {
       {/* SPECIES SELECTION MODAL */}
       <Modal animationType="slide" transparent={true} visible={showSpeciesModal} onRequestClose={() => setShowSpeciesModal(false)}>
          <View className="flex-1 bg-slate-900/40 justify-end">
-            <View className="bg-white rounded-t-[40px] p-8 pb-12 max-h-[50%] shadow-2xl">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[50%] shadow-2xl">
                <View className="flex-row justify-between items-center mb-6">
-                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800">Select Species</Text>
-                   <TouchableOpacity onPress={() => setShowSpeciesModal(false)} className="bg-slate-100 p-2.5 rounded-full">
-                       <X size={22} color="#64748b" />
+                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white">Select Species</Text>
+                   <TouchableOpacity onPress={() => setShowSpeciesModal(false)} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
+                       <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
                    </TouchableOpacity>
                </View>
 
@@ -753,9 +766,9 @@ export default function RecordAIScreen() {
                             setNewAnimal({...newAnimal, species: item});
                             setShowSpeciesModal(false);
                          }}
-                         className="py-4 border-b border-slate-50"
+                         className="py-4 border-b border-slate-50 dark:border-slate-800"
                       >
-                         <Text className="font-outfit-bold text-slate-700 text-base">{item}</Text>
+                         <Text className="font-outfit-bold text-slate-700 dark:text-slate-200 text-base">{item}</Text>
                       </TouchableOpacity>
                   )}
                />
@@ -766,11 +779,11 @@ export default function RecordAIScreen() {
       {/* QUICK BREED SELECTION MODAL */}
       <Modal animationType="slide" transparent={true} visible={showQuickBreedModal} onRequestClose={() => setShowQuickBreedModal(false)}>
          <View className="flex-1 bg-slate-900/40 justify-end">
-            <View className="bg-white rounded-t-[40px] p-8 pb-12 max-h-[70%] shadow-2xl">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[70%] shadow-2xl">
                <View className="flex-row justify-between items-center mb-6">
-                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800">Select Breed</Text>
-                   <TouchableOpacity onPress={() => setShowQuickBreedModal(false)} className="bg-slate-100 p-2.5 rounded-full">
-                       <X size={22} color="#64748b" />
+                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white">Select Breed</Text>
+                   <TouchableOpacity onPress={() => setShowQuickBreedModal(false)} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
+                       <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
                    </TouchableOpacity>
                </View>
 
@@ -783,9 +796,9 @@ export default function RecordAIScreen() {
                             setNewAnimal({...newAnimal, breed: item});
                             setShowQuickBreedModal(false);
                          }}
-                         className="py-4 border-b border-slate-50"
+                         className="py-4 border-b border-slate-50 dark:border-slate-800"
                       >
-                         <Text className="font-outfit-bold text-slate-700 text-base">{item}</Text>
+                         <Text className="font-outfit-bold text-slate-700 dark:text-slate-200 text-base">{item}</Text>
                       </TouchableOpacity>
                   )}
                />
@@ -796,11 +809,11 @@ export default function RecordAIScreen() {
       {/* BREED SELECTION MODAL (SIRE) */}
       <Modal animationType="slide" transparent={true} visible={showBreedModal} onRequestClose={() => setShowBreedModal(false)}>
          <View className="flex-1 bg-slate-900/40 justify-end">
-            <View className="bg-white rounded-t-[40px] p-8 pb-12 max-h-[70%] shadow-2xl">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[70%] shadow-2xl">
                <View className="flex-row justify-between items-center mb-6">
-                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800">Select Sire Breed</Text>
-                   <TouchableOpacity onPress={() => setShowBreedModal(false)} className="bg-slate-100 p-2.5 rounded-full">
-                       <X size={22} color="#64748b" />
+                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white">Select Sire Breed</Text>
+                   <TouchableOpacity onPress={() => setShowBreedModal(false)} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
+                       <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
                    </TouchableOpacity>
                </View>
 
@@ -816,13 +829,13 @@ export default function RecordAIScreen() {
                             if (code) setSireCode(code);
                             setShowBreedModal(false);
                          }}
-                         className="flex-row items-center bg-slate-50 border border-slate-100 p-5 rounded-[24px] mb-3"
+                         className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-5 rounded-[24px] mb-3"
                       >
-                         <View className="w-10 h-10 bg-blue-50 rounded-full items-center justify-center mr-4">
-                            <Dog size={20} color="#3b82f6" />
+                         <View className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-full items-center justify-center mr-4">
+                            <Dog size={20} color={isDark ? '#60a5fa' : '#3b82f6'} />
                          </View>
-                         <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-base flex-1">{item}</Text>
-                         {sireBreed === item && <MaterialCommunityIcons name="check-circle" size={20} color="#10b981" />}
+                         <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 dark:text-white text-base flex-1">{item}</Text>
+                         {sireBreed === item && <MaterialCommunityIcons name="check-circle" size={20} color={isDark ? '#34d399' : '#10b981'} />}
                       </TouchableOpacity>
                   )}
                />

@@ -24,10 +24,10 @@ export const getDashboardStats = async (req, res) => {
             User.countDocuments(),
             User.countDocuments({ role: 'farmer' }),
             User.countDocuments({ role: 'technician' }),
-            Animal.countDocuments(),
-            Insemination.countDocuments(),
-            Pregnancy.countDocuments(),
-            Calving.countDocuments(),
+            Animal.countDocuments({ deletedAt: null }),
+            Insemination.countDocuments({ deletedAt: null }),
+            Pregnancy.countDocuments({ deletedAt: null }),
+            Calving.countDocuments({ deletedAt: null }),
             import("../models/config.model.js").then(m => m.Config.findOne({ key: "dashboard_success_rate" }))
         ]);
 
@@ -52,6 +52,7 @@ export const getAdminAnalytics = async (req, res) => {
         const [inventory, technicianStats, barangayStats] = await Promise.all([
             Inventory.find().lean(),
             Insemination.aggregate([
+                { $match: { deletedAt: null } },
                 {
                   $group: {
                     _id: "$technicianId",
@@ -86,6 +87,7 @@ export const getAdminAnalytics = async (req, res) => {
                 { $sort: { count: -1 } }
             ]),
             Animal.aggregate([
+                { $match: { deletedAt: null } },
                 {
                     $lookup: {
                         from: "users",
@@ -119,7 +121,7 @@ export const getChartData = async (req, res) => {
 
         const [inseminations, healthRequests] = await Promise.all([
             Insemination.aggregate([
-                { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+                { $match: { createdAt: { $gte: thirtyDaysAgo }, deletedAt: null } },
                 {
                     $group: {
                         _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
@@ -129,7 +131,7 @@ export const getChartData = async (req, res) => {
                 { $sort: { _id: 1 } }
             ]),
             HealthRequest.aggregate([
-                { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+                { $match: { createdAt: { $gte: thirtyDaysAgo }, deletedAt: null } },
                 {
                     $group: {
                         _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
@@ -154,13 +156,13 @@ export const getAllInseminations = async (req, res) => {
         const skip = (page - 1) * limit;
 
         const [inseminations, total] = await Promise.all([
-            Insemination.find()
+            Insemination.find({ deletedAt: null })
                 .populate('farmerId', 'name email')
                 .populate('animalId', 'earTag species breed')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit),
-            Insemination.countDocuments()
+            Insemination.countDocuments({ deletedAt: null })
         ]);
 
         res.status(200).send({ 
@@ -178,7 +180,7 @@ export const getAllReInseminations = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
         const skip = (page - 1) * limit;
-        const query = { attemptNumber: { $gt: 1 } };
+        const query = { attemptNumber: { $gt: 1 }, deletedAt: null };
 
         const [reInseminations, total] = await Promise.all([
             Insemination.find(query)
@@ -207,7 +209,7 @@ export const getAllPregnancyChecks = async (req, res) => {
         const skip = (page - 1) * limit;
 
         const [pregnancyChecks, total] = await Promise.all([
-            Pregnancy.find()
+            Pregnancy.find({ deletedAt: null })
                 .populate('farmerId', 'name email')
                 .populate('animalId', 'earTag species breed')
                 .populate({
@@ -217,7 +219,7 @@ export const getAllPregnancyChecks = async (req, res) => {
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit),
-            Pregnancy.countDocuments()
+            Pregnancy.countDocuments({ deletedAt: null })
         ]);
 
         res.status(200).send({ 
@@ -237,13 +239,13 @@ export const getAllCalvings = async (req, res) => {
         const skip = (page - 1) * limit;
 
         const [calvings, total] = await Promise.all([
-            Calving.find()
+            Calving.find({ deletedAt: null })
                 .populate('farmerId', 'name email')
                 .populate('animalId', 'earTag species breed')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit),
-            Calving.countDocuments()
+            Calving.countDocuments({ deletedAt: null })
         ]);
 
         res.status(200).send({ 
@@ -271,8 +273,8 @@ export const deleteUser = async (req, res) => {
 export const deleteInsemination = async (req, res) => {
      try {
         const { id } = req.params;
-        await Insemination.findByIdAndDelete(id);
-        res.status(200).send({ message: "Insemination record deleted successfully" });
+        await Insemination.findByIdAndUpdate(id, { $set: { deletedAt: new Date() } });
+        res.status(200).send({ message: "Insemination record soft-deleted successfully" });
     } catch (error) {
         res.status(500).send({ message: "Error deleting insemination", error: error.message });
     }

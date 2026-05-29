@@ -34,6 +34,7 @@ import { format } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useTheme } from "@/lib/theme";
 
 // --- OPTIONS ---
 const SPECIES_OPTIONS = CATTLE_SPECIES;
@@ -46,6 +47,7 @@ const SPECIES_PREFIX: Record<string, string> = {
 };
 
 export default function FarmerAnimalsHub() {
+  const { colors, isDark } = useTheme();
   const router = useRouter();
   const api = useApi();
   const { user } = useUser();
@@ -179,9 +181,9 @@ export default function FarmerAnimalsHub() {
   );
 
   return (
-    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
+    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950" style={{ backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" />
-      <View className="absolute top-0 left-0 right-0 h-[220px] bg-[#00643B]" />
+      <View className="absolute top-0 left-0 right-0 h-[220px]" style={{ backgroundColor: '#00643B' }} />
 
       {/* --- HEADER --- */}
       <View
@@ -191,7 +193,8 @@ export default function FarmerAnimalsHub() {
         <View className="flex-row items-center gap-4">
           <TouchableOpacity
             onPress={() => router.back()}
-            className="w-10 h-10 bg-white/20 rounded-full items-center justify-center border border-white/10"
+            className="w-10 h-10 rounded-full items-center justify-center border border-white/10"
+            style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.2)' }}
           >
             <ArrowLeft size={20} color="white" />
           </TouchableOpacity>
@@ -207,16 +210,17 @@ export default function FarmerAnimalsHub() {
         {!showAddForm && (
           <TouchableOpacity
             onPress={() => setShowAddForm(true)}
-            className="w-10 h-10 bg-white rounded-full items-center justify-center shadow-sm"
+            className="w-10 h-10 rounded-full items-center justify-center shadow-sm"
+            style={{ backgroundColor: colors.card }}
           >
-            <Plus size={20} color="#00643B" />
+            <Plus size={20} color={isDark ? colors.primary : "#00643B"} />
           </TouchableOpacity>
         )}
       </View>
 
       <View
         className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-6 mt-2 shadow-lg"
-        style={{ elevation: 8 }}
+        style={{ elevation: 8, backgroundColor: colors.background }}
       >
         {/* --- MOOWIE GREETING SECTION (Inspired by Tarsi) --- */}
         <View className="mb-8">
@@ -360,7 +364,8 @@ export default function FarmerAnimalsHub() {
 
               <TouchableOpacity
                 onPress={handleSave}
-                className="bg-[#00643B] rounded-full py-4 items-center mt-4 shadow-md shadow-emerald-200"
+                className="rounded-full py-4 items-center mt-4 shadow-md"
+                style={{ backgroundColor: isDark ? colors.primary : '#00643B', shadowColor: isDark ? colors.primary : '#a7f3d0' }}
               >
                 {loadingForm ? (
                   <ActivityIndicator color="white" />
@@ -393,27 +398,27 @@ export default function FarmerAnimalsHub() {
         ) : (
           <View className="flex-1">
             {/* Search */}
-            <View className="flex-row items-center bg-white dark:bg-slate-800 rounded-2xl px-4 h-12 mb-4 border border-slate-100 dark:border-slate-700 shadow-sm">
-              <Search size={18} color="#94a3b8" />
+            <View className="flex-row items-center bg-white dark:bg-slate-900 rounded-2xl px-4 h-12 mb-4 border border-slate-100 dark:border-slate-800 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+              <Search size={18} color={colors.textMuted} />
               <TextInput
                 placeholder="Search by ID or breed..."
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 className="flex-1 ml-3 font-outfit-medium text-slate-800 dark:text-white text-sm"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={colors.textMuted}
               />
             </View>
 
             {loadingList ? (
-              <ActivityIndicator color="#00643B" className="mt-10" />
+              <ActivityIndicator color={isDark ? colors.primary : "#00643B"} className="mt-10" />
             ) : filteredAnimals.length === 0 ? (
               <View className="items-center py-20">
                 <MaterialCommunityIcons
                   name="cow-off"
                   size={48}
-                  color="#cbd5e1"
+                  color={colors.textMuted}
                 />
-                <Text className="text-slate-400 font-outfit-bold text-base mt-2">
+                <Text className="text-slate-400 dark:text-slate-500 font-outfit-bold text-base mt-2">
                   No animals found
                 </Text>
               </View>
@@ -426,9 +431,10 @@ export default function FarmerAnimalsHub() {
                     onPress={() =>
                       router.push(`/(farmer)/animal-details?id=${item._id}`)
                     }
-                    className="bg-white dark:bg-slate-800 rounded-[24px] p-4 mb-3 border border-slate-50 dark:border-slate-800 flex-row items-center shadow-sm"
+                    className="bg-white dark:bg-slate-900 rounded-[24px] p-4 mb-3 border border-slate-50 dark:border-slate-800 flex-row items-center shadow-sm"
+                    style={{ backgroundColor: colors.card, borderColor: colors.border }}
                   >
-                    <View className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 items-center justify-center mr-4">
+                    <View className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 items-center justify-center mr-4">
                       {item.imageUrl ? (
                         <Image
                           source={{ uri: item.imageUrl }}
@@ -438,7 +444,7 @@ export default function FarmerAnimalsHub() {
                         <MaterialCommunityIcons
                           name="cow"
                           size={24}
-                          color="#00643B"
+                          color={isDark ? colors.primary : "#00643B"}
                         />
                       )}
                     </View>
@@ -446,19 +452,19 @@ export default function FarmerAnimalsHub() {
                       <Text className="font-outfit-bold text-slate-800 dark:text-white text-[15px]">
                         {item.animalId}
                       </Text>
-                      <Text className="font-outfit-medium text-slate-500 text-[11px]">
+                      <Text className="font-outfit-medium text-slate-500 dark:text-slate-400 text-[11px]">
                         {item.breed} • {item.species}
                       </Text>
                     </View>
                     <MaterialCommunityIcons
                       name="chevron-right"
                       size={20}
-                      color="#cbd5e1"
+                      color={colors.textMuted}
                     />
                   </TouchableOpacity>
                 )}
                 refreshControl={
-                  <RefreshControl refreshing={refreshing} onRefresh={refetch} />
+                  <RefreshControl refreshing={refreshing} onRefresh={refetch} colors={[isDark ? colors.primary : '#00643B']} />
                 }
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: 100 }}
@@ -470,15 +476,16 @@ export default function FarmerAnimalsHub() {
 
       <Modal visible={modal.visible} transparent animationType="slide">
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10" style={{ backgroundColor: colors.card }}>
             <View className="flex-row justify-between items-center mb-6">
-              <Text className="text-lg font-outfit-bold dark:text-white">
+              <Text className="text-lg font-outfit-bold text-slate-800 dark:text-white">
                 {modal.title}
               </Text>
               <TouchableOpacity
                 onPress={() => setModal({ ...modal, visible: false })}
+                style={{ padding: 4 }}
               >
-                <X size={24} color="#94a3b8" />
+                <X size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
             <View className="flex-row flex-wrap justify-between">
@@ -489,9 +496,10 @@ export default function FarmerAnimalsHub() {
                     setFormData({ ...formData, [modal.field]: opt });
                     setModal({ ...modal, visible: false });
                   }}
-                  className="w-[48%] py-4 bg-slate-50 dark:bg-slate-800 rounded-2xl items-center justify-center mb-3 border border-slate-100 dark:border-slate-700 active:bg-emerald-50"
+                  className="w-[48%] py-4 rounded-2xl items-center justify-center mb-3 border active:bg-emerald-50 dark:active:bg-emerald-950/20"
+                  style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: isDark ? colors.border : '#e2e8f0' }}
                 >
-                  <Text className="font-outfit-bold text-[11px] text-slate-700 dark:text-white uppercase tracking-tight text-center px-1">
+                  <Text className="font-outfit-bold text-[11px] uppercase tracking-tight text-center px-1" style={{ color: colors.textPrimary }}>
                     {opt}
                   </Text>
                 </TouchableOpacity>
@@ -511,38 +519,47 @@ const InputField = ({
   placeholder,
   keyboardType = "default",
   maxLength,
-}: any) => (
-  <View className="flex-1 mb-4">
-    <Text className="text-[10px] font-outfit-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
-      {label}
-    </Text>
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      keyboardType={keyboardType}
-      maxLength={maxLength}
-      className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3.5 font-outfit-medium text-slate-800 dark:text-white text-sm"
-      placeholderTextColor="#94a3b8"
-    />
-  </View>
-);
-
-const SelectField = ({ label, value, onPress }: any) => (
-  <View className="flex-1 mb-4">
-    <Text className="text-[10px] font-outfit-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
-      {label}
-    </Text>
-    <TouchableOpacity
-      onPress={onPress}
-      className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3.5 flex-row justify-between items-center"
-    >
-      <Text
-        className={`font-outfit-medium text-sm ${value ? "text-slate-800 dark:text-white" : "text-slate-400"}`}
-      >
-        {value || "Select"}
+}: any) => {
+  const { colors, isDark } = useTheme();
+  return (
+    <View className="flex-1 mb-4">
+      <Text className="text-[10px] font-outfit-black text-slate-400 dark:text-slate-500 uppercase mb-1.5 ml-1 tracking-widest">
+        {label}
       </Text>
-      <ChevronDown size={16} color="#94a3b8" />
-    </TouchableOpacity>
-  </View>
-);
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        keyboardType={keyboardType}
+        maxLength={maxLength}
+        className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3.5 font-outfit-medium text-slate-800 dark:text-white text-sm"
+        style={{ backgroundColor: colors.card, borderColor: colors.border }}
+        placeholderTextColor={colors.textMuted}
+      />
+    </View>
+  );
+};
+
+const SelectField = ({ label, value, onPress }: any) => {
+  const { colors, isDark } = useTheme();
+  return (
+    <View className="flex-1 mb-4">
+      <Text className="text-[10px] font-outfit-black text-slate-400 dark:text-slate-500 uppercase mb-1.5 ml-1 tracking-widest">
+        {label}
+      </Text>
+      <TouchableOpacity
+        onPress={onPress}
+        className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3.5 flex-row justify-between items-center"
+        style={{ backgroundColor: colors.card, borderColor: colors.border, height: 50 }}
+      >
+        <Text
+          className="font-outfit-medium text-sm"
+          style={{ color: value ? colors.textPrimary : colors.textMuted }}
+        >
+          {value || "Select"}
+        </Text>
+        <ChevronDown size={16} color={colors.textMuted} />
+      </TouchableOpacity>
+    </View>
+  );
+};

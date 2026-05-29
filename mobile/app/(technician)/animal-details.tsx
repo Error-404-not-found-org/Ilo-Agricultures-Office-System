@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
 } from "react-native";
 import {
   useRouter,
@@ -27,13 +28,18 @@ import {
   ClipboardList,
   Scale,
   Edit2,
+  X,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useCallback } from "react";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
+import { SPECIES_PROFILES, normalizeSpecies } from "@/lib/cattleCore";
+
+import { useTheme } from "@/lib/theme";
 
 export default function AnimalDetails() {
+  const { colors, isDark } = useTheme();
   const { id } = useLocalSearchParams();
   const api = useApi();
   const router = useRouter();
@@ -44,6 +50,9 @@ export default function AnimalDetails() {
   const [medicalRecords, setMedicalRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+
+  const [selectedRecord, setSelectedRecord] = useState<any>(null);
+  const [recordModalVisible, setRecordModalVisible] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,7 +112,7 @@ export default function AnimalDetails() {
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-[#F9FAFB] dark:bg-slate-950">
-        <ActivityIndicator size="large" color="#00643B" />
+        <ActivityIndicator size="large" color={isDark ? "#10b981" : "#00643B"} />
       </View>
     );
   }
@@ -111,13 +120,13 @@ export default function AnimalDetails() {
   if (!animal) {
     return (
       <View className="flex-1 items-center justify-center bg-[#F9FAFB] dark:bg-slate-950 px-8">
-        <MaterialCommunityIcons name="cow-off" size={64} color="#CBD5E1" />
+        <MaterialCommunityIcons name="cow-off" size={64} color={isDark ? "#4b5563" : "#CBD5E1"} />
         <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-500 dark:text-slate-400 text-lg mt-4">
           Animal Not Found
         </Text>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mt-6 px-10 py-3.5 bg-[#00643B] rounded-full shadow-lg shadow-emerald-200"
+          className="mt-6 px-10 py-3.5 bg-[#00643B] dark:bg-emerald-600 rounded-full shadow-lg shadow-emerald-200 dark:shadow-none"
         >
           <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-white">Go Back</Text>
         </TouchableOpacity>
@@ -179,7 +188,10 @@ export default function AnimalDetails() {
       <StatusBar barStyle="light-content" />
 
       {/* Absolute Green Top Background */}
-      <View className="absolute top-0 left-0 right-0 h-[280px] bg-[#00643B]" />
+      <View 
+        className="absolute top-0 left-0 right-0 h-[280px]" 
+        style={{ backgroundColor: isDark ? "#064e3e" : "#00643B" }}
+      />
 
       {/* Header Actions */}
       <View className="pt-14 px-6 flex-row justify-between items-center z-10">
@@ -223,7 +235,7 @@ export default function AnimalDetails() {
               resizeMode="cover"
             />
           ) : (
-            <MaterialCommunityIcons name="cow" size={56} color="#00643B" />
+            <MaterialCommunityIcons name="cow" size={56} color={isDark ? "#34d399" : "#00643B"} />
           )}
         </View>
         <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-white mb-1">
@@ -250,15 +262,15 @@ export default function AnimalDetails() {
         <View className="flex-row px-6 mb-6">
           <TouchableOpacity
             onPress={() => setActiveTab("Info")}
-            className={`flex-1 py-4 border-b-[3px] items-center flex-row justify-center gap-2 ${activeTab === "Info" ? "border-[#00643B]" : "border-transparent"}`}
+            className={`flex-1 py-4 border-b-[3px] items-center flex-row justify-center gap-2 ${activeTab === "Info" ? (isDark ? "border-[#34d399]" : "border-[#00643B]") : "border-transparent"}`}
           >
             <InfoIcon
               size={18}
-              color={activeTab === "Info" ? "#00643B" : "#94a3b8"}
+              color={activeTab === "Info" ? (isDark ? "#34d399" : "#00643B") : "#94a3b8"}
             />
             <Text
               style={{ fontFamily: activeTab === 'Info' ? 'Outfit_800ExtraBold' : 'Outfit_600SemiBold' }}
-              className={`text-[15px] ${activeTab === "Info" ? "text-[#00643B]" : "text-slate-400 dark:text-slate-500"}`}
+              className={`text-[15px] ${activeTab === "Info" ? (isDark ? "text-[#34d399]" : "text-[#00643B]") : "text-slate-400 dark:text-slate-500"}`}
             >
               General Info
             </Text>
@@ -268,15 +280,15 @@ export default function AnimalDetails() {
 
           <TouchableOpacity
             onPress={() => setActiveTab("History")}
-            className={`flex-1 py-4 border-b-[3px] items-center flex-row justify-center gap-2 ${activeTab === "History" ? "border-[#00643B]" : "border-transparent"}`}
+            className={`flex-1 py-4 border-b-[3px] items-center flex-row justify-center gap-2 ${activeTab === "History" ? (isDark ? "border-[#34d399]" : "border-[#00643B]") : "border-transparent"}`}
           >
             <History
               size={18}
-              color={activeTab === "History" ? "#00643B" : "#94a3b8"}
+              color={activeTab === "History" ? (isDark ? "#34d399" : "#00643B") : "#94a3b8"}
             />
             <Text
               style={{ fontFamily: activeTab === 'History' ? 'Outfit_800ExtraBold' : 'Outfit_600SemiBold' }}
-              className={`text-[15px] ${activeTab === "History" ? "text-[#00643B]" : "text-slate-400 dark:text-slate-500"}`}
+              className={`text-[15px] ${activeTab === "History" ? (isDark ? "text-[#34d399]" : "text-[#00643B]") : "text-slate-400 dark:text-slate-500"}`}
             >
               Medical History
             </Text>
@@ -335,7 +347,7 @@ export default function AnimalDetails() {
                     <MaterialCommunityIcons
                       name="heart-pulse"
                       size={20}
-                      color="#00643B"
+                      color={isDark ? "#34d399" : "#00643B"}
                     />
                     <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-lg text-slate-800 dark:text-white">
                       Reproductive Health
@@ -371,7 +383,9 @@ export default function AnimalDetails() {
                         animal.inseminations?.[0]?.dateOfAI || animal.updatedAt;
                       const startDate = new Date(lastInsemDate);
                       const today = new Date();
-                      const gestationDays = 283; // Average for Cattle
+                      const normSpecies = normalizeSpecies(animal.species);
+                      const profile = SPECIES_PROFILES[normSpecies] || SPECIES_PROFILES["Cattle"];
+                      const gestationDays = profile.avgGestationDays;
                       const dueDate = new Date(startDate);
                       dueDate.setDate(startDate.getDate() + gestationDays);
 
@@ -469,7 +483,7 @@ export default function AnimalDetails() {
                 }}
               >
                 <View className="flex-row items-center mb-5 gap-2">
-                  <Activity size={20} color="#00643B" />
+                  <Activity size={20} color={isDark ? "#34d399" : "#00643B"} />
                   <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-lg text-slate-800 dark:text-white">
                     Biological Details
                   </Text>
@@ -518,27 +532,27 @@ export default function AnimalDetails() {
                 }}
               >
                 <View className="flex-row items-center mb-5 gap-2">
-                  <User size={20} color="#00643B" />
+                  <User size={20} color={isDark ? "#34d399" : "#00643B"} />
                   <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-lg text-slate-800 dark:text-white">
                     Ownership Details
                   </Text>
                 </View>
 
                 <View className="flex-row items-center gap-4 mb-5 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-700">
-                  <View className="w-12 h-12 bg-emerald-100 rounded-full items-center justify-center">
-                    <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 text-lg">
+                  <View className="w-12 h-12 bg-emerald-100 dark:bg-emerald-950 rounded-full items-center justify-center">
+                    <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 dark:text-emerald-300 text-lg">
                       {(animal.farmerId?.name || "?").charAt(0).toUpperCase()}
                     </Text>
                   </View>
                   <View className="flex-1">
-                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-base text-slate-800">
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-base text-slate-800 dark:text-white">
                       {farmerName}
                     </Text>
-                    <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 text-[12px] mt-0.5">
+                    <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 dark:text-slate-400 text-[12px] mt-0.5">
                       {farmerPhone}
                     </Text>
-                    <View className="px-2.5 py-0.5 rounded-full bg-emerald-50 self-start mt-2 border border-emerald-100">
-                      <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-[9px] text-emerald-700 uppercase tracking-widest">
+                    <View className="px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 self-start mt-2 border border-emerald-100 dark:border-emerald-900/30">
+                      <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-[9px] text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">
                         Registered Owner
                       </Text>
                     </View>
@@ -553,7 +567,7 @@ export default function AnimalDetails() {
                     <View className="flex-row items-start gap-2 mt-2 pr-4">
                       <MapPin
                         size={16}
-                        color="#00643B"
+                        color={isDark ? "#34d399" : "#00643B"}
                         style={{ marginTop: 2 }}
                       />
                       <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-slate-800 dark:text-slate-200 text-[15px] leading-5 w-11/12">
@@ -569,14 +583,19 @@ export default function AnimalDetails() {
               {combinedHistory.length > 0 ? (
                 <View className="mt-2 text-primary">
                   {combinedHistory.map((record: any, idx: number) => (
-                    <View
+                    <TouchableOpacity
                       key={idx}
-                      className="bg-white p-5 rounded-[24px] mb-4 border border-slate-100 flex-row"
+                      onPress={() => {
+                        setSelectedRecord(record);
+                        setRecordModalVisible(true);
+                      }}
+                      activeOpacity={0.7}
+                      className="bg-white dark:bg-slate-900 p-5 rounded-[24px] mb-4 border border-slate-100 dark:border-slate-800 flex-row"
                       style={{
                         shadowColor: "#94a3b8",
-                        shadowOpacity: 0.05,
+                        shadowOpacity: isDark ? 0 : 0.05,
                         shadowRadius: 6,
-                        elevation: 2,
+                        elevation: isDark ? 0 : 2,
                       }}
                     >
                       <View
@@ -593,37 +612,37 @@ export default function AnimalDetails() {
                         }`}
                       >
                         {record.type === "insemination" && (
-                          <MaterialCommunityIcons
-                            name="needle"
-                            size={24}
-                            color="#3B82F6"
-                          />
+                           <MaterialCommunityIcons
+                             name="needle"
+                             size={24}
+                             color="#3B82F6"
+                           />
                         )}
                         {record.type === "calving" && (
-                          <MaterialCommunityIcons
-                            name="baby-carriage"
-                            size={24}
-                            color="#F97316"
-                          />
+                           <MaterialCommunityIcons
+                             name="baby-carriage"
+                             size={24}
+                             color="#F97316"
+                           />
                         )}
                         {record.type === "Vaccination" && (
-                          <Syringe size={22} color="#10B981" />
+                           <Syringe size={22} color="#10B981" />
                         )}
                         {record.type === "Deworming" && (
-                          <MaterialCommunityIcons
-                            name="pill"
-                            size={22}
-                            color="#3B82F6"
-                          />
+                           <MaterialCommunityIcons
+                             name="pill"
+                             size={22}
+                             color="#3B82F6"
+                           />
                         )}
                         {record.type === "Treatment" && (
-                          <Stethoscope size={22} color="#F59E0B" />
+                           <Stethoscope size={22} color="#F59E0B" />
                         )}
                         {record.type === "Weight Log" && (
-                          <Scale size={22} color="#6366F1" />
+                           <Scale size={22} color="#6366F1" />
                         )}
                         {record.type === "Check-up" && (
-                          <ClipboardList size={22} color="#64748B" />
+                           <ClipboardList size={22} color="#64748B" />
                         )}
                       </View>
 
@@ -637,23 +656,45 @@ export default function AnimalDetails() {
                                 : record.type}
                           </Text>
                           {record.type === "insemination" && (
-                            <Text
-                              style={{ fontFamily: 'Outfit_800ExtraBold' }}
-                              className={`text-[12px] capitalize ${
-                                record.result === "Positive"
-                                  ? "text-emerald-600"
-                                  : record.result === "Negative"
-                                    ? "text-red-500"
-                                    : "text-slate-400"
-                              }`}
-                            >
-                              {record.result || "Pending"}
-                            </Text>
+                            <View className={`px-2.5 py-0.5 rounded-full ${
+                              (record.pregnancyStatus === "Pregnant" || record.result === "Positive" || record.outcome === "Pregnant")
+                                ? "bg-emerald-50 dark:bg-emerald-950/30"
+                                : (record.pregnancyStatus === "Empty" || record.result === "Negative" || record.outcome?.startsWith("Failed"))
+                                  ? "bg-red-50 dark:bg-red-950/20"
+                                  : "bg-slate-100 dark:bg-slate-800"
+                            }`}>
+                              <Text
+                                style={{ fontFamily: 'Outfit_900Black' }}
+                                className={`text-[10px] uppercase tracking-wider ${
+                                  (record.pregnancyStatus === "Pregnant" || record.result === "Positive" || record.outcome === "Pregnant")
+                                    ? "text-emerald-600 dark:text-emerald-400"
+                                    : (record.pregnancyStatus === "Empty" || record.result === "Negative" || record.outcome?.startsWith("Failed"))
+                                      ? "text-red-500"
+                                      : "text-slate-500 dark:text-slate-400"
+                                }`}
+                              >
+                                {record.pregnancyStatus || record.outcome || record.result || "Pending"}
+                              </Text>
+                            </View>
+                          )}
+                          {record.type === "calving" && (
+                            <View className="px-2.5 py-0.5 rounded-full bg-orange-50 dark:bg-orange-950/30">
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-orange-600 dark:text-orange-400 text-[10px] uppercase tracking-wider">
+                                {record.calvingEase || "Natural"}
+                              </Text>
+                            </View>
+                          )}
+                          {record.type !== "insemination" && record.type !== "calving" && (
+                            <View className="px-2.5 py-0.5 rounded-full bg-slate-50 dark:bg-slate-800">
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-600 dark:text-slate-400 text-[9px] uppercase tracking-wider">
+                                Medical
+                              </Text>
+                            </View>
                           )}
                         </View>
 
                         <View className="flex-row items-center gap-1 mb-2">
-                          <Calendar size={12} color="#94a3b8" />
+                           <Calendar size={12} color="#94a3b8" />
                           <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 dark:text-slate-400 text-xs">
                             {new Date(record.recordDate).toLocaleDateString()}
                           </Text>
@@ -675,9 +716,9 @@ export default function AnimalDetails() {
                             </Text>
                           </Text>
                         )}
-                        {record.note && (
+                        {(record.note || record.technicianNote || record.comment) && (
                           <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] mt-1 italic leading-4">
-                            &quot;{record.note}&quot;
+                            &quot;{record.note || record.technicianNote || record.comment}&quot;
                           </Text>
                         )}
                         {record.technicianId?.name && (
@@ -686,7 +727,7 @@ export default function AnimalDetails() {
                           </Text>
                         )}
                       </View>
-                    </View>
+                    </TouchableOpacity>
                   ))}
                 </View>
               ) : (
@@ -715,6 +756,354 @@ export default function AnimalDetails() {
           )}
         </ScrollView>
       </View>
+
+      {/* --- MEDICAL RECORD DETAIL DIALOG --- */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={recordModalVisible}
+        onRequestClose={() => setRecordModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-end">
+          <TouchableOpacity 
+            style={{ flex: 1 }} 
+            activeOpacity={1} 
+            onPress={() => setRecordModalVisible(false)} 
+          />
+          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-8 shadow-2xl">
+            <View className="w-10 h-1 bg-slate-200 dark:bg-slate-800 rounded-full align-self-center mb-5" />
+
+            <View className="flex-row justify-between items-start mb-4">
+              <View>
+                <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-700 dark:text-emerald-400 text-[10px] uppercase tracking-widest mb-1.5">
+                  Record Details
+                </Text>
+                <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white leading-none">
+                  {selectedRecord?.type === "insemination"
+                    ? `A.I. Insemination`
+                    : selectedRecord?.type === "calving"
+                      ? "Calf Drop / Calving"
+                      : selectedRecord?.type || "Medical Record"}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setRecordModalVisible(false)}
+                className="w-9 h-9 bg-slate-100 dark:bg-slate-800 rounded-full items-center justify-center"
+              >
+                <X size={18} color={isDark ? "white" : "black"} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Scrollable details container */}
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: 420 }}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
+              {selectedRecord && (
+                <View className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-800 gap-y-4 mb-2">
+                  
+                  {/* Photo attachment if present */}
+                  {selectedRecord.imageUrl ? (
+                    <View className="mb-2 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm">
+                      <Image
+                        source={{ uri: selectedRecord.imageUrl }}
+                        className="w-full h-48"
+                        resizeMode="cover"
+                      />
+                    </View>
+                  ) : null}
+
+                  {/* 1. Common Info: Date */}
+                  <View className="flex-row justify-between items-center">
+                    <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Activity Date</Text>
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">
+                      {new Date(selectedRecord.recordDate).toLocaleDateString("en-US", { month: 'long', day: 'numeric', year: 'numeric' })}
+                    </Text>
+                  </View>
+                  <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+
+                  {/* 2. Type-Specific Attributes */}
+                  {selectedRecord.type === "insemination" && (
+                    <>
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Attempt No.</Text>
+                        <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-800 dark:text-white text-[14px]">#{selectedRecord.attemptNumber || 1}</Text>
+                      </View>
+                      <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Estrus Cycle Type</Text>
+                        <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">{selectedRecord.estrus || selectedRecord.estrusType || "Natural"}</Text>
+                      </View>
+                      <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Sire Breed</Text>
+                        <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">{selectedRecord.sireBreed || "N/A"}</Text>
+                      </View>
+                      <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Sire Code</Text>
+                        <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-800 dark:text-white text-[14px]">{selectedRecord.sireCode || "N/A"}</Text>
+                      </View>
+                      <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Current Status</Text>
+                        <View className={`px-2.5 py-0.5 rounded-full ${
+                          selectedRecord.status === "done"
+                            ? "bg-blue-50 dark:bg-blue-900/30 border border-blue-100 dark:border-blue-900/20"
+                            : selectedRecord.status === "approved"
+                              ? "bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/20"
+                              : selectedRecord.status === "pending"
+                                ? "bg-amber-50 dark:bg-amber-905/30 border border-amber-100 dark:border-amber-900/20"
+                                : "bg-slate-100 dark:bg-slate-800"
+                        }`}>
+                          <Text style={{ fontFamily: 'Outfit_900Black' }} className={`text-[10px] uppercase tracking-wider ${
+                            selectedRecord.status === "done"
+                              ? "text-blue-600 dark:text-blue-400"
+                              : selectedRecord.status === "approved"
+                                ? "text-emerald-600 dark:text-emerald-400"
+                                : selectedRecord.status === "pending"
+                                  ? "text-amber-600 dark:text-amber-400"
+                                  : "text-slate-600 dark:text-slate-400"
+                          }`}>
+                            {selectedRecord.status || "Pending"}
+                          </Text>
+                        </View>
+                      </View>
+                      <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Pregnancy Status</Text>
+                        {(() => {
+                          const outcomeText = selectedRecord.pregnancyStatus || selectedRecord.outcome || selectedRecord.result || "Pending";
+                          const isSuccess = outcomeText === "Pregnant" || outcomeText === "Successful" || outcomeText === "Positive";
+                          const isFailed = outcomeText.startsWith("Failed") || outcomeText === "Negative" || outcomeText === "Empty";
+                          return (
+                            <View className={`px-3 py-1 rounded-full ${
+                              isSuccess
+                                ? "bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900"
+                                : isFailed
+                                  ? "bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900"
+                                  : "bg-slate-100 dark:bg-slate-800"
+                            }`}>
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className={`text-[12px] ${
+                                isSuccess
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : isFailed
+                                    ? "text-red-500"
+                                    : "text-slate-600 dark:text-slate-400"
+                              }`}>
+                                {outcomeText}
+                              </Text>
+                            </View>
+                          );
+                        })()}
+                      </View>
+                      {selectedRecord.dateOfPD && (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <View className="flex-row justify-between items-center">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Diagnosis Date</Text>
+                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">
+                              {new Date(selectedRecord.dateOfPD).toLocaleDateString("en-US", { month: 'long', day: 'numeric', year: 'numeric' })}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {selectedRecord.type === "calving" && (
+                    <>
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Number of Calves</Text>
+                        <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-800 dark:text-white text-[14px]">
+                          {selectedRecord.numberOfCalves || selectedRecord.calves?.length || 1}
+                        </Text>
+                      </View>
+                      <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Calving Ease</Text>
+                        <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">{selectedRecord.calvingEase || "Natural"}</Text>
+                      </View>
+
+                      {selectedRecord.locationAddress ? (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <View className="flex-row justify-between items-center">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Calving Location</Text>
+                            <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-slate-800 dark:text-white text-[13px] text-right max-w-[200px]">{selectedRecord.locationAddress}</Text>
+                          </View>
+                        </>
+                      ) : null}
+
+                      {/* Display offspring details array */}
+                      {selectedRecord.calves && selectedRecord.calves.length > 0 ? (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-500 dark:text-slate-400 text-[10px] uppercase tracking-wider mt-1">Offspring Born</Text>
+                          <View className="gap-y-2 mt-1">
+                            {selectedRecord.calves.map((calf: any, cidx: number) => (
+                              <View key={cidx} className="bg-white dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800/80 flex-row justify-between items-center">
+                                <View className="flex-row items-center gap-2">
+                                  <MaterialCommunityIcons name="cow" size={16} color={calf.sex === 'M' ? '#3B82F6' : '#F472B6'} />
+                                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[12px]">
+                                    Tag: {calf.earTag || `Calf ${cidx + 1}`}
+                                  </Text>
+                                </View>
+                                <View className="flex-row gap-2.5 items-center">
+                                  <View className={`px-2 py-0.5 rounded-full ${calf.sex === 'M' ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-pink-50 dark:bg-pink-950/40'}`}>
+                                    <Text style={{ fontFamily: 'Outfit_900Black' }} className={`text-[9px] ${calf.sex === 'M' ? 'text-blue-600 dark:text-blue-400' : 'text-pink-600 dark:text-pink-400'}`}>
+                                      {calf.sex === 'M' ? 'Male ♂' : 'Female ♀'}
+                                    </Text>
+                                  </View>
+                                  {calf.weight ? (
+                                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-indigo-600 dark:text-indigo-400 text-[11px]">
+                                      {calf.weight} kg
+                                    </Text>
+                                  ) : null}
+                                </View>
+                              </View>
+                            ))}
+                          </View>
+                        </>
+                      ) : (
+                        (selectedRecord.calfId || selectedRecord.calfSex) ? (
+                          <>
+                            <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                            <View className="flex-row justify-between items-center">
+                              <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Calf Tag ID</Text>
+                              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-800 dark:text-white text-[14px]">{selectedRecord.calfId || "N/A"}</Text>
+                            </View>
+                            <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                            <View className="flex-row justify-between items-center">
+                              <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Offspring Sex</Text>
+                              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">
+                                {selectedRecord.calfSex === "M" ? "Male ♂" : selectedRecord.calfSex === "F" ? "Female ♀" : selectedRecord.calfSex || "N/A"}
+                              </Text>
+                            </View>
+                          </>
+                        ) : null
+                      )}
+                    </>
+                  )}
+
+                  {selectedRecord.type !== "insemination" && selectedRecord.type !== "calving" && (
+                    <>
+                      <View className="flex-row justify-between items-center">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Check Category</Text>
+                        <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">{selectedRecord.type}</Text>
+                      </View>
+
+                      {selectedRecord.details?.diagnosis && (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <View className="flex-row justify-between items-center">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Diagnosis</Text>
+                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-850 dark:text-slate-200 text-[13px] text-right max-w-[200px]">{selectedRecord.details.diagnosis}</Text>
+                          </View>
+                        </>
+                      )}
+
+                      {selectedRecord.details?.treatment && (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <View className="flex-row justify-between items-center">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Treatment Given</Text>
+                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-855 dark:text-slate-200 text-[13px] text-right max-w-[200px]">{selectedRecord.details.treatment}</Text>
+                          </View>
+                        </>
+                      )}
+
+                      {selectedRecord.details?.medicineName && (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <View className="flex-row justify-between items-center">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Medicine Administered</Text>
+                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-700 dark:text-emerald-400 text-[14px]">{selectedRecord.details.medicineName}</Text>
+                          </View>
+                        </>
+                      )}
+
+                      {selectedRecord.details?.dosage && (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <View className="flex-row justify-between items-center">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Dosage / Route</Text>
+                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">{selectedRecord.details.dosage}</Text>
+                          </View>
+                        </>
+                      )}
+
+                      {selectedRecord.details?.weight && (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <View className="flex-row justify-between items-center">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Recorded Weight</Text>
+                            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-indigo-600 dark:text-indigo-400 text-[14px]">{selectedRecord.details.weight} kg</Text>
+                          </View>
+                        </>
+                      )}
+
+                      {selectedRecord.followUpDate && (
+                        <>
+                          <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                          <View className="flex-row justify-between items-center">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Follow-Up Date</Text>
+                            <View className="bg-amber-50 dark:bg-amber-955/30 px-2.5 py-1 rounded-lg border border-amber-100 dark:border-amber-900/20">
+                              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-amber-700 dark:text-amber-400 text-[12px]">
+                                {new Date(selectedRecord.followUpDate).toLocaleDateString("en-US", { month: 'long', day: 'numeric', year: 'numeric' })}
+                              </Text>
+                            </View>
+                          </View>
+                        </>
+                      )}
+                    </>
+                  )}
+
+                  {/* 3. Common Info: Notes / Remarks */}
+                  {(selectedRecord.note || selectedRecord.technicianNote || selectedRecord.comment) ? (
+                    <>
+                      <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                      <View className="flex-col gap-1">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Notes & Remarks</Text>
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-700 dark:text-slate-300 text-[13px] italic leading-5 mt-1">
+                          &quot;{selectedRecord.note || selectedRecord.technicianNote || selectedRecord.comment}&quot;
+                        </Text>
+                      </View>
+                    </>
+                  ) : null}
+
+                  {/* 4. Common Info: Recorded By */}
+                  <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                  <View className="flex-row justify-between items-center">
+                    <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Logged By</Text>
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-[14px]">
+                      {selectedRecord.technicianId?.name || "Agriculture Office Technician"}
+                    </Text>
+                  </View>
+
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Close Button */}
+            <TouchableOpacity
+              onPress={() => setRecordModalVisible(false)}
+              style={{ backgroundColor: colors.primary }}
+              className="w-full py-4 rounded-2xl items-center justify-center active:opacity-75 shadow-md mt-2"
+            >
+              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white text-base">Close Details</Text>
+            </TouchableOpacity>
+
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

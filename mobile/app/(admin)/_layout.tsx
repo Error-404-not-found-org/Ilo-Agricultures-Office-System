@@ -1,28 +1,16 @@
-import { Tabs } from 'expo-router';
-import React from 'react';
-import AdminBottomNavigator from '../components/AdminBottomNavigator';
+import { Stack } from "expo-router";
+import React from "react";
 
-export default function AdminTabLayout() {
+export default function AdminLayout() {
   return (
-    <Tabs
-      tabBar={(props) => <AdminBottomNavigator {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tabs.Screen name="admin.dashboard" />
-      <Tabs.Screen name="admin.users" />
-      <Tabs.Screen name="admin.animals" />
-      <Tabs.Screen
-        name="admin.records"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="create-user"
-        options={{ href: null }}
-      />
-    </Tabs>
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* The main tab group */}
+      <Stack.Screen name="(tabs)" />
+      
+      {/* Other stack screens */}
+      <Stack.Screen name="admin.records" />
+      <Stack.Screen name="profile" />
+      <Stack.Screen name="create-user" />
+    </Stack>
   );
 }

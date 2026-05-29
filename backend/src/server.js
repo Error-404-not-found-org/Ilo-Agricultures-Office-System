@@ -27,8 +27,6 @@ import analyticsRoutes from "./routes/analytics.routes.js";
 import moowieRoutes from "./routes/moowie.routes.js";
 import gisRoutes from "./routes/gis.routes.js";
 
-
-
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -50,13 +48,16 @@ const generalLimiter = rateLimit({
   max: 2000,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { message: "Too many requests from this IP, please try again after 15 minutes." }
+  message: {
+    message:
+      "Too many requests from this IP, please try again after 15 minutes.",
+  },
 });
 
 const __dirname = path.resolve();
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(clerkMiddleware()); // add auth object under req.auth
 app.use(
   cors({
@@ -92,8 +93,6 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/moowie", moowieRoutes);
 app.use("/api/gis", gisRoutes);
 
-
-
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 // MUST be defined after all routes. Catches any unhandled error from middleware
 // (e.g., Clerk requireAuth() crashes) and sends a proper JSON response
@@ -101,7 +100,10 @@ app.use("/api/gis", gisRoutes);
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
-  console.error(`[Global Error Handler] ${req.method} ${req.path} →`, err.message || err);
+  console.error(
+    `[Global Error Handler] ${req.method} ${req.path} →`,
+    err.message || err,
+  );
   res.status(status).json({
     message: err.message || "An unexpected server error occurred.",
     ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),

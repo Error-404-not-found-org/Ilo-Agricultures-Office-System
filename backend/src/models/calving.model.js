@@ -48,8 +48,13 @@ const CalvingSchema = new mongoose.Schema(
       type: String,
     },
     technicianNote: String,
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
+
+// Indexes for scalability
+CalvingSchema.index({ animalId: 1 });
+CalvingSchema.index({ deletedAt: 1 });
 
 export const Calving = mongoose.model("Calving", CalvingSchema);

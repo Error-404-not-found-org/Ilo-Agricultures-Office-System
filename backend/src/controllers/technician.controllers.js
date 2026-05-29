@@ -12,6 +12,10 @@ import { Config } from "../models/config.model.js";
 import { FieldNote } from "../models/field-note.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { inngest } from "../config/inngest.js";
+import {
+  verifyPostpartumWindow,
+  calculateTargetCalvingDate,
+} from "../utils/cattleCore.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
@@ -81,13 +85,17 @@ export const getTechnicianDashboardData = async (req, res) => {
       // Data Streams (Using .lean() for performance)
       Insemination.find({
         status: { $in: ["pending", "approved", "in-progress"] },
+        deletedAt: null,
       })
         .populate("farmerId", "name address")
         .populate("animalId", "earTag imageUrl breed species")
         .sort({ createdAt: -1 })
         .lean(),
 
-      HealthRequest.find({ status: { $in: ["pending", "in-progress"] } })
+      HealthRequest.find({
+        status: { $in: ["pending", "in-progress"] },
+        deletedAt: null,
+      })
         .populate("farmerId", "name address")
         .populate("animalId", "earTag imageUrl breed species")
         .sort({ urgency: -1, createdAt: -1 })
@@ -95,6 +103,7 @@ export const getTechnicianDashboardData = async (req, res) => {
 
       // Animal Registry (Fully Optimized Aggregation)
       Animal.aggregate([
+        { $match: { deletedAt: null } },
         { $sort: { createdAt: -1 } },
         { $limit: 100 }, // Fetch a slightly larger pool for sorting
 
@@ -154,7 +163,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       ]),
       // 7. Total AI Month
       Insemination.countDocuments({
-          inseminationDate: { $gte: monthStart }
+        inseminationDate: { $gte: monthStart },
       }),
     ]);
 
@@ -216,6 +225,10 @@ export const getTechnicianDashboardData = async (req, res) => {
             ins.inseminationDate ||
             ins.createdAt;
 
+      const isOverdue =
+        ["pending", "approved", "in-progress"].includes(ins.status) &&
+        new Date(itemDisplayDate) < todayStart;
+
       const item = {
         id: ins._id,
         type: "insemination",
@@ -228,6 +241,7 @@ export const getTechnicianDashboardData = async (req, res) => {
           ? `AI Request (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.earTag || "Unknown"}`
           : `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.earTag || "Unknown"}`,
         urgent: isMobileRequest,
+        overdue: isOverdue,
         sentTime: formatTime(ins.createdAt),
         raw: ins,
       };
@@ -238,9 +252,12 @@ export const getTechnicianDashboardData = async (req, res) => {
 
       if (
         isFull ||
-        (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd)
+        (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd) ||
+        isOverdue
       ) {
-        agendaItems.push(item);
+        if (ins.status !== "pending") {
+          agendaItems.push(item);
+        }
       }
     });
 
@@ -250,6 +267,10 @@ export const getTechnicianDashboardData = async (req, res) => {
         req.status === "resolved" || req.status === "done"
           ? req.scheduledDate || req.preferredDate || req.createdAt // Health doesn't have inseminationDate
           : req.scheduledDate || req.preferredDate || req.createdAt;
+
+      const isOverdue =
+        ["pending", "in-progress"].includes(req.status) &&
+        new Date(itemDisplayDate) < todayStart;
 
       const item = {
         id: req._id,
@@ -261,6 +282,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         location: formatAddress(req.farmerId?.address),
         task: `Health Check - ${req.animalId?.earTag || "Unknown"}`,
         urgent: req.urgency === "high",
+        overdue: isOverdue,
         sentTime: formatTime(req.createdAt),
         raw: req,
       };
@@ -271,9 +293,12 @@ export const getTechnicianDashboardData = async (req, res) => {
 
       if (
         isFull ||
-        (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd)
+        (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd) ||
+        isOverdue
       ) {
-        agendaItems.push(item);
+        if (req.status !== "pending") {
+          agendaItems.push(item);
+        }
       }
     });
 
@@ -360,7 +385,7 @@ export const getMyInseminations = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const [records, total] = await Promise.all([
-      Insemination.find()
+      Insemination.find({ deletedAt: null })
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "earTag breed species imageUrl")
         .populate("pregnancyId")
@@ -368,7 +393,7 @@ export const getMyInseminations = async (req, res) => {
         .skip(skip)
         .limit(limit)
         .lean(),
-      Insemination.countDocuments(),
+      Insemination.countDocuments({ deletedAt: null }),
     ]);
 
     res.status(200).json({
@@ -387,7 +412,7 @@ export const getMyReInseminations = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const query = { attemptNumber: { $gt: 1 } };
+    const query = { attemptNumber: { $gt: 1 }, deletedAt: null };
 
     const [records, total] = await Promise.all([
       Insemination.find(query)
@@ -419,14 +444,14 @@ export const getMyPregnancyChecks = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const [records, total] = await Promise.all([
-      Pregnancy.find()
+      Pregnancy.find({ deletedAt: null })
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      Pregnancy.countDocuments(),
+      Pregnancy.countDocuments({ deletedAt: null }),
     ]);
 
     res.status(200).json({
@@ -448,14 +473,14 @@ export const getMyCalvings = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const [records, total] = await Promise.all([
-      Calving.find()
+      Calving.find({ deletedAt: null })
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
-      Calving.countDocuments(),
+      Calving.countDocuments({ deletedAt: null }),
     ]);
 
     res.status(200).json({
@@ -548,10 +573,22 @@ export const walkInInsemination = async (req, res) => {
           phoneNumber,
           email: email || undefined,
           address: {
-            street: typeof address === 'object' && address?.street ? address.street : "",
-            barangay: typeof address === 'string' ? address : (address?.barangay || "Not Provided"),
-            city: typeof address === 'object' && address?.city ? address.city : "Oton",
-            province: typeof address === 'object' && address?.province ? address.province : "Iloilo"
+            street:
+              typeof address === "object" && address?.street
+                ? address.street
+                : "",
+            barangay:
+              typeof address === "string"
+                ? address
+                : address?.barangay || "Not Provided",
+            city:
+              typeof address === "object" && address?.city
+                ? address.city
+                : "Oton",
+            province:
+              typeof address === "object" && address?.province
+                ? address.province
+                : "Iloilo",
           },
           role: "farmer",
           isVerified: true,
@@ -566,7 +603,7 @@ export const walkInInsemination = async (req, res) => {
     // 2. Resolve or Create Animal
     let animal;
     if (bodyAnimalId) {
-       animal = await Animal.findById(bodyAnimalId);
+      animal = await Animal.findById(bodyAnimalId);
     } else if (animalDetails?.earTag) {
       animal = await Animal.findOne({ earTag: animalDetails.earTag });
     } else if (animalDetails?.animalId) {
@@ -575,9 +612,12 @@ export const walkInInsemination = async (req, res) => {
 
     if (!animal) {
       if (!animalDetails?.animalId && !animalDetails?.earTag) {
-         return res.status(400).json({ message: "Animal details are required." });
+        return res
+          .status(400)
+          .json({ message: "Animal details are required." });
       }
-      const newAnimalId = animalDetails.animalId || `ANM-${Date.now().toString().slice(-6)}`;
+      const newAnimalId =
+        animalDetails.animalId || `ANM-${Date.now().toString().slice(-6)}`;
       animal = await Animal.create({
         farmerId: farmer._id,
         animalId: newAnimalId,
@@ -585,7 +625,16 @@ export const walkInInsemination = async (req, res) => {
         species: animalDetails.species || "Cattle",
         breed: animalDetails.breed || "Crossbreed",
         color: animalDetails.color || "Not Provided",
+        barangay: farmer.address?.barangay || "Not Provided",
         isVerified: true,
+      });
+    }
+
+    // Gender check
+    if (animal.gender !== "Female") {
+      return res.status(400).json({
+        message:
+          "Insemination is restricted to female animals only. This animal is registered as Male.",
       });
     }
 
@@ -612,7 +661,9 @@ export const walkInInsemination = async (req, res) => {
       inseminationDetails?.inseminationDate ||
       new Date().toISOString().split("T")[0];
     const entryTimeString = inseminationDetails?.time || "08:00";
-    const entryDate = new Date(`${entryDateString}T${entryTimeString}:00+08:00`);
+    const entryDate = new Date(
+      `${entryDateString}T${entryTimeString}:00+08:00`,
+    );
 
     const insemination = await Insemination.create({
       farmerId: farmer._id,
@@ -627,6 +678,16 @@ export const walkInInsemination = async (req, res) => {
       status: inseminationDetails?.status || "in-progress",
       approvedBy: req.user._id,
     });
+
+    // Sync Animal Status if marked as 'done'
+    if (insemination.status === "done") {
+      await Animal.findByIdAndUpdate(animal._id, {
+        reproductiveStatus: "Inseminated",
+      });
+      console.log(
+        `[Status Sync] Animal ${animal._id} set to Inseminated via walkInInsemination.`,
+      );
+    }
 
     // Notify Farmer
     await Notification.create({
@@ -660,20 +721,33 @@ export const walkInInsemination = async (req, res) => {
 export const updateInseminationStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, technicianNote, scheduledDate, sireBreed, sireCode, estrus } = req.body;
+    const {
+      status,
+      technicianNote,
+      scheduledDate,
+      sireBreed,
+      sireCode,
+      estrus,
+    } = req.body;
 
-    const updateData = { status, technicianNote, scheduledDate, sireBreed, sireCode, estrus, approvedBy: req.user._id };
-    
+    const updateData = {
+      status,
+      technicianNote,
+      scheduledDate,
+      sireBreed,
+      sireCode,
+      estrus,
+      approvedBy: req.user._id,
+    };
+
     // If marking as done, set the official insemination date to now (if not already set)
     if (status === "done") {
       updateData.inseminationDate = new Date();
     }
 
-    const insemination = await Insemination.findByIdAndUpdate(
-      id,
-      updateData,
-      { returnDocument: "after" },
-    )
+    const insemination = await Insemination.findByIdAndUpdate(id, updateData, {
+      returnDocument: "after",
+    })
       .populate("farmerId", "name")
       .populate("animalId", "earTag");
 
@@ -683,9 +757,11 @@ export const updateInseminationStatus = async (req, res) => {
     // --- IMMEDIATE STATUS SYNC ---
     if (status === "done") {
       await Animal.findByIdAndUpdate(insemination.animalId, {
-        reproductiveStatus: "Inseminated"
+        reproductiveStatus: "Inseminated",
       });
-      console.log(`[Status Sync] Animal ${insemination.animalId} set to Inseminated via updateInseminationStatus.`);
+      console.log(
+        `[Status Sync] Animal ${insemination.animalId} set to Inseminated via updateInseminationStatus.`,
+      );
     }
 
     // Notify Farmer
@@ -747,13 +823,21 @@ export const getAnimalHistory = async (req, res) => {
     // 1. Fetch all related records
     const [animal, inseminations, pregnancies, calvings, healthRequests] =
       await Promise.all([
-        Animal.findById(id)
+        Animal.findOne({ _id: id, deletedAt: null })
           .populate("farmerId", "name phoneNumber address")
           .lean(),
-        Insemination.find({ animalId: id }).sort({ createdAt: -1 }).lean(),
-        Pregnancy.find({ animalId: id }).sort({ createdAt: -1 }).lean(),
-        Calving.find({ animalId: id }).sort({ createdAt: -1 }).lean(),
-        HealthRequest.find({ animalId: id }).sort({ createdAt: -1 }).lean(),
+        Insemination.find({ animalId: id, deletedAt: null })
+          .sort({ createdAt: -1 })
+          .lean(),
+        Pregnancy.find({ animalId: id, deletedAt: null })
+          .sort({ createdAt: -1 })
+          .lean(),
+        Calving.find({ animalId: id, deletedAt: null })
+          .sort({ createdAt: -1 })
+          .lean(),
+        HealthRequest.find({ animalId: id, deletedAt: null })
+          .sort({ createdAt: -1 })
+          .lean(),
       ]);
 
     if (!animal) return res.status(404).json({ message: "Animal not found" });
@@ -793,8 +877,8 @@ export const getAnimalHistory = async (req, res) => {
           sireCode: ins.sireCode,
           attemptNumber: ins.attemptNumber,
           estrus: ins.estrus,
-          outcome: ins.outcome
-        }
+          outcome: ins.outcome,
+        },
       });
     });
 
@@ -819,8 +903,8 @@ export const getAnimalHistory = async (req, res) => {
           result,
           diagnosisDate: p.pregnancyDiagnosis?.date,
           targetCalvingDate: p.targetCalvingDate,
-          technicianNote: p.technicianNote
-        }
+          technicianNote: p.technicianNote,
+        },
       });
     });
 
@@ -842,8 +926,8 @@ export const getAnimalHistory = async (req, res) => {
           numberOfCalves: c.numberOfCalves,
           calvingEase: c.calvingEase,
           calves: c.calves,
-          technicianNote: c.technicianNote
-        }
+          technicianNote: c.technicianNote,
+        },
       });
     });
 
@@ -865,15 +949,22 @@ export const getAnimalHistory = async (req, res) => {
           diagnosis: h.diagnosis,
           treatment: h.treatment,
           symptoms: h.symptoms,
-          technicianNote: h.technicianNote
-        }
+          technicianNote: h.technicianNote,
+        },
       });
     });
 
     // 3. Sort by Date Descending
     timeline.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    res.status(200).json({ animal, timeline });
+    res.status(200).json({
+      animal,
+      timeline,
+      inseminations,
+      pregnancies,
+      calvings,
+      healthRequests,
+    });
   } catch (error) {
     console.error("[getAnimalHistory ERROR]", error);
     res
@@ -973,27 +1064,41 @@ export const recordPregnancyCheck = async (req, res) => {
     const animal = await Animal.findById(animalId);
     if (!animal) return res.status(404).json({ message: "Animal not found" });
 
-    // Use findOneAndUpdate with upsert: true to handle re-submissions or updates
-    const pregnancy = await Pregnancy.findOneAndUpdate(
-      { inseminationId }, // Unique identifier
-      {
-        animalId,
-        farmerId: animal.farmerId,
-        technicianNote,
-        pregnancyDiagnosis: {
-          date: new Date(),
-          result: result, // "Pregnant" or "Empty"
-        },
-        targetCalvingDate:
-          result === "Pregnant"
-            ? new Date(Date.now() + 280 * 24 * 60 * 60 * 1000)
-            : undefined,
-      },
-      { new: true, upsert: true, runValidators: true },
-    );
+    // PROTECTION 1: Don't allow diagnosing a cow that's already pregnant
+    if (animal.reproductiveStatus === "Pregnant") {
+      return res.status(400).json({
+        message: "Animal is already marked as pregnant.",
+      });
+    }
 
-    // Update Insemination outcome
+    // PROTECTION 2: Stop overwriting old records
+    const existingPregnancy = await Pregnancy.findOne({ inseminationId });
+    if (existingPregnancy) {
+      return res.status(400).json({
+        message:
+          "Pregnancy diagnosis already recorded for this insemination attempt.",
+      });
+    }
+
+    // Create NEW record instead of updating an upsert
+    const pregnancy = await Pregnancy.create({
+      animalId,
+      farmerId: animal.farmerId,
+      inseminationId,
+      technicianNote,
+      pregnancyDiagnosis: {
+        date: new Date(),
+        result: result, // "Pregnant" or "Empty"
+      },
+      targetCalvingDate:
+        result === "Pregnant"
+          ? calculateTargetCalvingDate(new Date(), animal.species)
+          : undefined,
+    });
+
+    // Update Insemination outcome and ensure status is marked as done
     await Insemination.findByIdAndUpdate(inseminationId, {
+      status: "done",
       outcome: result === "Pregnant" ? "Pregnant" : "Failed (Negative PD)",
       pregnancyId: pregnancy._id,
     });
@@ -1003,16 +1108,24 @@ export const recordPregnancyCheck = async (req, res) => {
       reproductiveStatus: result === "Pregnant" ? "Pregnant" : "Normal",
     });
 
-    // Notify Farmer
     if (animal.farmerId) {
       try {
+        const title =
+          result === "Pregnant"
+            ? "🎉 Pregnancy Confirmed!"
+            : "Pregnancy Check Outcome";
+        const message =
+          result === "Pregnant"
+            ? `Great news! Animal Tag #${animal.earTag || animal.animalId} has been confirmed pregnant by technician ${req.user.name}. Expected calving date is around ${pregnancy.targetCalvingDate ? new Date(pregnancy.targetCalvingDate).toLocaleDateString() : "the calculated target"}.`
+            : `The pregnancy check for animal Tag #${animal.earTag || animal.animalId} resulted in: Empty. We recommend monitoring her for signs of heat and scheduling another A.I. attempt when appropriate.`;
+
         await Notification.create({
           recipientId: animal.farmerId,
           senderId: req.user._id,
           type: "system",
           relatedId: pregnancy._id,
-          title: "Pregnancy Check Result",
-          message: `The pregnancy check for ${animal.earTag || animal.animalId} resulted in: ${result}.`,
+          title,
+          message,
         });
       } catch (notifErr) {
         console.error("[recordPregnancyCheck NOTIF ERROR]", notifErr.message);
@@ -1061,14 +1174,39 @@ export const recordCalving = async (req, res) => {
     } = req.body;
 
     // 1. Validate Mother & Pregnancy
-    const mother = await Animal.findById(animalId);
+    const mother = await Animal.findOne({ _id: animalId, deletedAt: null });
     if (!mother)
       return res.status(404).json({ message: "Mother animal not found" });
 
-    const pregnancy =
-      await Pregnancy.findById(pregnancyId).populate("inseminationId");
+    // Chronological Calving Postpartum Firewall
+    if (mother.lastCalvingDate) {
+      const windowCheck = verifyPostpartumWindow(
+        mother.lastCalvingDate,
+        date || new Date(),
+        mother.species,
+      );
+      if (!windowCheck.isSafe) {
+        return res.status(422).json({
+          message: `Warning: Calving event occurs too close to the previous calving event. Only ${windowCheck.daysPassed} days have passed, but the voluntary waiting period for ${mother.species} is ${windowCheck.requiredDays} days.`,
+        });
+      }
+    }
+
+    const pregnancy = await Pregnancy.findOne({
+      _id: pregnancyId,
+      deletedAt: null,
+    }).populate("inseminationId");
     if (!pregnancy)
       return res.status(404).json({ message: "Pregnancy record not found" });
+
+    // Check if calving record already exists to prevent E11000 duplicate key error
+    const existingCalving = await Calving.findOne({ pregnancyId: pregnancy._id, deletedAt: null });
+    if (existingCalving) {
+      if (mother.reproductiveStatus === "Pregnant") {
+         await Animal.findByIdAndUpdate(animalId, { $set: { reproductiveStatus: "Normal" } });
+      }
+      return res.status(400).json({ message: "A calving record already exists for this pregnancy." });
+    }
 
     // Extract sire info from insemination if available
     const sireBreed = pregnancy.inseminationId?.sireBreed || "Unknown";
@@ -1096,7 +1234,10 @@ export const recordCalving = async (req, res) => {
         motherId: mother._id,
         isVerified: true,
         gender: calfData.sex === "M" ? "Male" : "Female",
+        color: calfData.color || "Not Provided",
+        brand: calfData.brand || "",
         birthDate: date || new Date(),
+        barangay: mother.barangay || "Not Provided",
         activityLogs: [
           {
             event: "Initial Registration",
@@ -1128,9 +1269,12 @@ export const recordCalving = async (req, res) => {
       technicianNote,
     });
 
-    // 4. Update Mother's Status & Increment Parity
+    // 4. Update Mother's Status, lastCalvingDate & Increment Parity
     await Animal.findByIdAndUpdate(animalId, {
-      reproductiveStatus: "Normal",
+      $set: {
+        reproductiveStatus: "Normal",
+        lastCalvingDate: date || new Date(),
+      },
       $inc: { parity: 1 }, // Track number of births
       $push: {
         activityLogs: {
@@ -1143,12 +1287,15 @@ export const recordCalving = async (req, res) => {
 
     // 5. Notify Farmer
     if (mother.farmerId) {
+      const calfSexList = calves
+        .map((c) => (c.sex === "M" ? "Male" : "Female"))
+        .join(", ");
       await Notification.create({
         recipientId: mother.farmerId,
         senderId: req.user._id,
         type: "system",
         title: "🍼 New Calving Recorded",
-        message: `Congratulations! ${mother.earTag || "Your animal"} has successfully calved. ${registeredCalves.length} new calf/calves added to your registry.`,
+        message: `Congratulations! Your animal Tag #${mother.earTag || mother.animalId} successfully calved ${registeredCalves.length} offspring (${calfSexList}).`,
       });
     }
 
@@ -1230,13 +1377,17 @@ export const getDashboardFeed = async (req, res) => {
     const [inseminations, healthReqs] = await Promise.all([
       Insemination.find({
         status: { $in: ["pending", "approved", "in-progress"] },
+        deletedAt: null,
       })
         .populate("farmerId", "name address")
         .populate("animalId", "earTag imageUrl breed species")
         .sort({ createdAt: -1 })
         .limit(20)
         .lean(),
-      HealthRequest.find({ status: { $in: ["pending", "in-progress"] } })
+      HealthRequest.find({
+        status: { $in: ["pending", "in-progress"] },
+        deletedAt: null,
+      })
         .populate("farmerId", "name address")
         .populate("animalId", "earTag imageUrl breed species")
         .sort({ urgency: -1, createdAt: -1 })
@@ -1403,6 +1554,7 @@ export const walkInLivestock = async (req, res) => {
       gender: gender || sex || "Female",
       birthDate: dob ? new Date(dob) : undefined,
       imageUrl: finalImageUrl,
+      barangay: farmer.address?.barangay || "Not Provided",
       isVerified: true,
     });
 
@@ -1701,13 +1853,15 @@ export const deletePregnancyCheck = async (req, res) => {
     const { id } = req.params;
     const record = await Pregnancy.findByIdAndDelete(id);
     if (!record) return res.status(404).json({ message: "Record not found" });
-    
+
     // Cleanup linked calving if any
     await Calving.deleteMany({ pregnancyId: id });
-    
+
     res.status(200).json({ message: "Pregnancy check deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete record", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to delete record", error: error.message });
   }
 };
 
@@ -1716,10 +1870,12 @@ export const deleteCalving = async (req, res) => {
     const { id } = req.params;
     const record = await Calving.findByIdAndDelete(id);
     if (!record) return res.status(404).json({ message: "Record not found" });
-    
+
     res.status(200).json({ message: "Calving event deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete record", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to delete record", error: error.message });
   }
 };
 
@@ -1790,14 +1946,17 @@ export const getFieldNotes = async (req, res) => {
 
     res.status(200).json(notes);
   } catch (error) {
-    res.status(500).json({ message: "Failed to load field notes", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to load field notes", error: error.message });
   }
 };
 
 export const createFieldNote = async (req, res) => {
   try {
     const technicianId = req.user._id;
-    const { title, description, imageUrl, farmerName, latitude, longitude } = req.body;
+    const { title, description, imageUrl, farmerName, latitude, longitude } =
+      req.body;
 
     if (!title) {
       return res.status(400).json({ message: "Note title is required" });
@@ -1813,7 +1972,9 @@ export const createFieldNote = async (req, res) => {
         finalImageUrl = uploadResponse.secure_url;
       } catch (uploadError) {
         console.error("[createFieldNote IMAGE UPLOAD ERROR]", uploadError);
-        return res.status(500).json({ message: "Failed to upload photo note image" });
+        return res
+          .status(500)
+          .json({ message: "Failed to upload photo note image" });
       }
     }
 
@@ -1845,10 +2006,14 @@ export const createFieldNote = async (req, res) => {
       message: `Technician ${req.user.name} uploaded a new field note: ${title}`,
     });
 
-    res.status(201).json({ message: "Field note saved successfully", fieldNote });
+    res
+      .status(201)
+      .json({ message: "Field note saved successfully", fieldNote });
   } catch (error) {
     console.error("[createFieldNote ERROR]", error);
-    res.status(500).json({ message: "Failed to save field note", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to save field note", error: error.message });
   }
 };
 
@@ -1859,22 +2024,34 @@ export const getTechnicianFieldNotes = async (req, res) => {
       .lean();
     res.status(200).json(notes);
   } catch (error) {
-    res.status(500).json({ message: "Failed to load your field notes", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Failed to load your field notes",
+        error: error.message,
+      });
   }
 };
 
 export const deleteFieldNote = async (req, res) => {
   try {
     const { id } = req.params;
-    const note = await FieldNote.findOne({ _id: id, technicianId: req.user._id });
+    const note = await FieldNote.findOne({
+      _id: id,
+      technicianId: req.user._id,
+    });
     if (!note) {
-      return res.status(404).json({ message: "Field note not found or unauthorized" });
+      return res
+        .status(404)
+        .json({ message: "Field note not found or unauthorized" });
     }
 
     await FieldNote.findByIdAndDelete(id);
     res.status(200).json({ message: "Field note deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete field note", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to delete field note", error: error.message });
   }
 };
 
@@ -1884,16 +2061,31 @@ export const deleteFieldNoteRecord = async (req, res) => {
     const { type } = req.query;
 
     if (type === "insemination") {
-      await Insemination.findByIdAndDelete(id);
-      res.status(200).json({ message: "Insemination field note deleted successfully" });
+      await Insemination.findByIdAndUpdate(id, {
+        $set: { deletedAt: new Date() },
+      });
+      res
+        .status(200)
+        .json({ message: "Insemination field note deleted successfully" });
     } else if (type === "health") {
-      await HealthRequest.findByIdAndDelete(id);
-      res.status(200).json({ message: "Health request field note deleted successfully" });
+      await HealthRequest.findByIdAndUpdate(id, {
+        $set: { deletedAt: new Date() },
+      });
+      res
+        .status(200)
+        .json({ message: "Health request field note deleted successfully" });
     } else {
-      await FieldNote.findByIdAndDelete(id);
+      await FieldNote.findByIdAndUpdate(id, {
+        $set: { deletedAt: new Date() },
+      });
       res.status(200).json({ message: "Field note deleted successfully" });
     }
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete field note record", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Failed to delete field note record",
+        error: error.message,
+      });
   }
 };

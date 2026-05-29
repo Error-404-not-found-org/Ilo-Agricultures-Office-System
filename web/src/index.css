@@ -3,6 +3,8 @@
   themes: emerald, corporate, dark, night;
 }
 
+@custom-variant dark (&:is(.dark *, [data-theme="night"] *));
+
 :root {
   --font-outfit: "Outfit", sans-serif;
   /* Custom Dark Green from reference image */

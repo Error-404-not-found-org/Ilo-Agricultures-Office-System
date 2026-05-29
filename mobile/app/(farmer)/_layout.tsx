@@ -1,48 +1,19 @@
-import { Tabs } from "expo-router";
+import { Stack } from "expo-router";
 import React from "react";
-import FarmerBottomNavigator from "../components/FarmerBottomNavigator";
 
 export default function FarmerLayout() {
   return (
-    <Tabs
-      tabBar={(props) => <FarmerBottomNavigator {...props} />}
-      screenOptions={{ headerShown: false }}
-    >
-      <Tabs.Screen name="index" />
-      <Tabs.Screen name="add-animal" />
-      <Tabs.Screen name="farmer.records" />
-      <Tabs.Screen 
-        name="my-requests" 
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen 
-        name="heat-map" 
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen 
-        name="help-center" 
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen 
-        name="ask-moowie" 
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" }
-        }}
-      />
-      <Tabs.Screen 
-        name="settings" 
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen name="profile" />
-    </Tabs>
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* The main tab group */}
+      <Stack.Screen name="(tabs)" />
+      
+      {/* Other stack screens */}
+      <Stack.Screen name="my-requests" />
+      <Stack.Screen name="heat-map" />
+      <Stack.Screen name="help-center" />
+      <Stack.Screen name="ask-moowie" />
+      <Stack.Screen name="settings" />
+      <Stack.Screen name="record-calving" />
+    </Stack>
   );
 }

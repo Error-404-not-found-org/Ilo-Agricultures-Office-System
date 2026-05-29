@@ -194,11 +194,17 @@ const TechnicianAnalytics = () => {
                      dy={10}
                    />
                    <YAxis hide />
-                   <RechartsTooltip 
-                     cursor={{ fill: '#ffffff05' }}
-                     contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }}
-                     itemStyle={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase' }}
-                   />
+                    <RechartsTooltip 
+                      cursor={{ fill: 'var(--color-base-300)', opacity: 0.1 }}
+                      contentStyle={{ 
+                        backgroundColor: 'var(--color-base-100)', 
+                        borderColor: 'var(--color-base-300)', 
+                        color: 'var(--color-base-content)',
+                        borderRadius: '12px' 
+                      }}
+                      itemStyle={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', color: 'var(--color-base-content)' }}
+                      labelStyle={{ color: 'var(--color-base-content)', opacity: 0.7 }}
+                    />
                    <Bar 
                      dataKey="ai" 
                      fill="#10b981" 
@@ -237,9 +243,15 @@ const TechnicianAnalytics = () => {
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                        ))}
                     </Pie>
-                    <RechartsTooltip 
-                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #ffffff10', borderRadius: '12px' }}
-                    />
+                     <RechartsTooltip 
+                       contentStyle={{ 
+                         backgroundColor: 'var(--color-base-100)', 
+                         borderColor: 'var(--color-base-300)', 
+                         color: 'var(--color-base-content)',
+                         borderRadius: '12px' 
+                       }}
+                       itemStyle={{ color: 'var(--color-base-content)' }}
+                     />
                  </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">

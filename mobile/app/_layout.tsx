@@ -160,9 +160,9 @@ function InitialLayout() {
       // Since we returned early for unverified users, anyone hitting this block IS verified.
       // If a verified user is in the auth group or at root, send them to their dashboard.
       if (inAuthGroup || atRoot || wrongGroup) {
-        if (role === 'admin') router.replace('/(admin)/admin.dashboard');
-        else if (role === 'technician') router.replace('/(technician)/technician.dashboard');
-        else router.replace('/(farmer)');
+        if (role === 'admin') router.replace('/(admin)/(tabs)/admin.dashboard');
+        else if (role === 'technician') router.replace('/(technician)/(tabs)/technician.dashboard');
+        else router.replace('/(farmer)/(tabs)');
       }
     } else if (isLoaded && !isSignedIn) {
       // 3. Force Auth

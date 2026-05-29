@@ -1,5 +1,5 @@
 import { useApi } from "@/lib/api";
-import { User } from "@/types";
+import { User } from "@/types/index"; // Normalized types definition
 import { useQuery } from "@tanstack/react-query";
 
 const useTechnicianClients = () => {

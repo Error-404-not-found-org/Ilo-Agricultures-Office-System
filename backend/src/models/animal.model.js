@@ -36,6 +36,7 @@ const AnimalSchema = new mongoose.Schema(
     // Advanced Reproduction Tracking
     lastInseminationDate: { type: Date },
     expectedCalvingDate: { type: Date },
+    lastCalvingDate: { type: Date },
     parity: { type: Number, default: 0 }, // Number of births
     sireDetails: {
       breed: { type: String },
@@ -65,6 +66,9 @@ const AnimalSchema = new mongoose.Schema(
       ref: "Animal",
       default: null,
     },
+    // Barangay caching for fast localized routing/listing queries
+    barangay: { type: String },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -74,6 +78,8 @@ AnimalSchema.index({ farmerId: 1 });
 AnimalSchema.index({ animalId: 1 });
 AnimalSchema.index({ earTag: 1 });
 AnimalSchema.index({ species: 1 });
+AnimalSchema.index({ barangay: 1 });
+AnimalSchema.index({ deletedAt: 1 });
 AnimalSchema.index({ createdAt: -1 });
 
 export const Animal = mongoose.model("Animal", AnimalSchema);

@@ -11,6 +11,7 @@ import { Alert } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useTheme } from '@/lib/theme';
 
 const PRIMARY = "#00643B";
 
@@ -37,6 +38,7 @@ const ServiceLedger = () => {
   const router = useRouter();
   const api = useApi();
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
   
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -258,11 +260,11 @@ const ServiceLedger = () => {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" />
 
       {/* Premium Header */}
-      <View style={{ backgroundColor: PRIMARY, paddingBottom: 50, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, paddingHorizontal: 24, paddingTop: insets.top + 20 }}>
+      <View style={{ backgroundColor: isDark ? "#064e3e" : "#00643B", paddingBottom: 50, borderBottomLeftRadius: 40, borderBottomRightRadius: 40, paddingHorizontal: 24, paddingTop: insets.top + 20 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
@@ -309,7 +311,7 @@ const ServiceLedger = () => {
       <View style={{ 
           flex: 1, 
           marginTop: -30, 
-          backgroundColor: '#f8fafc', 
+          backgroundColor: colors.background, 
           borderTopLeftRadius: 40, 
           borderTopRightRadius: 40,
           overflow: 'hidden'
@@ -317,18 +319,18 @@ const ServiceLedger = () => {
         
         {/* Search Bar */}
         <View style={{ paddingHorizontal: 20, paddingTop: 25 }}>
-          <View style={{ backgroundColor: '#fff', borderRadius: 20, padding: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10, elevation: 3, borderWidth: 1, borderColor: '#f1f5f9' }}>
-             <Search size={18} color="#94a3b8" style={{ marginLeft: 8 }} />
+          <View style={{ backgroundColor: colors.card, borderRadius: 20, padding: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 10, elevation: 3, borderWidth: 1, borderColor: colors.border }}>
+             <Search size={18} color={colors.textMuted} style={{ marginLeft: 8 }} />
              <TextInput 
                placeholder="Search by Farmer, Animal Ear Tag, Status..."
-               placeholderTextColor="#94a3b8"
-               style={{ flex: 1, marginLeft: 12, fontFamily: 'Outfit_600SemiBold', color: '#1e293b', fontSize: 13 }}
+               placeholderTextColor={colors.textMuted}
+               style={{ flex: 1, marginLeft: 12, fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary, fontSize: 13 }}
                value={searchQuery}
                onChangeText={setSearchQuery}
              />
              {searchQuery.length > 0 && (
                <TouchableOpacity onPress={() => setSearchQuery("")} style={{ padding: 4 }}>
-                 <X size={16} color="#94a3b8" />
+                 <X size={16} color={colors.textMuted} />
                </TouchableOpacity>
              )}
           </View>
@@ -336,15 +338,15 @@ const ServiceLedger = () => {
 
         {/* Date Filter Active indicator */}
         {(startDate || endDate) && (
-          <View style={{ marginHorizontal: 20, marginTop: 12, backgroundColor: '#fef9c3', borderStyle: 'solid', borderWidth: 1, borderColor: '#fef08a', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ marginHorizontal: 20, marginTop: 12, backgroundColor: isDark ? '#3f3f0e' : '#fef9c3', borderStyle: 'solid', borderWidth: 1, borderColor: isDark ? '#5e5e0d' : '#fef08a', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-               <Calendar size={14} color="#a16207" />
-               <Text style={{ fontSize: 11, fontFamily: 'Outfit_700Bold', color: '#a16207' }}>
+               <Calendar size={14} color={isDark ? '#eab308' : '#a16207'} />
+               <Text style={{ fontSize: 11, fontFamily: 'Outfit_700Bold', color: isDark ? '#eab308' : '#a16207' }}>
                  Range: {startDate ? startDate.toLocaleDateString() : '...'} - {endDate ? endDate.toLocaleDateString() : '...'}
                </Text>
             </View>
             <TouchableOpacity onPress={clearDateRange} style={{ padding: 2 }}>
-               <X size={14} color="#a16207" />
+               <X size={14} color={isDark ? '#eab308' : '#a16207'} />
             </TouchableOpacity>
           </View>
         )}
@@ -359,16 +361,16 @@ const ServiceLedger = () => {
                   key={filter}
                   onPress={() => setSelectedFilter(filter)}
                   style={{
-                    backgroundColor: isActive ? PRIMARY : '#fff',
+                    backgroundColor: isActive ? (isDark ? colors.primary : PRIMARY) : colors.card,
                     paddingHorizontal: 16,
                     paddingVertical: 8,
                     borderRadius: 12,
                     borderWidth: 1,
-                    borderColor: isActive ? PRIMARY : '#e2e8f0'
+                    borderColor: isActive ? (isDark ? colors.primary : PRIMARY) : colors.border
                   }}
                 >
                   <Text style={{ 
-                    color: isActive ? '#fff' : '#64748b',
+                    color: isActive ? '#fff' : colors.textSecondary,
                     fontFamily: 'Outfit_700Bold',
                     fontSize: 12
                   }}>
@@ -382,13 +384,13 @@ const ServiceLedger = () => {
 
         {/* Ledger Counter Badge */}
         <View style={{ paddingHorizontal: 20, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-           <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: '#64748b', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+           <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textSecondary, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 }}>
               Showing {filteredRecords.length} of {allRecords.length} records
            </Text>
            {filteredRecords.length > 0 && (
              <TouchableOpacity onPress={handleExportCSV} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                <Download size={12} color={PRIMARY} />
-                <Text style={{ fontFamily: 'Outfit_700Bold', color: PRIMARY, fontSize: 11 }}>Export CSV</Text>
+                 <Download size={12} color={isDark ? colors.primary : '#059669'} />
+                 <Text style={{ fontFamily: 'Outfit_700Bold', color: isDark ? colors.primary : '#059669', fontSize: 11 }}>Export CSV</Text>
              </TouchableOpacity>
            )}
         </View>
@@ -397,14 +399,14 @@ const ServiceLedger = () => {
         <ScrollView 
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: insets.bottom + 100 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[PRIMARY]} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[isDark ? colors.primary : '#059669']} />}
         >
            {loading && !refreshing ? (
-             <ActivityIndicator color={PRIMARY} style={{ marginTop: 40 }} />
+             <ActivityIndicator color={isDark ? colors.primary : '#059669'} style={{ marginTop: 40 }} />
            ) : filteredRecords.length === 0 ? (
              <View style={{ marginTop: 60, alignItems: 'center' }}>
-                <MaterialCommunityIcons name="clipboard-text-off-outline" size={64} color="#cbd5e1" />
-                <Text style={{ fontFamily: 'Outfit_700Bold', color: '#94a3b8', marginTop: 16 }}>No records matching search or filter</Text>
+                <MaterialCommunityIcons name="clipboard-text-off-outline" size={64} color={colors.textMuted} />
+                <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary, marginTop: 16 }}>No records matching search or filter</Text>
              </View>
             ) : filteredRecords.map((item, idx) => (
               <RecordCard 
@@ -445,17 +447,18 @@ const ServiceLedger = () => {
 };
 
 const RecordCard = ({ item, onPress }: any) => {
+  const { colors, isDark } = useTheme();
   let title = "";
   let icon = "clipboard-text";
-  let color = PRIMARY;
-  let bg = "#ecfdf5";
+  let color = isDark ? colors.primary : PRIMARY;
+  let bg = isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5';
   
   switch(item.type) {
     case 'insemination': title = `AI Insemination #${item.attemptNumber || 1}`; icon = "needle"; break;
-    case 'pregnancy': title = "Pregnancy Check"; icon = "heart-pulse"; color = "#2563EB"; bg = "#eff6ff"; break;
-    case 'calving': title = "Calf Drop"; icon = "baby-carriage"; color = "#D97706"; bg = "#fffbeb"; break;
+    case 'pregnancy': title = "Pregnancy Check"; icon = "heart-pulse"; color = "#2563EB"; bg = isDark ? 'rgba(37, 99, 235, 0.15)' : '#eff6ff'; break;
+    case 'calving': title = "Calf Drop"; icon = "baby-carriage"; color = "#D97706"; bg = isDark ? 'rgba(217, 119, 6, 0.15)' : '#fffbeb'; break;
     case 'ai-request': title = "AI Request Visit"; icon = "bullseye-arrow"; break;
-    case 'health-request': title = "Health Check / Visit"; icon = "medical-bag"; color = "#ef4444"; bg = "#fef2f2"; break;
+    case 'health-request': title = "Health Check / Visit"; icon = "medical-bag"; color = "#ef4444"; bg = isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2'; break;
   }
 
   const dateRaw = getDisplayDate(item);
@@ -465,71 +468,72 @@ const RecordCard = ({ item, onPress }: any) => {
     <TouchableOpacity 
       activeOpacity={0.8}
       onPress={onPress}
-      style={{ backgroundColor: '#fff', borderRadius: 24, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 10, elevation: 1, borderWidth: 1, borderColor: '#f1f5f9' }}
+      style={{ backgroundColor: colors.card, borderRadius: 24, padding: 16, marginBottom: 12, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.02, shadowRadius: 10, elevation: 1, borderWidth: 1, borderColor: colors.border }}
     >
         <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
           <MaterialCommunityIcons name={icon as any} size={26} color={color} />
         </View>
         <View style={{ flex: 1, marginLeft: 16 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={{ fontSize: 14, fontFamily: 'Outfit_700Bold', color: '#1e293b' }}>{title}</Text>
-              <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: '#94a3b8' }}>{date}</Text>
+              <Text style={{ fontSize: 14, fontFamily: 'Outfit_700Bold', color: colors.textPrimary }}>{title}</Text>
+              <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: colors.textMuted }}>{date}</Text>
           </View>
-          <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: '#64748b', marginTop: 2 }}>
+          <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: colors.textSecondary, marginTop: 2 }}>
               Farmer: {item.farmerId?.name || 'Unknown'} · Cow: {item.animalId?.earTag || item.animalId?.animalId || 'No Tag'}
           </Text>
           <View style={{ marginTop: 6, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: item.status === 'pending' ? '#f59e0b' : item.status === 'in-progress' ? '#2563EB' : '#10b981' }} />
-              <Text style={{ fontSize: 9, fontFamily: 'Outfit_800ExtraBold', color: '#94a3b8', textTransform: 'uppercase' }}>{item.status || 'COMPLETED'}</Text>
+              <Text style={{ fontSize: 9, fontFamily: 'Outfit_800ExtraBold', color: colors.textMuted, textTransform: 'uppercase' }}>{item.status || 'COMPLETED'}</Text>
           </View>
         </View>
-        <ChevronRight size={18} color="#cbd5e1" />
+        <ChevronRight size={18} color={colors.textMuted} />
     </TouchableOpacity>
   );
 };
 
 const CalendarFilterModal = ({ visible, startDate, endDate, onClose, onSelectStart, onSelectEnd, onClear, showStartPicker, showEndPicker, setShowStartPicker, setShowEndPicker }: any) => {
+  const { colors, isDark } = useTheme();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
         <TouchableOpacity style={{ flex: 1 }} onPress={onClose} />
-        <View style={{ borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40, backgroundColor: '#fff' }}>
+        <View style={{ borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40, backgroundColor: colors.card }}>
           
-          <View style={{ width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
+          <View style={{ width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ fontSize: 18, fontFamily: 'Outfit_900Black', color: '#1e293b' }}>Filter by Date Range</Text>
+            <Text style={{ fontSize: 18, fontFamily: 'Outfit_900Black', color: colors.textPrimary }}>Filter by Date Range</Text>
             <TouchableOpacity onPress={onClose}>
-               <X size={20} color="#64748b" />
+               <X size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           <View style={{ gap: 16, marginBottom: 24 }}>
              {/* Start Date */}
              <View>
-                <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: '#64748b', textTransform: 'uppercase', marginBottom: 6, marginLeft: 2 }}>Start Date</Text>
+                <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: 6, marginLeft: 2 }}>Start Date</Text>
                 <TouchableOpacity 
                   onPress={() => setShowStartPicker(true)}
-                  style={{ backgroundColor: '#f8fafc', borderStyle: 'solid', borderWidth: 1, borderColor: '#e2e8f0', padding: 16, borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                  style={{ backgroundColor: colors.background, borderStyle: 'solid', borderWidth: 1, borderColor: colors.border, padding: 16, borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_600SemiBold', color: startDate ? '#1e293b' : '#94a3b8' }}>
+                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_600SemiBold', color: startDate ? colors.textPrimary : colors.textMuted }}>
                       {startDate ? startDate.toLocaleDateString() : 'Select start date'}
                    </Text>
-                   <Calendar size={18} color={PRIMARY} />
+                   <Calendar size={18} color={isDark ? colors.primary : PRIMARY} />
                 </TouchableOpacity>
              </View>
 
              {/* End Date */}
              <View>
-                <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: '#64748b', textTransform: 'uppercase', marginBottom: 6, marginLeft: 2 }}>End Date</Text>
+                <Text style={{ fontSize: 10, fontFamily: 'Outfit_800ExtraBold', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: 6, marginLeft: 2 }}>End Date</Text>
                 <TouchableOpacity 
                   onPress={() => setShowEndPicker(true)}
-                  style={{ backgroundColor: '#f8fafc', borderStyle: 'solid', borderWidth: 1, borderColor: '#e2e8f0', padding: 16, borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                  style={{ backgroundColor: colors.background, borderStyle: 'solid', borderWidth: 1, borderColor: colors.border, padding: 16, borderRadius: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                 >
-                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_600SemiBold', color: endDate ? '#1e293b' : '#94a3b8' }}>
+                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_600SemiBold', color: endDate ? colors.textPrimary : colors.textMuted }}>
                       {endDate ? endDate.toLocaleDateString() : 'Select end date'}
                    </Text>
-                   <Calendar size={18} color={PRIMARY} />
+                   <Calendar size={18} color={isDark ? colors.primary : PRIMARY} />
                 </TouchableOpacity>
              </View>
           </View>
@@ -565,14 +569,14 @@ const CalendarFilterModal = ({ visible, startDate, endDate, onClose, onSelectSta
                   onClear();
                   onClose();
                 }}
-                style={{ flex: 1, backgroundColor: '#f1f5f9', paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+                style={{ flex: 1, backgroundColor: colors.background, paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
              >
-                <Text style={{ color: '#64748b', fontFamily: 'Outfit_800ExtraBold', fontSize: 15 }}>Clear Filters</Text>
+                <Text style={{ color: colors.textSecondary, fontFamily: 'Outfit_800ExtraBold', fontSize: 15 }}>Clear Filters</Text>
              </TouchableOpacity>
 
              <TouchableOpacity 
                 onPress={onClose}
-                style={{ flex: 1, backgroundColor: PRIMARY, paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
+                style={{ flex: 1, backgroundColor: isDark ? colors.primary : PRIMARY, paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center' }}
              >
                 <Text style={{ color: '#fff', fontFamily: 'Outfit_800ExtraBold', fontSize: 15 }}>Apply Range</Text>
              </TouchableOpacity>
@@ -582,9 +586,9 @@ const CalendarFilterModal = ({ visible, startDate, endDate, onClose, onSelectSta
       </View>
     </Modal>
   );
-};
+};const DetailsModal = ({ visible, item, onClose, onDelete, isDeleting, router }: any) => {
+  const { colors, isDark } = useTheme();
 
-const DetailsModal = ({ visible, item, onClose, onDelete, isDeleting, router }: any) => {
   if (!item) return null;
 
   const farmer = item.farmerId || {};
@@ -610,77 +614,77 @@ const DetailsModal = ({ visible, item, onClose, onDelete, isDeleting, router }: 
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
         <TouchableOpacity style={{ flex: 1 }} onPress={onClose} />
-        <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 }}>
+        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 }}>
           
-          <View style={{ width: 40, height: 4, backgroundColor: '#e2e8f0', borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
+          <View style={{ width: 40, height: 4, backgroundColor: colors.border, borderRadius: 2, alignSelf: 'center', marginBottom: 20 }} />
 
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
             <View style={{ flex: 1 }}>
                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <Text style={{ fontSize: 10, fontFamily: 'Outfit_900Black', color: PRIMARY, textTransform: 'uppercase', letterSpacing: 1 }}>RECORD DETAILS</Text>
+                  <Text style={{ fontSize: 10, fontFamily: 'Outfit_900Black', color: isDark ? colors.primary : PRIMARY, textTransform: 'uppercase', letterSpacing: 1 }}>RECORD DETAILS</Text>
                   <View style={{ backgroundColor: `${statusColor}20`, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
                     <Text style={{ fontSize: 9, fontFamily: 'Outfit_800ExtraBold', color: statusColor }}>{status}</Text>
                   </View>
                </View>
-               <Text style={{ fontSize: 24, fontFamily: 'Outfit_900Black', color: '#1e293b' }}>
+               <Text style={{ fontSize: 24, fontFamily: 'Outfit_900Black', color: colors.textPrimary }}>
                   {item.type === 'insemination' ? 'AI Insemination' : item.type === 'health-request' ? 'Health Log / Visit' : item.type === 'pregnancy' ? 'Pregnancy Check' : item.type === 'calving' ? 'Calf Drop' : 'Medical Record'}
                </Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' }}>
-               <X size={20} color="#64748b" />
+            <TouchableOpacity onPress={onClose} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+               <X size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
-          <View style={{ backgroundColor: '#f8fafc', borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: '#f1f5f9' }}>
+          <View style={{ backgroundColor: colors.background, borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: colors.border }}>
              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
-                 <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#ecfdf5', overflow: 'hidden' }}>
+                 <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: isDark ? 'rgba(16,185,129,0.2)' : '#ecfdf5', overflow: 'hidden' }}>
                     {(farmer.imageUrl || farmer.photoUrl || farmer.image) ? (
                        <Image source={{ uri: farmer.imageUrl || farmer.photoUrl || farmer.image }} style={{ width: 60, height: 60 }} />
                     ) : (
-                       <Text style={{ fontSize: 24, fontFamily: 'Outfit_900Black', color: PRIMARY }}>{farmer.name?.charAt(0) || '?'}</Text>
+                       <Text style={{ fontSize: 24, fontFamily: 'Outfit_900Black', color: isDark ? colors.primary : PRIMARY }}>{farmer.name?.charAt(0) || '?'}</Text>
                     )}
                  </View>
                 <View style={{ flex: 1 }}>
-                   <Text style={{ fontSize: 18, fontFamily: 'Outfit_800ExtraBold', color: '#1e293b' }}>{farmer.name || 'Unknown Farmer'}</Text>
-                   <Text style={{ fontSize: 12, fontFamily: 'Outfit_600SemiBold', color: '#64748b' }}>Farmer Owner</Text>
+                   <Text style={{ fontSize: 18, fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }}>{farmer.name || 'Unknown Farmer'}</Text>
+                   <Text style={{ fontSize: 12, fontFamily: 'Outfit_600SemiBold', color: colors.textSecondary }}>Farmer Owner</Text>
                 </View>
-                <TouchableOpacity onPress={handleCall} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: PRIMARY, alignItems: 'center', justifyContent: 'center' }}>
+                <TouchableOpacity onPress={handleCall} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: isDark ? colors.primary : PRIMARY, alignItems: 'center', justifyContent: 'center' }}>
                    <Phone size={20} color="#fff" />
                 </TouchableOpacity>
              </View>
 
-             <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 16 }} />
+             <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 16 }} />
 
              <View style={{ gap: 12 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                   <MapPin size={16} color={PRIMARY} />
-                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_500Medium', color: '#475569', flex: 1 }}>{address}</Text>
+                   <MapPin size={16} color={isDark ? colors.primary : PRIMARY} />
+                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_500Medium', color: colors.textSecondary, flex: 1 }}>{address}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                   <Calendar size={16} color={PRIMARY} />
-                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_500Medium', color: '#475569' }}>{date}</Text>
+                   <Calendar size={16} color={isDark ? colors.primary : PRIMARY} />
+                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_500Medium', color: colors.textSecondary }}>{date}</Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                   <Clock size={16} color={PRIMARY} />
-                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_500Medium', color: '#475569' }}>{time}</Text>
+                   <Clock size={16} color={isDark ? colors.primary : PRIMARY} />
+                   <Text style={{ fontSize: 14, fontFamily: 'Outfit_500Medium', color: colors.textSecondary }}>{time}</Text>
                 </View>
                 
                 {/* Specific Record Technical Details */}
-                <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 4 }} />
+                <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4 }} />
                 
                 {item.type === 'insemination' && (
                   <View style={{ gap: 8 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ color: '#94a3b8', fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Attempt No.</Text>
-                      <Text style={{ color: '#334155', fontFamily: 'Outfit_900Black', fontSize: 12 }}>#{item.attemptNumber || 1}</Text>
+                      <Text style={{ color: colors.textMuted, fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Attempt No.</Text>
+                      <Text style={{ color: colors.textPrimary, fontFamily: 'Outfit_900Black', fontSize: 12 }}>#{item.attemptNumber || 1}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ color: '#94a3b8', fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Sire Code</Text>
-                      <Text style={{ color: '#334155', fontFamily: 'Outfit_900Black', fontSize: 12 }}>{item.sireCode || 'N/A'}</Text>
+                      <Text style={{ color: colors.textMuted, fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Sire Code</Text>
+                      <Text style={{ color: colors.textPrimary, fontFamily: 'Outfit_900Black', fontSize: 12 }}>{item.sireCode || 'N/A'}</Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ color: '#94a3b8', fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Pregnancy Status</Text>
-                      <Text style={{ color: item.pregnancyStatus === 'Pregnant' ? '#10b981' : '#64748b', fontFamily: 'Outfit_900Black', fontSize: 12 }}>{item.pregnancyStatus || 'Pending'}</Text>
+                      <Text style={{ color: colors.textMuted, fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Pregnancy Status</Text>
+                      <Text style={{ color: item.pregnancyStatus === 'Pregnant' ? '#10b981' : colors.textSecondary, fontFamily: 'Outfit_900Black', fontSize: 12 }}>{item.pregnancyStatus || 'Pending'}</Text>
                     </View>
                   </View>
                 )}
@@ -688,23 +692,23 @@ const DetailsModal = ({ visible, item, onClose, onDelete, isDeleting, router }: 
                 {item.type === 'health-request' && (
                   <View style={{ gap: 8 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text style={{ color: '#94a3b8', fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Type of Service</Text>
-                      <Text style={{ color: '#334155', fontFamily: 'Outfit_900Black', fontSize: 12 }}>{item.typeOfService || 'Medical Check'}</Text>
+                      <Text style={{ color: colors.textMuted, fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Type of Service</Text>
+                      <Text style={{ color: colors.textPrimary, fontFamily: 'Outfit_900Black', fontSize: 12 }}>{item.typeOfService || 'Medical Check'}</Text>
                     </View>
                     {item.details?.medicineName && (
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                        <Text style={{ color: '#94a3b8', fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Medicine</Text>
-                        <Text style={{ color: '#047857', fontFamily: 'Outfit_900Black', fontSize: 12 }}>{item.details.medicineName}</Text>
+                        <Text style={{ color: colors.textMuted, fontFamily: 'Outfit_700Bold', fontSize: 10, textTransform: 'uppercase' }}>Medicine</Text>
+                        <Text style={{ color: isDark ? colors.primary : '#047857', fontFamily: 'Outfit_900Black', fontSize: 12 }}>{item.details.medicineName}</Text>
                       </View>
                     )}
                   </View>
                 )}
 
                 {(item.note || item.technicianNote || item.remarks) && (
-                  <View style={{ marginTop: 8, backgroundColor: 'rgba(226, 232, 240, 0.5)', padding: 12, borderRadius: 12, borderStyle: 'solid', borderWidth: 1, borderColor: 'rgba(226, 232, 240, 0.5)' }}>
-                    <Text style={{ color: '#94a3b8', fontFamily: 'Outfit_900Black', fontSize: 8, textTransform: 'uppercase', marginBottom: 4 }}>Remarks / Notes</Text>
-                    <Text style={{ color: '#475569', fontFamily: 'Outfit_500Medium', fontSize: 12, fontStyle: 'italic' }}>
-                      "{item.note || item.technicianNote || item.remarks}"
+                  <View style={{ marginTop: 8, backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(226, 232, 240, 0.5)', padding: 12, borderRadius: 12, borderStyle: 'solid', borderWidth: 1, borderColor: colors.border }}>
+                    <Text style={{ color: colors.textMuted, fontFamily: 'Outfit_900Black', fontSize: 8, textTransform: 'uppercase', marginBottom: 4 }}>Remarks / Notes</Text>
+                    <Text style={{ color: colors.textSecondary, fontFamily: 'Outfit_500Medium', fontSize: 12, fontStyle: 'italic' }}>
+                      &quot;{item.note || item.technicianNote || item.remarks}&quot;
                     </Text>
                   </View>
                 )}
@@ -712,12 +716,12 @@ const DetailsModal = ({ visible, item, onClose, onDelete, isDeleting, router }: 
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24, paddingHorizontal: 4 }}>
-             <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center' }}>
+             <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff', alignItems: 'center', justifyContent: 'center' }}>
                 <MaterialCommunityIcons name="cow" size={24} color="#3b82f6" />
              </View>
              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontFamily: 'Outfit_700Bold', color: '#1e293b' }}>Target: {animal.earTag || animal.animalId || 'No Tag'}</Text>
-                <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: '#64748b' }}>{animal.breed || 'Unknown'} · {animal.species || 'Unknown'}</Text>
+                <Text style={{ fontSize: 14, fontFamily: 'Outfit_700Bold', color: colors.textPrimary }}>Target: {animal.earTag || animal.animalId || 'No Tag'}</Text>
+                <Text style={{ fontSize: 12, fontFamily: 'Outfit_500Medium', color: colors.textSecondary }}>{animal.breed || 'Unknown'} · {animal.species || 'Unknown'}</Text>
              </View>
           </View>
 
@@ -727,7 +731,7 @@ const DetailsModal = ({ visible, item, onClose, onDelete, isDeleting, router }: 
                   onClose();
                   router.push(`/(technician)/animal-details?id=${animal._id || animal.id}`);
                 }}
-                style={{ flex: 3, backgroundColor: PRIMARY, paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
+                style={{ flex: 3, backgroundColor: isDark ? colors.primary : PRIMARY, paddingVertical: 16, borderRadius: 20, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10 }}
               >
                 <Text style={{ color: '#fff', fontFamily: 'Outfit_800ExtraBold', fontSize: 15 }}>View Profile</Text>
                 <ChevronRight size={18} color="#fff" />
@@ -736,7 +740,7 @@ const DetailsModal = ({ visible, item, onClose, onDelete, isDeleting, router }: 
              <TouchableOpacity 
                 onPress={() => onDelete(item)}
                 disabled={isDeleting}
-                style={{ width: 56, height: 56, borderRadius: 20, backgroundColor: '#fee2e2', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#fecaca' }}
+                style={{ width: 56, height: 56, borderRadius: 20, backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fee2e2', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#fecaca' }}
              >
                 {isDeleting ? <ActivityIndicator size="small" color="#ef4444" /> : <Trash2 size={22} color="#ef4444" />}
              </TouchableOpacity>

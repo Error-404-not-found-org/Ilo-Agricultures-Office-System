@@ -47,14 +47,14 @@ const BottomNavigator = ({
   const focusedRouteKey = state.routes[state.index].key;
   const focusedOptions = descriptors[focusedRouteKey].options;
 
-  if ((focusedOptions.tabBarStyle as any)?.display === "none") {
-    return null;
-  }
-
   const [modalVisible, setModalVisible] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colorScheme } = useColorScheme();
+
+  if ((focusedOptions.tabBarStyle as any)?.display === "none") {
+    return null;
+  }
 
   const onNavigate = (screenName: string) => {
     navigation.navigate(screenName);

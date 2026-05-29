@@ -6,6 +6,7 @@ import { useApi } from '@/lib/api';
 import { format } from 'date-fns';
 import { useUser } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
+import { useQuery } from '@tanstack/react-query';
 
 interface NotificationDetails {
   notification: {
@@ -41,6 +42,8 @@ interface NotificationDetails {
     urgency?: string;
     imageUrl?: string;
     technicianNote?: string;
+    approvedBy?: { name: string; imageUrl: string };
+    handledBy?: { name: string; imageUrl: string };
   };
 }
 
@@ -49,7 +52,16 @@ export default function NotificationDetailsScreen() {
   const router = useRouter();
   const api = useApi();
   const { user } = useUser();
-  const role = (user?.publicMetadata?.role as string) || 'technician';
+
+  const { data: profile } = useQuery({
+    queryKey: ['user', 'me'],
+    queryFn: async () => {
+      const res = await api.get('/user/me');
+      return res.data;
+    }
+  });
+
+  const role = profile?.role || (user?.publicMetadata?.role as string) || 'technician';
   const isFarmer = role === 'farmer';
   const [data, setData] = useState<NotificationDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -157,19 +169,21 @@ export default function NotificationDetailsScreen() {
             </Text>
             <View className="flex-row items-center">
                 <View className="w-16 h-16 rounded-2xl bg-slate-100 items-center justify-center overflow-hidden">
-                    {notification.senderId.imageUrl ? (
+                    {notification.senderId?.imageUrl ? (
                         <Image source={{ uri: notification.senderId.imageUrl }} className="w-full h-full" />
                     ) : (
                         <User size={30} color="#cbd5e1" />
                     )}
                 </View>
                 <View className="ml-4 flex-1">
-                    <Text className="text-lg font-bold text-slate-800">{notification.senderId.name}</Text>
-                    {notification.senderId.address ? (
+                    <Text className="text-lg font-bold text-slate-800">
+                      {notification.senderId?.name || "System / Tech"}
+                    </Text>
+                    {notification.senderId?.address ? (
                         <View className="flex-row items-center mt-1">
                             <MapPin size={14} color="#94a3b8" />
                             <Text className="text-slate-500 text-sm ml-1">
-                                {notification.senderId.address.barangay}, {notification.senderId.address.city}
+                                {notification.senderId.address.barangay || "Oton"}, {notification.senderId.address.city || "Iloilo"}
                             </Text>
                         </View>
                     ) : (
@@ -178,6 +192,40 @@ export default function NotificationDetailsScreen() {
                 </View>
             </View>
         </View>
+
+        {/* Assigned Technician (If accepted/handled) */}
+        {isFarmer && ((isAI && relatedData?.approvedBy) || (!isAI && relatedData?.handledBy)) && (
+          <View className="p-6 bg-white mb-2 border-b border-slate-100">
+            <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
+              Assigned Technician
+            </Text>
+            <View className="flex-row items-center">
+              <View className="w-12 h-12 rounded-full bg-slate-100 items-center justify-center overflow-hidden">
+                 {isAI ? (
+                   relatedData.approvedBy?.imageUrl ? (
+                     <Image source={{ uri: relatedData.approvedBy.imageUrl }} className="w-full h-full" />
+                   ) : (
+                     <User size={24} color="#cbd5e1" />
+                   )
+                 ) : (
+                   relatedData.handledBy?.imageUrl ? (
+                     <Image source={{ uri: relatedData.handledBy.imageUrl }} className="w-full h-full" />
+                   ) : (
+                     <User size={24} color="#cbd5e1" />
+                   )
+                 )}
+               </View>
+               <View className="ml-4 flex-1">
+                 <Text className="text-base font-bold text-slate-800">
+                   {isAI ? relatedData.approvedBy?.name : relatedData.handledBy?.name}
+                 </Text>
+                <Text className="text-slate-450 text-xs mt-0.5 font-bold uppercase tracking-wider">
+                  Field Technician
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Animal Details */}
         {relatedData?.animalId ? (

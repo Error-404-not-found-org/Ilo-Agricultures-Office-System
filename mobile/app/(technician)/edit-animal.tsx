@@ -1,31 +1,36 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from 'react-native';
+import { View, TouchableOpacity, ScrollView, TextInput, Modal, FlatList, KeyboardAvoidingView, Platform, Image, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useApi } from '@/lib/api';
 import { useAuth } from '@clerk/clerk-expo';
 import SafeScreen from '@/components/safeScreen';
-import { ArrowLeft, ChevronDown, Calendar, Check, X, ArrowRight, Camera } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Calendar, Check, X, Camera, Plus, Trash2, ChevronRight } from 'lucide-react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { toast } from 'sonner-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useTheme } from '@/lib/theme';
+import { Text } from '@/components/ui/Text';
+import { Card } from '@/components/ui/Card';
 
 // --- OPTIONS ---
-const SPECIES_OPTIONS = ['Beef', 'Dairy', 'Carabao'];
+const SPECIES_OPTIONS = ['Beef Cattle', 'Dairy Cattle', 'Cattle', 'Carabao', 'Goat', 'Swine'];
 const BREED_OPTIONS = ['Native', 'Brahman', 'Holstein Sahiwal (HS)', 'PC Cross', 'Purebred'];
-const AI_ATTEMPTS = ['Not Yet', '1', '2', '3', '4', '5+'];
+const AI_ATTEMPTS = ['1', '2', '3', '4', '5+'];
 const ESTRUS_OPTIONS = ['Natural', 'Synchronized'];
-const PD_RESULTS = ['Positive', 'Negative', 'Re-heat'];
-const CALVING_EASE = ['Normal', 'Difficult', 'Abortion', 'Stillbirth'];
+const PD_RESULTS = ['Pregnant', 'Empty'];
+const CALVING_EASE = ['Normal', 'Natural', 'Difficult', 'Abortion', 'Stillbirth', 'Cesarean'];
 const CALF_SEX = ['Male', 'Female'];
+
+type TabType = 'Identity' | 'Insemination' | 'Pregnancy' | 'Calving';
 
 export default function EditAnimalWizard() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const api = useApi();
+  const { colors, isDark, themeStyle } = useTheme();
   
-  // --- WIZARD STATE ---
-  const [currentStep, setCurrentStep] = useState(1);
-  const TOTAL_STEPS = 4;
+  const [activeTab, setActiveTab] = useState<TabType>('Identity');
   const { isLoaded, isSignedIn } = useAuth();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -34,7 +39,7 @@ export default function EditAnimalWizard() {
   const [imageBase64, setImageBase64] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    // Step 1
+    // Identity
     farmer: '',
     ageYears: '',
     ageMonths: '', 
@@ -45,18 +50,18 @@ export default function EditAnimalWizard() {
     breed: '',
     color: '',
     
-    // Step 2
+    // Insemination
     aiDate: 'Not Yet',
-    noOfAI: '', 
+    noOfAI: '1', 
     estrusType: '',
     sireBreed: '',
     sireCode: '',
 
-    // Step 3
+    // Pregnancy Check
     pdDate: 'Not Yet',
     pdResult: '',
 
-    // Step 4
+    // Calving Drop
     calfDate: 'Not Yet',
     calfId: '',
     calfSex: '',
@@ -77,7 +82,7 @@ export default function EditAnimalWizard() {
                 const birth = new Date(data.birthDate);
                 const now = new Date();
                 let diffMonths = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
-                if(diffMonths < 0) diffMonths = 0;
+                if (diffMonths < 0) diffMonths = 0;
                 yrs = Math.floor(diffMonths / 12).toString();
                 mos = (diffMonths % 12).toString();
             }
@@ -97,7 +102,7 @@ export default function EditAnimalWizard() {
                 color: data.color || '',
                 
                 aiDate: latestAI.dateOfAI ? new Date(latestAI.dateOfAI).toLocaleDateString() : 'Not Yet',
-                noOfAI: latestAI.attemptNumber ? latestAI.attemptNumber.toString() : '',
+                noOfAI: latestAI.attemptNumber ? latestAI.attemptNumber.toString() : '1',
                 estrusType: latestAI.estrusType || '',
                 sireBreed: latestAI.sireBreed || '',
                 sireCode: latestAI.sireCode || '',
@@ -175,19 +180,10 @@ export default function EditAnimalWizard() {
   const setDateToToday = (field: string) => {
     const today = new Date().toLocaleDateString();
     setFormData({...formData, [field]: today});
-  }
-
-  // --- NAVIGATION ---
-  const handleNext = () => {
-    if (currentStep < TOTAL_STEPS) setCurrentStep(currentStep + 1);
   };
 
-  const handleBack = () => {
-    if (currentStep > 1) {
-        setCurrentStep(currentStep - 1);
-    } else {
-        router.back();
-    }
+  const setDateToNotYet = (field: string) => {
+    setFormData({...formData, [field]: 'Not Yet'});
   };
 
   const handleSave = async () => {
@@ -246,151 +242,252 @@ export default function EditAnimalWizard() {
 
   if (fetching) {
       return (
-          <View className="flex-1 bg-white items-center justify-center">
-              <ActivityIndicator size="large" color="#00643B" />
+          <View className="flex-1 bg-white dark:bg-slate-950 items-center justify-center">
+              <ActivityIndicator size="large" color={isDark ? "#10b981" : "#00643B"} />
           </View>
-      )
+      );
   }
 
   return (
     <SafeScreen>
-      <View className="flex-1 bg-white px-5"> 
+      <View style={[{ flex: 1, backgroundColor: colors.background }]} className="px-5"> 
         
         {/* --- HEADER --- */}
         <View className="flex-row items-center justify-between mb-4 mt-2">
-            <TouchableOpacity onPress={handleBack} className="p-2 -ml-2 rounded-full active:bg-gray-100">
-                <ArrowLeft size={22} color="black" />
+            <TouchableOpacity 
+              onPress={() => router.back()} 
+              style={{ backgroundColor: colors.card, borderColor: colors.border }}
+              className="p-2 rounded-full border active:opacity-75"
+            >
+                <ArrowLeft size={22} color={colors.textPrimary} />
             </TouchableOpacity>
-            <View className="items-center">
-                <Text className="text-base font-bold text-gray-900">Edit Records</Text>
-                <Text className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">Step {currentStep} / {TOTAL_STEPS}</Text>
-            </View>
-            <View className="w-8" /> 
+            <Text variant="bold" size={16} color="primary">Edit Records</Text>
+            <View className="w-10" /> 
         </View>
 
-        <View className="flex-row h-1 bg-gray-100 rounded-full mb-6 overflow-hidden">
-            <View className="bg-emerald-600 h-full rounded-full" style={{ width: `${(currentStep / TOTAL_STEPS) * 100}%` }} />
+        {/* --- CATEGORY TABS --- */}
+        <View className="mb-4">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
+            {([
+              { key: 'Identity', label: 'Identity', icon: 'card-account-details-outline' },
+              { key: 'Insemination', label: 'Breeding', icon: 'needle' },
+              { key: 'Pregnancy', label: 'Preg-Check', icon: 'heart-pulse' },
+              { key: 'Calving', label: 'Calving', icon: 'baby-carriage' }
+            ] as { key: TabType, label: string, icon: string }[]).map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  style={{
+                    backgroundColor: isActive ? colors.primary : colors.card,
+                    borderColor: isActive ? colors.primary : colors.border
+                  }}
+                  className="px-4 py-3 rounded-xl border flex-row items-center gap-2 active:opacity-75"
+                >
+                  <MaterialCommunityIcons 
+                    name={tab.icon as any} 
+                    size={16} 
+                    color={isActive ? '#fff' : colors.textSecondary} 
+                  />
+                  <Text 
+                    variant="bold" 
+                    size={12} 
+                    style={{ color: isActive ? '#fff' : colors.textSecondary }}
+                  >
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
             
-            {/* STEP 1 */}
-            {currentStep === 1 && (
-                <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900">Animal Identity</Text>
-                    <Text className="text-sm text-gray-500 mb-5">Current mapping for {formData.farmer}.</Text>
+            {/* --- TAB 1: IDENTITY --- */}
+            {activeTab === 'Identity' && (
+                <Card style={{ padding: 20 }} className="mt-2">
+                    <Text variant="black" size={18} color="primary" className="mb-1">Animal Identity</Text>
+                    <Text variant="medium" size={13} color="muted" className="mb-5">Manage tags and registration details.</Text>
                     
                     <View className="items-center mb-6 mt-2">
-                        <TouchableOpacity onPress={pickImage} className="w-24 h-24 bg-gray-50 rounded-full items-center justify-center border border-dashed border-gray-300 overflow-hidden">
+                        <TouchableOpacity 
+                          onPress={pickImage} 
+                          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                          className="w-24 h-24 rounded-full items-center justify-center border border-dashed overflow-hidden active:opacity-75"
+                        >
                             {imageUri ? (
                                 <Image source={{ uri: imageUri }} className="w-full h-full" resizeMode="cover" />
                             ) : (
                                 <>
-                                  <Camera size={24} color="#9CA3AF" />
-                                  <Text className="text-[10px] text-gray-500 font-semibold text-center mt-1">Photo</Text>
+                                  <Camera size={24} color={colors.textMuted} />
+                                  <Text variant="bold" size={9} color="muted" className="text-center mt-1">Photo</Text>
                                 </>
                             )}
                         </TouchableOpacity>
                     </View>
 
                     <View className="flex-row gap-3">
-                        <View className="flex-[1.5]">
-                            <InputField label="Est. Age (Years)" value={formData.ageYears} onChangeText={(t: string) => setFormData({...formData, ageYears: t})} placeholder="e.g. 1" keyboardType="numeric" />
+                        <View className="flex-1">
+                            <InputField label="Est. Age (Years)" value={formData.ageYears} onChangeText={(t: string) => setFormData({...formData, ageYears: t})} placeholder="0" keyboardType="numeric" />
                         </View>
-                        <View className="flex-[1.5]">
-                            <InputField label="Months" value={formData.ageMonths} onChangeText={(t: string) => setFormData({...formData, ageMonths: t})} placeholder="e.g. 4" keyboardType="numeric" />
+                        <View className="flex-1">
+                            <InputField label="Months" value={formData.ageMonths} onChangeText={(t: string) => setFormData({...formData, ageMonths: t})} placeholder="0" keyboardType="numeric" />
                         </View>
                     </View>
 
                     <View className="flex-row gap-3">
-                        <View className="flex-1"><InputField label="Animal ID" value={formData.animalId} onChangeText={(t: string) => setFormData({...formData, animalId: t})} placeholder="ID-001" /></View>
-                        <View className="flex-1"><InputField label="Ear Tag" value={formData.earTag} onChangeText={(t: string) => setFormData({...formData, earTag: t})} placeholder="Tag-123" /></View>
+                        <View className="flex-1"><InputField label="Animal ID" value={formData.animalId} onChangeText={(t: string) => setFormData({...formData, animalId: t})} placeholder="e.g. ID-001" /></View>
+                        <View className="flex-1"><InputField label="Ear Tag" value={formData.earTag} onChangeText={(t: string) => setFormData({...formData, earTag: t})} placeholder="e.g. Tag-123" /></View>
                     </View>
 
                     <View className="flex-row gap-3 mt-1">
-                        <View className="flex-1"><SelectField label="Species" value={formData.species} placeholder="Select" onPress={() => openModal('species', 'Select Species', SPECIES_OPTIONS)} /></View>
-                        <View className="flex-1"><SelectField label="Breed" value={formData.breed} placeholder="Select" onPress={() => openModal('breed', 'Select Breed', BREED_OPTIONS)} /></View>
+                        <View className="flex-1"><SelectField label="Species *" value={formData.species} placeholder="Select" onPress={() => openModal('species', 'Select Species', SPECIES_OPTIONS)} /></View>
+                        <View className="flex-1"><SelectField label="Breed *" value={formData.breed} placeholder="Select" onPress={() => openModal('breed', 'Select Breed', BREED_OPTIONS)} /></View>
                     </View>
 
                     <View className="flex-row gap-3">
                         <View className="flex-1"><InputField label="Color" value={formData.color} onChangeText={(t: string) => setFormData({...formData, color: t})} placeholder="e.g. Black" /></View>
                         <View className="flex-1"><InputField label="Brand" value={formData.brand} onChangeText={(t: string) => setFormData({...formData, brand: t})} placeholder="(Optional)" /></View>
                     </View>
+                </Card>
+            )}
+
+            {/* --- TAB 2: INSEMINATION --- */}
+            {activeTab === 'Insemination' && (
+                <View className="mt-2">
+                    {formData.aiDate === 'Not Yet' ? (
+                        <PlaceholderCard 
+                          title="No Insemination Record"
+                          description="This animal does not currently have any active artificial insemination details attached."
+                          buttonText="Add Insemination Details"
+                          onAdd={() => setDateToToday('aiDate')}
+                        />
+                    ) : (
+                        <Card style={{ padding: 20 }}>
+                            <View className="flex-row justify-between items-center mb-4">
+                              <Text variant="black" size={18} color="primary">Insemination Record</Text>
+                              <TouchableOpacity 
+                                onPress={() => setDateToNotYet('aiDate')}
+                                className="flex-row items-center gap-1 bg-red-50 dark:bg-red-950/20 px-3 py-1.5 rounded-lg border border-red-100 dark:border-red-900/50"
+                              >
+                                <Trash2 size={12} color="#ef4444" />
+                                <Text variant="bold" size={9} style={{ color: '#ef4444' }}>Clear</Text>
+                              </TouchableOpacity>
+                            </View>
+
+                            <DateSelector label="Date of AI" value={formData.aiDate} onPress={() => openDatePicker('aiDate')} onSetToday={() => setDateToToday('aiDate')} />
+
+                            <View className="flex-row gap-3">
+                                 <View className="w-1/2">
+                                    <SelectField label="No. of AI" value={formData.noOfAI} placeholder="Select" onPress={() => openModal('noOfAI', 'Select AI Attempt', AI_ATTEMPTS)} />
+                                 </View>
+                            </View>
+
+                            <SelectField label="Estrus Type" value={formData.estrusType} placeholder="Natural / Synchronized" onPress={() => openModal('estrusType', 'Estrus Type', ESTRUS_OPTIONS)} />
+
+                            <View className="flex-row gap-3 mt-1">
+                                <View className="flex-1"><InputField label="Sire Breed" value={formData.sireBreed} onChangeText={(t: string) => setFormData({...formData, sireBreed: t})} placeholder="e.g. Brahman" /></View>
+                                <View className="flex-1"><InputField label="Sire Code" value={formData.sireCode} onChangeText={(t: string) => setFormData({...formData, sireCode: t})} placeholder="Code" /></View>
+                            </View>
+                        </Card>
+                    )}
                 </View>
             )}
 
-            {/* STEP 2 */}
-            {currentStep === 2 && (
-                <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900">Insemination</Text>
-                    <Text className="text-sm text-gray-500 mb-5">Edit primary AI details below.</Text>
+            {/* --- TAB 3: PREGNANCY --- */}
+            {activeTab === 'Pregnancy' && (
+                <View className="mt-2">
+                    {formData.pdDate === 'Not Yet' ? (
+                        <PlaceholderCard 
+                          title="No Pregnancy Diagnosis"
+                          description="No active pregnancy verification records exist for this animal."
+                          buttonText="Add Pregnancy Check"
+                          onAdd={() => setDateToToday('pdDate')}
+                        />
+                    ) : (
+                        <Card style={{ padding: 20 }}>
+                            <View className="flex-row justify-between items-center mb-4">
+                              <Text variant="black" size={18} color="primary">Pregnancy Diagnosis</Text>
+                              <TouchableOpacity 
+                                onPress={() => setDateToNotYet('pdDate')}
+                                className="flex-row items-center gap-1 bg-red-50 dark:bg-red-950/20 px-3 py-1.5 rounded-lg border border-red-100 dark:border-red-900/50"
+                              >
+                                <Trash2 size={12} color="#ef4444" />
+                                <Text variant="bold" size={9} style={{ color: '#ef4444' }}>Clear</Text>
+                              </TouchableOpacity>
+                            </View>
 
-                    <DateSelector label="Date of AI" value={formData.aiDate} onPress={() => openDatePicker('aiDate')} onSetToday={() => setDateToToday('aiDate')} onSetNotYet={() => setFormData({...formData, aiDate: 'Not Yet'})}/>
-
-                    <View className="flex-row gap-3">
-                         <View className="w-1/2">
-                            <SelectField label="No. of AI" value={formData.noOfAI} placeholder="Select" onPress={() => openModal('noOfAI', 'Select AI Attempt', AI_ATTEMPTS)} />
-                         </View>
-                    </View>
-
-                    <SelectField label="Estrus Type" value={formData.estrusType} placeholder="Natural / Synchronized" onPress={() => openModal('estrusType', 'Estrus Type', ESTRUS_OPTIONS)} />
-
-                    <View className="flex-row gap-3 mt-1">
-                        <View className="flex-1"><InputField label="Sire Breed" value={formData.sireBreed} onChangeText={(t: string) => setFormData({...formData, sireBreed: t})} placeholder="e.g. Brahman" /></View>
-                        <View className="flex-1"><InputField label="Sire Code" value={formData.sireCode} onChangeText={(t: string) => setFormData({...formData, sireCode: t})} placeholder="Code" /></View>
-                    </View>
+                            <DateSelector label="PD Date" value={formData.pdDate} onPress={() => openDatePicker('pdDate')} onSetToday={() => setDateToToday('pdDate')} />
+                            <SelectField label="Result" value={formData.pdResult} placeholder="Select Result" onPress={() => openModal('pdResult', 'PD Result', PD_RESULTS)} />
+                        </Card>
+                    )}
                 </View>
             )}
 
-            {/* STEP 3 */}
-            {currentStep === 3 && (
-                <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900">Pregnancy Check</Text>
-                    <Text className="text-sm text-gray-500 mb-5">Update latest PD results.</Text>
-                    <DateSelector label="PD Date" value={formData.pdDate} onPress={() => openDatePicker('pdDate')} onSetToday={() => setDateToToday('pdDate')} onSetNotYet={() => setFormData({...formData, pdDate: 'Not Yet'})}/>
-                    <SelectField label="Result" value={formData.pdResult} placeholder="Select Result" onPress={() => openModal('pdResult', 'PD Result', PD_RESULTS)} />
-                </View>
-            )}
+            {/* --- TAB 4: CALVING --- */}
+            {activeTab === 'Calving' && (
+                <View className="mt-2">
+                    {formData.calfDate === 'Not Yet' ? (
+                        <PlaceholderCard 
+                          title="No Calving Drop History"
+                          description="There are currently no calving records associated with this animal."
+                          buttonText="Add Calving Data"
+                          onAdd={() => setDateToToday('calfDate')}
+                        />
+                    ) : (
+                        <Card style={{ padding: 20 }}>
+                            <View className="flex-row justify-between items-center mb-4">
+                              <Text variant="black" size={18} color="primary">Calving Information</Text>
+                              <TouchableOpacity 
+                                onPress={() => setDateToNotYet('calfDate')}
+                                className="flex-row items-center gap-1 bg-red-50 dark:bg-red-950/20 px-3 py-1.5 rounded-lg border border-red-100 dark:border-red-900/50"
+                              >
+                                <Trash2 size={12} color="#ef4444" />
+                                <Text variant="bold" size={9} style={{ color: '#ef4444' }}>Clear</Text>
+                              </TouchableOpacity>
+                            </View>
 
-            {/* STEP 4 */}
-            {currentStep === 4 && (
-                <View>
-                    <Text className="text-xl font-bold mb-1 text-gray-900">Calf Drop</Text>
-                    <Text className="text-sm text-gray-500 mb-5">Edit recorded calving data.</Text>
-                    <DateSelector label="Calving Date" value={formData.calfDate} onPress={() => openDatePicker('calfDate')} onSetToday={() => setDateToToday('calfDate')} onSetNotYet={() => setFormData({...formData, calfDate: 'Not Yet'})}/>
+                            <DateSelector label="Calving Date" value={formData.calfDate} onPress={() => openDatePicker('calfDate')} onSetToday={() => setDateToToday('calfDate')} />
 
-                    <View className="flex-row gap-3">
-                        <View className="flex-1"><InputField label="Calf ID" value={formData.calfId} onChangeText={(t: string) => setFormData({...formData, calfId: t})} placeholder="New ID" /></View>
-                        <View className="flex-1"><SelectField label="Sex" value={formData.calfSex} placeholder="M/F" onPress={() => openModal('calfSex', 'Calf Sex', CALF_SEX)} /></View>
-                    </View>
+                            <View className="flex-row gap-3">
+                                <View className="flex-1"><InputField label="Calf ID" value={formData.calfId} onChangeText={(t: string) => setFormData({...formData, calfId: t})} placeholder="New ID" /></View>
+                                <View className="flex-1"><SelectField label="Sex" value={formData.calfSex} placeholder="M/F" onPress={() => openModal('calfSex', 'Calf Sex', CALF_SEX)} /></View>
+                            </View>
 
-                    <SelectField label="Calving Ease" value={formData.calvingEase} placeholder="Select Condition" onPress={() => openModal('calvingEase', 'Calving Ease', CALVING_EASE)} />
+                            <SelectField label="Calving Ease" value={formData.calvingEase} placeholder="Select Condition" onPress={() => openModal('calvingEase', 'Calving Ease', CALVING_EASE)} />
+                        </Card>
+                    )}
                 </View>
             )}
 
           </ScrollView>
         </KeyboardAvoidingView>
 
-        {/* BUTTONS */}
+        {/* --- BOTTOM SAVE ACTION --- */}
         <View className="pt-4 pb-28">
-            {currentStep < TOTAL_STEPS ? (
-                <TouchableOpacity onPress={handleNext} className="bg-emerald-600 rounded-full py-3.5 items-center flex-row justify-center gap-2 shadow-sm">
-                    <Text className="text-white font-bold text-base">Next Step</Text>
-                    <ArrowRight size={18} color="white" />
-                </TouchableOpacity>
-            ) : (
-                <TouchableOpacity onPress={handleSave} disabled={loading} className={`rounded-full py-3.5 items-center flex-row justify-center gap-2 shadow-lg ${loading ? 'bg-emerald-400' : 'bg-[#00643B] shadow-emerald-200'}`}>
-                    {loading ? (
-                       <ActivityIndicator color="white" size="small" />
-                    ) : (
-                       <>
-                         <Check size={18} color="white" />
-                         <Text className="text-white font-bold text-base">Save Full Medical Record</Text>
-                       </>
-                    )}
-                </TouchableOpacity>
-            )}
+            <TouchableOpacity 
+                onPress={handleSave} 
+                disabled={loading} 
+                style={{ 
+                  backgroundColor: colors.primary,
+                  shadowColor: colors.primary,
+                  shadowOpacity: 0.1,
+                  shadowRadius: 8
+                }}
+                className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
+            >
+                {loading ? (
+                   <ActivityIndicator color="white" size="small" />
+                ) : (
+                   <>
+                     <Check size={18} color="white" />
+                     <Text variant="bold" size={15} style={{ color: '#fff' }}>Save All Records</Text>
+                   </>
+                )}
+            </TouchableOpacity>
         </View>
 
         <SelectionModal visible={modalVisible} title={modalTitle} options={modalOptions} onClose={() => setModalVisible(false)} onSelect={handleSelect} />
@@ -409,53 +506,142 @@ export default function EditAnimalWizard() {
   );
 }
 
-const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default' }: any) => (
-    <View className="mb-3">
-        <Text className="text-gray-700 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TextInput className="bg-white border border-gray-300 rounded-xl px-4 py-3 text-gray-900 text-sm focus:border-emerald-500" value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="#9CA3AF" keyboardType={keyboardType} />
+// Input component using Theme variables
+const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default' }: any) => {
+  const { colors } = useTheme();
+  return (
+    <View className="mb-4">
+        <Text variant="bold" size={10} color="secondary" className="uppercase tracking-wider mb-1.5 ml-1">{label}</Text>
+        <TextInput 
+            style={{
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              color: colors.textPrimary,
+              fontFamily: 'Outfit_600SemiBold'
+            }}
+            className="border rounded-xl px-4 py-3.5 text-sm" 
+            value={value} 
+            onChangeText={onChangeText} 
+            placeholder={placeholder} 
+            placeholderTextColor={colors.textMuted} 
+            keyboardType={keyboardType} 
+        />
     </View>
-);
-
-const SelectField = ({ label, value, placeholder, onPress }: any) => (
-    <View className="mb-3">
-        <Text className="text-gray-700 font-medium mb-1 ml-1 text-xs uppercase tracking-wide">{label}</Text>
-        <TouchableOpacity onPress={onPress} className="flex-row items-center justify-between bg-white border border-gray-300 rounded-xl px-4 py-3">
-            <Text className={`text-sm ${value ? 'text-gray-900' : 'text-gray-400'}`}>{value || placeholder}</Text>
-            <ChevronDown size={18} color="gray" />
+  );
+};
+ 
+// Select field component using Theme variables
+const SelectField = ({ label, value, placeholder, onPress }: any) => {
+  const { colors } = useTheme();
+  return (
+    <View className="mb-4">
+        <Text variant="bold" size={10} color="secondary" className="uppercase tracking-wider mb-1.5 ml-1">{label}</Text>
+        <TouchableOpacity 
+          onPress={onPress} 
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="flex-row items-center justify-between border rounded-xl px-4 py-3.5"
+        >
+            <Text 
+              variant="semibold" 
+              size={14} 
+              style={{ color: value ? colors.textPrimary : colors.textMuted }}
+            >
+              {value || placeholder}
+            </Text>
+            <ChevronDown size={16} color={colors.textMuted} />
         </TouchableOpacity>
     </View>
-);
-
-const DateSelector = ({ label, value, onPress, onSetToday, onSetNotYet }: any) => (
-    <View className="mb-3">
-        <View className="flex-row justify-between items-center mb-1 ml-1">
-            <Text className="text-gray-700 font-medium text-xs uppercase tracking-wide">{label}</Text>
-            <View className="flex-row gap-x-4">
-                {onSetNotYet && (<TouchableOpacity onPress={onSetNotYet} className="active:opacity-50"><Text className="text-gray-500 text-[10px] font-bold">NOT YET</Text></TouchableOpacity>)}
-                <TouchableOpacity onPress={onSetToday} className="active:opacity-50"><Text className="text-emerald-600 text-[10px] font-bold">SET TO TODAY</Text></TouchableOpacity>
-            </View>
+  );
+};
+ 
+// Date Selector field using Theme variables
+const DateSelector = ({ label, value, onPress, onSetToday }: any) => {
+  const { colors } = useTheme();
+  return (
+    <View className="mb-4">
+        <View className="flex-row justify-between items-center mb-1.5 ml-1">
+            <Text variant="bold" size={10} color="secondary" className="uppercase tracking-wider">{label}</Text>
+            <TouchableOpacity onPress={onSetToday} className="active:opacity-50">
+               <Text variant="bold" size={10} style={{ color: colors.primary }}>SET TO TODAY</Text>
+            </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={onPress} className="bg-white border border-gray-300 rounded-xl px-4 py-3 flex-row justify-between items-center">
-            <Text className={`text-sm ${value ? 'text-gray-900' : 'text-gray-400'}`}>{value || "Select Date"}</Text>
-            <Calendar size={18} color="gray" />
+        <TouchableOpacity 
+          onPress={onPress} 
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          className="border rounded-xl px-4 py-3.5 flex-row justify-between items-center"
+        >
+            <Text 
+              variant="semibold" 
+              size={14} 
+              style={{ color: value ? colors.textPrimary : colors.textMuted }}
+            >
+              {value || "Select Date"}
+            </Text>
+            <Calendar size={16} color={colors.textMuted} />
         </TouchableOpacity>
     </View>
-);
-
-const SelectionModal = ({ visible, title, options, onClose, onSelect }: any) => (
+  );
+};
+ 
+// Selection list modal using Theme variables
+const SelectionModal = ({ visible, title, options, onClose, onSelect }: any) => {
+  const { colors } = useTheme();
+  return (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
         <View className="flex-1 bg-black/50 justify-end">
-            <View className="bg-white rounded-t-[32px] p-6 pb-10 max-h-[70%]">
+            <View style={{ backgroundColor: colors.background }} className="rounded-t-[32px] p-6 pb-10 max-h-[70%]">
                 <View className="flex-row justify-between items-center mb-4">
-                    <Text className="text-lg font-bold">{title}</Text>
-                    <TouchableOpacity onPress={onClose} className="p-1 bg-gray-100 rounded-full"><X size={20} color="black" /></TouchableOpacity>
+                    <Text variant="black" size={18} color="primary">{title}</Text>
+                    <TouchableOpacity 
+                      onPress={onClose} 
+                      style={{ backgroundColor: colors.card }}
+                      className="p-1 rounded-full"
+                    >
+                      <X size={20} color={colors.textPrimary} />
+                    </TouchableOpacity>
                 </View>
-                <FlatList data={options} keyExtractor={(item) => item} renderItem={({ item }) => (
-                        <TouchableOpacity onPress={() => onSelect(item)} className="py-3.5 border-b border-gray-100 active:bg-emerald-50">
-                            <Text className="text-base text-gray-800">{item}</Text>
-                        </TouchableOpacity>
-                )} />
+                <FlatList 
+                  data={options} 
+                  keyExtractor={(item) => item} 
+                  renderItem={({ item }) => (
+                      <TouchableOpacity 
+                        onPress={() => onSelect(item)} 
+                        style={{ borderBottomColor: colors.border }}
+                        className="py-4 border-b active:opacity-50"
+                      >
+                          <Text variant="bold" size={16} color="primary">{item}</Text>
+                      </TouchableOpacity>
+                  )} 
+                />
             </View>
         </View>
     </Modal>
-);
+  );
+};
+
+// Section Placeholder card using Theme variables
+const PlaceholderCard = ({ title, description, buttonText, onAdd }: any) => {
+  const { colors, isDark } = useTheme();
+  return (
+    <Card style={{ padding: 32, alignItems: 'center' }}>
+      <View 
+        style={{ backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : '#f0fdf4' }} 
+        className="w-16 h-16 rounded-full items-center justify-center mb-4"
+      >
+        <MaterialCommunityIcons name="plus-circle-outline" size={32} color={colors.primary} />
+      </View>
+      <Text variant="bold" size={18} color="primary" className="mb-2 text-center">{title}</Text>
+      <Text variant="medium" size={13} color="muted" className="text-center px-4 leading-5 mb-6">
+        {description}
+      </Text>
+      <TouchableOpacity
+        onPress={onAdd}
+        style={{ backgroundColor: colors.primary }}
+        className="py-3.5 px-6 rounded-full flex-row items-center gap-2 active:opacity-75 shadow-sm"
+      >
+        <Plus size={16} color="white" />
+        <Text variant="bold" size={13} style={{ color: '#fff' }}>{buttonText}</Text>
+      </TouchableOpacity>
+    </Card>
+  );
+}

@@ -34,6 +34,7 @@ const PregnancySchema = new mongoose.Schema(
 
     // Optional technician notes
     technicianNote: String,
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
@@ -41,5 +42,6 @@ const PregnancySchema = new mongoose.Schema(
 // Indexes for scalability
 PregnancySchema.index({ animalId: 1, createdAt: -1 });
 PregnancySchema.index({ farmerId: 1 });
+PregnancySchema.index({ deletedAt: 1 });
 
 export const Pregnancy = mongoose.model("Pregnancy", PregnancySchema);
