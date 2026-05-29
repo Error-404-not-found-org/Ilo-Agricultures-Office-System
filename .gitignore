@@ -15,12 +15,20 @@ ip.json
 ip.txt
 error.log
 *.log
+client_file.txt
+operation_test.txt
+todo.txt
+tools_and_technologies.txt
+proposed_system_features.txt
+test-icon-map.jsr
+clean_architecture_guide.txt
 
 # Checklists & QA Checklists
 BreedSmart_QA_Checklist.txt
 *checklist*
 *Checklist*
 
+
 # Firebase Private Credentials
 *firebase-adminsdk*.json
-breedsmart-adcbb-firebase-adminsdk-fbsvc-1214b269c1.json
+breedsmart-adcbb-firebase-adminsdk-fbsvc-1214b269c1.json
