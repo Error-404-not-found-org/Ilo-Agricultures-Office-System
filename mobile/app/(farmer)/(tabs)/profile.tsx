@@ -31,6 +31,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApi } from '@/lib/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OTON_BARANGAYS } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
 
 
 const FarmerProfile = () => {
@@ -41,6 +42,7 @@ const FarmerProfile = () => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { colorScheme, toggleColorScheme } = useColorScheme();
+  const { colors, isDark } = useTheme();
 
   const handleToggleTheme = async () => {
     const newScheme = colorScheme === 'dark' ? 'light' : 'dark';
@@ -113,28 +115,34 @@ const FarmerProfile = () => {
       if (!/^\+639\d{9}$/.test(formData.phoneNumber)) {
         return toast.error("Invalid format. Use +639XXXXXXXXX.");
       }
-    }
-    mutation.mutate({
-      phoneNumber: formData.phoneNumber,
-      address: {
-        street: formData.street,
-        barangay: formData.barangay,
-        city: 'Oton',
-        province: 'Iloilo',
-        zipCode: '5020',
-        region: 'Region VI'
+      mutation.mutate({
+        phoneNumber: formData.phoneNumber
+      });
+    } else if (editMode === 'address') {
+      if (!formData.barangay) {
+        return toast.error("Barangay is required.");
       }
-    });
+      mutation.mutate({
+        address: {
+          street: formData.street,
+          barangay: formData.barangay,
+          city: 'Oton',
+          province: 'Iloilo',
+          zipCode: '5020',
+          region: 'Region VI'
+        }
+      });
+    }
   };
 
 
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+    <View className="flex-1 bg-slate-50 dark:bg-slate-950" style={{ backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}>
         
-        {/* Curved Header Header Background */}
-        <View className="bg-[#00643B] pt-14 pb-20 px-6 rounded-b-[40px] items-center relative shadow-lg shadow-[#00643b]/20">
+        {/* Curved Header Background */}
+        <View className="pt-14 pb-20 px-6 rounded-b-[40px] items-center relative shadow-lg" style={{ backgroundColor: '#00643B' }}>
            
            {/* Profile Picture & Info */}
            <View className="relative mt-4">
@@ -145,8 +153,11 @@ const FarmerProfile = () => {
                     <User size={48} color="#94a3b8" />
                  )}
               </View>
-              <TouchableOpacity className="absolute bottom-0 right-0 w-8 h-8 bg-white dark:bg-slate-800 rounded-full items-center justify-center shadow-md">
-                 <Camera size={14} color="#00643B" />
+              <TouchableOpacity 
+                className="absolute bottom-0 right-0 w-8 h-8 rounded-full items-center justify-center shadow-md"
+                style={{ backgroundColor: colors.card }}
+              >
+                 <Camera size={14} color={isDark ? colors.primary : "#00643B"} />
               </TouchableOpacity>
            </View>
 
@@ -160,11 +171,14 @@ const FarmerProfile = () => {
 
         {/* Stats Container (Shifted Upwards) */}
         <View className="px-6 -mt-10">
-           <View className="bg-white dark:bg-slate-900 rounded-[28px] p-5 flex-row justify-between border border-slate-100 dark:border-slate-800/80 shadow-xl shadow-slate-100/50 dark:shadow-none">
-              <StatItem label="Total Cows" value={dbUser?.stats?.totalAnimals || '0'} icon="cow" color="#00643B" />
-              <View className="w-[1px] bg-slate-100 dark:bg-slate-800 my-1" />
+           <View 
+             className="rounded-[28px] p-5 flex-row justify-between border shadow-xl dark:shadow-none"
+             style={{ backgroundColor: colors.card, borderColor: colors.border }}
+           >
+              <StatItem label="Total Cows" value={dbUser?.stats?.totalAnimals || '0'} icon="cow" color={isDark ? colors.primary : "#00643B"} />
+              <View className="w-[1px] my-1" style={{ backgroundColor: colors.border }} />
               <StatItem label="Active Cases" value={dbUser?.stats?.activeCases || '0'} icon="medical-bag" color="#eab308" />
-              <View className="w-[1px] bg-slate-100 dark:bg-slate-800 my-1" />
+              <View className="w-[1px] my-1" style={{ backgroundColor: colors.border }} />
               <StatItem label="Pregnant" value={dbUser?.stats?.activePregnancies || '0'} icon="heart-pulse" color="#0891b2" />
            </View>
         </View>
@@ -172,43 +186,43 @@ const FarmerProfile = () => {
         <View className="px-6 mt-8">
            
            {/* Personal Information */}
-           <Text className="font-outfit-black text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest mb-3 ml-1">Account Details</Text>
+           <Text className="font-outfit-black text-[10px] uppercase tracking-widest mb-3 ml-1" style={{ color: colors.textMuted }}>Account Details</Text>
            
-           <View className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden border border-slate-100 dark:border-slate-800 mb-6">
-              <DetailRow icon={<Mail size={18} color="#94a3b8" />} label="Email Address" value={clerkUser?.primaryEmailAddress?.emailAddress} />
+           <View className="rounded-3xl overflow-hidden border mb-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+              <DetailRow icon={<Mail size={18} color={colors.textMuted} />} label="Email Address" value={clerkUser?.primaryEmailAddress?.emailAddress} />
               <Divider />
-              <DetailRow icon={<Phone size={18} color="#94a3b8" />} label="Phone Number" value={dbUser?.phoneNumber || 'Not Set'} onPress={() => setEditMode('phone')} />
+              <DetailRow icon={<Phone size={18} color={colors.textMuted} />} label="Phone Number" value={dbUser?.phoneNumber || 'Not Set'} onPress={() => setEditMode('phone')} />
               <Divider />
-              <DetailRow icon={<MapPin size={18} color="#94a3b8" />} label="Farm Address" value={dbUser?.address?.barangay ? `${dbUser.address.street ? dbUser.address.street + ', ' : ''}${dbUser.address.barangay}, ${dbUser.address.city}, ${dbUser.address.province}` : 'Not Set'} onPress={() => setEditMode('address')} />
+              <DetailRow icon={<MapPin size={18} color={colors.textMuted} />} label="Farm Address" value={dbUser?.address?.barangay ? `${dbUser.address.street ? dbUser.address.street + ', ' : ''}${dbUser.address.barangay}, ${dbUser.address.city}, ${dbUser.address.province}` : 'Not Set'} onPress={() => setEditMode('address')} />
            </View>
 
            {/* Quick Actions */}
-           <Text className="font-outfit-black text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest mb-3 ml-1">System & Support</Text>
+           <Text className="font-outfit-black text-[10px] uppercase tracking-widest mb-3 ml-1" style={{ color: colors.textMuted }}>System & Support</Text>
            
-           <View className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden border border-slate-100 dark:border-slate-800 mb-10">
-              <TouchableOpacity onPress={handleToggleTheme} style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+           <View className="rounded-3xl overflow-hidden border mb-10" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+              <TouchableOpacity onPress={handleToggleTheme} style={{ padding: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.card }}>
                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
-                       {colorScheme === 'dark' ? <Moon size={18} color="#94a3b8" /> : <Sun size={18} color="#f59e0b" />}
+                    <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: isDark ? '#1e293b' : '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
+                       {isDark ? <Moon size={18} color="#94a3b8" /> : <Sun size={18} color="#f59e0b" />}
                     </View>
                     <View>
-                       <Text style={{ fontSize: 14, fontFamily: 'Outfit_600SemiBold', color: colorScheme === 'dark' ? '#f1f5f9' : '#334155' }}>Theme Mode</Text>
-                       <Text style={{ fontSize: 10, fontFamily: 'Outfit_700Bold', color: '#94a3b8', textTransform: 'uppercase' }}>{colorScheme === 'dark' ? 'Dark Mode Active' : 'Light Mode Active'}</Text>
+                       <Text style={{ fontSize: 14, fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }}>Theme Mode</Text>
+                       <Text style={{ fontSize: 10, fontFamily: 'Outfit_700Bold', color: colors.textMuted, textTransform: 'uppercase' }}>{isDark ? 'Dark Mode Active' : 'Light Mode Active'}</Text>
                     </View>
                  </View>
-                 <View style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: colorScheme === 'dark' ? '#00643B' : '#e2e8f0', padding: 2, justifyContent: 'center' }}>
-                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: colorScheme === 'dark' ? 'flex-end' : 'flex-start', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }} />
+                 <View style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: isDark ? colors.primary : '#e2e8f0', padding: 2, justifyContent: 'center' }}>
+                    <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: isDark ? 'flex-end' : 'flex-start', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 }} />
                  </View>
               </TouchableOpacity>
               <Divider />
-              <ActionItem icon={<Settings size={18} color="#64748b" />} label="App Settings" onPress={() => router.push('/(farmer)/settings')} />
+              <ActionItem icon={<Settings size={18} color={colors.textSecondary} />} label="App Settings" onPress={() => router.push('/(farmer)/settings')} />
               <Divider />
-              <ActionItem icon={<HelpCircle size={18} color="#64748b" />} label="Help Center" onPress={() => router.push('/(farmer)/help-center')} />
+              <ActionItem icon={<HelpCircle size={18} color={colors.textSecondary} />} label="Help Center" onPress={() => router.push('/(farmer)/help-center')} />
               <Divider />
-              <ActionItem icon={<LogOut size={18} color="#ef4444" />} label="Sign Out" onPress={handleSignOut} isDestructive />
+              <ActionItem icon={<LogOut size={18} color={colors.error} />} label="Sign Out" onPress={handleSignOut} isDestructive />
            </View>
 
-           <Text style={{ textAlign: 'center', color: '#cbd5e1', fontFamily: 'Outfit_600SemiBold', fontSize: 11, marginBottom: 40 }}>ILO-AGRI HUB • VERSION 1.0.4</Text>
+           <Text style={{ textAlign: 'center', color: colors.textMuted, fontFamily: 'Outfit_600SemiBold', fontSize: 11, marginBottom: 40 }}>ILO-AGRI HUB • VERSION 1.0.4</Text>
         </View>
       </ScrollView>
 
@@ -223,14 +237,14 @@ const FarmerProfile = () => {
              <TouchableOpacity 
                 activeOpacity={1}
                 onPress={(e) => e.stopPropagation()}
-                style={{ backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: Math.max(insets.bottom, 40) }}
+                style={{ backgroundColor: colors.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: Math.max(insets.bottom, 40) }}
              >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-                   <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: colorScheme === 'dark' ? '#fff' : '#1e293b' }}>
+                   <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: colors.textPrimary }}>
                      {editMode === 'phone' ? 'Edit Phone Number' : 'Edit Farm Address'}
                    </Text>
                    <TouchableOpacity onPress={() => setEditMode(null)}>
-                      <MaterialCommunityIcons name="close" size={24} color="#94a3b8" />
+                      <MaterialCommunityIcons name="close" size={24} color={colors.textMuted} />
                    </TouchableOpacity>
                 </View>
                 
@@ -277,7 +291,7 @@ const FarmerProfile = () => {
                    <TouchableOpacity
                      onPress={handleUpdate}
                      disabled={mutation.isPending}
-                     style={{ backgroundColor: '#00643B', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 8 }}
+                     style={{ backgroundColor: isDark ? colors.primary : '#00643B', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 8 }}
                    >
                      {mutation.isPending
                        ? <ActivityIndicator color="#fff" />
@@ -301,14 +315,14 @@ const FarmerProfile = () => {
             <TouchableOpacity 
               activeOpacity={1}
               onPress={(e) => e.stopPropagation()}
-              style={{ backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 }}
+              style={{ backgroundColor: colors.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40 }}
             >
                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colorScheme === 'dark' ? '#fff' : '#1e293b' }}>
+                <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colors.textPrimary }}>
                   {selectModal.title}
                 </Text>
                 <TouchableOpacity onPress={() => setSelectModal({ ...selectModal, visible: false })}>
-                  <MaterialCommunityIcons name="close" size={24} color="#94a3b8" />
+                  <MaterialCommunityIcons name="close" size={24} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 300 }}>
@@ -323,16 +337,16 @@ const FarmerProfile = () => {
                       style={{
                         width: '48%',
                         paddingVertical: 14,
-                        backgroundColor: colorScheme === 'dark' ? '#334155' : '#f8fafc',
+                        backgroundColor: isDark ? colors.background : '#f8fafc',
                         borderRadius: 16,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginBottom: 12,
                         borderWidth: 1,
-                        borderColor: colorScheme === 'dark' ? '#475569' : '#e2e8f0'
+                        borderColor: colors.border
                       }}
                     >
-                      <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, color: colorScheme === 'dark' ? '#fff' : '#475569', textAlign: 'center' }}>
+                      <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, color: colors.textPrimary, textAlign: 'center' }}>
                         {opt}
                       </Text>
                     </TouchableOpacity>
@@ -347,87 +361,97 @@ const FarmerProfile = () => {
   );
 };
 
-const StatItem = ({ label, value, icon, color }: any) => (
-  <View className="flex-1 items-center">
-     <MaterialCommunityIcons name={icon} size={20} color={color} />
-     <Text className="text-xl font-outfit-black text-slate-800 dark:text-white mt-1">{value}</Text>
-     <Text className="text-[9px] font-outfit-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</Text>
-  </View>
-);
+const StatItem = ({ label, value, icon, color }: any) => {
+  const { colors } = useTheme();
+  return (
+    <View className="flex-1 items-center">
+       <MaterialCommunityIcons name={icon} size={20} color={color} />
+       <Text className="text-xl font-outfit-black mt-1" style={{ color: colors.textPrimary }}>{value}</Text>
+       <Text className="text-[9px] font-outfit-bold uppercase tracking-widest" style={{ color: colors.textMuted }}>{label}</Text>
+    </View>
+  );
+};
 
-const DetailRow = ({ icon, label, value, onPress }: any) => (
-  <TouchableOpacity onPress={onPress} disabled={!onPress} className="p-4 flex-row items-center gap-4 active:bg-slate-50 dark:active:bg-slate-800">
-     <View className="w-9 h-9 rounded-xl bg-slate-50 dark:bg-slate-800 items-center justify-center">
-        {icon}
-     </View>
-     <View className="flex-1">
-        <Text className="text-[9px] font-outfit-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{label}</Text>
-        <Text className="text-sm font-outfit-semibold text-slate-700 dark:text-slate-200 mt-0.5">{value || 'Not Set'}</Text>
-     </View>
-     {onPress && <ChevronRight size={16} color="#cbd5e1" />}
-  </TouchableOpacity>
-);
+const DetailRow = ({ icon, label, value, onPress }: any) => {
+  const { colors, isDark } = useTheme();
+  return (
+    <TouchableOpacity onPress={onPress} disabled={!onPress} className="p-4 flex-row items-center gap-4 active:bg-slate-50 dark:active:bg-slate-800" style={{ backgroundColor: colors.card }}>
+       <View className="w-9 h-9 rounded-xl items-center justify-center" style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}>
+          {icon}
+       </View>
+       <View className="flex-1">
+          <Text className="text-[9px] font-outfit-bold uppercase tracking-widest" style={{ color: colors.textMuted }}>{label}</Text>
+          <Text className="text-sm font-outfit-semibold mt-0.5" style={{ color: colors.textPrimary }}>{value || 'Not Set'}</Text>
+       </View>
+       {onPress && <ChevronRight size={16} color={colors.textMuted} />}
+    </TouchableOpacity>
+  );
+};
 
-const ActionItem = ({ icon, label, onPress, isDestructive }: any) => (
-  <TouchableOpacity onPress={onPress} className="p-4 flex-row items-center justify-between active:bg-slate-50 dark:active:bg-slate-800">
-     <View className="flex-row items-center gap-4">
-        <View className={`w-9 h-9 rounded-xl items-center justify-center ${isDestructive ? 'bg-red-50 dark:bg-red-900/20' : 'bg-slate-50 dark:bg-slate-800'}`}>
-           {icon}
-        </View>
-        <Text className={`text-sm ${isDestructive ? 'font-outfit-bold text-red-600' : 'font-outfit-semibold text-slate-700 dark:text-slate-200'}`}>{label}</Text>
-     </View>
-     <ChevronRight size={16} color="#cbd5e1" />
-  </TouchableOpacity>
-);
+const ActionItem = ({ icon, label, onPress, isDestructive }: any) => {
+  const { colors, isDark } = useTheme();
+  return (
+    <TouchableOpacity onPress={onPress} className="p-4 flex-row items-center justify-between active:bg-slate-50 dark:active:bg-slate-800" style={{ backgroundColor: colors.card }}>
+       <View className="flex-row items-center gap-4">
+          <View className={`w-9 h-9 rounded-xl items-center justify-center`} style={{ backgroundColor: isDestructive ? (isDark ? 'rgba(239, 68, 68, 0.2)' : '#fef2f2') : (isDark ? colors.background : '#f8fafc') }}>
+             {icon}
+          </View>
+          <Text className={`text-sm ${isDestructive ? 'font-outfit-bold' : 'font-outfit-semibold'}`} style={{ color: isDestructive ? colors.error : colors.textPrimary }}>{label}</Text>
+       </View>
+       <ChevronRight size={16} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
+};
 
-const InputBox = ({ label, value, onChange, icon, isDark }: any) => (
-  <View>
-     <Text style={{ fontSize: 11, fontFamily: 'Outfit_700Bold', color: '#94a3b8', textTransform: 'uppercase', marginBottom: 6, marginLeft: 4 }}>{label}</Text>
-     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#334155' : '#f8fafc', borderRadius: 12, paddingHorizontal: 16, borderWidth: 1, borderColor: isDark ? '#475569' : '#e2e8f0', height: 56 }}>
-        <MaterialCommunityIcons name={icon} size={20} color="#94a3b8" />
-        <TextInput style={{ flex: 1, marginLeft: 12, fontFamily: 'Outfit_600SemiBold', color: isDark ? '#fff' : '#1e293b' }} value={value} onChangeText={onChange} />
-     </View>
-  </View>
-);
-
-const Divider = () => <View className="h-[1px] bg-slate-50 dark:bg-slate-800 ml-16" />;
+const Divider = () => {
+  const { colors } = useTheme();
+  return <View className="h-[1px] ml-16" style={{ backgroundColor: colors.border }} />;
+};
 
 // Reusable input field matching the add-animal.tsx style
-const ProfileInputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', maxLength }: any) => (
-  <View className="flex-1 mb-4">
-    <Text className="text-[10px] font-outfit-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
-      {label}
-    </Text>
-    <TextInput
-      value={value}
-      onChangeText={onChangeText}
-      placeholder={placeholder}
-      keyboardType={keyboardType}
-      maxLength={maxLength}
-      className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 font-outfit-medium text-slate-800 dark:text-white text-sm"
-      placeholderTextColor="#94a3b8"
-    />
-  </View>
-);
-
-const SelectField = ({ label, value, onPress }: any) => (
-  <View className="flex-1 mb-4">
-    <Text className="text-[10px] font-outfit-black text-slate-400 uppercase mb-1.5 ml-1 tracking-widest">
-      {label}
-    </Text>
-    <TouchableOpacity
-      onPress={onPress}
-      className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3.5 flex-row justify-between items-center"
-      style={{ height: 48 }}
-    >
-      <Text
-        className={`font-outfit-medium text-sm ${value ? "text-slate-800 dark:text-white" : "text-slate-400"}`}
-      >
-        {value || "Select"}
+const ProfileInputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', maxLength }: any) => {
+  const { colors } = useTheme();
+  return (
+    <View className="flex-1 mb-4">
+      <Text className="text-[10px] font-outfit-black uppercase mb-1.5 ml-1 tracking-widest" style={{ color: colors.textMuted }}>
+        {label}
       </Text>
-      <ChevronDown size={16} color="#94a3b8" />
-    </TouchableOpacity>
-  </View>
-);
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        keyboardType={keyboardType}
+        maxLength={maxLength}
+        className="border rounded-2xl px-4 py-3 font-outfit-medium text-sm"
+        style={{ backgroundColor: colors.card, borderColor: colors.border, color: colors.textPrimary }}
+        placeholderTextColor={colors.textMuted}
+      />
+    </View>
+  );
+};
+
+const SelectField = ({ label, value, onPress }: any) => {
+  const { colors } = useTheme();
+  return (
+    <View className="flex-1 mb-4">
+      <Text className="text-[10px] font-outfit-black uppercase mb-1.5 ml-1 tracking-widest" style={{ color: colors.textMuted }}>
+        {label}
+      </Text>
+      <TouchableOpacity
+        onPress={onPress}
+        className="border rounded-2xl px-4 py-3.5 flex-row justify-between items-center"
+        style={{ height: 48, backgroundColor: colors.card, borderColor: colors.border }}
+      >
+        <Text
+          className={`font-outfit-medium text-sm`}
+          style={{ color: value ? colors.textPrimary : colors.textMuted }}
+        >
+          {value || "Select"}
+        </Text>
+        <ChevronDown size={16} color={colors.textMuted} />
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 export default FarmerProfile;

@@ -24,7 +24,6 @@ import {
   Check,
   AlertCircle,
   Clock,
-  Activity
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useEffect, useRef } from "react";
@@ -34,6 +33,7 @@ import { toast } from "sonner-native";
 import { validateRequestTime } from "@/lib/utils";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useTheme } from "@/lib/theme";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -87,7 +87,7 @@ const URGENCY_OPTIONS = [
     desc: "Can wait a few days",
     color: "#22c55e",
     bg: "#f0fdf4",
-    darkBg: "#064e3b",
+    darkBg: "rgba(34, 197, 94, 0.15)",
   },
   {
     value: "medium",
@@ -95,7 +95,7 @@ const URGENCY_OPTIONS = [
     desc: "Needs attention soon",
     color: "#f59e0b",
     bg: "#fffbeb",
-    darkBg: "#78350f",
+    darkBg: "rgba(245, 158, 11, 0.15)",
   },
   {
     value: "high",
@@ -103,7 +103,7 @@ const URGENCY_OPTIONS = [
     desc: "Emergency / critical now",
     color: "#ef4444",
     bg: "#fef2f2",
-    darkBg: "#7f1d1d",
+    darkBg: "rgba(239, 68, 68, 0.15)",
   },
 ];
 
@@ -113,6 +113,9 @@ export default function ReportSickness() {
   const api = useApi();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const { colors, isDark } = useTheme();
+
+  const primaryColor = isDark ? colors.error : '#b91c1c';
 
   const [farmer, setFarmer] = useState<FarmerProfile | null>(null);
   const [animals, setAnimals] = useState<Animal[]>([]);
@@ -232,7 +235,6 @@ export default function ReportSickness() {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
-    // 1. Profile Completeness Check
     const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
     const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
 
@@ -244,7 +246,7 @@ export default function ReportSickness() {
           { text: "Cancel", style: "cancel" },
           {
             text: "Go to Profile",
-            onPress: () => router.push("/(farmer)/profile"),
+            onPress: () => router.push("/(farmer)/(tabs)/profile"),
           },
         ],
       );
@@ -253,7 +255,6 @@ export default function ReportSickness() {
 
     if (!selectedAnimal) return toast.error("Please select an animal.");
 
-    // Check for duplicate pending requests (safely handle the paginated response object)
     const requestsArray = Array.isArray(myHealthRequests) ? myHealthRequests : myHealthRequests?.data || [];
     const isAlreadyPending = requestsArray.some(
       (r: any) => r.animalId?._id === selectedAnimal._id && r.status === "pending"
@@ -314,11 +315,9 @@ export default function ReportSickness() {
   const selectedType = REQUEST_TYPES.find((t) => t.value === requestType);
 
   return (
-    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
+    <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <StatusBar barStyle="light-content" />
-
-      {/* Red-tinted top bar to signal health/urgency */}
-      <View className="absolute top-0 left-0 right-0 h-[260px] bg-[#b91c1c]" />
+      <View className="absolute top-0 left-0 right-0 h-[260px]" style={{ backgroundColor: '#b91c1c' }} />
 
       {/* Header */}
       <View
@@ -344,8 +343,8 @@ export default function ReportSickness() {
 
       {/* Content card */}
       <View
-        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-6 mt-2 shadow-2xl"
-        style={{ elevation: 12 }}
+        className="flex-1 rounded-t-[32px] px-6 pt-6 mt-2 shadow-2xl"
+        style={{ elevation: 12, backgroundColor: colors.background }}
       >
         <ScrollView
           ref={scrollRef}
@@ -366,12 +365,18 @@ export default function ReportSickness() {
               </View>
 
               {/* Speech Bubble */}
-              <View className="flex-1 bg-red-50 dark:bg-red-900/10 rounded-[28px] rounded-bl-none p-5 ml-[-15px] border border-red-100 dark:border-red-900/20 shadow-sm">
-                <Text className="text-red-700 dark:text-red-400 font-outfit-black text-[13px] mb-1">
+              <View 
+                className="flex-1 rounded-[28px] rounded-bl-none p-5 ml-[-15px] border shadow-sm"
+                style={{ backgroundColor: isDark ? 'rgba(239, 68, 68, 0.1)' : '#fef2f2', borderColor: isDark ? 'transparent' : '#fecaca' }}
+              >
+                <Text 
+                  className="font-outfit-black text-[13px] mb-1"
+                  style={{ color: isDark ? '#fca5a5' : '#b91c1c' }}
+                >
                   Moowie Support
                 </Text>
-                <Text className="text-slate-600 dark:text-slate-300 font-outfit-medium text-[12px] leading-[18px]">
-                  "Oh no, is one of our friends not feeling well? 🐮 Don't worry, fill out the details and I'll make sure a technician sees this immediately!"
+                <Text className="font-outfit-medium text-[12px] leading-[18px]" style={{ color: colors.textSecondary }}>
+                  &quot;Oh no, is one of our friends not feeling well? 🐮 Don&apos;t worry, fill out the details and I&apos;ll make sure a technician sees this immediately!&quot;
                 </Text>
               </View>
             </View>
@@ -379,37 +384,38 @@ export default function ReportSickness() {
 
           {/* Farmer Info Card */}
           <View
-            className="bg-white dark:bg-slate-800 rounded-[28px] p-6 mb-6 border border-slate-100 dark:border-slate-700 shadow-sm"
+            className="rounded-[28px] p-6 mb-6 border shadow-sm"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
-            <Text className="text-[10px] font-outfit-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4">
+            <Text className="text-[10px] font-outfit-black uppercase tracking-widest mb-4" style={{ color: colors.textMuted }}>
               Your Information
             </Text>
             {loadingProfile && !farmer ? (
-              <ActivityIndicator color="#b91c1c" />
+              <ActivityIndicator color={primaryColor} />
             ) : farmer ? (
               <View className="gap-4">
                 <View className="flex-row items-center gap-3">
-                  <View className="w-10 h-10 bg-red-50 dark:bg-red-900/20 rounded-full items-center justify-center">
-                    <User size={18} color="#b91c1c" />
+                  <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2' }}>
+                    <User size={18} color={primaryColor} />
                   </View>
                   <View>
-                    <Text className="text-[10px] text-slate-400 dark:text-slate-500 font-outfit-bold uppercase tracking-tighter">
+                    <Text className="text-[10px] font-outfit-bold uppercase tracking-tighter" style={{ color: colors.textMuted }}>
                       Full Name
                     </Text>
-                    <Text className="text-[15px] font-outfit-bold text-slate-800 dark:text-white">
+                    <Text className="text-[15px] font-outfit-bold" style={{ color: colors.textPrimary }}>
                       {farmer.name}
                     </Text>
                   </View>
                 </View>
                 <View className="flex-row items-start gap-3">
-                  <View className="w-10 h-10 bg-red-50 dark:bg-red-900/20 rounded-full items-center justify-center mt-0.5">
-                    <MapPin size={18} color="#b91c1c" />
+                  <View className="w-10 h-10 rounded-full items-center justify-center mt-0.5" style={{ backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2' }}>
+                    <MapPin size={18} color={primaryColor} />
                   </View>
                   <View className="flex-1">
-                    <Text className="text-[10px] text-slate-400 dark:text-slate-500 font-outfit-bold uppercase tracking-tighter">
+                    <Text className="text-[10px] font-outfit-bold uppercase tracking-tighter" style={{ color: colors.textMuted }}>
                       Address
                     </Text>
-                    <Text className="text-[15px] font-outfit-bold text-slate-800 dark:text-slate-200 leading-tight">
+                    <Text className="text-[15px] font-outfit-bold leading-tight" style={{ color: colors.textSecondary }}>
                       {formatAddress(farmer.address)}
                     </Text>
                   </View>
@@ -417,8 +423,8 @@ export default function ReportSickness() {
               </View>
             ) : (
               <View className="flex-row items-center gap-2">
-                <AlertCircle size={16} color="#ef4444" />
-                <Text className="text-red-500 text-sm font-outfit-bold">
+                <AlertCircle size={16} color={colors.error} />
+                <Text className="text-sm font-outfit-bold" style={{ color: colors.error }}>
                   Could not load profile
                 </Text>
               </View>
@@ -426,50 +432,52 @@ export default function ReportSickness() {
           </View>
 
           {/* Animal Picker */}
-          <Text className="text-[11px] font-outfit-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">
+          <Text className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
             Affected Animal *
           </Text>
           <TouchableOpacity
             onPress={() => setAnimalModalVisible(true)}
-            className={`bg-white dark:bg-slate-800 border rounded-[22px] px-5 py-5 flex-row items-center justify-between mb-6 shadow-sm ${selectedAnimal ? "border-red-400 dark:border-red-500" : "border-slate-100 dark:border-slate-700"}`}
+            className="border rounded-[22px] px-5 py-5 flex-row items-center justify-between mb-6 shadow-sm"
+            style={{ backgroundColor: colors.card, borderColor: selectedAnimal ? primaryColor : colors.border }}
           >
             {selectedAnimal ? (
               <View>
-                <Text className="text-[16px] font-outfit-black text-slate-800 dark:text-white">
+                <Text className="text-[16px] font-outfit-black" style={{ color: colors.textPrimary }}>
                   {selectedAnimal.animalId}
                   {selectedAnimal.earTag ? ` · ${selectedAnimal.earTag}` : ""}
                 </Text>
-                <Text className="text-[13px] text-slate-400 dark:text-slate-500 font-outfit-medium">
+                <Text className="text-[13px] font-outfit-medium" style={{ color: colors.textSecondary }}>
                   {selectedAnimal.species} — {selectedAnimal.breed}
                 </Text>
               </View>
             ) : (
-              <Text className="text-slate-400 font-outfit-medium text-[15px]">
+              <Text className="font-outfit-medium text-[15px]" style={{ color: colors.textMuted }}>
                 Tap to choose an animal
               </Text>
             )}
             <ChevronDown
               size={20}
-              color={selectedAnimal ? "#b91c1c" : "#94a3b8"}
+              color={selectedAnimal ? primaryColor : colors.textMuted}
             />
           </TouchableOpacity>
 
           {/* Request Type */}
-          <Text className="text-[11px] font-outfit-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">
+          <Text className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
             Request Type
           </Text>
           <TouchableOpacity
             onPress={() => setTypeModalVisible(true)}
-            className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[22px] px-5 py-5 flex-row items-center justify-between mb-6 shadow-sm"
+            className="border rounded-[22px] px-5 py-5 flex-row items-center justify-between mb-6 shadow-sm"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
-            <Text className="text-[16px] font-outfit-bold text-slate-800 dark:text-white">
+            <Text className="text-[16px] font-outfit-bold" style={{ color: colors.textPrimary }}>
               {selectedType?.label || "Select type"}
             </Text>
-            <ChevronDown size={20} color="#94a3b8" />
+            <ChevronDown size={20} color={colors.textMuted} />
           </TouchableOpacity>
 
           {/* Urgency Selector */}
-          <Text className="text-[11px] font-outfit-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">
+          <Text className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
             Urgency Level
           </Text>
           <View className="flex-row gap-3 mb-6">
@@ -480,13 +488,13 @@ export default function ReportSickness() {
                 className={`flex-1 rounded-[22px] py-4 px-2 items-center border-2 shadow-sm ${urgency === opt.value ? 'shadow-md' : ''}`}
                 style={{
                   borderColor: urgency === opt.value ? opt.color : "transparent",
-                  backgroundColor: urgency === opt.value ? opt.bg : "white",
+                  backgroundColor: urgency === opt.value ? (isDark ? opt.darkBg : opt.bg) : colors.card,
                 }}
               >
                 <Text
                   className="text-[12px] font-outfit-black uppercase tracking-tighter"
                   style={{
-                    color: urgency === opt.value ? opt.color : "#94a3b8",
+                    color: urgency === opt.value ? opt.color : colors.textMuted,
                   }}
                 >
                   {opt.label}
@@ -494,7 +502,7 @@ export default function ReportSickness() {
                 <Text
                   className="text-[9px] text-center mt-1 font-outfit-medium"
                   style={{
-                    color: urgency === opt.value ? opt.color : "#CBD5E1",
+                    color: urgency === opt.value ? opt.color : colors.textMuted,
                   }}
                 >
                   {opt.desc}
@@ -504,41 +512,43 @@ export default function ReportSickness() {
           </View>
 
           {/* Preferred Date/Time Picker */}
-          <Text className="text-[11px] font-outfit-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">
+          <Text className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
             Preferred Visit Date/Time *
           </Text>
           <View className="flex-row gap-3 mb-6">
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
-              className="flex-1 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[22px] px-5 py-5 flex-row items-center justify-between shadow-sm"
+              className="flex-1 border rounded-[22px] px-5 py-5 flex-row items-center justify-between shadow-sm"
+              style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
               <View>
-                <Text className="text-[9px] text-slate-400 dark:text-slate-500 font-outfit-black uppercase tracking-widest mb-0.5">
+                <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-0.5" style={{ color: colors.textMuted }}>
                   Date
                 </Text>
-                <Text className="text-[15px] font-outfit-bold text-slate-800 dark:text-white">
+                <Text className="text-[15px] font-outfit-bold" style={{ color: colors.textPrimary }}>
                   {preferredDate.toLocaleDateString()}
                 </Text>
               </View>
-              <Clock size={16} color="#94a3b8" />
+              <Clock size={16} color={colors.textMuted} />
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => setTimeModalVisible(true)}
-              className="flex-1 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[22px] px-5 py-5 flex-row items-center justify-between shadow-sm"
+              className="flex-1 border rounded-[22px] px-5 py-5 flex-row items-center justify-between shadow-sm"
+              style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
               <View>
-                <Text className="text-[9px] text-slate-400 dark:text-slate-500 font-outfit-black uppercase tracking-widest mb-0.5">
+                <Text className="text-[9px] font-outfit-black uppercase tracking-widest mb-0.5" style={{ color: colors.textMuted }}>
                   Time Slot
                 </Text>
-                <Text className="text-[15px] font-outfit-bold text-slate-800 dark:text-white">
+                <Text className="text-[15px] font-outfit-bold" style={{ color: colors.textPrimary }}>
                   {preferredDate.toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
                 </Text>
               </View>
-              <Clock size={16} color="#94a3b8" />
+              <Clock size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -552,9 +562,8 @@ export default function ReportSickness() {
             />
           )}
 
-
           {/* Photo */}
-          <Text className="text-[11px] font-outfit-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">
+          <Text className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
             Attach Photo (Optional)
           </Text>
           {imageUri ? (
@@ -577,25 +586,26 @@ export default function ReportSickness() {
           ) : (
             <TouchableOpacity
               onPress={pickImage}
-              className="w-full h-36 bg-white dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-[28px] items-center justify-center mb-6 gap-2 shadow-sm"
+              className="w-full h-36 border-2 border-dashed rounded-[28px] items-center justify-center mb-6 gap-2 shadow-sm"
+              style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
-              <Camera size={32} color="#94a3b8" />
-              <Text className="text-[14px] text-slate-400 dark:text-slate-500 font-outfit-bold">
+              <Camera size={32} color={colors.textMuted} />
+              <Text className="text-[14px] font-outfit-bold" style={{ color: colors.textSecondary }}>
                 Tap to attach a photo
               </Text>
-              <Text className="text-[11px] text-slate-300 dark:text-slate-500 font-outfit-medium">
+              <Text className="text-[11px] font-outfit-medium" style={{ color: colors.textMuted }}>
                 of the wound, swelling, or symptom
               </Text>
             </TouchableOpacity>
           )}
 
           {/* Symptoms / Description */}
-          <Text className="text-[11px] font-outfit-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2 ml-1">
+          <Text className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
             Symptoms / Description *
           </Text>
           <TextInput
-            className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-[28px] px-5 py-5 text-slate-800 dark:text-white text-[14px] mb-8 shadow-sm font-outfit-medium"
-            style={{ minHeight: 140, textAlignVertical: "top" }}
+            className="border rounded-[28px] px-5 py-5 text-[14px] mb-8 shadow-sm font-outfit-medium"
+            style={{ minHeight: 140, textAlignVertical: "top", backgroundColor: colors.card, borderColor: colors.border, color: colors.textPrimary }}
             value={symptoms}
             onChangeText={setSymptoms}
             onFocus={() =>
@@ -605,7 +615,7 @@ export default function ReportSickness() {
               )
             }
             placeholder="Describe what you observed..."
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={colors.textMuted}
             multiline
             numberOfLines={5}
             blurOnSubmit={false}
@@ -616,7 +626,8 @@ export default function ReportSickness() {
             onPress={handleSubmit}
             disabled={submitting}
             activeOpacity={0.85}
-            className={`rounded-full py-5 items-center flex-row justify-center gap-2 shadow-xl ${submitting ? "bg-red-400" : "bg-[#b91c1c] shadow-red-200"}`}
+            className="rounded-full py-5 items-center flex-row justify-center gap-2 shadow-xl"
+            style={{ backgroundColor: submitting ? '#f87171' : primaryColor, shadowColor: primaryColor }}
           >
             {submitting ? (
               <ActivityIndicator color="white" size="small" />
@@ -640,31 +651,32 @@ export default function ReportSickness() {
         onRequestClose={() => setAnimalModalVisible(false)}
       >
         <View className="flex-1 bg-black/60 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[80%] shadow-2xl">
-            <View className="w-12 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full self-center mb-6" />
+          <View className="rounded-t-[40px] p-8 pb-12 max-h-[80%] shadow-2xl" style={{ backgroundColor: colors.card }}>
+            <View className="w-12 h-1.5 rounded-full self-center mb-6" style={{ backgroundColor: isDark ? colors.background : '#e2e8f0' }} />
             <View className="flex-row justify-between items-center mb-6">
-              <Text className="text-[22px] font-outfit-black text-slate-800 dark:text-white">
+              <Text className="text-[22px] font-outfit-black" style={{ color: colors.textPrimary }}>
                 Select Animal
               </Text>
               <TouchableOpacity
                 onPress={() => setAnimalModalVisible(false)}
-                className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full items-center justify-center"
+                className="w-10 h-10 rounded-full items-center justify-center"
+                style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}
               >
-                <X size={20} color="#64748b" />
+                <X size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
             {isLoadingAnimals ? (
               <View className="items-center py-20">
-                <ActivityIndicator color="#b91c1c" size="large" />
-                <Text className="text-slate-400 mt-4 font-outfit-bold">
+                <ActivityIndicator color={primaryColor} size="large" />
+                <Text className="mt-4 font-outfit-bold" style={{ color: colors.textMuted }}>
                   Loading your animals...
                 </Text>
               </View>
             ) : animals.length === 0 ? (
               <View className="items-center py-10 gap-3">
-                <AlertCircle size={48} color="#E2E8F0" />
-                <Text className="text-slate-400 text-center font-outfit-bold text-lg">
+                <AlertCircle size={48} color={colors.textMuted} />
+                <Text className="text-center font-outfit-bold text-lg" style={{ color: colors.textSecondary }}>
                   No animals found.
                 </Text>
               </View>
@@ -679,30 +691,35 @@ export default function ReportSickness() {
                       setSelectedAnimal(item);
                       setAnimalModalVisible(false);
                     }}
-                    className={`py-5 px-4 border-b border-slate-50 dark:border-slate-800 flex-row items-center justify-between ${selectedAnimal?._id === item._id ? "bg-red-50 dark:bg-red-900/30 rounded-2xl" : ""}`}
+                    className={`py-5 px-4 border-b flex-row items-center justify-between`}
+                    style={{
+                      borderBottomColor: colors.border,
+                      backgroundColor: selectedAnimal?._id === item._id ? (isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2') : undefined,
+                      borderRadius: selectedAnimal?._id === item._id ? 16 : 0
+                    }}
                   >
                     <View className="flex-row items-center gap-4">
-                       <View className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full items-center justify-center">
-                          <MaterialCommunityIcons name="cow" size={24} color={selectedAnimal?._id === item._id ? "#b91c1c" : "#94a3b8"} />
+                       <View className="w-10 h-10 rounded-full items-center justify-center" style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}>
+                          <MaterialCommunityIcons name="cow" size={24} color={selectedAnimal?._id === item._id ? primaryColor : colors.textMuted} />
                        </View>
                       <View className="flex-1">
-                        <Text className="text-[16px] font-outfit-black text-slate-800 dark:text-white">
+                        <Text className="text-[16px] font-outfit-black" style={{ color: colors.textPrimary }}>
                           {item.animalId}
                           {item.earTag ? ` · ${item.earTag}` : ""}
                         </Text>
                         <View className="flex-row items-center gap-2 mt-1">
-                          <Text className="text-[12px] text-slate-400 dark:text-slate-500 font-outfit-medium">
+                          <Text className="text-[12px] font-outfit-medium" style={{ color: colors.textMuted }}>
                             {item.species} · {item.breed}
                           </Text>
                           {item.reproductiveStatus && (
                             <View className={`px-2 py-0.5 rounded-full ${item.reproductiveStatus === 'Pregnant' ? 'bg-purple-100 dark:bg-purple-900/30 border border-purple-200' : 'bg-gray-100 dark:bg-slate-800'}`}>
-                              <Text className={`text-[9px] font-outfit-black uppercase ${item.reproductiveStatus === 'Pregnant' ? 'text-purple-600' : 'text-slate-500'}`}>{item.reproductiveStatus}</Text>
+                              <Text className="text-[9px] font-outfit-black uppercase" style={{ color: item.reproductiveStatus === 'Pregnant' ? '#9333ea' : colors.textMuted }}>{item.reproductiveStatus}</Text>
                             </View>
                           )}
                         </View>
                       </View>
                       {selectedAnimal?._id === item._id && (
-                        <Check size={20} color="#b91c1c" />
+                        <Check size={20} color={primaryColor} />
                       )}
                     </View>
                   </TouchableOpacity>
@@ -721,17 +738,18 @@ export default function ReportSickness() {
         onRequestClose={() => setTypeModalVisible(false)}
       >
         <View className="flex-1 bg-black/60 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 shadow-2xl">
-            <View className="w-12 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full self-center mb-6" />
+          <View className="rounded-t-[40px] p-8 pb-12 shadow-2xl" style={{ backgroundColor: colors.card }}>
+            <View className="w-12 h-1.5 rounded-full self-center mb-6" style={{ backgroundColor: isDark ? colors.background : '#e2e8f0' }} />
             <View className="flex-row justify-between items-center mb-6">
-              <Text className="text-[22px] font-outfit-black text-slate-800 dark:text-white">
+              <Text className="text-[22px] font-outfit-black" style={{ color: colors.textPrimary }}>
                 Request Type
               </Text>
               <TouchableOpacity
                 onPress={() => setTypeModalVisible(false)}
-                className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full items-center justify-center"
+                className="w-10 h-10 rounded-full items-center justify-center"
+                style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}
               >
-                <X size={20} color="#64748b" />
+                <X size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
             {REQUEST_TYPES.map((type) => (
@@ -741,13 +759,18 @@ export default function ReportSickness() {
                   setRequestType(type.value);
                   setTypeModalVisible(false);
                 }}
-                className={`py-5 px-4 border-b border-slate-50 dark:border-slate-800 flex-row items-center justify-between ${requestType === type.value ? "bg-red-50 dark:bg-red-900/30 rounded-2xl" : ""}`}
+                className="py-5 px-4 border-b flex-row items-center justify-between"
+                style={{
+                  borderBottomColor: colors.border,
+                  backgroundColor: requestType === type.value ? (isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2') : undefined,
+                  borderRadius: requestType === type.value ? 16 : 0
+                }}
               >
-                <Text className="text-[16px] text-slate-800 dark:text-white font-outfit-bold">
+                <Text className="text-[16px] font-outfit-bold" style={{ color: colors.textPrimary }}>
                   {type.label}
                 </Text>
                 {requestType === type.value && (
-                  <Check size={20} color="#b91c1c" />
+                  <Check size={20} color={primaryColor} />
                 )}
               </TouchableOpacity>
             ))}
@@ -757,14 +780,18 @@ export default function ReportSickness() {
       {/* Time Slot Selection Modal */}
       <Modal animationType="fade" transparent visible={timeModalVisible} onRequestClose={() => setTimeModalVisible(false)}>
         <View className="flex-1 bg-black/40 justify-center px-6">
-          <View className="bg-white dark:bg-slate-900 rounded-[40px] p-8 shadow-2xl">
+          <View className="rounded-[40px] p-8 shadow-2xl" style={{ backgroundColor: colors.card }}>
             <View className="flex-row justify-between items-center mb-6">
               <View>
-                <Text className="text-[22px] font-outfit-black text-slate-800 dark:text-white">Select Time Slot</Text>
-                <Text className="text-xs text-slate-400 dark:text-slate-500 mt-1 font-outfit-medium">Available service hours: 8 AM - 5 PM</Text>
+                <Text className="text-[22px] font-outfit-black" style={{ color: colors.textPrimary }}>Select Time Slot</Text>
+                <Text className="text-xs mt-1 font-outfit-medium" style={{ color: colors.textMuted }}>Available service hours: 8 AM - 5 PM</Text>
               </View>
-              <TouchableOpacity onPress={() => setTimeModalVisible(false)} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
-                <X size={20} color="#64748b" />
+              <TouchableOpacity 
+                onPress={() => setTimeModalVisible(false)} 
+                className="p-2 rounded-full"
+                style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}
+              >
+                <X size={20} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
@@ -775,9 +802,13 @@ export default function ReportSickness() {
                   <TouchableOpacity
                     key={slot}
                     onPress={() => handleSelectTime(slot)}
-                    className={`w-[30%] py-4 rounded-[22px] items-center border ${isSelected ? 'bg-red-600 border-red-600' : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'}`}
+                    className="w-[30%] py-4 rounded-[22px] items-center border"
+                    style={{
+                      backgroundColor: isSelected ? primaryColor : (isDark ? colors.background : '#f8fafc'),
+                      borderColor: isSelected ? primaryColor : colors.border
+                    }}
                   >
-                    <Text className={`text-[12px] font-outfit-black ${isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{slot}</Text>
+                    <Text className="text-[12px] font-outfit-black" style={{ color: isSelected ? '#fff' : colors.textPrimary }}>{slot}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -785,9 +816,10 @@ export default function ReportSickness() {
 
             <TouchableOpacity
               onPress={() => setTimeModalVisible(false)}
-              className="mt-8 py-5 bg-slate-100 dark:bg-slate-800 rounded-[22px] items-center"
+              className="mt-8 py-5 rounded-[22px] items-center"
+              style={{ backgroundColor: isDark ? colors.background : '#f1f5f9' }}
             >
-              <Text className="text-slate-600 dark:text-slate-400 font-outfit-black">CLOSE</Text>
+              <Text className="font-outfit-black" style={{ color: colors.textSecondary }}>CLOSE</Text>
             </TouchableOpacity>
           </View>
         </View>

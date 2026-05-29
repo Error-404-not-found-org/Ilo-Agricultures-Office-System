@@ -65,6 +65,7 @@ const HealthRequestSchema = new mongoose.Schema(
       type: String,
       default: "", // Advice for the farmer
     },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -75,5 +76,6 @@ HealthRequestSchema.index({ farmerId: 1 });
 HealthRequestSchema.index({ status: 1 });
 HealthRequestSchema.index({ urgency: -1, createdAt: -1 });
 HealthRequestSchema.index({ scheduledDate: 1 });
+HealthRequestSchema.index({ deletedAt: 1 });
 
 export const HealthRequest = mongoose.model("HealthRequest", HealthRequestSchema);

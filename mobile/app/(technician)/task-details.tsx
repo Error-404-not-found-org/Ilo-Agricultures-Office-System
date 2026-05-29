@@ -3,11 +3,12 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, CheckCircle, MapPin, Phone, User, Info, Navigation } from 'lucide-react-native';
-import MapView, { Marker, UrlTile, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, UrlTile, PROVIDER_GOOGLE } from '@/components/MapShim';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { getLocalTilePath, OTON_BBOX } from '@/lib/mapCache';
+import { useTheme } from '@/lib/theme';
 
 export default function TaskDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -23,6 +24,8 @@ export default function TaskDetailsScreen() {
     latitudeDelta: 0.05,
     longitudeDelta: 0.05,
   };
+
+  const { colors, isDark } = useTheme();
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -50,24 +53,24 @@ export default function TaskDetailsScreen() {
   };
 
   if (loading) return (
-    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <ActivityIndicator size="large" color="#00643B" />
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <ActivityIndicator size="large" color={isDark ? "#10b981" : "#00643B"} />
     </View>
   );
 
-  if (!task) return <Text>Task not found</Text>;
+  if (!task) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><Text style={{ color: colors.textPrimary }}>Task not found</Text></View>;
 
   const farmerCoords = task.farmerId?.address?.coordinates || { lat: 10.6930, lng: 122.4740 };
   const tileUrlTemplate = `${(FileSystem as any).documentDirectory}tiles/{z}/{x}/{y}.png`;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#fff' }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} color="#1e293b" />
+      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: isDark ? colors.card : '#f8fafc' }]}>
+          <ArrowLeft size={24} color={isDark ? "white" : "#1e293b"} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Task Details</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Task Details</Text>
       </View>
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
@@ -105,7 +108,7 @@ export default function TaskDetailsScreen() {
           <Text style={styles.attributionText}>© OpenStreetMap contributors</Text>
           
           <TouchableOpacity 
-            style={styles.floatingNav}
+            style={[styles.floatingNav, { backgroundColor: isDark ? '#10b981' : '#00643B', shadowColor: isDark ? 'transparent' : '#000' }]}
              onPress={() => {
                  const url = `https://www.google.com/maps/dir/?api=1&destination=${farmerCoords.lat},${farmerCoords.lng}`;
                  Linking.openURL(url).catch((err) =>
@@ -122,17 +125,17 @@ export default function TaskDetailsScreen() {
         <View style={styles.content}>
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-               <User size={18} color="#00643B" />
-               <Text style={styles.sectionTitle}>Farmer Info</Text>
+               <User size={18} color={isDark ? "#34d399" : "#00643B"} />
+               <Text style={[styles.sectionTitle, { color: isDark ? '#34d399' : '#00643B' }]}>Farmer Info</Text>
             </View>
-            <Text style={styles.farmerName}>{task.farmerId?.name}</Text>
+            <Text style={[styles.farmerName, { color: colors.textPrimary }]}>{task.farmerId?.name}</Text>
             <View style={styles.row}>
-                <Phone size={14} color="#64748b" />
-                <Text style={styles.farmerSub}>{task.farmerId?.phoneNumber || 'No contact'}</Text>
+                <Phone size={14} color={colors.textSecondary} />
+                <Text style={[styles.farmerSub, { color: colors.textSecondary }]}>{task.farmerId?.phoneNumber || 'No contact'}</Text>
             </View>
             <View style={styles.row}>
-                <MapPin size={14} color="#64748b" />
-                <Text style={styles.farmerSub}>
+                <MapPin size={14} color={colors.textSecondary} />
+                <Text style={[styles.farmerSub, { color: colors.textSecondary }]}>
                     {task.farmerId?.address?.barangay}, {task.farmerId?.address?.city}
                 </Text>
             </View>
@@ -140,39 +143,39 @@ export default function TaskDetailsScreen() {
 
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-               <Info size={18} color="#00643B" />
-               <Text style={styles.sectionTitle}>Task Description</Text>
+               <Info size={18} color={isDark ? "#34d399" : "#00643B"} />
+               <Text style={[styles.sectionTitle, { color: isDark ? '#34d399' : '#00643B' }]}>Task Description</Text>
             </View>
             <View className={`inline-block self-start px-2 py-1 rounded-lg mb-3 ${
-                task.category === 'Urgent' ? 'bg-red-50' : 'bg-blue-50'
+                task.category === 'Urgent' ? (isDark ? 'bg-red-950/40' : 'bg-red-50') : (isDark ? 'bg-blue-950/40' : 'bg-blue-50')
             }`}>
                 <Text className={`text-[10px] font-black uppercase ${
-                    task.category === 'Urgent' ? 'text-red-600' : 'text-blue-600'
+                    task.category === 'Urgent' ? 'text-red-500' : 'text-blue-500'
                 }`}>{task.category}</Text>
             </View>
-            <Text style={styles.notesText}>{task.notes}</Text>
+            <Text style={[styles.notesText, { color: colors.textPrimary }]}>{task.notes}</Text>
           </View>
 
           {task.animalIds && task.animalIds.length > 0 && (
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Associated Animals</Text>
+                <Text style={[styles.sectionTitle, { color: isDark ? '#34d399' : '#00643B', marginBottom: 12 }]}>Associated Animals</Text>
                 {task.animalIds.map((anim: any) => (
                     <TouchableOpacity 
                         key={anim._id}
-                        style={styles.animalCard}
+                        style={[styles.animalCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                         onPress={() => router.push(`/(technician)/animal-details?id=${anim._id}` as any)}
                     >
                         <View style={styles.animalInfo}>
-                           <Text style={styles.animalTag}>Tag: {anim.earTag || anim.animalId}</Text>
-                           <Text style={styles.animalBreed}>{anim.breed} ({anim.species})</Text>
+                           <Text style={[styles.animalTag, { color: colors.textPrimary }]}>Tag: {anim.earTag || anim.animalId}</Text>
+                           <Text style={[styles.animalBreed, { color: colors.textSecondary }]}>{anim.breed} ({anim.species})</Text>
                         </View>
-                        <CheckCircle size={20} color="#cbd5e1" />
+                        <CheckCircle size={20} color={colors.textMuted} />
                     </TouchableOpacity>
                 ))}
             </View>
           )}
 
-          <TouchableOpacity style={styles.completeBtn} onPress={handleComplete}>
+          <TouchableOpacity style={[styles.completeBtn, { backgroundColor: isDark ? '#10b981' : '#00643B', shadowColor: isDark ? 'transparent' : '#00643B' }]} onPress={handleComplete}>
             <CheckCircle size={20} color="#fff" />
             <Text style={styles.completeBtnText}>Mark as Completed</Text>
           </TouchableOpacity>

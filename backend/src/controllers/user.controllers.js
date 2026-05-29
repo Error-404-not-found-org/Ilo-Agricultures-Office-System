@@ -521,21 +521,42 @@ export const getBreedingMilestones = async (req, res) => {
   try {
     const farmerId = req.user._id;
 
-    // 1. Get all inseminations (to calculate Heat Checks and PD Checks)
-    const inseminations = await Insemination.find({ farmerId, status: { $ne: "rejected" } })
+    // 1. Get completed inseminations with pending outcomes
+    const inseminations = await Insemination.find({ 
+      farmerId, 
+      status: "done", 
+      isSuccess: null,
+      deletedAt: null
+    })
       .populate("animalId", "earTag species breed")
       .sort({ createdAt: -1 });
 
     // 2. Get all active pregnancies (to calculate Calvings)
-    const pregnancies = await Pregnancy.find({ farmerId, "pregnancyDiagnosis.result": "Pregnant" })
+    const pregnancies = await Pregnancy.find({ 
+      farmerId, 
+      "pregnancyDiagnosis.result": "Pregnant",
+      deletedAt: null
+    })
       .populate("animalId", "earTag species breed")
       .sort({ targetCalvingDate: 1 });
+
+    // 3. Get all calving records to identify pregnancies that have already calved
+    const calvings = await Calving.find({ 
+      farmerId, 
+      deletedAt: null 
+    }).select("pregnancyId");
+    
+    const calvedPregIds = calvings
+      .map(c => c.pregnancyId?.toString())
+      .filter(Boolean);
 
     const milestones = [];
     const now = new Date();
 
-    // Process Pregnancies -> Upcoming Calvings
+    // Process Pregnancies -> Upcoming Calvings (excluding already calved ones)
     pregnancies.forEach(p => {
+      if (calvedPregIds.includes(p._id.toString())) return;
+
       if (p.targetCalvingDate) {
         milestones.push({
           type: "calving",
@@ -543,47 +564,46 @@ export const getBreedingMilestones = async (req, res) => {
           animal: p.animalId,
           date: p.targetCalvingDate,
           daysLeft: Math.ceil((new Date(p.targetCalvingDate).getTime() - now.getTime()) / (1000 * 3600 * 24)),
-          priority: "high"
+          priority: "high",
+          relatedId: p._id
         });
       }
     });
 
     // Process Inseminations -> Heat Checks (21 days) and PD Checks (60 days)
-    // We only show these if there is no pregnancy record yet for that insemination
-    const pregInsIds = pregnancies.map(p => p.inseminationId?.toString());
-
     inseminations.forEach(ins => {
-      if (pregInsIds.includes(ins._id.toString())) return; // Already confirmed pregnant
-
       const aiDate = ins.inseminationDate || ins.createdAt;
-      
-      // Heat Check (21 days)
-      const heatDate = new Date(aiDate);
-      heatDate.setDate(heatDate.getDate() + 21);
-      
-      if (heatDate > now) {
+      const daysSinceAI = Math.floor((now.getTime() - new Date(aiDate).getTime()) / (1000 * 3600 * 24));
+
+      // Heat Check (21 days) - active from day 0 to day 24 post-AI
+      if (daysSinceAI < 24) {
+        const heatDate = new Date(aiDate);
+        heatDate.setDate(heatDate.getDate() + 21);
+        
         milestones.push({
           type: "heat_check",
           title: "Heat Watch",
           animal: ins.animalId,
           date: heatDate,
           daysLeft: Math.ceil((heatDate.getTime() - now.getTime()) / (1000 * 3600 * 24)),
-          priority: "medium"
+          priority: "medium",
+          relatedId: ins._id
         });
       }
 
-      // PD Check (60 days)
-      const pdDate = new Date(aiDate);
-      pdDate.setDate(pdDate.getDate() + 60);
-      
-      if (pdDate > now) {
+      // PD Check (60 days) - active starting from day 24 post-AI
+      if (daysSinceAI >= 24) {
+        const pdDate = new Date(aiDate);
+        pdDate.setDate(pdDate.getDate() + 60);
+        
         milestones.push({
           type: "pd_check",
           title: "Preg-Check Due",
           animal: ins.animalId,
           date: pdDate,
           daysLeft: Math.ceil((pdDate.getTime() - now.getTime()) / (1000 * 3600 * 24)),
-          priority: "medium"
+          priority: "medium",
+          relatedId: ins._id
         });
       }
     });

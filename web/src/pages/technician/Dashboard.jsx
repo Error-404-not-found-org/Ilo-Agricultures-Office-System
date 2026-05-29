@@ -180,7 +180,7 @@ const Dashboard = () => {
             <h1 className="text-4xl md:text-5xl font-black tracking-tighter leading-[0.9]">
               Moowie <span className="text-emerald-400">Field Support</span>
             </h1>
-            <p className="text-emerald-100/60 font-bold text-sm max-w-md">
+            <p className="text-emerald-100/90 font-bold text-sm max-w-md">
               Your intelligent companion for municipal breeding operations and
               veterinary diagnostics.
             </p>
@@ -227,7 +227,7 @@ const Dashboard = () => {
                   (stats?.todayActivities ?? 0)
                 )}
               </div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-base-content/30">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Mission Count Today
               </p>
             </div>
@@ -253,7 +253,7 @@ const Dashboard = () => {
                   (analytics.totalAI_Week ?? 0)
                 )}
               </div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-base-content/30">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 AI Service Cycle
               </p>
             </div>
@@ -279,7 +279,7 @@ const Dashboard = () => {
                   (analytics.totalHealth_Month ?? 0)
                 )}
               </div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-base-content/30">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Clinical Ledger
               </p>
             </div>
@@ -305,7 +305,7 @@ const Dashboard = () => {
                   pendingRequests.filter(r => r.status === 'pending').length
                 )}
               </div>
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-base-content/30">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                 Pending Missions
               </p>
             </div>
@@ -327,7 +327,7 @@ const Dashboard = () => {
       <div className="bg-base-100 rounded-none p-8 border border-base-300 shadow-sm">
         <div className="flex items-center gap-3 mb-8">
            <Zap size={20} className="text-emerald-500" />
-           <h2 className="text-[10px] font-black text-base-content/40 uppercase tracking-[0.3em]">
+           <h2 className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.3em]">
              Action Console
            </h2>
         </div>
@@ -376,7 +376,7 @@ const Dashboard = () => {
                 <h4 className="text-[13px] font-black text-base-content leading-tight uppercase tracking-tight">
                   {act.label}
                 </h4>
-                <p className="text-[9px] text-base-content/30 font-black mt-1 uppercase tracking-widest">
+                <p className="text-[9px] text-slate-500 dark:text-slate-400 font-black mt-1 uppercase tracking-widest">
                   {act.sub}
                 </p>
               </div>
@@ -406,20 +406,20 @@ const Dashboard = () => {
 
             <div className="overflow-x-auto p-2">
               <table className="w-full text-left">
-                <thead className="text-[10px] font-black text-base-content/20 uppercase tracking-[0.2em] px-8">
+                <thead className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em] px-8">
                   <tr>
-                    <th className="px-8 py-6">Farmer</th>
-                    <th className="px-6 py-6">Type</th>
-                    <th className="px-6 py-6">Detail</th>
-                    <th className="px-6 py-6">Urgency</th>
-                    <th className="px-8 py-6 text-right">Actions</th>
+                    <th className="px-8 py-6 align-middle">Farmer</th>
+                    <th className="px-6 py-6 align-middle">Type</th>
+                    <th className="px-6 py-6 align-middle">Detail</th>
+                    <th className="px-6 py-6 align-middle">Urgency</th>
+                    <th className="px-8 py-6 text-right align-middle">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-base-200 dark:divide-white/5">
                   {loading ? (
                     [...Array(3)].map((_, i) => (
                       <tr key={i} className="animate-pulse">
-                        <td colSpan="5" className="px-8 py-6">
+                        <td colSpan="5" className="px-8 py-6 align-middle">
                           <div className="h-12 bg-base-200/50 rounded-md w-full" />
                         </td>
                       </tr>
@@ -428,7 +428,7 @@ const Dashboard = () => {
                     <tr>
                       <td
                         colSpan="5"
-                        className="py-24 text-center text-base-content/20 font-black uppercase tracking-widest text-xs"
+                        className="py-24 text-center text-slate-400 dark:text-slate-500 font-black uppercase tracking-widest text-xs align-middle"
                       >
                         No new requests
                       </td>
@@ -439,29 +439,29 @@ const Dashboard = () => {
                         key={item.id}
                         className="group hover:bg-base-200/30 transition-all"
                       >
-                        <td className="px-8 py-6">
+                        <td className="px-8 py-6 align-middle">
                           <span className="text-md font-black text-base-content">
                             {item.farmer}
                           </span>
                         </td>
-                        <td className="px-6 py-6">
+                        <td className="px-6 py-6 align-middle">
                           <div className="flex items-center gap-2">
                             <div
                               className={`w-2 h-2 rounded-full ${item.type === "health" ? "bg-emerald-500" : "bg-blue-500"}`}
                             />
-                            <span className="text-[11px] font-black text-base-content/60 uppercase tracking-tight">
+                            <span className="text-[11px] font-black text-slate-600 dark:text-slate-350 uppercase tracking-tight">
                               {item.type === "health" ? "Vet" : "AI"}
                             </span>
                           </div>
                         </td>
-                        <td className="px-6 py-6">
-                          <span className="text-[13px] font-bold text-base-content/40 leading-relaxed max-w-xs block">
+                        <td className="px-6 py-6 align-middle">
+                          <span className="text-[13px] font-bold text-slate-650 dark:text-slate-300 leading-relaxed max-w-xs block">
                             {item.task}
                           </span>
                         </td>
-                        <td className="px-6 py-6">
+                        <td className="px-6 py-6 align-middle">
                            <span
-                             className={`px-3 py-1 rounded-none text-[8px] font-black uppercase tracking-widest
+                             className={`px-3 py-1 rounded-none text-[8px] font-black uppercase tracking-widest whitespace-nowrap inline-block
                              ${
                                item.urgent
                                  ? "bg-rose-500 text-white shadow-lg shadow-rose-500/20"
@@ -473,7 +473,7 @@ const Dashboard = () => {
                              {item.urgent ? "URGENT ACTION" : item.priority || "NORMAL"}
                            </span>
                         </td>
-                        <td className="px-8 py-6 text-right">
+                        <td className="px-8 py-6 text-right align-middle">
                           {item.status === 'pending' ? (
                             <div className="flex justify-end gap-3">
                                <button
@@ -490,7 +490,7 @@ const Dashboard = () => {
                                    setSelectedTask(item);
                                    setIsTaskModalOpen(true);
                                  }}
-                                 className="bg-transparent hover:bg-base-200 border border-base-300 text-base-content/40 px-5 py-2 rounded-none text-[9px] font-black uppercase tracking-widest transition-all active:scale-95"
+                                 className="bg-transparent hover:bg-base-200 border border-base-300 text-slate-600 dark:text-slate-400 px-5 py-2 rounded-none text-[9px] font-black uppercase tracking-widest transition-all active:scale-95"
                                >
                                  SCHEDULE
                                </button>
@@ -514,39 +514,39 @@ const Dashboard = () => {
           <div id="performance" className="bg-base-100 rounded-none shadow-sm border border-base-300 p-10 flex-1 scroll-mt-24 relative overflow-hidden">
              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-none -mr-32 -mt-32 blur-3xl"></div>
              
-             <div className="relative flex justify-between items-center mb-10">
-                <div>
-                   <h2 className="text-[10px] font-black text-base-content/40 tracking-[0.3em] uppercase">Tactical Performance</h2>
-                   <p className="text-xl font-black text-base-content uppercase tracking-tighter mt-1">Efficiency Metrics</p>
-                </div>
-                <div className="flex items-center gap-2 bg-emerald-500/5 px-4 py-2 rounded-none border border-emerald-500/10">
-                   <TrendingUp size={14} className="text-emerald-500" />
-                   <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Active Operations</span>
-                </div>
-             </div>
+              <div className="relative flex justify-between items-center mb-10">
+                 <div>
+                    <h2 className="text-[10px] font-black text-slate-500 dark:text-slate-400 tracking-[0.3em] uppercase">Tactical Performance</h2>
+                    <p className="text-xl font-black text-base-content uppercase tracking-tighter mt-1">Efficiency Metrics</p>
+                 </div>
+                 <div className="flex items-center gap-2 bg-emerald-500/5 px-4 py-2 rounded-none border border-emerald-500/10">
+                    <TrendingUp size={14} className="text-emerald-500" />
+                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Active Operations</span>
+                 </div>
+              </div>
 
              <div className="relative grid grid-cols-1 md:grid-cols-3 gap-12">
                {/* Metric 1: AI This Week */}
-               <div className="space-y-6">
-                  <div className="flex justify-between items-end">
-                    <div className="space-y-1">
-                      <p className="text-[9px] font-black text-base-content/30 uppercase tracking-widest">AI Weekly Yield</p>
-                      <h3 className="text-2xl font-black text-base-content tracking-tighter">{analytics.totalAI_Week || 0} Missions</h3>
-                    </div>
-                    <div className="w-10 h-10 rounded-none bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-center text-emerald-500">
-                       <Zap size={16} />
-                    </div>
-                  </div>
-                  <div className="h-1.5 w-full bg-base-200 rounded-none overflow-hidden">
-                    <motion.div 
-                      initial={{ width: 0 }}
-                      animate={{ width: `${Math.min(100, (analytics.totalAI_Week || 0) * 10)}%` }}
-                      transition={{ duration: 1.5, ease: "circOut" }}
-                      className="h-full bg-emerald-500"
-                    />
-                  </div>
-                  <p className="text-[9px] font-bold text-base-content/20 uppercase tracking-tight">Active breeding tasks (7 days)</p>
-               </div>
+                <div className="space-y-6">
+                   <div className="flex justify-between items-end">
+                     <div className="space-y-1">
+                       <p className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">AI Weekly Yield</p>
+                       <h3 className="text-2xl font-black text-base-content tracking-tighter">{analytics.totalAI_Week || 0} Missions</h3>
+                     </div>
+                     <div className="w-10 h-10 rounded-none bg-emerald-500/5 border border-emerald-500/10 flex items-center justify-center text-emerald-500">
+                        <Zap size={16} />
+                     </div>
+                   </div>
+                   <div className="h-1.5 w-full bg-base-200 rounded-none overflow-hidden">
+                     <motion.div 
+                       initial={{ width: 0 }}
+                       animate={{ width: `${Math.min(100, (analytics.totalAI_Week || 0) * 10)}%` }}
+                       transition={{ duration: 1.5, ease: "circOut" }}
+                       className="h-full bg-emerald-500"
+                     />
+                   </div>
+                   <p className="text-[9px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-tight">Active breeding tasks (7 days)</p>
+                </div>
 
                {/* Metric 2: Health */}
                <div className="space-y-6">
@@ -637,7 +637,7 @@ const Dashboard = () => {
                   />
                 ))
               ) : filteredAgenda.length === 0 ? (
-                <div className="py-12 text-center text-base-content/20 text-[10px] font-black uppercase tracking-widest">
+                <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-widest">
                   No tasks today
                 </div>
               ) : (
@@ -659,7 +659,7 @@ const Dashboard = () => {
                       <h4 className="text-[11px] font-black text-base-content truncate uppercase tracking-tight">
                         {item.farmer}
                       </h4>
-                      <p className="text-[9px] font-bold text-base-content/40 flex items-center gap-1 mt-0.5 uppercase">
+                      <p className="text-[9px] font-bold text-slate-650 dark:text-slate-400 flex items-center gap-1 mt-0.5 uppercase">
                         <MapPin size={10} className="text-emerald-500" /> {item.location}
                       </p>
                     </div>
@@ -694,25 +694,25 @@ const Dashboard = () => {
                         <h4 className="text-[12px] font-black text-base-content leading-tight">
                           {log.title}
                         </h4>
-                        <span className="text-[9px] font-black text-base-content/20 uppercase">
+                        <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase">
                           {new Date(log.date).toLocaleDateString()}
                         </span>
                       </div>
-                      <p className="text-[10px] font-bold text-base-content/30 uppercase tracking-tighter">
+                      <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tighter">
                         {log.description || "Activity logged"}
                       </p>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="py-12 text-center text-base-content/20 text-[10px] font-black uppercase tracking-widest">
+                <div className="py-12 text-center text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-widest">
                   No recent activity
                 </div>
               )}
             </div>
             <button 
               onClick={() => navigate("/technician/ledger")}
-              className="w-full mt-8 bg-base-200 hover:bg-base-300 text-base-content/40 border border-base-300 py-3.5 rounded-none font-black text-[10px] uppercase tracking-widest transition-all"
+              className="w-full mt-8 bg-base-200 hover:bg-base-300 text-slate-600 dark:text-slate-400 border border-base-300 py-3.5 rounded-none font-black text-[10px] uppercase tracking-widest transition-all"
             >
               Audit Field Ledger
             </button>

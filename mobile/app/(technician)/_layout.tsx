@@ -1,97 +1,32 @@
-import { Tabs } from "expo-router";
+import { Stack } from "expo-router";
 import React from "react";
-import BottomNavigator from "../components/BottomNavigator";
 
-export default function TabLayout() {
+export default function TechnicianLayout() {
   return (
-    <Tabs
-      tabBar={(props) => <BottomNavigator {...props} />}
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <Tabs.Screen name="technician.dashboard" />
-      <Tabs.Screen name="technician.clients" />
-      <Tabs.Screen name="technician.animals" />
-      <Tabs.Screen name="technician.records" />
+    <Stack screenOptions={{ headerShown: false }}>
+      {/* The main tab group */}
+      <Stack.Screen name="(tabs)" />
       
-      {/* Hidden Routes */}
-      <Tabs.Screen 
-        name="profile" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="technician.reports" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="animal-details" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="client-details/index" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="edit-animal" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="create-task" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="register-client" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="register-animal" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="pregnancy-check" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="record-calf-drop" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="health-log" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="record-ai" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="technician.calendar" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="task-details" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="heat-map" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="performance" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="offline-maps" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="sync-history" 
-        options={{ href: null }} 
-      />
-      <Tabs.Screen 
-        name="photo-notes" 
-        options={{ href: null }} 
-      />
-    </Tabs>
+      {/* Other stack screens (hides tab bar natively) */}
+      <Stack.Screen name="technician.reports" />
+      <Stack.Screen name="animal-details" />
+      <Stack.Screen name="client.profile" />
+      <Stack.Screen name="updateclient.profile" />
+      <Stack.Screen name="edit-animal" />
+      <Stack.Screen name="create-task" />
+      <Stack.Screen name="register-client" />
+      <Stack.Screen name="register-animal" />
+      <Stack.Screen name="pregnancy-check" />
+      <Stack.Screen name="record-calf-drop" />
+      <Stack.Screen name="health-log" />
+      <Stack.Screen name="record-ai" />
+      <Stack.Screen name="technician.calendar" />
+      <Stack.Screen name="task-details" />
+      <Stack.Screen name="heat-map" />
+      <Stack.Screen name="performance" />
+      <Stack.Screen name="offline-maps" />
+      <Stack.Screen name="sync-history" />
+      <Stack.Screen name="photo-notes" />
+    </Stack>
   );
 }

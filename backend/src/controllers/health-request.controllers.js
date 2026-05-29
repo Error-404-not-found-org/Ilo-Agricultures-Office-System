@@ -46,8 +46,8 @@ export const createHealthRequest = async (req, res) => {
           senderId: farmerId,
           type: "health-request",
           relatedId: request._id,
-          title: urgency === "high" ? "🚨 Emergency Health Request" : "New Health Request",
-          message: `${req.user.name} reported ${urgency} urgency symptoms for animal ${animal.earTag || animal.animalId}: ${symptoms.substring(0, 60)}...`,
+          title: urgency === "high" ? `🚨 Emergency: Tag #${animal.earTag || animal.animalId}` : `📋 Health Request: Tag #${animal.earTag || animal.animalId}`,
+          message: `Farmer ${req.user.name} reported ${urgency} urgency symptoms for ${animal.species} (${animal.breed}): ${symptoms}`,
         })
       );
 
@@ -58,7 +58,7 @@ export const createHealthRequest = async (req, res) => {
           type: "health-request",
           relatedId: request._id,
           title: urgency === "high" ? "[Summary] 🚨 Urgent Animal Issue" : "[Summary] Health Request Submitted",
-          message: `Farmer ${req.user.name} reported a ${urgency} urgency issue. A technician has been notified.`,
+          message: `Farmer ${req.user.name} reported a ${urgency} urgency health issue for animal ${animal.earTag || animal.animalId}.`,
         })
       );
 
@@ -67,8 +67,8 @@ export const createHealthRequest = async (req, res) => {
       // --- MOBILE PUSH NOTIFICATIONS TO TECHNICIANS ---
       for (const t of technicians) {
         if (t.pushToken) {
-          const title = urgency === "high" ? "🚨 Emergency Health Request" : "New Health Request";
-          const body = `${req.user.name} reported ${urgency} urgency symptoms for animal ${animal.earTag || animal.animalId}: ${symptoms.substring(0, 60)}...`;
+          const title = urgency === "high" ? `🚨 Emergency: Tag #${animal.earTag || animal.animalId}` : `📋 Health Request: Tag #${animal.earTag || animal.animalId}`;
+          const body = `${req.user.name} reported ${urgency} urgency symptoms: ${symptoms.substring(0, 100)}`;
           await sendPushNotification(t.pushToken, title, body);
         }
       }
@@ -96,7 +96,7 @@ export const getMyHealthRequests = async (req, res) => {
     const { page = 1, limit = 10, status } = req.query;
     const farmerId = req.user._id;
 
-    const query = { farmerId };
+    const query = { farmerId, deletedAt: null };
     if (status && status !== 'all') query.status = status;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -104,6 +104,7 @@ export const getMyHealthRequests = async (req, res) => {
     const [requests, total] = await Promise.all([
       HealthRequest.find(query)
         .populate("animalId", "animalId earTag species breed imageUrl")
+        .populate("handledBy", "name")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -126,7 +127,7 @@ export const getMyHealthRequests = async (req, res) => {
 export const getAllHealthRequests = async (req, res) => {
   try {
     const { status, urgency } = req.query;
-    const query = {};
+    const query = { deletedAt: null };
     if (status) query.status = status;
     if (urgency) query.urgency = urgency;
 
@@ -178,7 +179,14 @@ export const updateHealthRequestStatus = async (req, res) => {
     try {
       if (request.farmerId && request.farmerId._id) {
         const title = "Health Request Update";
-        const message = `Your health request for ${request.animalId.earTag || request.animalId.animalId} has been marked as ${status}.`;
+        let message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} status has been updated to: ${status}.`;
+
+        if (status === "resolved") {
+          message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} was successfully resolved by technician ${req.user.name}. Diagnosis: ${request.diagnosis || "N/A"}. Treatment: ${request.treatment || "N/A"}.`;
+        } else if (status === "approved" || status === "in-progress") {
+          const schedDateStr = request.scheduledDate ? new Date(request.scheduledDate).toLocaleDateString() : "today";
+          message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} has been approved and scheduled for ${schedDateStr}. Technician: ${req.user.name}.`;
+        }
 
         // 1. Database Notification
         await Notification.create({
@@ -303,6 +311,7 @@ export const walkInHealthRequest = async (req, res) => {
           earTag: animalDetails.earTag,
           species: animalDetails.species || "Beef",
           breed: animalDetails.breed || "Crossbreed",
+          barangay: farmer.address?.barangay || "Not Provided",
           isVerified: true,
         });
       }
@@ -374,7 +383,7 @@ export const walkInHealthRequest = async (req, res) => {
 export const deleteHealthRequest = async (req, res) => {
   try {
     const { id } = req.params;
-    const request = await HealthRequest.findById(id)
+    const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
       .populate("farmerId", "name")
       .populate("animalId", "earTag animalId");
 
@@ -413,7 +422,7 @@ export const deleteHealthRequest = async (req, res) => {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
 
-    await HealthRequest.findByIdAndDelete(id);
+    await HealthRequest.findByIdAndUpdate(id, { $set: { deletedAt: new Date() } });
 
     // Socket update
     req.app.get("io").emit("dashboardUpdate", {

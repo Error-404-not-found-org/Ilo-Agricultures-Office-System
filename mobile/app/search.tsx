@@ -67,7 +67,7 @@ export default function SearchScreen() {
             </TouchableOpacity>
           )}
           ListEmptyComponent={
-            <Text className="text-gray-400 text-center mt-10">No results found for "{query}"</Text>
+            <Text className="text-gray-400 text-center mt-10">No results found for &quot;{query}&quot;</Text>
           }
         />
 

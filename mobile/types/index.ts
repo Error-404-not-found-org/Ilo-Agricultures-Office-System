@@ -12,28 +12,38 @@ export interface Product {
   updatedAt: string;
 }
 
-export interface User {
-  _id: string;
-  clerkId: string;
-  email: string;
-  name: string;
-  imageUrl: string;
-  addresses: Address[];
-  wishlist: string[];
-  createdAt: string;
-  updatedAt: string;
+export interface Address {
+  houseNumber?: string;
+  street?: string;
+  subdivision?: string;
+  barangay: string;
+  city: string;
+  province: string;
+  region?: string;
+  zipCode?: string;
+  phoneNumber?: string;
+  landmark?: string;
+  coordinates?: {
+    lat?: number;
+    lng?: number;
+  };
+  isDefault?: boolean;
 }
 
-export interface Address {
+export interface User {
   _id: string;
-  label: string;
-  fullName: string;
-  streetAddress: string;
-  city: string;
-  state: string;
-  zipCode: string;
-  phoneNumber: string;
-  isDefault: boolean;
+  clerkId?: string;
+  email?: string;
+  name: string;
+  imageUrl?: string;
+  phoneNumber?: string;
+  address?: Address;
+  role: "admin" | "technician" | "farmer";
+  isVerified?: boolean;
+  status: "active" | "on-site" | "on-leave";
+  pushToken?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Order {

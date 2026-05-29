@@ -88,7 +88,7 @@ export default function OfflineMapsScreen() {
           </View>
           <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: "#1e293b" }}>Oton Municipal Map</Text>
           <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 14, color: "#64748b", marginTop: 4, lineHeight: 20 }}>
-            Download map tiles for all 37 Barangays to navigate in "no-signal" zones.
+            Download map tiles for all 37 Barangays to navigate in &quot;no-signal&quot; zones.
           </Text>
 
           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 24, gap: 12 }}>

@@ -17,6 +17,8 @@
     "axios": "^1.13.5",
     "framer-motion": "^12.34.0",
     "ilo-agriculturesoffice-system": "file:..",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.563.0",
     "maplibre-gl": "^5.24.0",

@@ -130,7 +130,7 @@ const Layout = () => {
               </h2>
               <div className="flex items-center gap-2 mt-3">
                 <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-base-content/30">
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   {role} session active
                 </span>
               </div>
@@ -152,7 +152,7 @@ const Layout = () => {
           <Outlet />
         </main>
       </div>
-
+ 
       <div className="drawer-side z-20">
         <label htmlFor="my-drawer-2" aria-label="close sidebar" className="drawer-overlay"></label>
         <div className="menu p-6 w-80 min-h-full bg-base-100 text-base-content flex flex-col border-r border-base-300 shadow-2xl">
@@ -170,7 +170,7 @@ const Layout = () => {
               </div>
             </div>
           </div>
-
+ 
           {/* Primary Navigation */}
           <div className="flex flex-col gap-1.5 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar">
             {navItems.map((item) => {
@@ -180,7 +180,7 @@ const Layout = () => {
                   key={item.path}
                   to={item.path}
                   className={`flex items-center gap-3.5 px-5 py-3 text-[11px] font-black uppercase tracking-widest rounded-none transition-all duration-300 group
-                              ${isActive ? "bg-[#074033] dark:bg-emerald-600 text-white shadow-lg shadow-emerald-900/10 translate-x-1" : "text-base-content/30 hover:text-base-content hover:bg-base-200 hover:translate-x-1"}`}
+                              ${isActive ? "bg-[#074033] dark:bg-emerald-600 text-white shadow-lg shadow-emerald-900/10 translate-x-1" : "text-slate-500 dark:text-slate-400 hover:text-emerald-800 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:translate-x-1"}`}
                 >
                   <span className={`transition-transform duration-300 ${isActive ? "scale-110" : "group-hover:scale-110 group-hover:text-emerald-500"}`}>
                     {React.cloneElement(item.icon, { size: 18, strokeWidth: 2.5 })}
@@ -189,23 +189,23 @@ const Layout = () => {
                 </Link>
               );
             })}
-
+ 
             {role === "technician" && (
               <>
                 <div className="my-4 border-t border-base-300 opacity-50" />
                 
                 <button
                   onClick={() => document.getElementById('moowie-trigger')?.click()}
-                  className="flex items-center gap-3.5 px-5 py-3 text-[11px] font-black uppercase tracking-widest rounded-none transition-all duration-300 text-base-content/30 hover:text-emerald-500 hover:bg-base-200 group"
+                  className="flex items-center gap-3.5 px-5 py-3 text-[11px] font-black uppercase tracking-widest rounded-none transition-all duration-300 text-slate-500 dark:text-slate-400 hover:text-emerald-800 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 group"
                 >
                   <MessageSquare size={18} strokeWidth={2.5} />
                   Moowie Assistant
                 </button>
-
+ 
                 <Link
                   to="/technician/profile"
                   className={`flex items-center gap-3.5 px-5 py-3 text-[11px] font-black uppercase tracking-widest rounded-none transition-all duration-300 group
-                              ${location.pathname === "/technician/profile" ? "bg-[#074033] text-white shadow-lg shadow-emerald-950/20" : "text-base-content/30 hover:text-base-content hover:bg-base-200"}`}
+                              ${location.pathname === "/technician/profile" ? "bg-[#074033] dark:bg-emerald-600 text-white shadow-lg shadow-emerald-900/10 translate-x-1" : "text-slate-500 dark:text-slate-400 hover:text-emerald-800 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:translate-x-1"}`}
                 >
                   <User size={18} strokeWidth={2.5} />
                   My Profile
@@ -213,12 +213,12 @@ const Layout = () => {
               </>
             )}
           </div>
-
+ 
           {/* Sidebar Footer */}
           <div className="mt-auto pt-8">
              <button
                 onClick={() => signOut()}
-                className="w-full h-12 bg-base-200/50 hover:bg-rose-500/10 hover:text-rose-500 text-base-content/40 rounded-none text-[10px] font-black uppercase tracking-widest transition-all border border-base-300 flex items-center justify-center gap-3"
+                className="w-full h-12 bg-base-200/50 hover:bg-rose-500/10 hover:text-rose-500 text-slate-600 dark:text-slate-400 rounded-none text-[10px] font-black uppercase tracking-widest transition-all border border-base-300 flex items-center justify-center gap-3"
               >
                 <LogOut size={16} />
                 Logout

@@ -14,6 +14,7 @@ import {
   StickyNote,
   Timer,
 } from "lucide-react";
+import { calculateTargetCalvingDate } from "../../utils/cattleCore";
 
 const MissionDetailsModal = ({ isOpen, onClose, task }) => {
   if (!isOpen || !task) return null;
@@ -22,6 +23,10 @@ const MissionDetailsModal = ({ isOpen, onClose, task }) => {
   const raw = task.raw || {};
   const pregnancy = task.pregnancyCheck || task.pdRecord;
   const calving = task.cdRecord;
+
+  const expectedCalving = task.status === "Pregnant" && raw.inseminationDate && animal.species
+    ? calculateTargetCalvingDate(raw.inseminationDate, animal.species)
+    : null;
 
   const getCycleLabel = () => {
     if (task.status === "Pregnant") return "Gestation Day";
@@ -167,6 +172,9 @@ const MissionDetailsModal = ({ isOpen, onClose, task }) => {
                   <FieldItem icon={HeartPulse} label="Estrus" value={raw.estrus} />
                   <FieldItem icon={Syringe} label="Sire" value={raw.sireBreed} />
                   <FieldItem icon={BadgeCheck} label="Sire ID" value={raw.sireCode} />
+                  {expectedCalving && (
+                    <FieldItem icon={Timer} label="Est. Calving" value={formatDate(expectedCalving)} />
+                  )}
                 </div>
               </div>
 

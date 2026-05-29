@@ -7,6 +7,7 @@ import { useToast } from "../../contexts/ToastContext";
 import { CATTLE_BREEDS, CATTLE_SPECIES } from "../../constants/breeds";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { OTON_BARANGAYS } from "../../constants/barangays";
+import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../../utils/cattleCore";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
@@ -25,6 +26,8 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
   const [showPregnancyWarning, setShowPregnancyWarning] = useState(false);
   const [isOverriding, setIsOverriding] = useState(false);
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
+  const [ageWarning, setAgeWarning] = useState("");
+  const [vwpWarning, setVwpWarning] = useState("");
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -117,6 +120,8 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
       setIsDropdownOpen(false);
       setSelectedAnimalId("");
       setShowPregnancyWarning(false);
+      setAgeWarning("");
+      setVwpWarning("");
       setIsOverriding(false);
       setIsBarangayDropdownOpen(false);
       setFormData({
@@ -155,6 +160,12 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
       }
       const farmer = farmers.find((f) => f._id === selectedFarmerId);
       const animal = animals.find((a) => a._id === selectedAnimalId);
+      
+      // Gender Check
+      if (animal && animal.gender === "Male") {
+        return toast.error("Insemination is restricted to female animals only. This animal is registered as Male.");
+      }
+
       submissionData = {
         farmerId: selectedFarmerId,
         animalId: selectedAnimalId,
@@ -190,10 +201,43 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
   const handleAnimalChange = (animalId) => {
     setSelectedAnimalId(animalId);
     const animal = animals.find((a) => a._id === animalId);
-    if (animal?.reproductiveStatus === "Pregnant") {
+    if (!animal) {
+      setShowPregnancyWarning(false);
+      setAgeWarning("");
+      setVwpWarning("");
+      return;
+    }
+
+    if (animal.reproductiveStatus === "Pregnant") {
       setShowPregnancyWarning(true);
     } else {
       setShowPregnancyWarning(false);
+    }
+
+    // Check minimum breeding age eligibility
+    if (animal.birthDate) {
+      const ageCheck = checkInseminationAgeEligibility(animal.birthDate, animal.species);
+      if (!ageCheck.isEligible) {
+        setAgeWarning(ageCheck.reason);
+      } else {
+        setAgeWarning("");
+      }
+    } else {
+      setAgeWarning("");
+    }
+
+    // Check Postpartum Voluntary Waiting Period
+    if (animal.lastCalvingDate) {
+      const vwpCheck = verifyPostpartumWindow(animal.lastCalvingDate, formData.inseminationDetails.inseminationDate || new Date(), animal.species);
+      if (!vwpCheck.isSafe) {
+        setVwpWarning(
+          `Postpartum Voluntary Waiting Period violated. Only ${vwpCheck.daysPassed} days have passed since calving on ${new Date(animal.lastCalvingDate).toLocaleDateString()}. Minimum required recovery window is ${vwpCheck.requiredDays} days.`
+        );
+      } else {
+        setVwpWarning("");
+      }
+    } else {
+      setVwpWarning("");
     }
   };
 
@@ -376,8 +420,8 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                           {isLoadingAnimals ? "Synchronizing..." : "Select animal"}
                         </option>
                         {animals?.map((a) => (
-                          <option key={a._id} value={a._id}>
-                            Tag #{a.earTag} ({a.breed}) — {a.reproductiveStatus || "Normal"}
+                          <option key={a._id} value={a._id} disabled={a.gender === "Male"}>
+                            Tag #{a.earTag} ({a.breed}) — {a.reproductiveStatus || "Normal"}{a.gender === "Male" ? " (Male - Restricted)" : ""}
                           </option>
                         ))}
                       </select>
@@ -453,6 +497,48 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                         >
                           {overrideMutation.isPending ? "Updating..." : "Override Status"}
                         </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {ageWarning && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-3 overflow-hidden"
+                    >
+                      <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 flex items-start gap-3">
+                        <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none">Age Eligibility Warning</h4>
+                          <p className="text-[11px] font-medium text-base-content/85 mt-2 leading-tight">
+                            {ageWarning}
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {vwpWarning && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-3 overflow-hidden"
+                    >
+                      <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 flex items-start gap-3">
+                        <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
+                        <div>
+                          <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none">Postpartum Window Warning</h4>
+                          <p className="text-[11px] font-medium text-base-content/85 mt-2 leading-tight">
+                            {vwpWarning}
+                          </p>
+                        </div>
                       </div>
                     </motion.div>
                   )}

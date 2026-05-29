@@ -14,6 +14,24 @@ module.exports = {
         "outfit-extrabold": ["Outfit_800ExtraBold"],
         "outfit-black": ["Outfit_900Black"],
       },
+      colors: {
+        primary: {
+          DEFAULT: '#00643B',
+          dark: '#10b981'
+        },
+        bg: {
+          DEFAULT: '#f8fafc',
+          dark: '#090d16'
+        },
+        card: {
+          DEFAULT: '#ffffff',
+          dark: '#111827'
+        },
+        border: {
+          DEFAULT: '#f1f5f9',
+          dark: '#1f2937'
+        }
+      }
     },
   },
   plugins: [],

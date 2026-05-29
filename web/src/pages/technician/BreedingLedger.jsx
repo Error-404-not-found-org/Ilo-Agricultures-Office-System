@@ -29,6 +29,7 @@ import HealthDetailsModal from "../../components/modals/HealthDetailsModal";
 import EditInseminationModal from "../../components/EditInseminationModal";
 import EditHealthModal from "../../components/EditHealthModal";
 import { useToast } from "../../contexts/ToastContext";
+import { calculateTargetCalvingDate } from "../../utils/cattleCore";
 
 const formatDate = (date, options) => {
   return new Intl.DateTimeFormat("en-US", options).format(new Date(date));
@@ -900,7 +901,7 @@ const BreedingLedger = () => {
                    <td>{row.pdRecord ? formatDate(row.pdRecord.checkDate || row.pdRecord.createdAt, { month: "short", day: "2-digit", year: "numeric" }) : ""}</td>
                    <td>{row.pdRecord?.pregnancyDiagnosis?.result === "Pregnant" ? "Positive" : row.pdRecord?.pregnancyDiagnosis?.result === "Empty" ? "Negative" : ""}</td>
                    {/* CD */}
-                   <td>{row.cdRecord ? formatDate(row.cdRecord.date, { month: "short", day: "2-digit", year: "numeric" }) : ""}</td>
+                   <td>{row.cdRecord ? formatDate(row.cdRecord.date, { month: "short", day: "2-digit", year: "numeric" }) : (row.status === "Pregnant" && row.inseminationDate ? formatDate(calculateTargetCalvingDate(row.inseminationDate, row.animal?.species), { month: "short", day: "2-digit", year: "numeric" }) + " (Est.)" : "")}</td>
                    <td>{row.cdRecord?.numberOfCalves || ""}</td>
                    <td>{row.cdRecord?.calves?.[0]?.earTag || ""}</td>
                    <td>{row.cdRecord?.calves?.[0]?.sex || ""}</td>

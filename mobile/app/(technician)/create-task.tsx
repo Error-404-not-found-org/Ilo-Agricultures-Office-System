@@ -6,6 +6,7 @@ import { ArrowLeft, User, Save, ChevronDown, Dog, X } from 'lucide-react-native'
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useTheme } from '@/lib/theme';
 
 const SERVICE_TYPES = [
   { label: "Artificial Insemination", value: "AI", icon: "needle", color: "#10b981", bg: "#f0fdf4" },
@@ -20,6 +21,7 @@ export default function CreateTaskScreen() {
   const router = useRouter();
   const { type } = useLocalSearchParams();
   const api = useApi();
+  const { isDark, colors } = useTheme();
   
   const [farmers, setFarmers] = useState<any[]>([]);
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
@@ -150,12 +152,12 @@ export default function CreateTaskScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8FAFC]">
-      <View className="flex-row items-center px-6 py-4 bg-white border-b border-gray-100 shadow-sm z-10">
-        <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2 bg-slate-50 rounded-full">
-          <ArrowLeft size={20} color="#1e293b" />
+    <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
+      <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
+        <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
+          <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e293b'} />
         </TouchableOpacity>
-        <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: '#1e293b' }}>
+        <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: colors.textPrimary }}>
           {serviceType === 'AI' ? 'Record AI' : serviceType === 'Health' ? 'Health Log' : 'Schedule Visit'}
         </Text>
       </View>
@@ -163,7 +165,7 @@ export default function CreateTaskScreen() {
       <ScrollView className="flex-1 px-6 pt-6" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         {/* SERVICE SELECTION */}
         <View className="mb-8">
-          <Text className="font-outfit-bold text-slate-400 uppercase text-[10px] tracking-widest mb-3 ml-1">Service Type</Text>
+          <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Service Type</Text>
           <View className="flex-row flex-wrap gap-3">
               {SERVICE_TYPES.map(type => (
                  <TouchableOpacity
@@ -172,9 +174,9 @@ export default function CreateTaskScreen() {
                     activeOpacity={0.8}
                     style={{ 
                       width: '47%', 
-                      backgroundColor: serviceType === type.value ? type.bg : '#fff', 
+                      backgroundColor: serviceType === type.value ? (isDark ? type.color + '20' : type.bg) : (isDark ? '#111827' : '#fff'), 
                       borderWidth: 2, 
-                      borderColor: serviceType === type.value ? type.color : '#f1f5f9',
+                      borderColor: serviceType === type.value ? type.color : (isDark ? '#1f2937' : '#f1f5f9'),
                       borderRadius: 20,
                       padding: 14,
                       alignItems: 'center',
@@ -182,53 +184,53 @@ export default function CreateTaskScreen() {
                       gap: 10
                     }}
                  >
-                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: serviceType === type.value ? '#fff' : type.bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <View style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: serviceType === type.value ? (isDark ? '#1f2937' : '#fff') : (isDark ? type.color + '20' : type.bg), alignItems: 'center', justifyContent: 'center' }}>
                        <MaterialCommunityIcons name={type.icon as any} size={18} color={type.color} />
                     </View>
-                    <Text style={{ flex: 1, fontFamily: 'Outfit_700Bold', fontSize: 11, color: serviceType === type.value ? type.color : '#64748b' }}>{type.label}</Text>
+                    <Text style={{ flex: 1, fontFamily: 'Outfit_700Bold', fontSize: 11, color: serviceType === type.value ? type.color : (isDark ? '#94a3b8' : '#64748b') }}>{type.label}</Text>
                  </TouchableOpacity>
               ))}
           </View>
         </View>
 
         {/* FARMER SELECTION */}
-        <Text className="font-outfit-bold text-slate-400 uppercase text-[10px] tracking-widest mb-3 ml-1">Assign To Farmer</Text>
+        <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Assign To Farmer</Text>
         <TouchableOpacity 
            onPress={() => setShowFarmerModal(true)} 
-           className="bg-white border border-slate-100 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
+           className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
         >
            <View className="flex-row items-center flex-1">
-              <View className="w-10 h-10 bg-emerald-50 rounded-full items-center justify-center mr-3">
-                 <User size={20} color="#00643B" />
+              <View className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
+                 <User size={20} color={isDark ? '#34d399' : '#00643B'} />
               </View>
               <View className="flex-1">
-                 <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-base ${selectedFarmer ? 'text-slate-800' : 'text-slate-300'}`}>
+                 <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-base ${selectedFarmer ? 'text-slate-800 dark:text-white' : 'text-slate-300 dark:text-slate-600'}`}>
                     {selectedFarmer ? selectedFarmer.name : 'Select Farmer...'}
                  </Text>
               </View>
            </View>
-           <ChevronDown size={20} color="#94a3b8" />
+           <ChevronDown size={20} color={isDark ? '#6b7280' : '#94a3b8'} />
         </TouchableOpacity>
 
         {/* ANIMAL SELECTION */}
         {selectedFarmer && (
             <View className="mb-8">
-              <Text className="font-outfit-bold text-slate-400 uppercase text-[10px] tracking-widest mb-3 ml-1">Target Animals</Text>
+              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Target Animals</Text>
               {loadingAnimals ? (
-                  <ActivityIndicator size="small" color="#00643B" className="my-4" />
+                  <ActivityIndicator size="small" color={isDark ? '#34d399' : '#00643B'} className="my-4" />
               ) : animals.length === 0 ? (
-                  <View className="bg-slate-50 rounded-2xl p-6 items-center border border-dashed border-slate-200">
-                      <Text className="text-slate-400 text-sm font-outfit-medium">No animals found for this farmer.</Text>
+                  <View className="bg-slate-50 dark:bg-slate-900 rounded-2xl p-6 items-center border border-dashed border-slate-200 dark:border-slate-700">
+                      <Text className="text-slate-400 dark:text-slate-500 text-sm font-outfit-medium">No animals found for this farmer.</Text>
                   </View>
               ) : (
                   <View className="flex-row flex-wrap gap-2">
                     {animals.map((a: any) => (
                       <TouchableOpacity
                           key={a._id}
-                          className={`px-4 py-2.5 rounded-full flex-row items-center border ${selectedAnimalIds.includes(a._id) ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-slate-200'}`}
+                          className={`px-4 py-2.5 rounded-full flex-row items-center border ${selectedAnimalIds.includes(a._id) ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}
                           onPress={() => toggleAnimalSelect(a._id)}
                       >
-                          <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[13px] ${selectedAnimalIds.includes(a._id) ? 'text-white' : 'text-slate-600'}`}>
+                          <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[13px] ${selectedAnimalIds.includes(a._id) ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>
                             {a.earTag || a.animalId}
                           </Text>
                           {selectedAnimalIds.includes(a._id) && <MaterialCommunityIcons name="check" size={14} color="white" style={{ marginLeft: 6 }} />}
@@ -241,37 +243,39 @@ export default function CreateTaskScreen() {
 
         {/* SPECIALIZED FIELDS */}
         {serviceType === 'AI' && (
-          <View className="bg-emerald-50/50 p-5 rounded-[28px] mb-8 border border-emerald-100">
-            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 text-sm uppercase tracking-widest mb-4">A.I. Details</Text>
+          <View className="bg-emerald-50/50 dark:bg-emerald-900/10 p-5 rounded-[28px] mb-8 border border-emerald-100 dark:border-emerald-800/50">
+            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 dark:text-emerald-400 text-sm uppercase tracking-widest mb-4">A.I. Details</Text>
             <View className="gap-y-4">
               <View>
-                <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Sire Breed</Text>
+                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Sire Breed</Text>
                 <TextInput
-                  className="bg-white border border-emerald-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                  className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                   placeholder="e.g. Brahman, Angus..."
+                  placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                   value={sireBreed}
                   onChangeText={setSireBreed}
                 />
               </View>
               <View>
-                <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Sire Code / Bull ID</Text>
+                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Sire Code / Bull ID</Text>
                 <TextInput
-                  className="bg-white border border-emerald-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                  className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                   placeholder="e.g. BULL-123"
+                  placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                   value={sireCode}
                   onChangeText={setSireCode}
                 />
               </View>
               <View>
-                <Text className="text-emerald-700 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Estrus Type</Text>
+                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Estrus Type</Text>
                 <View className="flex-row gap-2">
                   {['Natural', 'Induced'].map(opt => (
                     <TouchableOpacity
                       key={opt}
                       onPress={() => setEstrus(opt)}
-                      className={`flex-1 py-2.5 rounded-xl border items-center ${estrus === opt ? 'bg-emerald-600 border-emerald-600' : 'bg-white border-emerald-100'}`}
+                      className={`flex-1 py-2.5 rounded-xl border items-center ${estrus === opt ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-800 border-emerald-100 dark:border-slate-700'}`}
                     >
-                      <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-xs ${estrus === opt ? 'text-white' : 'text-emerald-700'}`}>{opt}</Text>
+                      <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-xs ${estrus === opt ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>{opt}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -281,23 +285,25 @@ export default function CreateTaskScreen() {
         )}
 
         {serviceType === 'Health' && (
-          <View className="bg-amber-50/50 p-5 rounded-[28px] mb-8 border border-amber-100">
-            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-amber-800 text-sm uppercase tracking-widest mb-4">Health Log</Text>
+          <View className="bg-amber-50/50 dark:bg-amber-900/10 p-5 rounded-[28px] mb-8 border border-amber-100 dark:border-amber-800/50">
+            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-amber-800 dark:text-amber-400 text-sm uppercase tracking-widest mb-4">Health Log</Text>
             <View className="gap-y-4">
               <View>
-                <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Diagnosis</Text>
+                <Text className="text-amber-700 dark:text-amber-400 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Diagnosis</Text>
                 <TextInput
-                  className="bg-white border border-amber-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                  className="bg-white dark:bg-slate-800 border border-amber-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                   placeholder="What was found?"
+                  placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                   value={diagnosis}
                   onChangeText={setDiagnosis}
                 />
               </View>
               <View>
-                <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Treatment / Medicine</Text>
+                <Text className="text-amber-700 dark:text-amber-400 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Treatment / Medicine</Text>
                 <TextInput
-                  className="bg-white border border-amber-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                  className="bg-white dark:bg-slate-800 border border-amber-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                   placeholder="Medicine name & dosage"
+                  placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                   value={medicine}
                   onChangeText={setMedicine}
                 />
@@ -307,13 +313,14 @@ export default function CreateTaskScreen() {
         )}
 
         {serviceType === 'Vaccination' && (
-          <View className="bg-blue-50/50 p-5 rounded-[28px] mb-8 border border-blue-100">
-            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-blue-800 text-sm uppercase tracking-widest mb-4">Vaccination</Text>
+          <View className="bg-blue-50/50 dark:bg-blue-900/10 p-5 rounded-[28px] mb-8 border border-blue-100 dark:border-blue-800/50">
+            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-blue-800 dark:text-blue-400 text-sm uppercase tracking-widest mb-4">Vaccination</Text>
             <View>
-              <Text className="text-blue-700 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Vaccine / Med Name</Text>
+              <Text className="text-blue-700 dark:text-blue-400 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">Vaccine / Med Name</Text>
               <TextInput
-                className="bg-white border border-blue-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
+                className="bg-white dark:bg-slate-800 border border-blue-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
                 placeholder="e.g. FMD, Anthrax..."
+                placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                 value={vaccineName}
                 onChangeText={setVaccineName}
               />
@@ -323,27 +330,27 @@ export default function CreateTaskScreen() {
 
         {/* CATEGORY & NOTES */}
         <View className="mb-6">
-          <Text className="font-outfit-bold text-slate-400 uppercase text-[10px] tracking-widest mb-3 ml-1">Priority Level</Text>
+          <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Priority Level</Text>
           <View className="flex-row gap-2">
               {CATEGORIES.map(cat => (
                  <TouchableOpacity
                     key={cat}
-                    className={`flex-1 py-3 rounded-xl border items-center ${category === cat ? 'bg-slate-800 border-slate-800' : 'bg-white border-slate-200'}`}
+                    className={`flex-1 py-3 rounded-xl border items-center ${category === cat ? 'bg-slate-800 dark:bg-emerald-600 border-slate-800 dark:border-emerald-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}
                     onPress={() => setCategory(cat)}
                  >
-                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[13px] ${category === cat ? 'text-white' : 'text-slate-600'}`}>{cat}</Text>
+                    <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[13px] ${category === cat ? 'text-white' : 'text-slate-600 dark:text-slate-400'}`}>{cat}</Text>
                  </TouchableOpacity>
               ))}
           </View>
         </View>
 
-        <Text className="font-outfit-bold text-slate-400 uppercase text-[10px] tracking-widest mb-3 ml-1">Additional Notes</Text>
+        <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Additional Notes</Text>
         <TextInput
-            className="bg-white border border-slate-100 rounded-2xl p-4 h-32 text-slate-800 shadow-sm mb-10 font-outfit-medium"
+            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 h-32 text-slate-800 dark:text-white shadow-sm mb-10 font-outfit-medium"
             multiline
             textAlignVertical="top"
             placeholder="Any other details..."
-            placeholderTextColor="#cbd5e1"
+            placeholderTextColor={isDark ? '#6b7280' : '#cbd5e1'}
             value={notes}
             onChangeText={setNotes}
         />
@@ -367,16 +374,16 @@ export default function CreateTaskScreen() {
       {/* FARMER SELECTION MODAL */}
       <Modal animationType="slide" transparent={true} visible={showFarmerModal} onRequestClose={() => setShowFarmerModal(false)}>
          <View className="flex-1 bg-slate-900/40 justify-end">
-            <View className="bg-white rounded-t-[32px] p-6 pb-10 max-h-[80%] min-h-[50%]">
+            <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[80%] min-h-[50%]">
                <View className="flex-row justify-between items-center mb-5">
-                   <Text className="text-xl font-bold text-slate-800">Select Farmer</Text>
-                   <TouchableOpacity onPress={() => setShowFarmerModal(false)} className="bg-slate-100 p-2 rounded-full">
-                       <X size={20} color="#64748b" />
+                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-xl text-slate-800 dark:text-white">Select Farmer</Text>
+                   <TouchableOpacity onPress={() => setShowFarmerModal(false)} className="bg-slate-100 dark:bg-slate-800 p-2 rounded-full">
+                       <X size={20} color={isDark ? '#94a3b8' : '#64748b'} />
                    </TouchableOpacity>
                </View>
 
                {farmers.length === 0 ? (
-                   <ActivityIndicator size="large" color="#0d9488" className="mt-10" />
+                   <ActivityIndicator size="large" color={isDark ? '#34d399' : '#0d9488'} className="mt-10" />
                ) : (
                    <FlatList 
                       data={farmers}
@@ -385,14 +392,14 @@ export default function CreateTaskScreen() {
                       renderItem={({ item }) => (
                           <TouchableOpacity 
                              onPress={() => handleFarmerSelect(item)}
-                             className="flex-row items-center bg-slate-50 border border-slate-100 p-4 rounded-2xl mb-3"
+                             className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-4 rounded-2xl mb-3"
                           >
-                             <View className="w-10 h-10 bg-emerald-100 rounded-full items-center justify-center mr-3">
-                                <User size={20} color="#0d9488" />
+                             <View className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
+                                <User size={20} color={isDark ? '#34d399' : '#0d9488'} />
                              </View>
                              <View className="flex-1">
-                                <Text className="font-bold text-slate-800 text-base">{item.name}</Text>
-                                <Text className="text-slate-500 text-xs mt-0.5" numberOfLines={1}>{getAddressStr(item.address)}</Text>
+                                <Text className="font-bold text-slate-800 dark:text-white text-base">{item.name}</Text>
+                                <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5" numberOfLines={1}>{getAddressStr(item.address)}</Text>
                              </View>
                           </TouchableOpacity>
                       )}

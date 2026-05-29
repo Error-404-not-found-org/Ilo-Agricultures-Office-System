@@ -18,6 +18,7 @@ import axiosInstance from "../../lib/axios";
 import { toast } from "sonner";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { CATTLE_BREEDS } from "../../constants/breeds";
+import { generatePregnancyTimeline, verifyPostpartumWindow } from "../../utils/cattleCore";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
@@ -89,6 +90,14 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
   const animal = taskData.raw?.animalId || {};
   const preferredDateTime = taskData.preferredDate || taskData.displayDate;
+
+  const timeline = !isHealth && scheduledDate && animal.species
+    ? generatePregnancyTimeline(new Date(scheduledDate), animal.species)
+    : null;
+
+  const vwpCheck = !isHealth && animal.lastCalvingDate && scheduledDate
+    ? verifyPostpartumWindow(animal.lastCalvingDate, new Date(scheduledDate), animal.species)
+    : null;
 
   const handleRejectTask = () => {
     const status = taskData.type === "health" ? "cancelled" : "rejected";
@@ -277,102 +286,104 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
               </section>
 
               {/* SECTION 2: SERVICE METRICS & PARAMETERS */}
-              <section className={sectionClass}>
-                <div className="flex items-center gap-2 mb-1">
-                  <ClipboardPen size={14} className="text-emerald-600" />
-                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                    Service Metrics
-                  </h4>
-                </div>
+              {!isPending && !isApproved && (
+                <section className={sectionClass}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <ClipboardPen size={14} className="text-emerald-600" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Service Metrics
+                    </h4>
+                  </div>
 
-                {/* AI SPECIFIC FIELDS */}
-                {!isHealth && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Sire Breed</label>
-                      <div className="relative">
-                        <select
-                          disabled={isReadOnly}
-                          value={sireBreed}
-                          onChange={(e) => {
-                            const breed = e.target.value;
-                            setSireBreed(breed);
-                            const code = getSireCodeByBreed(breed);
-                            if (code) setSireCode(code);
-                          }}
-                          className={`${selectClass} cursor-pointer`}
-                        >
-                          <option value="" disabled>
-                            Select Breed
-                          </option>
-                          {CATTLE_BREEDS.map((b) => (
-                            <option key={b} value={b}>
-                              {b}
+                  {/* AI SPECIFIC FIELDS */}
+                  {!isHealth && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Sire Breed</label>
+                        <div className="relative">
+                          <select
+                            disabled={isReadOnly}
+                            value={sireBreed}
+                            onChange={(e) => {
+                              const breed = e.target.value;
+                              setSireBreed(breed);
+                              const code = getSireCodeByBreed(breed);
+                              if (code) setSireCode(code);
+                            }}
+                            className={`${selectClass} cursor-pointer`}
+                          >
+                            <option value="" disabled>
+                              Select Breed
                             </option>
-                          ))}
-                        </select>
+                            {CATTLE_BREEDS.map((b) => (
+                              <option key={b} value={b}>
+                                {b}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                    </div>
 
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Sire Code</label>
-                      <input
-                        type="text"
-                        disabled={isReadOnly}
-                        value={sireCode}
-                        onChange={(e) => setSireCode(e.target.value)}
-                        placeholder="e.g. 507HO12345"
-                        className={inputClass}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Estrus Cycle</label>
-                      <div className="relative">
-                        <select
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Sire Code</label>
+                        <input
+                          type="text"
                           disabled={isReadOnly}
-                          value={estrus}
-                          onChange={(e) => setEstrus(e.target.value)}
-                          className={`${selectClass} cursor-pointer`}
-                        >
-                          <option value="Natural">Natural</option>
-                          <option value="Synchronized">Synchronized</option>
-                          <option value="Induced">Induced</option>
-                        </select>
+                          value={sireCode}
+                          onChange={(e) => setSireCode(e.target.value)}
+                          placeholder="e.g. 507HO12345"
+                          className={inputClass}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Estrus Cycle</label>
+                        <div className="relative">
+                          <select
+                            disabled={isReadOnly}
+                            value={estrus}
+                            onChange={(e) => setEstrus(e.target.value)}
+                            className={`${selectClass} cursor-pointer`}
+                          >
+                            <option value="Natural">Natural</option>
+                            <option value="Synchronized">Synchronized</option>
+                            <option value="Induced">Induced</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* HEALTH SPECIFIC FIELDS */}
-                {isHealth && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Medical Diagnosis</label>
-                      <input
-                        type="text"
-                        disabled={isReadOnly}
-                        value={diagnosis}
-                        onChange={(e) => setDiagnosis(e.target.value)}
-                        placeholder="Enter diagnosis findings"
-                        className={inputClass}
-                      />
-                    </div>
+                  {/* HEALTH SPECIFIC FIELDS */}
+                  {isHealth && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Medical Diagnosis</label>
+                        <input
+                          type="text"
+                          disabled={isReadOnly}
+                          value={diagnosis}
+                          onChange={(e) => setDiagnosis(e.target.value)}
+                          placeholder="Enter diagnosis findings"
+                          className={inputClass}
+                        />
+                      </div>
 
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Prescribed Treatment</label>
-                      <input
-                        type="text"
-                        disabled={isReadOnly}
-                        value={treatment}
-                        onChange={(e) => setTreatment(e.target.value)}
-                        placeholder="e.g. Antibiotics, Deworming, Rest"
-                        className={inputClass}
-                      />
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Prescribed Treatment</label>
+                        <input
+                          type="text"
+                          disabled={isReadOnly}
+                          value={treatment}
+                          onChange={(e) => setTreatment(e.target.value)}
+                          placeholder="e.g. Antibiotics, Deworming, Rest"
+                          className={inputClass}
+                        />
+                      </div>
                     </div>
-                  </div>
-                )}
-              </section>
+                  )}
+                </section>
+              )}
 
               {/* SECTION 3: SCHEDULE & OBSERVATIONS */}
               <section className={sectionClass}>
@@ -415,6 +426,64 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                   </div>
                 </div>
               </section>
+
+              {/* SECTION 4: ESTIMATED PREGNANCY TIMELINE */}
+              {!isHealth && timeline && (
+                <section className={sectionClass}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CalendarDays size={14} className="text-emerald-600" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Est. Pregnancy Milestones
+                    </h4>
+                  </div>
+                  
+                  {vwpCheck && !vwpCheck.isSafe && (
+                    <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-4 flex items-start gap-3 mb-4">
+                      <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                      <div>
+                        <h5 className="text-[10px] font-black text-rose-500 uppercase tracking-widest leading-none">Voluntary Waiting Period Warning</h5>
+                        <p className="text-[9px] font-bold text-rose-500/40 uppercase tracking-widest mt-2 leading-tight">
+                          Recovery window violated! Calved on {new Date(animal.lastCalvingDate).toLocaleDateString()}. Only {vwpCheck.daysPassed} of {vwpCheck.requiredDays} safe recovery days have elapsed.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
+                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">Estrus Check</span>
+                      <span className="text-xs font-bold text-base-content block mt-1">Day 21</span>
+                      <span className="text-[9px] text-base-content/60 block mt-0.5">
+                        {timeline.heatReturnCheckDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    </div>
+
+                    <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
+                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">Ultrasound</span>
+                      <span className="text-xs font-bold text-base-content block mt-1">Day 35</span>
+                      <span className="text-[9px] text-base-content/60 block mt-0.5">
+                        {timeline.ultrasoundCheckDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    </div>
+
+                    <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
+                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">Palpation</span>
+                      <span className="text-xs font-bold text-base-content block mt-1">Day 60</span>
+                      <span className="text-[9px] text-base-content/60 block mt-0.5">
+                        {timeline.palpationCheckDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                    </div>
+
+                    <div className="p-4 rounded-xl border bg-emerald-500/5 border-emerald-500/10">
+                      <span className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">Est. Calving</span>
+                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 block mt-1">CD Date</span>
+                      <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block mt-0.5">
+                        {timeline.expectedCalvingDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    </div>
+                  </div>
+                </section>
+              )}
             </div>
 
             {/* FOOTER */}
@@ -449,7 +518,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                     <>
                       <BadgeCheck size={14} />
                       {isPending || isApproved
-                        ? "Accept & Start"
+                        ? "Accept Request"
                         : "Save Changes"}
                     </>
                   )}

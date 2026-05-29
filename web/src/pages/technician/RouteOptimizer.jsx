@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -34,6 +34,35 @@ const iconHealth = createCustomIcon("#10b981", "🩺");
 const iconBase = createCustomIcon("#111827", "HQ");
 
 export default function RouteOptimizer() {
+  const [mapTileUrl, setMapTileUrl] = useState(
+    "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+  );
+
+  useEffect(() => {
+    const checkTheme = () => {
+      const theme = document.documentElement.getAttribute("data-theme");
+      const isDark =
+        theme === "night" ||
+        theme === "dark" ||
+        document.documentElement.classList.contains("dark");
+      setMapTileUrl(
+        isDark
+          ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+      );
+    };
+
+    checkTheme();
+
+    const observer = new MutationObserver(checkTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "class"],
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
   // Fetch Tasks
   const { data: inseminations = [], isLoading: loadingInsem } = useQuery({
     queryKey: ["inseminations-route"],
@@ -250,7 +279,7 @@ export default function RouteOptimizer() {
           >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-              url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+              url={mapTileUrl}
             />
 
             {/* Base Marker */}

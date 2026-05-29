@@ -7,11 +7,15 @@ import { ArrowLeft, Bell, Globe, Trash2, Info, Moon, Sun } from 'lucide-react-na
 import { toast } from 'sonner-native';
 import { useColorScheme } from 'nativewind';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '@/lib/theme';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colorScheme, toggleColorScheme } = useColorScheme();
+  const { colors, isDark } = useTheme();
+
+  const primaryColor = isDark ? colors.primary : '#00643B';
 
   // Settings States
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -87,21 +91,22 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
-      <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
+    <View className="flex-1 bg-slate-50 dark:bg-slate-950" style={{ backgroundColor: colors.background }}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       
       {/* Header */}
       <View 
-        style={{ paddingTop: insets.top + 16 }}
-        className="pb-6 px-6 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 flex-row items-center justify-between"
+        style={{ paddingTop: insets.top + 16, backgroundColor: colors.card, borderBottomColor: colors.border }}
+        className="pb-6 px-6 border-b flex-row items-center justify-between"
       >
         <TouchableOpacity 
           onPress={() => router.back()} 
-          className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full items-center justify-center"
+          className="w-10 h-10 rounded-full items-center justify-center"
+          style={{ backgroundColor: isDark ? colors.background : '#f1f5f9' }}
         >
-          <ArrowLeft size={20} color={colorScheme === 'dark' ? '#fff' : '#475569'} />
+          <ArrowLeft size={20} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-xl text-slate-800 dark:text-white">App Settings</Text>
+        <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-xl">App Settings</Text>
         <View className="w-10" />
       </View>
 
@@ -109,53 +114,62 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false} 
         contentContainerStyle={{ padding: 24, paddingBottom: insets.bottom + 40 }}
       >
-        <View className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-100 dark:border-slate-800 gap-y-6">
+        <View className="rounded-3xl p-6 border gap-y-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
           
           {/* Theme Settings */}
           <View className="flex-row justify-between items-center">
             <View className="flex-row items-center gap-3">
-              <View className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/30 items-center justify-center">
-                {colorScheme === 'dark' ? <Moon size={18} color="#f59e0b" /> : <Sun size={18} color="#f59e0b" />}
+              <View 
+                className="w-9 h-9 rounded-xl items-center justify-center"
+                style={{ backgroundColor: isDark ? 'rgba(245, 158, 11, 0.15)' : '#fef3c7' }}
+              >
+                {isDark ? <Moon size={18} color="#f59e0b" /> : <Sun size={18} color="#f59e0b" />}
               </View>
               <View>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-sm text-slate-800 dark:text-white">Theme Mode</Text>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-xs text-slate-400 dark:text-slate-500 uppercase">{colorScheme === 'dark' ? 'Dark Mode' : 'Light Mode'}</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">Theme Mode</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs uppercase">{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={handleToggleTheme} style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: colorScheme === 'dark' ? '#00643B' : '#cbd5e1', padding: 2, justifyContent: 'center' }}>
-              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: colorScheme === 'dark' ? 'flex-end' : 'flex-start' }} />
+            <TouchableOpacity onPress={handleToggleTheme} style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: isDark ? colors.primary : '#cbd5e1', padding: 2, justifyContent: 'center' }}>
+              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: isDark ? 'flex-end' : 'flex-start' }} />
             </TouchableOpacity>
           </View>
 
-          <View className="h-[1px] bg-slate-100 dark:bg-slate-800" />
+          <View className="h-[1px]" style={{ backgroundColor: colors.border }} />
 
           {/* Push Notifications */}
           <View className="flex-row justify-between items-center">
             <View className="flex-row items-center gap-3">
-              <View className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 items-center justify-center">
-                <Bell size={18} color="#00643B" />
+              <View 
+                className="w-9 h-9 rounded-xl items-center justify-center"
+                style={{ backgroundColor: colors.tint }}
+              >
+                <Bell size={18} color={primaryColor} />
               </View>
               <View>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-sm text-slate-800 dark:text-white">Push Notifications</Text>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-xs text-slate-400 dark:text-slate-500">Alerts on breeding cycles</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">Push Notifications</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs">Alerts on breeding cycles</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={toggleNotifications} style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: notificationsEnabled ? '#00643B' : '#cbd5e1', padding: 2, justifyContent: 'center' }}>
+            <TouchableOpacity onPress={toggleNotifications} style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: notificationsEnabled ? primaryColor : '#cbd5e1', padding: 2, justifyContent: 'center' }}>
               <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: notificationsEnabled ? 'flex-end' : 'flex-start' }} />
             </TouchableOpacity>
           </View>
 
-          <View className="h-[1px] bg-slate-100 dark:bg-slate-800" />
+          <View className="h-[1px]" style={{ backgroundColor: colors.border }} />
 
           {/* Language Selection */}
           <View>
             <View className="flex-row items-center gap-3 mb-4">
-              <View className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/30 items-center justify-center">
+              <View 
+                className="w-9 h-9 rounded-xl items-center justify-center"
+                style={{ backgroundColor: isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff' }}
+              >
                 <Globe size={18} color="#2563eb" />
               </View>
               <View>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-sm text-slate-800 dark:text-white">Language Preference</Text>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-xs text-slate-400 dark:text-slate-500">Translate core application text</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">Language Preference</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs">Translate core application text</Text>
               </View>
             </View>
             <View className="flex-row gap-3">
@@ -168,50 +182,53 @@ export default function SettingsScreen() {
                     paddingVertical: 10,
                     borderRadius: 12,
                     borderWidth: 1,
-                    borderColor: appLanguage === lang ? '#00643B' : (colorScheme === 'dark' ? '#334155' : '#e2e8f0'),
-                    backgroundColor: appLanguage === lang ? 'rgba(0,100,59,0.1)' : 'transparent',
+                    borderColor: appLanguage === lang ? primaryColor : colors.border,
+                    backgroundColor: appLanguage === lang ? (isDark ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,100,59,0.1)') : 'transparent',
                     alignItems: 'center'
                   }}
                 >
-                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, color: appLanguage === lang ? '#00643B' : '#94a3b8' }}>{lang}</Text>
+                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, color: appLanguage === lang ? primaryColor : colors.textMuted }}>{lang}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
 
-          <View className="h-[1px] bg-slate-100 dark:bg-slate-800" />
+          <View className="h-[1px]" style={{ backgroundColor: colors.border }} />
 
           {/* Biometrics Log In */}
           <View className="flex-row justify-between items-center">
             <View className="flex-row items-center gap-3">
-              <View className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-950/30 items-center justify-center">
+              <View 
+                className="w-9 h-9 rounded-xl items-center justify-center"
+                style={{ backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#f3e8ff' }}
+              >
                 <MaterialCommunityIcons name="fingerprint" size={20} color="#8b5cf6" />
               </View>
               <View>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-sm text-slate-800 dark:text-white">Biometrics Log In</Text>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-xs text-slate-400 dark:text-slate-500">Fast secure fingerprint entry</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">Biometrics Log In</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs">Fast secure fingerprint entry</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={toggleBiometrics} style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: biometricsEnabled ? '#00643B' : '#cbd5e1', padding: 2, justifyContent: 'center' }}>
+            <TouchableOpacity onPress={toggleBiometrics} style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: biometricsEnabled ? primaryColor : '#cbd5e1', padding: 2, justifyContent: 'center' }}>
               <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: biometricsEnabled ? 'flex-end' : 'flex-start' }} />
             </TouchableOpacity>
           </View>
 
-          <View className="h-[1px] bg-slate-100 dark:bg-slate-800" />
+          <View className="h-[1px]" style={{ backgroundColor: colors.border }} />
 
           {/* Quick System Tools */}
           <View className="flex-row gap-3">
             <TouchableOpacity 
               onPress={handleClearCache}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.05)' }}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.error, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.05)' }}
             >
-              <Trash2 size={16} color="#ef4444" />
-              <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: '#ef4444' }}>Clear Cache</Text>
+              <Trash2 size={16} color={colors.error} />
+              <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: colors.error }}>Clear Cache</Text>
             </TouchableOpacity>
             
             <TouchableOpacity 
               onPress={handleCheckUpdates}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: '#00643B' }}
+              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: primaryColor }}
             >
               <Info size={16} color="#fff" />
               <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: '#fff' }}>Updates</Text>
