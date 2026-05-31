@@ -27,6 +27,7 @@ import { toast } from "sonner-native";
 import { useApi } from "@/lib/api";
 import { format } from "date-fns";
 import { useTheme } from "@/lib/theme";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 const PRIMARY = "#00643B";
 
@@ -38,6 +39,8 @@ export default function FarmerHome() {
   const queryClient = useQueryClient();
   const [showRequestHub, setShowRequestHub] = React.useState(false);
   const [showAllOutcomes, setShowAllOutcomes] = React.useState(false);
+  const [modalVisible, setModalVisible] = React.useState(false);
+  const [cancelInfo, setCancelInfo] = React.useState<{ id: string; type: string; animalTag: string } | null>(null);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["user", "me"],
@@ -86,7 +89,7 @@ export default function FarmerHome() {
 
       const upcomingAI = aiData
         .filter((r: any) =>
-          ["pending", "approved", "in-progress"].includes(
+          ["approved", "in-progress"].includes(
             r.status?.toLowerCase(),
           ),
         )
@@ -98,7 +101,7 @@ export default function FarmerHome() {
 
       const upcomingHealth = healthData
         .filter((r: any) =>
-          ["pending", "approved", "in-progress"].includes(
+          ["approved", "in-progress"].includes(
             r.status?.toLowerCase(),
           ),
         )
@@ -234,35 +237,27 @@ export default function FarmerHome() {
   };
 
   const handleCancelRequest = (id: string, type: string, animalTag: string) => {
-    const endpoint =
-      type === "ai" ? `/ai-request/${id}` : `/health-request/${id}`;
+    setCancelInfo({ id, type, animalTag });
+    setModalVisible(true);
+  };
 
-    Alert.alert(
-      "Cancel Request?",
-      `Are you sure you want to cancel this request for ${animalTag}?`,
-      [
-        { text: "No", style: "cancel" },
-        {
-          text: "Yes, Cancel",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await api.delete(endpoint);
-              toast.success("Request cancelled");
-              queryClient.invalidateQueries({
-                queryKey: ["visits", "upcoming"],
-              });
-              queryClient.invalidateQueries({ queryKey: ["ai-requests"] });
-              queryClient.invalidateQueries({ queryKey: ["health-requests"] });
-              queryClient.invalidateQueries({ queryKey: ["notifications"] });
-              queryClient.invalidateQueries({ queryKey: ["user", "me"] });
-            } catch (err: any) {
-              toast.error("Failed to cancel");
-            }
-          },
-        },
-      ],
-    );
+  const handleConfirmCancel = async () => {
+    if (!cancelInfo) return;
+    const { id, type } = cancelInfo;
+    const endpoint = type === "ai" ? `/ai-request/${id}` : `/health-request/${id}`;
+    try {
+      await api.delete(endpoint);
+      toast.success("Request cancelled");
+      queryClient.invalidateQueries({
+        queryKey: ["visits", "upcoming"],
+      });
+      queryClient.invalidateQueries({ queryKey: ["ai-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["health-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+    } catch (err: any) {
+      toast.error("Failed to cancel");
+    }
   };
 
   return (
@@ -1003,6 +998,18 @@ export default function FarmerHome() {
           </View>
         </View>
       </Modal>
+      {cancelInfo && (
+        <ConfirmationModal
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+          onConfirm={handleConfirmCancel}
+          title="Cancel Request?"
+          message={`Are you sure you want to cancel this request for ${cancelInfo.animalTag}?`}
+          confirmText="Yes, Cancel"
+          cancelText="No, Keep it"
+          isDestructive={true}
+        />
+      )}
     </View>
   );
 }
@@ -1113,7 +1120,7 @@ const VisitItem = ({
           {time}
         </Text>
         <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium text-[11px]">
-          {technician}
+          {technician && technician !== "Pending Assignment" ? `Technician: ${technician}` : "Pending Assignment"}
         </Text>
       </View>
       <View className="items-end gap-2">
@@ -1150,7 +1157,7 @@ const VisitItem = ({
             {status}
           </Text>
         </View>
-        {onCancel && (status === "PENDING" || status === "APPROVED") && (
+        {onCancel && ["PENDING", "APPROVED", "IN-PROGRESS"].includes(status) && (
           <TouchableOpacity onPress={onCancel}>
             <Text className="text-red-500 font-outfit-bold text-[10px]">
               Cancel

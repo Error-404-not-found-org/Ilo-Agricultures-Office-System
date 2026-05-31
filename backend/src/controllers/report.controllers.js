@@ -19,6 +19,7 @@ export const getMonthlyAccomplishmentReport = async (req, res) => {
     // Fetch all related records for this month
     const [inseminations, pregnancies, calvings] = await Promise.all([
       Insemination.find({
+        deletedAt: null,
         $or: [
           { inseminationDate: { $gte: startDate, $lte: endDate } },
           { createdAt: { $gte: startDate, $lte: endDate }, status: 'done' }
@@ -26,10 +27,12 @@ export const getMonthlyAccomplishmentReport = async (req, res) => {
       }).populate('animalId').populate('farmerId').lean(),
       
       Pregnancy.find({
+        deletedAt: null,
         "pregnancyDiagnosis.date": { $gte: startDate, $lte: endDate }
       }).populate('animalId').populate('farmerId').lean(),
       
       Calving.find({
+        deletedAt: null,
         date: { $gte: startDate, $lte: endDate }
       }).populate('animalId').populate('farmerId').lean(),
     ]);
@@ -110,11 +113,11 @@ export const getMunicipalCensusData = async (req, res) => {
     endDate.setHours(23, 59, 59, 999);
 
     const [allAnimals, newAnimals, allAI, allPreg, allHealth, allFarmers] = await Promise.all([
-      Animal.find().lean(),
-      Animal.countDocuments({ createdAt: { $gte: startDate, $lte: endDate } }),
-      Insemination.countDocuments({ inseminationDate: { $gte: startDate, $lte: endDate } }),
-      Pregnancy.countDocuments({ createdAt: { $gte: startDate, $lte: endDate }, "pregnancyDiagnosis.result": "Pregnant" }),
-      HealthRequest.countDocuments({ status: "resolved", updatedAt: { $gte: startDate, $lte: endDate } }),
+      Animal.find({ deletedAt: null }).lean(),
+      Animal.countDocuments({ createdAt: { $gte: startDate, $lte: endDate }, deletedAt: null }),
+      Insemination.countDocuments({ inseminationDate: { $gte: startDate, $lte: endDate }, deletedAt: null }),
+      Pregnancy.countDocuments({ createdAt: { $gte: startDate, $lte: endDate }, "pregnancyDiagnosis.result": "Pregnant", deletedAt: null }),
+      HealthRequest.countDocuments({ status: "resolved", updatedAt: { $gte: startDate, $lte: endDate }, deletedAt: null }),
       User.find({ role: "farmer" }).lean()
     ]);
 
@@ -143,8 +146,8 @@ export const getMunicipalCensusData = async (req, res) => {
     // We'd ideally want to link AI and Health to Barangays too
     // This requires joining Inseminations with Farmers
     const [insWithFarmer, healthWithFarmer] = await Promise.all([
-        Insemination.find({ inseminationDate: { $gte: startDate, $lte: endDate } }).populate('farmerId', 'address').lean(),
-        HealthRequest.find({ updatedAt: { $gte: startDate, $lte: endDate }, status: "resolved" }).populate('farmerId', 'address').lean()
+        Insemination.find({ inseminationDate: { $gte: startDate, $lte: endDate }, deletedAt: null }).populate('farmerId', 'address').lean(),
+        HealthRequest.find({ updatedAt: { $gte: startDate, $lte: endDate }, status: "resolved", deletedAt: null }).populate('farmerId', 'address').lean()
     ]);
 
     insWithFarmer.forEach(ins => {

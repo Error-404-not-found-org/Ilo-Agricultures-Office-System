@@ -25,14 +25,19 @@ export const getMe = async (req, res) => {
       // OR AI requests still pending
       const waitingForResult = await Insemination.countDocuments({
         farmerId: user._id,
-        status: { $in: ["pending", "approved", "done"] }
+        status: { $in: ["pending", "approved", "done"] },
+        deletedAt: null
       });
       
       // We'll refine this: Inseminations with no pregnancy diagnostic yet
-      const inseminations = await Insemination.find({ farmerId: user._id }).select("_id");
+      const inseminations = await Insemination.find({ 
+        farmerId: user._id, 
+        status: { $ne: "rejected" },
+        deletedAt: null 
+      }).select("_id");
       const insIds = inseminations.map(i => i._id);
       
-      const diagnoses = await Pregnancy.find({ inseminationId: { $in: insIds } }).select("inseminationId");
+      const diagnoses = await Pregnancy.find({ inseminationId: { $in: insIds }, deletedAt: null }).select("inseminationId");
       const diagnosedInsIds = diagnoses.map(d => d.inseminationId.toString());
       
       const pendingResults = insIds.filter(id => !diagnosedInsIds.includes(id.toString())).length;
@@ -40,18 +45,20 @@ export const getMe = async (req, res) => {
       // 2. Active Pregnancies: Animals currently marked as "Pregnant" in the Animal model
       const activePregnancies = await Animal.countDocuments({
         farmerId: user._id,
-        reproductiveStatus: "Pregnant"
+        reproductiveStatus: "Pregnant",
+        deletedAt: null
       });
 
       // 3. Upcoming Calving: Confirmed pregnant and due within 30 days
       const upcomingCalvings = await Pregnancy.countDocuments({
         farmerId: user._id,
         "pregnancyDiagnosis.result": "Pregnant",
-        targetCalvingDate: { $gte: now, $lte: next30Days }
+        targetCalvingDate: { $gte: now, $lte: next30Days },
+        deletedAt: null
       });
 
-      const totalAnimals = await Animal.countDocuments({ farmerId: user._id });
-      const totalCalves = await Calving.countDocuments({ farmerId: user._id });
+      const totalAnimals = await Animal.countDocuments({ farmerId: user._id, deletedAt: null });
+      const totalCalves = await Calving.countDocuments({ farmerId: user._id, deletedAt: null });
 
       stats = { 
         totalAnimals, 
@@ -327,14 +334,17 @@ export const getUserById = async (req, res) => {
     if (user.role === "technician") {
       const totalInseminations = await Insemination.countDocuments({
         approvedBy: id,
+        deletedAt: null
       });
       const pendingInseminations = await Insemination.countDocuments({
         approvedBy: id,
         status: "pending",
+        deletedAt: null
       });
       const approvedInseminations = await Insemination.countDocuments({
         approvedBy: id,
         status: "approved",
+        deletedAt: null
       });
 
       stats = {
@@ -345,17 +355,20 @@ export const getUserById = async (req, res) => {
     } else if (user.role === "farmer") {
       const totalInseminations = await Insemination.countDocuments({
         farmerId: id,
+        deletedAt: null
       });
       const successfulInseminations = await Pregnancy.countDocuments({
         farmerId: id,
-        "pregnancyDiagnosis.result": "Pregnant"
+        "pregnancyDiagnosis.result": "Pregnant",
+        deletedAt: null
       });
       const activePregnancies = await Animal.countDocuments({
         farmerId: id,
-        reproductiveStatus: "Pregnant"
+        reproductiveStatus: "Pregnant",
+        deletedAt: null
       });
 
-      const animalsList = await Animal.find({ farmerId: id }).sort({ createdAt: -1 }).lean();
+      const animalsList = await Animal.find({ farmerId: id, deletedAt: null }).sort({ createdAt: -1 }).lean();
       
       const animals = await Promise.all(animalsList.map(async (animal) => {
         const totalCalves = await Animal.countDocuments({ motherId: animal._id });
@@ -392,7 +405,7 @@ export const getUserById = async (req, res) => {
 export const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phoneNumber, status, address } = req.body;
+    const { name, email, phoneNumber, status, address, imageUrl } = req.body;
 
     const user = await User.findById(id);
 
@@ -407,6 +420,50 @@ export const updateUser = async (req, res) => {
       if (user.address) user.address.phoneNumber = phoneNumber;
     }
     if (status) user.status = status;
+
+    // --- PHOTO UPLOAD & CLOUDINARY CLEANUP CASCADE ---
+    if (imageUrl !== undefined) {
+      if (imageUrl === "" || imageUrl === null) {
+        // User is deleting their profile photo
+        if (user.imageUrl && user.imageUrl.includes("cloudinary.com")) {
+          try {
+            const oldUrlParts = user.imageUrl.split("/");
+            const oldPublicIdWithExtension = oldUrlParts.slice(-2).join("/");
+            const oldPublicId = oldPublicIdWithExtension.substring(0, oldPublicIdWithExtension.lastIndexOf("."));
+            await cloudinary.uploader.destroy(oldPublicId);
+            console.log(`[Cloudinary Cleanup] Deleted profile image: ${oldPublicId}`);
+          } catch (cloudinaryError) {
+            console.error("[Cloudinary Cleanup Error]", cloudinaryError);
+          }
+        }
+        user.imageUrl = "";
+      } else if (imageUrl.startsWith("data:image")) {
+        // Upload new photo
+        try {
+          const uploadResponse = await cloudinary.uploader.upload(imageUrl, {
+            folder: "agriculture_profiles",
+          });
+          
+          // Delete the old photo if it exists on Cloudinary
+          if (user.imageUrl && user.imageUrl.includes("cloudinary.com")) {
+            try {
+              const oldUrlParts = user.imageUrl.split("/");
+              const oldPublicIdWithExtension = oldUrlParts.slice(-2).join("/");
+              const oldPublicId = oldPublicIdWithExtension.substring(0, oldPublicIdWithExtension.lastIndexOf("."));
+              await cloudinary.uploader.destroy(oldPublicId);
+              console.log(`[Cloudinary Cleanup] Deleted old profile image: ${oldPublicId}`);
+            } catch (cloudinaryError) {
+              console.error("[Cloudinary Cleanup Error]", cloudinaryError);
+            }
+          }
+
+          user.imageUrl = uploadResponse.secure_url;
+        } catch (err) {
+          console.error("Cloudinary upload failed", err);
+          return res.status(500).json({ message: "Image upload failed." });
+        }
+      }
+    }
 
     // Partially update address if provided
     if (address) {
@@ -558,15 +615,19 @@ export const getBreedingMilestones = async (req, res) => {
       if (calvedPregIds.includes(p._id.toString())) return;
 
       if (p.targetCalvingDate) {
-        milestones.push({
-          type: "calving",
-          title: "Upcoming Calving",
-          animal: p.animalId,
-          date: p.targetCalvingDate,
-          daysLeft: Math.ceil((new Date(p.targetCalvingDate).getTime() - now.getTime()) / (1000 * 3600 * 24)),
-          priority: "high",
-          relatedId: p._id
-        });
+        const daysLeft = Math.ceil((new Date(p.targetCalvingDate).getTime() - now.getTime()) / (1000 * 3600 * 24));
+        // Show Calving alerts only within 45 days of target date, or if overdue by up to 30 days
+        if (daysLeft >= -30 && daysLeft <= 45) {
+          milestones.push({
+            type: "calving",
+            title: "Upcoming Calving",
+            animal: p.animalId,
+            date: p.targetCalvingDate,
+            daysLeft,
+            priority: "high",
+            relatedId: p._id
+          });
+        }
       }
     });
 
@@ -575,8 +636,8 @@ export const getBreedingMilestones = async (req, res) => {
       const aiDate = ins.inseminationDate || ins.createdAt;
       const daysSinceAI = Math.floor((now.getTime() - new Date(aiDate).getTime()) / (1000 * 3600 * 24));
 
-      // Heat Check (21 days) - active from day 0 to day 24 post-AI
-      if (daysSinceAI < 24) {
+      // Heat Watch (21 days) - show between day 15 and day 25 post-AI
+      if (daysSinceAI >= 15 && daysSinceAI <= 25) {
         const heatDate = new Date(aiDate);
         heatDate.setDate(heatDate.getDate() + 21);
         
@@ -591,8 +652,8 @@ export const getBreedingMilestones = async (req, res) => {
         });
       }
 
-      // PD Check (60 days) - active starting from day 24 post-AI
-      if (daysSinceAI >= 24) {
+      // Preg-Check Due (60 days) - show between day 26 and day 90 post-AI
+      if (daysSinceAI >= 26 && daysSinceAI <= 90) {
         const pdDate = new Date(aiDate);
         pdDate.setDate(pdDate.getDate() + 60);
         

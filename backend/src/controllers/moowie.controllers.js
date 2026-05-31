@@ -32,9 +32,9 @@ Your main goal is to help users with questions about the Iloilo Agriculture's Of
 
     if (animalId) {
       const [animal, inseminations, healthHistory] = await Promise.all([
-        Animal.findById(animalId).lean(),
-        Insemination.find({ animalId }).sort({ createdAt: -1 }).limit(3).lean(),
-        HealthRequest.find({ animalId }).sort({ createdAt: -1 }).limit(3).lean()
+        Animal.findOne({ _id: animalId, deletedAt: null }).lean(),
+        Insemination.find({ animalId, deletedAt: null }).sort({ createdAt: -1 }).limit(3).lean(),
+        HealthRequest.find({ animalId, deletedAt: null }).sort({ createdAt: -1 }).limit(3).lean()
       ]);
 
       if (animal) {
@@ -109,18 +109,18 @@ export const queryAnimalForVoiceflow = async (req, res) => {
       return res.status(400).json({ error: "earTag is required" });
     }
 
-    const animal = await Animal.findOne({ earTag: { $regex: new RegExp(earTag, "i") } }).lean();
+    const animal = await Animal.findOne({ earTag: { $regex: new RegExp(earTag, "i") }, deletedAt: null }).lean();
     if (!animal) {
       return res.status(200).json({ 
         found: false, 
-        message: `Moo! I couldn't find any animal in our Oton database matching ear tag ${earTag}.` 
+        message: `Moo! I couldn't find any active animal in our Oton database matching ear tag ${earTag}.` 
       });
     }
 
     // Retrieve recent inseminations and medical logs to provide complete context
     const [inseminations, healthHistory] = await Promise.all([
-      Insemination.find({ animalId: animal._id }).sort({ createdAt: -1 }).limit(1).lean(),
-      HealthRequest.find({ animalId: animal._id }).sort({ createdAt: -1 }).limit(1).lean()
+      Insemination.find({ animalId: animal._id, deletedAt: null }).sort({ createdAt: -1 }).limit(1).lean(),
+      HealthRequest.find({ animalId: animal._id, deletedAt: null }).sort({ createdAt: -1 }).limit(1).lean()
     ]);
 
     const lastInsemination = inseminations[0] ? `Sire: ${inseminations[0].sireBreed}, Status: ${inseminations[0].status}` : "None";
@@ -156,7 +156,7 @@ export const getUserSummaryForVoiceflow = async (req, res) => {
     if (role === 'technician' || role === 'admin') {
       // Get counts of pending/in progress tasks
       const activeTasksCount = await Task.countDocuments({ status: { $in: ["Pending", "In Progress"] } });
-      const totalAnimals = await Animal.countDocuments({});
+      const totalAnimals = await Animal.countDocuments({ deletedAt: null });
       const totalFarmers = await User.countDocuments({ role: 'farmer' });
 
       message = `Moo! Hello ${name}. As an authorized ${role}, you currently have ${activeTasksCount} active tasks pending in your dashboard. Our database registers a total of ${totalAnimals} livestock and ${totalFarmers} local farmers in Oton, Iloilo.`;
@@ -173,10 +173,11 @@ export const getUserSummaryForVoiceflow = async (req, res) => {
       let pendingRequestsCount = 0;
       
       if (userDoc) {
-        animalCount = await Animal.countDocuments({ farmerId: userDoc._id });
+        animalCount = await Animal.countDocuments({ farmerId: userDoc._id, deletedAt: null });
         pendingRequestsCount = await HealthRequest.countDocuments({ 
           farmerId: userDoc._id, 
-          status: "Pending" 
+          status: "Pending",
+          deletedAt: null
         });
       }
 

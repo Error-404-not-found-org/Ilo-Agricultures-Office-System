@@ -609,3 +609,58 @@ export const recordCalving = async (req, res) => {
   }
 };
 
+export const getArchivedAnimals = async (req, res) => {
+  try {
+    const isTechnicianOrAdmin = req.user.role === "technician" || req.user.role === "admin";
+    const query = isTechnicianOrAdmin 
+      ? { deletedAt: { $ne: null } } 
+      : { farmerId: req.user._id, deletedAt: { $ne: null } };
+
+    const animals = await Animal.find(query)
+      .populate("farmerId", "-password")
+      .sort({ deletedAt: -1 })
+      .lean();
+
+    res.status(200).json(animals);
+  } catch (error) {
+    console.error("[getArchivedAnimals ERROR]", error);
+    res.status(500).json({ message: "Failed to fetch archived animals.", error: error.message });
+  }
+};
+
+export const restoreAnimal = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const animal = await Animal.findById(id);
+
+    if (!animal) {
+      return res.status(404).json({ message: "Animal not found" });
+    }
+
+    if (req.user.role === "farmer" && animal.farmerId.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized to restore this animal" });
+    }
+
+    await Promise.all([
+      Insemination.updateMany({ animalId: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } }),
+      Calving.updateMany({ animalId: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } }),
+      HealthRequest.updateMany({ animalId: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } }),
+      Pregnancy.updateMany({ animalId: id, deletedAt: { $ne: null } }, { $set: { deletedAt: null } })
+    ]);
+
+    animal.deletedAt = null;
+    await animal.save();
+
+    req.app.get("io").emit("dashboardUpdate", {
+      type: "ANIMAL_RESTORED",
+      animalId: id,
+    });
+
+    res.status(200).json({ message: "Animal and associated records restored successfully.", animal });
+  } catch (error) {
+    console.error("[restoreAnimal ERROR]", error);
+    res.status(500).json({ message: "Failed to restore animal", error: error.message });
+  }
+};
+
+

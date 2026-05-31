@@ -80,6 +80,14 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
   });
 
   useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
     if (isOpen && prefillData) {
       setFormData((prev) => ({
         ...prev,
@@ -117,7 +125,10 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
         diagnosis: "",
       });
     }
-  }, [isOpen, prefillData]);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, prefillData, onClose]);
 
   const mutation = useMutation({
     mutationFn: async (data) => {
@@ -182,7 +193,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+      <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
         
         {/* MODAL */}
         <motion.div

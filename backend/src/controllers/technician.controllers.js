@@ -764,15 +764,39 @@ export const updateInseminationStatus = async (req, res) => {
       );
     }
 
-    // Notify Farmer
+    // Notify Farmer — status-specific messages
     if (insemination.farmerId && insemination.farmerId._id) {
+      const animalTag = insemination.animalId?.earTag || "your animal";
+      const techName = req.user?.name || "a technician";
+
+      let notifTitle = "AI Request Update";
+      let notifMessage = "";
+
+      if (status === "approved") {
+        const rescheduled = scheduledDate ? ` The visit has been scheduled on ${new Date(scheduledDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}.` : " No schedule date has been set yet.";
+        notifTitle = "AI Request Accepted";
+        notifMessage = `Your artificial insemination request for animal ${animalTag} has been accepted by Technician: ${techName}.${rescheduled}`;
+      } else if (status === "in-progress") {
+        const rescheduled = scheduledDate ? ` The visit is rescheduled to ${new Date(scheduledDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}.` : "";
+        notifTitle = "AI Request In Progress";
+        notifMessage = `Your artificial insemination request for animal ${animalTag} is now in progress with Technician: ${techName}.${rescheduled}`;
+      } else if (status === "done") {
+        notifTitle = "AI Request Completed";
+        notifMessage = `Great news! The artificial insemination for animal ${animalTag} has been successfully completed by Technician: ${techName}.`;
+      } else if (status === "rejected") {
+        notifTitle = "AI Request Rejected";
+        notifMessage = `Your artificial insemination request for animal ${animalTag} has been declined by Technician: ${techName}. Please contact the office for more details.`;
+      } else {
+        notifMessage = `Your artificial insemination request for animal ${animalTag} has been updated to: ${status} by Technician: ${techName}.`;
+      }
+
       await Notification.create({
         recipientId: insemination.farmerId._id,
         senderId: req.user._id,
         type: "ai-request",
         relatedId: insemination._id,
-        title: "AI Request Update",
-        message: `Your AI request status has been updated to: ${status}.`,
+        title: notifTitle,
+        message: notifMessage,
       });
     }
 

@@ -37,3 +37,94 @@ export const OTON_BARANGAYS = [
   "Tuburan",
   "Turog-Turog"
 ];
+
+export const ILOILO_MUNICIPALITIES = [
+  "Oton",
+  "Tigbauan",
+  "Guimbal",
+  "Miagao",
+  "Pavia",
+  "San Miguel",
+  "Santa Barbara",
+  "Leganes"
+];
+
+export const MUNICIPALITY_BARANGAYS = {
+  "Oton": OTON_BARANGAYS,
+  "Tigbauan": [
+    "Alipata",
+    "Atabayan",
+    "Baguingin",
+    "Barosong",
+    "Buyu-an",
+    "Cordova Norte",
+    "Cordova Sur",
+    "Namocon",
+    "Parara Norte",
+    "Parara Sur",
+    "Poblacion East",
+    "Poblacion West"
+  ],
+  "Guimbal": [
+    "Anono-o",
+    "Bagonbon",
+    "Balantad",
+    "Bongol San Vicente",
+    "Cabasi",
+    "Gerona-Gimeno",
+    "Nanga",
+    "Poblacion Aurelio",
+    "Poblacion Bagumbayan",
+    "Poblacion Girogona",
+    "Poblacion Libertad"
+  ],
+  "Miagao": [
+    "Banuque",
+    "Baybay Sur",
+    "Baybay Norte",
+    "Caitib",
+    "Damilisan",
+    "Guibongan",
+    "Kirayan Norte",
+    "Kirayan Sur",
+    "Mambatad",
+    "Poblacion Ocho",
+    "Sapa"
+  ],
+  "Pavia": [
+    "Amparo",
+    "Balabag",
+    "Cabugao Norte",
+    "Cabugao Sur",
+    "Jibao-an",
+    "Mali-ao",
+    "Pagsanga-an",
+    "Pandac",
+    "Palihan",
+    "Poblacion"
+  ],
+  "San Miguel": [
+    "Consolacion",
+    "Igtambo",
+    "Poblacion",
+    "San Jose",
+    "Santa Cruz",
+    "Santa Teresa"
+  ],
+  "Santa Barbara": [
+    "Balanac",
+    "Cabugao",
+    "Inangayan",
+    "Malawog",
+    "Poblacion",
+    "Tigtig",
+    "Tungay"
+  ],
+  "Leganes": [
+    "Guinobatan",
+    "Malandog",
+    "Nabitasan",
+    "Poblacion",
+    "San Vicente font"
+  ]
+};

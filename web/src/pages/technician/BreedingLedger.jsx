@@ -1,933 +1,1290 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, AnimatePresence } from "framer-motion";
+import axiosInstance from "../../lib/axios";
+import { useToast } from "../../contexts/ToastContext";
+import { TableRowSkeleton } from "../../components/Skeleton";
 import {
-  Database,
   Search,
   Download,
   Printer,
-  ChevronRight,
-  ChevronLeft,
+  ListChecks,
   Syringe,
-  HeartPulse,
-  Baby,
-  ArrowUpDown,
-  MoreVertical,
-  CheckCircle2,
   Clock,
-  AlertCircle,
-  Timer,
+  CheckCircle,
+  X,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  SlidersHorizontal,
+  Info,
   Trash2,
-  Edit3,
-  User,
+  Calendar,
+  Layers,
+  Sparkles,
+  Baby,
 } from "lucide-react";
-import axiosInstance from "../../lib/axios";
-import Skeleton from "../../components/Skeleton";
-import ConfirmDeleteModal from "../../components/modals/ConfirmDeleteModal";
-import MissionDetailsModal from "../../components/modals/MissionDetailsModal";
-import HealthDetailsModal from "../../components/modals/HealthDetailsModal";
-import EditInseminationModal from "../../components/EditInseminationModal";
-import EditHealthModal from "../../components/EditHealthModal";
-import { useToast } from "../../contexts/ToastContext";
-import { calculateTargetCalvingDate } from "../../utils/cattleCore";
+import Topbar from "../../components/ui/Topbar";
 
-const formatDate = (date, options) => {
-  return new Intl.DateTimeFormat("en-US", options).format(new Date(date));
-};
-
-const BreedingLedger = () => {
-  const queryClient = useQueryClient();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterType, setFilterType] = useState("All");
-  const [activeView, setActiveView] = useState("Breeding"); // "Breeding" or "Health"
-  const [currentPage, setCurrentPage] = useState(1);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const itemsPerPage = 15;
+export default function BreedingLedger() {
   const toast = useToast();
+  const queryClient = useQueryClient();
 
-  // Modal States
-  const [selectedItem, setSelectedItem] = useState(null);
-  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [itemToDelete, setItemToDelete] = useState(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-  const [activeKebab, setActiveKebab] = useState(null);
-  const [selectedIds, setSelectedIds] = useState([]);
-
-  const { data: ledgerData = [], isLoading } = useQuery({
-    queryKey: ["technician", "breeding-ledger", activeView],
-    queryFn: async () => {
-      if (activeView === "Breeding") {
-        const [insRes, pregRes, calvRes] = await Promise.all([
-          axiosInstance.get("/technician/inseminations?limit=10000"),
-          axiosInstance.get("/technician/pregnancy-checks?limit=10000"),
-          axiosInstance.get("/technician/calvings?limit=10000"),
-        ]);
-
-        const inseminations = insRes.data?.inseminations || [];
-        const pds = pregRes.data?.data || [];
-        const calvings = calvRes.data?.data || [];
-
-        // Map PDs by inseminationId (robust ObjectId string matching)
-        const pdMap = {};
-        pds.forEach((pd) => {
-          const key = pd.inseminationId?._id || pd.inseminationId;
-          if (key) pdMap[key.toString()] = pd;
-        });
-
-        // Map Calvings by pregnancyId
-        const calvMap = {};
-        calvings.forEach((cd) => {
-          const key = cd.pregnancyId?._id || cd.pregnancyId;
-          if (key) calvMap[key.toString()] = cd;
-        });
-
-        // Merge Lifecycle
-        const mergedLedger = inseminations.map((ins) => {
-          const insKey = ins._id?.toString() || ins._id;
-          const pd = pdMap[insKey];
-          const pdKey = pd?._id?.toString() || pd?._id;
-          const cd = pdKey ? calvMap[pdKey] : null;
-
-          let dataStages = ["AI"];
-          if (pd) dataStages.push("PD");
-          if (cd) dataStages.push("CD");
-
-          const currentStage = dataStages.join(" / ");
-          
-          let status = ins.status === "done" ? "AI Completed" : "AI Pending";
-          if (ins.status === "rejected" || ins.status === "cancelled") status = "Cancelled";
-          if (cd) status = "Calf Dropped";
-          else if (pd) status = pd.pregnancyDiagnosis?.result === "Pregnant" ? "Pregnant" : "Empty";
-
-          const eventDate = cd?.date || pd?.pregnancyDiagnosis?.date || pd?.createdAt || ins.inseminationDate || ins.updatedAt;
-
-          return {
-            ...ins,
-            _id: ins._id, // Master row ID is AI ID
-            type: "BreedingCycle",
-            animal: ins.animalId || {},
-            farmer: ins.farmerId?.name || "N/A",
-            location: ins.farmerId?.address?.barangay || "Unknown",
-            label: "Lifecycle Event",
-            eventDate,
-            dataStages,
-            currentStage,
-            status,
-            pdRecord: pd,
-            cdRecord: cd,
-            details: `Sire: ${ins.sireCode || "N/A"}`,
-            raw: ins,
-          };
-        });
-
-        return mergedLedger.sort(
-          (a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime()
-        );
-      } else {
-        // Fetch Health related
-        const healthRes = await axiosInstance.get("/health-request");
-        const healthData = healthRes.data || [];
-
-        return healthData
-          .map((item) => ({
-            ...item,
-            animal: item.animalId || {},
-            farmer: item.farmerId?.name || "N/A",
-            location: item.farmerId?.address?.barangay || "Unknown",
-            label:
-              item.requestType === "vaccination"
-                ? "Vaccination Mission"
-                : "Health Consultation",
-            date:
-              item.status === "Completed"
-                ? item.scheduledDate || item.updatedAt
-                : item.scheduledDate || item.preferredDate || item.updatedAt,
-            eventDate:
-              item.status === "Completed"
-                ? item.scheduledDate || item.updatedAt
-                : item.scheduledDate || item.preferredDate || item.updatedAt,
-            raw: item,
-            type: "HL",
-            details:
-              item.requestType === "vaccination"
-                ? "Vaccination"
-                : "General Health Check",
-            status:
-              item.status === "done" || item.status === "resolved"
-                ? "Completed"
-                : item.status === "in-progress" || item.status === "approved"
-                  ? "In Progress"
-                  : "Pending",
-          }))
-          .sort(
-            (a, b) =>
-              new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime(),
-          );
-      }
-    },
+  // ---- APPLICATION STATES ----
+  const [activeTab, setActiveTab] = useState("insemination"); // "insemination", "pregnancy", "calving"
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [monthFilter, setMonthFilter] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const [selectedRecord, setSelectedRecord] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
   });
 
-  const filteredData = ledgerData.filter((item) => {
-    const matchesSearch =
-      item.farmerId?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.animalId?.earTag?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.animalId?.animalId?.toLowerCase().includes(searchTerm.toLowerCase());
+  const itemsPerPage = 10;
 
-    const itemDate = new Date(item.eventDate);
-    const matchesMonth = itemDate.getMonth() === selectedMonth && itemDate.getFullYear() === selectedYear;
-    
-    // Type filtering logic specifically for breeding phases
-    let matchesType = true;
-    if (activeView === "Breeding" && filterType !== "All") {
-       matchesType = item.dataStages && item.dataStages.includes(filterType);
-    } else if (activeView === "Health") {
-       matchesType = filterType === "All" || item.type === filterType;
+  // ---- LIVE CONCURRENT DATA PIPELINE ----
+  const { data: inseminations = [], isLoading: isLoadingIns } = useQuery({
+    queryKey: ["technician", "inseminations-list"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/inseminations?limit=1000");
+      return res.data?.inseminations || [];
+    }
+  });
+
+  const { data: pregnancyChecks = [], isLoading: isLoadingPreg } = useQuery({
+    queryKey: ["technician", "pregnancy-checks-list"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/pregnancy-checks?limit=1000");
+      return res.data?.data || [];
+    }
+  });
+
+  const { data: calvings = [], isLoading: isLoadingCalvings } = useQuery({
+    queryKey: ["technician", "calvings-list"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/calvings?limit=1000");
+      return res.data?.data || [];
+    }
+  });
+
+  const isLoading = isLoadingIns || isLoadingPreg || isLoadingCalvings;
+
+  // ---- DYNAMIC STATS RESOLVERS ----
+  const stats = useMemo(() => {
+    const totalInseminations = inseminations.length;
+    const confirmedPregnancies = pregnancyChecks.filter(
+      p => p.pregnancyDiagnosis?.result === "Pregnant"
+    ).length;
+    const totalCalvings = calvings.length;
+    const pendingAI = inseminations.filter(
+      i => i.status === "pending" || i.status === "in-progress"
+    ).length;
+    const totalRecords = totalInseminations + pregnancyChecks.length + totalCalvings;
+
+    return {
+      totalRecords,
+      totalInseminations,
+      confirmedPregnancies,
+      totalCalvings,
+      pendingAI,
+    };
+  }, [inseminations, pregnancyChecks, calvings]);
+
+  // ---- MEMOIZED DATA PROCESSING (Sorting & Filtering) ----
+  const processedRecords = useMemo(() => {
+    let list = [];
+    if (activeTab === "insemination") {
+      list = inseminations.map(ins => {
+        const visitDate = ins.scheduledDate || ins.preferredDate || ins.createdAt;
+        return {
+          id: ins._id,
+          date: new Date(visitDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          rawDate: visitDate,
+          farmer: ins.farmerId?.name || "N/A",
+          animal: ins.animalId?.earTag || "N/A",
+          barangay: ins.farmerId?.address?.barangay || "Oton",
+          type: "AI",
+          detail: ins.sireCode ? `Sire: ${ins.sireCode}` : ins.sireBreed ? `Sire: ${ins.sireBreed}` : "—",
+          status: ins.status || "pending",
+          attemptNumber: ins.attemptNumber || 1,
+          comment: ins.comment || "",
+          technicianNote: ins.technicianNote || "",
+          sireBreed: ins.sireBreed || "",
+          sireCode: ins.sireCode || "",
+          estrus: ins.estrus || "Natural"
+        };
+      });
+    } else if (activeTab === "pregnancy") {
+      list = pregnancyChecks.map(preg => {
+        const checkDate = preg.pregnancyDiagnosis?.date || preg.createdAt;
+        return {
+          id: preg._id,
+          date: new Date(checkDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          rawDate: checkDate,
+          farmer: preg.farmerId?.name || "N/A",
+          animal: preg.animalId?.earTag || "N/A",
+          barangay: preg.farmerId?.address?.barangay || "Oton",
+          type: "Pregnancy Check",
+          result: preg.pregnancyDiagnosis?.result || "Pending Result",
+          targetCalvingDate: preg.targetCalvingDate 
+            ? new Date(preg.targetCalvingDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+            : "—",
+          technicianNote: preg.technicianNote || "",
+          status: preg.pregnancyDiagnosis?.result === "Pregnant" ? "done" : preg.pregnancyDiagnosis?.result === "Empty" ? "rejected" : "pending"
+        };
+      });
+    } else if (activeTab === "calving") {
+      list = calvings.map(calv => {
+        const calvingDate = calv.date || calv.createdAt;
+        return {
+          id: calv._id,
+          date: new Date(calvingDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+          rawDate: calvingDate,
+          farmer: calv.farmerId?.name || "N/A",
+          animal: calv.animalId?.earTag || "N/A",
+          barangay: calv.farmerId?.address?.barangay || "Oton",
+          type: "Calving",
+          numberOfCalves: calv.numberOfCalves || calv.calves?.length || 1,
+          calvingEase: calv.calvingEase || "Natural",
+          calves: calv.calves || [],
+          locationAddress: calv.locationAddress || "Oton, Iloilo",
+          technicianNote: calv.technicianNote || "",
+          status: "done"
+        };
+      });
     }
 
-    return matchesSearch && matchesType && matchesMonth;
-  });
+    // Apply text search queries
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(r => 
+        r.farmer.toLowerCase().includes(q) ||
+        r.animal.toLowerCase().includes(q) ||
+        r.barangay.toLowerCase().includes(q) ||
+        (r.detail && r.detail.toLowerCase().includes(q)) ||
+        (r.result && r.result.toLowerCase().includes(q)) ||
+        (r.calvingEase && r.calvingEase.toLowerCase().includes(q)) ||
+        r.id.toLowerCase().includes(q)
+      );
+    }
 
-  const paginatedData = filteredData.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage,
+    // Apply status filters
+    if (statusFilter) {
+      list = list.filter(r => r.status === statusFilter);
+    }
+
+    // Apply date/month filter
+    if (monthFilter) {
+      list = list.filter(r => r.date.includes(monthFilter));
+    }
+
+    // Apply dynamic column sorting
+    if (sortConfig.key) {
+      list.sort((a, b) => {
+        const valA = String(a[sortConfig.key] || "");
+        const valB = String(b[sortConfig.key] || "");
+        return valA.localeCompare(valB) * (sortConfig.direction === "asc" ? 1 : -1);
+      });
+    } else {
+      list.sort((a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime());
+    }
+
+    return list;
+  }, [activeTab, inseminations, pregnancyChecks, calvings, searchQuery, statusFilter, monthFilter, sortConfig]);
+
+  // ---- PAGINATION COMPUTATION ----
+  const totalItems = processedRecords.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedRecords = processedRecords.slice(
+    startIndex,
+    startIndex + itemsPerPage,
   );
 
-  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
-
-  const getStatusColor = (status) => {
-    if (status === "Completed" || status === "Pregnant" || status === "Calf Dropped" || status === "AI Completed")
-      return "text-emerald-500 bg-emerald-500/10 border-emerald-500/20";
-    if (status === "In Progress")
-      return "text-blue-500 bg-blue-500/10 border-blue-500/20";
-    if (status === "Waiting" || status === "Pending" || status === "AI Pending")
-      return "text-amber-500 bg-amber-500/10 border-amber-500/20";
-    if (status === "Golden Window")
-      return "text-purple-500 bg-purple-500/10 border-purple-500/20";
-    if (status === "Empty" || status === "Cancelled")
-      return "text-rose-500 bg-rose-500/10 border-rose-500/20";
-    return "text-slate-500 bg-slate-500/10 border-slate-500/20";
+  const handleSort = (key) => {
+    let direction = "asc";
+    if (sortConfig.key === key && sortConfig.direction === "asc") {
+      direction = "desc";
+    }
+    setSortConfig({ key, direction });
   };
 
-  const handleExport = () => {
-    // Basic CSV Export fallback
-    const headers = ["Data Phase", "Farmer", "Animal", "AI Date", "Sire", "PD Result", "Calf Drop Date", "Status"];
-    const rows = filteredData.map(item => [
-      item.currentStage || item.type,
-      item.farmerId?.name || "N/A",
-      item.animalId?.earTag || "N/A",
-      item.inseminationDate ? formatDate(item.inseminationDate) : "N/A",
-      item.sireCode || "N/A",
-      item.pdRecord?.pregnancyDiagnosis?.result || "N/A",
-      item.cdRecord?.date ? formatDate(item.cdRecord.date) : "N/A",
-      item.status
-    ]);
+  const clearFilters = () => {
+    setSearchQuery("");
+    setStatusFilter("");
+    setMonthFilter("");
+    setCurrentPage(1);
+  };
 
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map((e) => e.join(",")).join("\n");
+  const handleOpenModal = (record) => {
+    setSelectedRecord(record);
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteRecord = async (record) => {
+    setConfirmModal({
+      isOpen: true,
+      title: `Delete ${activeTab === "insemination" ? "AI Insemination" : activeTab === "pregnancy" ? "Pregnancy Check" : "Calving"} Record`,
+      message: `Are you sure you want to delete this historical ${activeTab} record entry? This operation cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          let endpoint = "";
+          if (activeTab === "insemination") {
+            endpoint = `/insemination/${record.id}`;
+          } else if (activeTab === "pregnancy") {
+            endpoint = `/technician/pregnancy-checks/${record.id}`;
+          } else if (activeTab === "calving") {
+            endpoint = `/technician/calvings/${record.id}`;
+          }
+
+          await axiosInstance.delete(endpoint);
+          toast.success("Entry removed successfully.");
+          
+          // Invalidate queries to trigger refresh
+          queryClient.invalidateQueries(["technician", "inseminations-list"]);
+          queryClient.invalidateQueries(["technician", "pregnancy-checks-list"]);
+          queryClient.invalidateQueries(["technician", "calvings-list"]);
+        } catch (err) {
+          toast.error("Failed to remove historical entry.");
+        }
+      }
+    });
+  };
+
+  // Helper values for dynamic UI styling templates
+  const avatarBgColors = [
+    "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400",
+    "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400",
+    "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400",
+    "bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400",
+  ];
+
+  const getStatusBadgeClass = (status) => {
+    switch (status) {
+      case "done":
+      case "Pregnant":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/50";
+      case "in-progress":
+        return "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/50";
+      case "approved":
+        return "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-900/50";
+      case "rejected":
+      case "Empty":
+        return "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/50";
+      default:
+        return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50";
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    return (
+      {
+        done: "Completed",
+        "in-progress": "In Progress",
+        pending: "Pending",
+        approved: "Approved",
+        rejected: "Failed / Empty",
+        Pregnant: "Pregnant",
+        Empty: "Empty",
+      }[status] || status
+    );
+  };
+
+  // Export CSV Handler
+  const handleExportCSV = () => {
+    if (processedRecords.length === 0) {
+      toast.error("No entries available to export.");
+      return;
+    }
+    
+    let headers = [];
+    let rows = [];
+
+    if (activeTab === "insemination") {
+      headers = ["Record ID", "Visit Date", "Farmer Name", "Animal Tag", "Barangay", "Attempt", "Sire Genetics", "Estrus", "Status"];
+      rows = processedRecords.map(r => [
+        r.id,
+        r.date,
+        r.farmer,
+        r.animal,
+        r.barangay,
+        `Attempt #${r.attemptNumber}`,
+        r.sireCode || r.sireBreed || "N/A",
+        r.estrus,
+        getStatusLabel(r.status)
+      ]);
+    } else if (activeTab === "pregnancy") {
+      headers = ["Record ID", "Diagnosis Date", "Farmer Name", "Animal Tag", "Barangay", "Diagnosis Outcome", "Target Calving Date", "Technician Notes"];
+      rows = processedRecords.map(r => [
+        r.id,
+        r.date,
+        r.farmer,
+        r.animal,
+        r.barangay,
+        r.result,
+        r.targetCalvingDate,
+        r.technicianNote || "None"
+      ]);
+    } else if (activeTab === "calving") {
+      headers = ["Record ID", "Calving Date", "Farmer Name", "Animal Tag", "Barangay", "Calves Born", "Calving Ease", "Location", "Technician Notes"];
+      rows = processedRecords.map(r => [
+        r.id,
+        r.date,
+        r.farmer,
+        r.animal,
+        r.barangay,
+        r.numberOfCalves,
+        r.calvingEase,
+        r.locationAddress || "N/A",
+        r.technicianNote || "None"
+      ]);
+    }
+
+    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `UNAIP_Monthly_Report_${selectedYear}_${selectedMonth+1}.csv`);
+    link.setAttribute("download", `BreedSmart_${activeTab}_records_${new Date().toLocaleDateString()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleDelete = async () => {
-    if (!itemToDelete) return;
-    try {
-      const endpoint =
-        itemToDelete.type === "AI" || itemToDelete.type === "BreedingCycle"
-          ? `/insemination/${itemToDelete._id}`
-          : itemToDelete.type === "PD"
-            ? `/technician/pregnancy-checks/${itemToDelete._id}`
-            : itemToDelete.type === "CD"
-              ? `/technician/calvings/${itemToDelete._id}`
-              : `/health-request/${itemToDelete._id}`;
+  // ---- DYNAMIC DEPARTMENT OF AGRICULTURE (DA) COMPILATION PIPELINE ----
+  const daReportEntries = useMemo(() => {
+    const ai = inseminations.map(ins => {
+      const visitDate = ins.scheduledDate || ins.preferredDate || ins.createdAt;
+      return {
+        type: "AI",
+        animalId: ins.animalId?.animalId || "—",
+        earTag: ins.animalId?.earTag || "—",
+        brand: ins.animalId?.brand || "—",
+        species: ins.animalId?.species || "Cattle",
+        breed: ins.animalId?.breed || "Crossbreed",
+        color: ins.animalId?.color || "N/A",
+        address: `${ins.farmerId?.address?.barangay || "Oton"}, Oton, Iloilo`,
+        farmer: ins.farmerId?.name || "—",
+        aiDate: new Date(visitDate).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }),
+        attempt: ins.attemptNumber || 1,
+        estrus: ins.estrus || "Natural",
+        sireBreed: ins.sireBreed || "—",
+        sireCode: ins.sireCode || "—",
+        pdDate: "—",
+        pdResult: "—",
+        cdDate: "—",
+        cdCount: "—",
+        calf1Id: "—",
+        calf1Sex: "—",
+        calf2Id: "—",
+        calf2Sex: "—",
+        cdEase: "—",
+        rawDate: visitDate
+      };
+    });
 
-      await axiosInstance.delete(endpoint);
-      toast.success("Record deleted successfully");
-      queryClient.invalidateQueries({
-        queryKey: ["technician", "breeding-ledger"],
-      });
-      setIsDeleteModalOpen(false);
-      setItemToDelete(null);
-    } catch (error) {
-      console.error("Delete failed", error);
-      toast.error("Failed to delete record");
-    }
-  };
+    const pd = pregnancyChecks.map(preg => {
+      const checkDate = preg.pregnancyDiagnosis?.date || preg.createdAt;
+      return {
+        type: "PD",
+        animalId: preg.animalId?.animalId || "—",
+        earTag: preg.animalId?.earTag || "—",
+        brand: preg.animalId?.brand || "—",
+        species: preg.animalId?.species || "Cattle",
+        breed: preg.animalId?.breed || "Crossbreed",
+        color: preg.animalId?.color || "N/A",
+        address: `${preg.farmerId?.address?.barangay || "Oton"}, Oton, Iloilo`,
+        farmer: preg.farmerId?.name || "—",
+        aiDate: "—",
+        attempt: "—",
+        estrus: "—",
+        sireBreed: "—",
+        sireCode: "—",
+        pdDate: new Date(checkDate).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }),
+        pdResult: preg.pregnancyDiagnosis?.result || "Pending Result",
+        cdDate: "—",
+        cdCount: "—",
+        calf1Id: "—",
+        calf1Sex: "—",
+        calf2Id: "—",
+        calf2Sex: "—",
+        cdEase: "—",
+        rawDate: checkDate
+      };
+    });
 
-  const handleBatchDelete = async () => {
-    if (selectedIds.length === 0) return;
+    const cd = calvings.map(calv => {
+      const calvingDate = calv.date || calv.createdAt;
+      const calf1 = calv.calves?.[0] || {};
+      const calf2 = calv.calves?.[1] || {};
+      return {
+        type: "CD",
+        animalId: calv.animalId?.animalId || "—",
+        earTag: calv.animalId?.earTag || "—",
+        brand: calv.animalId?.brand || "—",
+        species: calv.animalId?.species || "Cattle",
+        breed: calv.animalId?.breed || "Crossbreed",
+        color: calv.animalId?.color || "N/A",
+        address: `${calv.farmerId?.address?.barangay || "Oton"}, Oton, Iloilo`,
+        farmer: calv.farmerId?.name || "—",
+        aiDate: "—",
+        attempt: "—",
+        estrus: "—",
+        sireBreed: "—",
+        sireCode: "—",
+        pdDate: "—",
+        pdResult: "—",
+        cdDate: new Date(calvingDate).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }),
+        cdCount: calv.numberOfCalves || calv.calves?.length || 1,
+        calf1Id: calf1.earTag || "—",
+        calf1Sex: calf1.sex || "—",
+        calf2Id: calf2.earTag || "—",
+        calf2Sex: calf2.sex || "—",
+        cdEase: calv.calvingEase || "Natural",
+        rawDate: calvingDate
+      };
+    });
 
-    const loadingToast = toast.info(
-      `Archiving ${selectedIds.length} records...`,
+    return [...ai, ...pd, ...cd].sort(
+      (a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime()
     );
-    try {
-      await Promise.all(
-        selectedIds.map(async (id) => {
-          const item = ledgerData.find((i) => i._id === id);
-          if (!item) return;
+  }, [inseminations, pregnancyChecks, calvings]);
 
-          const endpoint =
-            item.type === "AI" || item.type === "BreedingCycle"
-              ? `/insemination/${id}`
-              : item.type === "PD"
-                ? `/technician/pregnancy-checks/${id}`
-                : item.type === "CD"
-                  ? `/technician/calvings/${id}`
-                  : `/health-request/${id}`;
-
-          return axiosInstance.delete(endpoint);
-        }),
-      );
-
-      toast.success(`Successfully archived ${selectedIds.length} records.`);
-      setSelectedIds([]);
-      queryClient.invalidateQueries({
-        queryKey: ["technician", "breeding-ledger"],
-      });
-    } catch (error) {
-      toast.error(
-        "Batch archive failed. Some records may not have been deleted.",
-      );
+  const handleExportDAReport = () => {
+    if (daReportEntries.length === 0) {
+      toast.error("No breeding actions available to export.");
+      return;
     }
-  };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.length === paginatedData.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(paginatedData.map((i) => i._id));
-    }
-  };
+    const headers = [
+      "Data Type",
+      "Animal ID No.",
+      "Ear Tag No.",
+      "Brand",
+      "Species",
+      "Breed",
+      "Color",
+      "Address",
+      "Farmer",
+      "AI Date",
+      "No. of AI (Attempt)",
+      "Estrus",
+      "Sire Breed",
+      "Sire Code",
+      "PD Date",
+      "PD Result",
+      "Calving Date",
+      "No. of Calving",
+      "Calf 1 ID",
+      "Calf 1 Sex",
+      "Calf 2 ID",
+      "Calf 2 Sex",
+      "Calving Ease"
+    ];
 
-  const toggleSelect = (id) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
-    );
+    const rows = daReportEntries.map(r => [
+      r.type,
+      r.animalId,
+      r.earTag,
+      r.brand,
+      r.species,
+      r.breed,
+      r.color,
+      r.address,
+      r.farmer,
+      r.aiDate,
+      r.attempt,
+      r.estrus,
+      r.sireBreed,
+      r.sireCode,
+      r.pdDate,
+      r.pdResult,
+      r.cdDate,
+      r.cdCount,
+      r.calf1Id,
+      r.calf1Sex,
+      r.calf2Id,
+      r.calf2Sex,
+      r.cdEase
+    ]);
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "DEPARTMENT OF AGRICULTURE\n"
+      + "Bureau of Animal Industry - Unified National Artificial Insemination Program\n"
+      + "Monthly Accomplishment Report\n\n"
+      + headers.join(",") + "\n" 
+      + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+      
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `DA_Unified_AI_Accomplishment_Report_${new Date().toLocaleDateString()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
-    <div className="animate-fade-in space-y-6 pb-16">
-      {/* PAGE HEADER */}
-      <div className="bg-base-100 border border-base-300 rounded-none shadow-sm overflow-hidden">
-        <div className="bg-linear-to-r from-[#074033] to-emerald-800 px-8 py-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-8 h-8 bg-white/15 rounded-none flex items-center justify-center">
-                <Database size={16} className="text-emerald-300" />
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+      <Topbar
+        title="Breeding Ledger"
+        subtitle="Unified lifecycle logs tracking Insemination, Pregnancy, and Calving Drop progression"
+        searchPlaceholder={`Search within ${activeTab === "insemination" ? "AI records" : activeTab === "pregnancy" ? "pregnancy diagnostics" : "calving logs"}...`}
+        searchValue={searchQuery}
+        onSearchChange={(e) => {
+          setSearchQuery(e.target.value);
+          setCurrentPage(1);
+        }}
+      >
+        <button
+          onClick={handleExportCSV}
+          className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
+        >
+          <Download size={13} /> Export Tab CSV
+        </button>
+      </Topbar>
+
+      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
+        {/* Dynamic Breeding Mini Grid Stats */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          {[
+            {
+              label: "Breeding Actions",
+              val: stats.totalRecords,
+              color: "text-[#00643b] bg-emerald-50 dark:bg-emerald-950/20",
+              icon: <Layers size={16} />,
+            },
+            {
+              label: "Inseminations Done",
+              val: stats.totalInseminations,
+              color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
+              icon: <Syringe size={16} />,
+            },
+            {
+              label: "Pregnant Confirmed",
+              val: stats.confirmedPregnancies,
+              color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
+              icon: <Sparkles size={16} />,
+            },
+            {
+              label: "Calvings Logged",
+              val: stats.totalCalvings,
+              color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
+              icon: <Baby size={16} />,
+            },
+            {
+              label: "Pending AI Tasks",
+              val: stats.pendingAI,
+              color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
+              icon: <Clock size={16} />,
+            },
+          ].map((stat, i) => (
+            <div
+              key={i}
+              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
+                {stat.icon}
               </div>
-              <span className="text-emerald-300 text-xs font-bold uppercase tracking-widest">
-                UNAIP — Unified National AI Program
+              <div>
+                <div className="text-xl font-black tracking-tight">
+                  {isLoading ? "..." : stat.val}
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                  {stat.label}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Cohesive Reproduction Tab Swapping ribbon */}
+        <div className="flex border-b border-slate-200 dark:border-slate-800">
+          {[
+            { id: "insemination", label: "Insemination (AI)", count: stats.totalInseminations, color: "border-blue-500 text-blue-600" },
+            { id: "pregnancy", label: "Pregnancy Check (PD)", count: pregnancyChecks.length, color: "border-purple-500 text-purple-600" },
+            { id: "calving", label: "Calving / Calf Drop (CD)", count: stats.totalCalvings, color: "border-emerald-500 text-emerald-600" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setCurrentPage(1);
+                clearFilters();
+              }}
+              className={`py-3 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === tab.id
+                  ? `${tab.color} bg-white dark:bg-slate-950 font-extrabold rounded-t-xl`
+                  : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
+                activeTab === tab.id 
+                  ? "bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-350"
+                  : "bg-slate-100/60 dark:bg-slate-900/60 text-slate-400"
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Filters and Datatable Platform wrapper */}
+        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Top Filter Ribbon */}
+          <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
+            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
+              <SlidersHorizontal size={13} />
+              <span>Filters:</span>
+            </div>
+
+            {activeTab === "insemination" && (
+              <select
+                className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+              >
+                <option value="">All Statuses</option>
+                <option value="done">Completed</option>
+                <option value="in-progress">In Progress</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+              </select>
+            )}
+
+            {activeTab === "pregnancy" && (
+              <select
+                className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+              >
+                <option value="">All Outcomes</option>
+                <option value="done">Pregnant</option>
+                <option value="rejected">Empty</option>
+              </select>
+            )}
+
+            <select
+              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+              value={monthFilter}
+              onChange={(e) => {
+                setMonthFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="">All Months</option>
+              <option value="May">May 2026</option>
+              <option value="Apr">April 2026</option>
+              <option value="Mar">March 2026</option>
+            </select>
+
+            {(statusFilter || monthFilter || searchQuery) && (
+              <button
+                onClick={clearFilters}
+                className="btn btn-sm btn-ghost text-xs text-rose-600 font-bold gap-1 rounded-lg cursor-pointer"
+              >
+                <X size={12} /> Clear Filters
+              </button>
+            )}
+
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
+              <button
+                onClick={handleExportDAReport}
+                className="btn btn-xs bg-linear-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 border-none text-white text-[11px] font-bold gap-1.5 rounded-xl px-3 cursor-pointer shadow-sm"
+                title="Export Department of Agriculture Unified Report"
+              >
+                <Sparkles size={11} /> DA Report (CSV)
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-[11px] font-bold gap-1.5 rounded-xl px-3 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <Printer size={11} /> Print Official Form
+              </button>
+              <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2 whitespace-nowrap">
+                {isLoading ? "Fetching records..." : `${totalItems} entry${totalItems !== 1 ? "s" : ""} matched`}
               </span>
             </div>
-            <h1 className="text-2xl font-black text-white tracking-tight">
-              Service Ledger &amp; Archive
-            </h1>
-            <p className="text-emerald-200/70 text-xs mt-0.5">
-              Municipal registry for breeding events, pregnancy checks, calvings
-              &amp; health interventions
-            </p>
           </div>
-          <div className="flex gap-2 shrink-0">
-            <button
-              onClick={handleExport}
-              className="btn btn-sm bg-white/10 hover:bg-white/20 text-white border-white/20 gap-2"
-            >
-              <Download size={14} /> Export CSV
-            </button>
-            <button
-              onClick={() => window.print()}
-              className="btn btn-sm bg-emerald-500 hover:bg-emerald-400 text-white border-none gap-2"
-            >
-              <Printer size={14} /> Print
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-base-300">
-          {(activeView === "Breeding" ? [
-            {
-              label: "Breeding Cycles",
-              value: filteredData.length,
-              color: "text-primary",
-            },
-            {
-              label: "Completed AI",
-              value: filteredData.filter(i => i.dataStages?.includes("AI")).length,
-              color: "text-blue-500",
-            },
-            {
-              label: "Confirmed Pregnancies",
-              value: filteredData.filter(i => i.status === "Pregnant" || i.status === "Calf Dropped").length,
-              color: "text-purple-500",
-            },
-            {
-              label: "Calves Dropped",
-              value: filteredData.filter(i => i.dataStages?.includes("CD")).length,
-              color: "text-emerald-500",
-            },
-          ] : [
-            {
-              label: "Health Records",
-              value: filteredData.length,
-              color: "text-blue-500",
-            },
-            {
-              label: "Pending Cases",
-              value: filteredData.filter(i => i.status === "Pending").length,
-              color: "text-amber-500",
-            },
-            {
-              label: "In Progress",
-              value: filteredData.filter(i => i.status === "In Progress").length,
-              color: "text-emerald-500",
-            },
-            {
-              label: "Resolved Cases",
-              value: filteredData.filter(i => i.status === "Completed").length,
-              color: "text-slate-500",
-            },
-          ]).map((s) => (
-            <div key={s.label} className="px-6 py-4">
-              <p className={`text-2xl font-black ${s.color}`}>
-                {isLoading ? "—" : s.value}
-              </p>
-              <p className="text-[10px] font-bold text-base-content/50 uppercase tracking-wider mt-0.5">
-                {s.label}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
 
-      {/* CONTROLS */}
-      <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
-        <div className="join border border-base-300 rounded-none overflow-hidden shrink-0">
-          {["Breeding", "Health"].map((view) => (
-            <button
-              key={view}
-              onClick={() => {
-                setActiveView(view);
-                setFilterType("All");
-                setCurrentPage(1);
-                setSelectedIds([]);
-              }}
-              className={`join-item btn btn-sm px-5 ${activeView === view ? "btn-neutral" : "btn-ghost text-base-content/60"}`}
-            >
-              {view === "Breeding" ? (
-                <Syringe size={13} />
-              ) : (
-                <HeartPulse size={13} />
-              )}{" "}
-              {view}
-            </button>
-          ))}
-        </div>
-        <label className="input input-bordered input-sm flex items-center gap-2 flex-1 min-w-0 rounded-none">
-          <Search size={14} className="text-base-content/40" />
-          <input
-            type="text"
-            placeholder="Search records..."
-            className="grow text-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm("")}
-              className="text-base-content/40"
-            >
-              ✕
-            </button>
-          )}
-        </label>
-        
-        {/* Month/Year Filter Timeline */}
-        <div className="join border border-base-300 rounded-none overflow-hidden shrink-0">
-           <select 
-              className="select select-sm join-item bg-base-100 font-bold uppercase text-[10px] tracking-widest focus:outline-none"
-              value={selectedMonth}
-              onChange={(e) => { setSelectedMonth(parseInt(e.target.value)); setCurrentPage(1); }}
-           >
-              {Array.from({length: 12}).map((_, i) => (
-                 <option key={i} value={i}>{new Date(0, i).toLocaleString('default', { month: 'short' })}</option>
-              ))}
-           </select>
-           <select 
-              className="select select-sm join-item bg-base-200 font-bold uppercase text-[10px] tracking-widest focus:outline-none"
-              value={selectedYear}
-              onChange={(e) => { setSelectedYear(parseInt(e.target.value)); setCurrentPage(1); }}
-           >
-              {[new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2].map(y => (
-                 <option key={y} value={y}>{y}</option>
-              ))}
-           </select>
-        </div>
+          {/* Core Service Database Grid */}
+          <div className="overflow-x-auto flex-1 overflow-y-auto">
+            <table className="table w-full border-collapse">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none">
+                  {/* Dynamic Column Headers depending on Active Tab */}
+                  {activeTab === "insemination" && (
+                    <>
+                      {["id", "date", "farmer", "animal", "barangay", "attempt", "detail", "status"].map((colKey) => (
+                        <th
+                          key={colKey}
+                          onClick={() => handleSort(colKey)}
+                          className="p-3.5 pl-5 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>
+                              {colKey === "id" ? "#" : colKey === "detail" ? "Sire Details" : colKey}
+                            </span>
+                            {sortConfig.key === colKey && (
+                              <span className="text-[10px] text-[#00643b]">
+                                {sortConfig.direction === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                    </>
+                  )}
 
-        {activeView === "Breeding" && (
-          <div className="join border border-base-300 rounded-none overflow-hidden shrink-0">
-            {[
-              { k: "All", l: "All" },
-              { k: "AI", l: "AI" },
-              { k: "PD", l: "PD" },
-              { k: "CD", l: "CD" },
-            ].map(({ k, l }) => (
-              <button
-                key={k}
-                onClick={() => setFilterType(k)}
-                className={`join-item btn btn-xs px-4 ${filterType === k ? "btn-neutral" : "btn-ghost text-base-content/60"}`}
-              >
-                {l}
-              </button>
-            ))}
-          </div>
-        )}
-        <span className="text-xs text-base-content/40 font-semibold shrink-0">
-          {filteredData.length} records
-        </span>
-      </div>
+                  {activeTab === "pregnancy" && (
+                    <>
+                      {["id", "date", "farmer", "animal", "barangay", "result", "targetCalvingDate"].map((colKey) => (
+                        <th
+                          key={colKey}
+                          onClick={() => handleSort(colKey)}
+                          className="p-3.5 pl-5 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>
+                              {colKey === "id" ? "#" : colKey === "date" ? "Diagnosis Date" : colKey === "result" ? "Outcome" : colKey === "targetCalvingDate" ? "Est. Calving Date" : colKey}
+                            </span>
+                            {sortConfig.key === colKey && (
+                              <span className="text-[10px] text-[#00643b]">
+                                {sortConfig.direction === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                    </>
+                  )}
 
-      {/* TABLE */}
-      <div className="card bg-base-100 border border-base-300 shadow-sm rounded-none overflow-visible">
-        <div className="overflow-x-auto min-h-[450px]">
-          <table className="table table-zebra table-sm w-full">
-            <thead>
-              <tr className="bg-base-200/80 text-base-content/60">
-                <th className="w-10">
-                  <input
-                    type="checkbox"
-                    className="checkbox checkbox-sm"
-                    checked={
-                      selectedIds.length === paginatedData.length &&
-                      paginatedData.length > 0
-                    }
-                    onChange={toggleSelectAll}
-                  />
-                </th>
-                <th className="font-bold uppercase text-[10px] tracking-wider">
-                  <div className="flex items-center gap-1">
-                    Last Event <ArrowUpDown size={10} />
-                  </div>
-                </th>
-                <th className="font-bold uppercase text-[10px] tracking-wider">
-                  Phase
-                </th>
-                <th className="font-bold uppercase text-[10px] tracking-wider">
-                  Farmer / Animal
-                </th>
-                <th className="font-bold uppercase text-[10px] tracking-wider">
-                  Breed
-                </th>
-                <th className="font-bold uppercase text-[10px] tracking-wider">
-                  Details
-                </th>
-                <th className="font-bold uppercase text-[10px] tracking-wider">
-                  Status
-                </th>
-                <th className="font-bold uppercase text-[10px] tracking-wider text-right">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                [...Array(8)].map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    {[...Array(8)].map((_, j) => (
-                      <td key={j}>
-                        <div className="h-4 bg-base-300 rounded w-full" />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : paginatedData.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-20 text-center">
-                    <div className="flex flex-col items-center gap-3 text-base-content/30">
-                      <Database size={40} strokeWidth={1} />
-                      <p className="text-xs font-bold uppercase tracking-widest">
-                        No records found
-                      </p>
-                    </div>
-                  </td>
+                  {activeTab === "calving" && (
+                    <>
+                      {["id", "date", "farmer", "animal", "barangay", "numberOfCalves", "calvingEase"].map((colKey) => (
+                        <th
+                          key={colKey}
+                          onClick={() => handleSort(colKey)}
+                          className="p-3.5 pl-5 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span>
+                              {colKey === "id" ? "#" : colKey === "date" ? "Calving Date" : colKey === "numberOfCalves" ? "Offspring Born" : colKey === "calvingEase" ? "Calving Ease" : colKey}
+                            </span>
+                            {sortConfig.key === colKey && (
+                              <span className="text-[10px] text-[#00643b]">
+                                {sortConfig.direction === "asc" ? "↑" : "↓"}
+                              </span>
+                            )}
+                          </div>
+                        </th>
+                      ))}
+                    </>
+                  )}
+                  <th className="p-3.5 pr-5 text-right">Actions</th>
                 </tr>
-              ) : (
-                paginatedData.map((item, idx) => (
-                  <tr
-                    key={item._id || idx}
-                    className={`hover cursor-pointer ${selectedIds.includes(item._id) ? "bg-primary/5" : ""}`}
-                    onClick={() => {
-                      setSelectedItem(item);
-                      setIsDetailsOpen(true);
-                    }}
-                  >
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        className="checkbox checkbox-sm"
-                        checked={selectedIds.includes(item._id)}
-                        onChange={() => toggleSelect(item._id)}
-                      />
-                    </td>
-                    <td className="whitespace-nowrap">
-                      <div className="font-bold text-sm">
-                        {formatDate(item.eventDate, {
-                          month: "short",
-                          day: "2-digit",
-                        })}
-                      </div>
-                      <div className="text-[10px] text-base-content/40">
-                        {formatDate(item.eventDate, { year: "numeric" })}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="flex gap-1">
-                         {item.type === "BreedingCycle" ? (
-                            <>
-                               <span className={`badge badge-sm font-bold border text-[8px] whitespace-nowrap bg-info/10 text-info border-info/20`}>AI</span>
-                               {item.dataStages.includes("PD") && <span className={`badge badge-sm font-bold border text-[8px] whitespace-nowrap bg-purple-500/10 text-purple-500 border-purple-500/20`}>PD</span>}
-                               {item.dataStages.includes("CD") && <span className={`badge badge-sm font-bold border text-[8px] whitespace-nowrap bg-emerald-500/10 text-emerald-500 border-emerald-500/20`}>CD</span>}
-                            </>
-                         ) : (
-                            <span className="badge badge-sm font-bold border text-[8px] whitespace-nowrap badge-error badge-outline">Health</span>
-                         )}
-                      </div>
-                    </td>
-                    <td>
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-none bg-base-300 flex items-center justify-center shrink-0">
-                          <User size={14} className="text-base-content/40" />
-                        </div>
-                        <div>
-                          <p className="font-bold text-xs leading-tight truncate max-w-[140px]">
-                            {item.farmerId?.name || "Unregistered"}
-                          </p>
-                          <p className="text-[10px] text-base-content/50">
-                            #{item.animalId?.earTag || "N/A"}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <span className="text-xs text-base-content/70">
-                        {item.animalId?.breed || "—"}
-                      </span>
-                    </td>
-                    <td>
-                      <span className="text-[11px] text-base-content/60">
-                        {item.details}
-                      </span>
-                    </td>
-                    <td>
-                      <span
-                        className={`badge badge-sm border font-bold text-[9px] inline-flex items-center gap-1 ${getStatusColor(item.status)}`}
-                      >
-                        {item.status === "Completed" ||
-                        item.status === "Pregnant" ||
-                        item.status === "Calf Dropped" || item.status === "AI Completed" ? (
-                          <CheckCircle2 size={9} />
-                        ) : item.status === "Golden Window" ? (
-                          <Timer size={9} className="animate-pulse" />
-                        ) : item.status === "Empty" ||
-                          item.status === "Cancelled" ? (
-                          <AlertCircle size={9} />
-                        ) : (
-                          <Clock size={9} />
-                        )}
-                        {item.status}
-                      </span>
-                      {item.status === "Golden Window" && (
-                        <p className="text-[8px] text-purple-500 font-bold mt-0.5">
-                          Day {item.daysSinceAI}
-                        </p>
-                      )}
-                    </td>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+                {isLoading ? (
+                  [...Array(6)].map((_, idx) => <TableRowSkeleton key={idx} />)
+                ) : paginatedRecords.length === 0 ? (
+                  <tr>
                     <td
-                      className="text-right"
-                      onClick={(e) => e.stopPropagation()}
+                      colSpan={12}
+                      className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium"
                     >
-                      <div className="flex justify-end gap-1">
-                        <div className="tooltip tooltip-left" data-tip="View Details">
-                          <button
-                            onClick={() => {
-                              setSelectedItem(item);
-                              setIsDetailsOpen(true);
-                            }}
-                            className="btn btn-ghost btn-xs btn-square text-info hover:bg-info/10"
-                          >
-                            <ChevronRight size={15} />
-                          </button>
-                        </div>
-                        <div className="tooltip tooltip-left" data-tip="Edit Record">
-                          <button
-                            onClick={() => {
-                              if (item.type === "BreedingCycle" || item.type === "AI" || item.type === "HL" || item.type === "health") {
-                                setSelectedItem(item.raw || item);
-                                setIsEditOpen(true);
-                              } else {
-                                toast.info(`Updating ${item.type} records is restricted.`);
-                              }
-                            }}
-                            className="btn btn-ghost btn-xs btn-square text-warning hover:bg-warning/10"
-                          >
-                            <Edit3 size={15} />
-                          </button>
-                        </div>
-                        <div className="tooltip tooltip-left" data-tip="Delete">
-                          <button
-                            onClick={() => {
-                              setItemToDelete(item);
-                              setIsDeleteModalOpen(true);
-                            }}
-                            className="btn btn-ghost btn-xs btn-square text-error hover:bg-error/10"
-                          >
-                            <Trash2 size={15} />
-                          </button>
-                        </div>
-                      </div>
+                      No matching reproduction entries found for {activeTab === "insemination" ? "AI visits" : activeTab === "pregnancy" ? "pregnancy diagnostics" : "calving logs"}.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-        {/* Pagination */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3 px-6 py-4 bg-base-200/40 border-t border-base-300 rounded-none">
-          <span className="text-xs text-base-content/50">
-            {filteredData.length === 0 ? (
-              "No records"
-            ) : (
-              <>
-                Showing <strong>{(currentPage - 1) * itemsPerPage + 1}</strong>
-                {" — "}
-                <strong>
-                  {Math.min(currentPage * itemsPerPage, filteredData.length)}
-                </strong>{" "}
-                of <strong>{filteredData.length}</strong>
-              </>
-            )}
-          </span>
-          <div className="join">
-            <button
-              className="join-item btn btn-sm btn-ghost"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((p) => p - 1)}
-            >
-              <ChevronLeft size={15} />
-            </button>
-            {[...Array(Math.min(5, totalPages))].map((_, i) => (
+                ) : (
+                  paginatedRecords.map((r, i) => {
+                    const initials = r.farmer
+                      ? r.farmer.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
+                      : "FI";
+                    const colorIndex = i % avatarBgColors.length;
+
+                    return (
+                      <tr
+                        key={r.id}
+                        onClick={() => handleOpenModal(r)}
+                        className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors cursor-pointer"
+                      >
+                        <td className="p-3.5 pl-5 font-bold text-slate-400 truncate max-w-[80px]">
+                          #{r.id.slice(-6)}
+                        </td>
+                        <td className="p-3.5 font-medium whitespace-nowrap">
+                          {r.date}
+                        </td>
+                        <td className="p-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 ${avatarBgColors[colorIndex]}`}
+                            >
+                              {initials}
+                            </div>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">
+                              {r.farmer}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="p-3.5 font-extrabold text-[#00643b] dark:text-[#10b981]">
+                          {r.animal}
+                        </td>
+                        <td className="p-3.5 font-medium text-slate-500">
+                          {r.barangay}
+                        </td>
+
+                        {/* RENDER INSEMINATION COLUMNS */}
+                        {activeTab === "insemination" && (
+                          <>
+                            <td className="p-3.5 font-bold text-slate-700 dark:text-slate-350">
+                              Attempt #{r.attemptNumber || 1}
+                            </td>
+                            <td className="p-3.5 font-medium max-w-[140px] truncate text-slate-600 dark:text-slate-400">
+                              {r.detail}
+                            </td>
+                            <td className="p-3.5">
+                              <span
+                                className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${getStatusBadgeClass(r.status)}`}
+                              >
+                                {getStatusLabel(r.status)}
+                              </span>
+                            </td>
+                          </>
+                        )}
+
+                        {/* RENDER PREGNANCY COLUMNS */}
+                        {activeTab === "pregnancy" && (
+                          <>
+                            <td className="p-3.5">
+                              <span
+                                className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider border ${
+                                  r.result === "Pregnant"
+                                    ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400"
+                                    : r.result === "Empty"
+                                      ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400"
+                                      : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400"
+                                }`}
+                              >
+                                {r.result}
+                              </span>
+                            </td>
+                            <td className="p-3.5 font-bold text-[#00643b] dark:text-emerald-500">
+                              {r.targetCalvingDate}
+                            </td>
+                          </>
+                        )}
+
+                        {/* RENDER CALVING COLUMNS */}
+                        {activeTab === "calving" && (
+                          <>
+                            <td className="p-3.5 font-bold text-slate-700 dark:text-slate-300">
+                              {r.numberOfCalves} calf / calves
+                            </td>
+                            <td className="p-3.5">
+                              <span
+                                className={`inline-block text-[10px] font-bold px-2.5 py-0.5 rounded-md uppercase tracking-wider border ${
+                                  ["Normal", "Natural"].includes(r.calvingEase)
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400"
+                                    : ["Difficult", "Cesarean"].includes(r.calvingEase)
+                                      ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400"
+                                      : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400"
+                                }`}
+                              >
+                                {r.calvingEase}
+                              </span>
+                            </td>
+                          </>
+                        )}
+
+                        <td
+                          className="p-3.5 pr-5 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenModal(r)}
+                              className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-800 hover:border-[#00643b] dark:hover:border-emerald-600 hover:text-[#00643b] flex items-center gap-1 transition-all bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 cursor-pointer"
+                            >
+                              <Eye size={12} /> Inspect
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRecord(r)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 cursor-pointer"
+                              title="Delete Record"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between mt-3">
+            <span className="text-[11px] font-medium text-slate-400">
+              Showing {totalItems === 0 ? 0 : startIndex + 1}–
+              {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
+              ledger items
+            </span>
+            <div className="flex items-center gap-1">
               <button
-                key={i}
-                className={`join-item btn btn-sm ${currentPage === i + 1 ? "btn-neutral" : "btn-ghost"}`}
-                onClick={() => setCurrentPage(i + 1)}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1 || isLoading}
+                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
               >
-                {i + 1}
+                <ChevronLeft size={12} />
               </button>
-            ))}
-            <button
-              className="join-item btn btn-sm btn-ghost"
-              disabled={currentPage === totalPages || totalPages === 0}
-              onClick={() => setCurrentPage((p) => p + 1)}
-            >
-              <ChevronRight size={15} />
-            </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                (pageNumber) => (
+                  <button
+                    key={pageNumber}
+                    disabled={isLoading}
+                    onClick={() => setCurrentPage(pageNumber)}
+                    className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
+                      currentPage === pageNumber
+                        ? "bg-[#00643b] text-white shadow-xs"
+                        : "border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                    }`}
+                  >
+                    {pageNumber}
+                  </button>
+                ),
+              )}
+              <button
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
+                disabled={currentPage === totalPages || isLoading}
+                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+              >
+                <ChevronRight size={12} />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* BATCH ACTION BAR */}
-      <AnimatePresence>
-        {selectedIds.length > 0 && (
-          <motion.div
-            initial={{ y: 60, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 60, opacity: 0 }}
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50"
+      {/* ===== DETAILED INSPECTION MODAL ===== */}
+      {isModalOpen && selectedRecord && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setIsModalOpen(false)}
+        >
+          <div
+            className="card w-full max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-4 bg-neutral text-neutral-content px-6 py-3 rounded-none shadow-2xl border border-white/10 min-w-[380px]">
-              <div className="flex items-center gap-2 flex-1">
-                <div className="badge badge-primary badge-sm font-black">
-                  {selectedIds.length}
-                </div>
-                <span className="text-sm font-semibold">records selected</span>
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-slate-400 uppercase">
+                  {activeTab === "insemination" ? "AI Insemination" : activeTab === "pregnancy" ? "Pregnancy Diagnosis" : "Calving Event"} Details
+                </span>
+                <span
+                  className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${getStatusBadgeClass(selectedRecord.status)}`}
+                >
+                  {getStatusLabel(selectedRecord.status)}
+                </span>
               </div>
               <button
-                onClick={() => setSelectedIds([])}
-                className="btn btn-ghost btn-xs text-neutral-content/60"
+                onClick={() => setIsModalOpen(false)}
+                className="btn btn-xs btn-ghost btn-circle text-slate-400 hover:text-rose-500"
               >
-                Clear
-              </button>
-              <button
-                onClick={handleBatchDelete}
-                className="btn btn-error btn-sm gap-2 font-bold"
-              >
-                <Trash2 size={13} /> Delete Selected
+                <X size={16} />
               </button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
-      {/* MODALS */}
-      <ConfirmDeleteModal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
-        onConfirm={handleDelete}
-        title="Delete Service Record"
-        message="Are you sure you want to permanently delete this record? This cannot be undone."
-      />
-      {selectedItem && (selectedItem.type === "HL" || selectedItem.type === "health") ? (
-        <HealthDetailsModal
-          isOpen={isDetailsOpen}
-          onClose={() => {
-            setIsDetailsOpen(false);
-            setSelectedItem(null);
-          }}
-          task={selectedItem}
-        />
-      ) : selectedItem ? (
-        <MissionDetailsModal
-          isOpen={isDetailsOpen}
-          onClose={() => {
-            setIsDetailsOpen(false);
-            setSelectedItem(null);
-          }}
-          task={selectedItem}
-        />
-      ) : null}
-      {isEditOpen && selectedItem && (selectedItem.requestType || selectedItem.diagnosis !== undefined || selectedItem.treatment !== undefined || selectedItem.medicine !== undefined) ? (
-        <EditHealthModal
-          isOpen={isEditOpen}
-          onClose={() => {
-            setIsEditOpen(false);
-            setSelectedItem(null);
-          }}
-          health={selectedItem}
-        />
-      ) : isEditOpen && selectedItem ? (
-        <EditInseminationModal
-          isOpen={isEditOpen}
-          onClose={() => {
-            setIsEditOpen(false);
-            setSelectedItem(null);
-          }}
-          insemination={selectedItem}
-          animalId={selectedItem.animalId?._id || selectedItem.animalId}
-        />
-      ) : null}
+            <div className="divide-y divide-slate-100 dark:divide-slate-900 text-xs">
+              {[
+                { key: "Date Registered", val: selectedRecord.date },
+                { key: "Farmer Client Name", val: selectedRecord.farmer },
+                {
+                  key: "Ear Tag Reference ID",
+                  val: selectedRecord.animal,
+                  customStyle: "text-[#00643b] font-black",
+                },
+                {
+                  key: "Deployment Sector",
+                  val: `${selectedRecord.barangay}, Oton, Iloilo`,
+                },
+              ].map((row, index) => (
+                <div
+                  key={index}
+                  className="flex justify-between items-center py-2.5"
+                >
+                  <span className="text-slate-400 font-semibold text-left">
+                    {row.key}
+                  </span>
+                  <span
+                    className={`font-bold text-slate-800 dark:text-slate-200 text-right ${row.customStyle || ""}`}
+                  >
+                    {row.val}
+                  </span>
+                </div>
+              ))}
 
-      {/* --- HIDDEN UNAIP PRINT REPORT --- */}
-      <div className="hidden print:block print-unaip-report text-black">
-        <style>
-          {`
-            @media print {
-              @page { size: landscape; margin: 10mm; }
-              body * { visibility: hidden; }
-              .print-unaip-report, .print-unaip-report * { visibility: visible; }
-              .print-unaip-report { position: absolute; left: 0; top: 0; width: 100%; font-family: 'Times New Roman', serif; }
-              .unaip-table { width: 100%; border-collapse: collapse; font-size: 9px; text-align: center; }
-              .unaip-table th, .unaip-table td { border: 1px solid black; padding: 4px; }
-              .unaip-header { text-align: center; margin-bottom: 20px; line-height: 1.2; }
-            }
-          `}
-        </style>
-        <div className="unaip-header">
-           <p className="text-xs">Department of Agriculture</p>
-           <p className="text-xs">UNIFIED NATIONAL ARTIFICIAL INSEMINATION PROGRAM</p>
-           <h3 className="font-bold text-sm mt-2">Monthly Accomplishment Report</h3>
-           <p className="text-xs mt-1">For the Month of: <span className="underline font-bold px-2">{new Date(0, selectedMonth).toLocaleString('default', { month: 'long' })}</span>, <span className="underline font-bold px-2">{selectedYear}</span></p>
+              {/* DYNAMIC TAB FIELDS FOR INSEMINATION */}
+              {activeTab === "insemination" && (
+                <>
+                  {[
+                    { key: "Sire Breed", val: selectedRecord.sireBreed || "N/A" },
+                    { key: "Sire Code Reference", val: selectedRecord.sireCode || "N/A" },
+                    { key: "Attempt Number", val: `#${selectedRecord.attemptNumber}` },
+                    { key: "Estrus Detection", val: selectedRecord.estrus },
+                    { key: "Farmer Observations", val: selectedRecord.comment || "None", customStyle: "italic text-slate-500" },
+                    { key: "Technician Observations", val: selectedRecord.technicianNote || "None", customStyle: "italic text-[#00643b] dark:text-emerald-400" }
+                  ].map((row, index) => (
+                    <div key={index} className="flex justify-between items-center py-2.5">
+                      <span className="text-slate-400 font-semibold text-left">{row.key}</span>
+                      <span className={`font-bold text-slate-800 dark:text-slate-200 text-right ${row.customStyle || ""}`}>{row.val}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* DYNAMIC TAB FIELDS FOR PREGNANCY CHECK */}
+              {activeTab === "pregnancy" && (
+                <>
+                  {[
+                    { key: "Pregnancy Diagnostic", val: selectedRecord.result, customStyle: "text-purple-600 dark:text-purple-400 font-black" },
+                    { key: "Estimated Calving Date", val: selectedRecord.targetCalvingDate, customStyle: "text-[#00643b] dark:text-emerald-400 font-extrabold" },
+                    { key: "Technician Remarks", val: selectedRecord.technicianNote || "None", customStyle: "italic text-slate-500" }
+                  ].map((row, index) => (
+                    <div key={index} className="flex justify-between items-center py-2.5">
+                      <span className="text-slate-400 font-semibold text-left">{row.key}</span>
+                      <span className={`font-bold text-slate-800 dark:text-slate-200 text-right ${row.customStyle || ""}`}>{row.val}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* DYNAMIC TAB FIELDS FOR CALVING */}
+              {activeTab === "calving" && (
+                <>
+                  {[
+                    { key: "Calving Ease Tier", val: selectedRecord.calvingEase, customStyle: "font-black" },
+                    { key: "Offspring Born Count", val: `${selectedRecord.numberOfCalves} calf / calves` },
+                    { key: "Delivery Address", val: selectedRecord.locationAddress },
+                    { key: "Technician Comments", val: selectedRecord.technicianNote || "None", customStyle: "italic text-slate-500" }
+                  ].map((row, index) => (
+                    <div key={index} className="flex justify-between items-center py-2.5">
+                      <span className="text-slate-400 font-semibold text-left">{row.key}</span>
+                      <span className={`font-bold text-slate-800 dark:text-slate-200 text-right ${row.customStyle || ""}`}>{row.val}</span>
+                    </div>
+                  ))}
+
+                  {/* Newborn Details Render Cards */}
+                  {selectedRecord.calves && selectedRecord.calves.length > 0 && (
+                    <div className="py-3 space-y-2">
+                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Registered Offspring</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {selectedRecord.calves.map((calf, index) => (
+                          <div key={index} className="p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-850 rounded-xl flex flex-col">
+                            <span className="font-extrabold text-[#00643b] dark:text-[#10b981] text-[11px]">Tag: {calf.earTag || "Pending Assign"}</span>
+                            <span className="text-slate-400 text-[10px] font-bold mt-0.5 uppercase tracking-wide">Sex: {calf.sex === "M" ? "Male" : "Female"}</span>
+                            <span className="text-slate-400 text-[10px] font-semibold">Weight: {calf.weight ? `${calf.weight} kg` : "N/A"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800/80">
+              <Info size={14} className="text-[#00643b] shrink-0" />
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                Historical breeding records immutable unless authorized.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
+              <button
+                onClick={() => setIsModalOpen(false)}
+                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
-        <table className="unaip-table">
+      )}
+
+      {/* ===== CUSTOM MODERN CONFIRMATION DIALOG ===== */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-black/45 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in animate-duration-200">
+          <div className="card w-full max-w-sm bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
+            <div className="flex items-center gap-2 text-slate-400 font-extrabold text-[10px] tracking-widest uppercase">
+              <span>{confirmModal.title || "Confirm Deletion"}</span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-bold leading-relaxed pr-2">
+              {confirmModal.message}
+            </p>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
+              <button
+                onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
+                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer text-slate-500 dark:text-slate-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmModal.onConfirm) confirmModal.onConfirm();
+                  setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
+                }}
+                className="btn btn-sm text-white border-none rounded-xl px-5 text-xs font-black cursor-pointer bg-rose-600 hover:bg-rose-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== DEPARTMENT OF AGRICULTURE UNIFIED ACCOMPLISHMENT REPORT (PRINT TEMPLATE) ===== */}
+      <div id="da-print-report" className="hidden print:block text-[10px] text-black bg-white p-2">
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            @page { size: landscape; margin: 10mm; }
+            body > div:first-child { display: none !important; }
+            #da-print-report { display: block !important; width: 100% !important; }
+            table { border-collapse: collapse; width: 100%; font-size: 8px; }
+            th, td { border: 1px solid black !important; padding: 2px 4px !important; text-align: center; }
+            th { background-color: #f1f5f9 !important; font-weight: bold; }
+          }
+        `}} />
+        
+        {/* Document Header */}
+        <div className="text-center space-y-0.5 mb-4">
+          <p className="font-extrabold uppercase text-[10px]">Department of Agriculture</p>
+          <p className="text-[8px] font-bold text-slate-700">Bureau of Animal Industry - Livestock Development Council - National Dairy Authority - Philippine Carabao Center</p>
+          <p className="text-[8px] font-bold text-slate-700">DA Regional Field Units - Local Government Units</p>
+          <p className="font-black text-[11px] uppercase tracking-wide mt-1">UNIFIED NATIONAL ARTIFICIAL INSEMINATION PROGRAM</p>
+          <p className="font-bold text-[9px] mt-1 italic">Monthly Accomplishment Report</p>
+          <div className="flex justify-between text-[8px] font-bold mt-2 px-10">
+            <span>For the Month of: <span className="underline font-bold">{monthFilter || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span></span>
+            <span>Submitted Date: <span className="underline font-bold">__________________</span></span>
+          </div>
+          <div className="flex justify-start text-[8px] font-bold gap-8 px-10 mt-1">
+            <span>Region: <span className="underline font-black">VI</span></span>
+            <span>Province: <span className="underline font-black">ILOILO</span></span>
+            <span>Municipality/City: <span className="underline font-black">OTON</span></span>
+          </div>
+        </div>
+
+        {/* Official Layout Table */}
+        <table className="border-collapse border border-black w-full text-[8px]">
           <thead>
-            <tr>
-               <th rowSpan="2" className="w-12">Data</th>
-               <th colSpan="8">Animal identification</th>
-               <th colSpan="5">Artificial Insemination</th>
-               <th colSpan="2">Pregnancy Diagnosis</th>
-               <th colSpan="7">Calf Drop</th>
+            <tr className="bg-slate-100 text-center font-bold">
+              <th rowSpan={2} className="border border-black p-1 text-center">Data</th>
+              <th colSpan={8} className="border border-black p-1 text-center">Animal identification</th>
+              <th colSpan={5} className="border border-black p-1 text-center">Artificial Insemination</th>
+              <th colSpan={2} className="border border-black p-1 text-center">Pregnancy Diagnosis</th>
+              <th colSpan={7} className="border border-black p-1 text-center">Calf Drop</th>
             </tr>
-            <tr>
-               <th>Animal ID No.</th>
-               <th>Ear tag No.</th>
-               <th>Brand</th>
-               <th>Species</th>
-               <th>Breed</th>
-               <th>Color</th>
-               <th>Address</th>
-               <th>Farmer</th>
-               {/* AI */}
-               <th>Date</th>
-               <th>No. of AI</th>
-               <th>Estrus</th>
-               <th>Sire Breed</th>
-               <th>Sire Code</th>
-               {/* PD */}
-               <th>Date</th>
-               <th>Result</th>
-               {/* CD */}
-               <th>Date</th>
-               <th>No. of Calving</th>
-               <th>Calf's ID No</th>
-               <th>Sex</th>
-               <th>Calf's ID No</th>
-               <th>Sex</th>
-               <th>Calving ease</th>
+            <tr className="bg-slate-50 text-center font-bold">
+              <th className="border border-black p-1">Animal ID</th>
+              <th className="border border-black p-1">Ear Tag</th>
+              <th className="border border-black p-1">Brand</th>
+              <th className="border border-black p-1">Species</th>
+              <th className="border border-black p-1">Breed</th>
+              <th className="border border-black p-1">Color</th>
+              <th className="border border-black p-1">Address</th>
+              <th className="border border-black p-1">Farmer</th>
+              
+              <th className="border border-black p-1">Date</th>
+              <th className="border border-black p-1">No. of AI</th>
+              <th className="border border-black p-1">Estrus</th>
+              <th className="border border-black p-1">Sire Breed</th>
+              <th className="border border-black p-1">Sire Code</th>
+              
+              <th className="border border-black p-1">Date</th>
+              <th className="border border-black p-1">Result</th>
+              
+              <th className="border border-black p-1">Date</th>
+              <th className="border border-black p-1">No. of Calving</th>
+              <th className="border border-black p-1">Calf 1 ID</th>
+              <th className="border border-black p-1">Sex 1</th>
+              <th className="border border-black p-1">Calf 2 ID</th>
+              <th className="border border-black p-1">Sex 2</th>
+              <th className="border border-black p-1">Calving ease</th>
             </tr>
           </thead>
           <tbody>
-             {filteredData.filter(row => row.type === "BreedingCycle").map(row => (
-                <tr key={row._id}>
-                   <td className="font-bold">{row.currentStage}</td>
-                   {/* Animal */}
-                   <td>{row.animal?.animalId || ""}</td>
-                   <td>{row.animal?.earTag || ""}</td>
-                   <td>{row.animal?.brand || ""}</td>
-                   <td>{row.animal?.species || ""}</td>
-                   <td>{row.animal?.breed || ""}</td>
-                   <td>{row.animal?.color || ""}</td>
-                   <td>{row.farmerId?.address?.barangay || ""}</td>
-                   <td>{row.farmerId?.name || ""}</td>
-                   {/* AI */}
-                   <td>{row.inseminationDate ? formatDate(row.inseminationDate, { month: "short", day: "2-digit", year: "numeric" }) : ""}</td>
-                   <td>{row.attemptNumber || 1}</td>
-                   <td>{row.estrusType || "NH"}</td>
-                   <td>{row.sireBreed || ""}</td>
-                   <td>{row.sireCode || ""}</td>
-                   {/* PD */}
-                   <td>{row.pdRecord ? formatDate(row.pdRecord.checkDate || row.pdRecord.createdAt, { month: "short", day: "2-digit", year: "numeric" }) : ""}</td>
-                   <td>{row.pdRecord?.pregnancyDiagnosis?.result === "Pregnant" ? "Positive" : row.pdRecord?.pregnancyDiagnosis?.result === "Empty" ? "Negative" : ""}</td>
-                   {/* CD */}
-                   <td>{row.cdRecord ? formatDate(row.cdRecord.date, { month: "short", day: "2-digit", year: "numeric" }) : (row.status === "Pregnant" && row.inseminationDate ? formatDate(calculateTargetCalvingDate(row.inseminationDate, row.animal?.species), { month: "short", day: "2-digit", year: "numeric" }) + " (Est.)" : "")}</td>
-                   <td>{row.cdRecord?.numberOfCalves || ""}</td>
-                   <td>{row.cdRecord?.calves?.[0]?.earTag || ""}</td>
-                   <td>{row.cdRecord?.calves?.[0]?.sex || ""}</td>
-                   <td>{row.cdRecord?.calves?.[1]?.earTag || ""}</td>
-                   <td>{row.cdRecord?.calves?.[1]?.sex || ""}</td>
-                   <td>{row.cdRecord?.calvingEase || ""}</td>
+            {daReportEntries.length === 0 ? (
+              <tr>
+                <td colSpan={23} className="text-center p-4 text-slate-400">No official accomplishment records generated.</td>
+              </tr>
+            ) : (
+              daReportEntries.map((row, index) => (
+                <tr key={index} className="text-center">
+                  <td className="border border-black p-1 font-bold">{row.type}</td>
+                  <td className="border border-black p-1">{row.animalId}</td>
+                  <td className="border border-black p-1 font-semibold">{row.earTag}</td>
+                  <td className="border border-black p-1">{row.brand}</td>
+                  <td className="border border-black p-1">{row.species}</td>
+                  <td className="border border-black p-1">{row.breed}</td>
+                  <td className="border border-black p-1">{row.color}</td>
+                  <td className="border border-black p-1 text-left">{row.address}</td>
+                  <td className="border border-black p-1 font-bold text-left">{row.farmer}</td>
+                  
+                  <td className="border border-black p-1 font-medium">{row.aiDate}</td>
+                  <td className="border border-black p-1 font-bold">{row.attempt}</td>
+                  <td className="border border-black p-1">{row.estrus}</td>
+                  <td className="border border-black p-1">{row.sireBreed}</td>
+                  <td className="border border-black p-1">{row.sireCode}</td>
+                  
+                  <td className="border border-black p-1 font-medium">{row.pdDate}</td>
+                  <td className="border border-black p-1 font-bold">{row.pdResult}</td>
+                  
+                  <td className="border border-black p-1 font-medium">{row.cdDate}</td>
+                  <td className="border border-black p-1 font-bold">{row.cdCount}</td>
+                  <td className="border border-black p-1">{row.calf1Id}</td>
+                  <td className="border border-black p-1">{row.calf1Sex}</td>
+                  <td className="border border-black p-1">{row.calf2Id}</td>
+                  <td className="border border-black p-1">{row.calf2Sex}</td>
+                  <td className="border border-black p-1 font-bold">{row.cdEase}</td>
                 </tr>
-             ))}
+              ))
+            )}
           </tbody>
         </table>
-        
-        <div className="flex justify-between mt-12 px-12 text-xs">
-           <div className="text-center">
-              <p className="mb-8">Prepared by:</p>
-              <div className="border-b border-black w-48 mx-auto mb-1"></div>
-              <p className="font-bold uppercase">Technician / AI Coordinator</p>
-           </div>
-           <div className="text-center">
-              <p className="mb-8">Noted by:</p>
-              <div className="border-b border-black w-48 mx-auto mb-1"></div>
-              <p className="font-bold uppercase">Supervising Agriculturist</p>
-           </div>
+
+        {/* Document Signatures Block */}
+        <div className="flex justify-between items-center mt-10 px-12 text-[8px] font-bold">
+          <div className="text-center space-y-6">
+            <p>Prepared by:</p>
+            <div className="border-t border-black pt-1 w-48 mx-auto">
+              <p className="font-extrabold uppercase">Cyrus T. Depamaylo</p>
+              <p className="text-slate-500">Provincial AI Coordinator</p>
+            </div>
+          </div>
+          <div className="text-center space-y-6">
+            <p>Noted by:</p>
+            <div className="border-t border-black pt-1 w-48 mx-auto">
+              <p className="font-extrabold uppercase">Alexande F. Labuda</p>
+              <p className="text-slate-500">Acting Supervising Agriculturist</p>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
-};
-
-export default BreedingLedger;
+}

@@ -1,386 +1,481 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import axiosInstance from '../../lib/axios';
-import { 
-    Image as ImageIcon, 
-    Search, 
-    Filter, 
-    MapPin, 
-    Calendar, 
-    Phone, 
-    Tag, 
-    Syringe, 
-    HeartPulse, 
-    ChevronRight, 
-    X,
-    Maximize2,
-    Eye,
-    Trash2
-} from 'lucide-react';
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  Search,
+  Bell,
+  Image as ImageIcon,
+  Syringe,
+  HeartPulse,
+  FileText,
+  X,
+  Trash2,
+  Filter,
+  Grid3X3,
+  Calendar,
+  AlertCircle,
+  Tag,
+  Phone,
+  User,
+  Activity,
+} from "lucide-react";
+import Topbar from "../../components/ui/Topbar";
+import axiosInstance from "../../lib/axios";
+import UploadNoteModal from "../../components/modals/UploadNoteModal";
 
-const FieldNotes = () => {
-    const [searchQuery, setSearchQuery] = useState('');
-    const [typeFilter, setTypeFilter] = useState('all');
-    const [selectedNote, setSelectedNote] = useState(null); // For fullscreen lightbox/modal
+export default function FieldNotesGallery() {
+  // ---- APPLICATION STATES ----
+  const [notes, setNotes] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
+  const [selectedNote, setSelectedNote] = useState(null);
+  const [isFullscreenImage, setIsFullscreenImage] = useState(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
-    // Fetch Field Notes (requests with images)
-    const { data: notes = [], isLoading, refetch } = useQuery({
-        queryKey: ['technician', 'field-notes'],
-        queryFn: async () => {
-            const res = await axiosInstance.get('/technician/field-notes');
-            return res.data || [];
-        }
-    });
+  // ---- DATA FETCHING PIPELINE ----
+  const fetchFieldNotes = async () => {
+    try {
+      setIsLoading(true);
+      const res = await axiosInstance.get("/technician/field-notes");
+      setNotes(res.data || []);
+    } catch (error) {
+      console.error("Failed to recover field media resources:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const handleDeleteNote = async (id, type) => {
-        if (!window.confirm("Are you sure you want to permanently delete this field note?")) {
-            return;
-        }
+  useEffect(() => {
+    fetchFieldNotes();
+  }, []);
 
-        try {
-            await axiosInstance.delete(`/technician/field-notes/${id}?type=${type}`);
-            setSelectedNote(null);
-            refetch();
-        } catch (error) {
-            console.error(error);
-            alert(error.response?.data?.message || "Failed to delete field note");
-        }
+  // ---- LIVE METRIC COMPUTATION ENGINE ----
+  const stats = useMemo(() => {
+    return {
+      total: notes.length,
+      ai: notes.filter((n) => n.type === "insemination").length,
+      health: notes.filter((n) => n.type === "health").length,
+      tech: notes.filter((n) => n.type === "technician-note").length,
     };
+  }, [notes]);
 
-    // Filter logic
-    const filteredNotes = notes.filter(n => {
-        const matchesSearch = 
-            n.farmer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            n.animalTag.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            n.note.toLowerCase().includes(searchQuery.toLowerCase());
-        
-        if (typeFilter === 'all') return matchesSearch;
-        return matchesSearch && n.type === typeFilter;
+  // ---- DYNAMIC FILTER PIPELINE ----
+  const filteredNotes = useMemo(() => {
+    return notes.filter((n) => {
+      const q = searchQuery.toLowerCase();
+      const farmerName = n.farmer || "";
+      const noteText = n.note || "";
+      const tagNum = n.animalTag || "";
+
+      const matchesSearch = [farmerName, noteText, tagNum]
+        .join(" ")
+        .toLowerCase()
+        .includes(q);
+
+      const matchesTab = activeTab === "all" || n.type === activeTab;
+      return matchesSearch && matchesTab;
     });
+  }, [searchQuery, activeTab, notes]);
 
-    const aiCount = notes.filter(n => n.type === 'insemination').length;
-    const healthCount = notes.filter(n => n.type === 'health').length;
-    const techNoteCount = notes.filter(n => n.type === 'technician-note').length;
+  // ---- ACTION ROUTINES ----
+  const handleDeleteNote = async (id, type, e) => {
+    if (e) e.stopPropagation();
+    if (
+      !window.confirm(
+        "Are you sure you want to permanently delete this field note?",
+      )
+    ) {
+      return;
+    }
 
-    return (
-        <div className="animate-fade-in space-y-6 pb-16">
-            {/* PAGE HEADER */}
-            <div className="card bg-base-100 border border-base-300 rounded-2xl shadow-sm overflow-hidden">
-                <div className="bg-linear-to-r from-[#074033] to-emerald-800 px-8 py-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <div className="flex items-center gap-2 mb-1">
-                            <div className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center">
-                                <ImageIcon size={14} className="text-emerald-300" />
-                            </div>
-                            <span className="text-emerald-300 text-[10px] font-black uppercase tracking-[0.3em]">
-                                Media Ledger & Repository
-                            </span>
-                        </div>
-                        <h1 className="text-2xl font-black text-white tracking-tight">Field Notes & Gallery</h1>
-                        <p className="text-emerald-200/70 text-xs mt-0.5">Explore symptoms, photos, and specialized annotations submitted by farmers and field technicians</p>
-                    </div>
-                    <div className="flex gap-4 shrink-0 bg-black/10 backdrop-blur-md px-6 py-3 rounded-2xl border border-white/5">
-                        <div className="text-center">
-                            <p className="text-[10px] font-black text-emerald-300/40 uppercase tracking-widest mb-0.5 text-left">Total Attachments</p>
-                            <p className="text-2xl font-black text-white text-left leading-none">{notes.length}</p>
-                        </div>
-                    </div>
+    try {
+      await axiosInstance.delete(`/technician/field-notes/${id}?type=${type}`);
+      setSelectedNote(null);
+      alert("Note deleted successfully.");
+      fetchFieldNotes();
+    } catch (error) {
+      console.error(error);
+      alert(
+        error.response?.data?.message || "Failed to drop note from ledger.",
+      );
+    }
+  };
+
+  const getBadgeConfig = (type) => {
+    switch (type) {
+      case "insemination":
+        return {
+          label: "AI Req",
+          style:
+            "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400",
+        };
+      case "health":
+        return {
+          label: "Health Call",
+          style:
+            "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400",
+        };
+      default:
+        return {
+          label: "Tech Note",
+          style:
+            "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400",
+        };
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+      <Topbar
+        title="Field Notes & Gallery"
+        subtitle="Media Ledger — explore symptoms, photos, and specialized annotations from the field"
+        searchPlaceholder="Search farmer, tag, symptoms..."
+        searchValue={searchQuery}
+        onSearchChange={(e) => setSearchQuery(e.target.value)}
+      >
+        <button
+          onClick={() => setIsUploadModalOpen(true)}
+          className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4"
+        >
+          <ImageIcon size={13} /> Upload Note
+        </button>
+      </Topbar>
+
+      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
+        {/* Metric Overview Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            {
+              label: "Total Media",
+              val: stats.total,
+              color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
+              icon: <ImageIcon size={16} />,
+            },
+            {
+              label: "AI Requests",
+              val: stats.ai,
+              color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
+              icon: <Syringe size={16} />,
+            },
+            {
+              label: "Health Calls",
+              val: stats.health,
+              color: "text-rose-600 bg-rose-50 dark:bg-rose-950/20",
+              icon: <HeartPulse size={16} />,
+            },
+            {
+              label: "Tech Notes",
+              val: stats.tech,
+              color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
+              icon: <FileText size={16} />,
+            },
+          ].map((stat, i) => (
+            <div
+              key={i}
+              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
+                {stat.icon}
+              </div>
+              <div>
+                <div className="text-xl font-black tracking-tight">
+                  {isLoading ? "..." : stat.val}
                 </div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                  {stat.label}
+                </div>
+              </div>
             </div>
-
-            {/* QUICK STATS CARDS */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 shadow-sm flex flex-row items-center justify-between">
-                    <div>
-                        <span className="text-[9px] font-black text-base-content/40 uppercase tracking-wider">Total Attachments</span>
-                        <p className="text-2xl font-black text-base-content mt-0.5">{notes.length}</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-base-200 flex items-center justify-center text-base-content/60">
-                        <ImageIcon size={20} />
-                    </div>
-                </div>
-                <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 shadow-sm flex flex-row items-center justify-between">
-                    <div>
-                        <span className="text-[9px] font-black text-blue-500 uppercase tracking-wider">Artificial Insemination</span>
-                        <p className="text-2xl font-black text-base-content mt-0.5">{aiCount}</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-600">
-                        <Syringe size={20} />
-                    </div>
-                </div>
-                <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 shadow-sm flex flex-row items-center justify-between">
-                    <div>
-                        <span className="text-[9px] font-black text-rose-500 uppercase tracking-wider">Medical Diagnostics</span>
-                        <p className="text-2xl font-black text-base-content mt-0.5">{healthCount}</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600">
-                        <HeartPulse size={20} />
-                    </div>
-                </div>
-                <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 shadow-sm flex flex-row items-center justify-between">
-                    <div>
-                        <span className="text-[9px] font-black text-emerald-500 uppercase tracking-wider">Technician Notes</span>
-                        <p className="text-2xl font-black text-base-content mt-0.5">{techNoteCount}</p>
-                    </div>
-                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
-                        <ImageIcon size={20} />
-                    </div>
-                </div>
-            </div>
-
-            {/* TOOLBAR */}
-            <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
-                <div className="join border border-base-300 rounded-xl overflow-hidden shrink-0">
-                    {[
-                        { val: 'all', label: 'ALL MEDIA' },
-                        { val: 'insemination', label: 'AI REQUESTS' },
-                        { val: 'health', label: 'HEALTH REQUESTS' },
-                        { val: 'technician-note', label: 'TECHNICIAN NOTES' }
-                    ].map(tab => (
-                        <button key={tab.val} onClick={() => setTypeFilter(tab.val)}
-                            className={`join-item btn btn-sm px-5 ${typeFilter === tab.val ? "btn-neutral" : "bg-base-100 border-none text-base-content/60"}`}>
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                <label className="input input-sm bg-base-100 border-base-300 flex items-center gap-2 grow rounded-xl h-9 shadow-sm">
-                    <Search size={14} className="text-base-content/40" />
-                    <input type="text" placeholder="Search by farmer, ear tag, or symptoms..." className="grow text-xs font-bold"
-                        value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                    {searchQuery && <button onClick={() => setSearchQuery("")} className="text-base-content/40 hover:text-error transition-colors">✕</button>}
-                </label>
-                
-                <span className="text-xs text-base-content/40 font-semibold shrink-0">{filteredNotes.length} media items matching</span>
-            </div>
-
-            {/* MAIN PINTEREST-STYLE GRID */}
-            {isLoading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {[...Array(8)].map((_, i) => (
-                        <div key={i} className="card bg-base-100 border border-base-300 rounded-2xl shadow-sm overflow-hidden animate-pulse h-80">
-                            <div className="bg-base-300 h-48 w-full" />
-                            <div className="p-4 space-y-2">
-                                <div className="h-4 bg-base-300 rounded w-2/3" />
-                                <div className="h-3 bg-base-300 rounded w-1/2" />
-                                <div className="h-3 bg-base-300 rounded w-full" />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            ) : filteredNotes.length === 0 ? (
-                <div className="card bg-base-100 border border-base-300 rounded-2xl p-20 text-center shadow-sm">
-                    <ImageIcon size={48} strokeWidth={1} className="mx-auto mb-3 text-base-content/20" />
-                    <p className="text-xs font-black uppercase tracking-widest text-base-content/40">No Attached Media Found</p>
-                    <p className="text-xs text-base-content/30 mt-1">Attachments will appear here once farmers or technicians upload photo notes</p>
-                </div>
-            ) : (
-                <div className="columns-1 sm:columns-2 md:columns-3 xl:columns-4 gap-6 space-y-6">
-                    {filteredNotes.map((note) => (
-                        <div 
-                            key={note.id} 
-                            onClick={() => setSelectedNote(note)}
-                            className="break-inside-avoid card bg-base-100 border border-base-300 rounded-2xl overflow-hidden hover:shadow-lg transition-all duration-300 group cursor-pointer border-t-4 border-t-transparent hover:border-t-emerald-600"
-                        >
-                            {/* IMAGE THUMBNAIL */}
-                            <div className="relative overflow-hidden aspect-video sm:aspect-square bg-base-200">
-                                <img 
-                                    src={note.imageUrl} 
-                                    alt={note.farmer} 
-                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                                    onError={(e) => {
-                                        e.target.onerror = null;
-                                        e.target.src = 'https://images.unsplash.com/photo-1547586696-ea22b4d4235d?auto=format&fit=crop&q=80&w=400';
-                                    }}
-                                />
-                                <div className="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider text-white flex items-center gap-1">
-                                    {note.type === 'insemination' ? (
-                                        <>
-                                            <Syringe size={10} className="text-blue-400" />
-                                            <span>AI Req</span>
-                                        </>
-                                    ) : note.type === 'health' ? (
-                                        <>
-                                            <HeartPulse size={10} className="text-rose-400" />
-                                            <span>Health Req</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <ImageIcon size={10} className="text-emerald-400" />
-                                            <span>Tech Note</span>
-                                        </>
-                                    )}
-                                </div>
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                    <button className="btn btn-circle btn-sm bg-white/20 hover:bg-white/40 text-white border-none">
-                                        <Eye size={16} />
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* CARD CONTENT */}
-                            <div className="p-4 space-y-3">
-                                <div>
-                                    <div className="flex items-center justify-between gap-2">
-                                        <h3 className="font-bold text-xs text-base-content leading-tight truncate">{note.farmer}</h3>
-                                        <div className="badge badge-sm bg-base-200 text-base-content/60 font-black text-[9px] tracking-wide shrink-0">
-                                            {note.animalTag && note.animalTag !== 'N/A' ? `#${note.animalTag.substring(0, 5)}` : 'Tech Note'}
-                                        </div>
-                                    </div>
-                                    <p className="text-[10px] text-base-content/40 font-bold mt-0.5 flex items-center gap-1">
-                                        <Tag size={9} /> {note.animalBreed && note.animalBreed !== 'N/A' ? `${note.animalBreed} · ${note.animalSpecies}` : `Logged by ${note.author || 'Technician'}`}
-                                    </p>
-                                </div>
-
-                                <div className="bg-base-200/50 p-2.5 rounded-xl border border-base-300/40">
-                                    <p className="text-xs text-base-content/80 font-medium leading-relaxed italic line-clamp-3">
-                                        "{note.note}"
-                                    </p>
-                                </div>
-
-                                <div className="flex items-center justify-between text-[9px] font-bold text-base-content/40 border-t border-base-300/40 pt-2.5">
-                                    <span className="flex items-center gap-1">
-                                        <Calendar size={10} />
-                                        {new Date(note.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                                    </span>
-                                    <span className="flex items-center gap-1 text-emerald-600 font-extrabold uppercase tracking-widest">
-                                        {note.status}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-
-            {/* LIGHTBOX DETAIL MODAL */}
-            {selectedNote && (
-                <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-fade-in" onClick={() => setSelectedNote(null)}>
-                    <div 
-                        className="card bg-base-100 border border-base-300 max-w-4xl w-full rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row max-h-[90vh] animate-scale-up"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* IMAGE PREVIEW */}
-                        <div className="relative md:w-1/2 bg-black flex items-center justify-center overflow-hidden aspect-video md:aspect-auto">
-                            <img 
-                                src={selectedNote.imageUrl} 
-                                alt={selectedNote.farmer} 
-                                className="w-full h-full object-contain max-h-[40vh] md:max-h-none"
-                                onError={(e) => {
-                                    e.target.onerror = null;
-                                    e.target.src = 'https://images.unsplash.com/photo-1547586696-ea22b4d4235d?auto=format&fit=crop&q=80&w=400';
-                                }}
-                            />
-                            <a 
-                                href={selectedNote.imageUrl} 
-                                target="_blank" 
-                                rel="noreferrer"
-                                className="absolute bottom-4 right-4 btn btn-circle btn-sm bg-black/40 hover:bg-black/60 border-none text-white"
-                                title="Open Original Image"
-                            >
-                                <Maximize2 size={14} />
-                            </a>
-                        </div>
-
-                        {/* INFO PANEL */}
-                        <div className="md:w-1/2 p-6 md:p-8 flex flex-col justify-between overflow-y-auto">
-                            <div className="space-y-6">
-                                {/* MODAL HEADER */}
-                                <div className="flex justify-between items-start gap-4">
-                                    <div>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className={`badge badge-sm font-black text-[9px] uppercase tracking-wider ${
-                                                selectedNote.type === 'insemination' ? 'bg-blue-500/10 text-blue-500' : 
-                                                selectedNote.type === 'health' ? 'bg-rose-500/10 text-rose-500' : 'bg-emerald-500/10 text-emerald-500'
-                                            }`}>
-                                                {selectedNote.type === 'insemination' ? 'Artificial Insemination' : 
-                                                 selectedNote.type === 'health' ? 'Medical Diagnostics' : `Field Note by ${selectedNote.author || 'Technician'}`}
-                                            </span>
-                                            <span className="badge badge-sm bg-base-200 text-base-content/60 font-black text-[9px] tracking-wide">
-                                                ID: {selectedNote.id.substring(0, 8).toUpperCase()}
-                                            </span>
-                                        </div>
-                                        <h2 className="text-xl font-black text-base-content leading-tight">{selectedNote.farmer}</h2>
-                                    </div>
-                                    <button 
-                                        onClick={() => setSelectedNote(null)}
-                                        className="btn btn-circle btn-sm btn-ghost text-base-content/40 hover:text-base-content hover:bg-base-200"
-                                    >
-                                        <X size={16} />
-                                    </button>
-                                </div>
-
-                                <div className="divider my-0 opacity-40" />
-
-                                {/* ANIMAL & FARMER INFO */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-base-200/40 p-3.5 rounded-xl border border-base-300/40">
-                                        <p className="text-[9px] font-black text-base-content/30 uppercase tracking-widest">Animal Ear Tag</p>
-                                        <p className="text-xs font-black text-emerald-600 dark:text-emerald-500 mt-0.5">
-                                            {selectedNote.animalTag && selectedNote.animalTag !== 'N/A' ? `#${selectedNote.animalTag}` : 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div className="bg-base-200/40 p-3.5 rounded-xl border border-base-300/40">
-                                        <p className="text-[9px] font-black text-base-content/30 uppercase tracking-widest">Breed / Species</p>
-                                        <p className="text-xs font-black text-base-content mt-0.5">
-                                            {selectedNote.animalBreed && selectedNote.animalBreed !== 'N/A' ? `${selectedNote.animalBreed} (${selectedNote.animalSpecies})` : 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div className="bg-base-200/40 p-3.5 rounded-xl border border-base-300/40 col-span-2">
-                                        <p className="text-[9px] font-black text-base-content/30 uppercase tracking-widest">Farmer Contact</p>
-                                        <p className="text-xs font-black text-base-content mt-0.5 flex items-center gap-1.5">
-                                            <Phone size={11} className="text-base-content/40" />
-                                            {selectedNote.farmerPhone || 'N/A'}
-                                        </p>
-                                    </div>
-                                    {selectedNote.latitude && selectedNote.longitude && (
-                                        <div className="bg-base-200/40 p-3.5 rounded-xl border border-base-300/40 col-span-2">
-                                            <p className="text-[9px] font-black text-base-content/30 uppercase tracking-widest">GPS Coordinates</p>
-                                            <p className="text-xs font-black text-base-content mt-0.5 flex items-center gap-1.5">
-                                                <MapPin size={11} className="text-emerald-600" />
-                                                {selectedNote.latitude}°, {selectedNote.longitude}° (Oton, Iloilo)
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* FARMER NOTES */}
-                                <div className="space-y-2">
-                                    <p className="text-[9px] font-black text-base-content/30 uppercase tracking-widest">Attached Field Notes</p>
-                                    <div className="bg-base-200/50 p-4 rounded-xl border border-base-300/40 min-h-[80px]">
-                                        <p className="text-xs text-base-content/80 font-semibold leading-relaxed italic">
-                                            "{selectedNote.note}"
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* FOOTER */}
-                            <div className="mt-8 pt-4 border-t border-base-300/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-[10px] font-bold text-base-content/40">
-                                <span className="flex items-center gap-1">
-                                    <Calendar size={11} />
-                                    Submitted {new Date(selectedNote.date).toLocaleString()}
-                                </span>
-                                <div className="flex items-center gap-3">
-                                    <button 
-                                        onClick={() => handleDeleteNote(selectedNote.id, selectedNote.type)}
-                                        className="btn btn-xs btn-error btn-outline flex items-center gap-1.5 rounded-lg border border-red-500/20 py-1 px-2.5 h-auto min-h-0 text-[10px] font-black uppercase tracking-wider transition-all hover:bg-error hover:text-white"
-                                    >
-                                        <Trash2 size={11} />
-                                        <span>Delete Note</span>
-                                    </button>
-                                    <span className="flex items-center gap-1.5 uppercase font-black tracking-widest text-emerald-600">
-                                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                        {selectedNote.status}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+          ))}
         </div>
-    );
-};
 
-export default FieldNotes;
+        {/* Filters Interactive Tab Ribbon */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-1 rounded-xl flex gap-1 shadow-xs">
+            {[
+              { id: "all", label: "All Media" },
+              { id: "insemination", label: "AI Requests" },
+              { id: "health", label: "Health Calls" },
+              { id: "technician-note", label: "Tech Notes" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all ${
+                  activeTab === tab.id
+                    ? "bg-[#00643b] text-white shadow-xs"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
+            <Grid3X3 size={13} /> {filteredNotes.length} media items matching
+          </span>
+        </div>
+
+        {/* Responsive Field Grid Layout */}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+          {isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pb-4">
+              {[...Array(4)].map((_, i) => (
+                <div
+                  key={i}
+                  className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden animate-pulse h-72"
+                >
+                  <div className="bg-slate-200 dark:bg-slate-900 h-44 w-full" />
+                  <div className="p-4 space-y-2">
+                    <div className="h-4 bg-slate-200 dark:bg-slate-900 rounded w-1/2" />
+                    <div className="h-3 bg-slate-200 dark:bg-slate-900 rounded w-5/6" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filteredNotes.length === 0 ? (
+            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-12 text-center text-slate-400 dark:text-slate-500 rounded-2xl flex flex-col items-center justify-center gap-2">
+              <AlertCircle size={24} className="text-slate-300" />
+              <span className="font-medium">
+                No diagnostic field notes or items located matching selection
+                metrics.
+              </span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pb-4">
+              {filteredNotes.map((note) => {
+                const badge = getBadgeConfig(note.type);
+                return (
+                  <div
+                    key={note.id}
+                    onClick={() => setSelectedNote(note)}
+                    className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xs hover:shadow-md hover:border-[#00643b] dark:hover:border-emerald-600 transition-all duration-200 overflow-hidden cursor-pointer flex flex-col group"
+                  >
+                    <div className="w-full h-44 bg-slate-100 dark:bg-slate-900 relative overflow-hidden">
+                      <img
+                        src={note.imageUrl}
+                        alt="Livestock case documentation"
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src =
+                            "https://images.unsplash.com/photo-1547586696-ea22b4d4235d?auto=format&fit=crop&q=80&w=400";
+                        }}
+                      />
+                    </div>
+                    <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center gap-2">
+                          <span
+                            className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border ${badge.style}`}
+                          >
+                            {badge.label}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400 tracking-wide">
+                            {note.animalTag && note.animalTag !== "N/A"
+                              ? `#${note.animalTag.substring(0, 7)}`
+                              : "Tech File"}
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                          {note.farmer || "Unknown Case"}
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-2 leading-relaxed">
+                          "{note.note || "No custom annotations provided."}"
+                        </p>
+                      </div>
+                      <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/60 flex justify-between items-center text-[10.5px] font-bold text-slate-400">
+                        <span className="flex items-center gap-0.5">
+                          <Calendar size={11} />{" "}
+                          {note.date
+                            ? new Date(note.date).toLocaleDateString(
+                                undefined,
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                },
+                              )
+                            : "N/A"}
+                        </span>
+                        <span className="text-[#00643b] dark:text-emerald-400 uppercase tracking-wider">
+                          {note.status || "Completed"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* ---- DUAL SCREEN LIGHTBOX INSPECTION MODAL ---- */}
+      {selectedNote && (
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setSelectedNote(null)}
+        >
+          <div
+            className="w-full max-w-5xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] md:max-h-[85vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Left Frame Display Panel */}
+            <div className="flex-[1.3] bg-black flex items-center justify-center relative p-2 min-h-[35vh] md:min-h-[50vh]">
+              <img
+                src={selectedNote.imageUrl}
+                alt="Enlarged field report reference visual documentation"
+                className="max-h-[50vh] md:max-h-[80vh] w-full object-contain"
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src =
+                    "https://images.unsplash.com/photo-1547586696-ea22b4d4235d?auto=format&fit=crop&q=80&w=400";
+                }}
+              />
+              <button
+                onClick={() => setSelectedNote(null)}
+                className="absolute top-4 right-4 bg-black/60  text-white rounded-full p-1.5 transition-colors flex items-center justify-center cursor-pointer hover:bg-gray-600 hover:text-white"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Right Frame Details Processing Panel */}
+            <div className="flex-1 p-6 md:p-8 flex flex-col justify-between overflow-y-auto max-h-[55vh] md:max-h-[85vh] bg-white dark:bg-slate-950">
+              <div className="space-y-5">
+                {/* Status Badges */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border ${getBadgeConfig(selectedNote.type).style}`}
+                    >
+                      {selectedNote.type === "insemination"
+                        ? "AI REQUEST"
+                        : selectedNote.type === "health"
+                          ? "HEALTH CALL"
+                          : "TECHNICIAN NOTE"}
+                    </span>
+                    <span className="bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-400 border border-slate-200 dark:border-slate-800 text-[10px] font-black px-2 py-0.5 rounded-md">
+                      {selectedNote.id
+                        ? `REF-${selectedNote.id.substring(0, 6).toUpperCase()}`
+                        : "LOG-FILE"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />{" "}
+                    {selectedNote.status || "Completed"}
+                  </span>
+                </div>
+
+                {/* Primary Information */}
+                <div className="space-y-1">
+                  <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                    Stakeholder Identity
+                  </div>
+                  <h2 className="text-xl font-black tracking-tight text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                    <User size={18} className="text-slate-400" />{" "}
+                    {selectedNote.farmer || "Anonymous Entry"}
+                  </h2>
+                  <p className="text-xs text-slate-400 font-medium flex items-center gap-1 pt-0.5">
+                    <Phone size={12} className="text-slate-400" /> Registry
+                    Line:{" "}
+                    <span className="font-mono font-bold text-slate-600 dark:text-slate-300">
+                      {selectedNote.phone || "N/A"}
+                    </span>
+                  </p>
+                </div>
+
+                <div className="divider my-0 opacity-40 dark:border-slate-800" />
+
+                {/* DETAILED LIVESTOCK PROFILE ATRIBUTES */}
+                <div className="space-y-2">
+                  <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                    <Activity size={10} /> Livestock Resource Spec Sheets
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-3 rounded-xl">
+                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wide">
+                        System Ear Tag
+                      </div>
+                      <p className="text-xs font-black text-emerald-700 dark:text-emerald-400 mt-0.5 flex items-center gap-1">
+                        <Tag size={11} />{" "}
+                        {selectedNote.animalTag &&
+                        selectedNote.animalTag !== "N/A"
+                          ? `#${selectedNote.animalTag}`
+                          : "Unassigned Tag"}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-3 rounded-xl">
+                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wide">
+                        Breed Registry
+                      </div>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-0.5 truncate">
+                        {selectedNote.animalBreed &&
+                        selectedNote.animalBreed !== "N/A"
+                          ? selectedNote.animalBreed
+                          : "N/A"}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-3 rounded-xl col-span-2">
+                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wide">
+                        Biological Species
+                      </div>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-0.5">
+                        {selectedNote.animalSpecies &&
+                        selectedNote.animalSpecies !== "N/A"
+                          ? selectedNote.animalSpecies
+                          : "General Technical Entry"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ANNOTATION BLOCK */}
+                <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-4 rounded-xl space-y-1">
+                  <span className="text-[9px] font-black tracking-wider uppercase text-slate-400 block">
+                    Annotation Case Notes
+                  </span>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold italic leading-relaxed">
+                    "
+                    {selectedNote.note ||
+                      "No annotations captured for this record entry."}
+                    "
+                  </p>
+                </div>
+              </div>
+
+              {/* Modal Footer actions summary layout */}
+              <div className="pt-4 mt-6 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
+                <div className="text-[11px] text-slate-400 font-medium">
+                  Deployed Log:{" "}
+                  <span className="font-bold text-slate-600 dark:text-slate-300">
+                    {selectedNote.date
+                      ? new Date(selectedNote.date).toLocaleDateString(
+                          undefined,
+                          { dateStyle: "long" },
+                        )
+                      : "N/A"}
+                  </span>
+                </div>
+                <button
+                  onClick={(e) =>
+                    handleDeleteNote(selectedNote.id, selectedNote.type, e)
+                  }
+                  className="btn btn-sm btn-outline border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-600 dark:hover:text-white rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center"
+                >
+                  <Trash2 size={12} /> Delete Note
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Upload Note Modal */}
+      <UploadNoteModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSuccess={fetchFieldNotes}
+      />
+    </div>
+  );
+}

@@ -1,29 +1,15 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 @plugin "daisyui" {
-  themes: emerald, corporate, dark, night;
+  themes: emerald --default, night --prefersdark;
 }
 
-@custom-variant dark (&:is(.dark *, [data-theme="night"] *));
+@custom-variant dark (&:where(.dark, .dark *));
 
-:root {
-  --font-outfit: "Outfit", sans-serif;
-  /* Custom Dark Green from reference image */
-  --color-custom-green: #074033;
+@theme {
+  --font-sans: "Outfit", sans-serif;
 }
 
-body {
-  font-family: var(--font-outfit);
-}
-
-@keyframes progress-timer {
-  from {
-    width: 100%;
-  }
-  to {
-    width: 0%;
-  }
-}
-
-.animate-progress {
-  animation: progress-timer 5000ms linear forwards;
+html, body {
+  font-family: "Outfit", sans-serif;
 }

@@ -16,7 +16,15 @@ export default function EarTagGenerator({
   onGenerate,
   isDark,
 }: EarTagGeneratorProps) {
+  const lastClickRef = React.useRef<number>(0);
+
   const handleGenerate = () => {
+    const now = Date.now();
+    if (now - lastClickRef.current < 2000) {
+      return; // Silently ignore spam clicks to prevent toast pileup
+    }
+    lastClickRef.current = now;
+
     if (!farmerName) {
       toast.error("Please select a client/owner first.");
       return;

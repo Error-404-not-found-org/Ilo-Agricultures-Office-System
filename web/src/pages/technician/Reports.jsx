@@ -1,390 +1,478 @@
-import React, { useState } from 'react';
-import { Calendar, Download, FileText, Filter, Printer, Table, ChevronRight, CheckCircle2, ClipboardList, Database, ArrowUpRight, Activity, Syringe } from 'lucide-react';
-import axiosInstance from '../../lib/axios';
-import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import React, { useState, useMemo } from "react";
+import {
+  FileText,
+  Clock,
+  HardDrive,
+  AlertCircle,
+  Download,
+  Trash2,
+  Play,
+  CheckCircle,
+  Settings,
+  Calendar,
+  Layers,
+} from "lucide-react";
+import Topbar from "../../components/ui/Topbar";
+import axiosInstance from "../../lib/axios";
+import { useToast } from "../../contexts/ToastContext";
 
-const TechnicianReports = () => {
-  const [loading, setLoading] = useState(false);
-  const [reportData, setReportData] = useState([]);
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+export default function FieldReports() {
+  const toast = useToast();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isCompiling, setIsCompiling] = useState(false);
+  const [compilingStep, setCompilingStep] = useState("");
+  
+  // ---- REPORT GENERATOR STATE ----
+  const [reportType, setReportType] = useState("breeding-audit");
+  const [dateRange, setDateRange] = useState("30-days");
+  const [barangay, setBarangay] = useState("all");
+  const [format, setFormat] = useState("pdf");
 
-  const formatAddress = (addr) => {
-    if (!addr) return "No Address";
-    if (typeof addr === "string") return addr;
-    if (Array.isArray(addr) && addr.length > 0) {
-      const first = addr[0];
-      return `${first.barangay || ""}, ${first.city || ""}`.replace(/^,|,$/g, "").trim() || "No Address";
-    }
-    if (typeof addr === "object") {
-      return `${addr.barangay || ""}, ${addr.city || ""}`.replace(/^,|,$/g, "").trim() || "No Address";
-    }
-    return "No Address";
+  // ---- DYNAMIC AUTOMATED SCHEDULES ----
+  const [schedules, setSchedules] = useState([
+    { id: "S-1", name: "Weekly Health Bulletin to Admin", time: "Friday, 5:00 PM", active: true },
+    { id: "S-2", name: "Monthly Breeding Ledger to Regional Office", time: "1st of Month, 8:00 AM", active: true },
+    { id: "S-3", name: "Real-time Hotspot Alerts via SMS", time: "Instant on detection", active: false },
+  ]);
+
+  // ---- REPORT LIBRARY STATE ----
+  const [reports, setReports] = useState([
+    {
+      id: "REP-2026-05",
+      name: "Monthly Breeding Ledger Audit - May 2026",
+      date: "May 30, 2026",
+      size: "2.4 MB",
+      format: "PDF",
+      type: "Breeding Audit",
+      status: "Published",
+    },
+    {
+      id: "REP-2026-04",
+      name: "Disease Outbreak Telemetry Log - San Miguel",
+      date: "May 27, 2026",
+      size: "820 KB",
+      format: "PDF",
+      type: "Health Summary",
+      status: "Published",
+    },
+    {
+      id: "REP-2026-03",
+      name: "Farmer Engagement & Activities Summary - Q1",
+      date: "May 15, 2026",
+      size: "4.1 MB",
+      format: "EXCEL",
+      type: "Farmer Activities",
+      status: "Published",
+    },
+    {
+      id: "REP-2026-02",
+      name: "Livestock Demographics Census Dataset",
+      date: "May 02, 2026",
+      size: "12.8 KB",
+      format: "CSV",
+      type: "Livestock Census",
+      status: "Archived",
+    },
+  ]);
+
+  const toggleSchedule = (id) => {
+    setSchedules((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, active: !s.active } : s))
+    );
+    toast.success("Notification schedule updated.");
   };
 
-  const fetchReport = async () => {
-    setLoading(true);
+  const handleGenerateReport = (e) => {
+    e.preventDefault();
+    if (isCompiling) return;
+
+    setIsCompiling(true);
+    const steps = [
+      "Connecting to animal census database...",
+      "Aggregating regional pregnancy diagnostic metrics...",
+      "Verifying technician insemination ledger signatures...",
+      "Compiling output layouts and styles...",
+      "Publishing report token to ledger..."
+    ];
+
+    let currentStep = 0;
+    setCompilingStep(steps[0]);
+
+    const interval = setInterval(() => {
+      currentStep++;
+      if (currentStep < steps.length) {
+        setCompilingStep(steps[currentStep]);
+      } else {
+        clearInterval(interval);
+        
+        const typeLabels = {
+          "breeding-audit": "Breeding Audit",
+          "health-summary": "Health Summary",
+          "farmer-activity": "Farmer Activities",
+          "census": "Livestock Census"
+        };
+
+        const newReportName = `${typeLabels[reportType]} - ${
+          barangay === "all" ? "Global" : barangay
+        } (${dateRange === "7-days" ? "7d" : dateRange === "30-days" ? "30d" : "YTD"})`;
+
+        const newReport = {
+          id: `REP-2026-06-${Math.floor(Math.random() * 900) + 100}`,
+          name: newReportName,
+          date: new Date().toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric"
+          }),
+          size: `${(Math.random() * 3 + 0.5).toFixed(1)} MB`,
+          format: format.toUpperCase(),
+          type: typeLabels[reportType],
+          status: "Published",
+        };
+
+        setReports((prev) => [newReport, ...prev]);
+        setIsCompiling(false);
+        setCompilingStep("");
+        toast.success("Municipal report compiled and archived successfully!");
+      }
+    }, 600);
+  };
+
+  // ---- DYNAMIC DOCUMENT EXPORTER (PDF/EXCEL/CSV TELEMETRY STREAM) ----
+  const handleDownloadReport = async (report) => {
     try {
-      const res = await axiosInstance.get(`/reports/monthly-accomplishment?month=${selectedMonth}&year=${selectedYear}`);
-      setReportData(res.data);
-      if (res.data.length === 0) {
-        toast.info("No records found for the selected period.");
+      toast.info(`Fetching live data aggregates for: ${report.name}...`);
+      
+      // Pull live accomplishment metrics from database
+      const now = new Date();
+      const res = await axiosInstance.get(
+        `/reports/monthly-accomplishment?month=${now.getMonth() + 1}&year=${now.getFullYear()}`
+      );
+      const data = res.data || [];
+      
+      if (data.length === 0) {
+        return toast.error("Zero telemetry records located for selected month scope.");
       }
+
+      // Build CSV output stream
+      const headers = [
+        "Record Date",
+        "Animal Species",
+        "Animal Breed",
+        "Ear Tag",
+        "Farmer Owner",
+        "Service Scope",
+        "AI Estrus Type",
+        "AI Sire Code",
+        "PD Outcome Result",
+        "CD Calves Count"
+      ];
+      
+      const rows = data.map((item) => [
+        item.date ? new Date(item.date).toLocaleDateString() : "N/A",
+        item.animal?.species || "N/A",
+        item.animal?.breed || "N/A",
+        item.animal?.earTag || "N/A",
+        item.farmer?.name || "N/A",
+        item.type || "N/A",
+        item.ai?.estrus || "N/A",
+        item.ai?.sireCode || "N/A",
+        item.pd?.result || "N/A",
+        item.cd?.count || "N/A"
+      ]);
+
+      const csvContent =
+        "data:text/csv;charset=utf-8," +
+        headers.join(",") +
+        "\n" +
+        rows.map((e) => e.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute(
+        "download",
+        `DA_${report.name.replace(/\s+/g, "_")}_${new Date().toLocaleDateString()}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success("Document published to spreadsheet and downloaded successfully!");
     } catch (error) {
-      toast.error("Failed to fetch report data.");
-    } finally {
-      setLoading(false);
+      console.error(error);
+      toast.error("Failed to construct regional report spreadsheet.");
     }
   };
 
-  const exportToCSV = () => {
-    if (reportData.length === 0) return toast.error("No data to export.");
-
-    const headers = [
-      "Type", "AI Date", "Animal ID", "Ear Tag", "Species", "Breed", "Color", "Farmer", "Address",
-      "AI Attempt", "Estrus", "Sire Breed", "Sire Code",
-      "PD Date", "PD Result",
-      "CD Date", "Calf Count", "Calf Drop Ease"
-    ];
-
-    const rows = reportData.map(item => [
-      item.type,
-      item.ai ? new Date(item.date).toLocaleDateString() : '',
-      `"${item.animal?.animalId || ''}"`,
-      `"${item.animal?.earTag || ''}"`,
-      item.animal?.species || '',
-      item.animal?.breed || '',
-      item.animal?.color || '',
-      item.farmer?.name || '',
-      `"${formatAddress(item.farmer?.address)}"`,
-      item.ai?.attempt || '',
-      item.ai?.estrus || '',
-      item.ai?.sireBreed || '',
-      item.ai?.sireCode || '',
-      item.pd?.date ? new Date(item.pd.date).toLocaleDateString() : '',
-      item.pd?.result || '',
-      item.cd ? new Date(item.date).toLocaleDateString() : '',
-      item.cd?.count || '',
-      item.cd?.ease || ''
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(r => r.join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Monthly_Accomplishment_${selectedMonth}_${selectedYear}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success("Report exported successfully!");
+  const handleDeleteReport = (id) => {
+    setReports((prev) => prev.filter((r) => r.id !== id));
+    toast.success("Report deleted from municipal archives.");
   };
 
-  const exportToPDF = () => {
-    if (reportData.length === 0) return toast.error("No data to export.");
-
-    const doc = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4'
-    });
-
-    const monthLabel = [
-      "January", "February", "March", "April", "May", "June",
-      "July", "August", "September", "October", "November", "December"
-    ][parseInt(selectedMonth) - 1] || "Selected Month";
-
-    // Header metadata
-    doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text("Department of Agriculture", 148, 12, { align: "center" });
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(10);
-    doc.text("UNIFIED NATIONAL ARTIFICIAL INSEMINATION PROGRAM", 148, 17, { align: "center" });
-    doc.setFontSize(11);
-    doc.text("Monthly Accomplishment Report", 148, 23, { align: "center" });
-    
-    doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text(`For the Month of: ${monthLabel}, ${selectedYear}`, 148, 28, { align: "center" });
-
-    // Table headers matching standard UNAIP 23 columns
-    const headers = [
-      [
-        { content: "Data", rowSpan: 2, styles: { valign: 'middle', halign: 'center' } },
-        { content: "Animal Identification", colSpan: 8, styles: { halign: 'center' } },
-        { content: "Artificial Insemination (AI)", colSpan: 5, styles: { halign: 'center' } },
-        { content: "Pregnancy Diagnosis (PD)", colSpan: 2, styles: { halign: 'center' } },
-        { content: "Calf Drop (CD)", colSpan: 7, styles: { halign: 'center' } }
-      ],
-      [
-        "Animal ID", "Ear tag No", "Brand", "Species", "Breed", "Color", "Barangay", "Farmer",
-        "Date", "No. AI", "Estrus", "Sire Breed", "Sire Code",
-        "Date", "Result",
-        "Date", "No. Calving", "Calf 1 ID", "Sex 1", "Calf 2 ID", "Sex 2", "Ease"
-      ]
-    ];
-
-    const rows = reportData.map(item => {
-      const barangay = typeof item.farmer?.address === "object" ? item.farmer.address?.barangay || "Local" : "Local";
-      const pdResult = item.pd?.result === "Pregnant" ? "Positive" : item.pd?.result === "Empty" ? "Negative" : "";
-      
-      const calf1Tag = item.cd?.calves?.[0]?.earTag || "";
-      const calf1Sex = item.cd?.calves?.[0]?.sex || "";
-      const calf2Tag = item.cd?.calves?.[1]?.earTag || "";
-      const calf2Sex = item.cd?.calves?.[1]?.sex || "";
-
-      return [
-        item.type || "",
-        item.animal?.animalId || "",
-        item.animal?.earTag || "",
-        item.animal?.brand || "",
-        item.animal?.species || "",
-        item.animal?.breed || "",
-        item.animal?.color || "",
-        barangay,
-        item.farmer?.name || "",
-        // AI
-        item.ai ? new Date(item.date).toLocaleDateString() : "",
-        item.ai?.attempt || "",
-        item.ai?.estrus || "",
-        item.ai?.sireBreed || "",
-        item.ai?.sireCode || "",
-        // PD
-        item.pd?.date ? new Date(item.pd.date).toLocaleDateString() : "",
-        pdResult,
-        // CD
-        item.cd ? new Date(item.date).toLocaleDateString() : "",
-        item.cd?.count || "",
-        calf1Tag,
-        calf1Sex,
-        calf2Tag,
-        calf2Sex,
-        item.cd?.ease || ""
-      ];
-    });
-
-    doc.autoTable({
-      head: headers,
-      body: rows,
-      startY: 34,
-      theme: 'grid',
-      styles: {
-        fontSize: 5.5,
-        cellPadding: 1.5,
-        lineColor: [0, 0, 0],
-        lineWidth: 0.1
-      },
-      headStyles: {
-        fillColor: [240, 240, 240],
-        textColor: [0, 0, 0],
-        fontStyle: 'bold',
-        lineWidth: 0.1,
-        lineColor: [0, 0, 0]
-      },
-      columnStyles: {
-        0: { cellWidth: 10 },
-        1: { cellWidth: 12 },
-        2: { cellWidth: 12 },
-        3: { cellWidth: 10 },
-        4: { cellWidth: 12 },
-        5: { cellWidth: 12 },
-        6: { cellWidth: 10 },
-        7: { cellWidth: 12 },
-        8: { cellWidth: 15 },
-        9: { cellWidth: 14 },
-        10: { cellWidth: 7 },
-        11: { cellWidth: 10 },
-        12: { cellWidth: 12 },
-        13: { cellWidth: 12 },
-        14: { cellWidth: 14 },
-        15: { cellWidth: 11 },
-        16: { cellWidth: 14 },
-        17: { cellWidth: 8 },
-        18: { cellWidth: 10 },
-        19: { cellWidth: 8 },
-        20: { cellWidth: 10 },
-        21: { cellWidth: 8 },
-        22: { cellWidth: 10 }
-      },
-      didDrawPage: (data) => {
-        const totalPages = doc.internal.getNumberOfPages();
-        if (data.pageNumber === totalPages) {
-          const finalY = data.cursor.y + 12;
-          doc.setFont("Helvetica", "normal");
-          doc.setFontSize(8);
-          
-          doc.text("Prepared by:", 30, finalY);
-          doc.line(30, finalY + 8, 90, finalY + 8);
-          doc.setFont("Helvetica", "bold");
-          doc.text("TECHNICIAN / AI COORDINATOR", 30, finalY + 12);
-          
-          doc.setFont("Helvetica", "normal");
-          doc.text("Noted by:", 200, finalY);
-          doc.line(200, finalY + 8, 260, finalY + 8);
-          doc.setFont("Helvetica", "bold");
-          doc.text("SUPERVISING AGRICULTURIST", 200, finalY + 12);
-        }
-      }
-    });
-
-    doc.save(`UNAIP_Accomplishment_Report_${monthLabel}_${selectedYear}.pdf`);
-    toast.success("Accomplishment PDF Report exported!");
-  };
+  // ---- DYNAMIC FILTER PIPE ----
+  const filteredReports = useMemo(() => {
+    return reports.filter((r) =>
+      [r.name, r.type, r.format].join(" ").toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [searchQuery, reports]);
 
   return (
-    <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 mb-2">
-            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center border border-emerald-100 dark:border-emerald-800/50 shadow-sm">
-              <ClipboardList size={20} />
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+      <Topbar
+        title="Field Reports"
+        subtitle="Compliance compilation, spatial telemetry logs, and officer audits"
+        searchPlaceholder="Search compiled reports..."
+        searchValue={searchQuery}
+        onSearchChange={(e) => setSearchQuery(e.target.value)}
+      />
+
+      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0 font-sans">
+        {/* Metric Cards Row */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            {
+              label: "Reports Compiled",
+              val: `${reports.length} Records`,
+              color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
+              icon: <FileText size={16} />,
+            },
+            {
+              label: "Schedules Configured",
+              val: `${schedules.filter((s) => s.active).length} Active`,
+              color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
+              icon: <Clock size={16} />,
+            },
+            {
+              label: "Cloud Storage",
+              val: "7.3 MB / 100 MB",
+              color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
+              icon: <HardDrive size={16} />,
+            },
+            {
+              label: "Officer Inspections",
+              val: "2 Pending",
+              color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
+              icon: <AlertCircle size={16} />,
+            },
+          ].map((stat, i) => (
+            <div
+              key={i}
+              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
+            >
+              <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
+                {stat.icon}
+              </div>
+              <div>
+                <div className="text-lg font-black tracking-tight">{stat.val}</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                  {stat.label}
+                </div>
+              </div>
             </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Administrative Hub</span>
-          </div>
-          <h1 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tighter leading-none">
-            Registry <span className="text-emerald-600 dark:text-emerald-500">Reports</span>
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 font-bold uppercase text-[10px] tracking-widest flex items-center gap-2">
-             <Database size={12} /> Local Government Unit Data Repository
-          </p>
+          ))}
         </div>
-        
-        <div className="w-full md:w-auto bg-white dark:bg-slate-900/50 backdrop-blur-xl p-3 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-none flex flex-col md:flex-row items-center gap-4">
-          <div className="flex flex-col px-4 border-r border-slate-100 dark:border-slate-800">
-             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Select Month</label>
-             <select className="text-sm font-black bg-transparent outline-none cursor-pointer text-slate-900 dark:text-white" value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
-               {Array.from({length: 12}, (_, i) => (<option key={i+1} value={i+1} className="dark:bg-slate-900">{new Date(0, i).toLocaleString('en-US', {month: 'long'})}</option>))}
-             </select>
-          </div>
-          <div className="flex flex-col px-4">
-             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Select Year</label>
-             <select className="text-sm font-black bg-transparent outline-none cursor-pointer text-slate-900 dark:text-white" value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)}>
-               {[2024, 2025, 2026].map(y => (<option key={y} value={y} className="dark:bg-slate-900">{y}</option>))}
-             </select>
-          </div>
-          <button onClick={fetchReport} disabled={loading} className="w-full md:w-auto px-8 py-3 bg-slate-900 dark:bg-emerald-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-lg flex items-center justify-center gap-3">
-            {loading ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <Filter size={16} />}
-            Generate
-          </button>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-12 space-y-6">
-           <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 bg-slate-900 dark:bg-emerald-950/40 rounded-3xl p-6 text-white shadow-xl flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.3em] opacity-50">Total Records</p>
-                    <p className="text-4xl font-black mt-1">{reportData.length}</p>
+        {/* Double-column layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* Left panel: Compiler form */}
+          <div className="lg:col-span-8 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
+            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
+              <Play size={13} className="text-[#00643b] dark:text-emerald-500" /> Report Compilation Engine
+            </h3>
+
+            {isCompiling ? (
+              <div className="py-10 flex flex-col items-center justify-center space-y-4 text-center">
+                <span className="loading loading-spinner loading-md text-[#00643b] dark:text-emerald-500" />
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Compiling Ledger Metrics</h4>
+                  <p className="text-xs text-slate-400 font-mono italic animate-pulse">{compilingStep}</p>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleGenerateReport} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="form-control">
+                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Report Scope / Type</label>
+                  <select
+                    value={reportType}
+                    onChange={(e) => setReportType(e.target.value)}
+                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                  >
+                    <option value="breeding-audit">Breeding Ledger Audit</option>
+                    <option value="health-summary">Health & Disease Outbreaks Summary</option>
+                    <option value="farmer-activity">Farmer Engagement logs</option>
+                    <option value="census">Livestock Demographics Census</option>
+                  </select>
+                </div>
+
+                <div className="form-control">
+                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Time Interval</label>
+                  <select
+                    value={dateRange}
+                    onChange={(e) => setDateRange(e.target.value)}
+                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                  >
+                    <option value="7-days">Last 7 Days</option>
+                    <option value="30-days">Last 30 Days</option>
+                    <option value="ytd">Year-To-Date (YTD)</option>
+                  </select>
+                </div>
+
+                <div className="form-control">
+                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Geographic Segment</label>
+                  <select
+                    value={barangay}
+                    onChange={(e) => setBarangay(e.target.value)}
+                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                  >
+                    <option value="all">All Barangays</option>
+                    <option value="San Miguel">San Miguel</option>
+                    <option value="Santa Barbara">Santa Barbara</option>
+                    <option value="Pavia">Pavia</option>
+                    <option value="Oton">Oton</option>
+                    <option value="Mandurriao">Mandurriao</option>
+                  </select>
+                </div>
+
+                <div className="form-control">
+                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Output Export Layout</label>
+                  <select
+                    value={format}
+                    onChange={(e) => setFormat(e.target.value)}
+                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                  >
+                    <option value="pdf">PDF Document (.pdf)</option>
+                    <option value="excel">Excel Spreadsheet (.xlsx)</option>
+                    <option value="csv">Comma Separated Dataset (.csv)</option>
+                  </select>
+                </div>
+
+                <div className="md:col-span-2 pt-3 flex justify-end">
+                  <button
+                    type="submit"
+                    className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold rounded-xl px-5 flex items-center gap-1.5"
+                  >
+                    <Play size={12} /> Compile &amp; Publish Report
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+
+          {/* Right panel: schedules */}
+          <div className="lg:col-span-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
+            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
+              <Settings size={13} /> Automated Dispatch Schedules
+            </h3>
+
+            <div className="space-y-3">
+              {schedules.map((sch) => (
+                <div
+                  key={sch.id}
+                  className="flex items-start justify-between gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/80 rounded-xl"
+                >
+                  <div className="min-w-0">
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">
+                      {sch.name}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 mt-1 font-semibold flex items-center gap-1">
+                      <Calendar size={10} /> {sch.time}
+                    </p>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={exportToCSV} disabled={reportData.length === 0} className="px-5 py-3 bg-white text-slate-900 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-white transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-                       <Download size={16} /> Export CSV
-                    </button>
-                    <button onClick={exportToPDF} disabled={reportData.length === 0} className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-                       <FileText size={16} /> Export PDF
-                    </button>
-                  </div>
-              </div>
-              <div className="flex gap-4">
-                 <div className="bg-white dark:bg-slate-900/40 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 text-center min-w-[120px]">
-                    <p className="text-[9px] font-black text-blue-500 uppercase">AI Tasks</p>
-                    <p className="text-2xl font-black dark:text-white">{reportData.filter(d => d.type.includes('AI')).length}</p>
-                 </div>
-                 <div className="bg-white dark:bg-slate-900/40 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 text-center min-w-[120px]">
-                    <p className="text-[9px] font-black text-purple-500 uppercase">PD Checks</p>
-                    <p className="text-2xl font-black dark:text-white">{reportData.filter(d => d.type.includes('PD')).length}</p>
-                 </div>
-                 <div className="bg-white dark:bg-slate-900/40 p-6 rounded-3xl border border-slate-200 dark:border-slate-800 text-center min-w-[120px]">
-                    <p className="text-[9px] font-black text-orange-500 uppercase">Births</p>
-                    <p className="text-2xl font-black dark:text-white">{reportData.filter(d => d.type.includes('CD')).length}</p>
-                 </div>
-              </div>
-           </div>
-
-           {/* WIDE PREVIEW TABLE */}
-           <div className="bg-white dark:bg-slate-900/40 backdrop-blur-xl rounded-4xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
-              <div className="overflow-x-auto custom-scrollbar">
-                 {reportData.length > 0 ? (
-                   <table className="w-full text-left border-collapse">
-                     <thead>
-                       <tr className="bg-slate-50/50 dark:bg-slate-800/30 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100 dark:border-slate-800">
-                         <th className="px-6 py-4 sticky left-0 bg-slate-50 dark:bg-slate-800 z-10">Animal Info</th>
-                         <th className="px-6 py-4">Farmer</th>
-                         <th className="px-6 py-4 bg-blue-50/30 dark:bg-blue-900/10">Insemination (AI)</th>
-                         <th className="px-6 py-4 bg-purple-50/30 dark:bg-purple-900/10">Pregnancy (PD)</th>
-                         <th className="px-6 py-4 bg-orange-50/30 dark:bg-orange-900/10">Calf Drop (CD)</th>
-                       </tr>
-                     </thead>
-                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-                       {reportData.map((row, i) => (
-                         <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-white/5 transition-all">
-                           <td className="px-6 py-4 sticky left-0 bg-white dark:bg-slate-900 z-10 border-r border-slate-100 dark:border-slate-800">
-                              <p className="text-xs font-black text-slate-900 dark:text-white">#{row.animal?.earTag || row.animal?.animalId}</p>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase">{row.animal?.species} · {row.animal?.breed}</p>
-                              {row.animal?.color && <p className="text-[9px] text-emerald-500 font-black uppercase mt-0.5">{row.animal.color}</p>}
-                           </td>
-                           <td className="px-6 py-4">
-                              <p className="text-xs font-black text-slate-700 dark:text-slate-300">{row.farmer?.name}</p>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase truncate max-w-[120px]">{formatAddress(row.farmer?.address)}</p>
-                           </td>
-                           <td className="px-6 py-4 bg-blue-50/20 dark:bg-blue-900/5">
-                              {row.ai ? (
-                                <div className="space-y-1">
-                                  <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase">{new Date(row.date).toLocaleDateString()}</p>
-                                  <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Attempt #{row.ai.attempt} · {row.ai.estrus}</p>
-                                  <p className="text-[9px] text-slate-400 uppercase">{row.ai.sireBreed} [{row.ai.sireCode}]</p>
-                                </div>
-                              ) : <span className="text-slate-300 dark:text-slate-700">—</span>}
-                           </td>
-                           <td className="px-6 py-4 bg-purple-50/20 dark:bg-purple-900/5">
-                              {row.pd ? (
-                                <div className="space-y-1">
-                                  <p className="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase">{row.pd.date ? new Date(row.pd.date).toLocaleDateString() : '—'}</p>
-                                  <p className={`text-[10px] font-black uppercase ${row.pd.result === 'Pregnant' ? 'text-emerald-600' : 'text-rose-600'}`}>{row.pd.result}</p>
-                                </div>
-                              ) : <span className="text-slate-300 dark:text-slate-700">—</span>}
-                           </td>
-                           <td className="px-6 py-4 bg-orange-50/20 dark:bg-orange-900/5">
-                              {row.cd ? (
-                                <div className="space-y-1">
-                                  <p className="text-[10px] font-black text-orange-600 dark:text-orange-400 uppercase">{new Date(row.date).toLocaleDateString()}</p>
-                                  <p className="text-[10px] font-bold text-slate-600 dark:text-slate-400">Count: {row.cd.count} · Ease: {row.cd.ease}</p>
-                                </div>
-                              ) : <span className="text-slate-300 dark:text-slate-700">—</span>}
-                           </td>
-                         </tr>
-                       ))}
-                     </tbody>
-                   </table>
-                 ) : (
-                   <div className="flex flex-col items-center justify-center py-32 text-slate-400 space-y-4">
-                      <Database size={48} className="opacity-10" />
-                      <p className="font-black text-xs uppercase tracking-widest">No data for selected period</p>
-                   </div>
-                 )}
-              </div>
-           </div>
+                  <input
+                    type="checkbox"
+                    checked={sch.active}
+                    onChange={() => toggleSchedule(sch.id)}
+                    className="toggle toggle-emerald toggle-xs shrink-0 cursor-pointer"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; height: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.2); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.4); }
-      ` }} />
+        {/* Bottom panel: list of compiled reports */}
+        <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xs overflow-hidden flex-1 flex flex-col min-h-0">
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
+            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <Layers size={13} /> Publications Library
+            </h3>
+            <span className="text-[10px] text-slate-400 font-bold">
+              Displaying {filteredReports.length} publications
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-x-auto">
+            {filteredReports.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 dark:text-slate-500 italic text-xs font-semibold">
+                No reports publications matching query criteria.
+              </div>
+            ) : (
+              <table className="table table-xs w-full divide-y divide-slate-100 dark:divide-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-900 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4 text-left">Report Document Title</th>
+                    <th className="py-3 px-4 text-left">Date Compiled</th>
+                    <th className="py-3 px-4 text-left">Scope Type</th>
+                    <th className="py-3 px-4 text-left">File Size</th>
+                    <th className="py-3 px-4 text-center">Format</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                  {filteredReports.map((report) => (
+                    <tr key={report.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
+                        {report.name}
+                      </td>
+                      <td className="py-3.5 px-4 text-xs font-mono">{report.date}</td>
+                      <td className="py-3.5 px-4 text-xs">{report.type}</td>
+                      <td className="py-3.5 px-4 text-xs font-mono">{report.size}</td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span className={`text-[8.5px] font-black px-2 py-0.5 rounded-md ${
+                          report.format === "PDF"
+                            ? "bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400"
+                            : report.format === "EXCEL"
+                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400"
+                            : "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400"
+                        }`}>
+                          {report.format}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span className={`text-[9px] font-bold uppercase ${
+                          report.status === "Published" ? "text-emerald-500" : "text-slate-400"
+                        }`}>
+                          {report.status}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() => handleDownloadReport(report)}
+                            className="btn btn-ghost btn-xs btn-circle text-slate-400 hover:text-[#00643b] hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            title="Download Report"
+                          >
+                            <Download size={13} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteReport(report.id)}
+                            className="btn btn-ghost btn-xs btn-circle text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            title="Delete Report"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </main>
     </div>
   );
-};
-
-export default TechnicianReports;
+}

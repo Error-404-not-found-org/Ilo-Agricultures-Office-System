@@ -35,6 +35,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
+import EarTagGenerator from "@/components/EarTagGenerator";
 
 // --- OPTIONS ---
 const SPECIES_OPTIONS = CATTLE_SPECIES;
@@ -135,8 +136,8 @@ export default function FarmerAnimalsHub() {
   // --- Form Handlers ---
   // --- Form Handlers ---
   const handleSave = async () => {
-    if (!formData.species || !formData.breed)
-      return toast.error("Please fill required fields.");
+    if (!formData.species || !formData.breed || !formData.earTag?.trim())
+      return toast.error("Please fill all required fields (Species, Breed, and Ear Tag).");
 
     let birthDate = undefined;
     if (formData.birthDate) {
@@ -299,16 +300,24 @@ export default function FarmerAnimalsHub() {
                 )}
               </TouchableOpacity>
 
-              <View className="flex-row gap-3">
+              <View className="mb-4">
                 <InputField
-                  label="Ear Tag (Optional)"
+                  label="Ear Tag"
                   value={formData.earTag}
-                  maxLength={3}
+                  maxLength={10}
                   onChangeText={(t: any) =>
                     setFormData({ ...formData, earTag: t })
                   }
                   placeholder="Tag #"
                 />
+                <View className="mt-1 ml-1">
+                  <EarTagGenerator
+                    farmerName={user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || "Farmer"}
+                    animalCount={animals.length}
+                    onGenerate={(tag) => setFormData({ ...formData, earTag: tag })}
+                    isDark={isDark}
+                  />
+                </View>
               </View>
 
               <View className="flex-row gap-3">
