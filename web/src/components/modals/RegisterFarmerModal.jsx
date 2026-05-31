@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -55,6 +55,9 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
       queryClient.invalidateQueries({
         queryKey: ["technician", "dashboard"],
       });
+      queryClient.invalidateQueries({
+        queryKey: ["technician", "farmers"],
+      });
       onClose();
       setFormData({
         firstName: "",
@@ -70,6 +73,20 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
       toast.error(error.response?.data?.message || "Registration failed.");
     },
   });
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    if (isOpen) {
+      window.addEventListener("keydown", handleKeyDown);
+    }
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -112,7 +129,7 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
           
           {/* MODAL */}
           <motion.div

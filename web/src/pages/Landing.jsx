@@ -9,7 +9,7 @@ const Landing = () => {
     if (isLoaded && isSignedIn) {
         // Redirect based on role
         if (user?.publicMetadata?.role === 'admin') {
-            return <Navigate to="/dashboard" replace />;
+            return <Navigate to="/admin/dashboard" replace />;
         } else if (user?.publicMetadata?.role === 'technician') {
             return <Navigate to="/technician/dashboard" replace />;
         } else if (user?.publicMetadata?.role === 'farmer') {

@@ -12,8 +12,8 @@ const AssignTaskModal = ({ isOpen, onClose, taskData, onSuccess }) => {
     const { data: technicians = [] } = useQuery({
         queryKey: ['technicianList'],
         queryFn: async () => {
-            const res = await axiosInstance.get('/users?role=technician');
-            return res.data;
+            const res = await axiosInstance.get('/user?role=technician');
+            return Array.isArray(res.data) ? res.data : res.data?.users || [];
         },
         enabled: isOpen,
     });

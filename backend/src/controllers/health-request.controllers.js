@@ -3,6 +3,8 @@ import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import { MedicalRecord } from "../models/medical-record.model.js";
+
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
@@ -21,6 +23,19 @@ export const createHealthRequest = async (req, res) => {
     const animal = await Animal.findOne({ _id: animalId, farmerId });
     if (!animal) {
       return res.status(404).json({ message: "Animal not found or does not belong to you." });
+    }
+
+    // --- DOUBLE REQUEST CONFIRMATION / DUPLICATE CHECK ---
+    const existingActiveRequest = await HealthRequest.findOne({
+      animalId,
+      status: { $in: ["pending", "approved", "in-progress"] },
+      deletedAt: null
+    });
+
+    if (existingActiveRequest) {
+      return res.status(400).json({
+        message: `There is already an active health checkup request (${existingActiveRequest.status}) for ${animal.earTag || animal.animalId}. Please wait for the current request to be resolved.`,
+      });
     }
 
     const request = await HealthRequest.create({
@@ -157,23 +172,59 @@ export const updateHealthRequestStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
+    const updateFields = {
+      status,
+      handledBy: req.user._id,
+    };
+
+    if (technicianNote !== undefined) updateFields.technicianNote = technicianNote;
+    if (req.body.diagnosis !== undefined) updateFields.diagnosis = req.body.diagnosis;
+    if (req.body.treatment !== undefined) updateFields.treatment = req.body.treatment;
+    if (req.body.advice !== undefined) updateFields.advice = req.body.advice;
+    if (req.body.scheduledDate !== undefined) {
+      updateFields.scheduledDate = req.body.scheduledDate ? new Date(req.body.scheduledDate) : undefined;
+    }
+
     const request = await HealthRequest.findByIdAndUpdate(
       id,
-      { 
-        status, 
-        handledBy: req.user._id, 
-        technicianNote: technicianNote || "",
-        diagnosis: req.body.diagnosis || "",
-        treatment: req.body.treatment || "",
-        advice: req.body.advice || "",
-        scheduledDate: req.body.scheduledDate || undefined
-      },
+      { $set: updateFields },
       { returnDocument: 'after' }
     )
       .populate("farmerId", "name pushToken")
       .populate("animalId", "animalId earTag species");
 
     if (!request) return res.status(404).json({ message: "Request not found." });
+
+    // --- CREATE MEDICAL RECORD CASCADE IF RESOLVED ---
+    if (status === "resolved") {
+      try {
+        let recordType = "Check-up";
+        if (request.requestType === "medicine") recordType = "Treatment";
+        else if (request.requestType === "disease") recordType = "Check-up";
+        else if (request.requestType === "checkup") recordType = "Check-up";
+        else if (request.requestType === "injury") recordType = "Treatment";
+
+        const animalId = request.animalId._id || request.animalId;
+        const farmerId = request.farmerId._id || request.farmerId;
+
+        await MedicalRecord.create({
+          animalId,
+          farmerId,
+          technicianId: req.user._id,
+          type: recordType,
+          date: new Date(),
+          details: {
+            medicineName: request.treatment || "None",
+            diagnosis: request.diagnosis || "No specific diagnosis logged.",
+            treatment: request.treatment || "No treatment logged.",
+          },
+          note: request.technicianNote || "Resolved through health request queue.",
+        });
+        console.log(`[Medical Record Cascade] Created successfully for Animal: ${animalId}`);
+      } catch (medErr) {
+        console.error("[Medical Record Cascade Error]", medErr.message);
+      }
+    }
 
     // --- TRIGGER NOTIFICATION TO FARMER ---
     try {
@@ -339,6 +390,34 @@ export const walkInHealthRequest = async (req, res) => {
       scheduledDate: pDate,
     });
 
+    // --- CREATE MEDICAL RECORD CASCADE IF RESOLVED ---
+    if (request.status === "resolved") {
+      try {
+        let recordType = "Check-up";
+        if (request.requestType === "medicine") recordType = "Treatment";
+        else if (request.requestType === "disease") recordType = "Check-up";
+        else if (request.requestType === "checkup") recordType = "Check-up";
+        else if (request.requestType === "injury") recordType = "Treatment";
+
+        await MedicalRecord.create({
+          animalId: animal._id,
+          farmerId: farmer._id,
+          technicianId: req.user._id,
+          type: recordType,
+          date: pDate || new Date(),
+          details: {
+            medicineName: treatment || "None",
+            diagnosis: diagnosis || "No specific diagnosis logged.",
+            treatment: treatment || "No treatment logged.",
+          },
+          note: technicianNote || "Recorded via walk-in service.",
+        });
+        console.log(`[Medical Record Cascade] Created successfully for Walk-in Animal: ${animal._id}`);
+      } catch (medErr) {
+        console.error("[Medical Record Cascade Walk-in Error]", medErr.message);
+      }
+    }
+
     const title = status === "resolved" ? "Health Service Recorded" : "Health Visit Scheduled";
     const message = status === "resolved" 
       ? `A walk-in health service for your animal (${animal.earTag}) has been recorded by technician ${req.user.name}.`
@@ -400,13 +479,13 @@ export const deleteHealthRequest = async (req, res) => {
     }
 
     // Status restriction: Only for farmers. Technicians can delete any (for testing/cleanup)
-    if (isOwner && request.status !== "pending" && request.status !== "rejected") {
-      return res.status(400).json({ message: "Only pending or rejected requests can be removed by farmers." });
+    if (isOwner && !["pending", "approved", "in-progress", "rejected"].includes(request.status)) {
+      return res.status(400).json({ message: "Completed requests cannot be cancelled." });
     }
 
     // --- SEND CANCELLED PUSH NOTIFICATION TO TECHNICIANS ---
     try {
-      if (isOwner && request.status === "pending") {
+      if (isOwner && ["pending", "approved", "in-progress"].includes(request.status)) {
         const technicians = await User.find({ role: "technician" });
         for (const t of technicians) {
           if (t.pushToken) {

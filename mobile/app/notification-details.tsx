@@ -6,7 +6,7 @@ import { useApi } from '@/lib/api';
 import { format } from 'date-fns';
 import { useUser } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface NotificationDetails {
   notification: {
@@ -52,6 +52,7 @@ export default function NotificationDetailsScreen() {
   const router = useRouter();
   const api = useApi();
   const { user } = useUser();
+  const queryClient = useQueryClient();
 
   const { data: profile } = useQuery({
     queryKey: ['user', 'me'],
@@ -74,7 +75,8 @@ export default function NotificationDetailsScreen() {
         setData(res.data);
         // Mark as read when viewing details
         if (!res.data.notification.isRead) {
-          api.patch('/notifications/mark-read', { notificationId: id });
+          await api.patch('/notifications/mark-read', { notificationId: id });
+          queryClient.invalidateQueries({ queryKey: ["notifications"] });
         }
       } catch (error: any) {
         console.error("Failed to fetch notification details:", error);

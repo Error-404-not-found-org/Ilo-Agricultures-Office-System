@@ -6,6 +6,7 @@ import { useApi } from '@/lib/api';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner-native';
 import { useUser } from '@clerk/clerk-expo';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface NotificationItem {
   _id: string;
@@ -21,6 +22,7 @@ export default function NotificationsScreen() {
   const api = useApi();
   const { user } = useUser();
   const role = (user?.publicMetadata?.role as string) || 'technician';
+  const queryClient = useQueryClient();
 
   // Brand theme based on role
   const THEME = {
@@ -70,6 +72,7 @@ export default function NotificationsScreen() {
     try {
       await api.patch('/notifications/mark-read');
       setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (error: any) {
       console.error("Failed to mark all as read:", error);
       toast.error("Could not mark notifications as read.");
@@ -81,6 +84,7 @@ export default function NotificationsScreen() {
       await api.delete('/notifications');
       setNotifications([]);
       toast.success("All notifications cleared.");
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
     } catch (error: any) {
       console.error("Failed to clear notifications:", error);
       toast.error("Could not clear notifications.");
@@ -119,6 +123,7 @@ export default function NotificationsScreen() {
             if (!item.isRead) {
                 api.patch('/notifications/mark-read', { notificationId: item._id });
                 setNotifications(prev => prev.map(n => n._id === item._id ? { ...n, isRead: true } : n));
+                queryClient.invalidateQueries({ queryKey: ["notifications"] });
             }
             router.push({ pathname: '/notification-details', params: { id: item._id } });
         }}

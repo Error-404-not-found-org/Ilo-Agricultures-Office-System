@@ -178,14 +178,14 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           
           {/* MODAL CONTAINER */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
+            className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
           >
             {/* HEADER */}
             <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
@@ -519,7 +519,9 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                       <BadgeCheck size={14} />
                       {isPending || isApproved
                         ? "Accept Request"
-                        : "Save Changes"}
+                        : isHealth
+                          ? "Resolve & Complete"
+                          : "Complete Insemination"}
                     </>
                   )}
                 </button>

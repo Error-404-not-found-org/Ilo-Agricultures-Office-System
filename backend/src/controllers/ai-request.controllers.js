@@ -39,6 +39,7 @@ export const createAIRequest = async (req, res) => {
     const existingActiveRequest = await Insemination.findOne({
       animalId,
       status: { $in: ["pending", "approved", "in-progress"] },
+      deletedAt: null
     });
 
     if (existingActiveRequest) {
@@ -200,6 +201,17 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
+    const existing = await Insemination.findById(id);
+    if (!existing) {
+      return res.status(404).json({ message: "AI request record not found." });
+    }
+
+    const isRescheduled =
+      (existing.status === "approved" || existing.status === "in-progress") &&
+      req.body.scheduledDate &&
+      existing.scheduledDate &&
+      new Date(existing.scheduledDate).getTime() !== new Date(req.body.scheduledDate).getTime();
+
     const updateData = {
       status,
       approvedBy: req.user._id,
@@ -229,11 +241,15 @@ export const updateRequestStatus = async (req, res) => {
 
         if (status === "done") {
           message = `Great news! The artificial insemination for animal ${request.animalId.earTag || request.animalId.animalId} has been successfully completed today. Expected calving calculations are underway!`;
-        } else if (status === "approved") {
+        } else if (status === "approved" || status === "in-progress") {
           const schedDateStr = request.scheduledDate
             ? new Date(request.scheduledDate).toLocaleDateString()
             : "today";
-          message = `Your AI request for animal ${request.animalId.earTag || request.animalId.animalId} has been approved and scheduled for ${schedDateStr}. Technician: ${req.user.name}.`;
+          if (isRescheduled) {
+            message = `you artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} is rescheduled to ${schedDateStr} by technician : ${req.user.name}`;
+          } else {
+            message = `you artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} is accepted by technician : ${req.user.name}`;
+          }
         } else if (status === "rejected") {
           message = `Your AI request for animal ${request.animalId.earTag || request.animalId.animalId} was not approved. Note: ${technicianNote || "No details provided"}.`;
         }
@@ -445,17 +461,16 @@ export const deleteRequest = async (req, res) => {
     // Status restriction: Only for farmers. Technicians can delete any (for testing/cleanup)
     if (
       isOwner &&
-      request.status !== "pending" &&
-      request.status !== "rejected"
+      !["pending", "approved", "in-progress", "rejected"].includes(request.status)
     ) {
       return res.status(400).json({
-        message: "Only pending or rejected requests can be removed by farmers.",
+        message: "Completed requests cannot be cancelled.",
       });
     }
 
     // --- SEND CANCELLED PUSH NOTIFICATION TO TECHNICIANS ---
     try {
-      if (isOwner && request.status === "pending") {
+      if (isOwner && ["pending", "approved", "in-progress"].includes(request.status)) {
         const technicians = await User.find({ role: "technician" });
         for (const t of technicians) {
           if (t.pushToken) {

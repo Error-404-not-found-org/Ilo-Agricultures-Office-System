@@ -26,6 +26,7 @@ import { format } from "date-fns";
 import { toast } from "sonner-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 export default function MyRequests() {
   const router = useRouter();
@@ -39,6 +40,8 @@ export default function MyRequests() {
   const [page, setPage] = React.useState(1);
   const [status, setStatus] = React.useState("all");
   const [allRequests, setAllRequests] = React.useState<any[]>([]);
+  const [modalVisible, setModalVisible] = React.useState(false);
+  const [deleteInfo, setDeleteInfo] = React.useState<{ id: string; type: string; animalTag: string; isCancel: boolean } | null>(null);
 
   const {
     data: aiData,
@@ -139,37 +142,29 @@ export default function MyRequests() {
     { label: "Resolved", value: "done" },
   ];
 
-  const handleDelete = (id: string, type: string, animalTag: string) => {
-    const endpoint =
-      type === "ai" ? `/ai-request/${id}` : `/health-request/${id}`;
+  const handleDelete = (id: string, type: string, animalTag: string, isCancel: boolean) => {
+    setDeleteInfo({ id, type, animalTag, isCancel });
+    setModalVisible(true);
+  };
 
-    Alert.alert(
-      "Cancel Request?",
-      `Are you sure you want to cancel this request for ${animalTag}? This action cannot be undone.`,
-      [
-        { text: "No, Keep it", style: "cancel" },
-        {
-          text: "Yes, Cancel",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await api.delete(endpoint);
-              toast.success("Request cancelled successfully");
-              queryClient.invalidateQueries({
-                queryKey: ["farmer", "ai-requests"],
-              });
-              queryClient.invalidateQueries({
-                queryKey: ["farmer", "health-requests"],
-              });
-            } catch (err: any) {
-              toast.error(
-                err.response?.data?.message || "Failed to cancel request",
-              );
-            }
-          },
-        },
-      ],
-    );
+  const handleConfirmDelete = async () => {
+    if (!deleteInfo) return;
+    const { id, type, isCancel } = deleteInfo;
+    const endpoint = type === "ai" ? `/ai-request/${id}` : `/health-request/${id}`;
+    try {
+      await api.delete(endpoint);
+      toast.success(isCancel ? "Request cancelled successfully" : "Request removed successfully");
+      queryClient.invalidateQueries({
+        queryKey: ["farmer", "ai-requests"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["farmer", "health-requests"],
+      });
+    } catch (err: any) {
+      toast.error(
+        err.response?.data?.message || (isCancel ? "Failed to cancel request" : "Failed to remove request"),
+      );
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -363,13 +358,9 @@ export default function MyRequests() {
           allRequests.map((req: any) => {
             const statusStyle = getStatusColor(req.status);
             const isHealth = req.type === "health";
-            const canDelete =
-              req.status === "pending" ||
-              req.status === "rejected" ||
-              req.status === "approved" ||
-              req.status === "cancelled" ||
-              req.status === "done" ||
-              req.status === "resolved";
+            const canCancel = ["pending", "approved", "in-progress"].includes(req.status);
+            const canRemove = ["rejected", "cancelled"].includes(req.status);
+            const canDelete = canCancel || canRemove;
 
             return (
               <View
@@ -600,6 +591,7 @@ export default function MyRequests() {
                           req.animalId?.earTag ||
                             req.animalId?.animalId ||
                             "this animal",
+                          canCancel,
                         )
                       }
                       className="px-4 py-2 rounded-xl flex-row items-center gap-2"
@@ -614,7 +606,7 @@ export default function MyRequests() {
                         className="text-[11px] font-black"
                         style={{ color: colors.error }}
                       >
-                        {req.status === "pending" ? "Cancel" : "Remove"}
+                        {canCancel ? "Cancel" : "Remove"}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -660,6 +652,22 @@ export default function MyRequests() {
           </TouchableOpacity>
         )}
       </ScrollView>
+      {deleteInfo && (
+        <ConfirmationModal
+          visible={modalVisible}
+          onClose={() => setModalVisible(false)}
+          onConfirm={handleConfirmDelete}
+          title={deleteInfo.isCancel ? "Cancel Request?" : "Remove Request?"}
+          message={
+            deleteInfo.isCancel
+              ? `Are you sure you want to cancel this request for ${deleteInfo.animalTag}? This action cannot be undone.`
+              : `Are you sure you want to remove this request from your history?`
+          }
+          confirmText={deleteInfo.isCancel ? "Yes, Cancel" : "Yes, Remove"}
+          cancelText={deleteInfo.isCancel ? "No, Keep it" : "No, Keep it"}
+          isDestructive={true}
+        />
+      )}
     </View>
   );
 }

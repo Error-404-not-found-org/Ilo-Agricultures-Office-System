@@ -12,12 +12,13 @@ const getTitleForPath = (path) => {
   if (path.startsWith('/technician/profile')) return 'My Profile | Tech Portal';
   
   // Admin Routes
-  if (path.startsWith('/dashboard')) return 'Admin Dashboard | Iloilo Agri';
-  if (path.startsWith('/technicians')) return 'Technicians | Admin';
-  if (path.startsWith('/livestock')) return 'Livestock | Admin';
-  if (path.startsWith('/inseminations')) return 'AI Records | Admin';
-  if (path.startsWith('/users')) return 'User Management | Admin';
-  if (path.startsWith('/settings')) return 'Settings | Admin';
+  if (path.startsWith('/admin/dashboard')) return 'Admin Dashboard | Iloilo Agri';
+  if (path.startsWith('/admin/technicians')) return 'Technicians | Admin';
+  if (path.startsWith('/admin/livestock')) return 'Livestock | Admin';
+  if (path.startsWith('/admin/inseminations')) return 'AI Records | Admin';
+  if (path.startsWith('/admin/users')) return 'User Management | Admin';
+  if (path.startsWith('/admin/settings')) return 'Settings | Admin';
+  if (path.startsWith('/admin/reports')) return 'Reports | Admin';
 
   // Default
   if (path === '/') return 'Welcome | Iloilo Agriculture';
