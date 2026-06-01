@@ -178,7 +178,7 @@ export default function Dashboard() {
         onSearchChange={(e) => setSearchQuery(e.target.value)}
       />
 
-      <main className="p-6 space-y-6">
+      <main className="p-4 md:p-6 space-y-6">
         {/* Metric Cards Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Today's Missions */}

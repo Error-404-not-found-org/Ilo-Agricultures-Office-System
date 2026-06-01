@@ -3,10 +3,12 @@ import { Outlet } from 'react-router-dom';
 import { useClerk } from '@clerk/clerk-react';
 import { toast } from 'sonner';
 import Sidebar from './Sidebar';
+import { useSidebar } from '../../contexts/SidebarContext';
 
 export default function Layout() {
   const { signOut } = useClerk();
   const timerRef = useRef(null);
+  const { isOpen, close } = useSidebar();
 
   // 12-hour inactivity auto-logout (mirrors the web implementation)
   useEffect(() => {
@@ -35,6 +37,13 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden font-sans antialiased bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200">
+      {/* Backdrop overlay for mobile */}
+      {isOpen && (
+        <div 
+          onClick={close}
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-30 lg:hidden transition-opacity duration-300"
+        />
+      )}
       <Sidebar />
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
           <Outlet />

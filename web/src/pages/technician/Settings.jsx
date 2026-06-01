@@ -265,17 +265,17 @@ export default function TechSettings() {
             <div className="space-y-4">
               <div className="p-3.5 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/60 rounded-xl space-y-3.5 text-xs text-slate-700 dark:text-slate-300">
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-450 uppercase text-[9.5px] tracking-wider">Software Version:</span>
+                  <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[9.5px] tracking-wider">Software Version:</span>
                   <span className="font-bold font-mono">v2.4.0-stable</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-450 uppercase text-[9.5px] tracking-wider">Sync Connection Status:</span>
+                  <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[9.5px] tracking-wider">Sync Connection Status:</span>
                   <span className="text-emerald-500 font-extrabold flex items-center gap-1">
                     <CheckCircle size={11} /> Fully Synchronized
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-slate-450 uppercase text-[9.5px] tracking-wider">Offline Cache Footprint:</span>
+                  <span className="font-bold text-slate-500 dark:text-slate-400 uppercase text-[9.5px] tracking-wider">Offline Cache Footprint:</span>
                   <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{cacheSize}</span>
                 </div>
               </div>
