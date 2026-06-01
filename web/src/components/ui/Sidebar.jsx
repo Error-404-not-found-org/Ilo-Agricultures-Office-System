@@ -24,12 +24,19 @@ import {
   MessageSquare,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
+import { useSidebar } from "../../contexts/SidebarContext";
 
 export default function Sidebar() {
   const location = useLocation();
   const { user } = useUser();
   const { signOut } = useClerk();
   const role = user?.publicMetadata?.role || "Field Officer";
+  const { isOpen, close } = useSidebar();
+
+  // Automatically close sidebar on route changes on mobile viewports
+  useEffect(() => {
+    close();
+  }, [location.pathname, close]);
 
   // Smooth logout state
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -348,7 +355,7 @@ export default function Sidebar() {
 
   return (
     <>
-    <aside className="w-64 min-w-64 bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800/80 shadow-2xl z-20">
+    <aside className={`fixed lg:relative inset-y-0 left-0 w-64 min-w-64 bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800/80 shadow-2xl z-40 transition-transform duration-300 lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}>
       {/* Logo */}
       <div className="flex items-center gap-3 p-6 border-b border-slate-800/60 group">
         <div className="w-9 h-9 bg-white/10 text-white rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">

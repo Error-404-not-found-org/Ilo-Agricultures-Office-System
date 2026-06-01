@@ -186,9 +186,9 @@ export default function Dashboard() {
                 </button>
             </Topbar>
 
-            <main className="p-6 space-y-6 flex-1">
+            <main className="p-4 md:p-6 space-y-6 flex-1">
                 {/* --- PREMIUM METRICS CARD ROW --- */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {statsList.map((stat, i) => (
                         <motion.div 
                             initial={{ opacity: 0, y: 15 }}

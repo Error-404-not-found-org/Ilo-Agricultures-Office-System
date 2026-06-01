@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Bell, Search, Check, Trash2, Info, AlertTriangle, Syringe, HeartPulse } from "lucide-react";
+import { Bell, Search, Check, Trash2, Info, AlertTriangle, Syringe, HeartPulse, Menu } from "lucide-react";
 import ThemeToggle from "../ThemeToggle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
+import { useSidebar } from "../../contexts/SidebarContext";
 
 export default function Topbar({
   title,
@@ -18,6 +19,7 @@ export default function Topbar({
 }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const queryClient = useQueryClient();
+  const { toggle } = useSidebar();
 
   // Fetch live notifications
   const { data: notifications = [] } = useQuery({
@@ -91,7 +93,16 @@ export default function Topbar({
   };
 
   return (
-    <header className="navbar bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 px-6 py-4 shrink-0 flex items-center justify-between z-10 transition-colors duration-300">
+    <header className="navbar bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 px-4 md:px-6 py-4 shrink-0 flex items-center justify-between z-10 transition-colors duration-300 gap-3">
+      {/* Hamburger button for mobile */}
+      <button
+        onClick={toggle}
+        className="btn btn-sm btn-ghost btn-circle text-slate-500 dark:text-slate-400 lg:hidden flex items-center justify-center shrink-0 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+        aria-label="Toggle Sidebar"
+      >
+        <Menu size={20} />
+      </button>
+
       {/* Title & Subtitle */}
       <div className="flex-1 min-w-0 pr-4">
         <h1 className="text-lg font-extrabold uppercase tracking-tight text-slate-800 dark:text-white leading-tight truncate">
