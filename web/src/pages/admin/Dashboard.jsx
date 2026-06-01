@@ -165,8 +165,8 @@ export default function Dashboard() {
     const statsList = [
         { title: "Active Farmers", value: data?.stats?.farmers || 0, icon: Users, bgClass: "bg-blue-500/10 text-blue-600 dark:text-blue-400", trend: "+12.4%" },
         { title: "Livestock Pop", value: data?.stats?.animals || 0, icon: Activity, bgClass: "bg-emerald-500/10 text-[#00643b] dark:text-emerald-400", trend: "+5.2%" },
-        { title: "AI Success Rate", value: data?.stats?.successRate || "84%", icon: Target, bgClass: "bg-rose-500/10 text-rose-600 dark:text-rose-450", trend: "+2.1%" },
-        { title: "Fleet Strength", value: data?.technicians?.length || 0, icon: Zap, bgClass: "bg-amber-500/10 text-amber-600 dark:text-amber-450", trend: "Stable" },
+        { title: "AI Success Rate", value: data?.stats?.successRate || "84%", icon: Target, bgClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400", trend: "+2.1%" },
+        { title: "Fleet Strength", value: data?.technicians?.length || 0, icon: Zap, bgClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400", trend: "Stable" },
     ];
 
     return (
@@ -379,7 +379,7 @@ export default function Dashboard() {
                              <div className="absolute inset-0 bg-linear-to-br from-emerald-400/5 to-transparent pointer-events-none" />
                             <div className="relative z-10 space-y-4">
                                 <div className="flex items-center gap-2.5">
-                                    <div className="w-7 h-7 bg-emerald-500/20 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-450">
+                                    <div className="w-7 h-7 bg-emerald-500/20 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-400">
                                         <Sparkles size={14} />
                                     </div>
                                     <h4 className="text-white text-xs font-black tracking-widest uppercase">Moowie Command Insight</h4>
@@ -435,7 +435,7 @@ export default function Dashboard() {
                                     <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-150">#{animal.id}</h4>
                                     <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{animal.breed || "Bovine Breed"}</p>
                                     
-                                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-850 flex justify-between items-center text-[9px] font-semibold text-slate-450">
+                                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-850 flex justify-between items-center text-[9px] font-semibold text-slate-500 dark:text-slate-400">
                                         <span className="truncate max-w-[90px]">{animal.farmerName || "Farmer"}</span>
                                         <span>{animal.lastActionDate ? new Date(animal.lastActionDate).toLocaleDateString() : "N/A"}</span>
                                     </div>

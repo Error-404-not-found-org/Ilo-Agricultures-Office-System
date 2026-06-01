@@ -469,7 +469,7 @@ export default function GISFieldHub() {
           <button
             onClick={() => refetch()}
             className={`btn btn-sm btn-square border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl ${
-              isRefetching ? "text-emerald-600 dark:text-emerald-400" : "text-slate-450"
+              isRefetching ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"
             }`}
             title="Synchronize coordinate matrix"
           >
@@ -571,11 +571,11 @@ export default function GISFieldHub() {
                               {item.severity}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-450 font-semibold mt-1">
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
                             Tag: #{item.tag} &bull; Farmer: {item.farmer}
                           </p>
                           <div className="mt-2 flex justify-between items-center text-[9.5px] border-t border-slate-100 dark:border-slate-800/40 pt-2 font-bold">
-                            <span className="text-rose-600 dark:text-rose-450 truncate max-w-[120px]">
+                            <span className="text-rose-600 dark:text-rose-400 truncate max-w-[120px]">
                               {item.symptoms}
                             </span>
                             <span className="text-slate-400 uppercase flex items-center gap-0.5">
@@ -619,7 +619,7 @@ export default function GISFieldHub() {
                               {item.status === "Confirmed Pregnant" ? "Pregnant" : "Inseminated"}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-450 font-semibold mt-1">
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
                             Animal Tag: #{item.tag} &bull; Owner: {item.farmer}
                           </p>
                           <div className="mt-2 flex justify-between items-center text-[9.5px] border-t border-slate-100 dark:border-slate-800/40 pt-2 font-bold">
@@ -665,11 +665,11 @@ export default function GISFieldHub() {
                               {item.urgency}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-450 font-semibold mt-1">
+                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
                             Client: {item.farmer} &bull; Dispatch: {item.time}
                           </p>
                           <div className="mt-2 flex justify-between items-center text-[9.5px] border-t border-slate-100 dark:border-slate-800/40 pt-2 font-bold">
-                            <span className="text-[#00643b] dark:text-emerald-450 uppercase">
+                            <span className="text-[#00643b] dark:text-emerald-400 uppercase">
                               {item.status || "Assigned"}
                             </span>
                             <span className="text-slate-400 uppercase flex items-center gap-0.5">

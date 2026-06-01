@@ -386,11 +386,11 @@ export default function RouteOptimizer() {
                         <h4 className="font-extrabold text-[11px] text-slate-800 dark:text-slate-200 uppercase mt-1 truncate max-w-[150px]">
                           {stop.title}
                         </h4>
-                        <p className="text-[10px] text-slate-450 font-semibold mt-1">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
                           Client: {stop.farmer}
                         </p>
                         <div className="mt-2.5 flex items-center justify-between text-[9px] border-t border-slate-100 dark:border-slate-800/40 pt-2 font-bold">
-                          <span className="text-slate-450 uppercase flex items-center gap-0.5 truncate max-w-[90px]">
+                          <span className="text-slate-500 dark:text-slate-400 uppercase flex items-center gap-0.5 truncate max-w-[90px]">
                             <MapPin size={9} /> {stop.address}
                           </span>
                           <span
@@ -414,7 +414,7 @@ export default function RouteOptimizer() {
                     <h4 className="font-extrabold text-[11px] text-slate-800 dark:text-slate-200 uppercase tracking-wide leading-none mt-1">
                       Return base
                     </h4>
-                    <p className="text-[9px] text-slate-450 font-bold uppercase mt-1">
+                    <p className="text-[9px] text-slate-500 dark:text-slate-400 font-bold uppercase mt-1">
                       End of duty loop
                     </p>
                   </div>
@@ -558,7 +558,7 @@ export default function RouteOptimizer() {
                         >
                           Waypoint #{idx + 1}
                         </span>
-                        <span className="text-[8px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-450 font-black uppercase">
+                        <span className="text-[8px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 font-black uppercase">
                           {stop.status}
                         </span>
                       </div>
