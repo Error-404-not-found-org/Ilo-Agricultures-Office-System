@@ -730,6 +730,23 @@ export const updateInseminationStatus = async (req, res) => {
       estrus,
     } = req.body;
 
+    const existing = await Insemination.findById(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Record not found" });
+    }
+
+    // Concurrency guard: check if already assigned to another technician
+    if (
+      existing.approvedBy &&
+      existing.approvedBy.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      const assignedTech = await User.findById(existing.approvedBy);
+      return res.status(403).json({
+        message: `This request is already being assisted by technician: ${assignedTech?.name || "another technician"}.`,
+      });
+    }
+
     const updateData = {
       status,
       technicianNote,

@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Search,
   Zap,
+  Lock,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -37,6 +38,14 @@ export default function DeploymentSchedule() {
   const [isAppointmentMenuOpen, setIsAppointmentMenuOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
+
+  const { data: dbUser } = useQuery({
+    queryKey: ["technician", "profile-me"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/profile");
+      return res.data || {};
+    },
+  });
 
   // ---- FETCH INTEGRATED SCHEDULE DATA ----
   const { data: rawAgenda = [], isLoading } = useQuery({
@@ -378,6 +387,24 @@ export default function DeploymentSchedule() {
                     ["done", "resolved", "completed", "approved", "in-progress"].includes(
                       task.status.toLowerCase()
                     );
+
+                  const reqTechId =
+                    task.raw?.approvedBy?._id ||
+                    task.raw?.approvedBy ||
+                    task.raw?.handledBy?._id ||
+                    task.raw?.handledBy ||
+                    null;
+
+                  const reqTechName =
+                    task.raw?.approvedBy?.name ||
+                    task.raw?.handledBy?.name ||
+                    (reqTechId ? "another technician" : null);
+
+                  const isAssignedToOther =
+                    reqTechId &&
+                    dbUser?._id &&
+                    String(reqTechId) !== String(dbUser._id);
+
                   return (
                     <div
                       key={task.id}
@@ -392,17 +419,21 @@ export default function DeploymentSchedule() {
                         <div className="border-r border-slate-100 dark:border-slate-800/80 pr-4 text-center min-w-[95px] shrink-0">
                           <span
                             className={`text-[8px] font-black tracking-wider uppercase flex items-center justify-center gap-0.5 ${
-                              isTaskConfirmed
-                                ? "text-emerald-600 dark:text-emerald-400"
-                                : "text-amber-500"
+                              isAssignedToOther
+                                ? "text-amber-500"
+                                : isTaskConfirmed
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-amber-500"
                             }`}
                           >
-                            {isTaskConfirmed ? (
+                            {isAssignedToOther ? (
+                              <Lock size={8} />
+                            ) : isTaskConfirmed ? (
                               <CheckCircle2 size={8} />
                             ) : (
                               <AlertCircle size={8} />
                             )}
-                            {isTaskConfirmed ? "ACTIVE" : "PENDING"}
+                            {isAssignedToOther ? "LOCKED" : isTaskConfirmed ? "ACTIVE" : "PENDING"}
                           </span>
                           <div className="text-xs font-black text-slate-800 dark:text-slate-200 mt-1.5 flex items-center justify-center gap-1">
                             <Clock size={11} className="text-slate-400" />
@@ -423,6 +454,11 @@ export default function DeploymentSchedule() {
                               ? "Artificial Insemination"
                               : "Clinical Checkup"}
                           </span>
+                          {isAssignedToOther && (
+                            <span className="inline-block text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide mb-1.5 ml-1.5 bg-amber-500/10 text-amber-600 border border-amber-500/20" title={`Assigned to ${reqTechName}`}>
+                              Locked
+                            </span>
+                          )}
                           <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate mb-1">
                             {task.task}
                           </h4>
@@ -446,7 +482,7 @@ export default function DeploymentSchedule() {
                         }}
                         className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 hover:border-[#00643b] text-[11px] font-bold rounded-lg px-3 py-1 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 transition-colors shrink-0"
                       >
-                        Manage
+                        {isAssignedToOther ? "View" : "Manage"}
                       </button>
                     </div>
                   );

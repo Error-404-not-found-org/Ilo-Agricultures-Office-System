@@ -206,6 +206,18 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(404).json({ message: "AI request record not found." });
     }
 
+    // Concurrency guard: check if already assigned to another technician
+    if (
+      existing.approvedBy &&
+      existing.approvedBy.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      const assignedTech = await User.findById(existing.approvedBy);
+      return res.status(403).json({
+        message: `This request is already being assisted by technician: ${assignedTech?.name || "another technician"}.`,
+      });
+    }
+
     const isRescheduled =
       (existing.status === "approved" || existing.status === "in-progress") &&
       req.body.scheduledDate &&

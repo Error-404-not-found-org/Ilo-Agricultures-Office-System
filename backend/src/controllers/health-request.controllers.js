@@ -172,6 +172,23 @@ export const updateHealthRequestStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
+    const existing = await HealthRequest.findById(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Request not found." });
+    }
+
+    // Concurrency guard: check if already assigned to another technician
+    if (
+      existing.handledBy &&
+      existing.handledBy.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin"
+    ) {
+      const assignedTech = await User.findById(existing.handledBy);
+      return res.status(403).json({
+        message: `This health request is already being assisted by technician: ${assignedTech?.name || "another technician"}.`,
+      });
+    }
+
     const updateFields = {
       status,
       handledBy: req.user._id,
