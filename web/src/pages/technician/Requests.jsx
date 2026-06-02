@@ -13,6 +13,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
+  Lock,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -24,6 +25,15 @@ import TaskActionModal from "../../components/modals/TaskActionModal";
 export default function OperationalInbox() {
   const queryClient = useQueryClient();
   const isAdmin = window.location.pathname.startsWith("/admin");
+  
+  const { data: dbUser } = useQuery({
+    queryKey: ["technician", "profile-me"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/profile");
+      return res.data || {};
+    },
+  });
+
   const [statusFilter, setStatusFilter] = useState("pending");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -104,10 +114,12 @@ export default function OperationalInbox() {
       location: formatAddress(req.farmerId?.address),
       type: "insemination",
       task: `AI Attempt #${req.attemptNumber || 1} request for Tag #${req.animalId?.earTag || "Unknown"} (${req.animalId?.breed || "Crossbreed"})`,
-      date: new Date(req.scheduledDate || req.preferredDate || req.createdAt).toLocaleDateString("en-US", {
+      date: new Date(req.scheduledDate || req.preferredDate || req.createdAt).toLocaleString("en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
       }),
       status: req.status,
       createdAt: req.createdAt,
@@ -121,10 +133,12 @@ export default function OperationalInbox() {
       location: formatAddress(req.farmerId?.address),
       type: "health",
       task: `Health Check for Tag #${req.animalId?.earTag || "Unknown"} - ${req.symptoms || "No symptoms listed"}`,
-      date: new Date(req.scheduledDate || req.preferredDate || req.createdAt).toLocaleDateString("en-US", {
+      date: new Date(req.scheduledDate || req.preferredDate || req.createdAt).toLocaleString("en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
       }),
       status: req.status === "resolved" ? "done" : req.status,
       createdAt: req.createdAt,
@@ -350,127 +364,158 @@ export default function OperationalInbox() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedRequests.map((req) => (
-                    <tr
-                      key={req.id}
-                      onClick={() => {
-                        setSelectedTask(req);
-                        setIsTaskModalOpen(true);
-                      }}
-                      className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-colors cursor-pointer"
-                    >
-                      <td className="p-4 pl-6 font-extrabold text-[#00643b] dark:text-[#10b981]">
-                        #{req.id.substring(0, 6).toUpperCase()}
-                      </td>
-                      <td className="p-4">
-                        <div className="font-bold text-slate-800 dark:text-slate-200">
-                          {req.farmer}
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-medium flex items-center gap-0.5 mt-0.5">
-                          <MapPin size={10} className="shrink-0" />{" "}
-                          {req.location}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span
-                            className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider border ${
-                              req.type === "insemination"
-                                ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800"
-                                : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-800"
-                            }`}
-                          >
-                            {req.type === "insemination" ? "AI" : "HEALTH"}
-                          </span>
-                          <span className="font-bold text-slate-700 dark:text-slate-300">
-                            {req.type === "insemination"
-                              ? "Artificial Insemination"
-                              : "Medical Diagnostics"}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-medium mt-1.5">
-                          {req.task}
-                        </div>
-                      </td>
-                      <td className="p-4 text-slate-500 font-medium">
-                        {req.date}
-                      </td>
-                      <td className="p-4 text-center">
-                        <span
-                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${
-                            req.status === "pending"
-                              ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50"
-                              : req.status === "in-progress"
-                                ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/50"
-                                : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/50"
-                          }`}
-                        >
-                          {req.status === "in-progress"
-                            ? "In Progress"
-                            : req.status === "done"
-                              ? "Completed"
-                              : req.status}
-                        </span>
-                      </td>
-                      {!isAdmin && (
-                        <td
-                          className="p-4 pr-6 text-right"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-end gap-1.5">
-                            {req.status === "pending" && (
-                              <>
-                                <button
-                                  onClick={() =>
-                                    handleUpdateStatus(
-                                      req.id,
-                                      req.type,
-                                      "in-progress",
-                                    )
-                                  }
-                                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/50 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer"
-                                >
-                                  <Check size={12} /> Accept
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleUpdateStatus(
-                                      req.id,
-                                      req.type,
-                                      "rejected",
-                                    )
-                                  }
-                                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-rose-200 text-rose-700 bg-rose-50/50 hover:bg-rose-600 hover:text-white dark:border-rose-900/50 dark:text-rose-400 dark:bg-rose-950/20 dark:hover:bg-rose-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer"
-                                >
-                                  <X size={12} /> Decline
-                                </button>
-                              </>
-                            )}
-                            {req.status === "in-progress" && (
-                              <button
-                                onClick={() => {
-                                  setSelectedTask(req);
-                                  setIsTaskModalOpen(true);
-                                }}
-                                className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/50 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer"
-                              >
-                                <CheckCircle size={12} /> Complete
-                              </button>
-                            )}
-                            <button
-                              onClick={() =>
-                                handleDeleteRequest(req.id, req.type)
-                              }
-                              className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md transition-colors cursor-pointer"
-                              title="Remove Task"
-                            >
-                              <Trash2 size={13} />
-                            </button>
+                  paginatedRequests.map((req) => {
+                    const reqTechId =
+                      req.raw?.approvedBy?._id ||
+                      req.raw?.approvedBy ||
+                      req.raw?.handledBy?._id ||
+                      req.raw?.handledBy ||
+                      null;
+
+                    const reqTechName =
+                      req.raw?.approvedBy?.name ||
+                      req.raw?.handledBy?.name ||
+                      (reqTechId ? "another technician" : null);
+
+                    const isAssignedToOther =
+                      reqTechId &&
+                      dbUser?._id &&
+                      String(reqTechId) !== String(dbUser._id);
+
+                    return (
+                      <tr
+                        key={req.id}
+                        onClick={() => {
+                          setSelectedTask(req);
+                          setIsTaskModalOpen(true);
+                        }}
+                        className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-colors cursor-pointer"
+                      >
+                        <td className="p-4 pl-6 font-extrabold text-[#00643b] dark:text-[#10b981]">
+                          #{req.id.substring(0, 6).toUpperCase()}
+                        </td>
+                        <td className="p-4">
+                          <div className="font-bold text-slate-800 dark:text-slate-200">
+                            {req.farmer}
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-medium flex items-center gap-0.5 mt-0.5">
+                            <MapPin size={10} className="shrink-0" />{" "}
+                            {req.location}
                           </div>
                         </td>
-                      )}
-                    </tr>
-                  ))
+                        <td className="p-4">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider border ${
+                                req.type === "insemination"
+                                  ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800"
+                                  : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-800"
+                              }`}
+                            >
+                              {req.type === "insemination" ? "AI" : "HEALTH"}
+                            </span>
+                            <span className="font-bold text-slate-700 dark:text-slate-300">
+                              {req.type === "insemination"
+                                ? "Artificial Insemination"
+                                : "Medical Diagnostics"}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-400 font-medium mt-1.5">
+                            {req.task}
+                          </div>
+                        </td>
+                        <td className="p-4 text-slate-500 font-medium">
+                          {req.date}
+                        </td>
+                        <td className="p-4 text-center">
+                          <span
+                            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${
+                              req.status === "pending"
+                                ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50"
+                                : req.status === "in-progress"
+                                  ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/50"
+                                  : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/50"
+                            }`}
+                          >
+                            {req.status === "in-progress"
+                              ? "In Progress"
+                              : req.status === "done"
+                                ? "Completed"
+                                : req.status}
+                          </span>
+                          {isAssignedToOther && (
+                            <div className="flex items-center justify-center gap-1 text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mt-1.5" title={`Assigned to ${reqTechName}`}>
+                              <Lock size={9} /> Locked
+                            </div>
+                          )}
+                        </td>
+                        {!isAdmin && (
+                          <td
+                            className="p-4 pr-6 text-right"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-end gap-1.5">
+                              {req.status === "pending" && (
+                                <>
+                                  <button
+                                    disabled={isAssignedToOther}
+                                    onClick={() =>
+                                      handleUpdateStatus(
+                                        req.id,
+                                        req.type,
+                                        "in-progress",
+                                      )
+                                    }
+                                    className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/50 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title={isAssignedToOther ? `Locked by ${reqTechName}` : "Accept Request"}
+                                  >
+                                    <Check size={12} /> Accept
+                                  </button>
+                                  <button
+                                    disabled={isAssignedToOther}
+                                    onClick={() =>
+                                      handleUpdateStatus(
+                                        req.id,
+                                        req.type,
+                                        "rejected",
+                                      )
+                                    }
+                                    className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-rose-200 text-rose-700 bg-rose-50/50 hover:bg-rose-600 hover:text-white dark:border-rose-900/50 dark:text-rose-400 dark:bg-rose-950/20 dark:hover:bg-rose-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                    title={isAssignedToOther ? `Locked by ${reqTechName}` : "Decline Request"}
+                                  >
+                                    <X size={12} /> Decline
+                                  </button>
+                                </>
+                              )}
+                              {req.status === "in-progress" && (
+                                <button
+                                  disabled={isAssignedToOther}
+                                  onClick={() => {
+                                    setSelectedTask(req);
+                                    setIsTaskModalOpen(true);
+                                  }}
+                                  className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/50 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                  title={isAssignedToOther ? `Locked by ${reqTechName}` : "Complete Insemination"}
+                                >
+                                  <CheckCircle size={12} /> Complete
+                                </button>
+                              )}
+                              <button
+                                disabled={isAssignedToOther}
+                                onClick={() =>
+                                  handleDeleteRequest(req.id, req.type)
+                                }
+                                className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={isAssignedToOther ? `Locked by ${reqTechName}` : "Remove Task"}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

@@ -12,13 +12,18 @@ import {
   Loader2,
   Trash2,
   Calendar,
+  AlertTriangle,
+  Lock,
 } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { toast } from "sonner";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { CATTLE_BREEDS } from "../../constants/breeds";
-import { generatePregnancyTimeline, verifyPostpartumWindow } from "../../utils/cattleCore";
+import {
+  generatePregnancyTimeline,
+  verifyPostpartumWindow,
+} from "../../utils/cattleCore";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
@@ -30,6 +35,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
   const [isConfirmingDecline, setIsConfirmingDecline] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
   const [note, setNote] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [treatment, setTreatment] = useState("");
@@ -50,7 +56,34 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   const isArchived = ["rejected", "cancelled"].includes(
     taskData?.status?.toLowerCase(),
   );
-  const isReadOnly = isCompleted || isArchived;
+
+  const { data: dbUser } = useQuery({
+    queryKey: ["technician", "profile-me"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/profile");
+      return res.data || {};
+    },
+    enabled: isOpen,
+  });
+
+  const assignedTechId =
+    taskData?.raw?.approvedBy?._id ||
+    taskData?.raw?.approvedBy ||
+    taskData?.raw?.handledBy?._id ||
+    taskData?.raw?.handledBy ||
+    null;
+
+  const assignedTechName =
+    taskData?.raw?.approvedBy?.name ||
+    taskData?.raw?.handledBy?.name ||
+    (assignedTechId ? "another technician" : null);
+
+  const isAssignedToOther =
+    assignedTechId &&
+    dbUser?._id &&
+    String(assignedTechId) !== String(dbUser._id);
+
+  const isReadOnly = isCompleted || isArchived || isAssignedToOther;
 
   useEffect(() => {
     setIsConfirmingDecline(false);
@@ -59,21 +92,45 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
     if (taskData) {
       try {
         const dateVal =
+          taskData.visitDate ||
+          taskData.displayDate ||
+          taskData.raw?.scheduledDate ||
+          taskData.raw?.preferredDate ||
           taskData.scheduledDate ||
           taskData.preferredDate ||
-          taskData.displayDate ||
           new Date();
         const d = new Date(dateVal);
 
-        setScheduledDate(
-          isNaN(d.getTime())
-            ? new Date().toISOString().slice(0, 16)
-            : new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-                .toISOString()
-                .slice(0, 16),
-        );
+        if (!isNaN(d.getTime())) {
+          const year = d.getFullYear();
+          const month = String(d.getMonth() + 1).padStart(2, "0");
+          const day = String(d.getDate()).padStart(2, "0");
+          setScheduledDate(`${year}-${month}-${day}`);
+
+          const hours = String(d.getHours()).padStart(2, "0");
+          const minutes = String(d.getMinutes()).padStart(2, "0");
+          setScheduledTime(`${hours}:${minutes}`);
+        } else {
+          const now = new Date();
+          const year = now.getFullYear();
+          const month = String(now.getMonth() + 1).padStart(2, "0");
+          const day = String(now.getDate()).padStart(2, "0");
+          setScheduledDate(`${year}-${month}-${day}`);
+
+          const hours = String(now.getHours()).padStart(2, "0");
+          const minutes = String(now.getMinutes()).padStart(2, "0");
+          setScheduledTime(`${hours}:${minutes}`);
+        }
       } catch (e) {
-        setScheduledDate(new Date().toISOString().slice(0, 16));
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
+        setScheduledDate(`${year}-${month}-${day}`);
+
+        const hours = String(now.getHours()).padStart(2, "0");
+        const minutes = String(now.getMinutes()).padStart(2, "0");
+        setScheduledTime(`${hours}:${minutes}`);
       }
 
       setNote(taskData.note || "");
@@ -88,16 +145,27 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
   if (!isOpen || !taskData) return null;
 
+  const combinedScheduledDate =
+    scheduledDate && scheduledTime
+      ? new Date(`${scheduledDate}T${scheduledTime}`)
+      : null;
+
   const animal = taskData.raw?.animalId || {};
   const preferredDateTime = taskData.preferredDate || taskData.displayDate;
 
-  const timeline = !isHealth && scheduledDate && animal.species
-    ? generatePregnancyTimeline(new Date(scheduledDate), animal.species)
-    : null;
+  const timeline =
+    !isHealth && combinedScheduledDate && animal.species
+      ? generatePregnancyTimeline(combinedScheduledDate, animal.species)
+      : null;
 
-  const vwpCheck = !isHealth && animal.lastCalvingDate && scheduledDate
-    ? verifyPostpartumWindow(animal.lastCalvingDate, new Date(scheduledDate), animal.species)
-    : null;
+  const vwpCheck =
+    !isHealth && animal.lastCalvingDate && combinedScheduledDate
+      ? verifyPostpartumWindow(
+          animal.lastCalvingDate,
+          combinedScheduledDate,
+          animal.species,
+        )
+      : null;
 
   const handleRejectTask = () => {
     const status = taskData.type === "health" ? "cancelled" : "rejected";
@@ -155,7 +223,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
         sireBreed,
         sireCode,
         estrus,
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : new Date(),
+        scheduledDate: combinedScheduledDate || new Date(),
       }),
       {
         loading: "Updating mission status...",
@@ -178,8 +246,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           {/* MODAL CONTAINER */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -215,6 +282,21 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
             {/* SCROLLABLE BODY */}
             <div className="overflow-y-auto flex-1 custom-scrollbar p-6 space-y-6 bg-base-100">
+              {isAssignedToOther && (
+                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex items-start gap-3 text-amber-600 dark:text-amber-400">
+                  <Lock size={18} className="shrink-0 mt-0.5" />
+                  <div>
+                    <h5 className="text-[10px] font-black uppercase tracking-widest leading-none">
+                      Assistance Lock Active
+                    </h5>
+                    <p className="text-[9px] font-bold uppercase tracking-widest mt-2 leading-tight opacity-75">
+                      This field service is already being assisted by technician:{" "}
+                      <span className="font-extrabold underline">{assignedTechName || "another technician"}</span>.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* SECTION 1: REGISTRY & ASSET PROFILE */}
               <section className={sectionClass}>
                 <div className="flex items-center gap-2 mb-1">
@@ -223,7 +305,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                     Registry Selection
                   </h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <label className={labelClass}>Farmer Record</label>
                     <div className="relative">
@@ -257,7 +339,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-base-300">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-base-300">
                   <div className="space-y-1.5">
                     <label className={labelClass}>Mission Status</label>
                     <div className="relative flex items-center h-11 bg-base-200 border border-base-300 rounded-xl px-4">
@@ -297,7 +379,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
                   {/* AI SPECIFIC FIELDS */}
                   {!isHealth && (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="space-y-1.5">
                         <label className={labelClass}>Sire Breed</label>
                         <div className="relative">
@@ -356,7 +438,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
                   {/* HEALTH SPECIFIC FIELDS */}
                   {isHealth && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
                         <label className={labelClass}>Medical Diagnosis</label>
                         <input
@@ -370,13 +452,15 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className={labelClass}>Prescribed Treatment</label>
+                        <label className={labelClass}>
+                          Prescribed Treatment
+                        </label>
                         <input
                           type="text"
                           disabled={isReadOnly}
                           value={treatment}
                           onChange={(e) => setTreatment(e.target.value)}
-                          placeholder="e.g. Antibiotics, Deworming, Rest"
+                          placeholder="e.g. Antibiotics, Deworming"
                           className={inputClass}
                         />
                       </div>
@@ -394,34 +478,53 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                   </h4>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className={labelClass}>Scheduled Date & Time</label>
-                    <div className="relative">
-                      <Calendar
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
-                        size={16}
-                      />
-                      <input
-                        type="datetime-local"
-                        disabled={isReadOnly}
-                        value={scheduledDate}
-                        onChange={(e) => setScheduledDate(e.target.value)}
-                        className={`${inputClass} pl-11 cursor-pointer`}
-                      />
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Scheduled Inputs block arranged in an equal inline grid */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>Scheduled Date</label>
+                      <div className="relative">
+                        <Calendar
+                          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/20"
+                          size={14}
+                        />
+                        <input
+                          type="date"
+                          disabled={isReadOnly}
+                          value={scheduledDate}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                          className={`${inputClass} pl-10 cursor-pointer`}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>Scheduled Time</label>
+                      <div className="relative">
+                        <Clock3
+                          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/20"
+                          size={14}
+                        />
+                        <input
+                          type="time"
+                          disabled={isReadOnly}
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                          className={`${inputClass} pl-10 cursor-pointer`}
+                        />
+                      </div>
                     </div>
                   </div>
 
+                  {/* Observations Block expanded smoothly underneath fields */}
                   <div className="space-y-1.5">
-                    <label className={labelClass}>
-                      Observations
-                    </label>
+                    <label className={labelClass}>Observations</label>
                     <textarea
                       disabled={isReadOnly}
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
-                      placeholder="Enter observations..."
-                      className="w-full h-11 bg-base-200 border border-base-300 rounded-xl p-3 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all resize-none"
+                      placeholder="Enter specific behavioral changes, physical observations or custom internal notes here..."
+                      className="w-full h-24 bg-base-200 border border-base-300 rounded-xl p-3 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all resize-none custom-scrollbar"
                     />
                   </div>
                 </div>
@@ -436,14 +539,25 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                       Est. Pregnancy Milestones
                     </h4>
                   </div>
-                  
+
                   {vwpCheck && !vwpCheck.isSafe && (
                     <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-4 flex items-start gap-3 mb-4">
-                      <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                      <AlertTriangle
+                        size={18}
+                        className="text-rose-500 shrink-0 mt-0.5"
+                      />
                       <div>
-                        <h5 className="text-[10px] font-black text-rose-500 uppercase tracking-widest leading-none">Voluntary Waiting Period Warning</h5>
+                        <h5 className="text-[10px] font-black text-rose-500 uppercase tracking-widest leading-none">
+                          Voluntary Waiting Period Warning
+                        </h5>
                         <p className="text-[9px] font-bold text-rose-500/40 uppercase tracking-widest mt-2 leading-tight">
-                          Recovery window violated! Calved on {new Date(animal.lastCalvingDate).toLocaleDateString()}. Only {vwpCheck.daysPassed} of {vwpCheck.requiredDays} safe recovery days have elapsed.
+                          Recovery window violated! Calved on{" "}
+                          {new Date(
+                            animal.lastCalvingDate,
+                          ).toLocaleDateString()}
+                          . Only {vwpCheck.daysPassed} of{" "}
+                          {vwpCheck.requiredDays} safe recovery days have
+                          elapsed.
                         </p>
                       </div>
                     </div>
@@ -451,34 +565,62 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
-                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">Estrus Check</span>
-                      <span className="text-xs font-bold text-base-content block mt-1">Day 21</span>
+                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">
+                        Estrus Check
+                      </span>
+                      <span className="text-xs font-bold text-base-content block mt-1">
+                        Day 21
+                      </span>
                       <span className="text-[9px] text-base-content/60 block mt-0.5">
-                        {timeline.heatReturnCheckDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {timeline.heatReturnCheckDate.toLocaleDateString(
+                          "en-US",
+                          { month: "short", day: "numeric" },
+                        )}
                       </span>
                     </div>
 
                     <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
-                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">Ultrasound</span>
-                      <span className="text-xs font-bold text-base-content block mt-1">Day 35</span>
+                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">
+                        Ultrasound
+                      </span>
+                      <span className="text-xs font-bold text-base-content block mt-1">
+                        Day 35
+                      </span>
                       <span className="text-[9px] text-base-content/60 block mt-0.5">
-                        {timeline.ultrasoundCheckDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {timeline.ultrasoundCheckDate.toLocaleDateString(
+                          "en-US",
+                          { month: "short", day: "numeric" },
+                        )}
                       </span>
                     </div>
 
                     <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
-                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">Palpation</span>
-                      <span className="text-xs font-bold text-base-content block mt-1">Day 60</span>
+                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">
+                        Palpation
+                      </span>
+                      <span className="text-xs font-bold text-base-content block mt-1">
+                        Day 60
+                      </span>
                       <span className="text-[9px] text-base-content/60 block mt-0.5">
-                        {timeline.palpationCheckDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        {timeline.palpationCheckDate.toLocaleDateString(
+                          "en-US",
+                          { month: "short", day: "numeric" },
+                        )}
                       </span>
                     </div>
 
                     <div className="p-4 rounded-xl border bg-emerald-500/5 border-emerald-500/10">
-                      <span className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">Est. Calving</span>
-                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 block mt-1">CD Date</span>
+                      <span className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">
+                        Est. Calving
+                      </span>
+                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 block mt-1">
+                        CD Date
+                      </span>
                       <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block mt-0.5">
-                        {timeline.expectedCalvingDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {timeline.expectedCalvingDate.toLocaleDateString(
+                          "en-US",
+                          { month: "short", day: "numeric", year: "numeric" },
+                        )}
                       </span>
                     </div>
                   </div>
