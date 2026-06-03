@@ -25,6 +25,7 @@ export interface ReportRow {
   cdId?: string;
   cdSex?: string;
   cdEase?: string;
+  barangay?: string;
 }
 
 export const generatePDF = async (

@@ -45,6 +45,7 @@ export default function OperationalInbox() {
   });
   const [selectedTask, setSelectedTask] = useState(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
   
   const itemsPerPage = 10;
   const toast = useToast();
@@ -170,6 +171,8 @@ export default function OperationalInbox() {
 
   // State Action Dispatchers using API requests
   const handleUpdateStatus = async (id, type, newStatus) => {
+    if (isUpdating) return;
+    setIsUpdating(true);
     const triggerUpdate = async () => {
       try {
         const endpoint =
@@ -181,13 +184,14 @@ export default function OperationalInbox() {
 
         await axiosInstance.patch(endpoint, { status: statusValue });
         toast.success(`Request status updated to ${newStatus.toUpperCase()}`);
-        refetchAI();
-        refetchHealth();
+        await Promise.all([refetchAI(), refetchHealth()]);
       } catch (error) {
         toast.error(
           "Failed to update status: " +
             (error.response?.data?.message || error.message),
         );
+      } finally {
+        setIsUpdating(false);
       }
     };
 
@@ -210,8 +214,11 @@ export default function OperationalInbox() {
           isOpen: true,
           title: "Early Completion Check",
           message: `This service visit is scheduled for ${dateStr}. Are you sure you have completed this visit early today?`,
-          onConfirm: triggerUpdate
+          onConfirm: async () => {
+            await triggerUpdate();
+          }
         });
+        setIsUpdating(false);
         return;
       }
     }
@@ -221,11 +228,13 @@ export default function OperationalInbox() {
   };
 
   const handleDeleteRequest = async (id, type) => {
+    if (isUpdating) return;
     setConfirmModal({
       isOpen: true,
       title: "Drop Task Request",
       message: "Are you sure you want to drop this field service request? This operation cannot be undone.",
       onConfirm: async () => {
+        setIsUpdating(true);
         try {
           const endpoint =
             type === "insemination"
@@ -233,13 +242,14 @@ export default function OperationalInbox() {
               : `/health-request/${id}`;
           await axiosInstance.delete(endpoint);
           toast.success("Request removed successfully");
-          refetchAI();
-          refetchHealth();
+          await Promise.all([refetchAI(), refetchHealth()]);
         } catch (error) {
           toast.error(
             "Failed to delete request: " +
               (error.response?.data?.message || error.message),
           );
+        } finally {
+          setIsUpdating(false);
         }
       }
     });
@@ -458,7 +468,7 @@ export default function OperationalInbox() {
                               {req.status === "pending" && (
                                 <>
                                   <button
-                                    disabled={isAssignedToOther}
+                                    disabled={isAssignedToOther || isUpdating}
                                     onClick={() =>
                                       handleUpdateStatus(
                                         req.id,
@@ -472,7 +482,7 @@ export default function OperationalInbox() {
                                     <Check size={12} /> Accept
                                   </button>
                                   <button
-                                    disabled={isAssignedToOther}
+                                    disabled={isAssignedToOther || isUpdating}
                                     onClick={() =>
                                       handleUpdateStatus(
                                         req.id,
@@ -489,7 +499,7 @@ export default function OperationalInbox() {
                               )}
                               {req.status === "in-progress" && (
                                 <button
-                                  disabled={isAssignedToOther}
+                                  disabled={isAssignedToOther || isUpdating}
                                   onClick={() => {
                                     setSelectedTask(req);
                                     setIsTaskModalOpen(true);
@@ -501,7 +511,7 @@ export default function OperationalInbox() {
                                 </button>
                               )}
                               <button
-                                disabled={isAssignedToOther}
+                                disabled={isAssignedToOther || isUpdating}
                                 onClick={() =>
                                   handleDeleteRequest(req.id, req.type)
                                 }

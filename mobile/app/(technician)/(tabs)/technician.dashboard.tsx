@@ -83,6 +83,15 @@ export default function TechnicianDashboard() {
     refetchInterval: 1000 * 60 * 2, // Check every 2 mins
   });
 
+  const { data: dbUser } = useQuery({
+    queryKey: ["user", "me"],
+    queryFn: async () => {
+      const response = await api.get("/user/me");
+      return response.data || {};
+    },
+    enabled: !!isLoaded && !!isSignedIn,
+  });
+
   const unreadCount = unreadData?.count || 0;
 
   const { data: analytics = {}, refetch: refetchAnalytics } = useQuery({
@@ -215,6 +224,27 @@ export default function TechnicianDashboard() {
   const [showBreedModal, setShowBreedModal] = useState(false);
 
   const pathname = usePathname();
+
+  const selectedItemTechId =
+    selectedItem?.raw?.approvedBy?._id ||
+    selectedItem?.raw?.approvedBy ||
+    selectedItem?.raw?.handledBy?._id ||
+    selectedItem?.raw?.handledBy ||
+    null;
+
+  const selectedItemTechName =
+    selectedItem?.raw?.approvedBy?.name ||
+    selectedItem?.raw?.handledBy?.name ||
+    (selectedItemTechId ? "another technician" : null);
+
+  const isSelectedAssignedToOther =
+    selectedItemTechId &&
+    dbUser?._id &&
+    String(selectedItemTechId) !== String(dbUser._id);
+
+  const isReadOnly =
+    isSelectedAssignedToOther ||
+    ["done", "resolved", "completed"].includes(selectedItem?.status?.toLowerCase());
 
   useEffect(() => {
     setModalVisible(false);
@@ -767,14 +797,35 @@ export default function TechnicianDashboard() {
               </Text>
             </Card>
           ) : (
-            agendaItems.map((item: any, idx: number) => (
-              <AgendaCard
-                key={`${item.type}-${item.id || idx}`}
-                item={item}
-                isFirst={idx === 0}
-                onPress={() => handleAction(item)}
-              />
-            ))
+            (agendaItems || []).map((item: any, idx: number) => {
+              const reqTechId =
+                item.raw?.approvedBy?._id ||
+                item.raw?.approvedBy ||
+                item.raw?.handledBy?._id ||
+                item.raw?.handledBy ||
+                null;
+
+              const reqTechName =
+                item.raw?.approvedBy?.name ||
+                item.raw?.handledBy?.name ||
+                (reqTechId ? "another technician" : null);
+
+              const isAssignedToOther =
+                reqTechId &&
+                dbUser?._id &&
+                String(reqTechId) !== String(dbUser._id);
+
+              return (
+                <AgendaCard
+                  key={`${item.type}-${item.id || idx}`}
+                  item={item}
+                  isFirst={idx === 0}
+                  isLocked={isAssignedToOther}
+                  lockedByName={reqTechName}
+                  onPress={() => handleAction(item)}
+                />
+              );
+            })
           )}
 
           {/* Farmer Requests Section */}
@@ -851,15 +902,38 @@ export default function TechnicianDashboard() {
           ) : (
             (data?.pendingRequests || [])
               .filter((r: any) => r.status === "pending")
-              .map((req: any, idx: number) => (
-                <RequestCard
-                  key={`${req.type}-${req._id || idx}`}
-                  item={req}
-                  onAccept={() => handleAction(req)}
-                  onSchedule={() => handleAction(req)}
-                  onDecline={() => handleRejectRequest(req)}
-                />
-              ))
+              .map((req: any, idx: number) => {
+                const reqTechId =
+                  req.raw?.approvedBy?._id ||
+                  req.raw?.approvedBy ||
+                  req.raw?.handledBy?._id ||
+                  req.raw?.handledBy ||
+                  null;
+
+                const reqTechName =
+                  req.raw?.approvedBy?.name ||
+                  req.raw?.handledBy?.name ||
+                  (reqTechId ? "another technician" : null);
+
+                const isAssignedToOther =
+                  reqTechId &&
+                  dbUser?._id &&
+                  String(reqTechId) !== String(dbUser._id);
+
+                return (
+                  <RequestCard
+                    key={`${req.type}-${req._id || idx}`}
+                    item={req}
+                    isLocked={isAssignedToOther}
+                    lockedByName={reqTechName}
+                    isUpdating={scheduleMutation.isPending}
+                    onAccept={() => handleAction(req)}
+                    onSchedule={() => handleAction(req)}
+                    onDecline={() => handleRejectRequest(req)}
+                    onPress={() => handleAction(req)}
+                  />
+                );
+              })
           )}
 
           {/* Performance Hub (This Month Card) - Moved to bottom */}
@@ -1276,6 +1350,32 @@ export default function TechnicianDashboard() {
               style={{ marginBottom: 16 }}
               contentContainerStyle={{ gap: 10 }}
             >
+              {isSelectedAssignedToOther && (
+                <View
+                  style={{
+                    backgroundColor: isDark ? "rgba(217, 119, 6, 0.1)" : "#fef3c7",
+                    borderWidth: 1,
+                    borderColor: isDark ? "rgba(217, 119, 6, 0.2)" : "#fde68a",
+                    borderRadius: 16,
+                    padding: 14,
+                    flexDirection: "row",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    marginBottom: 10,
+                  }}
+                >
+                  <Feather name="lock" size={16} color="#d97706" style={{ marginTop: 2 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text variant="black" size={11} style={{ color: "#b45309", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Assistance Lock Active
+                    </Text>
+                    <Text variant="medium" size={10} style={{ color: isDark ? "#fdba74" : "#b45309", marginTop: 2, lineHeight: 14 }}>
+                      This request is already being assisted by technician: <Text variant="extrabold" style={{ textDecorationLine: "underline" }}>{selectedItemTechName}</Text>. Action updates are disabled.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               <View
                 style={{
                   backgroundColor: isDark ? "#1f2937" : "#f8fafc",
@@ -1318,8 +1418,9 @@ export default function TechnicianDashboard() {
 
               <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
                 <TouchableOpacity
-                  onPress={() => setShowDatePicker(true)}
-                  activeOpacity={0.7}
+                  onPress={() => !isReadOnly && setShowDatePicker(true)}
+                  disabled={isReadOnly}
+                  activeOpacity={isReadOnly ? 1 : 0.7}
                   style={{
                     flex: 1,
                     backgroundColor: colors.card,
@@ -1334,6 +1435,7 @@ export default function TechnicianDashboard() {
                     shadowOpacity: isDark ? 0 : 0.03,
                     shadowRadius: 10,
                     elevation: isDark ? 0 : 2,
+                    opacity: isReadOnly ? 0.65 : 1,
                   }}
                 >
                   <View>
@@ -1372,8 +1474,9 @@ export default function TechnicianDashboard() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => setShowTimePicker(true)}
-                  activeOpacity={0.7}
+                  onPress={() => !isReadOnly && setShowTimePicker(true)}
+                  disabled={isReadOnly}
+                  activeOpacity={isReadOnly ? 1 : 0.7}
                   style={{
                     flex: 1,
                     backgroundColor: colors.card,
@@ -1388,6 +1491,7 @@ export default function TechnicianDashboard() {
                     shadowOpacity: isDark ? 0 : 0.03,
                     shadowRadius: 10,
                     elevation: isDark ? 0 : 2,
+                    opacity: isReadOnly ? 0.65 : 1,
                   }}
                 >
                   <View>
@@ -1491,9 +1595,11 @@ export default function TechnicianDashboard() {
                   color: colors.textPrimary,
                   borderWidth: 1,
                   borderColor: colors.border,
+                  opacity: isReadOnly ? 0.65 : 1,
                 }}
                 value={note}
                 onChangeText={setNote}
+                editable={!isReadOnly}
               />
 
               {selectedItem?.type === "health" &&
@@ -1524,9 +1630,11 @@ export default function TechnicianDashboard() {
                         color: colors.textPrimary,
                         borderWidth: 1,
                         borderColor: colors.border,
+                        opacity: isReadOnly ? 0.65 : 1,
                       }}
                       value={diagnosis}
                       onChangeText={setDiagnosis}
+                      editable={!isReadOnly}
                     />
 
                     <Text
@@ -1553,9 +1661,11 @@ export default function TechnicianDashboard() {
                         color: colors.textPrimary,
                         borderWidth: 1,
                         borderColor: colors.border,
+                        opacity: isReadOnly ? 0.65 : 1,
                       }}
                       value={treatment}
                       onChangeText={setTreatment}
+                      editable={!isReadOnly}
                     />
 
                     <Text
@@ -1585,9 +1695,11 @@ export default function TechnicianDashboard() {
                         color: colors.textPrimary,
                         borderWidth: 1,
                         borderColor: colors.border,
+                        opacity: isReadOnly ? 0.65 : 1,
                       }}
                       value={advice}
                       onChangeText={setAdvice}
+                      editable={!isReadOnly}
                     />
                   </>
                 )}
@@ -1610,8 +1722,9 @@ export default function TechnicianDashboard() {
                       Sire Breed
                     </Text>
                     <TouchableOpacity
-                      onPress={() => setShowBreedModal(true)}
-                      activeOpacity={0.7}
+                      onPress={() => !isReadOnly && setShowBreedModal(true)}
+                      disabled={isReadOnly}
+                      activeOpacity={isReadOnly ? 1 : 0.7}
                       style={{
                         backgroundColor: colors.card,
                         borderRadius: 16,
@@ -1623,6 +1736,7 @@ export default function TechnicianDashboard() {
                         flexDirection: "row",
                         justifyContent: "space-between",
                         alignItems: "center",
+                        opacity: isReadOnly ? 0.65 : 1,
                       }}
                     >
                       <View
@@ -1753,6 +1867,7 @@ export default function TechnicianDashboard() {
                         borderWidth: 1,
                         borderColor: colors.border,
                         overflow: "hidden",
+                        opacity: isReadOnly ? 0.65 : 1,
                       }}
                     >
                       <ScrollView
@@ -1763,7 +1878,8 @@ export default function TechnicianDashboard() {
                         {["Natural", "Synchronized", "Induced"].map((type) => (
                           <TouchableOpacity
                             key={type}
-                            onPress={() => setEstrus(type)}
+                            onPress={() => !isReadOnly && setEstrus(type)}
+                            disabled={isReadOnly}
                             style={{
                               paddingHorizontal: 16,
                               paddingVertical: 8,
@@ -1779,6 +1895,7 @@ export default function TechnicianDashboard() {
                                 estrus === type
                                   ? colors.primary
                                   : colors.border,
+                              opacity: isReadOnly && estrus !== type ? 0.5 : 1,
                             }}
                           >
                             <Text
@@ -1803,16 +1920,16 @@ export default function TechnicianDashboard() {
 
             <TouchableOpacity
               onPress={confirmAction}
-              disabled={scheduleMutation.isPending}
+              disabled={scheduleMutation.isPending || isReadOnly}
               style={{
-                backgroundColor: colors.primary,
+                backgroundColor: isReadOnly ? colors.textMuted : colors.primary,
                 paddingVertical: 16,
                 borderRadius: 18,
                 alignItems: "center",
-                shadowColor: colors.primary,
-                shadowOpacity: isDark ? 0 : 0.3,
+                shadowColor: isReadOnly ? undefined : colors.primary,
+                shadowOpacity: isDark || isReadOnly ? 0 : 0.3,
                 shadowRadius: 10,
-                elevation: isDark ? 0 : 8,
+                elevation: isDark || isReadOnly ? 0 : 8,
               }}
             >
               {scheduleMutation.isPending ? (
@@ -1825,9 +1942,11 @@ export default function TechnicianDashboard() {
                     color: "#fff",
                   }}
                 >
-                  {(selectedItem?.status === "pending" || selectedItem?.status === "approved")
-                    ? "Accept Mission"
-                    : "Update & Complete"}
+                  {isReadOnly
+                    ? "Locked by Other Tech"
+                    : (selectedItem?.status === "pending" || selectedItem?.status === "approved")
+                      ? "Accept Mission"
+                      : "Update & Complete"}
                 </Text>
               )}
             </TouchableOpacity>
@@ -2076,7 +2195,7 @@ const ActionCard = ({ label, icon, color, bg, onPress }: any) => {
   );
 };
 
-const AgendaCard = ({ item, onPress, isFirst }: any) => {
+const AgendaCard = ({ item, onPress, isFirst, isLocked, lockedByName }: any) => {
   const { colors, isDark } = useTheme();
   const isOverdue = item.overdue === true;
 
@@ -2148,9 +2267,17 @@ const AgendaCard = ({ item, onPress, isFirst }: any) => {
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text variant="bold" size={16} style={{ color: colors.textPrimary }}>
-          {item.farmer || item.location}
-        </Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Text variant="bold" size={16} style={{ color: colors.textPrimary }}>
+            {item.farmer || item.location}
+          </Text>
+          {isLocked && (
+            <View style={{ backgroundColor: "#fef3c7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexDirection: "row", alignItems: "center", gap: 3 }}>
+              <Feather name="lock" size={8} color="#d97706" />
+              <Text variant="black" size={8} style={{ color: "#d97706" }}>LOCKED</Text>
+            </View>
+          )}
+        </View>
         <Text
           variant="medium"
           size={12}
@@ -2158,6 +2285,11 @@ const AgendaCard = ({ item, onPress, isFirst }: any) => {
         >
           {item.task} {item.animalName ? `— ${item.animalName}` : ""}
         </Text>
+        {isLocked && (
+          <Text variant="medium" size={10} style={{ color: "#d97706", marginTop: 2 }}>
+            Assigned to: {lockedByName}
+          </Text>
+        )}
       </View>
 
       {isOverdue ? (
@@ -2197,7 +2329,7 @@ const AgendaCard = ({ item, onPress, isFirst }: any) => {
   );
 };
 
-const RequestCard = ({ item, onAccept, onDecline }: any) => {
+const RequestCard = ({ item, onAccept, onDecline, onPress, isLocked, lockedByName, isUpdating }: any) => {
   const { colors, isDark } = useTheme();
 
   const isHealth = item.type === "health";
@@ -2218,6 +2350,7 @@ const RequestCard = ({ item, onAccept, onDecline }: any) => {
 
   return (
     <Card
+      onPress={onPress}
       style={{
         marginBottom: 12,
         flexDirection: "row",
@@ -2254,18 +2387,28 @@ const RequestCard = ({ item, onAccept, onDecline }: any) => {
         >
           {item.task}
         </Text>
+        {isLocked && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
+            <Feather name="lock" size={10} color="#d97706" />
+            <Text variant="bold" size={10} style={{ color: "#d97706" }}>
+              Locked by {lockedByName}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={{ gap: 8, alignItems: "flex-end" }}>
         <TouchableOpacity
           onPress={onAccept}
+          disabled={isLocked || isUpdating}
           style={{
-            backgroundColor: colors.primary,
+            backgroundColor: (isLocked || isUpdating) ? colors.textMuted : colors.primary,
             paddingHorizontal: 16,
             paddingVertical: 8,
             borderRadius: 12,
             minWidth: 80,
             alignItems: "center",
+            opacity: (isLocked || isUpdating) ? 0.5 : 1,
           }}
         >
           <Text
@@ -2282,6 +2425,7 @@ const RequestCard = ({ item, onAccept, onDecline }: any) => {
 
         <TouchableOpacity
           onPress={onDecline}
+          disabled={isLocked || isUpdating}
           style={{
             backgroundColor: isDark ? "#450a0a" : "#fef2f2",
             paddingHorizontal: 16,
@@ -2289,6 +2433,7 @@ const RequestCard = ({ item, onAccept, onDecline }: any) => {
             borderRadius: 10,
             minWidth: 80,
             alignItems: "center",
+            opacity: (isLocked || isUpdating) ? 0.5 : 1,
           }}
         >
           <Text

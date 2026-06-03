@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   FileText,
   Clock,
@@ -75,6 +75,133 @@ export default function FieldReports() {
     },
   ]);
 
+  // ---- LIVE ACTIVITY RECORDS STATE ----
+  const [bottomTab, setBottomTab] = useState("live-records");
+  const [activityRecords, setActivityRecords] = useState([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+
+  const fetchActivityRecords = async () => {
+    setIsLoadingActivities(true);
+    try {
+      const [insRes, pregRes, calvRes, healthRes] = await Promise.all([
+        axiosInstance.get("/technician/inseminations?limit=1000"),
+        axiosInstance.get("/technician/pregnancy-checks?limit=1000"),
+        axiosInstance.get("/technician/calvings?limit=1000"),
+        axiosInstance.get("/health-request"),
+      ]);
+
+      const allEvents = [];
+
+      (insRes.data?.inseminations || []).forEach((ins) => {
+        const date = new Date(ins.inseminationDate || ins.createdAt);
+        allEvents.push({
+          id: ins._id,
+          type: "AI",
+          animalId: ins.animalId?.animalId || "—",
+          earTag: ins.animalId?.earTag || "—",
+          brand: ins.animalId?.brand || "—",
+          species: ins.animalId?.species || "—",
+          breed: ins.animalId?.breed || "—",
+          color: ins.animalId?.color || "—",
+          barangay: ins.farmerId?.address?.barangay || "—",
+          farmer: ins.farmerId?.name || "—",
+          date: date,
+          formattedDate: date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          details: `Sire: ${ins.sireCode || "—"} (${ins.sireBreed || "—"}) - Attempt #${ins.attemptNumber || 1}`,
+          rawDate: date.getTime(),
+        });
+      });
+
+      (pregRes.data?.data || []).forEach((preg) => {
+        const date = new Date(preg.checkDate || preg.createdAt);
+        allEvents.push({
+          id: preg._id,
+          type: "PD",
+          animalId: preg.animalId?.animalId || "—",
+          earTag: preg.animalId?.earTag || "—",
+          brand: preg.animalId?.brand || "—",
+          species: preg.animalId?.species || "—",
+          breed: preg.animalId?.breed || "—",
+          color: preg.animalId?.color || "—",
+          barangay: preg.farmerId?.address?.barangay || "—",
+          farmer: preg.farmerId?.name || "—",
+          date: date,
+          formattedDate: date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          details: `Result: ${preg.pregnancyDiagnosis?.result || "—"}`,
+          rawDate: date.getTime(),
+        });
+      });
+
+      (calvRes.data?.data || []).forEach((calv) => {
+        const date = new Date(calv.date || calv.createdAt);
+        allEvents.push({
+          id: calv._id,
+          type: "CD",
+          animalId: calv.animalId?.animalId || "—",
+          earTag: calv.animalId?.earTag || "—",
+          brand: calv.animalId?.brand || "—",
+          species: calv.animalId?.species || "—",
+          breed: calv.animalId?.breed || "—",
+          color: calv.animalId?.color || "—",
+          barangay: calv.farmerId?.address?.barangay || "—",
+          farmer: calv.farmerId?.name || "—",
+          date: date,
+          formattedDate: date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          details: `Calves: ${calv.numberOfCalves || 1} (${calv.calvingEase || "Normal"})`,
+          rawDate: date.getTime(),
+        });
+      });
+
+      (Array.isArray(healthRes.data) ? healthRes.data : []).forEach((health) => {
+        const date = new Date(health.createdAt);
+        allEvents.push({
+          id: health._id,
+          type: "HL",
+          animalId: health.animalId?.animalId || "—",
+          earTag: health.animalId?.earTag || "—",
+          brand: health.animalId?.brand || "—",
+          species: health.animalId?.species || "—",
+          breed: health.animalId?.breed || "—",
+          color: health.animalId?.color || "—",
+          barangay: health.farmerId?.address?.barangay || "—",
+          farmer: health.farmerId?.name || "—",
+          date: date,
+          formattedDate: date.toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          details: `Health check: ${health.issue || health.symptoms || "Check-up"} (${health.status?.toUpperCase() || "COMPLETED"})`,
+          rawDate: date.getTime(),
+        });
+      });
+
+      allEvents.sort((a, b) => b.rawDate - a.rawDate);
+      setActivityRecords(allEvents);
+    } catch (error) {
+      console.error("Failed to fetch activity records:", error);
+      toast.error("Failed to fetch live activity records.");
+    } finally {
+      setIsLoadingActivities(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchActivityRecords();
+  }, []);
+
   const toggleSchedule = (id) => {
     setSchedules((prev) =>
       prev.map((s) => (s.id === id ? { ...s, active: !s.active } : s))
@@ -133,6 +260,7 @@ export default function FieldReports() {
         setReports((prev) => [newReport, ...prev]);
         setIsCompiling(false);
         setCompilingStep("");
+        fetchActivityRecords();
         toast.success("Municipal report compiled and archived successfully!");
       }
     }, 600);
@@ -216,6 +344,46 @@ export default function FieldReports() {
       [r.name, r.type, r.format].join(" ").toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [searchQuery, reports]);
+
+  const filteredActivityRecords = useMemo(() => {
+    return activityRecords.filter((record) => {
+      // 1. Search Query Filter (Matches farmer name, animal ID, ear tag, breed, details)
+      const matchesSearch = [record.farmer, record.animalId, record.earTag, record.breed, record.details]
+        .join(" ")
+        .toLowerCase()
+        .includes(searchQuery.toLowerCase());
+      if (!matchesSearch) return false;
+
+      // 2. Report Type Filter
+      if (reportType === "breeding-audit" && !["AI", "PD", "CD"].includes(record.type)) {
+        return false;
+      }
+      if (reportType === "health-summary" && record.type !== "HL") {
+        return false;
+      }
+
+      // 3. Barangay Filter
+      if (barangay !== "all" && record.barangay.toLowerCase() !== barangay.toLowerCase()) {
+        return false;
+      }
+
+      // 4. Date Range Filter
+      const recordTime = record.date.getTime();
+      const now = new Date().getTime();
+      if (dateRange === "7-days") {
+        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+        if (recordTime < sevenDaysAgo) return false;
+      } else if (dateRange === "30-days") {
+        const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+        if (recordTime < thirtyDaysAgo) return false;
+      } else if (dateRange === "ytd") {
+        const startOfYear = new Date(new Date().getFullYear(), 0, 1).getTime();
+        if (recordTime < startOfYear) return false;
+      }
+
+      return true;
+    });
+  }, [activityRecords, searchQuery, reportType, barangay, dateRange]);
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
@@ -391,19 +559,94 @@ export default function FieldReports() {
           </div>
         </div>
 
-        {/* Bottom panel: list of compiled reports */}
+        {/* Bottom panel: list of compiled reports or live activity records */}
         <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xs overflow-hidden flex-1 flex flex-col min-h-0">
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-              <Layers size={13} /> Publications Library
-            </h3>
+          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50 flex-wrap gap-2">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setBottomTab("live-records")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide uppercase transition-all ${
+                  bottomTab === "live-records"
+                    ? "bg-[#00643b] text-white shadow-xs"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                }`}
+              >
+                Live Activity Records
+              </button>
+              <button
+                type="button"
+                onClick={() => setBottomTab("library")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide uppercase transition-all ${
+                  bottomTab === "library"
+                    ? "bg-[#00643b] text-white shadow-xs"
+                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                }`}
+              >
+                Publications Library
+              </button>
+            </div>
             <span className="text-[10px] text-slate-400 font-bold">
-              Displaying {filteredReports.length} publications
+              {bottomTab === "live-records"
+                ? `Displaying ${filteredActivityRecords.length} records`
+                : `Displaying ${filteredReports.length} publications`}
             </span>
           </div>
 
           <div className="flex-1 overflow-x-auto">
-            {filteredReports.length === 0 ? (
+            {bottomTab === "live-records" ? (
+              isLoadingActivities ? (
+                <div className="p-12 flex flex-col items-center justify-center space-y-2 text-slate-400">
+                  <span className="loading loading-spinner loading-md text-[#00643b] dark:text-emerald-500" />
+                  <p className="text-xs font-semibold italic animate-pulse">Syncing live records...</p>
+                </div>
+              ) : filteredActivityRecords.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 dark:text-slate-500 italic text-xs font-semibold">
+                  No live activity records matching filters.
+                </div>
+              ) : (
+                <table className="table table-xs w-full divide-y divide-slate-100 dark:divide-slate-800">
+                  <thead className="bg-slate-50 dark:bg-slate-900 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+                    <tr>
+                      <th className="py-3 px-4 text-center" style={{ width: "60px" }}>Type</th>
+                      <th className="py-3 px-4 text-left">Animal / Ear Tag</th>
+                      <th className="py-3 px-4 text-left">Farmer Name</th>
+                      <th className="py-3 px-4 text-left">Barangay</th>
+                      <th className="py-3 px-4 text-left">Event Details</th>
+                      <th className="py-3 px-4 text-right">Date Occurred</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                    {filteredActivityRecords.map((record) => (
+                      <tr key={record.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition-colors">
+                        <td className="py-3 px-4 text-center">
+                          <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-md ${
+                            record.type === "AI"
+                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400"
+                              : record.type === "PD"
+                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400"
+                              : record.type === "HL"
+                              ? "bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400"
+                              : "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
+                          }`}>
+                            {record.type}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">
+                          {record.animalId} <span className="text-slate-400 font-normal">({record.earTag})</span>
+                        </td>
+                        <td className="py-3 px-4 text-xs font-semibold">{record.farmer}</td>
+                        <td className="py-3 px-4 text-xs">{record.barangay}</td>
+                        <td className="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                          {record.details}
+                        </td>
+                        <td className="py-3 px-4 text-right text-xs font-mono">{record.formattedDate}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            ) : filteredReports.length === 0 ? (
               <div className="p-8 text-center text-slate-400 dark:text-slate-500 italic text-xs font-semibold">
                 No reports publications matching query criteria.
               </div>

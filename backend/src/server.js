@@ -26,6 +26,7 @@ import reportRoutes from "./routes/report.routes.js";
 import analyticsRoutes from "./routes/analytics.routes.js";
 import moowieRoutes from "./routes/moowie.routes.js";
 import gisRoutes from "./routes/gis.routes.js";
+import tasksRoutes from "./routes/tasks.routes.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -92,6 +93,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/analytics", analyticsRoutes);
 app.use("/api/moowie", moowieRoutes);
 app.use("/api/gis", gisRoutes);
+app.use("/api/tasks", tasksRoutes);
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 // MUST be defined after all routes. Catches any unhandled error from middleware

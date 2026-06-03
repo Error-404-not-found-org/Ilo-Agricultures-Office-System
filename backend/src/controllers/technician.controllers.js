@@ -88,7 +88,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         deletedAt: null,
       })
         .populate("farmerId", "name address")
-        .populate("animalId", "earTag imageUrl breed species")
+        .populate("animalId", "animalId earTag imageUrl breed species")
         .sort({ createdAt: -1 })
         .lean(),
 
@@ -97,7 +97,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         deletedAt: null,
       })
         .populate("farmerId", "name address")
-        .populate("animalId", "earTag imageUrl breed species")
+        .populate("animalId", "animalId earTag imageUrl breed species")
         .sort({ urgency: -1, createdAt: -1 })
         .lean(),
 
@@ -238,8 +238,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         farmer: ins.farmerId?.name || "Unknown Farmer",
         location: formatAddress(ins.farmerId?.address),
         task: isMobileRequest
-          ? `AI Request (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.earTag || "Unknown"}`
-          : `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.earTag || "Unknown"}`,
+          ? `AI Request (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`
+          : `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`,
         urgent: isMobileRequest,
         overdue: isOverdue,
         sentTime: formatTime(ins.createdAt),
@@ -280,7 +280,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayDate: itemDisplayDate,
         farmer: req.farmerId?.name || "Unknown Farmer",
         location: formatAddress(req.farmerId?.address),
-        task: `Health Check - ${req.animalId?.earTag || "Unknown"}`,
+        task: `Health Check - ${req.animalId?.animalId || req.animalId?.earTag || "Unknown"}`,
         urgent: req.urgency === "high",
         overdue: isOverdue,
         sentTime: formatTime(req.createdAt),
@@ -387,7 +387,7 @@ export const getMyInseminations = async (req, res) => {
     const [records, total] = await Promise.all([
       Insemination.find({ deletedAt: null })
         .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "earTag breed species imageUrl")
+        .populate("animalId", "animalId earTag breed species imageUrl")
         .populate("pregnancyId")
         .sort({ createdAt: -1 })
         .skip(skip)
@@ -417,7 +417,7 @@ export const getMyReInseminations = async (req, res) => {
     const [records, total] = await Promise.all([
       Insemination.find(query)
         .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "earTag breed species imageUrl")
+        .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -446,7 +446,7 @@ export const getMyPregnancyChecks = async (req, res) => {
     const [records, total] = await Promise.all([
       Pregnancy.find({ deletedAt: null })
         .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "earTag breed species imageUrl")
+        .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -475,7 +475,7 @@ export const getMyCalvings = async (req, res) => {
     const [records, total] = await Promise.all([
       Calving.find({ deletedAt: null })
         .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "earTag breed species imageUrl")
+        .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -1421,7 +1421,7 @@ export const getDashboardFeed = async (req, res) => {
         deletedAt: null,
       })
         .populate("farmerId", "name address")
-        .populate("animalId", "earTag imageUrl breed species")
+        .populate("animalId", "animalId earTag imageUrl breed species")
         .sort({ createdAt: -1 })
         .limit(20)
         .lean(),
@@ -1430,7 +1430,7 @@ export const getDashboardFeed = async (req, res) => {
         deletedAt: null,
       })
         .populate("farmerId", "name address")
-        .populate("animalId", "earTag imageUrl breed species")
+        .populate("animalId", "animalId earTag imageUrl breed species")
         .sort({ urgency: -1, createdAt: -1 })
         .limit(20)
         .lean(),
@@ -1489,7 +1489,7 @@ export const getDashboardFeed = async (req, res) => {
           id: i._id,
           type: "ai",
           status: i.status,
-          task: `Insemination — ${i.animalId?.earTag}`,
+          task: `Insemination — ${i.animalId?.animalId || i.animalId?.earTag || "Unknown"}`,
           farmer: i.farmerId?.name,
           location: formatAddress(i.farmerId?.address),
           scheduledDate: i.scheduledDate,
@@ -1507,7 +1507,7 @@ export const getDashboardFeed = async (req, res) => {
           id: h._id,
           type: "health",
           status: h.status,
-          task: `Medical — ${h.animalId?.earTag}`,
+          task: `Medical — ${h.animalId?.animalId || h.animalId?.earTag || "Unknown"}`,
           farmer: h.farmerId?.name,
           location: formatAddress(h.farmerId?.address),
           scheduledDate: h.scheduledDate,
@@ -1925,12 +1925,12 @@ export const getFieldNotes = async (req, res) => {
     const [inseminations, healthRequests, technicianNotes] = await Promise.all([
       Insemination.find({ imageUrl: { $exists: true, $ne: "" } })
         .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "earTag breed species imageUrl")
+        .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .lean(),
       HealthRequest.find({ imageUrl: { $exists: true, $ne: "" } })
         .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "earTag breed species imageUrl")
+        .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .lean(),
       FieldNote.find()
@@ -1946,7 +1946,7 @@ export const getFieldNotes = async (req, res) => {
         type: "insemination",
         farmer: ins.farmerId?.name || "Unknown Farmer",
         farmerPhone: ins.farmerId?.phoneNumber || "No Phone",
-        animalTag: ins.animalId?.earTag || "No Tag",
+        animalTag: ins.animalId?.animalId || ins.animalId?.earTag || "No Tag",
         animalSpecies: ins.animalId?.species || "Cattle",
         animalBreed: ins.animalId?.breed || "Crossbreed",
         imageUrl: ins.imageUrl,
@@ -1959,7 +1959,7 @@ export const getFieldNotes = async (req, res) => {
         type: "health",
         farmer: hr.farmerId?.name || "Unknown Farmer",
         farmerPhone: hr.farmerId?.phoneNumber || "No Phone",
-        animalTag: hr.animalId?.earTag || "No Tag",
+        animalTag: hr.animalId?.animalId || hr.animalId?.earTag || "No Tag",
         animalSpecies: hr.animalId?.species || "Cattle",
         animalBreed: hr.animalId?.breed || "Crossbreed",
         imageUrl: hr.imageUrl,

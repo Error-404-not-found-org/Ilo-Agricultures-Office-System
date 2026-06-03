@@ -141,7 +141,7 @@ const FarmerBottomNavigator = ({
           />
           <TabItem
             icon={Dog}
-            label="Cattle"
+            label="Animals"
             isFocused={isFocused("add-animal")}
             onPress={() => onNavigate("add-animal")}
             colors={colors}

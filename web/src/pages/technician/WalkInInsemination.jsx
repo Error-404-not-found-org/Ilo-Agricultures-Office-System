@@ -180,8 +180,11 @@ export default function WalkInInsemination() {
       if (!formData.firstName || !formData.lastName || !formData.phoneNumber || !formData.address.barangay) {
         return toast.error("Please fill in all owner details (First Name, Last Name, Phone, and Barangay).");
       }
-      if (formData.phoneNumber.length < 10) {
-        return toast.error("Phone number must be at least 10 digits.");
+      if (formData.phoneNumber.length < 11) {
+        return toast.error("Phone number must be exactly 11 digits.");
+      }
+      if (!formData.phoneNumber.startsWith("09")) {
+        return toast.error("Phone number must start with 09.");
       }
       if (!formData.animalDetails.earTag || !formData.animalDetails.breed) {
         return toast.error("Please fill in animal Ear Tag and Breed details.");
@@ -449,15 +452,20 @@ export default function WalkInInsemination() {
                     </div>
                     <div className="space-y-1.5">
                       <label className={labelClass}>Contact Number *</label>
-                      <div className="relative flex items-center">
-                        <Phone size={14} className="absolute left-4 z-10 text-slate-400" />
-                        <div className="absolute left-10 z-10 text-xs font-bold text-slate-500 border-r border-slate-200 dark:border-slate-700 pr-2 py-1">+63</div>
+                      <div className="relative">
+                        <Phone size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
-                          type="tel" maxLength={10}
+                          type="tel"
+                          maxLength={11}
                           value={formData.phoneNumber}
-                          onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value.replace(/\D/g, "") })}
-                          placeholder="917 XXX XXXX"
-                          className={`${inputClass} pl-[84px]`}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, "");
+                            if (val.length <= 11) {
+                              setFormData({ ...formData, phoneNumber: val });
+                            }
+                          }}
+                          placeholder="0912 345 6789"
+                          className={`${inputClass} pl-10`}
                         />
                       </div>
                     </div>

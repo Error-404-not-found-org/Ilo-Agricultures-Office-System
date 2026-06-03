@@ -798,59 +798,72 @@ export default function FarmerHome() {
 
         {/* --- RECENT RECORDS --- */}
         <View className="px-6 mb-12">
-          <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px] mb-4 px-1">
-            Recent Activity
-          </Text>
+          <View className="flex-row justify-between items-center mb-4 px-1">
+            <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px]">
+              Recent Activity
+            </Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(farmer)/(tabs)/farmer.records")}
+            >
+              <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[13px]">
+                View all
+              </Text>
+            </TouchableOpacity>
+          </View>
           <View
             className="bg-white dark:bg-slate-900 rounded-[32px] p-4 shadow-sm border border-gray-100 dark:border-slate-800"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
             {Array.isArray(activityFeed) && activityFeed.length > 0 ? (
-              activityFeed.map((item: any, idx: number) => (
-                <View key={item.id}>
+              activityFeed.slice(0, 5).map((item: any, idx: number) => (
+                <TouchableOpacity 
+                  key={item.id}
+                  activeOpacity={0.7}
+                  onPress={() => router.push({ pathname: "/(farmer)/(tabs)/farmer.records", params: { tab: "records", selectId: item.id } })}
+                >
                   <RecordItem
                     title={item.title}
-                    date={format(new Date(item.date), "MMM d, yyyy")}
+                    date={format(new Date(item.date), "MMM d, yyyy • h:mm a")}
                     icon={
                       item.type === "ai" ? (
                         <Syringe
                           size={18}
-                          color={isDark ? colors.primary : "#92400E"}
+                          color={isDark ? "#60a5fa" : "#2563eb"}
                         />
                       ) : item.type === "health" ? (
                         <Stethoscope
                           size={18}
-                          color={isDark ? "#f97316" : "#92400E"}
+                          color={isDark ? "#f87171" : "#dc2626"}
                         />
                       ) : (
                         <MaterialCommunityIcons
                           name="cow"
                           size={18}
-                          color={isDark ? "#fbbf24" : "#92400E"}
+                          color={isDark ? "#fbbf24" : "#b45309"}
                         />
                       )
                     }
                     iconBg={
                       item.type === "ai"
                         ? isDark
-                          ? "rgba(16,185,129,0.15)"
-                          : "#FEF3C7"
+                          ? "rgba(96,165,250,0.15)"
+                          : "#eff6ff"
                         : item.type === "health"
                           ? isDark
-                            ? "rgba(249,115,22,0.15)"
-                            : "#FEF3C7"
+                            ? "rgba(248,113,113,0.15)"
+                            : "#fef2f2"
                           : isDark
                             ? "rgba(251,191,36,0.15)"
-                            : "#FEF3C7"
+                            : "#fef3c7"
                     }
                   />
-                  {idx < activityFeed.length - 1 && (
+                  {idx < Math.min(activityFeed.length, 5) - 1 && (
                     <View
                       className="h-[1px] bg-slate-50 dark:bg-slate-800 my-1 mx-4"
                       style={{ backgroundColor: colors.border }}
                     />
                   )}
-                </View>
+                </TouchableOpacity>
               ))
             ) : (
               <View className="py-8 items-center">

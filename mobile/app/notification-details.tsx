@@ -42,8 +42,8 @@ interface NotificationDetails {
     urgency?: string;
     imageUrl?: string;
     technicianNote?: string;
-    approvedBy?: { name: string; imageUrl: string };
-    handledBy?: { name: string; imageUrl: string };
+    approvedBy?: { _id?: string; name: string; imageUrl: string };
+    handledBy?: { _id?: string; name: string; imageUrl: string };
   };
 }
 
@@ -305,11 +305,35 @@ export default function NotificationDetailsScreen() {
         </View>
 
         {/* Action Button */}
-        {!isFarmer && relatedData && (
+        {!isFarmer && relatedData && (() => {
+          const getTechId = (tech: any) => {
+            if (!tech) return null;
+            return typeof tech === 'object' ? tech._id : tech;
+          };
+
+          const reqTechId = getTechId(relatedData?.approvedBy) || getTechId(relatedData?.handledBy);
+
+          const isLocked =
+            reqTechId &&
+            profile?._id &&
+            String(reqTechId) !== String(profile._id);
+
+          const reqTechName =
+            relatedData?.approvedBy?.name ||
+            relatedData?.handledBy?.name ||
+            (isLocked ? "another technician" : "");
+
+          const buttonText = isLocked
+            ? `Locked by ${reqTechName}`
+            : relatedData.status === 'pending'
+              ? 'Approve & Handle Request'
+              : `Status: ${relatedData.status}`;
+
+          return (
             <View className="px-6 mt-4">
                 <TouchableOpacity 
-                    disabled={isUpdating || relatedData.status !== 'pending'}
-                    className={`py-5 rounded-[22px] items-center justify-center flex-row shadow-sm ${relatedData.status !== 'pending' ? 'bg-slate-300' : isAI ? 'bg-[#00643B]' : 'bg-amber-600'}`}
+                    disabled={isUpdating || relatedData.status !== 'pending' || isLocked}
+                    className={`py-5 rounded-[22px] items-center justify-center flex-row shadow-sm ${relatedData.status !== 'pending' || isLocked ? 'bg-slate-350 dark:bg-slate-800' : isAI ? 'bg-[#00643B]' : 'bg-amber-600'}`}
                     onPress={handleAction}
                 >
                     {isUpdating ? (
@@ -318,13 +342,14 @@ export default function NotificationDetailsScreen() {
                         <>
                             <CheckCircle2 size={24} color="white" />
                             <Text className="text-white font-black text-lg ml-2">
-                                {relatedData.status === 'pending' ? 'Approve & Handle Request' : `Status: ${relatedData.status}`}
+                                {buttonText}
                             </Text>
                         </>
                     )}
                 </TouchableOpacity>
             </View>
-        )}
+          );
+        })()}
 
       </ScrollView>
     </View>

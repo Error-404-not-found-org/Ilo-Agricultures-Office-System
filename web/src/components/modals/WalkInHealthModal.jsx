@@ -59,6 +59,9 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     preferredDate: new Date().toISOString().split("T")[0],
     preferredTime: "08:00",
     diagnosis: "",
+    treatment: "",
+    advice: "",
+    technicianNote: "",
   });
 
   const { data: farmers = [] } = useQuery({
@@ -123,6 +126,9 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
         preferredDate: new Date().toISOString().split("T")[0],
         preferredTime: "08:00",
         diagnosis: "",
+        treatment: "",
+        advice: "",
+        technicianNote: "",
       });
     }
     return () => {
@@ -173,6 +179,12 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     } else {
       if (!formData.phoneNumber || !formData.animalDetails.earTag) {
         return toast.error("Phone number and Ear Tag are required.");
+      }
+      if (formData.phoneNumber.length < 11) {
+        return toast.error("Phone number must be exactly 11 digits.");
+      }
+      if (!formData.phoneNumber.startsWith("09")) {
+        return toast.error("Phone number must start with 09.");
       }
       submissionData = formData;
     }
@@ -383,19 +395,20 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                   </div>
                   <div className="space-y-1.5">
                     <label className={labelClass}>Contact Number</label>
-                    <div className="relative flex items-center">
-                      <Phone size={16} className="absolute left-4 z-10 text-base-content/20" />
-                      <div className="absolute left-10 z-10 text-xs font-bold text-base-content/50 border-r border-base-300 pr-2 py-1">+63</div>
+                    <div className="relative">
+                      <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
                       <input 
                         type="tel" 
-                        maxLength={10}
+                        maxLength={11}
                         value={formData.phoneNumber} 
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, "");
-                          setFormData({ ...formData, phoneNumber: val });
+                          if (val.length <= 11) {
+                            setFormData({ ...formData, phoneNumber: val });
+                          }
                         }} 
-                        placeholder="917 XXX XXXX" 
-                        className={`${inputClass} pl-[84px]`} 
+                        placeholder="0912 345 6789" 
+                        className={`${inputClass} pl-10`} 
                       />
                     </div>
                   </div>
@@ -589,6 +602,54 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                 />
               </div>
             </section>
+
+            {formData.status === 'resolved' && (
+              <>
+                <section className={sectionClass}>
+                  <div className="flex items-center gap-2 mb-1">
+                     <Stethoscope size={14} className="text-emerald-500" />
+                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Treatment Action & Medication</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>Treatment Action</label>
+                      <input 
+                        type="text" 
+                        value={formData.treatment} 
+                        onChange={(e) => setFormData({ ...formData, treatment: e.target.value })} 
+                        placeholder="e.g. Wound cleaning, Injection..." 
+                        className={inputClass} 
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>Medicine & Dosage</label>
+                      <input 
+                        type="text" 
+                        value={formData.advice} 
+                        onChange={(e) => setFormData({ ...formData, advice: e.target.value })} 
+                        placeholder="e.g. Penicillin 10ml" 
+                        className={inputClass} 
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                <section className={sectionClass}>
+                  <div className="flex items-center gap-2 mb-1">
+                     <StickyNote size={14} className="text-emerald-500" />
+                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Additional Observations</h4>
+                  </div>
+                  <div className="relative">
+                    <textarea 
+                      value={formData.technicianNote} 
+                      onChange={(e) => setFormData({ ...formData, technicianNote: e.target.value })} 
+                      placeholder="Any other clinical signs noticed..." 
+                      className={textareaClass} 
+                    />
+                  </div>
+                </section>
+              </>
+            )}
           </div>
 
           {/* FOOTER */}

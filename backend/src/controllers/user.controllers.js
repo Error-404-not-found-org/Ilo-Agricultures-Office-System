@@ -585,7 +585,7 @@ export const getBreedingMilestones = async (req, res) => {
       isSuccess: null,
       deletedAt: null
     })
-      .populate("animalId", "earTag species breed")
+      .populate("animalId", "animalId earTag species breed")
       .sort({ createdAt: -1 });
 
     // 2. Get all active pregnancies (to calculate Calvings)
@@ -594,7 +594,7 @@ export const getBreedingMilestones = async (req, res) => {
       "pregnancyDiagnosis.result": "Pregnant",
       deletedAt: null
     })
-      .populate("animalId", "earTag species breed")
+      .populate("animalId", "animalId earTag species breed")
       .sort({ targetCalvingDate: 1 });
 
     // 3. Get all calving records to identify pregnancies that have already calved
@@ -685,38 +685,73 @@ export const getMyActivityFeed = async (req, res) => {
     const query = isTechnicianOrAdmin ? {} : { farmerId: req.user._id };
 
     const [inseminations, healthRequests, calvings] = await Promise.all([
-      Insemination.find(query).populate("animalId", "earTag").populate("farmerId", "name").sort({ createdAt: -1 }).limit(5),
-      HealthRequest.find(query).populate("animalId", "earTag").populate("farmerId", "name").sort({ createdAt: -1 }).limit(5),
-      Calving.find(query).populate("animalId", "earTag").populate("farmerId", "name").sort({ createdAt: -1 }).limit(5)
+      Insemination.find(query).populate("animalId", "animalId earTag breed species").populate("farmerId", "name").populate("technicianId", "name").populate("approvedBy", "name").sort({ createdAt: -1 }).limit(5),
+      HealthRequest.find(query).populate("animalId", "animalId earTag breed species").populate("farmerId", "name").populate("handledBy", "name").sort({ createdAt: -1 }).limit(5),
+      Calving.find(query).populate("animalId", "animalId earTag breed species").populate("farmerId", "name").populate("technicianId", "name").sort({ createdAt: -1 }).limit(5)
     ]);
 
     const feed = [
       ...inseminations.map(i => ({ 
         id: i._id, 
         title: isTechnicianOrAdmin 
-          ? `AI on ${i.animalId?.earTag || 'Animal'} (${i.farmerId?.name || 'Farmer'})`
-          : `AI performed on ${i.animalId?.earTag || 'Animal'}`, 
+          ? `AI on ${i.animalId?.animalId || i.animalId?.earTag || 'Animal'} (${i.farmerId?.name || 'Farmer'})`
+          : `AI performed on ${i.animalId?.animalId || i.animalId?.earTag || 'Animal'}`, 
         description: i.status === 'done' ? 'Completed Service' : `Status: ${i.status}`,
         date: i.createdAt, 
-        type: 'ai' 
+        type: 'ai',
+        animalId: i.animalId,
+        details: {
+          sireBreed: i.sireBreed || "N/A",
+          sireCode: i.sireCode || "N/A",
+          attemptNumber: i.attemptNumber || 1,
+          estrus: i.estrus || "Natural",
+          status: i.status,
+          outcome: i.outcome || "Pending",
+          technician: i.technicianId?.name || i.approvedBy?.name || "Pending",
+          technicianNote: i.technicianNote || "No notes logged.",
+          inseminationDate: i.inseminationDate,
+          scheduledDate: i.scheduledDate || i.preferredDate,
+        }
       })),
       ...healthRequests.map(h => ({ 
         id: h._id, 
         title: isTechnicianOrAdmin 
-          ? `Health Check — ${h.animalId?.earTag || 'Animal'} (${h.farmerId?.name || 'Farmer'})`
-          : `Health Check — ${h.animalId?.earTag || 'Animal'}`, 
+          ? `Health Check — ${h.animalId?.animalId || h.animalId?.earTag || 'Animal'} (${h.farmerId?.name || 'Farmer'})`
+          : `Health Check — ${h.animalId?.animalId || h.animalId?.earTag || 'Animal'}`, 
         description: `Status: ${h.status}`,
         date: h.createdAt, 
-        type: 'health' 
+        type: 'health',
+        animalId: h.animalId,
+        details: {
+          requestType: h.requestType || "checkup",
+          symptoms: h.symptoms || "N/A",
+          urgency: h.urgency || "medium",
+          status: h.status,
+          diagnosis: h.diagnosis || "No diagnosis logged.",
+          treatment: h.treatment || "No treatment logged.",
+          advice: h.advice || "No advice logged.",
+          technician: h.handledBy?.name || "Pending",
+          technicianNote: h.technicianNote || "No notes logged.",
+          scheduledDate: h.scheduledDate || h.preferredDate,
+        }
       })),
       ...calvings.map(c => ({ 
         id: c._id, 
         title: isTechnicianOrAdmin 
-          ? `Calving — ${c.animalId?.earTag || 'Animal'} (${c.farmerId?.name || 'Farmer'})`
-          : `Calving recorded — ${c.animalId?.earTag || 'Animal'}`, 
+          ? `Calving — ${c.animalId?.animalId || c.animalId?.earTag || 'Animal'} (${c.farmerId?.name || 'Farmer'})`
+          : `Calving recorded — ${c.animalId?.animalId || c.animalId?.earTag || 'Animal'}`, 
         description: c.calvingEase ? `Ease: ${c.calvingEase}` : 'New Calf Recorded',
         date: c.createdAt, 
-        type: 'calving' 
+        type: 'calving',
+        animalId: c.animalId,
+        details: {
+          calvingEase: c.calvingEase || "Natural",
+          numberOfCalves: c.numberOfCalves || 1,
+          calves: c.calves || [],
+          technician: c.technicianId?.name || "Technician",
+          technicianNote: c.technicianNote || "No notes logged.",
+          date: c.date,
+        }
       }))
     ];
 

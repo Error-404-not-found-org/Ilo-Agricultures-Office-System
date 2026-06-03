@@ -157,6 +157,10 @@ export default function RecordAIScreen() {
         toast.error("Please fill in both farmer and animal details.");
         return;
       }
+      if (!/^09\d{9}$/.test(newFarmer.phone)) {
+        toast.error("Phone number must start with 09 and be exactly 11 digits.");
+        return;
+      }
     } else {
       if (!selectedFarmer) {
         toast.error("Please select a farmer.");
@@ -353,12 +357,13 @@ export default function RecordAIScreen() {
                   </Text>
                   <TextInput
                     className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                    placeholder="0912 345..."
+                    placeholder="09XXXXXXXXX"
                     placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
                     keyboardType="phone-pad"
+                    maxLength={11}
                     value={newFarmer.phone}
                     onChangeText={(v) =>
-                      setNewFarmer({ ...newFarmer, phone: v })
+                      setNewFarmer({ ...newFarmer, phone: v.replace(/\D/g, "") })
                     }
                   />
                 </View>

@@ -140,8 +140,8 @@ export default function HealthLogScreen() {
         toast.error("Please fill in owner name and phone number.");
         return;
       }
-      if (newFarmer.phoneNumber.length < 10) {
-        toast.error("Contact number must be at least 10 digits.");
+      if (!/^09\d{9}$/.test(newFarmer.phoneNumber)) {
+        toast.error("Phone number must start with 09 and be exactly 11 digits.");
         return;
       }
       if (!newFarmer.barangay) {
@@ -420,8 +420,8 @@ export default function HealthLogScreen() {
                     <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">Contact Number</Text>
                     <TextInput
                       className="bg-white border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-medium"
-                      placeholder="917XXXXXXX"
-                      maxLength={10}
+                      placeholder="09XXXXXXXXX"
+                      maxLength={11}
                       keyboardType="numeric"
                       value={newFarmer.phoneNumber}
                       onChangeText={(v) => setNewFarmer({...newFarmer, phoneNumber: v.replace(/\D/g, '')})}

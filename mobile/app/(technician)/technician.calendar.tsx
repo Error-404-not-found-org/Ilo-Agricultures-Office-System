@@ -70,6 +70,14 @@ export default function TechnicianCalendar() {
     },
   });
 
+  const { data: dbUser } = useQuery({
+    queryKey: ["user", "me"],
+    queryFn: async () => {
+      const response = await api.get("/user/me");
+      return response.data || {};
+    },
+  });
+
   const checkInMutation = useMutation({
     mutationFn: async ({ id, type }: { id: string; type: "ai" | "health" }) => {
       const endpoint =
@@ -389,30 +397,43 @@ export default function TechnicianCalendar() {
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={{ paddingBottom: 100 }}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() =>
-                  item.animalId?._id &&
-                  router.push(
-                    `/(technician)/animal-details?id=${item.animalId._id}`,
-                  )
-                }
-                activeOpacity={0.8}
-                style={{
-                  backgroundColor: item.overdue ? (isDark ? '#2d1616' : '#fff5f5') : colors.card,
-                  borderRadius: 24,
-                  padding: 20,
-                  marginBottom: 12,
-                  borderLeftWidth: 4,
-                  borderLeftColor: item.overdue ? "#ef4444" : (item.type === "health" ? "#ef4444" : (isDark ? colors.primary : PRIMARY)),
-                  shadowColor: "#000",
-                  shadowOpacity: 0.03,
-                  shadowRadius: 10,
-                  elevation: 2,
-                  borderWidth: item.overdue ? 1 : 0,
-                  borderColor: item.overdue ? (isDark ? 'rgba(239,68,68,0.3)' : '#fee2e2') : "transparent"
-                }}
-              >
+            renderItem={({ item }) => {
+              const reqTechId =
+                item.raw?.approvedBy?._id ||
+                item.raw?.approvedBy ||
+                item.raw?.handledBy?._id ||
+                item.raw?.handledBy ||
+                null;
+
+              const isLocked =
+                reqTechId &&
+                dbUser?._id &&
+                String(reqTechId) !== String(dbUser._id);
+
+              return (
+                <TouchableOpacity
+                  onPress={() =>
+                    item.animalId?._id &&
+                    router.push(
+                      `/(technician)/animal-details?id=${item.animalId._id}`,
+                    )
+                  }
+                  activeOpacity={0.8}
+                  style={{
+                    backgroundColor: item.overdue ? (isDark ? '#2d1616' : '#fff5f5') : colors.card,
+                    borderRadius: 24,
+                    padding: 20,
+                    marginBottom: 12,
+                    borderLeftWidth: 4,
+                    borderLeftColor: item.overdue ? "#ef4444" : (item.type === "health" ? "#ef4444" : (isDark ? colors.primary : PRIMARY)),
+                    shadowColor: "#000",
+                    shadowOpacity: 0.03,
+                    shadowRadius: 10,
+                    elevation: 2,
+                    borderWidth: item.overdue ? 1 : 0,
+                    borderColor: item.overdue ? (isDark ? 'rgba(239,68,68,0.3)' : '#fee2e2') : "transparent"
+                  }}
+                >
                 <View
                   style={{
                     flexDirection: "row",
@@ -446,6 +467,35 @@ export default function TechnicianCalendar() {
                       gap: 8
                     }}
                   >
+                    {isLocked && (
+                      <View
+                        style={{
+                          backgroundColor: "#fef3c7",
+                          paddingHorizontal: 8,
+                          paddingVertical: 2,
+                          borderRadius: 6,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="lock"
+                          size={10}
+                          color="#d97706"
+                        />
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontFamily: "Outfit_800ExtraBold",
+                            color: "#d97706",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Locked
+                        </Text>
+                      </View>
+                    )}
                     {item.overdue && (
                       <View
                         style={{
@@ -568,17 +618,19 @@ export default function TechnicianCalendar() {
                     </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => handleCheckIn(item)}
+                    onPress={() => !isLocked && handleCheckIn(item)}
                     disabled={
-                      checkInMutation.isPending || item.status === "in-progress"
+                      checkInMutation.isPending || item.status === "in-progress" || isLocked
                     }
                     style={{
                       backgroundColor:
-                        item.status === "in-progress" ? colors.textMuted : (isDark ? colors.primary : PRIMARY),
+                        isLocked
+                          ? colors.textMuted
+                          : (item.status === "in-progress" ? colors.textMuted : (isDark ? colors.primary : PRIMARY)),
                       paddingHorizontal: 12,
                       paddingVertical: 6,
                       borderRadius: 10,
-                      opacity: checkInMutation.isPending ? 0.7 : 1,
+                      opacity: checkInMutation.isPending || isLocked ? 0.7 : 1,
                     }}
                   >
                     <Text
@@ -591,14 +643,17 @@ export default function TechnicianCalendar() {
                       {checkInMutation.isPending &&
                       checkInMutation.variables?.id === item.id
                         ? "..."
-                        : item.status === "in-progress"
-                          ? "IN PROGRESS"
-                          : "CHECK IN"}
+                        : isLocked
+                          ? "LOCKED"
+                          : item.status === "in-progress"
+                            ? "IN PROGRESS"
+                            : "CHECK IN"}
                     </Text>
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>
-            )}
+            );
+          }}
           />
         )}
       </View>

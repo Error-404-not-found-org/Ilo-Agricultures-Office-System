@@ -4,7 +4,7 @@ import { X, Syringe, User, Activity, Calendar, Search, MapPin, Phone, AlertCircl
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { CATTLE_BREEDS, CATTLE_SPECIES } from "../../constants/breeds";
+import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "../../constants/breeds";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { OTON_BARANGAYS } from "../../constants/barangays";
 import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../../utils/cattleCore";
@@ -42,6 +42,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
       earTag: "",
       species: "Beef Cattle",
       breed: "",
+      color: "",
     },
     inseminationDetails: {
       inseminationDate: new Date().toISOString().split("T")[0],
@@ -144,6 +145,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
           earTag: "",
           species: "Beef Cattle",
           breed: "",
+          color: "",
         },
         inseminationDetails: {
           inseminationDate: new Date().toISOString().split("T")[0],
@@ -194,6 +196,12 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     } else {
       if (!formData.phoneNumber || !formData.animalDetails.earTag) {
         return toast.error("Farmer phone number and animal ear tag are required.");
+      }
+      if (formData.phoneNumber.length < 11) {
+        return toast.error("Phone number must be exactly 11 digits.");
+      }
+      if (!formData.phoneNumber.startsWith("09")) {
+        return toast.error("Phone number must start with 09.");
       }
       submissionData = formData;
     }
@@ -580,19 +588,20 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                   </div>
                   <div className="space-y-1.5">
                     <label className={labelClass}>Contact Number</label>
-                    <div className="relative flex items-center">
-                      <Phone size={16} className="absolute left-4 z-10 text-base-content/20" />
-                      <div className="absolute left-10 z-10 text-xs font-bold text-base-content/50 border-r border-base-300 pr-2 py-1">+63</div>
+                    <div className="relative">
+                      <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
                       <input 
                         type="tel" 
-                        maxLength={10}
+                        maxLength={11}
                         value={formData.phoneNumber} 
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, "");
-                          setFormData({ ...formData, phoneNumber: val });
+                          if (val.length <= 11) {
+                            setFormData({ ...formData, phoneNumber: val });
+                          }
                         }} 
-                        placeholder="917 XXX XXXX" 
-                        className={`${inputClass} pl-[84px]`} 
+                        placeholder="0912 345 6789" 
+                        className={`${inputClass} pl-10`} 
                       />
                     </div>
                   </div>
@@ -694,6 +703,19 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                       <option value="" disabled>Select Breed</option>
                       {CATTLE_BREEDS.map(b => (
                           <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className={labelClass}>Color</label>
+                    <select
+                      value={formData.animalDetails.color}
+                      onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, color: e.target.value } })}
+                      className={`${selectClass} cursor-pointer`}
+                    >
+                      <option value="" disabled>Select Color</option>
+                      {CATTLE_COLORS.map(c => (
+                          <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
                   </div>

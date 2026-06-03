@@ -201,7 +201,7 @@ export default function FarmerAnimalsHub() {
           </TouchableOpacity>
           <View>
             <Text className="text-[22px] font-outfit-black text-white leading-tight">
-              My Cattle
+              My Animals
             </Text>
             <Text className="text-[12px] text-emerald-100 font-outfit-medium opacity-90">
               Herd management & registry

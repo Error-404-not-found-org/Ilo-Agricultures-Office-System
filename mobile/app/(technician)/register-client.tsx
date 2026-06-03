@@ -30,7 +30,7 @@ export default function RegisterClientScreen() {
     const newErrors: any = {};
     if (!formData.firstName.trim() || formData.firstName.length > 50) newErrors.firstName = "First name is required (max 50 chars)";
     if (!formData.lastName.trim() || formData.lastName.length > 50) newErrors.lastName = "Last name is required (max 50 chars)";
-    if (!formData.phoneNumber.trim() || !/^\d{11}$/.test(formData.phoneNumber)) newErrors.phoneNumber = "Phone must be exactly 11 digits";
+    if (!formData.phoneNumber.trim() || !/^09\d{9}$/.test(formData.phoneNumber)) newErrors.phoneNumber = "Phone must start with 09 and be exactly 11 digits";
     if (formData.email && !/^\S+@\S+\.\S+$/.test(formData.email)) newErrors.email = "Invalid email format";
     if (!formData.barangay) newErrors.barangay = "Please select a barangay";
 
