@@ -20,8 +20,11 @@ import {
 import Topbar from "../../components/ui/Topbar";
 import axiosInstance from "../../lib/axios";
 import UploadNoteModal from "../../components/modals/UploadNoteModal";
+import { useToast } from "../../contexts/ToastContext";
 
 export default function FieldNotesGallery() {
+  const toast = useToast();
+
   // ---- APPLICATION STATES ----
   const [notes, setNotes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -30,6 +33,12 @@ export default function FieldNotesGallery() {
   const [selectedNote, setSelectedNote] = useState(null);
   const [isFullscreenImage, setIsFullscreenImage] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: null,
+  });
 
   // ---- DATA FETCHING PIPELINE ----
   const fetchFieldNotes = async () => {
@@ -77,27 +86,26 @@ export default function FieldNotesGallery() {
   }, [searchQuery, activeTab, notes]);
 
   // ---- ACTION ROUTINES ----
-  const handleDeleteNote = async (id, type, e) => {
+  const handleDeleteNote = (id, type, e) => {
     if (e) e.stopPropagation();
-    if (
-      !window.confirm(
-        "Are you sure you want to permanently delete this field note?",
-      )
-    ) {
-      return;
-    }
-
-    try {
-      await axiosInstance.delete(`/technician/field-notes/${id}?type=${type}`);
-      setSelectedNote(null);
-      alert("Note deleted successfully.");
-      fetchFieldNotes();
-    } catch (error) {
-      console.error(error);
-      alert(
-        error.response?.data?.message || "Failed to drop note from ledger.",
-      );
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Field Note",
+      message: "Are you sure you want to permanently delete this field note? This action cannot be undone.",
+      onConfirm: async () => {
+        try {
+          await axiosInstance.delete(`/technician/field-notes/${id}?type=${type}`);
+          setSelectedNote(null);
+          toast.success("Field note deleted successfully.");
+          fetchFieldNotes();
+        } catch (error) {
+          console.error(error);
+          toast.error(
+            error.response?.data?.message || "Failed to delete field note.",
+          );
+        }
+      },
+    });
   };
 
   const getBadgeConfig = (type) => {
@@ -476,6 +484,37 @@ export default function FieldNotesGallery() {
         onClose={() => setIsUploadModalOpen(false)}
         onSuccess={fetchFieldNotes}
       />
+
+      {/* Confirmation Dialog Overlay */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 bg-black/45 backdrop-blur-xs z-100 flex items-center justify-center p-4 animate-fade-in">
+          <div className="card w-full max-w-sm bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
+            <div className="flex items-center gap-2 text-slate-400 font-extrabold text-[10px] tracking-widest uppercase">
+              <span>{confirmModal.title || "Confirm Action"}</span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 font-bold leading-relaxed pr-2">
+              {confirmModal.message}
+            </p>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
+              <button
+                onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
+                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer text-slate-500 dark:text-slate-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (confirmModal.onConfirm) confirmModal.onConfirm();
+                  setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
+                }}
+                className="btn btn-sm text-white border-none rounded-xl px-5 text-xs font-black cursor-pointer bg-rose-600 hover:bg-rose-700"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

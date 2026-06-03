@@ -1923,17 +1923,23 @@ export const deleteCalving = async (req, res) => {
 export const getFieldNotes = async (req, res) => {
   try {
     const [inseminations, healthRequests, technicianNotes] = await Promise.all([
-      Insemination.find({ imageUrl: { $exists: true, $ne: "" } })
+      Insemination.find({
+        imageUrl: { $exists: true, $ne: "" },
+        deletedAt: { $exists: false },
+      })
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .lean(),
-      HealthRequest.find({ imageUrl: { $exists: true, $ne: "" } })
+      HealthRequest.find({
+        imageUrl: { $exists: true, $ne: "" },
+        deletedAt: { $exists: false },
+      })
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .lean(),
-      FieldNote.find()
+      FieldNote.find({ deletedAt: { $exists: false } })
         .populate("technicianId", "name")
         .populate("farmerId", "name phoneNumber address")
         .sort({ createdAt: -1 })
@@ -2060,7 +2066,10 @@ export const createFieldNote = async (req, res) => {
 
 export const getTechnicianFieldNotes = async (req, res) => {
   try {
-    const notes = await FieldNote.find({ technicianId: req.user._id })
+    const notes = await FieldNote.find({
+      technicianId: req.user._id,
+      deletedAt: { $exists: false },
+    })
       .sort({ createdAt: -1 })
       .lean();
     res.status(200).json(notes);

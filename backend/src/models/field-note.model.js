@@ -39,6 +39,10 @@ const FieldNoteSchema = new mongoose.Schema(
       type: String,
       default: "Oton, Iloilo",
     },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
