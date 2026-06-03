@@ -25,6 +25,29 @@ import {
 } from "lucide-react";
 import Topbar from "../../components/ui/Topbar";
 
+const getMonthDays = (year, month) => {
+  const numDays = new Date(year, month + 1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const paddingDays = (firstDay + 6) % 7;
+  
+  const days = [];
+  for (let i = 0; i < paddingDays; i++) {
+    days.push(null);
+  }
+  for (let d = 1; d <= numDays; d++) {
+    days.push(new Date(year, month, d));
+  }
+  return days;
+};
+
+const getMonthName = (monthIndex) => {
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  ];
+  return months[monthIndex];
+};
+
 export default function BreedingLedger() {
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -33,7 +56,22 @@ export default function BreedingLedger() {
   const [activeTab, setActiveTab] = useState("insemination"); // "insemination", "pregnancy", "calving"
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [monthFilter, setMonthFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState({
+    preset: "all",
+    startDate: null,
+    endDate: null,
+  });
+  const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
+  const [tempDateRange, setTempDateRange] = useState({
+    startDate: null,
+    endDate: null,
+  });
+  const [pickerMode, setPickerMode] = useState("presets"); // "presets" | "calendar"
+  const [leftMonthYear, setLeftMonthYear] = useState({
+    month: new Date().getMonth(),
+    year: new Date().getFullYear(),
+  });
+  const [hoveredDate, setHoveredDate] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [selectedRecord, setSelectedRecord] = useState(null);
@@ -44,6 +82,64 @@ export default function BreedingLedger() {
     message: "",
     onConfirm: null,
   });
+
+  const getDateFilterLabel = () => {
+    switch (dateFilter.preset) {
+      case "all":
+        return "All Time";
+      case "7days":
+        return "Last 7 days";
+      case "14days":
+        return "Last 14 days";
+      case "thisMonth":
+        return "This month";
+      case "lastMonth":
+        return "Last month";
+      case "thisYear":
+        return "This year";
+      case "lastYear":
+        return "Last year";
+      case "custom": {
+        if (dateFilter.startDate && dateFilter.endDate) {
+          const format = (dStr) => {
+            const d = new Date(dStr);
+            const day = d.getDate();
+            const month = d.toLocaleDateString("en-US", { month: "short" });
+            const year = d.getFullYear();
+            return `${day} ${month}, ${year}`;
+          };
+          return `${format(dateFilter.startDate)} - ${format(dateFilter.endDate)}`;
+        }
+        return "Custom date range";
+      }
+      default:
+        return "Filter by Date";
+    }
+  };
+
+  const handleOpenDateDropdown = () => {
+    if (!isDateDropdownOpen) {
+      const start = dateFilter.startDate ? new Date(dateFilter.startDate) : null;
+      const end = dateFilter.endDate ? new Date(dateFilter.endDate) : null;
+      setTempDateRange({ startDate: start, endDate: end });
+      setPickerMode(dateFilter.preset === "custom" ? "calendar" : "presets");
+      
+      const activeDate = start || new Date();
+      setLeftMonthYear({
+        month: activeDate.getMonth(),
+        year: activeDate.getFullYear(),
+      });
+      setHoveredDate(null);
+    }
+    setIsDateDropdownOpen(!isDateDropdownOpen);
+  };
+
+  const handleClearDateFilter = (e) => {
+    e.stopPropagation();
+    setDateFilter({ preset: "all", startDate: null, endDate: null });
+    setTempDateRange({ startDate: null, endDate: null });
+    setCurrentPage(1);
+  };
 
   const itemsPerPage = 10;
 
@@ -178,9 +274,56 @@ export default function BreedingLedger() {
       list = list.filter(r => r.status === statusFilter);
     }
 
-    // Apply date/month filter
-    if (monthFilter) {
-      list = list.filter(r => r.date.includes(monthFilter));
+    // Apply date range filter
+    if (dateFilter.preset !== "all") {
+      const now = new Date();
+      list = list.filter(r => {
+        const itemDate = new Date(r.rawDate);
+        
+        switch (dateFilter.preset) {
+          case "7days": {
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(now.getDate() - 7);
+            return itemDate >= sevenDaysAgo && itemDate <= now;
+          }
+          case "14days": {
+            const fourteenDaysAgo = new Date();
+            fourteenDaysAgo.setDate(now.getDate() - 14);
+            return itemDate >= fourteenDaysAgo && itemDate <= now;
+          }
+          case "thisMonth": {
+            return (
+              itemDate.getMonth() === now.getMonth() &&
+              itemDate.getFullYear() === now.getFullYear()
+            );
+          }
+          case "lastMonth": {
+            const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            return (
+              itemDate.getMonth() === lm.getMonth() &&
+              itemDate.getFullYear() === lm.getFullYear()
+            );
+          }
+          case "thisYear": {
+            return itemDate.getFullYear() === now.getFullYear();
+          }
+          case "lastYear": {
+            return itemDate.getFullYear() === now.getFullYear() - 1;
+          }
+          case "custom": {
+            if (dateFilter.startDate && dateFilter.endDate) {
+              const start = new Date(dateFilter.startDate);
+              start.setHours(0, 0, 0, 0);
+              const end = new Date(dateFilter.endDate);
+              end.setHours(23, 59, 59, 999);
+              return itemDate >= start && itemDate <= end;
+            }
+            return true;
+          }
+          default:
+            return true;
+        }
+      });
     }
 
     // Apply dynamic column sorting
@@ -195,7 +338,7 @@ export default function BreedingLedger() {
     }
 
     return list;
-  }, [activeTab, inseminations, pregnancyChecks, calvings, searchQuery, statusFilter, monthFilter, sortConfig]);
+  }, [activeTab, inseminations, pregnancyChecks, calvings, searchQuery, statusFilter, dateFilter, sortConfig]);
 
   // ---- PAGINATION COMPUTATION ----
   const totalItems = processedRecords.length;
@@ -217,7 +360,7 @@ export default function BreedingLedger() {
   const clearFilters = () => {
     setSearchQuery("");
     setStatusFilter("");
-    setMonthFilter("");
+    setDateFilter({ preset: "all", startDate: null, endDate: null });
     setCurrentPage(1);
   };
 
@@ -528,6 +671,91 @@ export default function BreedingLedger() {
     document.body.removeChild(link);
   };
 
+  const isSameDay = (d1, d2) => {
+    if (!d1 || !d2) return false;
+    return (
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate()
+    );
+  };
+
+  const isBetweenDates = (date, start, end) => {
+    if (!date || !start || !end) return false;
+    const dTime = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+    const sTime = new Date(start.getFullYear(), start.getMonth(), start.getDate()).getTime();
+    const eTime = new Date(end.getFullYear(), end.getMonth(), end.getDate()).getTime();
+    return dTime >= sTime && dTime <= eTime;
+  };
+
+  const handleDayClick = (day) => {
+    if (!day) return;
+    const { startDate, endDate } = tempDateRange;
+    if (!startDate || (startDate && endDate)) {
+      setTempDateRange({ startDate: day, endDate: null });
+    } else {
+      if (day < startDate) {
+        setTempDateRange({ startDate: day, endDate: null });
+      } else {
+        setTempDateRange({ startDate, endDate: day });
+      }
+    }
+  };
+
+  const handleApplyCustomRange = () => {
+    const { startDate, endDate } = tempDateRange;
+    if (!startDate || !endDate) {
+      toast.error("Please specify both start and end dates.");
+      return;
+    }
+    const formatDateString = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    setDateFilter({
+      preset: "custom",
+      startDate: formatDateString(startDate),
+      endDate: formatDateString(endDate),
+    });
+    setIsDateDropdownOpen(false);
+    setCurrentPage(1);
+  };
+
+  const getDayClass = (day) => {
+    if (!day) return "invisible p-2";
+    
+    const { startDate, endDate } = tempDateRange;
+    const isStart = isSameDay(day, startDate);
+    const isEnd = isSameDay(day, endDate);
+    
+    let isInRange = false;
+    if (startDate && endDate) {
+      isInRange = isBetweenDates(day, startDate, endDate);
+    } else if (startDate && hoveredDate && !isSameDay(day, startDate)) {
+      const rangeStart = startDate < hoveredDate ? startDate : hoveredDate;
+      const rangeEnd = startDate < hoveredDate ? hoveredDate : startDate;
+      isInRange = isBetweenDates(day, rangeStart, rangeEnd);
+    }
+    
+    const baseClass = "w-8 h-8 rounded-lg text-xs font-bold transition-all relative flex items-center justify-center cursor-pointer select-none";
+    
+    if (isStart || isEnd) {
+      return `${baseClass} bg-blue-600 text-white z-10`;
+    }
+    if (isInRange) {
+      return `${baseClass} bg-blue-500/15 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300`;
+    }
+    
+    const isToday = isSameDay(day, new Date());
+    if (isToday) {
+      return `${baseClass} border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900`;
+    }
+    
+    return `${baseClass} text-slate-700 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-900`;
+  };
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
       <Topbar
@@ -675,21 +903,213 @@ export default function BreedingLedger() {
               </select>
             )}
 
-            <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
-              value={monthFilter}
-              onChange={(e) => {
-                setMonthFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-            >
-              <option value="">All Months</option>
-              <option value="May">May 2026</option>
-              <option value="Apr">April 2026</option>
-              <option value="Mar">March 2026</option>
-            </select>
+            {/* Custom Premium Date Range Picker Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={handleOpenDateDropdown}
+                className={`btn btn-sm rounded-xl text-xs font-bold gap-2 px-4 transition-all duration-200 cursor-pointer border ${
+                  isDateDropdownOpen 
+                    ? "border-blue-500! ring-2 ring-blue-500/30! bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100" 
+                    : dateFilter.preset !== "all"
+                      ? "bg-[#00643b]/10! text-[#00643b] border-[#00643b]/40! dark:text-emerald-400 dark:border-emerald-500/40!"
+                      : "border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-950"
+                }`}
+              >
+                <Calendar size={13} className={isDateDropdownOpen ? "text-blue-500" : dateFilter.preset !== "all" ? "text-[#00643b] dark:text-emerald-400" : "text-slate-400"} />
+                <span>{getDateFilterLabel()}</span>
+                {dateFilter.preset !== "all" && (
+                  <span
+                    onClick={handleClearDateFilter}
+                    className="hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full p-0.5 ml-1 transition-colors"
+                  >
+                    <X size={10} />
+                  </span>
+                )}
+              </button>
 
-            {(statusFilter || monthFilter || searchQuery) && (
+              {isDateDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsDateDropdownOpen(false)}
+                  />
+                  <div className={`absolute top-12 left-0 z-50 card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-xl p-4 transition-all duration-200 animate-fade-in ${
+                    pickerMode === "calendar" ? "w-full md:w-[570px]" : "w-60"
+                  }`}>
+                    {pickerMode === "presets" ? (
+                      <div className="flex flex-col gap-1">
+                        {[
+                          { id: "7days", label: "Last 7 days" },
+                          { id: "14days", label: "Last 14 days" },
+                          { id: "thisMonth", label: "This month" },
+                          { id: "lastMonth", label: "Last month" },
+                          { id: "thisYear", label: "This year" },
+                          { id: "lastYear", label: "Last year" },
+                          { id: "custom", label: "Custom date range" },
+                        ].map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => {
+                              if (p.id !== "custom") {
+                                setDateFilter({ preset: p.id, startDate: null, endDate: null });
+                                setIsDateDropdownOpen(false);
+                                setCurrentPage(1);
+                              } else {
+                                setPickerMode("calendar");
+                              }
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-between ${
+                              dateFilter.preset === p.id && dateFilter.preset !== "custom"
+                                ? "bg-[#00643b] text-white"
+                                : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900"
+                            }`}
+                          >
+                            <span>{p.label}</span>
+                            {dateFilter.preset === p.id && dateFilter.preset !== "custom" && (
+                              <CheckCircle size={12} className="text-white" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col md:flex-row gap-5">
+                          {/* Left Calendar (currentViewMonth) */}
+                          <div className="w-60 flex-1">
+                            <div className="flex items-center justify-between border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 mb-3">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLeftMonthYear((prev) => {
+                                    if (prev.month === 0) return { month: 11, year: prev.year - 1 };
+                                    return { month: prev.month - 1, year: prev.year };
+                                  });
+                                }}
+                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                              >
+                                <ChevronLeft size={14} />
+                              </button>
+                              <span className="text-[11px] font-black text-slate-700 dark:text-slate-200">
+                                {getMonthName(leftMonthYear.month)} {leftMonthYear.year}
+                              </span>
+                              <div className="w-6" />
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                              {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+                                <span key={d} className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider py-0.5">
+                                  {d}
+                                </span>
+                              ))}
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1 text-center">
+                              {getMonthDays(leftMonthYear.year, leftMonthYear.month).map((day, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => handleDayClick(day)}
+                                  onMouseEnter={() => day && setHoveredDate(day)}
+                                  onMouseLeave={() => setHoveredDate(null)}
+                                  className={getDayClass(day)}
+                                  disabled={!day}
+                                >
+                                  {day ? day.getDate() : ""}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Right Calendar (currentViewMonth + 1) */}
+                          <div className="w-60 flex-1 border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800/80 pt-4 md:pt-0 md:pl-5">
+                            <div className="flex items-center justify-between border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 mb-3">
+                              <div className="w-6" />
+                              <span className="text-[11px] font-black text-slate-700 dark:text-slate-200">
+                                {getMonthName((leftMonthYear.month + 1) % 12)} {leftMonthYear.month === 11 ? leftMonthYear.year + 1 : leftMonthYear.year}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setLeftMonthYear((prev) => {
+                                    if (prev.month === 11) return { month: 0, year: prev.year + 1 };
+                                    return { month: prev.month + 1, year: prev.year };
+                                  });
+                                }}
+                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                              >
+                                <ChevronRight size={14} />
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1 text-center mb-1">
+                              {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((d) => (
+                                <span key={d} className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider py-0.5">
+                                  {d}
+                                </span>
+                              ))}
+                            </div>
+
+                            <div className="grid grid-cols-7 gap-1 text-center">
+                              {getMonthDays(
+                                leftMonthYear.month === 11 ? leftMonthYear.year + 1 : leftMonthYear.year,
+                                (leftMonthYear.month + 1) % 12
+                              ).map((day, idx) => (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => handleDayClick(day)}
+                                  onMouseEnter={() => day && setHoveredDate(day)}
+                                  onMouseLeave={() => setHoveredDate(null)}
+                                  className={getDayClass(day)}
+                                  disabled={!day}
+                                >
+                                  {day ? day.getDate() : ""}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions footer */}
+                        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTempDateRange({ startDate: null, endDate: null });
+                            }}
+                            className="btn btn-xs btn-ghost text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-[10px] font-bold rounded-lg px-2 cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPickerMode("presets");
+                              }}
+                              className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-bold rounded-lg px-3 cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleApplyCustomRange}
+                              className="btn btn-xs text-white bg-blue-600 hover:bg-blue-700 border-none rounded-lg px-4 text-[10px] font-black cursor-pointer shadow-sm transition-all"
+                            >
+                              Apply
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {(statusFilter || dateFilter.preset !== "all" || searchQuery) && (
               <button
                 onClick={clearFilters}
                 className="btn btn-sm btn-ghost text-xs text-rose-600 font-bold gap-1 rounded-lg cursor-pointer"
@@ -1179,7 +1599,7 @@ export default function BreedingLedger() {
           <p className="font-black text-[11px] uppercase tracking-wide mt-1">UNIFIED NATIONAL ARTIFICIAL INSEMINATION PROGRAM</p>
           <p className="font-bold text-[9px] mt-1 italic">Monthly Accomplishment Report</p>
           <div className="flex justify-between text-[8px] font-bold mt-2 px-10">
-            <span>For the Month of: <span className="underline font-bold">{monthFilter || new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span></span>
+            <span>For the Month of: <span className="underline font-bold">{dateFilter.preset !== "all" ? getDateFilterLabel() : new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</span></span>
             <span>Submitted Date: <span className="underline font-bold">__________________</span></span>
           </div>
           <div className="flex justify-start text-[8px] font-bold gap-8 px-10 mt-1">

@@ -1925,7 +1925,6 @@ export const getFieldNotes = async (req, res) => {
     const [inseminations, healthRequests, technicianNotes] = await Promise.all([
       Insemination.find({
         imageUrl: { $exists: true, $ne: "" },
-        deletedAt: { $exists: false },
       })
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "animalId earTag breed species imageUrl")
@@ -1933,13 +1932,12 @@ export const getFieldNotes = async (req, res) => {
         .lean(),
       HealthRequest.find({
         imageUrl: { $exists: true, $ne: "" },
-        deletedAt: { $exists: false },
       })
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .lean(),
-      FieldNote.find({ deletedAt: { $exists: false } })
+      FieldNote.find()
         .populate("technicianId", "name")
         .populate("farmerId", "name phoneNumber address")
         .sort({ createdAt: -1 })
@@ -1959,6 +1957,7 @@ export const getFieldNotes = async (req, res) => {
         note: ins.comment || "No comment provided.",
         date: ins.createdAt,
         status: ins.status,
+        isArchived: !!ins.deletedAt,
       })),
       ...healthRequests.map((hr) => ({
         id: hr._id,
@@ -1972,6 +1971,7 @@ export const getFieldNotes = async (req, res) => {
         note: hr.symptoms || "No symptoms/notes provided.",
         date: hr.createdAt,
         status: hr.status,
+        isArchived: !!hr.deletedAt,
       })),
       ...technicianNotes.map((tn) => ({
         id: tn._id,
@@ -1988,6 +1988,7 @@ export const getFieldNotes = async (req, res) => {
         latitude: tn.latitude,
         longitude: tn.longitude,
         author: tn.technicianId?.name || "Technician",
+        isArchived: !!tn.deletedAt,
       })),
     ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
@@ -2068,7 +2069,6 @@ export const getTechnicianFieldNotes = async (req, res) => {
   try {
     const notes = await FieldNote.find({
       technicianId: req.user._id,
-      deletedAt: { $exists: false },
     })
       .sort({ createdAt: -1 })
       .lean();

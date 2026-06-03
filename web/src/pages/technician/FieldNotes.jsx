@@ -60,10 +60,10 @@ export default function FieldNotesGallery() {
   // ---- LIVE METRIC COMPUTATION ENGINE ----
   const stats = useMemo(() => {
     return {
-      total: notes.length,
-      ai: notes.filter((n) => n.type === "insemination").length,
-      health: notes.filter((n) => n.type === "health").length,
-      tech: notes.filter((n) => n.type === "technician-note").length,
+      total: notes.filter((n) => !n.isArchived).length,
+      ai: notes.filter((n) => !n.isArchived && n.type === "insemination").length,
+      health: notes.filter((n) => !n.isArchived && n.type === "health").length,
+      tech: notes.filter((n) => !n.isArchived && n.type === "technician-note").length,
     };
   }, [notes]);
 
@@ -80,8 +80,10 @@ export default function FieldNotesGallery() {
         .toLowerCase()
         .includes(q);
 
-      const matchesTab = activeTab === "all" || n.type === activeTab;
-      return matchesSearch && matchesTab;
+      if (activeTab === "archived") {
+        return matchesSearch && n.isArchived;
+      }
+      return matchesSearch && !n.isArchived && (activeTab === "all" || n.type === activeTab);
     });
   }, [searchQuery, activeTab, notes]);
 
@@ -102,6 +104,41 @@ export default function FieldNotesGallery() {
           console.error(error);
           toast.error(
             error.response?.data?.message || "Failed to complete delete request.",
+          );
+        }
+      },
+    });
+  };
+
+  const handleRestoreNote = async (id, type) => {
+    try {
+      await axiosInstance.delete(`/technician/field-notes/${id}?type=${type}&restore=true`);
+      setSelectedNote(null);
+      toast.success("Field note restored successfully.");
+      fetchFieldNotes();
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error.response?.data?.message || "Failed to restore field note.",
+      );
+    }
+  };
+
+  const handleDeletePermanentlyDirect = (id, type) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Delete Permanently",
+      message: "Are you sure you want to permanently erase this note from the system database? This action cannot be undone.",
+      onConfirm: async () => {
+        try {
+          await axiosInstance.delete(`/technician/field-notes/${id}?type=${type}&permanent=true`);
+          setSelectedNote(null);
+          toast.success("Field note permanently deleted.");
+          fetchFieldNotes();
+        } catch (error) {
+          console.error(error);
+          toast.error(
+            error.response?.data?.message || "Failed to permanently delete field note.",
           );
         }
       },
@@ -204,6 +241,7 @@ export default function FieldNotesGallery() {
               { id: "insemination", label: "AI Requests" },
               { id: "health", label: "Health Calls" },
               { id: "technician-note", label: "Tech Notes" },
+              { id: "archived", label: "Archived Notes" },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -465,14 +503,37 @@ export default function FieldNotesGallery() {
                       : "N/A"}
                   </span>
                 </div>
-                <button
-                  onClick={(e) =>
-                    handleDeleteNote(selectedNote.id, selectedNote.type, e)
-                  }
-                  className="btn btn-sm btn-outline border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-600 dark:hover:text-white rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center"
-                >
-                  <Trash2 size={12} /> Delete Note
-                </button>
+                {selectedNote.isArchived ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRestoreNote(selectedNote.id, selectedNote.type);
+                      }}
+                      className="btn btn-sm btn-outline border-emerald-200 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-600 dark:hover:text-white rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center cursor-pointer"
+                    >
+                      Restore Note
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeletePermanentlyDirect(selectedNote.id, selectedNote.type);
+                      }}
+                      className="btn btn-sm text-white bg-rose-600 hover:bg-rose-700 border-none rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center cursor-pointer"
+                    >
+                      <Trash2 size={12} /> Erase
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={(e) =>
+                      handleDeleteNote(selectedNote.id, selectedNote.type, e)
+                    }
+                    className="btn btn-sm btn-outline border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-600 dark:hover:text-white rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center cursor-pointer"
+                  >
+                    <Trash2 size={12} /> Delete Note
+                  </button>
+                )}
               </div>
             </div>
           </div>

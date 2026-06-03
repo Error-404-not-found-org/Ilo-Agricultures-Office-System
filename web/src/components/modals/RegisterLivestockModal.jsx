@@ -21,7 +21,7 @@ import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "../../constants/br
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
 
-const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
+const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -51,21 +51,44 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      const res = await axiosInstance.post(
-        "/technician/walk-in-livestock",
-        data,
-      );
-      return res.data;
+      if (livestock) {
+        const payload = {
+          earTag: data.earTag,
+          brand: data.brand,
+          species: data.species,
+          breed: data.breed,
+          color: data.color,
+          gender: data.gender,
+          birthDate: data.dob || null,
+          imageUrl: data.imageUrl,
+        };
+        const res = await axiosInstance.put(
+          `/animals/wizard/${livestock._id || livestock.id}`,
+          payload
+        );
+        return res.data;
+      } else {
+        const res = await axiosInstance.post(
+          "/technician/walk-in-livestock",
+          data,
+        );
+        return res.data;
+      }
     },
     onSuccess: () => {
-      toast.success("Livestock profile registered successfully!");
+      toast.success(
+        livestock
+          ? "Livestock profile updated successfully!"
+          : "Livestock profile registered successfully!"
+      );
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["animals"] });
       if (onSuccess) onSuccess();
       onClose();
     },
     onError: (error) => {
       toast.error(
-        "Failed to register livestock: " +
+        (livestock ? "Failed to update livestock: " : "Failed to register livestock: ") +
           (error.response?.data?.message || error.message),
       );
     },
@@ -84,6 +107,42 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (livestock) {
+        const formattedDob = livestock.birthDate 
+          ? new Date(livestock.birthDate).toISOString().split("T")[0] 
+          : "";
+        
+        setFormData({
+          earTag: livestock.earTag || "",
+          brand: livestock.brand || "",
+          species: livestock.species || "Beef Cattle",
+          breed: livestock.breed || "",
+          color: livestock.color || "",
+          gender: livestock.gender || "Female",
+          dob: formattedDob,
+          farmerName: livestock.farmerId?._id || livestock.farmerId || "",
+        });
+        setSearchFarmer(livestock.farmerId?.name || "Unknown Farmer");
+        setImagePreview(livestock.imageUrl || null);
+      } else {
+        setFormData({
+          earTag: "",
+          brand: "",
+          species: "Beef Cattle",
+          breed: "",
+          color: "",
+          gender: "Female",
+          dob: "",
+          farmerName: "",
+        });
+        setSearchFarmer("");
+        setImagePreview(null);
+      }
+    }
+  }, [livestock, isOpen]);
 
   if (!isOpen) return null;
 
@@ -129,10 +188,10 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
               </div>
               <div>
                 <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                  Livestock Registry
+                  {livestock ? "Edit Livestock Profile" : "Livestock Registry"}
                 </h3>
                 <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                  Municipal Asset Identification Protocol
+                  {livestock ? "Modify municipal asset identification" : "Municipal Asset Identification Protocol"}
                 </p>
               </div>
             </div>
@@ -217,13 +276,14 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
                         setSearchFarmer(e.target.value);
                         setIsDropdownOpen(true);
                       }}
+                      disabled={!!livestock}
                       placeholder="Search field records for owner..."
-                      className={`${inputClass} pl-11`}
+                      className={`${inputClass} pl-11 ${livestock ? "opacity-50 cursor-not-allowed" : ""}`}
                     />
                   </div>
 
                   <AnimatePresence>
-                    {isDropdownOpen && (
+                    {isDropdownOpen && !livestock && (
                       <motion.div
                         initial={{ opacity: 0, y: -5 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -423,7 +483,7 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess }) => {
               ) : (
                 <>
                   <BadgeCheck size={14} />
-                  Register Municipal Asset
+                  {livestock ? "Save Asset Updates" : "Register Municipal Asset"}
                 </>
               )}
             </button>

@@ -29,6 +29,7 @@ export default function AnimalRegistry() {
 
   // ---- MODAL STATE ----
   const [isRegisterLivestockOpen, setIsRegisterLivestockOpen] = useState(false);
+  const [selectedAnimalForEdit, setSelectedAnimalForEdit] = useState(null);
 
   // ---- APPLICATION STATES ----
   const [searchQuery, setSearchQuery] = useState("");
@@ -481,11 +482,11 @@ export default function AnimalRegistry() {
                             <History size={11} /> Profile
                           </button>
                           <button
-                            onClick={() =>
-                              alert(
-                                `Modify ear tag diagnostic variables for registry index: ${animal.tag}`,
-                              )
-                            }
+                            onClick={() => {
+                              const rawAnimal = rawAnimals.find((ra) => ra._id === animal.id);
+                              setSelectedAnimalForEdit(rawAnimal || null);
+                              setIsRegisterLivestockOpen(true);
+                            }}
                             className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 cursor-pointer"
                           >
                             <Edit size={12} />
@@ -543,8 +544,12 @@ export default function AnimalRegistry() {
       {/* Register Livestock Modal */}
       <RegisterLivestockModal
         isOpen={isRegisterLivestockOpen}
-        onClose={() => setIsRegisterLivestockOpen(false)}
+        onClose={() => {
+          setIsRegisterLivestockOpen(false);
+          setSelectedAnimalForEdit(null);
+        }}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ["animals", "registry-list"] })}
+        livestock={selectedAnimalForEdit}
       />
     </div>
   );
