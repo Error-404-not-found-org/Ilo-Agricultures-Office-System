@@ -223,8 +223,23 @@ export const updateAnimalWizard = async (req, res) => {
     if (payload.species) animal.species = payload.species;
     if (payload.breed) animal.breed = payload.breed;
     if (payload.color) animal.color = payload.color;
+    if (payload.gender) animal.gender = payload.gender;
     if (payload.birthDate) animal.birthDate = new Date(payload.birthDate);
-    if (payload.imageUrl) animal.imageUrl = payload.imageUrl;
+    
+    if (payload.imageUrl) {
+      if (payload.imageUrl.startsWith("data:image")) {
+        try {
+          const uploadResponse = await cloudinary.uploader.upload(payload.imageUrl, {
+            folder: "livestock_profiles",
+          });
+          animal.imageUrl = uploadResponse.secure_url;
+        } catch (uploadError) {
+          console.error("[updateAnimalWizard IMAGE UPLOAD ERROR]", uploadError);
+        }
+      } else {
+        animal.imageUrl = payload.imageUrl;
+      }
+    }
 
     if (!animal.barangay) {
       const farmer = await User.findById(animal.farmerId);

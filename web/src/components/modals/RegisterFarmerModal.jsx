@@ -22,7 +22,7 @@ const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px
 const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
 const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
 
-const RegisterFarmerModal = ({ isOpen, onClose }) => {
+const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -40,18 +40,34 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      const res = await axiosInstance.post("/technician/register-farmer", {
-        ...data,
-        address: {
-          barangay: data.barangay,
-          city: data.city,
-          province: data.province,
-        },
-      });
-      return res.data;
+      if (farmer) {
+        const payload = {
+          name: `${data.firstName} ${data.lastName}`.trim(),
+          email: data.email || "",
+          phoneNumber: data.phoneNumber,
+          address: {
+            barangay: data.barangay,
+            city: data.city,
+            province: data.province,
+            phoneNumber: data.phoneNumber,
+          },
+        };
+        const res = await axiosInstance.put(`/user/${farmer.id || farmer._id}`, payload);
+        return res.data;
+      } else {
+        const res = await axiosInstance.post("/technician/register-farmer", {
+          ...data,
+          address: {
+            barangay: data.barangay,
+            city: data.city,
+            province: data.province,
+          },
+        });
+        return res.data;
+      }
     },
     onSuccess: () => {
-      toast.success("Farmer profile created successfully!");
+      toast.success(farmer ? "Farmer profile updated successfully!" : "Farmer profile created successfully!");
       queryClient.invalidateQueries({
         queryKey: ["technician", "dashboard"],
       });
@@ -59,18 +75,9 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
         queryKey: ["technician", "farmers"],
       });
       onClose();
-      setFormData({
-        firstName: "",
-        lastName: "",
-        phoneNumber: "",
-        email: "",
-        barangay: "",
-        city: "Oton",
-        province: "Iloilo",
-      });
     },
     onError: (error) => {
-      toast.error(error.response?.data?.message || "Registration failed.");
+      toast.error(error.response?.data?.message || (farmer ? "Failed to update profile." : "Registration failed."));
     },
   });
 
@@ -87,6 +94,35 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (farmer) {
+        const nameParts = (farmer.name || "").trim().split(" ");
+        const first = nameParts[0] || "";
+        const last = nameParts.slice(1).join(" ") || "";
+        setFormData({
+          firstName: first,
+          lastName: last,
+          phoneNumber: farmer.contact || farmer.phoneNumber || "",
+          email: farmer.email || "",
+          barangay: farmer.brgy || farmer.address?.barangay || "",
+          city: farmer.address?.city || "Oton",
+          province: farmer.address?.province || "Iloilo",
+        });
+      } else {
+        setFormData({
+          firstName: "",
+          lastName: "",
+          phoneNumber: "",
+          email: "",
+          barangay: "",
+          city: "Oton",
+          province: "Iloilo",
+        });
+      }
+    }
+  }, [farmer, isOpen]);
 
   if (!isOpen) return null;
 
@@ -146,10 +182,10 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                    Farmer Registry
+                    {farmer ? "Edit Client Profile" : "Farmer Registry"}
                   </h3>
                   <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                    Municipal Personnel Protocol
+                    {farmer ? "Modify municipal records" : "Municipal Personnel Protocol"}
                   </p>
                 </div>
               </div>
@@ -173,8 +209,9 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
                       Protocol Verified
                     </h4>
                     <p className="text-[10px] font-bold text-emerald-100/60 uppercase mt-2.5 leading-relaxed tracking-wider">
-                      This registry entry creates a verified municipal profile
-                      for field operations tracking.
+                      {farmer 
+                        ? "Updating this profile will synchronize details across all associated livestock assets."
+                        : "This registry entry creates a verified municipal profile for field operations tracking."}
                     </p>
                   </div>
 
@@ -404,7 +441,7 @@ const RegisterFarmerModal = ({ isOpen, onClose }) => {
                 ) : (
                   <>
                     <BadgeCheck size={14} />
-                    Confirm Registration
+                    {farmer ? "Save Profile Updates" : "Confirm Registration"}
                   </>
                 )}
               </button>

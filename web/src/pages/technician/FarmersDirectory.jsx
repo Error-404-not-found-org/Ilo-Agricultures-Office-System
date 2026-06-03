@@ -28,6 +28,7 @@ export default function ClientRegistry() {
 
   // ---- MODAL STATE ----
   const [isRegisterFarmerOpen, setIsRegisterFarmerOpen] = useState(false);
+  const [selectedFarmerForEdit, setSelectedFarmerForEdit] = useState(null);
 
   // ---- APPLICATION STATES ----
   const [searchQuery, setSearchQuery] = useState("");
@@ -495,9 +496,11 @@ export default function ClientRegistry() {
                               <Beef size={11} /> Animals
                             </button>
                             <button
-                              onClick={() =>
-                                alert(`Edit profile variables for ${c.name}`)
-                              }
+                              onClick={() => {
+                                const rawFarmer = rawFarmers.find((rf) => rf._id === c.id);
+                                setSelectedFarmerForEdit(rawFarmer || null);
+                                setIsRegisterFarmerOpen(true);
+                              }}
                               className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 cursor-pointer"
                               title="Edit Client"
                             >
@@ -568,7 +571,11 @@ export default function ClientRegistry() {
       {/* Register Farmer Modal */}
       <RegisterFarmerModal
         isOpen={isRegisterFarmerOpen}
-        onClose={() => setIsRegisterFarmerOpen(false)}
+        onClose={() => {
+          setIsRegisterFarmerOpen(false);
+          setSelectedFarmerForEdit(null);
+        }}
+        farmer={selectedFarmerForEdit}
       />
     </div>
   );
