@@ -2108,27 +2108,40 @@ export const deleteFieldNote = async (req, res) => {
 export const deleteFieldNoteRecord = async (req, res) => {
   try {
     const { id } = req.params;
-    const { type } = req.query;
+    const { type, permanent } = req.query;
+    const isPermanent = permanent === "true";
 
     if (type === "insemination") {
-      await Insemination.findByIdAndUpdate(id, {
-        $set: { deletedAt: new Date() },
-      });
+      if (isPermanent) {
+        await Insemination.findByIdAndDelete(id);
+      } else {
+        await Insemination.findByIdAndUpdate(id, {
+          $set: { deletedAt: new Date() },
+        });
+      }
       res
         .status(200)
-        .json({ message: "Insemination field note deleted successfully" });
+        .json({ message: `Insemination field note ${isPermanent ? "permanently" : "soft"} deleted successfully` });
     } else if (type === "health") {
-      await HealthRequest.findByIdAndUpdate(id, {
-        $set: { deletedAt: new Date() },
-      });
+      if (isPermanent) {
+        await HealthRequest.findByIdAndDelete(id);
+      } else {
+        await HealthRequest.findByIdAndUpdate(id, {
+          $set: { deletedAt: new Date() },
+        });
+      }
       res
         .status(200)
-        .json({ message: "Health request field note deleted successfully" });
+        .json({ message: `Health request field note ${isPermanent ? "permanently" : "soft"} deleted successfully` });
     } else {
-      await FieldNote.findByIdAndUpdate(id, {
-        $set: { deletedAt: new Date() },
-      });
-      res.status(200).json({ message: "Field note deleted successfully" });
+      if (isPermanent) {
+        await FieldNote.findByIdAndDelete(id);
+      } else {
+        await FieldNote.findByIdAndUpdate(id, {
+          $set: { deletedAt: new Date() },
+        });
+      }
+      res.status(200).json({ message: `Field note ${isPermanent ? "permanently" : "soft"} deleted successfully` });
     }
   } catch (error) {
     res

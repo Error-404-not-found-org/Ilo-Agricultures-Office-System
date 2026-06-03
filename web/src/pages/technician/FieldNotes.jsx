@@ -91,17 +91,17 @@ export default function FieldNotesGallery() {
     setConfirmModal({
       isOpen: true,
       title: "Delete Field Note",
-      message: "Are you sure you want to permanently delete this field note? This action cannot be undone.",
-      onConfirm: async () => {
+      message: "Choose whether to temporarily hide/archive this note or permanently erase it from the system.",
+      onConfirm: async (permanent) => {
         try {
-          await axiosInstance.delete(`/technician/field-notes/${id}?type=${type}`);
+          await axiosInstance.delete(`/technician/field-notes/${id}?type=${type}&permanent=${permanent}`);
           setSelectedNote(null);
-          toast.success("Field note deleted successfully.");
+          toast.success(permanent ? "Field note permanently deleted." : "Field note archived successfully.");
           fetchFieldNotes();
         } catch (error) {
           console.error(error);
           toast.error(
-            error.response?.data?.message || "Failed to delete field note.",
+            error.response?.data?.message || "Failed to complete delete request.",
           );
         }
       },
@@ -495,21 +495,30 @@ export default function FieldNotesGallery() {
             <p className="text-xs text-slate-600 dark:text-slate-300 font-bold leading-relaxed pr-2">
               {confirmModal.message}
             </p>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
+            <div className="flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
               <button
-                onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
-                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer text-slate-500 dark:text-slate-400"
+                onClick={() => {
+                  if (confirmModal.onConfirm) confirmModal.onConfirm(false);
+                  setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
+                }}
+                className="btn btn-sm text-white border-none rounded-xl px-5 text-xs font-black cursor-pointer bg-slate-600 hover:bg-slate-700 w-full"
               >
-                Cancel
+                Hide / Archive Note
               </button>
               <button
                 onClick={() => {
-                  if (confirmModal.onConfirm) confirmModal.onConfirm();
+                  if (confirmModal.onConfirm) confirmModal.onConfirm(true);
                   setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
                 }}
-                className="btn btn-sm text-white border-none rounded-xl px-5 text-xs font-black cursor-pointer bg-rose-600 hover:bg-rose-700"
+                className="btn btn-sm text-white border-none rounded-xl px-5 text-xs font-black cursor-pointer bg-rose-600 hover:bg-rose-700 w-full"
               >
-                Confirm
+                Delete Permanently (Erase)
+              </button>
+              <button
+                onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
+                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer text-slate-500 dark:text-slate-400 mt-1 w-full"
+              >
+                Cancel
               </button>
             </div>
           </div>
