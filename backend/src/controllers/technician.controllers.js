@@ -2067,41 +2067,149 @@ export const createFieldNote = async (req, res) => {
 
 export const getTechnicianFieldNotes = async (req, res) => {
   try {
-    const notes = await FieldNote.find({
-      technicianId: req.user._id,
-    })
-      .sort({ createdAt: -1 })
-      .lean();
+    const technicianId = req.user._id;
+
+    const [inseminations, healthRequests, technicianNotes] = await Promise.all([
+      Insemination.find({
+        technicianId,
+        imageUrl: { $exists: true, $ne: "" },
+        deletedAt: null,
+      })
+        .populate("farmerId", "name phoneNumber address")
+        .populate("animalId", "animalId earTag breed species imageUrl")
+        .sort({ createdAt: -1 })
+        .lean(),
+      HealthRequest.find({
+        handledBy: technicianId,
+        imageUrl: { $exists: true, $ne: "" },
+        deletedAt: null,
+      })
+        .populate("farmerId", "name phoneNumber address")
+        .populate("animalId", "animalId earTag breed species imageUrl")
+        .sort({ createdAt: -1 })
+        .lean(),
+      FieldNote.find({
+        technicianId,
+        deletedAt: null,
+      })
+        .populate("technicianId", "name")
+        .populate("farmerId", "name phoneNumber address")
+        .sort({ createdAt: -1 })
+        .lean(),
+    ]);
+
+    const notes = [
+      ...inseminations.map((ins) => ({
+        _id: ins._id,
+        id: ins._id,
+        type: "insemination",
+        farmerName: ins.farmerId?.name || "Unknown Farmer",
+        farmer: ins.farmerId?.name || "Unknown Farmer",
+        farmerPhone: ins.farmerId?.phoneNumber || "No Phone",
+        animalTag: ins.animalId?.animalId || ins.animalId?.earTag || "No Tag",
+        animalSpecies: ins.animalId?.species || "Cattle",
+        animalBreed: ins.animalId?.breed || "Crossbreed",
+        imageUrl: ins.imageUrl,
+        title: "Insemination Upload",
+        description: ins.comment || "No comment provided.",
+        createdAt: ins.createdAt,
+        status: ins.status,
+        isArchived: !!ins.deletedAt,
+      })),
+      ...healthRequests.map((hr) => ({
+        _id: hr._id,
+        id: hr._id,
+        type: "health",
+        farmerName: hr.farmerId?.name || "Unknown Farmer",
+        farmer: hr.farmerId?.name || "Unknown Farmer",
+        farmerPhone: hr.farmerId?.phoneNumber || "No Phone",
+        animalTag: hr.animalId?.animalId || hr.animalId?.earTag || "No Tag",
+        animalSpecies: hr.animalId?.species || "Cattle",
+        animalBreed: hr.animalId?.breed || "Crossbreed",
+        imageUrl: hr.imageUrl,
+        title: `${hr.requestType?.toUpperCase() || "HEALTH"} Request`,
+        description: hr.symptoms || "No symptoms/notes provided.",
+        createdAt: hr.createdAt,
+        status: hr.status,
+        isArchived: !!hr.deletedAt,
+      })),
+      ...technicianNotes.map((tn) => ({
+        _id: tn._id,
+        id: tn._id,
+        type: "technician-note",
+        farmerName: tn.farmerName || tn.farmerId?.name || "General Note",
+        farmer: tn.farmerId?.name || "General Note",
+        farmerPhone: tn.farmerId?.phoneNumber || "N/A",
+        animalTag: "N/A",
+        animalSpecies: "N/A",
+        animalBreed: "N/A",
+        imageUrl: tn.imageUrl,
+        title: tn.title,
+        description: tn.description || "No description.",
+        createdAt: tn.createdAt,
+        status: "recorded",
+        latitude: tn.latitude,
+        longitude: tn.longitude,
+        author: tn.technicianId?.name || "Technician",
+        isArchived: !!tn.deletedAt,
+      })),
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
     res.status(200).json(notes);
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to load your field notes",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Failed to load your field notes",
+      error: error.message,
+    });
   }
 };
 
 export const deleteFieldNote = async (req, res) => {
   try {
     const { id } = req.params;
-    const note = await FieldNote.findOne({
-      _id: id,
-      technicianId: req.user._id,
-    });
-    if (!note) {
-      return res
-        .status(404)
-        .json({ message: "Field note not found or unauthorized" });
+    const { type } = req.query;
+
+    let targetType = type;
+    if (!targetType) {
+      const fn = await FieldNote.findById(id);
+      if (fn) {
+        targetType = "technician-note";
+      } else {
+        const ins = await Insemination.findById(id);
+        if (ins) {
+          targetType = "insemination";
+        } else {
+          const hr = await HealthRequest.findById(id);
+          if (hr) {
+            targetType = "health";
+          }
+        }
+      }
     }
 
-    await FieldNote.findByIdAndDelete(id);
+    if (targetType === "insemination") {
+      const ins = await Insemination.findOne({ _id: id, technicianId: req.user._id });
+      if (!ins) {
+        return res.status(404).json({ message: "Insemination record not found or unauthorized" });
+      }
+      await Insemination.findByIdAndDelete(id);
+    } else if (targetType === "health") {
+      const hr = await HealthRequest.findOne({ _id: id, handledBy: req.user._id });
+      if (!hr) {
+        return res.status(404).json({ message: "Health request record not found or unauthorized" });
+      }
+      await HealthRequest.findByIdAndDelete(id);
+    } else {
+      const fn = await FieldNote.findOne({ _id: id, technicianId: req.user._id });
+      if (!fn) {
+        return res.status(404).json({ message: "Field note not found or unauthorized" });
+      }
+      await FieldNote.findByIdAndDelete(id);
+    }
+
     res.status(200).json({ message: "Field note deleted successfully" });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to delete field note", error: error.message });
+    res.status(500).json({ message: "Failed to delete field note", error: error.message });
   }
 };
 
