@@ -141,9 +141,9 @@ export default function NotificationDetailsScreen() {
   if (!data) {
       return (
           <View className="flex-1 bg-white items-center justify-center p-6">
-              <Text className="text-slate-500 font-bold text-lg text-center">Notification not found or linked request was deleted.</Text>
+              <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-500 font-bold text-lg text-center">Notification not found or linked request was deleted.</Text>
               <TouchableOpacity onPress={() => router.back()} className="mt-4 bg-[#00643B] px-6 py-3 rounded-xl">
-                  <Text className="text-white font-bold">Go Back</Text>
+                  <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-white font-bold">Go Back</Text>
               </TouchableOpacity>
           </View>
       )
@@ -161,7 +161,7 @@ export default function NotificationDetailsScreen() {
         <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 items-center justify-center rounded-full bg-slate-50">
           <ArrowLeft size={22} color="#475569" />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-slate-800 ml-4">Request Details</Text>
+        <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-xl font-bold text-slate-800 ml-4">Request Details</Text>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
@@ -169,17 +169,17 @@ export default function NotificationDetailsScreen() {
         {/* Status Banner */}
         <View className={`px-6 py-4 flex-row items-center ${isAI ? 'bg-emerald-50' : 'bg-amber-50'}`}>
             {isAI ? <Syringe size={20} color="#059669" /> : <HeartPulse size={20} color="#D97706" />}
-            <Text className={`ml-2 font-bold ${isAI ? 'text-emerald-700' : 'text-amber-700'}`}>
+            <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`ml-2 font-bold ${isAI ? 'text-emerald-700' : 'text-amber-700'}`}>
                 {isAI ? 'Artificial Insemination' : 'Animal Health Service'}
             </Text>
             <View className="ml-auto bg-white px-3 py-1 rounded-full border border-slate-100">
-                <Text className="text-slate-600 font-bold text-xs uppercase">{relatedData?.status || 'Pending'}</Text>
+                <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-600 font-bold text-xs uppercase">{relatedData?.status || 'Pending'}</Text>
             </View>
         </View>
 
         {/* Sender Info (Farmer or Technician) */}
         <View className="p-6 bg-white mb-2 border-b border-slate-100">
-            <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
+            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
               {isFarmer ? "Handled By Technician" : "Requesting Farmer"}
             </Text>
             <View className="flex-row items-center">
@@ -191,18 +191,18 @@ export default function NotificationDetailsScreen() {
                     )}
                 </View>
                 <View className="ml-4 flex-1">
-                    <Text className="text-lg font-bold text-slate-800">
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-lg font-bold text-slate-800">
                       {notification.senderId?.name || "System / Tech"}
                     </Text>
                     {notification.senderId?.address ? (
                         <View className="flex-row items-center mt-1">
                             <MapPin size={14} color="#94a3b8" />
-                            <Text className="text-slate-500 text-sm ml-1">
+                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 text-sm ml-1">
                                 {notification.senderId.address.barangay || "Oton"}, {notification.senderId.address.city || "Iloilo"}
                             </Text>
                         </View>
                     ) : (
-                        <Text className="text-slate-400 text-sm">No address provided</Text>
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 text-sm">No address provided</Text>
                     )}
                 </View>
             </View>
@@ -211,7 +211,7 @@ export default function NotificationDetailsScreen() {
         {/* Assigned Technician (If accepted/handled) */}
         {isFarmer && ((isAI && relatedData?.approvedBy) || (!isAI && relatedData?.handledBy)) && (
           <View className="p-6 bg-white mb-2 border-b border-slate-100">
-            <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
+            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
               Assigned Technician
             </Text>
             <View className="flex-row items-center">
@@ -231,10 +231,10 @@ export default function NotificationDetailsScreen() {
                  )}
                </View>
                <View className="ml-4 flex-1">
-                 <Text className="text-base font-bold text-slate-800">
+                 <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-base font-bold text-slate-800">
                    {isAI ? relatedData.approvedBy?.name : relatedData.handledBy?.name}
                  </Text>
-                <Text className="text-slate-450 text-xs mt-0.5 font-bold uppercase tracking-wider">
+                <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-450 text-xs mt-0.5 font-bold uppercase tracking-wider">
                   Field Technician
                 </Text>
               </View>
@@ -245,18 +245,20 @@ export default function NotificationDetailsScreen() {
         {/* Animal Details */}
         {relatedData?.animalId ? (
           <View className="p-6 bg-white mb-2 border-b border-slate-100">
-              <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Animal Details</Text>
+              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Animal Details</Text>
               <View className="flex-row bg-slate-50 p-4 rounded-2xl border border-slate-100">
                   <View className="w-20 h-20 rounded-xl bg-white items-center justify-center overflow-hidden border border-slate-100">
                       {relatedData.animalId.imageUrl ? (
                           <Image source={{ uri: relatedData.animalId.imageUrl }} className="w-full h-full" />
                       ) : (
-                          <View className="items-center justify-center"><Text className="text-slate-300 text-[10px] font-bold">No Image</Text></View>
+                          <View className="items-center justify-center">
+                              <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-300 text-[10px] font-bold">No Image</Text>
+                          </View>
                       )}
                   </View>
                   <View className="ml-4 flex-1 justify-center">
-                      <Text className="text-base font-bold text-slate-800">{relatedData.animalId.species} - {relatedData.animalId.breed}</Text>
-                      <Text className="text-slate-500 text-sm mt-1">Tag: <Text className="font-bold text-slate-700">{relatedData.animalId.earTag || relatedData.animalId.animalId || 'N/A'}</Text></Text>
+                      <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-base font-bold text-slate-800">{relatedData.animalId.species} - {relatedData.animalId.breed}</Text>
+                      <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 text-sm mt-1">Tag: <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="font-bold text-slate-700">{relatedData.animalId.earTag || relatedData.animalId.animalId || 'N/A'}</Text></Text>
                   </View>
               </View>
           </View>
@@ -268,7 +270,7 @@ export default function NotificationDetailsScreen() {
               {/* Heat Signs List (if AI Insemination request) */}
               {isAI && relatedData.heatSigns && relatedData.heatSigns.length > 0 ? (
                 <View className="mb-6">
-                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Observed Heat Signs</Text>
+                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Observed Heat Signs</Text>
                   <View className="flex-row flex-wrap gap-2">
                     {relatedData.heatSigns.map((signId: string) => {
                       const signMap: Record<string, string> = {
@@ -311,8 +313,8 @@ export default function NotificationDetailsScreen() {
                           }}
                         >
                           <Text
+                            style={{ color: badgeText, fontFamily: 'Outfit_800ExtraBold' }}
                             className="text-[10px] font-black uppercase tracking-wider"
-                            style={{ color: badgeText }}
                           >
                             {label}
                           </Text>
@@ -325,10 +327,10 @@ export default function NotificationDetailsScreen() {
 
               {(!isAI && (relatedData.comment || relatedData.symptoms)) || (isAI && getAdditionalNotesOnly(relatedData.comment || "")) ? (
                 <View>
-                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">
+                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">
                     {isAI ? "Additional Comments" : "Message / Symptoms"}
                   </Text>
-                  <Text className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
+                  <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
                       &quot;{isAI ? getAdditionalNotesOnly(relatedData.comment || "") : relatedData.symptoms || 'No additional details provided.'}&quot;
                   </Text>
                 </View>
@@ -336,7 +338,7 @@ export default function NotificationDetailsScreen() {
               
               {relatedData.imageUrl ? (
                   <View className="mt-4">
-                      <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Farmer&apos;s Attached Image</Text>
+                      <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Farmer&apos;s Attached Image</Text>
                       <Image 
                           source={{ uri: relatedData.imageUrl }} 
                           className="w-full h-64 rounded-3xl" 
@@ -347,8 +349,8 @@ export default function NotificationDetailsScreen() {
 
               {isFarmer && relatedData.technicianNote ? (
                   <View className="mt-6 pt-6 border-t border-slate-100">
-                      <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Technician&apos;s Note</Text>
-                      <Text className="text-slate-700 text-base leading-6 bg-emerald-50 p-4 rounded-2xl border border-emerald-100 italic">
+                      <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Technician&apos;s Note</Text>
+                      <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-700 text-base leading-6 bg-emerald-50 p-4 rounded-2xl border border-emerald-100 italic">
                           &quot;{relatedData.technicianNote}&quot;
                       </Text>
                   </View>
@@ -356,8 +358,8 @@ export default function NotificationDetailsScreen() {
           </View>
         ) : (
           <View className="p-6 bg-white mb-2 border-b border-slate-100">
-              <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Message</Text>
-              <Text className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
+              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Message</Text>
+              <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
                   &quot;{notification.message}&quot;
               </Text>
           </View>
@@ -368,13 +370,13 @@ export default function NotificationDetailsScreen() {
             <View className="flex-row items-center gap-6">
                 <View className="flex-row items-center">
                     <Calendar size={16} color="#94a3b8" />
-                    <Text className="text-slate-500 text-sm ml-2">
+                    <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-slate-500 text-sm ml-2">
                         {format(new Date(notification.createdAt), 'MMM dd, yyyy')}
                     </Text>
                 </View>
                 <View className="flex-row items-center">
                     <Clock size={16} color="#94a3b8" />
-                    <Text className="text-slate-500 text-sm ml-2">
+                    <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-slate-500 text-sm ml-2">
                         {format(new Date(notification.createdAt), 'hh:mm a')}
                     </Text>
                 </View>
@@ -418,7 +420,7 @@ export default function NotificationDetailsScreen() {
                     ) : (
                         <>
                             <CheckCircle2 size={24} color="white" />
-                            <Text className="text-white font-black text-lg ml-2">
+                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white font-black text-lg ml-2">
                                 {buttonText}
                             </Text>
                         </>
