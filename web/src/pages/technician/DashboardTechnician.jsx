@@ -173,9 +173,6 @@ export default function Dashboard() {
       <Topbar
         title="Dashboard"
         subtitle="Welcome back! Monitor operational timelines and livestock registries."
-        searchPlaceholder="Search registry..."
-        searchValue={searchQuery}
-        onSearchChange={(e) => setSearchQuery(e.target.value)}
       />
 
       <main className="p-4 md:p-6 space-y-6">
@@ -427,7 +424,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Today's Field Visits List */}
           <div className="card lg:col-span-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
+            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4 flex-wrap gap-2">
               <div>
                 <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
                   Today's Field Visits
@@ -436,9 +433,23 @@ export default function Dashboard() {
                   Scheduled technician deployments
                 </p>
               </div>
-              <button className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-xs gap-1">
-                View All <ArrowRight size={10} />
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="relative w-48">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+                    <Search size={12} />
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Search visits..."
+                    className="w-full pl-7 pr-2.5 py-1 text-[11px] rounded-lg border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <button className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-xs gap-1">
+                  View All <ArrowRight size={10} />
+                </button>
+              </div>
             </div>
 
             <div className="divide-y divide-slate-100 dark:divide-slate-800/60">

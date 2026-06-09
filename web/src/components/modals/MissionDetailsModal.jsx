@@ -25,7 +25,7 @@ const MissionDetailsModal = ({ isOpen, onClose, task }) => {
   const calving = task.cdRecord;
 
   const expectedCalving = task.status === "Pregnant" && raw.inseminationDate && animal.species
-    ? calculateTargetCalvingDate(raw.inseminationDate, animal.species)
+    ? calculateTargetCalvingDate(raw.inseminationDate, animal.species, undefined, animal.breed)
     : null;
 
   const getCycleLabel = () => {

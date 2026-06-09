@@ -44,8 +44,21 @@ interface NotificationDetails {
     technicianNote?: string;
     approvedBy?: { _id?: string; name: string; imageUrl: string };
     handledBy?: { _id?: string; name: string; imageUrl: string };
+    heatSigns?: string[];
   };
 }
+
+const getAdditionalNotesOnly = (fullComment: string) => {
+  if (!fullComment) return "";
+  const parts = fullComment.split("Additional Notes:\n");
+  if (parts.length > 1) {
+    return parts[1].trim();
+  }
+  if (fullComment.includes("Observed Heat Signs:\n")) {
+    return "";
+  }
+  return fullComment;
+};
 
 export default function NotificationDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -252,10 +265,74 @@ export default function NotificationDetailsScreen() {
         {/* Request Content */}
         {relatedData ? (
           <View className="p-6 bg-white mb-2 border-b border-slate-100">
-              <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Message / Symptoms</Text>
-              <Text className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
-                  &quot;{isAI ? relatedData.comment : relatedData.symptoms || 'No additional details provided.'}&quot;
-              </Text>
+              {/* Heat Signs List (if AI Insemination request) */}
+              {isAI && relatedData.heatSigns && relatedData.heatSigns.length > 0 ? (
+                <View className="mb-6">
+                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">Observed Heat Signs</Text>
+                  <View className="flex-row flex-wrap gap-2">
+                    {relatedData.heatSigns.map((signId: string) => {
+                      const signMap: Record<string, string> = {
+                        standing_heat: "Standing Heat 🐮",
+                        attempt_mount: "Attempting to Mount",
+                        restlessness: "Restlessness / Activity",
+                        vocalization: "Vocalization (Bellowing)",
+                        flehmen: "Flehmen Response",
+                        grouping: "Friendly Grouping",
+                        mucus_discharge: "Clear Mucus Discharge 💧",
+                        swollen_vulva: "Swollen, Red Vulva",
+                        muddy_flanks: "Muddy Flanks / Tailhead",
+                        metestrus_bleeding: "Metestrus Bleeding 🩸",
+                      };
+                      const label = signMap[signId] || signId;
+                      const isPrimary = signId === "standing_heat";
+                      const isBleeding = signId === "metestrus_bleeding";
+
+                      let badgeBg = "rgba(16, 185, 129, 0.1)";
+                      let badgeText = "#065F46";
+                      let badgeBorder = "#d1fae5";
+
+                      if (isPrimary) {
+                        badgeBg = "#FEF3C7";
+                        badgeText = "#92400E";
+                        badgeBorder = "#FEF3C7";
+                      } else if (isBleeding) {
+                        badgeBg = "#FEF2F2";
+                        badgeText = "#991B1B";
+                        badgeBorder = "#fecaca";
+                      }
+
+                      return (
+                        <View
+                          key={signId}
+                          className="px-3 py-1.5 rounded-xl border"
+                          style={{
+                            backgroundColor: badgeBg,
+                            borderColor: badgeBorder,
+                          }}
+                        >
+                          <Text
+                            className="text-[10px] font-black uppercase tracking-wider"
+                            style={{ color: badgeText }}
+                          >
+                            {label}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              {(!isAI && (relatedData.comment || relatedData.symptoms)) || (isAI && getAdditionalNotesOnly(relatedData.comment || "")) ? (
+                <View>
+                  <Text className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">
+                    {isAI ? "Additional Comments" : "Message / Symptoms"}
+                  </Text>
+                  <Text className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
+                      &quot;{isAI ? getAdditionalNotesOnly(relatedData.comment || "") : relatedData.symptoms || 'No additional details provided.'}&quot;
+                  </Text>
+                </View>
+              ) : null}
               
               {relatedData.imageUrl ? (
                   <View className="mt-4">

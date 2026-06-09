@@ -76,6 +76,60 @@ export default function BreedingLedger() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [calfEdits, setCalfEdits] = useState({});
+  const [savingCalfId, setSavingCalfId] = useState(null);
+
+  const handleSaveCalfDetails = async (calfId) => {
+    const edits = calfEdits[calfId];
+    if (!edits || (!edits.color?.trim() && !edits.brand?.trim())) {
+      toast.error("Please fill in at least one field.");
+      return;
+    }
+    setSavingCalfId(calfId);
+    try {
+      const payload = {
+        color: edits.color?.trim() || undefined,
+        brand: edits.brand?.trim() || undefined,
+      };
+      await axiosInstance.put(`/animals/wizard/${calfId}`, payload);
+      toast.success("Calf details updated successfully!");
+
+      setSelectedRecord(prev => {
+        if (!prev) return null;
+        const updatedCalves = prev.calves.map(c => {
+          const id = c.animalId?._id || c.animalId;
+          if (id === calfId) {
+            return {
+              ...c,
+              animalId: {
+                ...c.animalId,
+                color: edits.color?.trim() || c.animalId?.color || "Not Provided",
+                brand: edits.brand?.trim() || c.animalId?.brand || ""
+              }
+            };
+          }
+          return c;
+        });
+        return { ...prev, calves: updatedCalves };
+      });
+
+      setCalfEdits(prev => {
+        const copy = { ...prev };
+        delete copy[calfId];
+        return copy;
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["technician", "calvings-list-isolated"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "calvings-list-isolated"] });
+      queryClient.invalidateQueries({ queryKey: ["calvings"] });
+      queryClient.invalidateQueries({ queryKey: ["animal-history"] });
+    } catch (err) {
+      toast.error("Failed to save calf details: " + (err.response?.data?.message || err.message));
+    } finally {
+      setSavingCalfId(null);
+    }
+  };
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: "",
@@ -761,20 +815,7 @@ export default function BreedingLedger() {
       <Topbar
         title="Breeding Ledger"
         subtitle="Unified lifecycle logs tracking Insemination, Pregnancy, and Calving Drop progression"
-        searchPlaceholder={`Search within ${activeTab === "insemination" ? "AI records" : activeTab === "pregnancy" ? "pregnancy diagnostics" : "calving logs"}...`}
-        searchValue={searchQuery}
-        onSearchChange={(e) => {
-          setSearchQuery(e.target.value);
-          setCurrentPage(1);
-        }}
-      >
-        <button
-          onClick={handleExportCSV}
-          className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
-        >
-          <Download size={13} /> Export Tab CSV
-        </button>
-      </Topbar>
+      />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
         {/* Dynamic Breeding Mini Grid Stats */}
@@ -831,35 +872,62 @@ export default function BreedingLedger() {
         </div>
 
         {/* Cohesive Reproduction Tab Swapping ribbon */}
-        <div className="flex border-b border-slate-200 dark:border-slate-800">
-          {[
-            { id: "insemination", label: "Insemination (AI)", count: stats.totalInseminations, color: "border-blue-500 text-blue-600" },
-            { id: "pregnancy", label: "Pregnancy Check (PD)", count: pregnancyChecks.length, color: "border-purple-500 text-purple-600" },
-            { id: "calving", label: "Calving / Calf Drop (CD)", count: stats.totalCalvings, color: "border-emerald-500 text-emerald-600" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id);
-                setCurrentPage(1);
-                clearFilters();
-              }}
-              className={`py-3 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === tab.id
-                  ? `${tab.color} bg-white dark:bg-slate-950 font-extrabold rounded-t-xl`
-                  : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              }`}
-            >
-              <span>{tab.label}</span>
-              <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
-                activeTab === tab.id 
-                  ? "bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-350"
-                  : "bg-slate-100/60 dark:bg-slate-900/60 text-slate-400"
-              }`}>
-                {tab.count}
+        <div className="flex border-b border-slate-200 dark:border-slate-800 justify-between items-center pr-2 flex-wrap gap-3">
+          <div className="flex">
+            {[
+              { id: "insemination", label: "Insemination (AI)", count: stats.totalInseminations, color: "border-blue-500 text-blue-600" },
+              { id: "pregnancy", label: "Pregnancy Check (PD)", count: pregnancyChecks.length, color: "border-purple-500 text-purple-600" },
+              { id: "calving", label: "Calving / Calf Drop (CD)", count: stats.totalCalvings, color: "border-emerald-500 text-emerald-600" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setCurrentPage(1);
+                  clearFilters();
+                }}
+                className={`py-3 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === tab.id
+                    ? `${tab.color} bg-white dark:bg-slate-950 font-extrabold rounded-t-xl`
+                    : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
+                  activeTab === tab.id 
+                    ? "bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-350"
+                    : "bg-slate-100/60 dark:bg-slate-900/60 text-slate-400"
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Search Input & Export on the right side of the tabs */}
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <div className="relative w-64">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+                <Search size={14} />
               </span>
+              <input
+                type="text"
+                placeholder={`Search within ${activeTab === "insemination" ? "AI records" : activeTab === "pregnancy" ? "pregnancy diagnostics" : "calving logs"}...`}
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+            <button
+              onClick={handleExportCSV}
+              className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
+            >
+              <Download size={13} /> Export Tab CSV
             </button>
-          ))}
+          </div>
         </div>
 
         {/* Filters and Datatable Platform wrapper */}
@@ -1514,13 +1582,81 @@ export default function BreedingLedger() {
                     <div className="py-3 space-y-2">
                       <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Registered Offspring</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {selectedRecord.calves.map((calf, index) => (
-                          <div key={index} className="p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-850 rounded-xl flex flex-col">
-                            <span className="font-extrabold text-[#00643b] dark:text-[#10b981] text-[11px]">Tag: {calf.earTag || "Pending Assign"}</span>
-                            <span className="text-slate-400 text-[10px] font-bold mt-0.5 uppercase tracking-wide">Sex: {calf.sex === "M" ? "Male" : "Female"}</span>
-                            <span className="text-slate-400 text-[10px] font-semibold">Weight: {calf.weight ? `${calf.weight} kg` : "N/A"}</span>
-                          </div>
-                        ))}
+                        {selectedRecord.calves.map((calf, index) => {
+                          const calfId = calf.animalId?._id || calf.animalId;
+                          const cColor = calf.animalId?.color || "";
+                          const cBrand = calf.animalId?.brand || "";
+                          
+                          const isColorEmpty = !cColor || cColor === "Not Provided";
+                          const isBrandEmpty = !cBrand;
+
+                          return (
+                            <div key={index} className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-850 rounded-xl flex flex-col gap-1.5">
+                              <span className="font-extrabold text-[#00643b] dark:text-[#10b981] text-[11px]">Tag: {calf.earTag || "Pending Assign"}</span>
+                              <span className="text-slate-400 text-[10px] font-bold mt-0.5 uppercase tracking-wide">Sex: {calf.sex === "M" ? "Male" : "Female"}</span>
+                              
+                              <div className="border-t border-slate-100 dark:border-slate-800/60 pt-1.5 mt-0.5 space-y-1.5 text-[10px]">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-400">Color:</span>
+                                  {!isColorEmpty ? (
+                                    <span className="font-bold text-slate-700 dark:text-slate-350">{cColor}</span>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      placeholder="Fill color..."
+                                      className="input input-xs bg-base-200/50 text-[10px] rounded px-1.5 py-0.5 focus:outline-emerald-500 border border-slate-200 dark:border-slate-800 w-24 font-bold"
+                                      value={calfEdits[calfId]?.color ?? ""}
+                                      onChange={(e) => {
+                                        setCalfEdits(prev => ({
+                                          ...prev,
+                                          [calfId]: {
+                                            ...prev[calfId],
+                                            color: e.target.value
+                                          }
+                                        }));
+                                      }}
+                                    />
+                                  )}
+                                </div>
+
+                                <div className="flex justify-between items-center">
+                                  <span className="text-slate-400">Brand:</span>
+                                  {!isBrandEmpty ? (
+                                    <span className="font-bold text-slate-700 dark:text-slate-350">{cBrand}</span>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      placeholder="Fill brand..."
+                                      className="input input-xs bg-base-200/50 text-[10px] rounded px-1.5 py-0.5 focus:outline-emerald-500 border border-slate-200 dark:border-slate-800 w-24 font-bold"
+                                      value={calfEdits[calfId]?.brand ?? ""}
+                                      onChange={(e) => {
+                                        setCalfEdits(prev => ({
+                                          ...prev,
+                                          [calfId]: {
+                                            ...prev[calfId],
+                                            brand: e.target.value
+                                          }
+                                        }));
+                                      }}
+                                    />
+                                  )}
+                                </div>
+
+                                {(isColorEmpty || isBrandEmpty) && calfId && (
+                                  <div className="flex justify-end pt-0.5">
+                                    <button
+                                      disabled={savingCalfId === calfId || (!calfEdits[calfId]?.color?.trim() && !calfEdits[calfId]?.brand?.trim())}
+                                      onClick={() => handleSaveCalfDetails(calfId)}
+                                      className="btn btn-xs bg-[#00643b] hover:bg-[#004d2e] disabled:opacity-40 text-white border-none rounded px-2 py-0.5 font-bold text-[8px] uppercase tracking-wider cursor-pointer"
+                                    >
+                                      {savingCalfId === calfId ? "Saving..." : "Save"}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

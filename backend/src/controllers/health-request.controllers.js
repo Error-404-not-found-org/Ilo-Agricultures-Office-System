@@ -220,6 +220,8 @@ export const updateHealthRequestStatus = async (req, res) => {
         else if (request.requestType === "disease") recordType = "Check-up";
         else if (request.requestType === "checkup") recordType = "Check-up";
         else if (request.requestType === "injury") recordType = "Treatment";
+        else if (request.requestType === "vaccination") recordType = "Vaccination";
+        else if (request.requestType === "deworming") recordType = "Deworming";
 
         const animalId = request.animalId._id || request.animalId;
         const farmerId = request.farmerId._id || request.farmerId;
@@ -415,6 +417,8 @@ export const walkInHealthRequest = async (req, res) => {
         else if (request.requestType === "disease") recordType = "Check-up";
         else if (request.requestType === "checkup") recordType = "Check-up";
         else if (request.requestType === "injury") recordType = "Treatment";
+        else if (request.requestType === "vaccination") recordType = "Vaccination";
+        else if (request.requestType === "deworming") recordType = "Deworming";
 
         await MedicalRecord.create({
           animalId: animal._id,

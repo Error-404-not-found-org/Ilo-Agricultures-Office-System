@@ -11,7 +11,7 @@ import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { CATTLE_BREEDS, CATTLE_SPECIES } from '@/lib/constants';
+import { CATTLE_BREEDS, CATTLE_SPECIES, BREED_OPTIONS_BY_SPECIES } from '@/lib/constants';
 
 const PRIMARY = '#00643B';
 
@@ -105,6 +105,15 @@ export default function AddAIRecord() {
     };
     fetchFarmers();
   }, [api, isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (formData.species) {
+      const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
+      if (formData.breed && !validBreeds.includes(formData.breed)) {
+        setFormData((prev) => ({ ...prev, breed: "" }));
+      }
+    }
+  }, [formData.species]);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
 
@@ -293,7 +302,18 @@ export default function AddAIRecord() {
                   <SelectField label="Species" value={formData.species} placeholder="Select" onPress={() => openModal('species', 'Select Species', SPECIES_OPTIONS)} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <SelectField label="Breed" value={formData.breed} placeholder="Select" onPress={() => openModal('breed', 'Select Breed', BREED_OPTIONS)} />
+                  <SelectField
+                    label="Breed"
+                    value={formData.breed}
+                    placeholder="Select"
+                    onPress={() => {
+                      if (!formData.species) {
+                        toast.error("Please select a species first.");
+                        return;
+                      }
+                      openModal('breed', 'Select Breed', BREED_OPTIONS_BY_SPECIES[formData.species] || []);
+                    }}
+                  />
                 </View>
               </View>
 

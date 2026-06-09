@@ -34,6 +34,8 @@ const SERVICE_TYPES = [
   { value: "medicine", label: "Medicine/Supplies" },
   { value: "checkup", label: "Routine Checkup" },
   { value: "injury", label: "Injury Treatment" },
+  { value: "vaccination", label: "Vaccination" },
+  { value: "deworming", label: "Deworming" },
   { value: "other", label: "Other Veterinary" },
 ];
 

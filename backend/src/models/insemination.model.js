@@ -69,10 +69,16 @@ const InseminationSchema = new mongoose.Schema(
 
     // Results tracking
     isSuccess: { type: Boolean, default: null }, // Legacy support
-    outcome: { 
-      type: String, 
-      enum: ["Pending", "Pregnant", "Failed (Re-heat)", "Failed (Aborted)", "Failed (Negative PD)"],
-      default: "Pending"
+    outcome: {
+      type: String,
+      enum: [
+        "Pending",
+        "Pregnant",
+        "Failed (Re-heat)",
+        "Failed (Aborted)",
+        "Failed (Negative PD)",
+      ],
+      default: "Pending",
     },
     pregnancyId: { type: mongoose.Schema.Types.ObjectId, ref: "Pregnancy" },
 
@@ -83,6 +89,10 @@ const InseminationSchema = new mongoose.Schema(
     comment: {
       type: String,
       default: "",
+    },
+    heatSigns: {
+      type: [String],
+      default: [],
     },
     deletedAt: { type: Date, default: null },
   },

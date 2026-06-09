@@ -32,7 +32,6 @@ const CalvingSchema = new mongoose.Schema(
     calves: [{
       sex: { type: String, enum: ["M", "F"] },
       earTag: String,
-      weight: Number,
       animalId: { type: mongoose.Schema.Types.ObjectId, ref: "Animal" }
     }],
     calvingEase: {
@@ -48,6 +47,10 @@ const CalvingSchema = new mongoose.Schema(
       type: String,
     },
     technicianNote: String,
+    isSeen: {
+      type: Boolean,
+      default: false,
+    },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

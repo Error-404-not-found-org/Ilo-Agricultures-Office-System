@@ -179,7 +179,7 @@ export const getAnimalById = async (req, res) => {
       Insemination.find({ animalId: id, deletedAt: null })
         .populate("approvedBy", "name email imageUrl")
         .sort({ attemptNumber: -1 }),
-      Calving.find({ animalId: id, deletedAt: null }).populate("pregnancyId").sort({ date: -1 }),
+      Calving.find({ animalId: id, deletedAt: null }).populate("pregnancyId").populate("calves.animalId").sort({ date: -1 }),
       Pregnancy.find({ animalId: id, deletedAt: null }),
       HealthRequest.find({ animalId: id, deletedAt: null }).populate("handledBy", "name").sort({ createdAt: -1 })
     ]);
@@ -487,7 +487,7 @@ export const recordCalving = async (req, res) => {
 
     // Chronological Calving Postpartum Firewall
     if (mother.lastCalvingDate) {
-      const windowCheck = verifyPostpartumWindow(mother.lastCalvingDate, date || new Date(), mother.species);
+      const windowCheck = verifyPostpartumWindow(mother.lastCalvingDate, date || new Date(), mother.species, mother.breed);
       if (!windowCheck.isSafe) {
         return res.status(422).json({ 
           message: `Warning: Calving event occurs too close to the previous calving event. Only ${windowCheck.daysPassed} days have passed, but the voluntary waiting period for ${mother.species} is ${windowCheck.requiredDays} days.` 
@@ -534,6 +534,8 @@ export const recordCalving = async (req, res) => {
         motherId: mother._id,
         isVerified: req.user.role === "technician", // Auto-verify if technician records it
         gender: calfData.sex === "M" ? "Male" : "Female",
+        color: calfData.color || mother.color || "Not Provided",
+        brand: calfData.brand || mother.brand || "",
         birthDate: date || new Date(),
         barangay: mother.barangay || "Not Provided",
         activityLogs: [{
@@ -543,13 +545,12 @@ export const recordCalving = async (req, res) => {
         }]
       });
 
-      registeredCalves.push(newCalf);
-      calfRecordsForBirth.push({
-        sex: calfData.sex,
-        earTag: newCalf.earTag,
-        weight: calfData.weight,
-        animalId: newCalf._id,
-      });
+       registeredCalves.push(newCalf);
+       calfRecordsForBirth.push({
+         sex: calfData.sex,
+         earTag: newCalf.earTag,
+         animalId: newCalf._id,
+       });
     }
 
     // 3. Create Calving Record

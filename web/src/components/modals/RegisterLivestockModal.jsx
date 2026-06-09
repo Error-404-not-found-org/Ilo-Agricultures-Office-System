@@ -16,7 +16,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "../../constants/breeds";
+import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "../../constants/breeds";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
@@ -143,6 +143,15 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
       }
     }
   }, [livestock, isOpen]);
+
+  useEffect(() => {
+    if (formData.species) {
+      const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
+      if (formData.breed && !validBreeds.includes(formData.breed)) {
+        setFormData((prev) => ({ ...prev, breed: "" }));
+      }
+    }
+  }, [formData.species]);
 
   if (!isOpen) return null;
 
@@ -387,7 +396,7 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
                       <option value="" disabled>
                         Select Breed
                       </option>
-                      {CATTLE_BREEDS.map((b) => (
+                      {(BREED_OPTIONS_BY_SPECIES[formData.species] || CATTLE_BREEDS).map((b) => (
                         <option key={b} value={b}>
                           {b}
                         </option>

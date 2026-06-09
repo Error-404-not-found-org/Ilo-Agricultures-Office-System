@@ -284,12 +284,6 @@ export default function OperationalInbox() {
       <Topbar
         title={isAdmin ? "Operational Queue Monitor" : "Operational Inbox"}
         subtitle={isAdmin ? "Monitor and inspect field service queues and task assignments municipal-wide" : "Triage and accept field service missions from registered livestock owners"}
-        searchPlaceholder="Search by farmer, tag, location..."
-        searchValue={searchQuery}
-        onSearchChange={(e) => {
-          setSearchQuery(e.target.value);
-          setCurrentPage(1);
-        }}
       />
 
       <main className="p-6 flex-1 flex flex-col min-h-0 space-y-4">
@@ -334,11 +328,31 @@ export default function OperationalInbox() {
               </button>
             ))}
           </div>
-          <span className="text-xs text-slate-400 font-semibold">
-            {isMasterLoading
-              ? "Synchronizing ledger..."
-              : `${totalItems} request${totalItems !== 1 ? "s" : ""} found`}
-          </span>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Search Input */}
+            <div className="relative w-64">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+                <Search size={14} />
+              </span>
+              <input
+                type="text"
+                placeholder="Search by farmer, tag, location..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+
+            <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2.5 whitespace-nowrap">
+              {isMasterLoading
+                ? "Synchronizing ledger..."
+                : `${totalItems} request${totalItems !== 1 ? "s" : ""} found`}
+            </span>
+          </div>
         </div>
 
         {/* Table View Component Card */}
@@ -392,6 +406,11 @@ export default function OperationalInbox() {
                       dbUser?._id &&
                       String(reqTechId) !== String(dbUser._id);
 
+                    const visitDate = req.visitDate ? new Date(req.visitDate) : null;
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const isOverdue = (req.status === "in-progress" || req.status === "approved") && visitDate && visitDate < today;
+
                     return (
                       <tr
                         key={req.id}
@@ -401,8 +420,13 @@ export default function OperationalInbox() {
                         }}
                         className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-colors cursor-pointer"
                       >
-                        <td className="p-4 pl-6 font-extrabold text-[#00643b] dark:text-[#10b981]">
-                          #{req.id.substring(0, 6).toUpperCase()}
+                        <td className="p-4 pl-6 font-extrabold text-[#00643b] dark:text-[#10b981] relative">
+                          <div className="flex items-center gap-1.5">
+                            {isOverdue && (
+                              <span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse shrink-0" title="Overdue Task" />
+                            )}
+                            <span>#{req.id.substring(0, 6).toUpperCase()}</span>
+                          </div>
                         </td>
                         <td className="p-4">
                           <div className="font-bold text-slate-800 dark:text-slate-200">
@@ -456,6 +480,11 @@ export default function OperationalInbox() {
                           {isAssignedToOther && (
                             <div className="flex items-center justify-center gap-1 text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mt-1.5" title={`Assigned to ${reqTechName}`}>
                               <Lock size={9} /> Locked
+                            </div>
+                          )}
+                          {isOverdue && (
+                            <div className="flex items-center justify-center gap-1 text-[9px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest mt-1.5 animate-pulse" title="Task was scheduled for yesterday or earlier but is still incomplete">
+                              ⚠️ Overdue
                             </div>
                           )}
                         </td>

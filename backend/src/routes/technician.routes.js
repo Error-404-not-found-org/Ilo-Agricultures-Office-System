@@ -7,7 +7,8 @@ import {
   recordCalving, getDashboardStats, getDashboardFeed, getDashboardRegistry, walkInLivestock,
   toggleFarmerVerification, getTechnicianAnalytics, deleteAnimal,
   deletePregnancyCheck, deleteCalving, getFieldNotes,
-  createFieldNote, getTechnicianFieldNotes, deleteFieldNote, deleteFieldNoteRecord
+  createFieldNote, getTechnicianFieldNotes, deleteFieldNote, deleteFieldNoteRecord,
+  markCalvingAsSeen
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import { getCleanupSurvey, executeCleanup } from "../controllers/maintenance.controllers.js";
@@ -45,6 +46,7 @@ router.patch("/farmers/:id/verify", toggleFarmerVerification);
 router.delete("/animals/:id", deleteAnimal);
 router.delete("/pregnancy-checks/:id", deletePregnancyCheck);
 router.delete("/calvings/:id", deleteCalving);
+router.patch("/calvings/:id/seen", markCalvingAsSeen);
 
 // Technician Photo Notes
 router.post("/photo-notes", createFieldNote);

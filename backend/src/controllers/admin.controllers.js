@@ -241,7 +241,8 @@ export const getAllCalvings = async (req, res) => {
         const [calvings, total] = await Promise.all([
             Calving.find({ deletedAt: null })
                 .populate('farmerId', 'name email')
-                .populate('animalId', 'earTag species breed')
+                .populate('animalId', 'earTag species breed color brand')
+                .populate('calves.animalId', 'animalId earTag breed species color brand')
                 .sort({ createdAt: -1 })
                 .skip(skip)
                 .limit(limit),

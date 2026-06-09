@@ -19,7 +19,7 @@ import {
   Plus,
   Trash2,
   ClipboardCheck,
-  Scale,
+  Palette,
   Hash,
   Info,
 } from "lucide-react-native";
@@ -33,7 +33,7 @@ import { useTheme } from "@/lib/theme";
 interface CalfEntry {
   sex: "M" | "F";
   earTag: string;
-  weight: string;
+  color: string;
 }
 
 export default function RecordCalving() {
@@ -54,7 +54,7 @@ export default function RecordCalving() {
   const [calvingEase, setCalvingEase] = useState("Normal");
   const [technicianNote, setTechnicianNote] = useState("");
   const [calves, setCalves] = useState<CalfEntry[]>([
-    { sex: "F", earTag: "", weight: "" },
+    { sex: "F", earTag: "", color: "" },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -62,7 +62,7 @@ export default function RecordCalving() {
     if (calves.length >= 5) {
       return toast.error("Maximum 5 calves per event");
     }
-    setCalves([...calves, { sex: "F", earTag: "", weight: "" }]);
+    setCalves([...calves, { sex: "F", earTag: "", color: "" }]);
   };
 
   const removeCalf = (index: number) => {
@@ -95,8 +95,9 @@ export default function RecordCalving() {
         calvingEase,
         numberOfCalves: calves.length,
         calves: calves.map((c) => ({
-          ...c,
-          weight: c.weight ? parseFloat(c.weight) : undefined,
+          sex: c.sex,
+          earTag: c.earTag,
+          color: c.color,
         })),
         technicianNote,
       });
@@ -286,7 +287,7 @@ export default function RecordCalving() {
                 </View>
               </View>
 
-              {/* Tag & Weight */}
+              {/* Tag & Color */}
               <View className="flex-row gap-4">
                 <View className="flex-1">
                   <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
@@ -306,18 +307,17 @@ export default function RecordCalving() {
                 </View>
                 <View className="flex-1">
                   <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
-                    Weight (kg)
+                    Color / Markings
                   </Text>
                   <View className="rounded-xl px-4 py-3 flex-row items-center" style={{ backgroundColor: isDark ? colors.background : '#f8fafc' }}>
-                    <Scale size={14} color={colors.textMuted} />
+                    <Palette size={14} color={colors.textMuted} />
                     <TextInput
                       className="flex-1 ml-2 font-bold text-xs"
                       style={{ color: colors.textPrimary }}
-                      value={calf.weight}
-                      onChangeText={(val) => updateCalf(index, "weight", val)}
-                      placeholder="0.0"
+                      value={calf.color}
+                      onChangeText={(val) => updateCalf(index, "color", val)}
+                      placeholder="Brown, White..."
                       placeholderTextColor={colors.textMuted}
-                      keyboardType="numeric"
                     />
                   </View>
                 </View>

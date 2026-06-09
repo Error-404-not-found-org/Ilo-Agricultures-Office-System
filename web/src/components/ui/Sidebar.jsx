@@ -110,6 +110,15 @@ export default function Sidebar() {
     refetchInterval: 1000 * 30,
   });
 
+  const { data: calvingsData } = useQuery({
+    queryKey: ["calvings-badge"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/calvings?limit=100");
+      return res.data || {};
+    },
+    refetchInterval: 1000 * 30,
+  });
+
   // Compute live cumulative pending matrix values safely
   const livePendingCount = React.useMemo(() => {
     const aiList = Array.isArray(aiRequests)
@@ -124,8 +133,29 @@ export default function Sidebar() {
       (req) => req.status === "pending",
     ).length;
 
-    return pendingAI + pendingHealth;
+    // Overdue accepted/in-progress tasks: scheduled yesterday or earlier
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const overdueAI = aiList.filter((req) => {
+      if (req.status !== "in-progress" && req.status !== "approved") return false;
+      const d = new Date(req.scheduledDate || req.preferredDate || req.createdAt);
+      return d < today;
+    }).length;
+
+    const overdueHealth = healthList.filter((req) => {
+      if (req.status !== "in-progress" && req.status !== "approved") return false;
+      const d = new Date(req.scheduledDate || req.preferredDate || req.createdAt);
+      return d < today;
+    }).length;
+
+    return pendingAI + pendingHealth + overdueAI + overdueHealth;
   }, [aiRequests, healthRequests]);
+
+  const unseenCalvingsCount = React.useMemo(() => {
+    const list = Array.isArray(calvingsData?.data) ? calvingsData.data : [];
+    return list.filter((c) => !c.isSeen).length;
+  }, [calvingsData]);
 
   // ---- MASTER SIDEBAR CONFIGURATION MATRICES ----
   const TECH_GROUPS = [
@@ -149,6 +179,7 @@ export default function Sidebar() {
       paths: [
         "/technician/ledger",
         "/technician/inseminations",
+        "/technician/newborns",
         "/technician/health",
         "/technician/walk-in",
       ],
@@ -162,6 +193,12 @@ export default function Sidebar() {
           path: "/technician/inseminations",
           icon: <Syringe size={14} />,
           label: "Inseminations Log",
+        },
+        {
+          path: "/technician/newborns",
+          icon: <Tractor size={14} />,
+          label: "Newborns Log",
+          badge: unseenCalvingsCount > 0 ? String(unseenCalvingsCount) : null,
         },
         {
           path: "/technician/health",
@@ -264,6 +301,7 @@ export default function Sidebar() {
       icon: <HeartPulse size={16} />,
       paths: [
         "/admin/inseminations",
+        "/admin/newborns",
         "/admin/reports",
       ],
       items: [
@@ -271,6 +309,12 @@ export default function Sidebar() {
           path: "/admin/inseminations",
           icon: <Syringe size={14} />,
           label: "Inseminations Log",
+        },
+        {
+          path: "/admin/newborns",
+          icon: <Tractor size={14} />,
+          label: "Newborns Log",
+          badge: unseenCalvingsCount > 0 ? String(unseenCalvingsCount) : null,
         },
         {
           path: "/admin/reports",
@@ -419,18 +463,25 @@ export default function Sidebar() {
                         <Link
                           key={sub.path}
                           to={sub.path}
-                          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
+                          className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
                             isActive
                               ? "bg-[#00643b] text-white font-bold shadow-md shadow-slate-950/30 translate-x-1 border-l-4 border-emerald-400 pl-2"
                               : "text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-0.5"
                           }`}
                         >
-                          <span
-                            className={isActive ? "text-white" : "opacity-60"}
-                          >
-                            {sub.icon}
-                          </span>
-                          {sub.label}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span
+                              className={isActive ? "text-white" : "opacity-60"}
+                            >
+                              {sub.icon}
+                            </span>
+                            <span className="truncate">{sub.label}</span>
+                          </div>
+                          {sub.badge && (
+                            <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse shrink-0">
+                              {sub.badge}
+                            </span>
+                          )}
                         </Link>
                       );
                     })}

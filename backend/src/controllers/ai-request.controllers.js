@@ -11,7 +11,7 @@ import { calculateTargetCalvingDate } from "../utils/cattleCore.js";
 export const createAIRequest = async (req, res) => {
   try {
     const farmerId = req.user._id;
-    const { animalId, imageUrl, comment } = req.body;
+    const { animalId, imageUrl, comment, heatSigns } = req.body;
 
     if (!animalId) {
       return res
@@ -39,7 +39,7 @@ export const createAIRequest = async (req, res) => {
     const existingActiveRequest = await Insemination.findOne({
       animalId,
       status: { $in: ["pending", "approved", "in-progress"] },
-      deletedAt: null
+      deletedAt: null,
     });
 
     if (existingActiveRequest) {
@@ -59,6 +59,7 @@ export const createAIRequest = async (req, res) => {
       animalId,
       imageUrl: imageUrl || "",
       comment: comment || "",
+      heatSigns: heatSigns || [],
       preferredDate: req.body.preferredDate || new Date(),
       status: "pending",
       attemptNumber,
@@ -222,7 +223,8 @@ export const updateRequestStatus = async (req, res) => {
       (existing.status === "approved" || existing.status === "in-progress") &&
       req.body.scheduledDate &&
       existing.scheduledDate &&
-      new Date(existing.scheduledDate).getTime() !== new Date(req.body.scheduledDate).getTime();
+      new Date(existing.scheduledDate).getTime() !==
+        new Date(req.body.scheduledDate).getTime();
 
     const updateData = {
       status,
@@ -366,6 +368,8 @@ export const confirmAIOutcome = async (req, res) => {
         const calvingDate = calculateTargetCalvingDate(
           baseInsemDate,
           animal.species,
+          undefined,
+          animal.breed,
         );
         animal.expectedCalvingDate = calvingDate;
 
@@ -473,7 +477,9 @@ export const deleteRequest = async (req, res) => {
     // Status restriction: Only for farmers. Technicians can delete any (for testing/cleanup)
     if (
       isOwner &&
-      !["pending", "approved", "in-progress", "rejected"].includes(request.status)
+      !["pending", "approved", "in-progress", "rejected"].includes(
+        request.status,
+      )
     ) {
       return res.status(400).json({
         message: "Completed requests cannot be cancelled.",
@@ -482,7 +488,10 @@ export const deleteRequest = async (req, res) => {
 
     // --- SEND CANCELLED PUSH NOTIFICATION TO TECHNICIANS ---
     try {
-      if (isOwner && ["pending", "approved", "in-progress"].includes(request.status)) {
+      if (
+        isOwner &&
+        ["pending", "approved", "in-progress"].includes(request.status)
+      ) {
         const technicians = await User.find({ role: "technician" });
         for (const t of technicians) {
           if (t.pushToken) {

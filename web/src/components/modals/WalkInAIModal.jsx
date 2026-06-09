@@ -4,7 +4,7 @@ import { X, Syringe, User, Activity, Calendar, Search, MapPin, Phone, AlertCircl
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "../../constants/breeds";
+import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "../../constants/breeds";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { OTON_BARANGAYS } from "../../constants/barangays";
 import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../../utils/cattleCore";
@@ -162,6 +162,35 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     };
   }, [isOpen, onClose]);
 
+  const getSelectedAnimalSpecies = () => {
+    if (isExistingRecord && selectedAnimalId) {
+      const animal = animals.find((a) => a._id === selectedAnimalId);
+      return animal?.species || "Beef Cattle";
+    }
+    return formData.animalDetails.species || "Beef Cattle";
+  };
+
+  useEffect(() => {
+    const species = isExistingRecord && selectedAnimalId
+      ? animals.find((a) => a._id === selectedAnimalId)?.species
+      : formData.animalDetails.species;
+    if (species) {
+      const validBreeds = BREED_OPTIONS_BY_SPECIES[species] || [];
+      if (formData.animalDetails.breed && !validBreeds.includes(formData.animalDetails.breed)) {
+        setFormData((prev) => ({
+          ...prev,
+          animalDetails: { ...prev.animalDetails, breed: "" },
+        }));
+      }
+      if (formData.inseminationDetails.sireBreed && !validBreeds.includes(formData.inseminationDetails.sireBreed)) {
+        setFormData((prev) => ({
+          ...prev,
+          inseminationDetails: { ...prev.inseminationDetails, sireBreed: "", sireCode: "" },
+        }));
+      }
+    }
+  }, [selectedAnimalId, formData.animalDetails.species, isExistingRecord, animals]);
+
   if (!isOpen) return null;
 
   const handleSubmit = () => {
@@ -246,7 +275,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
 
     // Check Postpartum Voluntary Waiting Period
     if (animal.lastCalvingDate) {
-      const vwpCheck = verifyPostpartumWindow(animal.lastCalvingDate, formData.inseminationDetails.inseminationDate || new Date(), animal.species);
+      const vwpCheck = verifyPostpartumWindow(animal.lastCalvingDate, formData.inseminationDetails.inseminationDate || new Date(), animal.species, animal.breed);
       if (!vwpCheck.isSafe) {
         setVwpWarning(
           `Postpartum Voluntary Waiting Period violated. Only ${vwpCheck.daysPassed} days have passed since calving on ${new Date(animal.lastCalvingDate).toLocaleDateString()}. Minimum required recovery window is ${vwpCheck.requiredDays} days.`
@@ -468,7 +497,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                           className={`${selectClass} cursor-pointer`}
                         >
                           <option value="" disabled>Select Sire Breed</option>
-                          {CATTLE_BREEDS.map(b => (
+                          {(BREED_OPTIONS_BY_SPECIES[getSelectedAnimalSpecies()] || CATTLE_BREEDS).map(b => (
                               <option key={b} value={b}>{b}</option>
                           ))}
                         </select>
@@ -701,7 +730,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                       className={`${selectClass} cursor-pointer`}
                     >
                       <option value="" disabled>Select Breed</option>
-                      {CATTLE_BREEDS.map(b => (
+                       {(BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || CATTLE_BREEDS).map(b => (
                           <option key={b} value={b}>{b}</option>
                       ))}
                     </select>
@@ -742,7 +771,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                           className={`${selectClass} cursor-pointer`}
                         >
                           <option value="" disabled>Select Sire Breed</option>
-                          {CATTLE_BREEDS.map(b => (
+                          {(BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || CATTLE_BREEDS).map(b => (
                               <option key={b} value={b}>{b}</option>
                           ))}
                         </select>

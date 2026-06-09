@@ -207,6 +207,18 @@ export default function TechnicianDashboard() {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
+  const getAdditionalNotesOnly = (fullComment: string) => {
+    if (!fullComment) return "";
+    const parts = fullComment.split("Additional Notes:\n");
+    if (parts.length > 1) {
+      return parts[1].trim();
+    }
+    if (fullComment.includes("Observed Heat Signs:\n")) {
+      return "";
+    }
+    return fullComment;
+  };
+
   const [farmerSearch, setFarmerSearch] = useState("");
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -1415,6 +1427,125 @@ export default function TechnicianDashboard() {
                   {selectedItem?.farmer} · {selectedItem?.location}
                 </Text>
               </View>
+
+              {/* Farmer's Request Details (Observed Heat Signs & Notes) */}
+              {selectedItem?.type === "insemination" && selectedItem?.raw?.heatSigns && selectedItem.raw.heatSigns.length > 0 && (
+                <View style={{ marginTop: 6, marginBottom: 6 }}>
+                  <Text
+                    variant="extrabold"
+                    color="muted"
+                    size={10}
+                    style={{
+                      textTransform: "uppercase",
+                      marginBottom: 8,
+                      marginLeft: 4,
+                    }}
+                  >
+                    Observed Heat Signs
+                  </Text>
+                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                    {selectedItem.raw.heatSigns.map((signId: string) => {
+                      const signMap: Record<string, string> = {
+                        standing_heat: "Standing Heat 🐮",
+                        attempt_mount: "Attempting to Mount",
+                        restlessness: "Restlessness / Activity",
+                        vocalization: "Vocalization (Bellowing)",
+                        flehmen: "Flehmen Response",
+                        grouping: "Friendly Grouping",
+                        mucus_discharge: "Clear Mucus Discharge 💧",
+                        swollen_vulva: "Swollen, Red Vulva",
+                        muddy_flanks: "Muddy Flanks / Tailhead",
+                        metestrus_bleeding: "Metestrus Bleeding 🩸",
+                      };
+                      const label = signMap[signId] || signId;
+                      const isPrimary = signId === "standing_heat";
+                      const isBleeding = signId === "metestrus_bleeding";
+
+                      let badgeBg = isDark ? "rgba(16, 185, 129, 0.15)" : "rgba(16, 185, 129, 0.1)";
+                      let badgeText = isDark ? "#34d399" : "#065F46";
+                      let badgeBorder = isDark ? "rgba(16, 185, 129, 0.3)" : "#d1fae5";
+
+                      if (isPrimary) {
+                        badgeBg = isDark ? "rgba(245, 158, 11, 0.15)" : "#FEF3C7";
+                        badgeText = isDark ? "#fbbf24" : "#92400E";
+                        badgeBorder = isDark ? "rgba(245, 158, 11, 0.3)" : "#fef3c7";
+                      } else if (isBleeding) {
+                        badgeBg = isDark ? "rgba(239, 68, 68, 0.15)" : "#FEF2F2";
+                        badgeText = isDark ? "#f87171" : "#991B1B";
+                        badgeBorder = isDark ? "rgba(239, 68, 68, 0.3)" : "#fecaca";
+                      }
+
+                      return (
+                        <View
+                          key={signId}
+                          style={{
+                            backgroundColor: badgeBg,
+                            borderColor: badgeBorder,
+                            borderWidth: 1,
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderRadius: 10,
+                          }}
+                        >
+                          <Text
+                            variant="extrabold"
+                            size={10}
+                            style={{
+                              color: badgeText,
+                              textTransform: "uppercase",
+                              letterSpacing: 0.5,
+                            }}
+                          >
+                            {label}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
+
+              {/* Farmer's Remarks */}
+              {((selectedItem?.type === "insemination" && getAdditionalNotesOnly(selectedItem?.raw?.comment || "")) ||
+                (selectedItem?.type === "health" && (selectedItem?.raw?.comment || selectedItem?.raw?.symptoms))) ? (
+                <View style={{ marginTop: 6, marginBottom: 6 }}>
+                  <Text
+                    variant="extrabold"
+                    color="muted"
+                    size={10}
+                    style={{
+                      textTransform: "uppercase",
+                      marginBottom: 8,
+                      marginLeft: 4,
+                    }}
+                  >
+                    {selectedItem?.type === "health" ? "Farmer Symptoms / Comments" : "Farmer Remarks"}
+                  </Text>
+                  <View
+                    style={{
+                      backgroundColor: isDark ? "#1f2937" : "#f8fafc",
+                      borderRadius: 14,
+                      padding: 12,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <Text
+                      variant="medium"
+                      size={12}
+                      style={{
+                        color: colors.textSecondary,
+                        fontStyle: "italic",
+                        lineHeight: 18,
+                      }}
+                    >
+                      &quot;{selectedItem?.type === "health"
+                        ? selectedItem?.raw?.symptoms || selectedItem?.raw?.comment
+                        : getAdditionalNotesOnly(selectedItem?.raw?.comment || "")}&quot;
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
 
               <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
                 <TouchableOpacity

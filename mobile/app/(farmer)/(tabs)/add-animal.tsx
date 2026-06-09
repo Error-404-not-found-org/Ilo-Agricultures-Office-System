@@ -32,7 +32,7 @@ import { useUser } from "@clerk/clerk-expo";
 import { toast } from "sonner-native";
 import { format } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "@/lib/constants";
+import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
@@ -75,7 +75,7 @@ export default function FarmerAnimalsHub() {
         const res = await api.get("/animals/my?limit=100");
         const body = res.data;
         // Handle both direct array and object-wrapped responses
-        const list = Array.isArray(body) ? body : (body?.data || []);
+        const list = Array.isArray(body) ? body : body?.data || [];
         return list;
       } catch (err) {
         console.error("Failed to fetch animals:", err);
@@ -100,6 +100,15 @@ export default function FarmerAnimalsHub() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  useEffect(() => {
+    if (formData.species) {
+      const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
+      if (formData.breed && !validBreeds.includes(formData.breed)) {
+        setFormData((prev) => ({ ...prev, breed: "" }));
+      }
+    }
+  }, [formData.species]);
 
   const mutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -136,8 +145,11 @@ export default function FarmerAnimalsHub() {
   // --- Form Handlers ---
   // --- Form Handlers ---
   const handleSave = async () => {
+    if (loadingForm) return;
     if (!formData.species || !formData.breed || !formData.earTag?.trim())
-      return toast.error("Please fill all required fields (Species, Breed, and Ear Tag).");
+      return toast.error(
+        "Please fill all required fields (Species, Breed, and Ear Tag).",
+      );
 
     let birthDate = undefined;
     if (formData.birthDate) {
@@ -182,9 +194,15 @@ export default function FarmerAnimalsHub() {
   );
 
   return (
-    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950" style={{ backgroundColor: colors.background }}>
+    <View
+      className="flex-1 bg-[#F9FAFB] dark:bg-slate-950"
+      style={{ backgroundColor: colors.background }}
+    >
       <StatusBar barStyle="light-content" />
-      <View className="absolute top-0 left-0 right-0 h-[220px]" style={{ backgroundColor: '#00643B' }} />
+      <View
+        className="absolute top-0 left-0 right-0 h-[220px]"
+        style={{ backgroundColor: "#00643B" }}
+      />
 
       {/* --- HEADER --- */}
       <View
@@ -195,7 +213,11 @@ export default function FarmerAnimalsHub() {
           <TouchableOpacity
             onPress={() => router.back()}
             className="w-10 h-10 rounded-full items-center justify-center border border-white/10"
-            style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.2)' }}
+            style={{
+              backgroundColor: isDark
+                ? "rgba(255,255,255,0.05)"
+                : "rgba(255,255,255,0.2)",
+            }}
           >
             <ArrowLeft size={20} color="white" />
           </TouchableOpacity>
@@ -312,9 +334,15 @@ export default function FarmerAnimalsHub() {
                 />
                 <View className="mt-1 ml-1">
                   <EarTagGenerator
-                    farmerName={user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || "Farmer"}
+                    farmerName={
+                      user?.fullName ||
+                      `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
+                      "Farmer"
+                    }
                     animalCount={animals.length}
-                    onGenerate={(tag) => setFormData({ ...formData, earTag: tag })}
+                    onGenerate={(tag) =>
+                      setFormData({ ...formData, earTag: tag })
+                    }
                     isDark={isDark}
                   />
                 </View>
@@ -331,9 +359,13 @@ export default function FarmerAnimalsHub() {
                 <SelectField
                   label="Breed"
                   value={formData.breed}
-                  onPress={() =>
-                    openModal("breed", "Select Breed", BREED_OPTIONS)
-                  }
+                  onPress={() => {
+                    if (!formData.species) {
+                      toast.error("Please select a species first.");
+                      return;
+                    }
+                    openModal("breed", "Select Breed", BREED_OPTIONS_BY_SPECIES[formData.species] || []);
+                  }}
                 />
               </View>
 
@@ -373,8 +405,12 @@ export default function FarmerAnimalsHub() {
 
               <TouchableOpacity
                 onPress={handleSave}
+                disabled={loadingForm}
                 className="rounded-full py-4 items-center mt-4 shadow-md"
-                style={{ backgroundColor: isDark ? colors.primary : '#00643B', shadowColor: isDark ? colors.primary : '#a7f3d0' }}
+                style={{
+                  backgroundColor: loadingForm ? "#34d399" : (isDark ? colors.primary : "#00643B"),
+                  shadowColor: isDark ? colors.primary : "#a7f3d0",
+                }}
               >
                 {loadingForm ? (
                   <ActivityIndicator color="white" />
@@ -387,7 +423,11 @@ export default function FarmerAnimalsHub() {
 
               {showDatePicker && (
                 <DateTimePicker
-                  value={formData.birthDate ? new Date(formData.birthDate) : new Date()}
+                  value={
+                    formData.birthDate
+                      ? new Date(formData.birthDate)
+                      : new Date()
+                  }
                   mode="date"
                   display="default"
                   maximumDate={new Date()}
@@ -407,7 +447,13 @@ export default function FarmerAnimalsHub() {
         ) : (
           <View className="flex-1">
             {/* Search */}
-            <View className="flex-row items-center bg-white dark:bg-slate-900 rounded-2xl px-4 h-12 mb-4 border border-slate-100 dark:border-slate-800 shadow-sm" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            <View
+              className="flex-row items-center bg-white dark:bg-slate-900 rounded-2xl px-4 h-12 mb-4 border border-slate-100 dark:border-slate-800 shadow-sm"
+              style={{
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              }}
+            >
               <Search size={18} color={colors.textMuted} />
               <TextInput
                 placeholder="Search by ID or breed..."
@@ -419,7 +465,10 @@ export default function FarmerAnimalsHub() {
             </View>
 
             {loadingList ? (
-              <ActivityIndicator color={isDark ? colors.primary : "#00643B"} className="mt-10" />
+              <ActivityIndicator
+                color={isDark ? colors.primary : "#00643B"}
+                className="mt-10"
+              />
             ) : filteredAnimals.length === 0 ? (
               <View className="items-center py-20">
                 <MaterialCommunityIcons
@@ -441,7 +490,10 @@ export default function FarmerAnimalsHub() {
                       router.push(`/(farmer)/animal-details?id=${item._id}`)
                     }
                     className="bg-white dark:bg-slate-900 rounded-[24px] p-4 mb-3 border border-slate-50 dark:border-slate-800 flex-row items-center shadow-sm"
-                    style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                    style={{
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                    }}
                   >
                     <View className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 items-center justify-center mr-4">
                       {item.imageUrl ? (
@@ -473,7 +525,11 @@ export default function FarmerAnimalsHub() {
                   </TouchableOpacity>
                 )}
                 refreshControl={
-                  <RefreshControl refreshing={refreshing} onRefresh={refetch} colors={[isDark ? colors.primary : '#00643B']} />
+                  <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={refetch}
+                    colors={[isDark ? colors.primary : "#00643B"]}
+                  />
                 }
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: 100 }}
@@ -485,7 +541,10 @@ export default function FarmerAnimalsHub() {
 
       <Modal visible={modal.visible} transparent animationType="slide">
         <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10" style={{ backgroundColor: colors.card }}>
+          <View
+            className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10"
+            style={{ backgroundColor: colors.card }}
+          >
             <View className="flex-row justify-between items-center mb-6">
               <Text className="text-lg font-outfit-bold text-slate-800 dark:text-white">
                 {modal.title}
@@ -506,9 +565,15 @@ export default function FarmerAnimalsHub() {
                     setModal({ ...modal, visible: false });
                   }}
                   className="w-[48%] py-4 rounded-2xl items-center justify-center mb-3 border active:bg-emerald-50 dark:active:bg-emerald-950/20"
-                  style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: isDark ? colors.border : '#e2e8f0' }}
+                  style={{
+                    backgroundColor: isDark ? colors.background : "#f8fafc",
+                    borderColor: isDark ? colors.border : "#e2e8f0",
+                  }}
                 >
-                  <Text className="font-outfit-bold text-[11px] uppercase tracking-tight text-center px-1" style={{ color: colors.textPrimary }}>
+                  <Text
+                    className="font-outfit-bold text-[11px] uppercase tracking-tight text-center px-1"
+                    style={{ color: colors.textPrimary }}
+                  >
                     {opt}
                   </Text>
                 </TouchableOpacity>
@@ -559,7 +624,11 @@ const SelectField = ({ label, value, onPress }: any) => {
       <TouchableOpacity
         onPress={onPress}
         className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl px-4 py-3.5 flex-row justify-between items-center"
-        style={{ backgroundColor: colors.card, borderColor: colors.border, height: 50 }}
+        style={{
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          height: 50,
+        }}
       >
         <Text
           className="font-outfit-medium text-sm"

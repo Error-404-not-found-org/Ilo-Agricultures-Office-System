@@ -2,9 +2,72 @@ import { Notification } from "../models/notification.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 
+const syncOverdueNotifications = async (userId) => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [pendingAI, pendingHealth] = await Promise.all([
+    Insemination.find({
+      status: { $in: ["approved", "in-progress"] },
+      approvedBy: userId,
+      scheduledDate: { $lt: today }
+    }).populate("farmerId", "name").populate("animalId", "earTag animalId"),
+    HealthRequest.find({
+      status: { $in: ["approved", "in-progress"] },
+      handledBy: userId,
+      scheduledDate: { $lt: today }
+    }).populate("farmerId", "name").populate("animalId", "earTag animalId")
+  ]);
+
+  for (const request of pendingAI) {
+    const existingNotif = await Notification.findOne({
+      recipientId: userId,
+      relatedId: request._id,
+      title: /Overdue/i
+    });
+    if (!existingNotif) {
+      const title = "⏰ Overdue AI Service Log";
+      const body = `Your AI visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is uncompleted. Please mark it complete.`;
+      await Notification.create({
+        recipientId: userId,
+        senderId: "000000000000000000000000",
+        type: "ai-request",
+        relatedId: request._id,
+        title,
+        message: body,
+      });
+    }
+  }
+
+  for (const request of pendingHealth) {
+    const existingNotif = await Notification.findOne({
+      recipientId: userId,
+      relatedId: request._id,
+      title: /Overdue/i
+    });
+    if (!existingNotif) {
+      const title = "⏰ Overdue Health Visit Log";
+      const body = `Your health visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is uncompleted. Please mark it complete.`;
+      await Notification.create({
+        recipientId: userId,
+        senderId: "000000000000000000000000",
+        type: "health-request",
+        relatedId: request._id,
+        title,
+        message: body,
+      });
+    }
+  }
+};
+
 // GET /api/notifications
 export const getNotifications = async (req, res) => {
   try {
+    // Only generate reminders for technicians
+    if (req.user.role === "technician") {
+      await syncOverdueNotifications(req.user._id);
+    }
+
     const notifications = await Notification.find({ recipientId: req.user._id })
       .populate("senderId", "name imageUrl role")
       .sort({ createdAt: -1 })
@@ -38,6 +101,9 @@ export const markAsRead = async (req, res) => {
 // GET /api/notifications/unread-count
 export const getUnreadCount = async (req, res) => {
   try {
+    if (req.user.role === "technician") {
+      await syncOverdueNotifications(req.user._id);
+    }
     const count = await Notification.countDocuments({ 
       recipientId: req.user._id, 
       isRead: false 

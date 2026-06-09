@@ -475,7 +475,8 @@ export const getMyCalvings = async (req, res) => {
     const [records, total] = await Promise.all([
       Calving.find({ deletedAt: null })
         .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
+        .populate("animalId", "animalId earTag breed species imageUrl color brand")
+        .populate("calves.animalId", "animalId earTag breed species color brand")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -1133,7 +1134,7 @@ export const recordPregnancyCheck = async (req, res) => {
       },
       targetCalvingDate:
         result === "Pregnant"
-          ? calculateTargetCalvingDate(new Date(), animal.species)
+          ? calculateTargetCalvingDate(new Date(), animal.species, undefined, animal.breed)
           : undefined,
     });
 
@@ -1225,6 +1226,7 @@ export const recordCalving = async (req, res) => {
         mother.lastCalvingDate,
         date || new Date(),
         mother.species,
+        mother.breed,
       );
       if (!windowCheck.isSafe) {
         return res.status(422).json({
@@ -1275,8 +1277,8 @@ export const recordCalving = async (req, res) => {
         motherId: mother._id,
         isVerified: true,
         gender: calfData.sex === "M" ? "Male" : "Female",
-        color: calfData.color || "Not Provided",
-        brand: calfData.brand || "",
+        color: calfData.color || mother.color || "Not Provided",
+        brand: calfData.brand || mother.brand || "",
         birthDate: date || new Date(),
         barangay: mother.barangay || "Not Provided",
         activityLogs: [
@@ -1292,7 +1294,6 @@ export const recordCalving = async (req, res) => {
       calfRecordsForBirth.push({
         sex: calfData.sex,
         earTag: newCalf.earTag,
-        weight: calfData.weight,
         animalId: newCalf._id,
       });
     }
@@ -2258,5 +2259,22 @@ export const deleteFieldNoteRecord = async (req, res) => {
         message: "Failed to delete field note record",
         error: error.message,
       });
+  }
+};
+
+export const markCalvingAsSeen = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const calving = await Calving.findByIdAndUpdate(
+      id,
+      { $set: { isSeen: true } },
+      { new: true }
+    );
+    if (!calving) {
+      return res.status(404).json({ message: "Calving record not found" });
+    }
+    res.status(200).json({ message: "Calving record marked as seen", calving });
+  } catch (error) {
+    res.status(500).json({ message: "Error marking calving as seen", error: error.message });
   }
 };

@@ -204,6 +204,18 @@ export default function MyRequests() {
     }
   };
 
+  const getAdditionalNotesOnly = (fullComment: string) => {
+    if (!fullComment) return "";
+    const parts = fullComment.split("Additional Notes:\n");
+    if (parts.length > 1) {
+      return parts[1].trim();
+    }
+    if (fullComment.includes("Observed Heat Signs:\n")) {
+      return "";
+    }
+    return fullComment;
+  };
+
   return (
     <View
       className="flex-1 bg-[#F9FAFB] dark:bg-slate-950"
@@ -477,7 +489,7 @@ export default function MyRequests() {
                 </View>
 
                 {/* Comment / Reason */}
-                {req.comment || req.reason ? (
+                {(isHealth && (req.comment || req.reason)) || (!isHealth && getAdditionalNotesOnly(req.comment || req.reason)) ? (
                   <View className="mb-4">
                     <Text
                       className="text-[10px] font-bold uppercase mb-1"
@@ -489,8 +501,71 @@ export default function MyRequests() {
                       className="text-[12px] italic"
                       style={{ color: colors.textSecondary }}
                     >
-                      &quot;{req.comment || req.reason}&quot;
+                      &quot;{isHealth ? (req.comment || req.reason) : getAdditionalNotesOnly(req.comment || req.reason)}&quot;
                     </Text>
+                  </View>
+                ) : null}
+
+                {/* Heat Signs Badges */}
+                {!isHealth && req.heatSigns && req.heatSigns.length > 0 ? (
+                  <View className="mb-4">
+                    <Text
+                      className="text-[10px] font-bold uppercase mb-2"
+                      style={{ color: colors.textMuted }}
+                    >
+                      Observed Heat Signs
+                    </Text>
+                    <View className="flex-row flex-wrap gap-2">
+                      {req.heatSigns.map((signId: string) => {
+                        const signMap: Record<string, string> = {
+                          standing_heat: "Standing Heat 🐮",
+                          attempt_mount: "Attempting to Mount",
+                          restlessness: "Restlessness / Activity",
+                          vocalization: "Vocalization (Bellowing)",
+                          flehmen: "Flehmen Response",
+                          grouping: "Friendly Grouping",
+                          mucus_discharge: "Clear Mucus Discharge 💧",
+                          swollen_vulva: "Swollen, Red Vulva",
+                          muddy_flanks: "Muddy Flanks / Tailhead",
+                          metestrus_bleeding: "Metestrus Bleeding 🩸",
+                        };
+                        const label = signMap[signId] || signId;
+                        const isPrimary = signId === "standing_heat";
+                        const isBleeding = signId === "metestrus_bleeding";
+
+                        let badgeBg = isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5";
+                        let badgeText = isDark ? "#34d399" : "#065F46";
+                        let badgeBorder = isDark ? "rgba(16, 185, 129, 0.2)" : "#d1fae5";
+
+                        if (isPrimary) {
+                          badgeBg = isDark ? "rgba(245, 158, 11, 0.15)" : "#FEF3C7";
+                          badgeText = isDark ? "#fbbf24" : "#92400E";
+                          badgeBorder = isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7";
+                        } else if (isBleeding) {
+                          badgeBg = isDark ? "rgba(239, 68, 68, 0.15)" : "#FEF2F2";
+                          badgeText = isDark ? "#f87171" : "#991B1B";
+                          badgeBorder = isDark ? "rgba(239, 68, 68, 0.2)" : "#fecaca";
+                        }
+
+                        return (
+                          <View
+                            key={signId}
+                            className="px-3 py-1.5 rounded-xl border"
+                            style={{
+                              backgroundColor: badgeBg,
+                              borderColor: badgeBorder,
+                            }}
+                          >
+                            <Text
+                              className="text-[10px] font-black uppercase tracking-wider"
+                              style={{ color: badgeText }}
+                            >
+                              {label}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
                   </View>
                 ) : null}
 
