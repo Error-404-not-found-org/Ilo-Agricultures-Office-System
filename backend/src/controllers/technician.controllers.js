@@ -1051,6 +1051,7 @@ export const registerFarmer = async (req, res) => {
           emailAddress: email,
           publicMetadata: { role: "farmer" },
           redirectUrl: `${process.env.CLIENT_URL || "http://localhost:5173"}/download-app`,
+          expiresInDays: 1,
         });
       } catch (clerkError) {
         console.error("[registerFarmer CLERK ERROR]", clerkError.message);
