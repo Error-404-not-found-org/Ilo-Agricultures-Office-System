@@ -44,6 +44,18 @@ export default function AnimalDetails() {
   const api = useApi();
   const router = useRouter();
 
+  const getAdditionalNotesOnly = (fullComment: string) => {
+    if (!fullComment) return "";
+    const parts = fullComment.split("Additional Notes:\n");
+    if (parts.length > 1) {
+      return parts[1].trim();
+    }
+    if (fullComment.includes("Observed Heat Signs:\n")) {
+      return "";
+    }
+    return fullComment;
+  };
+
   const [activeTab, setActiveTab] = useState<"Info" | "History">("Info");
 
   const [animal, setAnimal] = useState<any>(null);
@@ -716,11 +728,65 @@ export default function AnimalDetails() {
                             </Text>
                           </Text>
                         )}
-                        {(record.note || record.technicianNote || record.comment) && (
+                        {record.type === "insemination" && record.heatSigns && record.heatSigns.length > 0 ? (
+                          <View className="flex-row flex-wrap gap-1 mt-2 mb-1">
+                            {record.heatSigns.map((signId: string) => {
+                              const signMap: Record<string, string> = {
+                                standing_heat: "Standing Heat 🐮",
+                                attempt_mount: "Attempting to Mount",
+                                restlessness: "Restlessness / Activity",
+                                vocalization: "Vocalization (Bellowing)",
+                                flehmen: "Flehmen Response",
+                                grouping: "Friendly Grouping",
+                                mucus_discharge: "Clear Mucus Discharge 💧",
+                                swollen_vulva: "Swollen, Red Vulva",
+                                muddy_flanks: "Muddy Flanks / Tailhead",
+                                metestrus_bleeding: "Metestrus Bleeding 🩸",
+                              };
+                              const label = signMap[signId] || signId;
+                              const isPrimary = signId === "standing_heat";
+                              const isBleeding = signId === "metestrus_bleeding";
+
+                              let badgeBg = isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5";
+                              let badgeText = isDark ? "#34d399" : "#065F46";
+                              let badgeBorder = isDark ? "rgba(16, 185, 129, 0.2)" : "#d1fae5";
+
+                              if (isPrimary) {
+                                badgeBg = isDark ? "rgba(245, 158, 11, 0.15)" : "#FEF3C7";
+                                badgeText = isDark ? "#fbbf24" : "#92400E";
+                                badgeBorder = isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7";
+                              } else if (isBleeding) {
+                                badgeBg = isDark ? "rgba(239, 68, 68, 0.15)" : "#FEF2F2";
+                                badgeText = isDark ? "#f87171" : "#991B1B";
+                                badgeBorder = isDark ? "rgba(239, 68, 68, 0.2)" : "#fecaca";
+                              }
+
+                              return (
+                                <View
+                                  key={signId}
+                                  className="px-2 py-0.5 rounded-lg border"
+                                  style={{
+                                    backgroundColor: badgeBg,
+                                    borderColor: badgeBorder,
+                                  }}
+                                >
+                                  <Text
+                                    className="text-[9px] font-black uppercase tracking-wider"
+                                    style={{ color: badgeText }}
+                                  >
+                                    {label}
+                                  </Text>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        ) : null}
+
+                        {(record.note || record.technicianNote || (record.type === "insemination" ? getAdditionalNotesOnly(record.comment || "") : record.comment)) ? (
                           <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] mt-1 italic leading-4">
-                            &quot;{record.note || record.technicianNote || record.comment}&quot;
+                            &quot;{record.note || record.technicianNote || (record.type === "insemination" ? getAdditionalNotesOnly(record.comment || "") : record.comment)}&quot;
                           </Text>
-                        )}
+                        ) : null}
                         {record.technicianId?.name && (
                           <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-slate-400 dark:text-slate-500 text-[9px] mt-2 uppercase tracking-tight">
                             Recorded by {record.technicianId.name}
@@ -962,11 +1028,6 @@ export default function AnimalDetails() {
                                       {calf.sex === 'M' ? 'Male ♂' : 'Female ♀'}
                                     </Text>
                                   </View>
-                                  {calf.weight ? (
-                                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-indigo-600 dark:text-indigo-400 text-[11px]">
-                                      {calf.weight} kg
-                                    </Text>
-                                  ) : null}
                                 </View>
                               </View>
                             ))}
@@ -1066,14 +1127,75 @@ export default function AnimalDetails() {
                     </>
                   )}
 
+                  {/* Heat Signs List inside details modal */}
+                  {selectedRecord.type === "insemination" && selectedRecord.heatSigns && selectedRecord.heatSigns.length > 0 ? (
+                    <>
+                      <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
+                      <View className="flex-col gap-1.5">
+                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Observed Heat Signs</Text>
+                        <View className="flex-row flex-wrap gap-2 mt-1">
+                          {selectedRecord.heatSigns.map((signId: string) => {
+                            const signMap: Record<string, string> = {
+                              standing_heat: "Standing Heat 🐮",
+                              attempt_mount: "Attempting to Mount",
+                              restlessness: "Restlessness / Activity",
+                              vocalization: "Vocalization (Bellowing)",
+                              flehmen: "Flehmen Response",
+                              grouping: "Friendly Grouping",
+                              mucus_discharge: "Clear Mucus Discharge 💧",
+                              swollen_vulva: "Swollen, Red Vulva",
+                              muddy_flanks: "Muddy Flanks / Tailhead",
+                              metestrus_bleeding: "Metestrus Bleeding 🩸",
+                            };
+                            const label = signMap[signId] || signId;
+                            const isPrimary = signId === "standing_heat";
+                            const isBleeding = signId === "metestrus_bleeding";
+
+                            let badgeBg = isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5";
+                            let badgeText = isDark ? "#34d399" : "#065F46";
+                            let badgeBorder = isDark ? "rgba(16, 185, 129, 0.2)" : "#d1fae5";
+
+                            if (isPrimary) {
+                              badgeBg = isDark ? "rgba(245, 158, 11, 0.15)" : "#FEF3C7";
+                              badgeText = isDark ? "#fbbf24" : "#92400E";
+                              badgeBorder = isDark ? "rgba(245, 158, 11, 0.2)" : "#FEF3C7";
+                            } else if (isBleeding) {
+                              badgeBg = isDark ? "rgba(239, 68, 68, 0.15)" : "#FEF2F2";
+                              badgeText = isDark ? "#f87171" : "#991B1B";
+                              badgeBorder = isDark ? "rgba(239, 68, 68, 0.2)" : "#fecaca";
+                            }
+
+                            return (
+                              <View
+                                key={signId}
+                                className="px-3 py-1.5 rounded-xl border"
+                                style={{
+                                  backgroundColor: badgeBg,
+                                  borderColor: badgeBorder,
+                                }}
+                              >
+                                <Text
+                                  className="text-[10px] font-black uppercase tracking-wider"
+                                  style={{ color: badgeText }}
+                                >
+                                  {label}
+                                </Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    </>
+                  ) : null}
+
                   {/* 3. Common Info: Notes / Remarks */}
-                  {(selectedRecord.note || selectedRecord.technicianNote || selectedRecord.comment) ? (
+                  {(selectedRecord.note || selectedRecord.technicianNote || (selectedRecord.type === "insemination" ? getAdditionalNotesOnly(selectedRecord.comment || "") : selectedRecord.comment)) ? (
                     <>
                       <View className="h-[1px] w-full bg-slate-100 dark:bg-slate-800" />
                       <View className="flex-col gap-1">
                         <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 dark:text-slate-500 text-[12px] uppercase tracking-wider">Notes & Remarks</Text>
                         <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-700 dark:text-slate-300 text-[13px] italic leading-5 mt-1">
-                          &quot;{selectedRecord.note || selectedRecord.technicianNote || selectedRecord.comment}&quot;
+                          &quot;{selectedRecord.note || selectedRecord.technicianNote || (selectedRecord.type === "insemination" ? getAdditionalNotesOnly(selectedRecord.comment || "") : selectedRecord.comment)}&quot;
                         </Text>
                       </View>
                     </>

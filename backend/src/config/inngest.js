@@ -440,20 +440,44 @@ const remindPendingServices = inngest.createFunction(
       // Notify Technicians for pending AI
       for (const request of pendingAI) {
         const tech = request.approvedBy;
-        if (tech && tech.pushToken) {
+        if (tech) {
           const title = "⏰ Pending AI Service Log";
           const body = `Your AI visit today for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is pending. Please log the results.`;
-          await sendPushNotification(tech.pushToken, title, body);
+          
+          await Notification.create({
+            recipientId: tech._id,
+            senderId: "000000000000000000000000",
+            type: "ai-request",
+            relatedId: request._id,
+            title,
+            message: body,
+          });
+
+          if (tech.pushToken) {
+            await sendPushNotification(tech.pushToken, title, body);
+          }
         }
       }
 
       // Notify Technicians for pending Health
       for (const request of pendingHealth) {
         const tech = request.handledBy;
-        if (tech && tech.pushToken) {
+        if (tech) {
           const title = "⏰ Pending Health Visit Log";
           const body = `Your health visit today for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is pending. Please log the results.`;
-          await sendPushNotification(tech.pushToken, title, body);
+          
+          await Notification.create({
+            recipientId: tech._id,
+            senderId: "000000000000000000000000",
+            type: "health-request",
+            relatedId: request._id,
+            title,
+            message: body,
+          });
+
+          if (tech.pushToken) {
+            await sendPushNotification(tech.pushToken, title, body);
+          }
         }
       }
 

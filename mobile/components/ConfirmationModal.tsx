@@ -1,5 +1,13 @@
 import React from "react";
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Dimensions } from "react-native";
+import {
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Dimensions,
+  ActivityIndicator,
+} from "react-native";
 import { useTheme } from "../lib/theme";
 import { AlertTriangle, Trash2, X } from "lucide-react-native";
 
@@ -25,6 +33,20 @@ export function ConfirmationModal({
   isDestructive = true,
 }: ConfirmationModalProps) {
   const { colors, isDark } = useTheme();
+  const [confirming, setConfirming] = React.useState(false);
+
+  const handleConfirm = async () => {
+    if (confirming) return;
+    setConfirming(true);
+    try {
+      await onConfirm();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setConfirming(false);
+      onClose();
+    }
+  };
 
   return (
     <Modal
@@ -45,6 +67,7 @@ export function ConfirmationModal({
         >
           {/* Close button */}
           <TouchableOpacity
+            disabled={confirming}
             onPress={onClose}
             style={styles.closeButton}
             activeOpacity={0.7}
@@ -75,7 +98,9 @@ export function ConfirmationModal({
           </View>
 
           {/* Text Content */}
-          <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {title}
+          </Text>
           <Text style={[styles.message, { color: colors.textSecondary }]}>
             {message}
           </Text>
@@ -83,39 +108,46 @@ export function ConfirmationModal({
           {/* Buttons Row */}
           <View style={styles.buttonRow}>
             <TouchableOpacity
+              disabled={confirming}
               onPress={onClose}
               style={[
                 styles.button,
                 styles.cancelButton,
                 {
                   backgroundColor: isDark ? colors.background : "#f1f5f9",
+                  opacity: confirming ? 0.6 : 1,
                 },
               ]}
               activeOpacity={0.8}
             >
-              <Text style={[styles.buttonText, { color: colors.textSecondary }]}>
+              <Text
+                style={[styles.buttonText, { color: colors.textSecondary }]}
+              >
                 {cancelText}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => {
-                onConfirm();
-                onClose();
-              }}
+              disabled={confirming}
+              onPress={handleConfirm}
               style={[
                 styles.button,
                 {
                   backgroundColor: isDestructive
                     ? colors.error
                     : colors.primary,
+                  opacity: confirming ? 0.6 : 1,
                 },
               ]}
               activeOpacity={0.8}
             >
-              <Text style={[styles.buttonText, styles.confirmButtonText]}>
-                {confirmText}
-              </Text>
+              {confirming ? (
+                <ActivityIndicator color="#ffffff" size="small" />
+              ) : (
+                <Text style={[styles.buttonText, styles.confirmButtonText]}>
+                  {confirmText}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

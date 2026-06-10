@@ -19,7 +19,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { CATTLE_BREEDS, CATTLE_SPECIES } from "../../constants/breeds";
+import { CATTLE_BREEDS, CATTLE_SPECIES, BREED_OPTIONS_BY_SPECIES } from "../../constants/breeds";
 import { OTON_BARANGAYS } from "../../constants/barangays";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
@@ -135,6 +135,18 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [isOpen, prefillData, onClose]);
+
+  useEffect(() => {
+    if (formData.animalDetails.species) {
+      const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || [];
+      if (formData.animalDetails.breed && !validBreeds.includes(formData.animalDetails.breed)) {
+        setFormData((prev) => ({
+          ...prev,
+          animalDetails: { ...prev.animalDetails, breed: "" },
+        }));
+      }
+    }
+  }, [formData.animalDetails.species]);
 
   const mutation = useMutation({
     mutationFn: async (data) => {
@@ -508,7 +520,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                       className={`${selectClass} cursor-pointer`}
                     >
                       <option value="" disabled>Select Breed</option>
-                      {CATTLE_BREEDS.map(b => (
+                      {(BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || CATTLE_BREEDS).map(b => (
                           <option key={b} value={b}>{b}</option>
                       ))}
                     </select>
@@ -537,6 +549,8 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                       <option value="medicine">Medicine/Supplies</option>
                       <option value="checkup">Routine Checkup</option>
                       <option value="injury">Injury Treatment</option>
+                      <option value="vaccination">Vaccination</option>
+                      <option value="deworming">Deworming</option>
                       <option value="other">Other Veterinary</option>
                     </select>
                   </div>

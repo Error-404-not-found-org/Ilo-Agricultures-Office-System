@@ -28,7 +28,7 @@ import {
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import * as ImagePicker from "expo-image-picker";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS } from "@/lib/constants";
+import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
@@ -86,6 +86,15 @@ export default function RegisterAnimalScreen() {
     };
     fetchFarmers();
   }, [api]);
+
+  useEffect(() => {
+    if (formData.species) {
+      const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
+      if (formData.breed && !validBreeds.includes(formData.breed)) {
+        setFormData((prev) => ({ ...prev, breed: "" }));
+      }
+    }
+  }, [formData.species]);
 
   const handlePickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
@@ -314,7 +323,13 @@ export default function RegisterAnimalScreen() {
                   Breed *
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setShowBreedModal(true)}
+                  onPress={() => {
+                    if (!formData.species) {
+                      toast.error("Please select a species first.");
+                      return;
+                    }
+                    setShowBreedModal(true);
+                  }}
                   className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                 >
                   <Text
@@ -558,7 +573,7 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={CATTLE_BREEDS}
+              data={formData.species ? (BREED_OPTIONS_BY_SPECIES[formData.species] || []) : CATTLE_BREEDS}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <TouchableOpacity

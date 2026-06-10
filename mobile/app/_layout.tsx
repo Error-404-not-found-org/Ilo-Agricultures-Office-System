@@ -29,7 +29,7 @@ import { queryClient, persistOptions } from "../lib/queryClient";
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
 import { useEffect, useState } from "react";
-import { View, ActivityIndicator, Text, Image, useColorScheme } from "react-native";
+import { View, ActivityIndicator, Text, Image, useColorScheme, TouchableOpacity } from "react-native";
 import { Toaster, toast } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -184,6 +184,90 @@ function InitialLayout() {
             {isSignedIn ? 'RESOLVING PERMISSIONS...' : 'AUTHENTICATING...'}
           </Text>
         </View>
+      </View>
+    );
+  }
+
+  if (isOffline && !isSignedIn) {
+    const primaryColor = isDark ? "#10b981" : "#00643B";
+    const bgColor = isDark ? "#090d16" : "#f8fafc";
+    const textColor = isDark ? "#f8fafc" : "#1e293b";
+    const textSecColor = isDark ? "#cbd5e1" : "#64748b";
+
+    const handleTryAgain = async () => {
+      const state = await NetInfo.refresh();
+      const isConnected = state.isConnected ?? true;
+      setIsOffline(!isConnected);
+      if (isConnected) {
+        toast.success("Network connection restored!");
+      } else {
+        toast.error("Still no network connection found.");
+      }
+    };
+
+    return (
+      <View style={{
+        flex: 1,
+        backgroundColor: bgColor,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingHorizontal: 32,
+      }}>
+        <View style={{
+          width: 100,
+          height: 100,
+          borderRadius: 50,
+          backgroundColor: isDark ? 'rgba(16,185,129,0.1)' : 'rgba(0,100,59,0.05)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: 24,
+        }}>
+          <MaterialCommunityIcons name="wifi-off" size={48} color={primaryColor} />
+        </View>
+        <Text style={{
+          fontSize: 24,
+          fontFamily: 'Outfit_900Black',
+          color: textColor,
+          marginBottom: 8,
+          textAlign: 'center',
+        }}>
+          No network found
+        </Text>
+        <Text style={{
+          fontSize: 14,
+          fontFamily: 'Outfit_500Medium',
+          color: textSecColor,
+          textAlign: 'center',
+          marginBottom: 32,
+          lineHeight: 20,
+        }}>
+          Please check your internet connection or turn on your mobile data or Wi-Fi to log in.
+        </Text>
+        <TouchableOpacity
+          onPress={handleTryAgain}
+          activeOpacity={0.8}
+          style={{
+            backgroundColor: primaryColor,
+            paddingHorizontal: 32,
+            paddingVertical: 14,
+            borderRadius: 16,
+            width: '100%',
+            alignItems: 'center',
+            shadowColor: primaryColor,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.2,
+            shadowRadius: 8,
+            elevation: 4,
+          }}
+        >
+          <Text style={{
+            color: '#ffffff',
+            fontSize: 14,
+            fontFamily: 'Outfit_700Bold',
+          }}>
+            TRY AGAIN
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   }

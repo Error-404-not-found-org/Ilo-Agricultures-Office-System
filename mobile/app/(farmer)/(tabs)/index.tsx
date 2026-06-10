@@ -8,6 +8,7 @@ import {
   Image,
   Modal,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import {
   Activity,
@@ -40,7 +41,12 @@ export default function FarmerHome() {
   const [showRequestHub, setShowRequestHub] = React.useState(false);
   const [showAllOutcomes, setShowAllOutcomes] = React.useState(false);
   const [modalVisible, setModalVisible] = React.useState(false);
-  const [cancelInfo, setCancelInfo] = React.useState<{ id: string; type: string; animalTag: string } | null>(null);
+  const [cancelInfo, setCancelInfo] = React.useState<{
+    id: string;
+    type: string;
+    animalTag: string;
+  } | null>(null);
+  const [submittingOutcome, setSubmittingOutcome] = React.useState(false);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["user", "me"],
@@ -89,9 +95,7 @@ export default function FarmerHome() {
 
       const upcomingAI = aiData
         .filter((r: any) =>
-          ["approved", "in-progress"].includes(
-            r.status?.toLowerCase(),
-          ),
+          ["approved", "in-progress"].includes(r.status?.toLowerCase()),
         )
         .map((r: any) => ({
           ...r,
@@ -101,9 +105,7 @@ export default function FarmerHome() {
 
       const upcomingHealth = healthData
         .filter((r: any) =>
-          ["approved", "in-progress"].includes(
-            r.status?.toLowerCase(),
-          ),
+          ["approved", "in-progress"].includes(r.status?.toLowerCase()),
         )
         .map((r: any) => ({
           ...r,
@@ -199,6 +201,8 @@ export default function FarmerHome() {
     animalName: string,
     animalId: string,
   ) => {
+    if (submittingOutcome) return;
+    setSubmittingOutcome(true);
     try {
       await api.patch(`/ai-request/${requestId}/outcome`, { isSuccess });
 
@@ -233,6 +237,8 @@ export default function FarmerHome() {
       router.replace("/(farmer)/(tabs)/index" as any);
     } catch (err) {
       console.error(err);
+    } finally {
+      setSubmittingOutcome(false);
     }
   };
 
@@ -244,7 +250,8 @@ export default function FarmerHome() {
   const handleConfirmCancel = async () => {
     if (!cancelInfo) return;
     const { id, type } = cancelInfo;
-    const endpoint = type === "ai" ? `/ai-request/${id}` : `/health-request/${id}`;
+    const endpoint =
+      type === "ai" ? `/ai-request/${id}` : `/health-request/${id}`;
     try {
       await api.delete(endpoint);
       toast.success("Request cancelled");
@@ -569,11 +576,17 @@ export default function FarmerHome() {
                           req.animalId?._id,
                         )
                       }
-                      className="bg-[#00643B] dark:bg-emerald-600 flex-1 py-2 rounded-xl items-center shadow-sm"
+                      disabled={submittingOutcome}
+                      className="bg-[#00643B] dark:bg-emerald-600 flex-1 py-2 rounded-xl items-center shadow-sm justify-center flex-row gap-1.5"
+                      style={{ opacity: submittingOutcome ? 0.7 : 1 }}
                     >
-                      <Text className="text-white font-outfit-bold text-xs">
-                        Yes, Pregnant!
-                      </Text>
+                      {submittingOutcome ? (
+                        <ActivityIndicator size="small" color="white" />
+                      ) : (
+                        <Text className="text-white font-outfit-bold text-xs">
+                          Yes, Pregnant!
+                        </Text>
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() =>
@@ -584,14 +597,20 @@ export default function FarmerHome() {
                           req.animalId?._id,
                         )
                       }
-                      className="bg-white dark:bg-slate-800 flex-1 py-2 rounded-xl items-center border border-red-100 dark:border-slate-700 shadow-sm"
+                      disabled={submittingOutcome}
+                      className="bg-white dark:bg-slate-800 flex-1 py-2 rounded-xl items-center border border-red-100 dark:border-slate-700 shadow-sm justify-center flex-row gap-1.5"
                       style={{
                         borderColor: isDark ? colors.border : "#fee2e2",
+                        opacity: submittingOutcome ? 0.7 : 1,
                       }}
                     >
-                      <Text className="text-red-600 dark:text-red-400 font-outfit-bold text-xs">
-                        No, Re-heat
-                      </Text>
+                      {submittingOutcome ? (
+                        <ActivityIndicator size="small" color="#dc2626" />
+                      ) : (
+                        <Text className="text-red-600 dark:text-red-400 font-outfit-bold text-xs">
+                          No, Re-heat
+                        </Text>
+                      )}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -816,10 +835,15 @@ export default function FarmerHome() {
           >
             {Array.isArray(activityFeed) && activityFeed.length > 0 ? (
               activityFeed.slice(0, 5).map((item: any, idx: number) => (
-                <TouchableOpacity 
+                <TouchableOpacity
                   key={item.id}
                   activeOpacity={0.7}
-                  onPress={() => router.push({ pathname: "/(farmer)/(tabs)/farmer.records", params: { tab: "records", selectId: item.id } })}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(farmer)/(tabs)/farmer.records",
+                      params: { tab: "records", selectId: item.id },
+                    })
+                  }
                 >
                   <RecordItem
                     title={item.title}
@@ -1133,7 +1157,9 @@ const VisitItem = ({
           {time}
         </Text>
         <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium text-[11px]">
-          {technician && technician !== "Pending Assignment" ? `Technician: ${technician}` : "Pending Assignment"}
+          {technician && technician !== "Pending Assignment"
+            ? `Technician: ${technician}`
+            : "Pending Assignment"}
         </Text>
       </View>
       <View className="items-end gap-2">
@@ -1170,13 +1196,14 @@ const VisitItem = ({
             {status}
           </Text>
         </View>
-        {onCancel && ["PENDING", "APPROVED", "IN-PROGRESS"].includes(status) && (
-          <TouchableOpacity onPress={onCancel}>
-            <Text className="text-red-500 font-outfit-bold text-[10px]">
-              Cancel
-            </Text>
-          </TouchableOpacity>
-        )}
+        {onCancel &&
+          ["PENDING", "APPROVED", "IN-PROGRESS"].includes(status) && (
+            <TouchableOpacity onPress={onCancel}>
+              <Text className="text-red-500 font-outfit-bold text-[10px]">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          )}
       </View>
     </View>
   );

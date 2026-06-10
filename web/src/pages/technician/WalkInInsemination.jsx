@@ -134,7 +134,8 @@ export default function WalkInInsemination() {
       const vwpCheck = verifyPostpartumWindow(
         animal.lastCalvingDate,
         formData.inseminationDetails.inseminationDate || new Date(),
-        animal.species
+        animal.species,
+        animal.breed
       );
       setVwpWarning(
         vwpCheck.isSafe

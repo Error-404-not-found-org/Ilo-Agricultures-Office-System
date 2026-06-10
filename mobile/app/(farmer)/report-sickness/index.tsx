@@ -77,6 +77,8 @@ const REQUEST_TYPES = [
   { value: "medicine", label: "💊 Medicine Request" },
   { value: "checkup", label: "🩺 General Checkup" },
   { value: "injury", label: "🤕 Injury / Wound" },
+  { value: "vaccination", label: "💉 Vaccination" },
+  { value: "deworming", label: "🪱 Deworming" },
   { value: "other", label: "📋 Other" },
 ];
 

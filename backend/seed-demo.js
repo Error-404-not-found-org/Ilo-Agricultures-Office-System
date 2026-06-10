@@ -29,6 +29,61 @@ try {
   await mongoose.connect(dbURI);
   console.log("🚀 Connected to MongoDB successfully!");
 
+  // --- CLEAN UP EXISTING DEMO RECORDS ---
+  console.log("🧹 Cleaning up existing DEMO database records...");
+  const demoAnimals = await Animal.find({
+    $or: [
+      { animalId: /^COW-DEMO-/ },
+      { brand: "SMART-COW" },
+      { earTag: { $in: ["1234", "5678", "9012", "4321", "1235"] } },
+      { _id: { $in: ["6a26cf95570ed7df295dd624", "6a26cf97570ed7df295dd63f"] } }
+    ]
+  });
+  
+  const demoAnimalIds = demoAnimals.map(a => a._id);
+  // Guarantee manual IDs are included in deletion list
+  ["6a26cf95570ed7df295dd624", "6a26cf97570ed7df295dd63f"].forEach(id => {
+    if (!demoAnimalIds.map(x => x.toString()).includes(id)) {
+      demoAnimalIds.push(new mongoose.Types.ObjectId(id));
+    }
+  });
+
+  // Explicitly delete targets to bypass conditional skip checks
+  await Calving.deleteOne({ _id: "6a26cf97570ed7df295dd63e" });
+  await Pregnancy.deleteOne({ _id: "6a26cf96570ed7df295dd63c" });
+
+  if (demoAnimalIds.length > 0) {
+    const delCalvings = await Calving.deleteMany({
+      $or: [
+        { animalId: { $in: demoAnimalIds } },
+        { "calves.animalId": { $in: demoAnimalIds } }
+      ]
+    });
+    console.log(`Deleted ${delCalvings.deletedCount} calving records.`);
+
+    const delPregnancies = await Pregnancy.deleteMany({
+      animalId: { $in: demoAnimalIds }
+    });
+    console.log(`Deleted ${delPregnancies.deletedCount} pregnancy records.`);
+
+    const delInseminations = await Insemination.deleteMany({
+      animalId: { $in: demoAnimalIds }
+    });
+    console.log(`Deleted ${delInseminations.deletedCount} insemination records.`);
+
+    const delHealth = await HealthRequest.deleteMany({
+      animalId: { $in: demoAnimalIds }
+    });
+    console.log(`Deleted ${delHealth.deletedCount} health requests.`);
+
+    const delAnimals = await Animal.deleteMany({
+      _id: { $in: demoAnimalIds }
+    });
+    console.log(`Deleted ${delAnimals.deletedCount} demo animal records.`);
+  } else {
+    console.log("No existing demo animals found to clean up.");
+  }
+
   // Find farmer by email "lloydcabanig@gmail.com"
   let farmer = await User.findOne({ email: "lloydcabanig@gmail.com" });
   if (!farmer) {
@@ -61,6 +116,7 @@ try {
 
   // Create animals
   const animal1 = await Animal.create({
+    _id: "6a26cf95570ed7df295dd624",
     farmerId: farmer._id,
     animalId: "COW-DEMO-001",
     earTag: "1234",
@@ -217,6 +273,7 @@ try {
   });
 
   const pregForCalving = await Pregnancy.create({
+    _id: "6a26cf96570ed7df295dd63c",
     animalId: animal1._id,
     farmerId: farmer._id,
     inseminationId: insCalving._id,
@@ -224,22 +281,38 @@ try {
       date: new Date(Date.now() - 230 * 24 * 60 * 60 * 1000),
       result: "Pregnant"
     },
-    targetCalvingDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+    targetCalvingDate: new Date("2026-05-31T14:20:07.045Z")
+  });
+
+  const calfAnimal = await Animal.create({
+    _id: "6a26cf97570ed7df295dd63f",
+    farmerId: farmer._id,
+    animalId: "ANM-DEMO-CF5",
+    earTag: "1235",
+    motherId: animal1._id,
+    species: "Dairy Cattle",
+    breed: "Holstein Friesian",
+    color: "Black & White",
+    gender: "Female",
+    birthDate: new Date("2026-05-31T14:20:07.045Z")
   });
 
   await Calving.create({
+    _id: "6a26cf97570ed7df295dd63e",
     farmerId: farmer._id,
     animalId: animal1._id,
     pregnancyId: pregForCalving._id,
-    calvingEase: "Normal",
+    date: new Date("2026-05-31T14:20:07.045Z"),
     numberOfCalves: 1,
     calves: [{
+      _id: "6a26cf97570ed7df295dd63f",
       sex: "F",
       earTag: "1235",
-      weight: 35
+      animalId: calfAnimal._id
     }],
+    calvingEase: "Normal",
     technicianNote: "Successful unassisted calving. Heifer calf is alert and nursing well.",
-    date: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+    isSeen: true
   });
   
   console.log("🚀 Seeding completed successfully!");

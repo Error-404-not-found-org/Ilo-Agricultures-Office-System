@@ -11,6 +11,8 @@ export const HEALTH_REQUEST_TYPES = [
   "medicine",
   "checkup",
   "injury",
+  "vaccination",
+  "deworming",
   "other",
 ];
 
@@ -19,6 +21,8 @@ export const HEALTH_REQUEST_LABELS = {
   medicine: "Medicine/Supplies",
   checkup: "Routine Checkup",
   injury: "Injury Treatment",
+  vaccination: "Vaccination",
+  deworming: "Deworming",
   other: "Other Veterinary",
 };
 

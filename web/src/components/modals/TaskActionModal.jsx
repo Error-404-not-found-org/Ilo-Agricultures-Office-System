@@ -30,6 +30,18 @@ const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl p
 const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
 const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
 
+const getAdditionalNotesOnly = (fullComment) => {
+  if (!fullComment) return "";
+  const parts = fullComment.split("Additional Notes:\n");
+  if (parts.length > 1) {
+    return parts[1].trim();
+  }
+  if (fullComment.includes("Observed Heat Signs:\n")) {
+    return "";
+  }
+  return fullComment;
+};
+
 const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   const queryClient = useQueryClient();
 
@@ -155,7 +167,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
   const timeline =
     !isHealth && combinedScheduledDate && animal.species
-      ? generatePregnancyTimeline(combinedScheduledDate, animal.species)
+      ? generatePregnancyTimeline(combinedScheduledDate, animal.species, undefined, animal.breed)
       : null;
 
   const vwpCheck =
@@ -164,6 +176,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
           animal.lastCalvingDate,
           combinedScheduledDate,
           animal.species,
+          animal.breed,
         )
       : null;
 
@@ -243,6 +256,14 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
     );
   };
 
+  const visitDateVal = taskData?.visitDate || taskData?.raw?.scheduledDate || taskData?.raw?.preferredDate || null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isOverdue =
+    (taskData?.status === "in-progress" || taskData?.status === "approved") &&
+    visitDateVal &&
+    new Date(visitDateVal) < today;
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -290,8 +311,26 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                       Assistance Lock Active
                     </h5>
                     <p className="text-[9px] font-bold uppercase tracking-widest mt-2 leading-tight opacity-75">
-                      This field service is already being assisted by technician:{" "}
-                      <span className="font-extrabold underline">{assignedTechName || "another technician"}</span>.
+                      This field service is already being assisted by
+                      technician:{" "}
+                      <span className="font-extrabold underline">
+                        {assignedTechName || "another technician"}
+                      </span>
+                      .
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {isOverdue && (
+                <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-4 flex items-start gap-3 text-rose-600 dark:text-rose-400 animate-pulse">
+                  <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+                  <div>
+                    <h5 className="text-[10px] font-black uppercase tracking-widest leading-none">
+                      ⚠️ Overdue Service Request
+                    </h5>
+                    <p className="text-[9px] font-bold uppercase tracking-widest mt-2 leading-tight opacity-75">
+                      This field service was scheduled for yesterday or earlier ({new Date(visitDateVal).toLocaleDateString()}) and has not been marked as completed. Please log the service findings and mark complete as soon as possible.
                     </p>
                   </div>
                 </div>
@@ -530,100 +569,70 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                 </div>
               </section>
 
-              {/* SECTION 4: ESTIMATED PREGNANCY TIMELINE */}
-              {!isHealth && timeline && (
+              {/* SECTION 4: FARMER OBSERVATIONS & HEAT SIGNS */}
+              {!isHealth && (
                 <section className={sectionClass}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <CalendarDays size={14} className="text-emerald-600" />
+                  <div className="flex items-center gap-2 mb-3">
+                    <ClipboardPen size={14} className="text-emerald-600" />
                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                      Est. Pregnancy Milestones
+                      Farmer Observations
                     </h4>
                   </div>
 
-                  {vwpCheck && !vwpCheck.isSafe && (
-                    <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-4 flex items-start gap-3 mb-4">
-                      <AlertTriangle
-                        size={18}
-                        className="text-rose-500 shrink-0 mt-0.5"
-                      />
-                      <div>
-                        <h5 className="text-[10px] font-black text-rose-500 uppercase tracking-widest leading-none">
-                          Voluntary Waiting Period Warning
-                        </h5>
-                        <p className="text-[9px] font-bold text-rose-500/40 uppercase tracking-widest mt-2 leading-tight">
-                          Recovery window violated! Calved on{" "}
-                          {new Date(
-                            animal.lastCalvingDate,
-                          ).toLocaleDateString()}
-                          . Only {vwpCheck.daysPassed} of{" "}
-                          {vwpCheck.requiredDays} safe recovery days have
-                          elapsed.
-                        </p>
+                  {/* Heat Signs List */}
+                  {taskData.raw?.heatSigns && taskData.raw.heatSigns.length > 0 ? (
+                    <div className="space-y-2">
+                      <label className={labelClass}>Observed Heat Signs</label>
+                      <div className="flex flex-wrap gap-2">
+                        {taskData.raw.heatSigns.map((signId) => {
+                          const signMap = {
+                            standing_heat: "Standing Heat 🐮",
+                            attempt_mount: "Attempting to Mount",
+                            restlessness: "Restlessness / Activity",
+                            vocalization: "Vocalization (Bellowing)",
+                            flehmen: "Flehmen Response",
+                            grouping: "Friendly Grouping",
+                            mucus_discharge: "Clear Mucus Discharge 💧",
+                            swollen_vulva: "Swollen, Red Vulva",
+                            muddy_flanks: "Muddy Flanks / Tailhead",
+                            metestrus_bleeding: "Metestrus Bleeding 🩸"
+                          };
+                          const label = signMap[signId] || signId;
+                          const isPrimary = signId === "standing_heat";
+                          const isBleeding = signId === "metestrus_bleeding";
+                          
+                          return (
+                            <span 
+                              key={signId} 
+                              className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all ${
+                                isPrimary 
+                                  ? "bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400"
+                                  : isBleeding
+                                    ? "bg-rose-500/10 border-rose-500/20 text-rose-700 dark:text-rose-400"
+                                    : "bg-emerald-500/10 border-emerald-500/20 text-emerald-700 dark:text-emerald-400"
+                              }`}
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] font-medium text-base-content/40 italic">
+                      No specific heat signs selected.
+                    </p>
+                  )}
+
+                  {/* Additional Comment from Farmer */}
+                  {getAdditionalNotesOnly(taskData.raw?.comment) && (
+                    <div className="space-y-1.5 pt-3 border-t border-base-300">
+                      <label className={labelClass}>Additional Farmer Comment</label>
+                      <div className="p-3 bg-base-200/50 rounded-xl border border-base-300 text-xs font-semibold text-base-content/75 leading-relaxed">
+                        {getAdditionalNotesOnly(taskData.raw.comment)}
                       </div>
                     </div>
                   )}
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                    <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
-                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">
-                        Estrus Check
-                      </span>
-                      <span className="text-xs font-bold text-base-content block mt-1">
-                        Day 21
-                      </span>
-                      <span className="text-[9px] text-base-content/60 block mt-0.5">
-                        {timeline.heatReturnCheckDate.toLocaleDateString(
-                          "en-US",
-                          { month: "short", day: "numeric" },
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
-                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">
-                        Ultrasound
-                      </span>
-                      <span className="text-xs font-bold text-base-content block mt-1">
-                        Day 35
-                      </span>
-                      <span className="text-[9px] text-base-content/60 block mt-0.5">
-                        {timeline.ultrasoundCheckDate.toLocaleDateString(
-                          "en-US",
-                          { month: "short", day: "numeric" },
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="bg-base-200/50 p-4 rounded-xl border border-base-300">
-                      <span className="text-[8px] font-black uppercase text-base-content/40 tracking-wider">
-                        Palpation
-                      </span>
-                      <span className="text-xs font-bold text-base-content block mt-1">
-                        Day 60
-                      </span>
-                      <span className="text-[9px] text-base-content/60 block mt-0.5">
-                        {timeline.palpationCheckDate.toLocaleDateString(
-                          "en-US",
-                          { month: "short", day: "numeric" },
-                        )}
-                      </span>
-                    </div>
-
-                    <div className="p-4 rounded-xl border bg-emerald-500/5 border-emerald-500/10">
-                      <span className="text-[8px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider">
-                        Est. Calving
-                      </span>
-                      <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 block mt-1">
-                        CD Date
-                      </span>
-                      <span className="text-[9px] text-emerald-600/80 dark:text-emerald-400/80 block mt-0.5">
-                        {timeline.expectedCalvingDate.toLocaleDateString(
-                          "en-US",
-                          { month: "short", day: "numeric", year: "numeric" },
-                        )}
-                      </span>
-                    </div>
-                  </div>
                 </section>
               )}
             </div>

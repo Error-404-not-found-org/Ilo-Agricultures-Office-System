@@ -15,7 +15,7 @@ const HealthRequestSchema = new mongoose.Schema(
     // What kind of request is this?
     requestType: {
       type: String,
-      enum: ["disease", "medicine", "checkup", "injury", "other"],
+      enum: ["disease", "medicine", "checkup", "injury", "vaccination", "deworming", "other"],
       default: "disease",
     },
     // Description of symptoms or issue

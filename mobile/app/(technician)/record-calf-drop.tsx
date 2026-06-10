@@ -41,7 +41,7 @@ export default function RecordCalfDropScreen() {
     const [calvingEase, setCalvingEase] = useState('Natural');
     const [numCalves, setNumCalves] = useState(1);
     const [calves, setCalves] = useState([
-        { sex: 'F', earTag: '', weight: '', color: '', brand: '' }
+        { sex: 'F', earTag: '', color: '', brand: '' }
     ]);
     const [note, setNote] = useState('');
     const [saving, setSaving] = useState(false);
@@ -147,7 +147,7 @@ export default function RecordCalfDropScreen() {
         let newCalves = [...calves];
         if (count > newCalves.length) {
             for (let i = newCalves.length; i < count; i++) {
-                newCalves.push({ sex: 'F', earTag: '', weight: '', color: '', brand: '' });
+                newCalves.push({ sex: 'F', earTag: '', color: '', brand: '' });
             }
         } else {
             newCalves = newCalves.slice(0, count);
@@ -348,34 +348,21 @@ export default function RecordCalfDropScreen() {
                                     </View>
 
                                     <View className="gap-y-4">
-                                        <View className="flex-row gap-3">
-                                            <View className="flex-1">
-                                                <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Sex</Text>
-                                                <View className="flex-row bg-slate-50 dark:bg-slate-800 rounded-xl p-1 border border-slate-100 dark:border-slate-700">
-                                                    <TouchableOpacity 
-                                                        onPress={() => updateCalf(idx, 'sex', 'F')}
-                                                        className={`flex-1 py-2 rounded-lg items-center ${calf.sex === 'F' ? 'bg-rose-100 dark:bg-rose-900/30' : ''}`}
-                                                    >
-                                                        <Text className={`text-[10px] font-outfit-black ${calf.sex === 'F' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>Female</Text>
-                                                    </TouchableOpacity>
-                                                    <TouchableOpacity 
-                                                        onPress={() => updateCalf(idx, 'sex', 'M')}
-                                                        className={`flex-1 py-2 rounded-lg items-center ${calf.sex === 'M' ? 'bg-blue-100 dark:bg-blue-900/30' : ''}`}
-                                                    >
-                                                        <Text className={`text-[10px] font-outfit-black ${calf.sex === 'M' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>Male</Text>
-                                                    </TouchableOpacity>
-                                                </View>
-                                            </View>
-                                            <View className="flex-1">
-                                                <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Weight (kg)</Text>
-                                                <TextInput 
-                                                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-white font-outfit-bold text-xs"
-                                                    placeholder="0.00"
-                                                    placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                                    value={calf.weight}
-                                                    onChangeText={(v) => updateCalf(idx, 'weight', v)}
-                                                    keyboardType="numeric"
-                                                />
+                                        <View>
+                                            <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Sex</Text>
+                                            <View className="flex-row bg-slate-50 dark:bg-slate-800 rounded-xl p-1 border border-slate-100 dark:border-slate-700">
+                                                <TouchableOpacity 
+                                                    onPress={() => updateCalf(idx, 'sex', 'F')}
+                                                    className={`flex-1 py-2 rounded-lg items-center ${calf.sex === 'F' ? 'bg-rose-100 dark:bg-rose-900/30' : ''}`}
+                                                >
+                                                    <Text className={`text-[10px] font-outfit-black ${calf.sex === 'F' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>Female</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity 
+                                                    onPress={() => updateCalf(idx, 'sex', 'M')}
+                                                    className={`flex-1 py-2 rounded-lg items-center ${calf.sex === 'M' ? 'bg-blue-100 dark:bg-blue-900/30' : ''}`}
+                                                >
+                                                    <Text className={`text-[10px] font-outfit-black ${calf.sex === 'M' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>Male</Text>
+                                                </TouchableOpacity>
                                             </View>
                                         </View>
 

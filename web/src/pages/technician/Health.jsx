@@ -168,26 +168,7 @@ export default function HealthLog() {
       <Topbar
         title="Health & Diagnostics Ledger"
         subtitle="Triage dashboard tracking livestock symptoms, medication regimes, and clinical response dispatches"
-        searchPlaceholder="Search tag, diagnostic notes, farmer..."
-        searchValue={searchQuery}
-        onSearchChange={(e) => {
-          setSearchQuery(e.target.value);
-          setCurrentPage(1);
-        }}
-      >
-        <button
-          onClick={handleExportCSV}
-          className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
-        >
-          <Download size={13} /> Export CSV
-        </button>
-        <button
-          onClick={() => window.print()}
-          className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 text-xs font-bold gap-1.5 rounded-xl px-4 text-slate-500 dark:text-slate-355 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-        >
-          <Printer size={13} /> Print
-        </button>
-      </Topbar>
+      />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
         {/* Metric Grid Display */}
@@ -233,6 +214,44 @@ export default function HealthLog() {
 
         {/* Filters and Datatable */}
         <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Top Actions Row */}
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <div className="relative w-72">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+                <Search size={14} />
+              </span>
+              <input
+                type="text"
+                placeholder="Search tag, diagnostic notes, farmer..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportCSV}
+                className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
+              >
+                <Download size={13} /> Export CSV
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 text-xs font-bold gap-1.5 rounded-xl px-4 text-slate-500 dark:text-slate-355 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <Printer size={13} /> Print
+              </button>
+              <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2.5 whitespace-nowrap">
+                {isLoading ? "Fetching data..." : `${totalItems} incident${totalItems !== 1 ? "s" : ""} matched`}
+              </span>
+            </div>
+          </div>
+
+          {/* Filter Ribbon */}
           <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
               <SlidersHorizontal size={13} />
@@ -277,10 +296,6 @@ export default function HealthLog() {
                 <X size={12} /> Clear Filters
               </button>
             )}
-
-            <span className="text-xs text-slate-400 font-semibold ml-auto whitespace-nowrap px-1">
-              {isLoading ? "Fetching data..." : `${totalItems} incident${totalItems !== 1 ? "s" : ""} matched`}
-            </span>
           </div>
 
           <div className="overflow-x-auto flex-1 overflow-y-auto">

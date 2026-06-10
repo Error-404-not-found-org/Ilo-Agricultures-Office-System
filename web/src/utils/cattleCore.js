@@ -61,11 +61,69 @@ export function checkInseminationAgeEligibility(birthDate, species) {
  * Adaptive Gestation Calculator
  * Replaces hardcoded values with dynamic species profiles and male embryo offsets (+1.5 days).
  */
-export function calculateTargetCalvingDate(inseminationDate, species, calfSex) {
-  const baseDate = new Date(inseminationDate);
+/**
+ * Resolves breed-specific overrides for average gestation and postpartum wait (VWP).
+ */
+export function getBreedProfile(species, breed) {
   const normSpecies = normalizeSpecies(species);
-  const profile = SPECIES_PROFILES[normSpecies] || SPECIES_PROFILES["Cattle"];
-  let totalGestationDays = profile.avgGestationDays;
+  const baseProfile = SPECIES_PROFILES[normSpecies] || SPECIES_PROFILES["Cattle"];
+
+  let avgGestationDays = baseProfile.avgGestationDays;
+  let voluntaryWaitingPeriodDays = baseProfile.voluntaryWaitingPeriodDays;
+
+  if (!breed) {
+    return { avgGestationDays, voluntaryWaitingPeriodDays };
+  }
+
+  const b = breed.trim().toLowerCase();
+
+  // Carabao breed-specific adjustments
+  if (normSpecies === "Carabao") {
+    if (b.includes("philippine") || b.includes("native") || b === "swamp") {
+      avgGestationDays = 322;
+      voluntaryWaitingPeriodDays = 60;
+    } else if (b.includes("bulgarian") || b.includes("murrah") || b.includes("nili") || b.includes("ravi") || b.includes("river")) {
+      avgGestationDays = 314;
+      voluntaryWaitingPeriodDays = 60;
+    } else if (b.includes("hybrid") || b.includes("cross") || b.includes("grade")) {
+      avgGestationDays = 317;
+      voluntaryWaitingPeriodDays = 60;
+    }
+  }
+  // Cattle breed-specific adjustments
+  else if (normSpecies === "Beef Cattle" || normSpecies === "Dairy Cattle" || normSpecies === "Cattle") {
+    if (b.includes("brahman") || b.includes("nellore") || b.includes("ongole") || b.includes("zebu")) {
+      avgGestationDays = 290;
+      voluntaryWaitingPeriodDays = 55; // Slightly longer recovery for tropical/zebu breeds
+    } else if (b.includes("holstein") || b.includes("friesian")) {
+      avgGestationDays = 281;
+      voluntaryWaitingPeriodDays = 60; // High-producing dairy cows typically have 60-day voluntary waiting period
+    } else if (b.includes("jersey")) {
+      avgGestationDays = 279;
+      voluntaryWaitingPeriodDays = 50;
+    } else if (b.includes("brown swiss")) {
+      avgGestationDays = 288;
+      voluntaryWaitingPeriodDays = 60;
+    } else if (b.includes("sahiwal")) {
+      avgGestationDays = 286;
+      voluntaryWaitingPeriodDays = 55;
+    } else if (b.includes("angus") || b.includes("hereford") || b.includes("british")) {
+      avgGestationDays = 283;
+      voluntaryWaitingPeriodDays = 50;
+    }
+  }
+
+  return { avgGestationDays, voluntaryWaitingPeriodDays };
+}
+
+/**
+ * Adaptive Gestation Calculator
+ * Replaces hardcoded values with dynamic species/breed profiles and male embryo offsets (+1.5 days).
+ */
+export function calculateTargetCalvingDate(inseminationDate, species, calfSex, breed) {
+  const baseDate = new Date(inseminationDate);
+  const breedProfile = getBreedProfile(species, breed);
+  let totalGestationDays = breedProfile.avgGestationDays;
 
   if (calfSex === 'M') {
     totalGestationDays += 1.5;
@@ -79,20 +137,20 @@ export function calculateTargetCalvingDate(inseminationDate, species, calfSex) {
  * Postpartum Recovery Verification Gateway (Voluntary Waiting Period Check)
  * Confirms an animal has recovered sufficiently from calving before re-insemination.
  */
-export function verifyPostpartumWindow(lastCalvingDate, targetActionDate, species) {
+export function verifyPostpartumWindow(lastCalvingDate, targetActionDate, species, breed) {
   if (!lastCalvingDate) return { isSafe: true, daysPassed: 0, requiredDays: 0 };
   const calving = new Date(lastCalvingDate);
   const action = new Date(targetActionDate);
   
-  const normSpecies = normalizeSpecies(species);
-  const profile = SPECIES_PROFILES[normSpecies] || SPECIES_PROFILES["Cattle"];
+  const breedProfile = getBreedProfile(species, breed);
+  const requiredDays = breedProfile.voluntaryWaitingPeriodDays;
   const timeDifference = Math.abs(action.getTime() - calving.getTime());
   const daysPassed = Math.ceil(timeDifference / (1000 * 60 * 60 * 24));
 
   return {
-    isSafe: daysPassed >= profile.voluntaryWaitingPeriodDays,
+    isSafe: daysPassed >= requiredDays,
     daysPassed,
-    requiredDays: profile.voluntaryWaitingPeriodDays
+    requiredDays
   };
 }
 
@@ -100,9 +158,9 @@ export function verifyPostpartumWindow(lastCalvingDate, targetActionDate, specie
  * ICAR-Aligned Pregnancy Timeline Generator
  * Builds diagnostic windows locally in real-time right when an AI event gets captured.
  */
-export function generatePregnancyTimeline(inseminationDate, species, calfSex) {
+export function generatePregnancyTimeline(inseminationDate, species, calfSex, breed) {
   const start = new Date(inseminationDate);
-  const expectedCalvingDate = calculateTargetCalvingDate(inseminationDate, species, calfSex);
+  const expectedCalvingDate = calculateTargetCalvingDate(inseminationDate, species, calfSex, breed);
   
   const heatReturnCheckDate = new Date(start.getTime());
   heatReturnCheckDate.setDate(heatReturnCheckDate.getDate() + 21); // 21-day estrus cycle observation window

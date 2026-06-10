@@ -57,7 +57,11 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
     ...(animal.healthRecords || []).map(r => ({
       type: 'health',
       date: new Date(r.createdAt),
-      title: r.requestType === 'vaccination' ? 'Vaccination' : 'Health Checkup',
+      title: r.requestType === 'vaccination' ? 'Vaccination' : 
+             r.requestType === 'deworming' ? 'Deworming' :
+             r.requestType === 'injury' ? 'Injury Treatment' :
+             r.requestType === 'medicine' ? 'Medicine Request' :
+             'Health Checkup',
       desc: r.symptoms || r.technicianNote || 'Routine inspection',
       status: r.status,
       icon: HeartPulse,
@@ -174,7 +178,7 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
                                className="relative"
                              >
                                {/* Timeline Dot */}
-                               <div className={`absolute -left-[21px] w-4 h-4 rounded-full border-4 border-base-100 ${event.bg} ring-2 ring-base-300 z-10`} />
+                               <div className={`absolute left-[-21px] w-4 h-4 rounded-full border-4 border-base-100 ${event.bg} ring-2 ring-base-300 z-10`} />
                                
                                <div className="bg-base-100 rounded-2xl p-5 border border-base-300 shadow-sm hover:border-emerald-500/30 transition-all">
                                   <div className="flex justify-between items-start mb-3">

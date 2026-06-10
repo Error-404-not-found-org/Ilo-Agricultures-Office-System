@@ -9,6 +9,15 @@ const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
 const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
 
+const formatDate = (date) => {
+    if (!date) return "—";
+    return new Date(date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric"
+    });
+};
+
 const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
     const queryClient = useQueryClient();
     
@@ -25,7 +34,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
         calvingEase: 'Natural',
         numberOfCalves: 1,
         calves: [
-            { sex: 'F', earTag: '', weight: '', color: '', brand: '' }
+            { sex: 'F', earTag: '', color: '', brand: '' }
         ],
         technicianNote: ''
     });
@@ -51,7 +60,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                 calvingEase: 'Natural',
                 numberOfCalves: 1,
                 calves: [
-                    { sex: 'F', earTag: '', weight: '', color: '', brand: '' }
+                    { sex: 'F', earTag: '', color: '', brand: '' }
                 ],
                 technicianNote: ''
             });
@@ -121,7 +130,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
         let newCalves = [...formData.calves];
         if (count > newCalves.length) {
             for (let i = newCalves.length; i < count; i++) {
-                newCalves.push({ sex: 'F', earTag: '', weight: '', color: '', brand: '' });
+                newCalves.push({ sex: 'F', earTag: '', color: '', brand: '' });
             }
         } else {
             newCalves = newCalves.slice(0, count);
@@ -390,35 +399,23 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                                 </div>
                                                 
                                                 <div className="space-y-4">
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest mb-1.5 block">Sex</label>
-                                                            <div className="flex p-0.5 bg-base-100 rounded-lg border border-base-300">
-                                                                <button 
-                                                                    type="button"
-                                                                    onClick={() => updateCalf(index, 'sex', 'F')}
-                                                                    className={`flex-1 py-1 rounded text-[9px] font-black transition-all cursor-pointer ${calf.sex === 'F' ? 'bg-rose-500/15 text-rose-600' : 'text-base-content/40 hover:bg-base-200'}`}
-                                                                >
-                                                                    Female
-                                                                </button>
-                                                                <button 
-                                                                    type="button"
-                                                                    onClick={() => updateCalf(index, 'sex', 'M')}
-                                                                    className={`flex-1 py-1 rounded text-[9px] font-black transition-all cursor-pointer ${calf.sex === 'M' ? 'bg-blue-500/15 text-blue-600' : 'text-base-content/40 hover:bg-base-200'}`}
-                                                                >
-                                                                    Male
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest mb-1.5 block">Birth Weight (kg)</label>
-                                                            <input 
-                                                                type="number"
-                                                                value={calf.weight}
-                                                                onChange={(e) => updateCalf(index, 'weight', e.target.value)}
-                                                                placeholder="0.00"
-                                                                className="w-full bg-base-100 border border-base-300 rounded-lg py-1 px-2.5 text-xs font-bold text-base-content outline-none focus:border-emerald-500 transition-all"
-                                                            />
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest mb-1.5 block">Sex</label>
+                                                        <div className="flex p-0.5 bg-base-100 rounded-lg border border-base-300">
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => updateCalf(index, 'sex', 'F')}
+                                                                className={`flex-1 py-1 rounded text-[9px] font-black transition-all cursor-pointer ${calf.sex === 'F' ? 'bg-rose-500/15 text-rose-600' : 'text-base-content/40 hover:bg-base-200'}`}
+                                                            >
+                                                                Female
+                                                            </button>
+                                                            <button 
+                                                                type="button"
+                                                                onClick={() => updateCalf(index, 'sex', 'M')}
+                                                                className={`flex-1 py-1 rounded text-[9px] font-black transition-all cursor-pointer ${calf.sex === 'M' ? 'bg-blue-500/15 text-blue-600' : 'text-base-content/40 hover:bg-base-200'}`}
+                                                            >
+                                                                Male
+                                                            </button>
                                                         </div>
                                                     </div>
 

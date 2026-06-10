@@ -46,6 +46,7 @@ import BreedingLedger from "./pages/technician/BreedingLedger";
 import FieldNotes from "./pages/technician/FieldNotes";
 import TechSettings from "./pages/technician/Settings";
 import Moowie from "./pages/technician/Moowie";
+import Newborns from "./pages/technician/Newborns";
 
 function App() {
   return (
@@ -84,6 +85,7 @@ function App() {
             <Route path="settings" element={<AdminSettings />} />
             <Route path="reports" element={<Reports />} />
             <Route path="requests" element={<TechnicianRequests />} />
+            <Route path="newborns" element={<Newborns />} />
           </Route>
 
           {/* Protected Technician Routes */}
@@ -108,6 +110,7 @@ function App() {
             <Route path="animals" element={<TechnicianAnimals />} />
             <Route path="animals/:id" element={<LivestockProfile />} />
             <Route path="inseminations" element={<TechnicianInseminations />} />
+            <Route path="newborns" element={<Newborns />} />
             <Route path="health" element={<TechnicianHealth />} />
             <Route path="health-map" element={<TechnicianHealthMap />} />
             <Route path="ledger" element={<BreedingLedger />} />

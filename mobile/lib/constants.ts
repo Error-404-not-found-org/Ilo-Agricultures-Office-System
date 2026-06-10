@@ -38,23 +38,43 @@ export const OTON_BARANGAYS = [
   "Turog-Turog"
 ];
 
-export const CATTLE_BREEDS = [
-  "Philippine Native",
-  "Brahman",
-  "Australian Friesian Sahiwal (AFS)",
-  "Holstein Friesian",
-  "Simmental",
-  "Limousin",
-  "Angus",
-  "Hereford",
-  "Jersey",
-  "Iloilo Strain",
-  "Nellore (Ongole)",
-  "Bali Cattle",
-  "Santa Gertrudis",
-  "Brangus",
-  "Braford",
-];
+export const BREED_OPTIONS_BY_SPECIES: Record<string, string[]> = {
+  "Beef Cattle": [
+    "Philippine Native",
+    "Brahman",
+    "Nellore (Ongole)",
+    "Bali Cattle",
+    "Santa Gertrudis",
+    "Brangus",
+    "Braford",
+    "Simmental",
+    "Limousin",
+    "Angus",
+    "Hereford",
+    "Iloilo Strain",
+    "Crossbred/Other",
+  ],
+  "Dairy Cattle": [
+    "Holstein Friesian",
+    "Jersey",
+    "Australian Friesian Sahiwal (AFS)",
+    "Sahiwal",
+    "Crossbred/Other",
+  ],
+  "Carabao": [
+    "Philippine Carabao",
+    "Murrah Buffalo",
+    "Bulgarian Murrah",
+    "Hybrid (Murrah x Native)",
+    "Crossbred/Other",
+  ],
+};
+
+export const CATTLE_BREEDS = Array.from(new Set([
+  ...BREED_OPTIONS_BY_SPECIES["Beef Cattle"],
+  ...BREED_OPTIONS_BY_SPECIES["Dairy Cattle"],
+  ...BREED_OPTIONS_BY_SPECIES["Carabao"],
+]));
 
 export const CATTLE_SPECIES = [
   "Beef Cattle",
@@ -89,6 +109,8 @@ export const HEALTH_REQUEST_TYPES = [
   "medicine",
   "checkup",
   "injury",
+  "vaccination",
+  "deworming",
   "other",
 ];
 

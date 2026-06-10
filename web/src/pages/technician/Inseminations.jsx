@@ -125,21 +125,7 @@ export default function InseminationLog() {
       <Topbar
         title="Insemination Log"
         subtitle="Artificial Insemination registers, bloodlines, and pregnancy diagnosis status tracker"
-        searchPlaceholder="Search tag, farmer, sire..."
-        searchValue={searchQuery}
-        onSearchChange={(e) => {
-          setSearchQuery(e.target.value);
-          setCurrentPage(1);
-        }}
-      >
-        <button
-          onClick={handleExportCSV}
-          disabled={isLoading || filteredLogs.length === 0}
-          className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] disabled:opacity-50 text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
-        >
-          <Download size={13} /> Export CSV
-        </button>
-      </Topbar>
+      />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
         {/* Dynamic Metric Row */}
@@ -185,6 +171,39 @@ export default function InseminationLog() {
 
         {/* Filter Ribbon and Table */}
         <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Top Actions Row */}
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <div className="relative w-72">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+                <Search size={14} />
+              </span>
+              <input
+                type="text"
+                placeholder="Search tag, farmer, sire..."
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleExportCSV}
+                disabled={isLoading || filteredLogs.length === 0}
+                className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] disabled:opacity-50 text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
+              >
+                <Download size={13} /> Export CSV
+              </button>
+              <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2.5 whitespace-nowrap">
+                {isLoading ? "Fetching entries..." : `${filteredLogs.length} cycle${filteredLogs.length !== 1 ? "s" : ""} matched`}
+              </span>
+            </div>
+          </div>
+
+          {/* Filter Ribbon */}
           <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
               <Filter size={13} />
@@ -216,9 +235,19 @@ export default function InseminationLog() {
               <option value="Empty">Open (Failed cycle)</option>
             </select>
 
-            <span className="text-xs text-slate-400 font-semibold ml-auto whitespace-nowrap px-1">
-              {isLoading ? "Fetching entries..." : `${filteredLogs.length} cycle${filteredLogs.length !== 1 ? "s" : ""} matched`}
-            </span>
+            {(estrusFilter || pResultFilter || searchQuery) && (
+              <button
+                onClick={() => {
+                  setEstrusFilter("");
+                  setPResultFilter("");
+                  setSearchQuery("");
+                  setCurrentPage(1);
+                }}
+                className="btn btn-sm btn-ghost text-xs text-rose-600 font-bold gap-1 rounded-lg cursor-pointer"
+              >
+                <X size={12} /> Clear Filters
+              </button>
+            )}
           </div>
 
           <div className="overflow-x-auto flex-1 overflow-y-auto">
