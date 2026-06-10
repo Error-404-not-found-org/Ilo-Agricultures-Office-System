@@ -36,6 +36,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 import { SPECIES_PROFILES, normalizeSpecies } from "@/lib/cattleCore";
 import { useTheme } from "@/lib/theme";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 export default function AnimalDetails() {
   const { colors, isDark } = useTheme();
@@ -123,6 +124,7 @@ export default function AnimalDetails() {
   const [medicalRecords, setMedicalRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
 
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [recordModalVisible, setRecordModalVisible] = useState(false);
@@ -157,34 +159,25 @@ export default function AnimalDetails() {
   );
 
   const handleDelete = () => {
-    Alert.alert(
-      "Delete Animal",
-      "Are you sure you want to permanently delete this animal and all its history? This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setDeleting(true);
-              await api.delete(`/animals/${id}`);
-              queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
-              queryClient.invalidateQueries({ queryKey: ['animals', 'my'] });
-              toast.success("Animal deleted successfully");
-              router.replace("/(farmer)/(tabs)/farmer.records");
-            } catch (error: any) {
-              console.error("Delete Error:", error);
-              toast.error(
-                error.response?.data?.message || "Failed to delete animal",
-              );
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ],
-    );
+    setDeleteModalVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      setDeleting(true);
+      await api.delete(`/animals/${id}`);
+      queryClient.invalidateQueries({ queryKey: ['user', 'me'] });
+      queryClient.invalidateQueries({ queryKey: ['animals', 'my'] });
+      toast.success("Animal deleted successfully");
+      router.replace("/(farmer)/(tabs)/farmer.records");
+    } catch (error: any) {
+      console.error("Delete Error:", error);
+      toast.error(
+        error.response?.data?.message || "Failed to delete animal",
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (loading) {
@@ -697,21 +690,6 @@ export default function AnimalDetails() {
                           <Text style={{ fontFamily: 'Outfit_700Bold', color: brandPurple }} className="text-[10px] mt-2 text-center uppercase tracking-tighter">
                             {progress.toFixed(0)}% of Gestation Period Completed
                           </Text>
-
-                          <TouchableOpacity
-                            onPress={() => router.push({
-                              pathname: "/(farmer)/record-calving",
-                              params: { 
-                                animalId: animal._id,
-                                earTag: animal.earTag,
-                                pregnancyId: animal.inseminations?.[0]?.pregnancy?._id
-                              }
-                            } as any)}
-                            className="w-full py-3 mt-4 rounded-2xl items-center shadow-sm"
-                            style={{ backgroundColor: isDark ? '#a855f7' : '#7e22ce' }}
-                          >
-                            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-white text-[11px] uppercase tracking-widest">Report Calf Drop (Testing)</Text>
-                          </TouchableOpacity>
                         </View>
                       );
                     })()}
@@ -1565,6 +1543,17 @@ export default function AnimalDetails() {
           </View>
         </View>
       </Modal>
+
+      <ConfirmationModal
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Animal?"
+        message={`Are you sure you want to permanently delete ${animal?.animalId || "this animal"} and all its history? This action cannot be undone.`}
+        confirmText="Yes, Delete"
+        cancelText="No, Keep it"
+        isDestructive={true}
+      />
     </View>
   );
 }

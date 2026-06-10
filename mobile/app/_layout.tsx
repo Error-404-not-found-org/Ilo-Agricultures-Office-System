@@ -42,6 +42,7 @@ import { useApi } from "../lib/api";
 import { registerForPushNotificationsAsync } from "../lib/notifications";
 import Constants from "expo-constants";
 import * as Notifications from 'expo-notifications';
+import { useTheme } from "@/lib/theme";
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -63,6 +64,18 @@ function InitialLayout() {
 
   const [isOffline, setIsOffline] = useState(false);
   const [prevConnected, setPrevConnected] = useState<boolean | null>(null);
+  const [showOfflineToast, setShowOfflineToast] = useState(false);
+  const [showOnlineToast, setShowOnlineToast] = useState(false);
+  const [isToastCooldownActive, setIsToastCooldownActive] = useState(true);
+  const { colors, isDark } = useTheme();
+
+  // Network Toast Cooldown on App Startup (ignores initial NetInfo instability)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsToastCooldownActive(false);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Initialization
   useEffect(() => {
@@ -97,16 +110,30 @@ function InitialLayout() {
 
       if (prevConnected !== null && prevConnected !== isConnected) {
         if (isConnected) {
-          toast.success("Connection restored! Syncing data...");
           processOfflineQueue(api);
+          setShowOfflineToast(false);
+          if (!isToastCooldownActive && prevConnected === false) {
+            setShowOnlineToast(true);
+            const timer = setTimeout(() => {
+              setShowOnlineToast(false);
+            }, 4000);
+            return () => clearTimeout(timer);
+          }
         } else {
-          toast.error("Connection lost. Operating in offline mode.");
+          setShowOnlineToast(false);
+          if (!isToastCooldownActive) {
+            setShowOfflineToast(true);
+          }
+        }
+      } else if (prevConnected === null) {
+        if (isOfflineMode && !isToastCooldownActive) {
+          setShowOfflineToast(true);
         }
       }
       setPrevConnected(isConnected);
     });
     return () => unsubscribe();
-  }, [api, prevConnected]);
+  }, [api, prevConnected, isToastCooldownActive]);
 
   // Push Token Sync (runs only when signed-in user changes)
   useEffect(() => {
@@ -172,7 +199,6 @@ function InitialLayout() {
     }
   }, [isSignedIn, isLoaded, user, appReady, segments, navigationState?.key]);
 
-  const isDark = useColorScheme() === 'dark';
 
   if (!isFullyLoaded) {
     return (
@@ -275,31 +301,140 @@ function InitialLayout() {
   return (
     <View style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false }} />
-      {isOffline && (
+      
+      {/* Redesigned Offline Mode Dialog (Floating Top Card) */}
+      {showOfflineToast && (
         <View style={{
           position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          backgroundColor: '#ef4444',
-          paddingTop: 10,
-          paddingBottom: Math.max(insets.bottom, 10),
-          alignItems: 'center',
-          justifyContent: 'center',
+          top: insets.top + 10,
+          left: 16,
+          right: 16,
+          backgroundColor: colors.card,
+          borderRadius: 24,
+          padding: 16,
           flexDirection: 'row',
-          gap: 8,
-          zIndex: 9999,
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
+          alignItems: 'center',
+          gap: 16,
+          zIndex: 99999,
+          borderWidth: 1,
+          borderColor: colors.border,
           shadowColor: '#000',
-          shadowOpacity: 0.1,
-          shadowRadius: 5,
-          elevation: 5
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.08,
+          shadowRadius: 16,
+          elevation: 6,
         }}>
-          <MaterialCommunityIcons name="wifi-off" size={16} color="#fff" />
-          <Text style={{ color: '#fff', fontFamily: 'Outfit_700Bold', fontSize: 12 }}>
-            Offline Mode. Changes will sync when reconnected.
-          </Text>
+          <View style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <MaterialCommunityIcons name="wifi-off" size={22} color={colors.textSecondary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{
+              color: colors.textPrimary,
+              fontFamily: 'Outfit_700Bold',
+              fontSize: 14,
+              marginBottom: 2,
+            }}>
+              You're offline now
+            </Text>
+            <Text style={{
+              color: colors.textMuted,
+              fontFamily: 'Outfit_500Medium',
+              fontSize: 12,
+            }}>
+              Oops! Internet is disconnected.
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setShowOfflineToast(false)}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <MaterialCommunityIcons name="close" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Redesigned Online Mode Success Dialog */}
+      {showOnlineToast && (
+        <View style={{
+          position: 'absolute',
+          top: insets.top + 10,
+          left: 16,
+          right: 16,
+          backgroundColor: colors.card,
+          borderRadius: 24,
+          padding: 16,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 16,
+          zIndex: 99999,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderLeftWidth: 4,
+          borderLeftColor: '#10b981',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.08,
+          shadowRadius: 16,
+          elevation: 6,
+        }}>
+          <View style={{
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: '#10b981',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <MaterialCommunityIcons name="wifi" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{
+              color: colors.textPrimary,
+              fontFamily: 'Outfit_700Bold',
+              fontSize: 14,
+              marginBottom: 2,
+            }}>
+              You're online now
+            </Text>
+            <Text style={{
+              color: colors.textMuted,
+              fontFamily: 'Outfit_500Medium',
+              fontSize: 12,
+            }}>
+              Hurray! Internet is connected.
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => setShowOnlineToast(false)}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <MaterialCommunityIcons name="close" size={16} color={colors.textSecondary} />
+          </TouchableOpacity>
         </View>
       )}
     </View>

@@ -37,6 +37,7 @@ import { toast } from "sonner-native";
 import { SPECIES_PROFILES, normalizeSpecies } from "@/lib/cattleCore";
 
 import { useTheme } from "@/lib/theme";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 export default function AnimalDetails() {
   const { colors, isDark } = useTheme();
@@ -62,6 +63,7 @@ export default function AnimalDetails() {
   const [medicalRecords, setMedicalRecords] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
 
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [recordModalVisible, setRecordModalVisible] = useState(false);
@@ -93,32 +95,23 @@ export default function AnimalDetails() {
   );
 
   const handleDelete = () => {
-    Alert.alert(
-      "Delete Animal",
-      "Are you sure you want to permanently delete this animal and all its history? This action cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setDeleting(true);
-              await api.delete(`/animals/${id}`);
-              toast.success("Animal deleted successfully");
-              router.replace("/(technician)/technician.animals" as any);
-            } catch (error: any) {
-              console.error("Delete Error:", error);
-              toast.error(
-                error.response?.data?.message || "Failed to delete animal",
-              );
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ],
-    );
+    setDeleteModalVisible(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      setDeleting(true);
+      await api.delete(`/animals/${id}`);
+      toast.success("Animal deleted successfully");
+      router.replace("/(technician)/technician.animals" as any);
+    } catch (error: any) {
+      console.error("Delete Error:", error);
+      toast.error(
+        error.response?.data?.message || "Failed to delete animal",
+      );
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (loading) {
@@ -1226,6 +1219,17 @@ export default function AnimalDetails() {
           </View>
         </View>
       </Modal>
+
+      <ConfirmationModal
+        visible={deleteModalVisible}
+        onClose={() => setDeleteModalVisible(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Animal?"
+        message={`Are you sure you want to permanently delete ${animal?.animalId || "this animal"} and all its history? This action cannot be undone.`}
+        confirmText="Yes, Delete"
+        cancelText="No, Keep it"
+        isDestructive={true}
+      />
     </View>
   );
 }
