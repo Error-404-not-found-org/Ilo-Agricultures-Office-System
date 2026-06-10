@@ -14,6 +14,7 @@ import {
   MapPin,
   Sun,
   Moon,
+  Shield,
   ShieldCheck,
   Mail,
   Camera,
@@ -217,7 +218,9 @@ const FarmerProfile = () => {
               <Divider />
               <ActionItem icon={<Settings size={18} color={colors.textSecondary} />} label="App Settings" onPress={() => router.push('/(farmer)/settings')} />
               <Divider />
-              <ActionItem icon={<HelpCircle size={18} color={colors.textSecondary} />} label="Help Center" onPress={() => router.push('/(farmer)/help-center')} />
+              <ActionItem icon={<Shield size={18} color={colors.textSecondary} />} label="Privacy Policy" onPress={() => router.push('/privacy-policy' as any)} />
+              <Divider />
+              <ActionItem icon={<HelpCircle size={18} color={colors.textSecondary} />} label="Help Center" onPress={() => router.push('/help-center')} />
               <Divider />
               <ActionItem icon={<LogOut size={18} color={colors.error} />} label="Sign Out" onPress={handleSignOut} isDestructive />
            </View>

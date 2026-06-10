@@ -89,6 +89,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       })
         .populate("farmerId", "name address")
         .populate("animalId", "animalId earTag imageUrl breed species")
+        .populate("approvedBy", "name")
         .sort({ createdAt: -1 })
         .lean(),
 
@@ -98,6 +99,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       })
         .populate("farmerId", "name address")
         .populate("animalId", "animalId earTag imageUrl breed species")
+        .populate("handledBy", "name")
         .sort({ urgency: -1, createdAt: -1 })
         .lean(),
 
@@ -1049,6 +1051,7 @@ export const registerFarmer = async (req, res) => {
           emailAddress: email,
           publicMetadata: { role: "farmer" },
           redirectUrl: `${process.env.CLIENT_URL || "http://localhost:5173"}/download-app`,
+          expiresInDays: 1,
         });
       } catch (clerkError) {
         console.error("[registerFarmer CLERK ERROR]", clerkError.message);
@@ -1423,6 +1426,7 @@ export const getDashboardFeed = async (req, res) => {
       })
         .populate("farmerId", "name address")
         .populate("animalId", "animalId earTag imageUrl breed species")
+        .populate("approvedBy", "name")
         .sort({ createdAt: -1 })
         .limit(20)
         .lean(),
@@ -1432,6 +1436,7 @@ export const getDashboardFeed = async (req, res) => {
       })
         .populate("farmerId", "name address")
         .populate("animalId", "animalId earTag imageUrl breed species")
+        .populate("handledBy", "name")
         .sort({ urgency: -1, createdAt: -1 })
         .limit(20)
         .lean(),

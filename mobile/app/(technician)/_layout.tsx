@@ -27,6 +27,7 @@ export default function TechnicianLayout() {
       <Stack.Screen name="offline-maps" />
       <Stack.Screen name="sync-history" />
       <Stack.Screen name="photo-notes" />
+      <Stack.Screen name="ask-moowie" />
     </Stack>
   );
 }

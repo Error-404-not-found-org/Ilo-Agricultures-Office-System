@@ -358,29 +358,12 @@ export default function Sidebar() {
     },
   ];
 
-  const FARMER_GROUPS = [
-    { type: "label", label: "Main" },
-    {
-      path: "/farmer/dashboard",
-      icon: <LayoutDashboard size={16} />,
-      label: "Dashboard",
-    },
-    { type: "label", label: "System" },
-    {
-      path: "/admin/settings", // Fallback for settings link
-      icon: <SettingsIcon size={16} />,
-      label: "Settings",
-    },
-  ];
-
   const rawRole = user?.publicMetadata?.role || "Field Officer";
   const normalizedRole = String(rawRole).toLowerCase();
 
   const GROUPS = normalizedRole === "admin"
     ? ADMIN_GROUPS
-    : normalizedRole === "farmer"
-      ? FARMER_GROUPS
-      : TECH_GROUPS;
+    : TECH_GROUPS;
 
   // Auto-open the group that contains the active route
   useEffect(() => {

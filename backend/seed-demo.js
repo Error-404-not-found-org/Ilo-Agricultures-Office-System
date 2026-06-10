@@ -177,7 +177,7 @@ try {
       date: new Date(Date.now() - 210 * 24 * 60 * 60 * 1000),
       result: "Pregnant"
     },
-    targetCalvingDate: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000), // In 12 days
+    targetCalvingDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // In 3 days
     technicianNote: "Healthy fetus detected. Monitor feeding and gestation cycle."
   });
   console.log("Seeded Upcoming Calving Milestone");
@@ -227,7 +227,7 @@ try {
     sireBreed: "Brahman",
     sireCode: "BR-501",
     technicianNote: "Insemination complete. Watch closely for signs of heat around day 21.",
-    inseminationDate: new Date(Date.now() - 18 * 24 * 60 * 60 * 1000) // 18 days ago
+    inseminationDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) // 20 days ago
   });
   console.log("Seeded Heat Watch Milestone");
 

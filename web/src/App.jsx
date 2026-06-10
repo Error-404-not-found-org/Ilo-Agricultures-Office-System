@@ -10,12 +10,9 @@ import { SidebarProvider } from "./contexts/SidebarContext";
 import Layout from "./components/ui/Layout";
 import ProtectedAdminRoute from "./components/ProtectedAdminRoute";
 import ProtectedTechnicianRoute from "./components/ProtectedTechnicianRoute";
-import ProtectedFarmerRoute from "./components/ProtectedFarmerRoute";
-
 // Public Pages
 import Landing from "./pages/Landing";
 import DownloadApp from "./pages/DownloadApp";
-import FarmerDashboard from "./pages/FarmerDashboard";
 
 // Admin Pages
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -125,24 +122,7 @@ function App() {
             <Route path="settings" element={<TechSettings />} />
           </Route>
 
-          {/* Protected Farmer Routes */}
-          <Route
-            path="/farmer"
-            element={
-              <>
-                <SignedIn>
-                  <ProtectedFarmerRoute>
-                    <Layout />
-                  </ProtectedFarmerRoute>
-                </SignedIn>
-                <SignedOut>
-                  <Navigate to="/" replace />
-                </SignedOut>
-              </>
-            }
-          >
-            <Route path="dashboard" element={<FarmerDashboard />} />
-          </Route>
+
 
           {/* Catch-all redirect */}
           <Route path="*" element={<Navigate to="/" replace />} />

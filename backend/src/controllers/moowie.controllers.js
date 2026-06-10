@@ -13,7 +13,8 @@ import axios from "axios";
 export const askMoowie = async (req, res) => {
   try {
     const { message, animalId } = req.body;
-    const userRole = req.auth?.sessionClaims?.publicMetadata?.role || 'farmer';
+    const userRole = req.user?.role || 'farmer';
+    const userName = req.user?.name || 'Partner';
     const GEMINI_API_KEY = ENV.GEMINI_API_KEY;
 
     console.log(`[Moowie Debug] Received request. API Key present: ${!!GEMINI_API_KEY}`);
@@ -24,11 +25,44 @@ export const askMoowie = async (req, res) => {
       });
     }
     
+    // Fetch general database statistics to give Moowie "global awareness/brain"
+    const [
+      totalAnimals,
+      totalFarmers,
+      totalTechs,
+      totalInseminations,
+      totalHealthRequests,
+      totalTasks,
+      speciesCounts
+    ] = await Promise.all([
+      Animal.countDocuments({ deletedAt: null }),
+      User.countDocuments({ role: "farmer" }),
+      User.countDocuments({ role: "technician" }),
+      Insemination.countDocuments({ deletedAt: null }),
+      HealthRequest.countDocuments({ deletedAt: null }),
+      Task.countDocuments({ status: { $in: ["Pending", "In Progress"] } }),
+      Animal.aggregate([
+        { $match: { deletedAt: null } },
+        { $group: { _id: "$species", count: { $sum: 1 } } }
+      ])
+    ]);
+
+    const speciesSummary = speciesCounts.map(s => `${s._id || "Unknown"}: ${s.count}`).join(", ");
+    
     let context = `# Persona
-You are Moowie, a professional, knowledgeable, and friendly AI Agricultural and Veterinary Field Assistant for the Iloilo Agriculture's Office (Oton, Iloilo). You are currently speaking to a ${userRole}. Keep your responses concise and action-oriented. Use high-fidelity veterinary and technical terms when speaking with technicians, and clear, supportive guidance when helping farmers. Maintain a warm 'cow-like' personality (an occasional 'Moo!' is welcome, but keep your advice highly scientific and professional).
+You are Moowie, a professional, knowledgeable, and friendly AI Agricultural and Veterinary Field Assistant for the Iloilo Agriculture's Office (Oton, Iloilo). You are currently speaking to ${userName}, who is registered as a ${userRole}. Keep your responses concise and action-oriented. Use high-fidelity veterinary and technical terms when speaking with technicians, and clear, supportive guidance when helping farmers. Maintain a warm 'cow-like' personality (an occasional 'Moo!' is welcome, but keep your advice highly scientific and professional).
 
 # Goal
-Your main goal is to help users with questions about the Iloilo Agriculture's Office's livestock services, breeding programs (Artificial Insemination), pregnancy checks, health request diagnostics, and field data logs. If the user asks about a specific animal, refer strictly to the database context provided below.\n\n`;
+Your main goal is to help users with questions about the Iloilo Agriculture's Office's livestock services, breeding programs (Artificial Insemination), pregnancy checks, health request diagnostics, and field data logs. If the user asks about a specific animal, refer strictly to the database context provided below.
+
+# General Database Awareness
+Use these real-time database metrics to answer general queries or counts:
+- Total Registered Animals: ${totalAnimals} (${speciesSummary || "None"})
+- Total Registered Farmers: ${totalFarmers}
+- Total Registered Technicians: ${totalTechs}
+- Total Breeding/Inseminations Logged: ${totalInseminations}
+- Total Veterinary Health Requests: ${totalHealthRequests}
+- Total Active Tasks/Dispatches: ${totalTasks}\n\n`;
 
     if (animalId) {
       const [animal, inseminations, healthHistory] = await Promise.all([
@@ -65,7 +99,7 @@ Your main goal is to help users with questions about the Iloilo Agriculture's Of
 
     // Call Gemini API using axios
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         contents: [{
           parts: [{

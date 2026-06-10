@@ -12,6 +12,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { Text } from '@/components/ui/Text';
 import { Card } from '@/components/ui/Card';
+import { useApi } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 
 const TechnicianProfile = () => {
   const { signOut } = useClerk();
@@ -20,6 +22,27 @@ const TechnicianProfile = () => {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { colorScheme, toggleColorScheme } = useColorScheme();
+
+  const api = useApi();
+  const { data: performanceData } = useQuery({
+    queryKey: ['technician', 'performance'],
+    queryFn: async () => {
+      const res = await api.get('/analytics/my-performance');
+      return res.data;
+    }
+  });
+
+  const aiStats = performanceData?.ai || { totalAI: 0, successfulAI: 0, failedAI: 0, pendingPD: 0 };
+  const healthStats = performanceData?.health || { totalResolved: 0, totalInProgress: 0 };
+  const totalVisits = aiStats.totalAI + healthStats.totalResolved + healthStats.totalInProgress;
+  const successRate = aiStats.totalAI > 0 
+    ? Math.round((aiStats.successfulAI / aiStats.totalAI) * 100) 
+    : 0;
+  
+  // Dynamic rating based on conception success rate, defaulting to 4.8
+  const rating = totalVisits > 0 
+    ? (4.0 + (successRate / 100) * 1.0).toFixed(1) 
+    : "4.8";
 
   const handleToggleTheme = async () => {
     const newScheme = colorScheme === 'dark' ? 'light' : 'dark';
@@ -104,17 +127,17 @@ const TechnicianProfile = () => {
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <View style={{ alignItems: 'center' }}>
-                <Text variant="extrabold" size={16} style={{ color: colors.textPrimary }}>124</Text>
+                <Text variant="extrabold" size={16} style={{ color: colors.textPrimary }}>{totalVisits}</Text>
                 <Text variant="bold" size={10} style={{ color: colors.textMuted, textTransform: 'uppercase' }}>Visits</Text>
               </View>
               <View style={{ width: 1, height: 20, backgroundColor: colors.border, alignSelf: 'center' }} />
               <View style={{ alignItems: 'center' }}>
-                <Text variant="extrabold" size={16} style={{ color: colors.textPrimary }}>98%</Text>
+                <Text variant="extrabold" size={16} style={{ color: colors.textPrimary }}>{successRate}%</Text>
                 <Text variant="bold" size={10} style={{ color: colors.textMuted, textTransform: 'uppercase' }}>Success</Text>
               </View>
               <View style={{ width: 1, height: 20, backgroundColor: colors.border, alignSelf: 'center' }} />
               <View style={{ alignItems: 'center' }}>
-                <Text variant="extrabold" size={16} style={{ color: colors.textPrimary }}>4.9</Text>
+                <Text variant="extrabold" size={16} style={{ color: colors.textPrimary }}>{rating}</Text>
                 <Text variant="bold" size={10} style={{ color: colors.textMuted, textTransform: 'uppercase' }}>Rating</Text>
               </View>
             </View>
@@ -161,13 +184,13 @@ const TechnicianProfile = () => {
               <MenuItem 
                 icon={<Shield size={18} color={colors.textSecondary} />} 
                 label="Privacy Policy" 
-                onPress={() => {}} 
+                onPress={() => router.push('/privacy-policy' as any)} 
               />
               <View style={{ height: 1, backgroundColor: colors.border, marginLeft: 54 }} />
               <MenuItem 
                 icon={<HelpCircle size={18} color={colors.textSecondary} />} 
                 label="Help & Support" 
-                onPress={() => {}} 
+                onPress={() => router.push('/help-center')} 
               />
             </View>
           </View>

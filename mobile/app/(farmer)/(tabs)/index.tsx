@@ -234,7 +234,7 @@ export default function FarmerHome() {
         );
       }
 
-      router.replace("/(farmer)/(tabs)/index" as any);
+      router.replace("/(farmer)/(tabs)");
     } catch (err) {
       console.error(err);
     } finally {
@@ -563,7 +563,7 @@ export default function FarmerHome() {
                   </Text>
                   <Text className="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5 font-outfit-medium">
                     Inseminated:{" "}
-                    {format(new Date(req.updatedAt), "MMM d, yyyy")}
+                    {format(new Date(req.inseminationDate || req.createdAt), "MMM d, yyyy")}
                   </Text>
 
                   <View className="flex-row gap-2 mt-3">

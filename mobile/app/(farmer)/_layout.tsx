@@ -10,7 +10,6 @@ export default function FarmerLayout() {
       {/* Other stack screens */}
       <Stack.Screen name="my-requests" />
       <Stack.Screen name="heat-map" />
-      <Stack.Screen name="help-center" />
       <Stack.Screen name="ask-moowie" />
       <Stack.Screen name="settings" />
       <Stack.Screen name="record-calving" />
