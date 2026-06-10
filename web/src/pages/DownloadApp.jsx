@@ -84,19 +84,21 @@ export default function DownloadApp() {
           </motion.a>
 
           <motion.a
-            href="#"
+            href="https://expo.dev/accounts/johndong28/projects/mobile/builds/a6c39dd0-a02c-466d-bcb2-374789315a71"
+            target="_blank"
+            rel="noopener noreferrer"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.4, duration: 0.4 }}
             className="group relative bg-slate-900 border border-slate-800 h-20 rounded-2xl flex items-center px-6 gap-4 hover:scale-[1.02] hover:shadow-lg transition-all duration-300"
           >
-            <PlayCircle size={30} className="text-emerald-400" />
+            <Download size={30} className="text-emerald-400" />
             <div className="text-left">
               <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest leading-none">
-                Get it on
+                Direct Install (.apk)
               </p>
               <p className="text-lg font-black text-white leading-tight tracking-tight mt-0.5">
-                Google Play
+                Download APK
               </p>
             </div>
             <ArrowRight
