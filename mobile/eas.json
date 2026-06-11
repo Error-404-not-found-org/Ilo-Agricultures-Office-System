@@ -15,16 +15,16 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_dXAtcHVnLTQ2LmNsZXJrLmFjY291bnRzLmRldiQ",
-        "EXPO_PUBLIC_API_URL": "https://ilo-agricultures-inseminati-p5bbd.sevalla.app/api"
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuYnJlZWRzbWFydG90b24uc2l0ZSQ",
+        "EXPO_PUBLIC_API_URL": "https://api.breedsmartoton.site/api"
       },
       "channel": "preview"
     },
     "production": {
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_dXAtcHVnLTQ2LmNsZXJrLmFjY291bnRzLmRldiQ",
-        "EXPO_PUBLIC_API_URL": "https://ilo-agricultures-inseminati-p5bbd.sevalla.app/api"
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuYnJlZWRzbWFydG90b24uc2l0ZSQ",
+        "EXPO_PUBLIC_API_URL": "https://api.breedsmartoton.site/api"
       }
     }
   },
