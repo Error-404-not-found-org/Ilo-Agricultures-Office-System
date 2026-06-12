@@ -173,7 +173,7 @@ const Landing = () => {
                 <div className="sm:col-span-4 flex justify-center sm:justify-start">
                   <div className="bg-white p-2.5 rounded-xl border border-slate-200/80 shadow-xs shrink-0 flex items-center justify-center">
                     <img
-                      src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=https://expo.dev/artifacts/eas/..."
+                      src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://expo.dev/accounts/johndong28/projects/mobile/builds/b04de87e-0342-4443-8824-ac2ba4cf7737"
                       alt="Download Mobile App QR"
                       className="w-20 h-20 object-contain"
                     />
@@ -189,9 +189,14 @@ const Landing = () => {
                     Align your device camera with the QR code to install
                     instantly or click the button below to get the APK file.
                   </p>
-                  <button className="btn btn-xs btn-outline border-slate-200 text-[10px] font-bold uppercase tracking-wider gap-1.5 cursor-pointer mt-1">
+                  <a 
+                    href="https://expo.dev/accounts/johndong28/projects/mobile/builds/b04de87e-0342-4443-8824-ac2ba4cf7737"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-xs btn-outline border-slate-200 text-[10px] font-bold uppercase tracking-wider gap-1.5 cursor-pointer mt-1 inline-flex items-center"
+                  >
                     <Download size={11} /> Download APK File
-                  </button>
+                  </a>
                 </div>
               </div>
             </div>
