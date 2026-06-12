@@ -200,21 +200,7 @@ function InitialLayout() {
   }, [isSignedIn, isLoaded, user, appReady, segments, navigationState?.key]);
 
 
-  if (!isFullyLoaded) {
-    return (
-      <View style={{ flex: 1, backgroundColor: isDark ? '#020617' : '#ffffff', alignItems: 'center', justifyContent: 'center' }}>
-        <Image source={require('../assets/logo.png')} style={{ width: 130, height: 130, marginBottom: 30 }} resizeMode="contain" />
-        <ActivityIndicator size="large" color="#00643B" />
-        <View style={{ marginTop: 20 }}>
-          <Text style={{ color: '#00643B', fontWeight: '900', fontSize: 10, letterSpacing: 2 }}>
-            {isSignedIn ? 'RESOLVING PERMISSIONS...' : 'AUTHENTICATING...'}
-          </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (isOffline && !isSignedIn) {
+  if (appReady && isOffline && !isSignedIn) {
     const primaryColor = isDark ? "#10b981" : "#00643B";
     const bgColor = isDark ? "#090d16" : "#f8fafc";
     const textColor = isDark ? "#f8fafc" : "#1e293b";
@@ -294,6 +280,20 @@ function InitialLayout() {
             TRY AGAIN
           </Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!isFullyLoaded) {
+    return (
+      <View style={{ flex: 1, backgroundColor: isDark ? '#020617' : '#ffffff', alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={require('../assets/logo.png')} style={{ width: 130, height: 130, marginBottom: 30 }} resizeMode="contain" />
+        <ActivityIndicator size="large" color="#00643B" />
+        <View style={{ marginTop: 20 }}>
+          <Text style={{ color: '#00643B', fontWeight: '900', fontSize: 10, letterSpacing: 2 }}>
+            {isSignedIn ? 'RESOLVING PERMISSIONS...' : 'AUTHENTICATING...'}
+          </Text>
+        </View>
       </View>
     );
   }

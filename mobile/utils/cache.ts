@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 // 1. Remove the broken import line
 // import { TokenCache } from '@clerk/clerk-expo/dist/cache'; 
 
-const createTokenCache = () => { // 2. Remove ": TokenCache" type annotation here
+const createTokenCache = () => {
   return {
     getToken: async (key: string) => {
       try {
@@ -17,12 +17,20 @@ const createTokenCache = () => { // 2. Remove ": TokenCache" type annotation her
         return item;
       } catch (error) {
         console.error('SecureStore get item error: ', error);
-        await SecureStore.deleteItemAsync(key);
+        try {
+          await SecureStore.deleteItemAsync(key);
+        } catch (deleteError) {
+          console.error('SecureStore delete item error: ', deleteError);
+        }
         return null;
       }
     },
-    saveToken: (key: string, token: string) => {
-      return SecureStore.setItemAsync(key, token);
+    saveToken: async (key: string, token: string) => {
+      try {
+        await SecureStore.setItemAsync(key, token);
+      } catch (error) {
+        console.error('SecureStore save item error: ', error);
+      }
     },
   };
 };
