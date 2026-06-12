@@ -26,7 +26,7 @@ import {
 import "../global.css"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, persistOptions } from "../lib/queryClient";
-import { tokenCache } from '@clerk/clerk-expo/token-cache'
+import { tokenCache } from "../utils/cache";
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
 import { useEffect, useState } from "react";
 import { View, ActivityIndicator, Text, Image, useColorScheme, TouchableOpacity } from "react-native";
