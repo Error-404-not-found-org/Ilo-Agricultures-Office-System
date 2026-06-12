@@ -561,10 +561,14 @@ export const walkInInsemination = async (req, res) => {
       if (!farmer) {
         if (email) {
           try {
+            const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").trim();
+            const normalizedClientUrl = /^https?:\/\//i.test(clientUrl) ? clientUrl : `https://${clientUrl}`;
+            const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
+
             await clerkClient.invitations.createInvitation({
               emailAddress: email,
               publicMetadata: { role: "farmer" },
-              redirectUrl: `${process.env.CLIENT_URL || "http://localhost:5173"}/download-app`,
+              redirectUrl: finalRedirectUrl,
             });
           } catch (clerkError) {
             console.error("[walkInAI CLERK ERROR]", clerkError.message);
@@ -1047,10 +1051,14 @@ export const registerFarmer = async (req, res) => {
     // 3. Handle Clerk Invitation (for tech-enabled farmers)
     if (email) {
       try {
+        const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").trim();
+        const normalizedClientUrl = /^https?:\/\//i.test(clientUrl) ? clientUrl : `https://${clientUrl}`;
+        const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
+
         await clerkClient.invitations.createInvitation({
           emailAddress: email,
           publicMetadata: { role: "farmer" },
-          redirectUrl: `${process.env.CLIENT_URL || "http://localhost:5173"}/download-app`,
+          redirectUrl: finalRedirectUrl,
           expiresInDays: 1,
         });
       } catch (clerkError) {

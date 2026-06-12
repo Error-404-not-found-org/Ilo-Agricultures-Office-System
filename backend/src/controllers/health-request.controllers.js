@@ -337,10 +337,14 @@ export const walkInHealthRequest = async (req, res) => {
       if (!farmer) {
       if (email) {
         try {
+          const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").trim();
+          const normalizedClientUrl = /^https?:\/\//i.test(clientUrl) ? clientUrl : `https://${clientUrl}`;
+          const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
+
           await clerkClient.invitations.createInvitation({
             emailAddress: email,
             publicMetadata: { role: "farmer" },
-            redirectUrl: `${process.env.CLIENT_URL || "http://localhost:5173"}/download-app`,
+            redirectUrl: finalRedirectUrl,
           });
         } catch (clerkError) {
           console.error("[walkInHealth CLERK ERROR]", clerkError.message);
