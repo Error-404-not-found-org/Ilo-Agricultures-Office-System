@@ -298,13 +298,14 @@ export const syncUser = async (req, res) => {
       await dbUser.save();
     } else {
       // Create Brand New Account
+      const role = (email && process.env.ADMIN_EMAIL && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()) ? "admin" : "farmer";
       dbUser = await User.create({
         clerkId: userId,
         name: name,
         email: email || undefined,
         imageUrl: user.imageUrl || "",
         isVerified: isVerified,
-        role: "farmer",
+        role: role,
       });
     }
 

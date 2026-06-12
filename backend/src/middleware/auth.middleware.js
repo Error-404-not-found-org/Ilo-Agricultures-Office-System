@@ -1,6 +1,7 @@
 import { requireAuth } from "@clerk/express";
 import { User } from "../models/user.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import { ENV } from "../config/env.js";
 
 // Protected route middleware
 export const protectedRoute = [
@@ -50,13 +51,17 @@ export const protectedRoute = [
             await user.save();
           } else {
             console.log(`[AUTH-TRACE] Auto-sync creating new user account for ${name} (${email})`);
+            
+            // Check if this email matches the configured administrator email
+            const role = (email && ENV.ADMIN_EMAIL && email.toLowerCase() === ENV.ADMIN_EMAIL.toLowerCase()) ? "admin" : "farmer";
+            
             user = await User.create({
               clerkId,
               name,
               email: email || undefined,
               imageUrl: clerkUser.imageUrl || "",
               isVerified,
-              role: "farmer",
+              role,
             });
           }
 

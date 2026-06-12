@@ -47,15 +47,16 @@ const handleUserSync = async ({ event }) => {
     user.name = name || user.name;
     await user.save();
   } else {
+    const role = (email && process.env.ADMIN_EMAIL && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()) ? "admin" : "farmer";
     user = await User.create({
       clerkId,
       email,
       name: name || "New User",
       imageUrl: image_url || "",
-      role: "farmer", 
+      role, 
       isVerified,
     });
-    console.log(`Created new farmer from Clerk signup: ${email}`);
+    console.log(`Created new ${role} from Clerk signup: ${email}`);
   }
 
   const currentRole = event.data.public_metadata?.role;
