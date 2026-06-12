@@ -168,12 +168,10 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3000;
 
-if (ENV.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../web/dist")));
-  app.get("/{*any}", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "../web", "dist", "index.html"));
-  });
-}
+// Serve a simple root response for API service health check
+app.get("/", (req, res) => {
+  res.json({ message: "Oton Agriculture Office API is running." });
+});
 
 // Socket.io connection logging
 io.on("connection", (socket) => {
