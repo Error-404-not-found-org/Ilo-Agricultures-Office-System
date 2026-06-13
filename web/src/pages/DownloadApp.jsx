@@ -84,7 +84,7 @@ export default function DownloadApp() {
           </motion.a>
 
           <motion.a
-            href="https://expo.dev/accounts/johndong28/projects/mobile/builds/3cbe7954-a136-47c1-88c1-5eed6acd8770"
+            href="https://expo.dev/accounts/johndong28/projects/mobile/builds/3fdaa274-212f-435e-9ceb-626608c66ebe"
             target="_blank"
             rel="noopener noreferrer"
             initial={{ opacity: 0, x: 20 }}
