@@ -63,11 +63,26 @@ function InitialLayout() {
   const isFullyLoaded = isLoaded && appReady;
 
   const [isOffline, setIsOffline] = useState(false);
+  const [authTimeout, setAuthTimeout] = useState(false);
   const [prevConnected, setPrevConnected] = useState<boolean | null>(null);
   const [showOfflineToast, setShowOfflineToast] = useState(false);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
   const [isToastCooldownActive, setIsToastCooldownActive] = useState(true);
   const { colors, isDark } = useTheme();
+
+  // Auth loading timeout (triggers if Clerk takes >10 seconds to load)
+  useEffect(() => {
+    if (isLoaded) {
+      setAuthTimeout(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (!isLoaded) {
+        setAuthTimeout(true);
+      }
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [isLoaded]);
 
   // Network Toast Cooldown on App Startup (ignores initial NetInfo instability)
   useEffect(() => {
@@ -200,18 +215,19 @@ function InitialLayout() {
   }, [isSignedIn, isLoaded, user, appReady, segments, navigationState?.key]);
 
 
-  if (appReady && isOffline && !isSignedIn) {
+  if (appReady && (isOffline || authTimeout) && !isSignedIn) {
     const primaryColor = isDark ? "#10b981" : "#00643B";
     const bgColor = isDark ? "#090d16" : "#f8fafc";
     const textColor = isDark ? "#f8fafc" : "#1e293b";
     const textSecColor = isDark ? "#cbd5e1" : "#64748b";
 
     const handleTryAgain = async () => {
+      setAuthTimeout(false);
       const state = await NetInfo.refresh();
       const isConnected = state.isConnected ?? true;
       setIsOffline(!isConnected);
       if (isConnected) {
-        toast.success("Network connection restored!");
+        toast.success("Retrying connection...");
       } else {
         toast.error("Still no network connection found.");
       }
@@ -234,7 +250,7 @@ function InitialLayout() {
           justifyContent: 'center',
           marginBottom: 24,
         }}>
-          <MaterialCommunityIcons name="wifi-off" size={48} color={primaryColor} />
+          <MaterialCommunityIcons name={isOffline ? "wifi-off" : "server-network-off"} size={48} color={primaryColor} />
         </View>
         <Text style={{
           fontSize: 24,
@@ -243,7 +259,7 @@ function InitialLayout() {
           marginBottom: 8,
           textAlign: 'center',
         }}>
-          No network found
+          {isOffline ? "No network found" : "Connection trouble"}
         </Text>
         <Text style={{
           fontSize: 14,
@@ -253,7 +269,9 @@ function InitialLayout() {
           marginBottom: 32,
           lineHeight: 20,
         }}>
-          Please check your internet connection or turn on your mobile data or Wi-Fi to log in.
+          {isOffline 
+            ? "Please check your internet connection or turn on your mobile data or Wi-Fi to log in."
+            : "We are having difficulty connecting to our secure authentication servers. Please verify your connection or try again."}
         </Text>
         <TouchableOpacity
           onPress={handleTryAgain}
