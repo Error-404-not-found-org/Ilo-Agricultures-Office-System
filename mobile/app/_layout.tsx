@@ -69,6 +69,7 @@ function InitialLayout() {
   const [showOfflineToast, setShowOfflineToast] = useState(false);
   const [showOnlineToast, setShowOnlineToast] = useState(false);
   const [isToastCooldownActive, setIsToastCooldownActive] = useState(true);
+  const [isChecking, setIsChecking] = useState(false);
   const { colors, isDark } = useTheme();
 
   // Auth loading timeout (triggers if Clerk takes >10 seconds to load)
@@ -223,14 +224,22 @@ function InitialLayout() {
     const textSecColor = isDark ? "#cbd5e1" : "#64748b";
 
     const handleTryAgain = async () => {
+      if (isChecking) return;
+      setIsChecking(true);
       setAuthTimeout(false);
-      const state = await NetInfo.refresh();
-      const isConnected = state.isConnected ?? true;
-      setIsOffline(!isConnected);
-      if (isConnected) {
-        toast.success("Retrying connection...");
-      } else {
-        toast.error("Still no network connection found.");
+      try {
+        const state = await NetInfo.refresh();
+        const isConnected = state.isConnected ?? true;
+        setIsOffline(!isConnected);
+        if (isConnected) {
+          toast.success("Retrying connection...");
+        } else {
+          toast.error("Still no network connection found.");
+        }
+      } catch (err) {
+        // ignore
+      } finally {
+        setIsChecking(false);
       }
     };
 
@@ -276,9 +285,10 @@ function InitialLayout() {
         </Text>
         <TouchableOpacity
           onPress={handleTryAgain}
+          disabled={isChecking}
           activeOpacity={0.8}
           style={{
-            backgroundColor: primaryColor,
+            backgroundColor: isChecking ? `${primaryColor}80` : primaryColor,
             paddingHorizontal: 32,
             paddingVertical: 14,
             borderRadius: 16,
@@ -286,9 +296,9 @@ function InitialLayout() {
             alignItems: 'center',
             shadowColor: primaryColor,
             shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.2,
+            shadowOpacity: isChecking ? 0 : 0.2,
             shadowRadius: 8,
-            elevation: 4,
+            elevation: isChecking ? 0 : 4,
           }}
         >
           <Text style={{
@@ -296,7 +306,7 @@ function InitialLayout() {
             fontSize: 14,
             fontFamily: 'Outfit_700Bold',
           }}>
-            TRY AGAIN
+            {isChecking ? "RETRYING..." : "TRY AGAIN"}
           </Text>
         </TouchableOpacity>
       </View>
