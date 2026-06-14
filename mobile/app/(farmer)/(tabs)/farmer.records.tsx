@@ -8,6 +8,7 @@ import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { format } from 'date-fns';
 import { useTheme } from '@/lib/theme';
+import NetInfo from '@react-native-community/netinfo';
 
 interface Animal {
   _id: string;
@@ -308,6 +309,13 @@ export default function FarmerReports() {
   }, [selectId, records]);
 
   const fetchMilestones = useCallback(async (isRefresh = false) => {
+    const netState = await NetInfo.fetch();
+    if (!netState.isConnected) {
+      if (!isRefresh) setIsLoadingMilestones(false);
+      if (isRefresh) setIsRefreshing(false);
+      return;
+    }
+
     if (!isRefresh) setIsLoadingMilestones(true);
     try {
       const res = await api.get('/user/milestones');
@@ -322,6 +330,13 @@ export default function FarmerReports() {
   }, [api]);
 
   const fetchRecords = useCallback(async (isRefresh = false) => {
+    const netState = await NetInfo.fetch();
+    if (!netState.isConnected) {
+      if (!isRefresh) setIsLoadingRecords(false);
+      if (isRefresh) setIsRefreshing(false);
+      return;
+    }
+
     if (!isRefresh) setIsLoadingRecords(true);
     try {
       const res = await api.get('/user/activity');
