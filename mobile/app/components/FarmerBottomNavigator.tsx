@@ -23,6 +23,7 @@ import {
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
 import { useTheme } from "@/lib/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const FarmerBottomNavigator = ({
   state,
@@ -31,6 +32,7 @@ const FarmerBottomNavigator = ({
 }: BottomTabBarProps) => {
   const { colors, isDark } = useTheme();
   const [modalVisible, setModalVisible] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const focusedRouteKey = state.routes[state.index].key;
   const focusedOptions = descriptors[focusedRouteKey].options;
@@ -98,7 +100,7 @@ const FarmerBottomNavigator = ({
                 <ModalAction
                   icon={<Plus size={24} color={colors.primary} />}
                   label="Add Animal"
-                  onPress={() => handleModalAction("/(farmer)/add-animal")}
+                  onPress={() => handleModalAction("/(farmer)/add-animal?openForm=true")}
                   colors={colors}
                   isDark={isDark}
                 />
@@ -122,15 +124,28 @@ const FarmerBottomNavigator = ({
         </TouchableWithoutFeedback>
       </Modal>
 
-      <View style={styles.tabContainer}>
-        <View style={[
-          styles.tabBar, 
-          { 
+      <View
+        style={[
+          styles.tabContainer,
+          {
+            paddingBottom: Math.max(insets.bottom, 12),
             backgroundColor: colors.card,
-            borderWidth: isDark ? 1 : 0,
-            borderColor: colors.border,
-          }
-        ]}>
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.topBorder,
+            { backgroundColor: colors.border },
+          ]}
+        />
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-end",
+            paddingTop: 8,
+          }}
+        >
           <TabItem
             icon={Home}
             label="Home"
@@ -148,7 +163,23 @@ const FarmerBottomNavigator = ({
             isDark={isDark}
           />
 
-          <View style={styles.centerSpace} />
+          {/* Center FAB — rises above bar via negative marginTop */}
+          <View style={{ flex: 1, alignItems: "center", marginTop: -20 }}>
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => setModalVisible(true)}
+              style={[
+                styles.fab,
+                {
+                  backgroundColor: colors.primary,
+                  borderColor: colors.card,
+                  shadowColor: colors.primary,
+                }
+              ]}
+            >
+              <Plus color="#fff" size={28} strokeWidth={3} />
+            </TouchableOpacity>
+          </View>
 
           <TabItem
             icon={FileText}
@@ -167,21 +198,6 @@ const FarmerBottomNavigator = ({
             isDark={isDark}
           />
         </View>
-
-        <TouchableOpacity
-          activeOpacity={0.9}
-          onPress={() => setModalVisible(true)}
-          style={[
-            styles.fab,
-            {
-              backgroundColor: colors.primary,
-              borderColor: colors.card,
-              shadowColor: colors.primary,
-            }
-          ]}
-        >
-          <Plus color="#fff" size={28} strokeWidth={3} />
-        </TouchableOpacity>
       </View>
     </View>
   );
@@ -242,51 +258,38 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
   },
   tabContainer: {
-    height: 90,
-    justifyContent: "flex-end",
-    paddingBottom: Platform.OS === "ios" ? 25 : 15,
-  },
-  tabBar: {
-    flexDirection: "row",
-    height: 65,
-    marginHorizontal: 16,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "space-around",
+    elevation: 16,
+    zIndex: 100,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 8,
-    paddingHorizontal: 8,
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.07,
+    shadowRadius: 16,
+  },
+  topBorder: {
+    height: 1,
   },
   tabItem: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingTop: 8,
+    paddingBottom: 10,
   },
   iconWrapper: {
     padding: 6,
     borderRadius: 12,
   },
-  centerSpace: {
-    width: 60,
-  },
   fab: {
-    position: "absolute",
-    top: 0,
-    left: "50%",
-    marginLeft: -28,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     justifyContent: "center",
     alignItems: "center",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
-    borderWidth: 4,
+    borderWidth: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
   },
   modalOverlay: {
     flex: 1,

@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -128,7 +129,11 @@ export default function ReportSickness() {
   const [symptoms, setSymptoms] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [preferredDate, setPreferredDate] = useState(new Date());
+  const [preferredDate, setPreferredDate] = useState(() => {
+    const d = new Date();
+    d.setHours(8, 0, 0, 0); // Defaults to 08:00 AM standard slot
+    return d;
+  });
 
   const queryClient = useQueryClient();
 
@@ -171,6 +176,7 @@ export default function ReportSickness() {
   const [typeModalVisible, setTypeModalVisible] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [timeModalVisible, setTimeModalVisible] = useState(false);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   const TIME_SLOTS = [
     "08:00 AM", "09:00 AM", "10:00 AM", "11:00 AM",
@@ -210,6 +216,15 @@ export default function ReportSickness() {
     },
   });
 
+  // Fetch technicians list for direct call emergency contacts
+  const { data: technicians, isLoading: isLoadingTechs } = useQuery({
+    queryKey: ["technicians", "list"],
+    queryFn: async () => {
+      const res = await api.get("/user?role=technician");
+      return Array.isArray(res.data) ? res.data : [];
+    },
+  });
+
   useEffect(() => {
     if (animalsData) {
       const list = Array.isArray(animalsData) ? animalsData : animalsData.data;
@@ -228,6 +243,28 @@ export default function ReportSickness() {
       quality: 0.5,
       base64: true,
     });
+    if (!result.canceled && result.assets?.length > 0) {
+      setImageUri(result.assets[0].uri);
+      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      toast.success("Photo attached!");
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      toast.error("Permission to access camera was denied");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: true,
+    });
+
     if (!result.canceled && result.assets?.length > 0) {
       setImageUri(result.assets[0].uri);
       setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
@@ -382,6 +419,90 @@ export default function ReportSickness() {
                 </Text>
               </View>
             </View>
+          </View>
+
+          {/* --- EMERGENCY CONTACT BANNER & DIRECT CALLS --- */}
+          <View className="mb-6 rounded-[28px] border border-red-200 bg-red-50 dark:bg-red-950/15 dark:border-transparent p-5 shadow-sm">
+            <View className="flex-row items-start gap-2.5 mb-3">
+              <AlertCircle size={18} color={primaryColor} className="mt-0.5" />
+              <View className="flex-1">
+                <Text className="text-[12px] font-outfit-black uppercase tracking-wider text-red-700 dark:text-red-400">
+                  Veterinary Emergency?
+                </Text>
+                <Text className="text-[12px] font-outfit-medium text-slate-500 dark:text-slate-400 mt-1 leading-[18px]">
+                  This form is for scheduling routine visits (Checkups, vaccinations, deworming). If your animal is in a critical emergency, please call a technician directly below:
+                </Text>
+              </View>
+            </View>
+
+            {/* Technicians List */}
+            {isLoadingTechs ? (
+              <ActivityIndicator color={primaryColor} className="py-4" />
+            ) : !technicians || technicians.length === 0 ? (
+              <Text className="text-center font-outfit-medium text-[11px] text-slate-400 dark:text-slate-500 italic py-2">
+                No active technicians registered in your area.
+              </Text>
+            ) : (
+              <View className="gap-3 mt-2">
+                {technicians.map((tech: any) => {
+                  const initials = tech.name
+                    ? tech.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase()
+                    : "VO";
+                  const techPhone = tech.phoneNumber || tech.address?.phoneNumber;
+                  
+                  return (
+                    <View
+                      key={tech._id}
+                      className="flex-row items-center justify-between p-3.5 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-xs"
+                    >
+                      <View className="flex-row items-center gap-3 flex-1 mr-2">
+                        {/* Avatar */}
+                        <View className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-950/30 items-center justify-center border border-red-100/50 dark:border-transparent">
+                          <Text className="font-outfit-black text-xs" style={{ color: primaryColor }}>
+                            {initials}
+                          </Text>
+                        </View>
+                        <View className="flex-1">
+                          <View className="flex-row items-center gap-2 flex-wrap">
+                            <Text className="text-[14px] font-outfit-black text-slate-800 dark:text-slate-200">
+                              {tech.name}
+                            </Text>
+                            {/* Status Pill */}
+                            <View className={`px-2 py-0.5 rounded-full ${tech.status === 'on-leave' ? 'bg-slate-100 dark:bg-slate-800' : 'bg-emerald-50 dark:bg-emerald-950/30'}`}>
+                              <Text className="text-[8px] font-outfit-black uppercase" style={{ color: tech.status === 'on-leave' ? '#94a3b8' : '#10b981' }}>
+                                {tech.status || 'Active'}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text className="text-[11px] font-outfit-medium text-slate-400 dark:text-slate-500 mt-0.5">
+                            📍 {tech.address?.barangay || "Municipal"}, Oton
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Call Button */}
+                      <TouchableOpacity
+                        onPress={() => {
+                          if (techPhone) {
+                            Linking.openURL(`tel:${techPhone.replace(/\s+/g, '')}`);
+                          } else {
+                            Alert.alert("No Contact Number", "This technician does not have a registered contact number.");
+                          }
+                        }}
+                        activeOpacity={0.8}
+                        className="h-10 px-4 rounded-xl flex-row items-center justify-center gap-1.5 shadow-sm"
+                        style={{ backgroundColor: primaryColor }}
+                      >
+                        <MaterialCommunityIcons name="phone" size={14} color="white" />
+                        <Text className="text-white font-outfit-black text-[11px] uppercase tracking-wider">
+                          Call
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
 
           {/* Farmer Info Card */}
@@ -570,11 +691,16 @@ export default function ReportSickness() {
           </Text>
           {imageUri ? (
             <View className="mb-6 relative shadow-lg">
-              <Image
-                source={{ uri: imageUri }}
-                className="w-full h-52 rounded-[28px]"
-                resizeMode="cover"
-              />
+              <TouchableOpacity
+                onPress={() => setPhotoModalVisible(true)}
+                activeOpacity={0.9}
+              >
+                <Image
+                  source={{ uri: imageUri }}
+                  className="w-full h-52 rounded-[28px]"
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
                   setImageUri(null);
@@ -587,7 +713,7 @@ export default function ReportSickness() {
             </View>
           ) : (
             <TouchableOpacity
-              onPress={pickImage}
+              onPress={() => setPhotoModalVisible(true)}
               className="w-full h-36 border-2 border-dashed rounded-[28px] items-center justify-center mb-6 gap-2 shadow-sm"
               style={{ backgroundColor: colors.card, borderColor: colors.border }}
             >
@@ -823,6 +949,88 @@ export default function ReportSickness() {
             >
               <Text className="font-outfit-black" style={{ color: colors.textSecondary }}>CLOSE</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Photo Selector Modal */}
+      <Modal visible={photoModalVisible} transparent animationType="slide">
+        <View className="flex-1 bg-black/50 justify-end">
+          <View
+            className="rounded-t-[32px] p-6 pb-10"
+            style={{ backgroundColor: colors.card }}
+          >
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-lg font-outfit-bold" style={{ color: colors.textPrimary }}>
+                Select Photo Source
+              </Text>
+              <TouchableOpacity
+                onPress={() => setPhotoModalVisible(false)}
+                style={{ padding: 4 }}
+              >
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-row justify-between">
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  takePhoto();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  borderColor: isDark ? colors.border : "#e2e8f0",
+                }}
+              >
+                <Camera size={24} color={primaryColor} style={{ marginBottom: 8 }} />
+                <Text
+                  className="font-outfit-bold text-xs"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Camera
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  pickImage();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  borderColor: isDark ? colors.border : "#e2e8f0",
+                }}
+              >
+                <MaterialCommunityIcons name="image-multiple" size={24} color={primaryColor} style={{ marginBottom: 8 }} />
+                <Text
+                  className="font-outfit-bold text-xs"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Albums / Gallery
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {imageUri && (
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  setImageUri(null);
+                  setImageBase64(null);
+                }}
+                className="mt-4 py-4 rounded-2xl items-center justify-center border flex-row gap-2"
+                style={{
+                  backgroundColor: isDark ? "rgba(239, 68, 68, 0.1)" : "#fef2f2",
+                  borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#fee2e2",
+                }}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ef4444" />
+                <Text className="font-outfit-bold text-sm text-red-500">
+                  Remove Photo
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>

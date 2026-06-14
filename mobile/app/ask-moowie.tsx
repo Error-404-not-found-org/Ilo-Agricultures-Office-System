@@ -9,11 +9,12 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { ChevronLeft, Send, Sparkles } from "lucide-react-native";
+import { ChevronLeft, Send, Sparkles, Trash2 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useUser } from "@clerk/clerk-expo";
 import { useApi } from "../lib/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const PRIMARY = "#00643B";
 
@@ -40,10 +41,26 @@ export default function AskMoowie() {
 
   const scrollViewRef = useRef<ScrollView>(null);
 
+  // Load chat history from AsyncStorage on mount / user change
   useEffect(() => {
-    if (user?.firstName) {
-      const name = user.firstName;
+    const loadHistory = async () => {
+      if (!user) return;
+      const key = `moowie_chat_history_${user.id}`;
+      try {
+        const saved = await AsyncStorage.getItem(key);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setChat(parsed);
+            return;
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load chat history:", err);
+      }
 
+      // Default welcome message if no history exists
+      const name = user.firstName || "Farmer";
       setChat([
         {
           id: "1",
@@ -54,8 +71,46 @@ export default function AskMoowie() {
               : `Moo! Hello ${name}! I'm Moowie, your AI farming assistant. How can I help you with your cattle today? You can ask me about breeding, health signs, or nutrition!`,
         },
       ]);
-    }
+    };
+
+    loadHistory();
   }, [user, role]);
+
+  // Persist chat history to AsyncStorage whenever it changes
+  useEffect(() => {
+    const saveHistory = async () => {
+      if (!user || chat.length === 0) return;
+      const key = `moowie_chat_history_${user.id}`;
+      try {
+        await AsyncStorage.setItem(key, JSON.stringify(chat));
+      } catch (err) {
+        console.error("Failed to save chat history:", err);
+      }
+    };
+
+    saveHistory();
+  }, [chat, user]);
+
+  const handleClearHistory = async () => {
+    if (!user) return;
+    const key = `moowie_chat_history_${user.id}`;
+    try {
+      await AsyncStorage.removeItem(key);
+      const name = user.firstName || "Farmer";
+      setChat([
+        {
+          id: Date.now().toString(),
+          role: "ai",
+          text:
+            role === "technician"
+              ? `Hello ${name}! I'm Moowie, your AI assistant. I'm ready to help with diagnostic support, breeding data analysis, or field protocols. What's the situation today?`
+              : `Moo! Hello ${name}! I'm Moowie, your AI farming assistant. How can I help you with your cattle today? You can ask me about breeding, health signs, or nutrition!`,
+        },
+      ]);
+    } catch (err) {
+      console.error("Failed to clear chat history:", err);
+    }
+  };
 
   const handleSend = async () => {
     if (!message.trim() || loading) return;
@@ -70,12 +125,20 @@ export default function AskMoowie() {
 
     const currentMsg = message;
 
+    const history = chat
+      .filter((c) => c.id !== "1")
+      .map((c) => ({
+        role: c.role,
+        text: c.text,
+      }));
+
     setMessage("");
     setLoading(true);
 
     try {
       const res = await api.post("/moowie/ask", {
         message: currentMsg,
+        history,
       });
 
       const aiMsg = {
@@ -103,7 +166,7 @@ export default function AskMoowie() {
       <StatusBar style="light" />
 
       {/* Header */}
-      <View className="pt-14 pb-6 px-6 bg-[#00643B] rounded-b-[32px] flex-row items-center shadow-lg">
+      <View className="pt-14 pb-6 px-6 bg-[#00643B] rounded-b-[32px] flex-row items-center justify-between shadow-lg">
         <TouchableOpacity
           onPress={() => router.back()}
           className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
@@ -111,7 +174,7 @@ export default function AskMoowie() {
           <ChevronLeft size={24} color="white" />
         </TouchableOpacity>
 
-        <View className="flex-1 items-center mr-10">
+        <View className="flex-1 items-center">
           <Text
             style={{ fontFamily: "Outfit_800ExtraBold" }}
             className="text-white text-[20px]"
@@ -132,6 +195,13 @@ export default function AskMoowie() {
             </Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          onPress={handleClearHistory}
+          className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
+        >
+          <Trash2 size={20} color="white" />
+        </TouchableOpacity>
       </View>
 
       {/* Chat Area */}

@@ -13,7 +13,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ArrowLeft,
@@ -32,7 +32,13 @@ import { useUser } from "@clerk/clerk-expo";
 import { toast } from "sonner-native";
 import { format } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "@/lib/constants";
+import {
+  CATTLE_BREEDS,
+  CATTLE_SPECIES,
+  CATTLE_COLORS,
+  BREED_OPTIONS_BY_SPECIES,
+  COLOR_OPTIONS_BY_SPECIES,
+} from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
@@ -40,7 +46,6 @@ import EarTagGenerator from "@/components/EarTagGenerator";
 // --- OPTIONS ---
 const SPECIES_OPTIONS = CATTLE_SPECIES;
 const BREED_OPTIONS = CATTLE_BREEDS;
-const COLOR_OPTIONS = CATTLE_COLORS;
 const SPECIES_PREFIX: Record<string, string> = {
   "Beef Cattle": "BEF",
   "Dairy Cattle": "DAI",
@@ -56,6 +61,22 @@ export default function FarmerAnimalsHub() {
 
   // --- View State ---
   const [showAddForm, setShowAddForm] = useState(false);
+
+  const params = useLocalSearchParams();
+  const openForm = params?.openForm;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (openForm === "true") {
+        setShowAddForm(true);
+        router.setParams({ openForm: "" });
+      }
+
+      return () => {
+        setShowAddForm(false);
+      };
+    }, [openForm]),
+  );
 
   const queryClient = useQueryClient();
 
@@ -100,12 +121,18 @@ export default function FarmerAnimalsHub() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [tempDate, setTempDate] = useState<Date>(new Date());
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   useEffect(() => {
     if (formData.species) {
       const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
       if (formData.breed && !validBreeds.includes(formData.breed)) {
         setFormData((prev) => ({ ...prev, breed: "" }));
+      }
+      const validColors = COLOR_OPTIONS_BY_SPECIES[formData.species] || [];
+      if (formData.color && !validColors.includes(formData.color)) {
+        setFormData((prev) => ({ ...prev, color: "" }));
       }
     }
   }, [formData.species]);
@@ -177,6 +204,26 @@ export default function FarmerAnimalsHub() {
     }
   };
 
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      toast.error("Permission to access camera was denied");
+      return;
+    }
+
+    let result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setImageUri(result.assets[0].uri);
+      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    }
+  };
+
   // --- Modals ---
   const [modal, setModal] = useState({
     visible: false,
@@ -233,10 +280,16 @@ export default function FarmerAnimalsHub() {
         {!showAddForm && (
           <TouchableOpacity
             onPress={() => setShowAddForm(true)}
-            className="w-10 h-10 rounded-full items-center justify-center shadow-sm"
+            className="flex-row items-center gap-1.5 px-4 py-2 rounded-full shadow-sm"
             style={{ backgroundColor: colors.card }}
           >
-            <Plus size={20} color={isDark ? colors.primary : "#00643B"} />
+            <Plus size={16} color={isDark ? colors.primary : "#00643B"} />
+            <Text
+              className="text-[12px] font-outfit-bold"
+              style={{ color: isDark ? colors.primary : "#00643B" }}
+            >
+              Add Animal
+            </Text>
           </TouchableOpacity>
         )}
       </View>
@@ -311,16 +364,24 @@ export default function FarmerAnimalsHub() {
               </View>
 
               {/* Photo Pick */}
-              <TouchableOpacity
-                onPress={pickImage}
-                className="self-center bg-slate-50 dark:bg-slate-800 h-24 w-24 rounded-full items-center justify-center mb-8 border border-slate-200 dark:border-slate-700 border-dashed overflow-hidden"
-              >
-                {imageUri ? (
-                  <Image source={{ uri: imageUri }} className="w-full h-full" />
-                ) : (
-                  <Camera size={28} color="#94a3b8" />
-                )}
-              </TouchableOpacity>
+              <View className="align-center items-center mb-8">
+                <TouchableOpacity
+                  onPress={() => setPhotoModalVisible(true)}
+                  className="bg-slate-50 dark:bg-slate-800 h-24 w-24 rounded-full items-center justify-center border border-slate-200 dark:border-slate-700 border-dashed overflow-hidden"
+                >
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} className="w-full h-full" />
+                  ) : (
+                    <Camera size={28} color="#94a3b8" />
+                  )}
+                </TouchableOpacity>
+                <Text
+                  className="mt-2 text-[12px] font-outfit-bold text-center"
+                  style={{ color: colors.textSecondary }}
+                >
+                  {imageUri ? "Change Photo" : "Add Photo"}
+                </Text>
+              </View>
 
               <View className="mb-4">
                 <InputField
@@ -364,7 +425,11 @@ export default function FarmerAnimalsHub() {
                       toast.error("Please select a species first.");
                       return;
                     }
-                    openModal("breed", "Select Breed", BREED_OPTIONS_BY_SPECIES[formData.species] || []);
+                    openModal(
+                      "breed",
+                      "Select Breed",
+                      BREED_OPTIONS_BY_SPECIES[formData.species] || [],
+                    );
                   }}
                 />
               </View>
@@ -373,12 +438,20 @@ export default function FarmerAnimalsHub() {
                 <SelectField
                   label="Color"
                   value={formData.color}
-                  onPress={() =>
-                    openModal("color", "Select Color", COLOR_OPTIONS)
-                  }
+                  onPress={() => {
+                    if (!formData.species) {
+                      toast.error("Please select a species first.");
+                      return;
+                    }
+                    openModal(
+                      "color",
+                      "Select Color",
+                      COLOR_OPTIONS_BY_SPECIES[formData.species] || [],
+                    );
+                  }}
                 />
                 <InputField
-                  label="Brand"
+                  label="Brand/Markings"
                   value={formData.brand}
                   maxLength={15}
                   onChangeText={(t: any) =>
@@ -399,7 +472,14 @@ export default function FarmerAnimalsHub() {
                 <SelectField
                   label="Birth Date"
                   value={formData.birthDate || "Select Date"}
-                  onPress={() => setShowDatePicker(true)}
+                  onPress={() => {
+                    setTempDate(
+                      formData.birthDate
+                        ? new Date(formData.birthDate)
+                        : new Date(),
+                    );
+                    setShowDatePicker(true);
+                  }}
                 />
               </View>
 
@@ -408,7 +488,11 @@ export default function FarmerAnimalsHub() {
                 disabled={loadingForm}
                 className="rounded-full py-4 items-center mt-4 shadow-md"
                 style={{
-                  backgroundColor: loadingForm ? "#34d399" : (isDark ? colors.primary : "#00643B"),
+                  backgroundColor: loadingForm
+                    ? "#34d399"
+                    : isDark
+                      ? colors.primary
+                      : "#00643B",
                   shadowColor: isDark ? colors.primary : "#a7f3d0",
                 }}
               >
@@ -423,21 +507,42 @@ export default function FarmerAnimalsHub() {
 
               {showDatePicker && (
                 <DateTimePicker
-                  value={
-                    formData.birthDate
-                      ? new Date(formData.birthDate)
-                      : new Date()
-                  }
+                  value={tempDate}
                   mode="date"
                   display="default"
                   maximumDate={new Date()}
                   onChange={(event, selectedDate) => {
-                    setShowDatePicker(false);
-                    if (selectedDate) {
-                      setFormData({
-                        ...formData,
-                        birthDate: selectedDate.toISOString().split("T")[0],
-                      });
+                    if (Platform.OS === "android") {
+                      // 1. User pressed "OK"
+                      if (event.type === "set") {
+                        setShowDatePicker(false);
+                        if (selectedDate) {
+                          setTempDate(selectedDate);
+                          setFormData({
+                            ...formData,
+                            birthDate: selectedDate.toISOString().split("T")[0],
+                          });
+                        }
+                      }
+                      // 2. User pressed "Cancel" / clicked outside
+                      else if (event.type === "dismissed") {
+                        setShowDatePicker(false);
+                      }
+                      // 3. IGNORE intermediate scrolling events on Android.
+                      // Do absolutely nothing here to prevent re-renders.
+                    } else {
+                      // iOS Behavior (Updates inline/on-scroll beautifully)
+                      if (selectedDate) {
+                        setTempDate(selectedDate);
+                        setFormData({
+                          ...formData,
+                          birthDate: selectedDate.toISOString().split("T")[0],
+                        });
+                      }
+                      // Note: For iOS, you usually want to keep setShowDatePicker(true)
+                      // if using "spinner" or "inline" display style, but if you want
+                      // it to close immediately on change, keep it false as you had it.
+                      setShowDatePicker(false);
                     }
                   }}
                 />
@@ -476,9 +581,26 @@ export default function FarmerAnimalsHub() {
                   size={48}
                   color={colors.textMuted}
                 />
-                <Text className="text-slate-400 dark:text-slate-500 font-outfit-bold text-base mt-2">
-                  No animals found
+                <Text className="text-slate-400 dark:text-slate-500 font-outfit-bold text-base mt-2 text-center">
+                  {animals.length === 0
+                    ? "No animals registered yet"
+                    : "No animals found"}
                 </Text>
+                {animals.length === 0 && (
+                  <TouchableOpacity
+                    onPress={() => setShowAddForm(true)}
+                    className="mt-6 px-6 py-3 rounded-full flex-row items-center gap-2 shadow-md"
+                    style={{
+                      backgroundColor: isDark ? colors.primary : "#00643B",
+                      shadowColor: isDark ? colors.primary : "#a7f3d0",
+                    }}
+                  >
+                    <Plus size={18} color="white" />
+                    <Text className="text-white font-outfit-bold text-sm">
+                      Add New Animal
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : (
               <FlatList
@@ -579,6 +701,87 @@ export default function FarmerAnimalsHub() {
                 </TouchableOpacity>
               ))}
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={photoModalVisible} transparent animationType="slide">
+        <View className="flex-1 bg-black/50 justify-end">
+          <View
+            className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10"
+            style={{ backgroundColor: colors.card }}
+          >
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-lg font-outfit-bold text-slate-800 dark:text-white">
+                Select Photo Source
+              </Text>
+              <TouchableOpacity
+                onPress={() => setPhotoModalVisible(false)}
+                style={{ padding: 4 }}
+              >
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-row justify-between">
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  takePhoto();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  borderColor: isDark ? colors.border : "#e2e8f0",
+                }}
+              >
+                <Camera size={24} color={colors.primary} style={{ marginBottom: 8 }} />
+                <Text
+                  className="font-outfit-bold text-xs"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Camera
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  pickImage();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  borderColor: isDark ? colors.border : "#e2e8f0",
+                }}
+              >
+                <MaterialCommunityIcons name="image-multiple" size={24} color={colors.primary} style={{ marginBottom: 8 }} />
+                <Text
+                  className="font-outfit-bold text-xs"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Albums / Gallery
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {imageUri && (
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  setImageUri(null);
+                  setImageBase64(null);
+                }}
+                className="mt-4 py-4 rounded-2xl items-center justify-center border flex-row gap-2"
+                style={{
+                  backgroundColor: isDark ? "rgba(239, 68, 68, 0.1)" : "#fef2f2",
+                  borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#fee2e2",
+                }}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ef4444" />
+                <Text className="font-outfit-bold text-sm text-red-500">
+                  Remove Photo
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>

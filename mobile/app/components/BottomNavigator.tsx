@@ -256,7 +256,7 @@ const TabItem = ({
       alignItems: "center",
       justifyContent: "center",
       paddingTop: 8,
-      paddingBottom: 4,
+      paddingBottom: 10,
     }}
     activeOpacity={0.6}
   >

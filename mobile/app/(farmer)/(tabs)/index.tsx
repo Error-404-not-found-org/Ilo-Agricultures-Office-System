@@ -29,11 +29,13 @@ import { useApi } from "@/lib/api";
 import { format } from "date-fns";
 import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { useTranslation } from "../../../contexts/TranslationContext";
 
 const PRIMARY = "#00643B";
 
 export default function FarmerHome() {
   const { colors, isDark } = useTheme();
+  const { t } = useTranslation();
   const router = useRouter();
   const { user } = useUser();
   const api = useApi();
@@ -319,7 +321,7 @@ export default function FarmerHome() {
                   className="text-white text-[20px] font-outfit-bold tracking-tight"
                   numberOfLines={1}
                 >
-                  Hello, {user?.firstName || "Farmer"}
+                  {t('welcomeBack')} {user?.firstName || "Farmer"}
                 </Text>
                 <Text className="text-emerald-100 text-[12px] mt-0.5 font-outfit-medium">
                   {currentDate}
@@ -359,7 +361,7 @@ export default function FarmerHome() {
               <View className="flex-row items-center">
                 <MapPin size={18} color={isDark ? colors.primary : PRIMARY} />
                 <Text className="text-slate-800 dark:text-white font-outfit-bold ml-1.5 text-base">
-                  My Farm Status
+                  {t('myFarmStatus')}
                 </Text>
               </View>
               <View className="bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/20">
@@ -381,7 +383,7 @@ export default function FarmerHome() {
                 {isLoading ? "..." : stats.totalAnimals}
               </Text>
               <Text className="text-slate-500 dark:text-slate-400 font-outfit-bold ml-2 mb-1 text-xl">
-                Animals
+                {t('animals')}
               </Text>
             </View>
 
@@ -390,9 +392,9 @@ export default function FarmerHome() {
               className="flex-row justify-between border-t border-slate-50 dark:border-slate-800/80 pt-5"
               style={{ borderTopColor: colors.border }}
             >
-              <View className="items-center flex-1">
+               <View className="items-center flex-1">
                 <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-outfit-bold mb-1">
-                  Waiting Result
+                  {t('waitingResult')}
                 </Text>
                 <Text className="text-slate-800 dark:text-white font-outfit-black text-xl">
                   {isLoading ? "-" : stats.pendingResults}
@@ -404,7 +406,7 @@ export default function FarmerHome() {
               />
               <View className="items-center flex-1">
                 <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-outfit-bold mb-1">
-                  Pregnant
+                  {t('pregnant')}
                 </Text>
                 <Text className="text-slate-800 dark:text-white font-outfit-black text-xl">
                   {isLoading ? "-" : stats.activePregnancies}
@@ -416,7 +418,7 @@ export default function FarmerHome() {
               />
               <View className="items-center flex-1">
                 <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-outfit-bold mb-1">
-                  Calving
+                  {t('calving')}
                 </Text>
                 <Text className="text-slate-800 dark:text-white font-outfit-black text-xl">
                   {isLoading ? "-" : stats.upcomingCalvings}
@@ -433,11 +435,11 @@ export default function FarmerHome() {
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px] mb-6 ml-1">
-              Quick Actions
+              {t('quickActions')}
             </Text>
             <View className="flex-row justify-between">
               <QuickActionItem
-                title="Request AI"
+                title={t('requestAi')}
                 icon={
                   <Syringe
                     size={24}
@@ -448,7 +450,7 @@ export default function FarmerHome() {
                 onPress={() => router.push("/(farmer)/request-ai")}
               />
               <QuickActionItem
-                title="Request Vet"
+                title={t('requestVet')}
                 icon={
                   <Stethoscope
                     size={24}
@@ -459,13 +461,13 @@ export default function FarmerHome() {
                 onPress={() => router.push("/(farmer)/report-sickness")}
               />
               <QuickActionItem
-                title="Add Cow"
+                title={t('addCow')}
                 icon={<Plus size={24} color={isDark ? "#fbbf24" : "#713F12"} />}
                 iconBg={isDark ? "rgba(251,191,36,0.15)" : "#FEF9C3"}
                 onPress={() => router.push("/(farmer)/(tabs)/add-animal")}
               />
               <QuickActionItem
-                title="Ask Moowie"
+                title={t('askMoowie')}
                 icon={
                   <MessageSquare
                     size={24}
@@ -501,10 +503,10 @@ export default function FarmerHome() {
 
             <View className="flex-1 ml-4">
               <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px]">
-                Hi, I&apos;m Moowie!
+                {t('moowieGreeting')}
               </Text>
               <Text className="text-slate-500 dark:text-slate-400 text-[12px] font-outfit-medium leading-4 mt-0.5">
-                Ask me anything about cattle breeding or health.
+                {t('moowieHelperText')}
               </Text>
             </View>
 
@@ -623,13 +625,13 @@ export default function FarmerHome() {
         <View className="px-6 mb-8">
           <View className="flex-row justify-between items-center mb-4 px-1">
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px]">
-              Upcoming Visits
+              {t('upcomingVisits')}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(farmer)/my-requests")}
             >
               <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[13px]">
-                View all
+                {t('viewAll')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -696,7 +698,7 @@ export default function FarmerHome() {
             ) : (
               <View className="py-8 items-center">
                 <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium">
-                  No scheduled visits
+                  {t('noScheduledVisits')}
                 </Text>
               </View>
             )}
@@ -707,7 +709,7 @@ export default function FarmerHome() {
         {Array.isArray(milestones) && milestones.length > 0 && (
           <View className="px-6 mb-8">
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px] mb-4 px-1">
-              Heat & Breeding Alerts
+              {t('heatBreedingAlerts')}
             </Text>
             <View
               className="bg-white dark:bg-slate-900 rounded-[32px] p-4 shadow-sm border border-gray-100 dark:border-slate-800"
@@ -768,7 +770,7 @@ export default function FarmerHome() {
         <View className="px-6 mb-8">
           <View className="flex-row justify-between items-center mb-4 px-1">
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px]">
-              My Cattle
+              {t('myCattle')}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(farmer)/(tabs)/add-animal")}
@@ -808,7 +810,7 @@ export default function FarmerHome() {
             ) : (
               <View className="py-8 items-center">
                 <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium">
-                  No cattle registered
+                  {t('noCows')}
                 </Text>
               </View>
             )}

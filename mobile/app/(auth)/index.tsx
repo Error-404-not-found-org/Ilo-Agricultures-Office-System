@@ -132,7 +132,10 @@ const AuthScreen = () => {
               value={password}
               onChangeText={setPassword}
             />
-            <TouchableOpacity className="items-end mt-2">
+            <TouchableOpacity 
+              className="items-end mt-2"
+              onPress={() => router.push('/(auth)/forgot-password' as any)}
+            >
               <Text className="text-blue-500 font-medium">Forgot password?</Text>
             </TouchableOpacity>
           </View>

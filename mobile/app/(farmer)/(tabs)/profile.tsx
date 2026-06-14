@@ -24,7 +24,10 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
-  Info
+  Info,
+  Lock,
+  Eye,
+  EyeOff
 } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useColorScheme } from 'nativewind';
@@ -33,6 +36,7 @@ import { useApi } from '@/lib/api';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OTON_BARANGAYS } from '@/lib/constants';
 import { useTheme } from '@/lib/theme';
+import { useTranslation } from '../../../contexts/TranslationContext';
 
 
 const FarmerProfile = () => {
@@ -44,6 +48,7 @@ const FarmerProfile = () => {
   const queryClient = useQueryClient();
   const { colorScheme, toggleColorScheme } = useColorScheme();
   const { colors, isDark } = useTheme();
+  const { t } = useTranslation();
 
   const handleToggleTheme = async () => {
     const newScheme = colorScheme === 'dark' ? 'light' : 'dark';
@@ -54,7 +59,7 @@ const FarmerProfile = () => {
   };
 
   // Dialog States
-  const [editMode, setEditMode] = useState<'phone' | 'address' | null>(null);
+  const [editMode, setEditMode] = useState<'phone' | 'address' | 'password' | null>(null);
 
   const [selectModal, setSelectModal] = useState({
     visible: false,
@@ -62,6 +67,24 @@ const FarmerProfile = () => {
     options: [] as string[],
     onSelect: (val: string) => {}
   });
+
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+
+  const [passwordUpdating, setPasswordUpdating] = useState(false);
+
+  useEffect(() => {
+    if (editMode === 'password') {
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+    }
+  }, [editMode]);
 
 
   const { data: dbUser, isLoading } = useQuery({
@@ -111,17 +134,21 @@ const FarmerProfile = () => {
     } catch (e) {}
   };
 
-  const handleUpdate = () => {
+  const handleUpdate = async () => {
+    if (mutation.isPending || passwordUpdating) return;
+
+    toast.dismiss();
+
     if (editMode === 'phone') {
-      if (!/^\+639\d{9}$/.test(formData.phoneNumber)) {
-        return toast.error("Invalid format. Use +639XXXXXXXXX.");
+      if (!/^09\d{9}$/.test(formData.phoneNumber)) {
+        return toast.error(t('invalidPhoneFormat'));
       }
       mutation.mutate({
         phoneNumber: formData.phoneNumber
       });
     } else if (editMode === 'address') {
       if (!formData.barangay) {
-        return toast.error("Barangay is required.");
+        return toast.error(t('requiredBarangay'));
       }
       mutation.mutate({
         address: {
@@ -133,6 +160,33 @@ const FarmerProfile = () => {
           region: 'Region VI'
         }
       });
+    } else if (editMode === 'password') {
+      const { currentPassword, newPassword, confirmPassword } = passwordForm;
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        return toast.error(t('passwordRequiredError'));
+      }
+      if (newPassword.length < 8) {
+        return toast.error(t('passwordLengthError'));
+      }
+      if (newPassword !== confirmPassword) {
+        return toast.error(t('passwordMismatchError'));
+      }
+
+      setPasswordUpdating(true);
+      try {
+        await clerkUser?.updatePassword({
+          newPassword: newPassword,
+          currentPassword: currentPassword
+        });
+        toast.success(t('passwordUpdated'));
+        setEditMode(null);
+      } catch (err: any) {
+        console.warn("Password update failed:", err.message || err);
+        const errMsg = err.errors?.[0]?.message || err.message || "Failed to update password.";
+        toast.error(t('updateFailed'), { description: errMsg });
+      } finally {
+        setPasswordUpdating(false);
+      }
     }
   };
 
@@ -166,7 +220,7 @@ const FarmerProfile = () => {
            
            <View className="flex-row items-center gap-1.5 mt-1 bg-white/10 px-3 py-1 rounded-full">
               <ShieldCheck size={12} color="#34d399" />
-              <Text className="text-emerald-100 text-[10px] font-outfit-bold uppercase tracking-wider">Registered Farmer</Text>
+              <Text className="text-emerald-100 text-[10px] font-outfit-bold uppercase tracking-wider">{t('registeredFarmer')}</Text>
            </View>
         </View>
 
@@ -176,25 +230,25 @@ const FarmerProfile = () => {
              className="rounded-[28px] p-5 flex-row justify-between border shadow-xl dark:shadow-none"
              style={{ backgroundColor: colors.card, borderColor: colors.border }}
            >
-              <StatItem label="Total Cows" value={dbUser?.stats?.totalAnimals || '0'} icon="cow" color={isDark ? colors.primary : "#00643B"} />
+              <StatItem label={t('totalCows')} value={dbUser?.stats?.totalAnimals || '0'} icon="cow" color={isDark ? colors.primary : "#00643B"} />
               <View className="w-[1px] my-1" style={{ backgroundColor: colors.border }} />
-              <StatItem label="Active Cases" value={dbUser?.stats?.activeCases || '0'} icon="medical-bag" color="#eab308" />
+              <StatItem label={t('activeCases')} value={dbUser?.stats?.activeCases || '0'} icon="medical-bag" color="#eab308" />
               <View className="w-[1px] my-1" style={{ backgroundColor: colors.border }} />
-              <StatItem label="Pregnant" value={dbUser?.stats?.activePregnancies || '0'} icon="heart-pulse" color="#0891b2" />
+              <StatItem label={t('pregnant')} value={dbUser?.stats?.activePregnancies || '0'} icon="heart-pulse" color="#0891b2" />
            </View>
         </View>
 
         <View className="px-6 mt-8">
            
            {/* Personal Information */}
-           <Text className="font-outfit-black text-[10px] uppercase tracking-widest mb-3 ml-1" style={{ color: colors.textMuted }}>Account Details</Text>
+           <Text className="font-outfit-black text-[10px] uppercase tracking-widest mb-3 ml-1" style={{ color: colors.textMuted }}>{t('accountDetails')}</Text>
            
            <View className="rounded-3xl overflow-hidden border mb-6" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-              <DetailRow icon={<Mail size={18} color={colors.textMuted} />} label="Email Address" value={clerkUser?.primaryEmailAddress?.emailAddress} />
+              <DetailRow icon={<Mail size={18} color={colors.textMuted} />} label={t('emailAddress')} value={clerkUser?.primaryEmailAddress?.emailAddress} />
               <Divider />
-              <DetailRow icon={<Phone size={18} color={colors.textMuted} />} label="Phone Number" value={dbUser?.phoneNumber || 'Not Set'} onPress={() => setEditMode('phone')} />
+              <DetailRow icon={<Phone size={18} color={colors.textMuted} />} label={t('phoneNumber')} value={dbUser?.phoneNumber || t('notSet')} onPress={() => setEditMode('phone')} />
               <Divider />
-              <DetailRow icon={<MapPin size={18} color={colors.textMuted} />} label="Farm Address" value={dbUser?.address?.barangay ? `${dbUser.address.street ? dbUser.address.street + ', ' : ''}${dbUser.address.barangay}, ${dbUser.address.city}, ${dbUser.address.province}` : 'Not Set'} onPress={() => setEditMode('address')} />
+              <DetailRow icon={<MapPin size={18} color={colors.textMuted} />} label={t('farmAddress')} value={dbUser?.address?.barangay ? `${dbUser.address.street ? dbUser.address.street + ', ' : ''}${dbUser.address.barangay}, ${dbUser.address.city}, ${dbUser.address.province}` : t('notSet')} onPress={() => setEditMode('address')} />
            </View>
 
            {/* Quick Actions */}
@@ -207,8 +261,8 @@ const FarmerProfile = () => {
                        {isDark ? <Moon size={18} color="#94a3b8" /> : <Sun size={18} color="#f59e0b" />}
                     </View>
                     <View>
-                       <Text style={{ fontSize: 14, fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }}>Theme Mode</Text>
-                       <Text style={{ fontSize: 10, fontFamily: 'Outfit_700Bold', color: colors.textMuted, textTransform: 'uppercase' }}>{isDark ? 'Dark Mode Active' : 'Light Mode Active'}</Text>
+                       <Text style={{ fontSize: 14, fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }}>{t('themeMode')}</Text>
+                       <Text style={{ fontSize: 10, fontFamily: 'Outfit_700Bold', color: colors.textMuted, textTransform: 'uppercase' }}>{isDark ? t('darkMode') : t('lightMode')}</Text>
                     </View>
                  </View>
                  <View style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: isDark ? colors.primary : '#e2e8f0', padding: 2, justifyContent: 'center' }}>
@@ -216,16 +270,18 @@ const FarmerProfile = () => {
                  </View>
               </TouchableOpacity>
               <Divider />
-              <ActionItem icon={<Settings size={18} color={colors.textSecondary} />} label="App Settings" onPress={() => router.push('/(farmer)/settings')} />
+              <ActionItem icon={<Settings size={18} color={colors.textSecondary} />} label={t('appSettings')} onPress={() => router.push('/(farmer)/settings')} />
               <Divider />
-              <ActionItem icon={<Shield size={18} color={colors.textSecondary} />} label="Privacy Policy" onPress={() => router.push('/privacy-policy' as any)} />
+              <ActionItem icon={<Lock size={18} color={colors.textSecondary} />} label={t('changePassword')} onPress={() => setEditMode('password')} />
               <Divider />
-              <ActionItem icon={<HelpCircle size={18} color={colors.textSecondary} />} label="Help Center" onPress={() => router.push('/help-center')} />
+              <ActionItem icon={<Shield size={18} color={colors.textSecondary} />} label={t('privacyPolicy')} onPress={() => router.push('/privacy-policy' as any)} />
               <Divider />
-              <ActionItem icon={<LogOut size={18} color={colors.error} />} label="Sign Out" onPress={handleSignOut} isDestructive />
+              <ActionItem icon={<HelpCircle size={18} color={colors.textSecondary} />} label={t('helpCenter')} onPress={() => router.push('/help-center')} />
+              <Divider />
+              <ActionItem icon={<LogOut size={18} color={colors.error} />} label={t('signOut')} onPress={handleSignOut} isDestructive />
            </View>
 
-           <Text style={{ textAlign: 'center', color: colors.textMuted, fontFamily: 'Outfit_600SemiBold', fontSize: 11, marginBottom: 40 }}>ILO-AGRI HUB • VERSION 1.0.4</Text>
+           <Text style={{ textAlign: 'center', color: colors.textMuted, fontFamily: 'Outfit_600SemiBold', fontSize: 11, marginBottom: 40 }}>{t('versionInfo')}</Text>
         </View>
       </ScrollView>
 
@@ -244,7 +300,7 @@ const FarmerProfile = () => {
              >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                    <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: colors.textPrimary }}>
-                     {editMode === 'phone' ? 'Edit Phone Number' : 'Edit Farm Address'}
+                     {editMode === 'phone' ? t('editPhone') : editMode === 'password' ? t('changePassword') : t('editAddress')}
                    </Text>
                    <TouchableOpacity onPress={() => setEditMode(null)}>
                       <MaterialCommunityIcons name="close" size={24} color={colors.textMuted} />
@@ -256,11 +312,12 @@ const FarmerProfile = () => {
                    {editMode === 'phone' && (
                      <View className="flex-row gap-3">
                        <ProfileInputField
-                         label="Phone Number"
+                         label={t('phoneNumber')}
                          value={formData.phoneNumber}
                          onChangeText={(t: string) => setFormData({ ...formData, phoneNumber: t })}
-                         placeholder="+639XXXXXXXXX"
+                         placeholder="09XXXXXXXXX"
                          keyboardType="phone-pad"
+                         maxLength={11}
                        />
                      </View>
                    )}
@@ -269,19 +326,20 @@ const FarmerProfile = () => {
                    {editMode === 'address' && (
                      <View className="flex-row gap-3">
                        <ProfileInputField
-                         label="Street / Purok"
+                         label={t('streetPurok')}
                          value={formData.street}
                          onChangeText={(t: string) => setFormData({ ...formData, street: t })}
                          placeholder="Purok / Street"
+                         maxLength={50}
                        />
 
                        <SelectField
-                         label="Barangay"
+                         label={t('barangay')}
                          value={formData.barangay}
                          onPress={() =>
                            setSelectModal({
                              visible: true,
-                             title: "Select Barangay",
+                             title: t('selectBarangay'),
                              options: OTON_BARANGAYS,
                              onSelect: (val) => setFormData({ ...formData, barangay: val })
                            })
@@ -290,15 +348,48 @@ const FarmerProfile = () => {
                      </View>
                    )}
 
+                    {/* Change Password Mode */}
+                    {editMode === 'password' && (
+                      <View className="gap-1">
+                        <View className="flex-row">
+                          <ProfileInputField
+                            label={t('currentPassword')}
+                            value={passwordForm.currentPassword}
+                            onChangeText={(t: string) => setPasswordForm({ ...passwordForm, currentPassword: t })}
+                            placeholder="••••••••"
+                            secureTextEntry={true}
+                          />
+                        </View>
+                        <View className="flex-row">
+                          <ProfileInputField
+                            label={t('newPassword')}
+                            value={passwordForm.newPassword}
+                            onChangeText={(t: string) => setPasswordForm({ ...passwordForm, newPassword: t })}
+                            placeholder="••••••••"
+                            secureTextEntry={true}
+                          />
+                        </View>
+                        <View className="flex-row">
+                          <ProfileInputField
+                            label={t('confirmNewPassword')}
+                            value={passwordForm.confirmPassword}
+                            onChangeText={(t: string) => setPasswordForm({ ...passwordForm, confirmPassword: t })}
+                            placeholder="••••••••"
+                            secureTextEntry={true}
+                          />
+                        </View>
+                      </View>
+                    )}
+
                    {/* Save Button */}
                    <TouchableOpacity
                      onPress={handleUpdate}
-                     disabled={mutation.isPending}
+                     disabled={mutation.isPending || passwordUpdating}
                      style={{ backgroundColor: isDark ? colors.primary : '#00643B', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 8 }}
                    >
-                     {mutation.isPending
+                     {mutation.isPending || passwordUpdating
                        ? <ActivityIndicator color="#fff" />
-                       : <Text style={{ color: '#fff', fontFamily: 'Outfit_700Bold', fontSize: 16 }}>Save Changes</Text>
+                       : <Text style={{ color: '#fff', fontFamily: 'Outfit_700Bold', fontSize: 16 }}>{t('saveChanges')}</Text>
                      }
                    </TouchableOpacity>
                 </View>
@@ -412,23 +503,39 @@ const Divider = () => {
 };
 
 // Reusable input field matching the add-animal.tsx style
-const ProfileInputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', maxLength }: any) => {
+const ProfileInputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', maxLength, secureTextEntry = false }: any) => {
   const { colors } = useTheme();
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   return (
     <View className="flex-1 mb-4">
       <Text className="text-[10px] font-outfit-black uppercase mb-1.5 ml-1 tracking-widest" style={{ color: colors.textMuted }}>
         {label}
       </Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        keyboardType={keyboardType}
-        maxLength={maxLength}
-        className="border rounded-2xl px-4 py-3 font-outfit-medium text-sm"
-        style={{ backgroundColor: colors.card, borderColor: colors.border, color: colors.textPrimary }}
-        placeholderTextColor={colors.textMuted}
-      />
+      <View style={{ justifyContent: 'center' }}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          keyboardType={keyboardType}
+          maxLength={maxLength}
+          secureTextEntry={secureTextEntry && !isPasswordVisible}
+          className="border rounded-2xl pl-4 pr-12 py-3 font-outfit-medium text-sm"
+          style={{ backgroundColor: colors.card, borderColor: colors.border, color: colors.textPrimary }}
+          placeholderTextColor={colors.textMuted}
+        />
+        {secureTextEntry && (
+          <TouchableOpacity
+            onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+            style={{ position: 'absolute', right: 16, height: '100%', justifyContent: 'center' }}
+          >
+            {isPasswordVisible ? (
+              <EyeOff size={18} color={colors.textMuted} />
+            ) : (
+              <Eye size={18} color={colors.textMuted} />
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 };

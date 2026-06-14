@@ -34,6 +34,7 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useTheme } from "@/lib/theme";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -229,6 +230,7 @@ export default function RequestAI() {
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [timeModalVisible, setTimeModalVisible] = useState(false);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   const TIME_SLOTS = [
     "08:00 AM",
@@ -289,6 +291,28 @@ export default function RequestAI() {
       quality: 0.5,
       base64: true,
     });
+    if (!result.canceled && result.assets?.length > 0) {
+      setImageUri(result.assets[0].uri);
+      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      toast.success("Photo attached!");
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      toast.error("Permission to access camera was denied");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: true,
+    });
+
     if (!result.canceled && result.assets?.length > 0) {
       setImageUri(result.assets[0].uri);
       setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
@@ -729,11 +753,16 @@ export default function RequestAI() {
           </Text>
           {imageUri ? (
             <View className="mb-5 relative">
-              <Image
-                source={{ uri: imageUri }}
-                className="w-full h-48 rounded-2xl"
-                resizeMode="cover"
-              />
+              <TouchableOpacity
+                onPress={() => setPhotoModalVisible(true)}
+                activeOpacity={0.9}
+              >
+                <Image
+                  source={{ uri: imageUri }}
+                  className="w-full h-48 rounded-2xl"
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={removeImage}
                 className="absolute top-2 right-2 bg-black/50 rounded-full w-8 h-8 items-center justify-center"
@@ -743,7 +772,7 @@ export default function RequestAI() {
             </View>
           ) : (
             <TouchableOpacity
-              onPress={pickImage}
+              onPress={() => setPhotoModalVisible(true)}
               className="w-full h-36 border-2 border-dashed rounded-2xl items-center justify-center mb-5 gap-2"
               style={{
                 backgroundColor: colors.card,
@@ -1056,6 +1085,87 @@ export default function RequestAI() {
                 Close
               </Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Photo Selector Modal */}
+      <Modal visible={photoModalVisible} transparent animationType="slide">
+        <View className="flex-1 bg-black/50 justify-end">
+          <View
+            className="rounded-t-[32px] p-6 pb-10"
+            style={{ backgroundColor: colors.card }}
+          >
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-lg font-bold" style={{ color: colors.textPrimary }}>
+                Select Photo Source
+              </Text>
+              <TouchableOpacity
+                onPress={() => setPhotoModalVisible(false)}
+                style={{ padding: 4 }}
+              >
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-row justify-between">
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  takePhoto();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  borderColor: isDark ? colors.border : "#e2e8f0",
+                }}
+              >
+                <Camera size={24} color={primaryColor} style={{ marginBottom: 8 }} />
+                <Text
+                  className="font-bold text-xs"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Camera
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  pickImage();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  borderColor: isDark ? colors.border : "#e2e8f0",
+                }}
+              >
+                <MaterialCommunityIcons name="image-multiple" size={24} color={primaryColor} style={{ marginBottom: 8 }} />
+                <Text
+                  className="font-bold text-xs"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Albums / Gallery
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {imageUri && (
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  removeImage();
+                }}
+                className="mt-4 py-4 rounded-2xl items-center justify-center border flex-row gap-2"
+                style={{
+                  backgroundColor: isDark ? "rgba(239, 68, 68, 0.1)" : "#fef2f2",
+                  borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#fee2e2",
+                }}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ef4444" />
+                <Text className="font-bold text-sm text-red-500">
+                  Remove Photo
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>

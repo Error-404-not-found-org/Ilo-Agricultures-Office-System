@@ -82,19 +82,46 @@ export const CATTLE_SPECIES = [
   "Carabao",
 ];
 
-export const CATTLE_COLORS = [
-  "Light Gray",
-  "Dark Gray",
-  "Black",
-  "Brown",
-  "Red",
-  "Brindle",
-  "White",
-  "Fawn",
-  "Red & White",
-  "Black & White",
-  "Yellow",
-];
+export const COLOR_OPTIONS_BY_SPECIES: Record<string, string[]> = {
+  "Beef Cattle": [
+    "Black",
+    "Red",
+    "Brown",
+    "Fawn",
+    "Light Gray",
+    "Dark Gray",
+    "White",
+    "Yellow",
+    "Red & White",
+    "Brindle",
+  ],
+  "Dairy Cattle": [
+    "Black & White",
+    "Red & White",
+    "Fawn",
+    "Light Brown",
+    "Dark Brown",
+    "Reddish Brown",
+    "Cream",
+    "Black",
+  ],
+  "Carabao": [
+    "Slate Gray",
+    "Dark Gray",
+    "Black",
+    "Jet Black",
+    "Light Gray",
+    "Albino (White/Pinkish)",
+  ],
+};
+
+export const CATTLE_COLORS = Array.from(
+  new Set([
+    ...COLOR_OPTIONS_BY_SPECIES["Beef Cattle"],
+    ...COLOR_OPTIONS_BY_SPECIES["Dairy Cattle"],
+    ...COLOR_OPTIONS_BY_SPECIES["Carabao"],
+  ])
+);
 
 export const REPRODUCTIVE_STATUSES = [
   "Normal",

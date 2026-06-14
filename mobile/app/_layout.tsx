@@ -43,6 +43,7 @@ import { registerForPushNotificationsAsync } from "../lib/notifications";
 import Constants from "expo-constants";
 import * as Notifications from 'expo-notifications';
 import { useTheme } from "@/lib/theme";
+import { TranslationProvider } from "../contexts/TranslationContext";
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -487,8 +488,10 @@ export default function RootLayout() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <ClerkProvider publishableKey={CLERK_PUBLISHABLE_KEY} tokenCache={tokenCache}>
           <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
-            <InitialLayout />
-            <Toaster />
+            <TranslationProvider>
+              <InitialLayout />
+              <Toaster />
+            </TranslationProvider>
           </PersistQueryClientProvider>
         </ClerkProvider>
       </GestureHandlerRootView>
