@@ -13,8 +13,6 @@ import {
   updatePushToken,
   deleteUser,
 } from "../controllers/user.controllers.js";
-import { requireAuth } from "@clerk/express";
-
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 
 const router = Router();
@@ -26,7 +24,7 @@ router.post(
   createInvitedUser,
 );
 router.get("/", protectedRoute, getUsers);
-router.post("/sync-manual", requireAuth(), syncUser);
+router.post("/sync-manual", protectedRoute, syncUser);
 router.get("/me", protectedRoute, getMe);
 router.get("/milestones", protectedRoute, getBreedingMilestones);
 router.get("/activity", protectedRoute, getMyActivityFeed);
