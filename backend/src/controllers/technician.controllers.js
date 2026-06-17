@@ -1936,22 +1936,33 @@ export const deleteCalving = async (req, res) => {
 
 export const getFieldNotes = async (req, res) => {
   try {
+    const isTech = req.user?.role === "technician";
+    const userId = req.user?._id;
+
+    const insemQuery = isTech 
+      ? { technicianId: userId, imageUrl: { $exists: true, $ne: "" } } 
+      : { imageUrl: { $exists: true, $ne: "" } };
+
+    const healthQuery = isTech 
+      ? { handledBy: userId, imageUrl: { $exists: true, $ne: "" } } 
+      : { imageUrl: { $exists: true, $ne: "" } };
+
+    const noteQuery = isTech 
+      ? { technicianId: userId } 
+      : {};
+
     const [inseminations, healthRequests, technicianNotes] = await Promise.all([
-      Insemination.find({
-        imageUrl: { $exists: true, $ne: "" },
-      })
+      Insemination.find(insemQuery)
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .lean(),
-      HealthRequest.find({
-        imageUrl: { $exists: true, $ne: "" },
-      })
+      HealthRequest.find(healthQuery)
         .populate("farmerId", "name phoneNumber address")
         .populate("animalId", "animalId earTag breed species imageUrl")
         .sort({ createdAt: -1 })
         .lean(),
-      FieldNote.find()
+      FieldNote.find(noteQuery)
         .populate("technicianId", "name")
         .populate("farmerId", "name phoneNumber address")
         .sort({ createdAt: -1 })

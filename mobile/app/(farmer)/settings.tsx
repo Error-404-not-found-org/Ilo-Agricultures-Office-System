@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ArrowLeft, Bell, Globe, Trash2, Info, Moon, Sun } from 'lucide-react-native';
@@ -22,6 +22,8 @@ export default function SettingsScreen() {
 
   // Settings States
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   // Load preferences on mount
   useEffect(() => {
@@ -34,6 +36,39 @@ export default function SettingsScreen() {
     loadSettings();
   }, []);
 
+  const lastToastTimeRef = useRef(0);
+
+  const checkRateLimit = async (type: 'cache' | 'updates') => {
+    const now = Date.now();
+    const key = `settings_ratelimit_${type}`;
+    try {
+      const stored = await AsyncStorage.getItem(key);
+      let timestamps: number[] = stored ? JSON.parse(stored) : [];
+      
+      // Filter out timestamps older than 15 minutes (900,000 ms)
+      timestamps = timestamps.filter(t => now - t < 900000);
+      
+      if (timestamps.length >= 5) {
+        const oldest = timestamps[0];
+        const remainingMs = 900000 - (now - oldest);
+        const remainingMins = Math.ceil(remainingMs / 60000);
+        
+        // Limit the toast warning to display once every 3 seconds
+        if (now - lastToastTimeRef.current > 3000) {
+          lastToastTimeRef.current = now;
+          toast.error(`Too many attempts. Please try again in ${remainingMins} minute(s).`);
+        }
+        return false;
+      }
+      
+      timestamps.push(now);
+      await AsyncStorage.setItem(key, JSON.stringify(timestamps));
+      return true;
+    } catch (e) {
+      return true;
+    }
+  };
+
   // Sync Settings to Storage
   const toggleNotifications = async () => {
     const nextVal = !notificationsEnabled;
@@ -44,18 +79,41 @@ export default function SettingsScreen() {
   };
 
   const handleClearCache = async () => {
+    if (clearingCache || checkingUpdates) return;
+    const allowed = await checkRateLimit('cache');
+    if (!allowed) return;
+    setClearingCache(true);
     toast.loading("Clearing app cache...");
     try {
+      // Backup rate limiter stamps and theme preference to avoid losing them
+      const cacheLimit = await AsyncStorage.getItem('settings_ratelimit_cache');
+      const updatesLimit = await AsyncStorage.getItem('settings_ratelimit_updates');
+      const themePref = await AsyncStorage.getItem('theme_preference');
+      const notifPref = await AsyncStorage.getItem('settings_notifications');
+
       await AsyncStorage.clear();
+
+      // Restore backups
+      if (cacheLimit) await AsyncStorage.setItem('settings_ratelimit_cache', cacheLimit);
+      if (updatesLimit) await AsyncStorage.setItem('settings_ratelimit_updates', updatesLimit);
+      if (themePref) await AsyncStorage.setItem('theme_preference', themePref);
+      if (notifPref) await AsyncStorage.setItem('settings_notifications', notifPref);
+
       toast.dismiss();
       toast.success(t('cacheCleared'));
     } catch (e) {
       toast.dismiss();
       toast.error("Failed to clear cache.");
+    } finally {
+      setClearingCache(false);
     }
   };
 
   const handleCheckUpdates = async () => {
+    if (checkingUpdates || clearingCache) return;
+    const allowed = await checkRateLimit('updates');
+    if (!allowed) return;
+    setCheckingUpdates(true);
     toast.loading("Checking for updates...");
     try {
       const update = await Updates.checkForUpdateAsync();
@@ -72,6 +130,8 @@ export default function SettingsScreen() {
     } catch (e) {
       toast.dismiss();
       toast.success(`${t('upToDate')} (v1.0.4)`);
+    } finally {
+      setCheckingUpdates(false);
     }
   };
 
@@ -191,19 +251,39 @@ export default function SettingsScreen() {
           {/* Quick System Tools */}
           <View className="flex-row gap-3">
             <TouchableOpacity 
+              disabled={clearingCache || checkingUpdates}
               onPress={handleClearCache}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.error, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.05)' }}
+              style={[
+                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.error, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.05)' },
+                (clearingCache || checkingUpdates) && { opacity: 0.5 }
+              ]}
             >
-              <Trash2 size={16} color={colors.error} />
-              <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: colors.error }}>{t('clearCache')}</Text>
+              {clearingCache ? (
+                <ActivityIndicator size="small" color={colors.error} />
+              ) : (
+                <>
+                  <Trash2 size={16} color={colors.error} />
+                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: colors.error }}>{t('clearCache')}</Text>
+                </>
+              )}
             </TouchableOpacity>
             
             <TouchableOpacity 
+              disabled={clearingCache || checkingUpdates}
               onPress={handleCheckUpdates}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: primaryColor }}
+              style={[
+                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: primaryColor },
+                (clearingCache || checkingUpdates) && { opacity: 0.5 }
+              ]}
             >
-              <Info size={16} color="#fff" />
-              <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: '#fff' }}>{t('checkForUpdates')}</Text>
+              {checkingUpdates ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Info size={16} color="#fff" />
+                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: '#fff' }}>{t('checkForUpdates')}</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 

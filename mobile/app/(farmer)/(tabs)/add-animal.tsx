@@ -310,7 +310,7 @@ export default function FarmerAnimalsHub() {
               : new Date().getHours() < 18
                 ? "afternoon"
                 : "evening"}
-            , {user?.firstName || "Farmer"}!
+            , {user?.firstName || user?.username || "Farmer"}!
           </Text>
 
           <View className="flex-row items-end">
@@ -397,6 +397,7 @@ export default function FarmerAnimalsHub() {
                   <EarTagGenerator
                     farmerName={
                       user?.fullName ||
+                      user?.username ||
                       `${user?.firstName || ""} ${user?.lastName || ""}`.trim() ||
                       "Farmer"
                     }

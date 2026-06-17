@@ -295,7 +295,8 @@ export default function Dashboard() {
                                     <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                         <th className="p-3.5 text-left">Origin Farmer</th>
                                         <th className="p-3.5 text-left">Target EarTag</th>
-                                        <th className="p-3.5 text-left pr-6">Urgency Matrix</th>
+                                        <th className="p-3.5 text-left">Urgency Matrix</th>
+                                        <th className="p-3.5 text-right pr-6">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-850 text-xs">
@@ -303,7 +304,7 @@ export default function Dashboard() {
                                         [...Array(3)].map((_, i) => <TableRowSkeleton key={i} />)
                                     ) : filteredRequests.length === 0 ? (
                                         <tr>
-                                            <td colSpan={4} className="text-center p-12 text-slate-400 italic">
+                                            <td colSpan={5} className="text-center p-12 text-slate-400 italic">
                                                 No pending service requests matching parameters.
                                             </td>
                                         </tr>
@@ -330,10 +331,21 @@ export default function Dashboard() {
                                                     </div>
                                                     <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-wide">{req.animalId?.species || "Bovine"}</p>
                                                 </td>
-                                                <td className="p-3.5 pr-6">
+                                                <td className="p-3.5">
                                                     <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${req.urgency === 'high' ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/50 animate-pulse' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                                                         {req.urgency === 'high' ? '🚨 High' : 'Standard'}
                                                     </span>
+                                                </td>
+                                                <td className="p-3.5 pr-6 text-right">
+                                                    <button
+                                                        onClick={() => {
+                                                            setSelectedRequest(req);
+                                                            setIsAssignModalOpen(true);
+                                                        }}
+                                                        className="btn btn-xs bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-[10px] font-bold rounded-lg cursor-pointer transition-all active:scale-95 shadow-xs"
+                                                    >
+                                                        Assign
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))

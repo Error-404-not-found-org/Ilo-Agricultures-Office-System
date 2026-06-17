@@ -65,9 +65,15 @@ const FarmerBottomNavigator = ({
       >
         <TouchableWithoutFeedback onPress={() => setModalVisible(false)}>
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <View
+              style={[styles.modalContent, { backgroundColor: colors.card }]}
+            >
               <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Quick Actions</Text>
+                <Text
+                  style={[styles.modalTitle, { color: colors.textPrimary }]}
+                >
+                  Quick Actions
+                </Text>
                 <TouchableOpacity onPress={() => setModalVisible(false)}>
                   <X size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
@@ -100,17 +106,19 @@ const FarmerBottomNavigator = ({
                 <ModalAction
                   icon={<Plus size={24} color={colors.primary} />}
                   label="Add Animal"
-                  onPress={() => handleModalAction("/(farmer)/add-animal?openForm=true")}
+                  onPress={() =>
+                    handleModalAction("/(farmer)/add-animal?openForm=true")
+                  }
                   colors={colors}
                   isDark={isDark}
                 />
-                <ModalAction
+                {/* <ModalAction
                   icon={<Map size={24} color={colors.primary} />}
                   label="Disease Map"
                   onPress={() => handleModalAction("/(farmer)/heat-map")}
                   colors={colors}
                   isDark={isDark}
-                />
+                /> */}
                 <ModalAction
                   icon={<Sparkles size={24} color={colors.primary} />}
                   label="Ask Moowie"
@@ -133,12 +141,7 @@ const FarmerBottomNavigator = ({
           },
         ]}
       >
-        <View
-          style={[
-            styles.topBorder,
-            { backgroundColor: colors.border },
-          ]}
-        />
+        <View style={[styles.topBorder, { backgroundColor: colors.border }]} />
         <View
           style={{
             flexDirection: "row",
@@ -174,7 +177,7 @@ const FarmerBottomNavigator = ({
                   backgroundColor: colors.primary,
                   borderColor: colors.card,
                   shadowColor: colors.primary,
-                }
+                },
               ]}
             >
               <Plus color="#fff" size={28} strokeWidth={3} />
@@ -203,16 +206,29 @@ const FarmerBottomNavigator = ({
   );
 };
 
-const TabItem = ({ icon: Icon, label, isFocused, onPress, colors, isDark }: any) => (
+const TabItem = ({
+  icon: Icon,
+  label,
+  isFocused,
+  onPress,
+  colors,
+  isDark,
+}: any) => (
   <TouchableOpacity
     onPress={onPress}
     style={styles.tabItem}
     activeOpacity={0.7}
   >
-    <View style={[
-      styles.iconWrapper, 
-      isFocused && { backgroundColor: isDark ? "rgba(16, 185, 129, 0.15)" : "rgba(0, 100, 59, 0.08)" }
-    ]}>
+    <View
+      style={[
+        styles.iconWrapper,
+        isFocused && {
+          backgroundColor: isDark
+            ? "rgba(16, 185, 129, 0.15)"
+            : "rgba(0, 100, 59, 0.08)",
+        },
+      ]}
+    >
       <Icon
         color={isFocused ? colors.primary : colors.textMuted}
         size={22}
@@ -240,7 +256,7 @@ const ModalAction = ({ icon, label, onPress, colors, isDark }: any) => (
       {
         backgroundColor: isDark ? colors.background : "#f8fafc",
         borderColor: colors.border,
-      }
+      },
     ]}
     activeOpacity={0.7}
   >
@@ -276,8 +292,11 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   iconWrapper: {
-    padding: 6,
-    borderRadius: 12,
+    width: 52,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   fab: {
     width: 52,

@@ -18,8 +18,9 @@ interface ConfirmationModalProps {
   title: string;
   message: string;
   confirmText?: string;
-  cancelText?: string;
+  cancelText?: string | null;
   isDestructive?: boolean;
+  icon?: React.ReactNode;
 }
 
 export function ConfirmationModal({
@@ -31,6 +32,7 @@ export function ConfirmationModal({
   confirmText = "Yes, Cancel",
   cancelText = "No, Keep it",
   isDestructive = true,
+  icon,
 }: ConfirmationModalProps) {
   const { colors, isDark } = useTheme();
   const [confirming, setConfirming] = React.useState(false);
@@ -47,6 +49,8 @@ export function ConfirmationModal({
       onClose();
     }
   };
+
+  const showCancel = cancelText !== null && cancelText !== "";
 
   return (
     <Modal
@@ -90,7 +94,9 @@ export function ConfirmationModal({
               },
             ]}
           >
-            {isDestructive ? (
+            {icon ? (
+              icon
+            ) : isDestructive ? (
               <Trash2 size={26} color={colors.error} />
             ) : (
               <AlertTriangle size={26} color={colors.warning} />
@@ -107,25 +113,27 @@ export function ConfirmationModal({
 
           {/* Buttons Row */}
           <View style={styles.buttonRow}>
-            <TouchableOpacity
-              disabled={confirming}
-              onPress={onClose}
-              style={[
-                styles.button,
-                styles.cancelButton,
-                {
-                  backgroundColor: isDark ? colors.background : "#f1f5f9",
-                  opacity: confirming ? 0.6 : 1,
-                },
-              ]}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[styles.buttonText, { color: colors.textSecondary }]}
+            {showCancel && (
+              <TouchableOpacity
+                disabled={confirming}
+                onPress={onClose}
+                style={[
+                  styles.button,
+                  styles.cancelButton,
+                  {
+                    backgroundColor: isDark ? colors.background : "#f1f5f9",
+                    opacity: confirming ? 0.6 : 1,
+                  },
+                ]}
+                activeOpacity={0.8}
               >
-                {cancelText}
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={[styles.buttonText, { color: colors.textSecondary }]}
+                >
+                  {cancelText}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               disabled={confirming}

@@ -232,7 +232,7 @@ export default function Sidebar() {
       icon: <MapPin size={16} />,
       paths: [
         "/technician/schedule",
-        "/technician/health-map",
+        // "/technician/health-map",
         "/technician/field-notes",
       ],
       items: [
@@ -241,11 +241,11 @@ export default function Sidebar() {
           icon: <CalendarDays size={14} />,
           label: "Daily Schedule",
         },
-        {
-          path: "/technician/health-map",
-          icon: <MapPin size={14} />,
-          label: "GIS Field Hub",
-        },
+        // {
+        //   path: "/technician/health-map",
+        //   icon: <MapPin size={14} />,
+        //   label: "GIS Field Hub",
+        // },
         {
           path: "/technician/field-notes",
           icon: <Image size={14} />,

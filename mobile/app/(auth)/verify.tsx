@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,14 +8,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-} from 'react-native';
-import { useUser, useAuth, useSignUp } from '@clerk/clerk-expo';
-import { useRouter } from 'expo-router';
-import { toast } from 'sonner-native';
-import { useApi } from '@/lib/api';
-import { Mail, ArrowRight, LogOut, RefreshCcw } from 'lucide-react-native';
+} from "react-native";
+import { useUser, useAuth, useSignUp } from "@clerk/clerk-expo";
+import { useRouter } from "expo-router";
+import { toast } from "sonner-native";
+import { useApi } from "@/lib/api";
+import { Mail, ArrowRight, LogOut, RefreshCcw } from "lucide-react-native";
 
-const PRIMARY = '#074033';
+const PRIMARY = "#074033";
 
 export default function VerifyScreen() {
   const { user, isLoaded: isUserLoaded } = useUser();
@@ -24,17 +24,23 @@ export default function VerifyScreen() {
   const router = useRouter();
   const api = useApi();
 
-  const [code, setCode] = useState('');
+  const [code, setCode] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
-  const isSigningUp = isSignUpLoaded && signUp && signUp.status !== 'complete' && !!signUp.emailAddress;
-  const targetEmail = isSigningUp ? signUp.emailAddress : user?.primaryEmailAddress?.emailAddress;
+  const isSigningUp =
+    isSignUpLoaded &&
+    signUp &&
+    signUp.status !== "complete" &&
+    !!signUp.emailAddress;
+  const targetEmail = isSigningUp
+    ? signUp.emailAddress
+    : user?.primaryEmailAddress?.emailAddress;
 
   useEffect(() => {
     if (countdown > 0) {
-      const timer = setInterval(() => setCountdown(c => c - 1), 1000);
+      const timer = setInterval(() => setCountdown((c) => c - 1), 1000);
       return () => clearInterval(timer);
     }
   }, [countdown]);
@@ -44,22 +50,30 @@ export default function VerifyScreen() {
     setIsSendingCode(true);
     try {
       if (isSigningUp) {
-        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+        await signUp.prepareEmailAddressVerification({
+          strategy: "email_code",
+        });
       } else if (user) {
-        await user.primaryEmailAddress?.prepareVerification({ strategy: 'email_code' });
+        await user.primaryEmailAddress?.prepareVerification({
+          strategy: "email_code",
+        });
       }
-      toast.success('Verification code sent to your email.');
+      toast.success("Verification code sent to your email.");
       setCountdown(60);
     } catch {
-      toast.error('Failed to send verification code.');
+      toast.error("Failed to send verification code.");
     } finally {
       setIsSendingCode(false);
     }
   }, [user, signUp, countdown, isSigningUp]);
 
   useEffect(() => {
-    if (isUserLoaded && user && user.primaryEmailAddress?.verification?.status !== 'verified') {
-       sendVerificationCode();
+    if (
+      isUserLoaded &&
+      user &&
+      user.primaryEmailAddress?.verification?.status !== "verified"
+    ) {
+      sendVerificationCode();
     }
   }, [isUserLoaded, user, sendVerificationCode]);
 
@@ -68,25 +82,31 @@ export default function VerifyScreen() {
     setIsVerifying(true);
     try {
       if (isSigningUp) {
-        const completeSignUp = await signUp.attemptEmailAddressVerification({ code });
-        if (completeSignUp.status === 'complete') {
+        const completeSignUp = await signUp.attemptEmailAddressVerification({
+          code,
+        });
+        if (completeSignUp.status === "complete") {
           await setActive({ session: completeSignUp.createdSessionId });
-          toast.success('Registration successful!');
+          toast.success("Registration successful!");
           // Routing handles automatically via _layout
         } else {
-          toast.error('Additional info required.', { description: 'Registration incomplete.'});
+          toast.error("Additional info required.", {
+            description: "Registration incomplete.",
+          });
         }
       } else if (user) {
-        const result = await user.primaryEmailAddress?.attemptVerification({ code });
-        if (result?.verification.status === 'verified') {
-          await api.post('/user/mark-verified');
-          toast.success('Email verified successfully!');
+        const result = await user.primaryEmailAddress?.attemptVerification({
+          code,
+        });
+        if (result?.verification.status === "verified") {
+          await api.post("/user/mark-verified");
+          toast.success("Email verified successfully!");
           await user.reload();
         }
       }
     } catch (err: any) {
       console.error("Verification error:", err);
-      toast.error('Invalid verification code. Please try again.');
+      toast.error("Invalid verification code. Please try again.");
     } finally {
       setIsVerifying(false);
     }
@@ -94,26 +114,30 @@ export default function VerifyScreen() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.replace('/(auth)');
+    router.replace("/(auth)");
   };
 
   if (!isUserLoaded || !isSignUpLoaded) return null;
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1 bg-white"
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+      >
         <View className="flex-1 px-8 pt-20 pb-10">
-          
           <View className="items-center mb-10">
             <View className="w-20 h-20 bg-emerald-50 rounded-full items-center justify-center mb-6">
               <Mail size={40} color={PRIMARY} />
             </View>
-            <Text className="text-3xl font-bold text-slate-800 text-center">Verify Email</Text>
+            <Text className="text-3xl font-bold text-slate-800 text-center">
+              Verify Email
+            </Text>
             <Text className="text-slate-500 text-center mt-3 text-base leading-6">
-              A 6-digit verification code was sent to{'\n'}
+              A 6-digit verification code was sent to{"\n"}
               <Text className="font-bold text-slate-700">{targetEmail}</Text>
             </Text>
           </View>
@@ -137,13 +161,16 @@ export default function VerifyScreen() {
             <TouchableOpacity
               onPress={onVerifyPress}
               disabled={isVerifying || code.length < 6}
-              className={`flex-row items-center justify-center py-4 rounded-2xl shadow-sm ${code.length === 6 ? 'bg-[#074033]' : 'bg-slate-200'}`}
+              style={{ marginTop: 28 }}
+              className={`flex-row items-center justify-center py-4 rounded-2xl shadow-sm ${code.length === 6 ? "bg-[#074033]" : "bg-slate-200"}`}
             >
               {isVerifying ? (
                 <ActivityIndicator color="white" />
               ) : (
                 <>
-                  <Text className="text-white font-bold text-lg mr-2">Verify & Continue</Text>
+                  <Text className="text-white font-bold text-lg mr-2">
+                    Verify & Continue
+                  </Text>
                   <ArrowRight size={20} color="white" />
                 </>
               )}
@@ -155,9 +182,18 @@ export default function VerifyScreen() {
                 disabled={isSendingCode || countdown > 0}
                 className="flex-row items-center gap-2"
               >
-                <RefreshCcw size={16} color={countdown > 0 ? '#94a3b8' : PRIMARY} />
-                <Text className={`font-bold ${countdown > 0 ? 'text-slate-400' : 'text-[#074033]'}`}>
-                  {isSendingCode ? 'Sending...' : countdown > 0 ? `Resend code in ${countdown}s` : 'Resend verification code'}
+                <RefreshCcw
+                  size={16}
+                  color={countdown > 0 ? "#94a3b8" : PRIMARY}
+                />
+                <Text
+                  className={`font-bold ${countdown > 0 ? "text-slate-400" : "text-[#074033]"}`}
+                >
+                  {isSendingCode
+                    ? "Sending..."
+                    : countdown > 0
+                      ? `Resend code in ${countdown}s`
+                      : "Resend verification code"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -169,10 +205,11 @@ export default function VerifyScreen() {
               className="flex-row items-center justify-center gap-2 py-4 border border-slate-100 rounded-2xl bg-slate-50"
             >
               <LogOut size={18} color="#ef4444" />
-              <Text className="text-red-500 font-bold">Sign out & use different account</Text>
+              <Text className="text-red-500 font-bold">
+                Sign out & use different account
+              </Text>
             </TouchableOpacity>
           </View>
-
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

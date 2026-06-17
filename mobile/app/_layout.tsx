@@ -28,8 +28,8 @@ import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client
 import { queryClient, persistOptions } from "../lib/queryClient";
 import { tokenCache } from "../utils/cache";
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
-import { useEffect, useState } from "react";
-import { View, ActivityIndicator, Text, Image, useColorScheme, TouchableOpacity } from "react-native";
+import { useEffect, useState, useRef } from "react";
+import { View, ActivityIndicator, Text, Image, useColorScheme, TouchableOpacity, Animated } from "react-native";
 import { Toaster, toast } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -51,62 +51,33 @@ if (!CLERK_PUBLISHABLE_KEY) {
   throw new Error('Missing EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY');
 }
 
-function InitialLayout() {
-  const { isLoaded, isSignedIn } = useAuth();
-  const { user } = useUser();
+function AppContent({
+  isLoaded,
+  isSignedIn,
+  user,
+  api,
+  isDark,
+  colors,
+  insets,
+  showOfflineToast,
+  showOnlineToast,
+  progressAnim,
+  onlineProgressAnim,
+}: {
+  isLoaded: boolean;
+  isSignedIn: boolean;
+  user: any;
+  api: any;
+  isDark: boolean;
+  colors: any;
+  insets: any;
+  showOfflineToast: boolean;
+  showOnlineToast: boolean;
+  progressAnim: any;
+  onlineProgressAnim: any;
+}) {
   const segments = useSegments();
-  const [appReady, setAppReady] = useState(false);
-  const { setColorScheme } = useNativeWindColorScheme();
-  const api = useApi();
   const navigationState = useRootNavigationState();
-  const insets = useSafeAreaInsets();
-
-  const isFullyLoaded = isLoaded && appReady;
-
-  const [isOffline, setIsOffline] = useState(false);
-  const [authTimeout, setAuthTimeout] = useState(false);
-  const [prevConnected, setPrevConnected] = useState<boolean | null>(null);
-  const [showOfflineToast, setShowOfflineToast] = useState(false);
-  const [showOnlineToast, setShowOnlineToast] = useState(false);
-  const [isToastCooldownActive, setIsToastCooldownActive] = useState(true);
-  const [isChecking, setIsChecking] = useState(false);
-  const { colors, isDark } = useTheme();
-
-  // Auth loading timeout (triggers if Clerk takes >10 seconds to load)
-  useEffect(() => {
-    if (isLoaded) {
-      setAuthTimeout(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (!isLoaded) {
-        setAuthTimeout(true);
-      }
-    }, 10000);
-    return () => clearTimeout(timer);
-  }, [isLoaded]);
-
-  // Network Toast Cooldown on App Startup (ignores initial NetInfo instability)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsToastCooldownActive(false);
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Initialization
-  useEffect(() => {
-    async function init() {
-      try {
-        const savedTheme = await AsyncStorage.getItem("theme_preference");
-        setColorScheme((savedTheme || "light") as any);
-      } catch (e) {
-        setColorScheme("light");
-      }
-      setTimeout(() => setAppReady(true), 2000);
-    }
-    init();
-  }, []);
 
   // Clear query cache on sign-out to prevent data leakage between different accounts
   useEffect(() => {
@@ -118,55 +89,9 @@ function InitialLayout() {
     }
   }, [isLoaded, isSignedIn]);
 
-  // Offline Sync and Connection Monitoring
-  useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener(state => {
-      const isConnected = state.isConnected ?? true;
-      const isOfflineMode = !isConnected;
-      setIsOffline(isOfflineMode);
-
-      if (prevConnected !== null && prevConnected !== isConnected) {
-        if (isConnected) {
-          processOfflineQueue(api);
-          setShowOfflineToast(false);
-          if (!isToastCooldownActive && prevConnected === false) {
-            setShowOnlineToast(true);
-            const timer = setTimeout(() => {
-              setShowOnlineToast(false);
-            }, 4000);
-            return () => clearTimeout(timer);
-          }
-        } else {
-          setShowOnlineToast(false);
-          if (!isToastCooldownActive) {
-            setShowOfflineToast(true);
-          }
-        }
-      } else if (prevConnected === null) {
-        if (isOfflineMode && !isToastCooldownActive) {
-          setShowOfflineToast(true);
-        }
-      }
-      setPrevConnected(isConnected);
-    });
-    return () => unsubscribe();
-  }, [api, prevConnected, isToastCooldownActive]);
-
-  // Push Token Sync (runs only when signed-in user changes)
-  useEffect(() => {
-    if (isSignedIn && user) {
-      registerForPushNotificationsAsync().then(token => {
-        if (token) {
-          api.post('/user/push-token', { pushToken: token })
-            .catch(err => console.error("Push token sync failed", err));
-        }
-      });
-    }
-  }, [isSignedIn, user?.id]);
-
   // Auth Guard Logic
   useEffect(() => {
-    if (!isFullyLoaded || !navigationState?.key) return;
+    if (!navigationState?.key) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const isVerifying = segments[1] === 'verify';
@@ -214,8 +139,291 @@ function InitialLayout() {
         router.replace('/(auth)');
       }
     }
-  }, [isSignedIn, isLoaded, user, appReady, segments, navigationState?.key]);
+  }, [isSignedIn, isLoaded, user, segments, navigationState?.key]);
 
+  return (
+    <View style={{ flex: 1 }}>
+      <Stack screenOptions={{ headerShown: false }} />
+      
+      {/* Redesigned Offline Mode Dialog (Floating Top Card) */}
+      {showOfflineToast && (
+        <View style={{
+          position: 'absolute',
+          top: insets.top + 10,
+          left: 16,
+          right: 16,
+          backgroundColor: colors.card,
+          borderRadius: 24,
+          padding: 16,
+          flexDirection: 'column',
+          zIndex: 99999,
+          borderWidth: 1,
+          borderColor: colors.border,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.08,
+          shadowRadius: 16,
+          elevation: 6,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, width: '100%' }}>
+            <View style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <MaterialCommunityIcons name="wifi-off" size={22} color={colors.textSecondary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{
+                color: colors.textPrimary,
+                fontFamily: 'Outfit_700Bold',
+                fontSize: 14,
+                marginBottom: 2,
+              }}>
+                You're offline now
+              </Text>
+              <Text style={{
+                color: colors.textMuted,
+                fontFamily: 'Outfit_500Medium',
+                fontSize: 12,
+              }}>
+                Oops! Internet is disconnected.
+              </Text>
+            </View>
+          </View>
+          <View style={{
+            height: 3,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+            borderRadius: 1.5,
+            overflow: 'hidden',
+            marginTop: 12,
+            width: '100%',
+          }}>
+            <Animated.View style={{
+              height: '100%',
+              backgroundColor: isDark ? '#10b981' : '#00643B',
+              width: '30%',
+              borderRadius: 1.5,
+              transform: [{
+                translateX: progressAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-50, 300],
+                })
+              }]
+            }} />
+          </View>
+        </View>
+      )}
+
+      {/* Redesigned Online Mode Success Dialog */}
+      {showOnlineToast && (
+        <View style={{
+          position: 'absolute',
+          top: insets.top + 10,
+          left: 16,
+          right: 16,
+          backgroundColor: colors.card,
+          borderRadius: 24,
+          padding: 16,
+          flexDirection: 'column',
+          zIndex: 99999,
+          borderWidth: 1,
+          borderColor: colors.border,
+          borderLeftWidth: 4,
+          borderLeftColor: '#10b981',
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.08,
+          shadowRadius: 16,
+          elevation: 6,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, width: '100%' }}>
+            <View style={{
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              backgroundColor: '#10b981',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <MaterialCommunityIcons name="wifi" size={22} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{
+                color: colors.textPrimary,
+                fontFamily: 'Outfit_700Bold',
+                fontSize: 14,
+                marginBottom: 2,
+              }}>
+                You're online now
+              </Text>
+              <Text style={{
+                color: colors.textMuted,
+                fontFamily: 'Outfit_500Medium',
+                fontSize: 12,
+              }}>
+                Hurray! Internet is connected.
+              </Text>
+            </View>
+          </View>
+          <View style={{
+            height: 3,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+            borderRadius: 1.5,
+            overflow: 'hidden',
+            marginTop: 12,
+            width: '100%',
+          }}>
+            <Animated.View style={{
+              height: '100%',
+              backgroundColor: '#10b981',
+              width: onlineProgressAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0%', '100%'],
+              })
+            }} />
+          </View>
+        </View>
+      )}
+    </View>
+  );
+}
+
+function InitialLayout() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const [appReady, setAppReady] = useState(false);
+  const { setColorScheme } = useNativeWindColorScheme();
+  const api = useApi();
+  const insets = useSafeAreaInsets();
+
+  const isFullyLoaded = isLoaded && appReady;
+
+  const [isOffline, setIsOffline] = useState(false);
+  const [authTimeout, setAuthTimeout] = useState(false);
+  const [showOfflineToast, setShowOfflineToast] = useState(false);
+  const [showOnlineToast, setShowOnlineToast] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
+  const { colors, isDark } = useTheme();
+
+  const connectionRef = useRef<boolean | null>(null);
+  const isToastCooldownRef = useRef(true);
+
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const onlineProgressAnim = useRef(new Animated.Value(1)).current;
+
+  // Loop for offline loading bar
+  useEffect(() => {
+    if (showOfflineToast) {
+      progressAnim.setValue(0);
+      Animated.loop(
+        Animated.timing(progressAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        })
+      ).start();
+    } else {
+      progressAnim.setValue(0);
+    }
+  }, [showOfflineToast]);
+
+  // Timer countdown for online success bar
+  useEffect(() => {
+    if (showOnlineToast) {
+      onlineProgressAnim.setValue(1);
+      Animated.timing(onlineProgressAnim, {
+        toValue: 0,
+        duration: 4000,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [showOnlineToast]);
+
+  // Auth loading timeout (triggers if Clerk takes >10 seconds to load)
+  useEffect(() => {
+    if (isLoaded) {
+      setAuthTimeout(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (!isLoaded) {
+        setAuthTimeout(true);
+      }
+    }, 10000);
+    return () => clearTimeout(timer);
+  }, [isLoaded]);
+
+  // Network Toast Cooldown on App Startup (ignores initial NetInfo instability)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      isToastCooldownRef.current = false;
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Initialization
+  useEffect(() => {
+    async function init() {
+      try {
+        const savedTheme = await AsyncStorage.getItem("theme_preference");
+        setColorScheme((savedTheme || "light") as any);
+      } catch (e) {
+        setColorScheme("light");
+      }
+      setTimeout(() => setAppReady(true), 2000);
+    }
+    init();
+  }, []);
+
+  // Offline Sync and Connection Monitoring
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener(state => {
+      const isConnected = state.isConnected ?? true;
+      const isOfflineMode = !isConnected;
+      setIsOffline(isOfflineMode);
+
+      const prev = connectionRef.current;
+      if (prev !== null && prev !== isConnected) {
+        if (isConnected) {
+          processOfflineQueue(api);
+          setShowOfflineToast(false);
+          if (!isToastCooldownRef.current && prev === false) {
+            setShowOnlineToast(true);
+            const timer = setTimeout(() => {
+              setShowOnlineToast(false);
+            }, 4000);
+          }
+        } else {
+          setShowOnlineToast(false);
+          if (!isToastCooldownRef.current) {
+            setShowOfflineToast(true);
+          }
+        }
+      } else if (prev === null) {
+        if (isOfflineMode && !isToastCooldownRef.current) {
+          setShowOfflineToast(true);
+        }
+      }
+      connectionRef.current = isConnected;
+    });
+    return () => unsubscribe();
+  }, [api]);
+
+  // Push Token Sync (runs only when signed-in user changes)
+  useEffect(() => {
+    if (isSignedIn && user) {
+      registerForPushNotificationsAsync().then(token => {
+        if (token) {
+          api.post('/user/push-token', { pushToken: token })
+            .catch(err => console.error("Push token sync failed", err));
+        }
+      });
+    }
+  }, [isSignedIn, user?.id]);
 
   if (appReady && (isOffline || authTimeout) && !isSignedIn) {
     const primaryColor = isDark ? "#10b981" : "#00643B";
@@ -314,13 +522,129 @@ function InitialLayout() {
   }
 
   if (!isFullyLoaded) {
+    const splashBg = isDark ? '#020617' : '#004D2E';
+    const accentText = isDark ? '#10b981' : '#a7f3d0';
+    const brandNameColor = '#ffffff';
+
     return (
-      <View style={{ flex: 1, backgroundColor: isDark ? '#020617' : '#ffffff', alignItems: 'center', justifyContent: 'center' }}>
-        <Image source={require('../assets/logo.png')} style={{ width: 130, height: 130, marginBottom: 30 }} resizeMode="contain" />
-        <ActivityIndicator size="large" color="#00643B" />
-        <View style={{ marginTop: 20 }}>
-          <Text style={{ color: '#00643B', fontWeight: '900', fontSize: 10, letterSpacing: 2 }}>
-            {isSignedIn ? 'RESOLVING PERMISSIONS...' : 'AUTHENTICATING...'}
+      <View style={{ 
+        flex: 1, 
+        backgroundColor: splashBg, 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        paddingHorizontal: 24 
+      }}>
+        {/* Layered Decorative Background Glows */}
+        <View style={{
+          position: 'absolute',
+          width: 300,
+          height: 300,
+          borderRadius: 150,
+          backgroundColor: isDark ? 'rgba(16,185,129,0.03)' : 'rgba(255,255,255,0.02)',
+          top: '15%',
+          left: -50,
+        }} />
+        <View style={{
+          position: 'absolute',
+          width: 400,
+          height: 400,
+          borderRadius: 200,
+          backgroundColor: isDark ? 'rgba(16,185,129,0.02)' : 'rgba(255,255,255,0.03)',
+          bottom: '10%',
+          right: -100,
+        }} />
+
+        {/* Content Container */}
+        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+          {/* Logo Frame */}
+          <View style={{
+            width: 140,
+            height: 140,
+            borderRadius: 70,
+            backgroundColor: '#ffffff',
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 12 },
+            shadowOpacity: 0.15,
+            shadowRadius: 16,
+            elevation: 10,
+            marginBottom: 28,
+            borderWidth: 4,
+            borderColor: isDark ? '#10b981' : '#ffffff',
+          }}>
+            <Image 
+              source={require('../assets/logo.png')} 
+              style={{ width: 110, height: 110, borderRadius: 55 }} 
+              resizeMode="contain" 
+            />
+          </View>
+
+          {/* Typography */}
+          <Text style={{ 
+            color: brandNameColor, 
+            fontFamily: 'Outfit_900Black', 
+            fontSize: 34, 
+            letterSpacing: 0.5,
+            marginBottom: 4,
+            textShadowColor: 'rgba(0,0,0,0.15)',
+            textShadowOffset: { width: 0, height: 2 },
+            textShadowRadius: 4
+          }}>
+            BreedSmart
+          </Text>
+
+          <Text style={{ 
+            color: accentText, 
+            fontFamily: 'Outfit_600SemiBold', 
+            fontSize: 12, 
+            letterSpacing: 2.5,
+            textTransform: 'uppercase',
+            marginBottom: 40,
+            opacity: 0.9
+          }}>
+            Livestock Management
+          </Text>
+
+          {/* Loader */}
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: 'rgba(255, 255, 255, 0.08)',
+            paddingHorizontal: 20,
+            paddingVertical: 10,
+            borderRadius: 30,
+            borderWidth: 1,
+            borderColor: 'rgba(255, 255, 255, 0.05)',
+            gap: 12
+          }}>
+            <ActivityIndicator size="small" color={isDark ? '#10b981' : '#ffffff'} />
+            <Text style={{ 
+              color: brandNameColor, 
+              fontFamily: 'Outfit_700Bold', 
+              fontSize: 10, 
+              letterSpacing: 1.5,
+              opacity: 0.85
+            }}>
+              {isSignedIn ? 'RESOLVING PERMISSIONS...' : 'AUTHENTICATING...'}
+            </Text>
+          </View>
+        </View>
+
+        {/* Footer Brand Info */}
+        <View style={{
+          position: 'absolute',
+          bottom: 40,
+          alignItems: 'center'
+        }}>
+          <Text style={{
+            color: brandNameColor,
+            fontFamily: 'Outfit_500Medium',
+            fontSize: 11,
+            letterSpacing: 1,
+            opacity: 0.4
+          }}>
+            © 2026 BreedSmart Initiative
           </Text>
         </View>
       </View>
@@ -328,145 +652,19 @@ function InitialLayout() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false }} />
-      
-      {/* Redesigned Offline Mode Dialog (Floating Top Card) */}
-      {showOfflineToast && (
-        <View style={{
-          position: 'absolute',
-          top: insets.top + 10,
-          left: 16,
-          right: 16,
-          backgroundColor: colors.card,
-          borderRadius: 24,
-          padding: 16,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 16,
-          zIndex: 99999,
-          borderWidth: 1,
-          borderColor: colors.border,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.08,
-          shadowRadius: 16,
-          elevation: 6,
-        }}>
-          <View style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <MaterialCommunityIcons name="wifi-off" size={22} color={colors.textSecondary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{
-              color: colors.textPrimary,
-              fontFamily: 'Outfit_700Bold',
-              fontSize: 14,
-              marginBottom: 2,
-            }}>
-              You're offline now
-            </Text>
-            <Text style={{
-              color: colors.textMuted,
-              fontFamily: 'Outfit_500Medium',
-              fontSize: 12,
-            }}>
-              Oops! Internet is disconnected.
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => setShowOfflineToast(false)}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <MaterialCommunityIcons name="close" size={16} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Redesigned Online Mode Success Dialog */}
-      {showOnlineToast && (
-        <View style={{
-          position: 'absolute',
-          top: insets.top + 10,
-          left: 16,
-          right: 16,
-          backgroundColor: colors.card,
-          borderRadius: 24,
-          padding: 16,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 16,
-          zIndex: 99999,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderLeftWidth: 4,
-          borderLeftColor: '#10b981',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.08,
-          shadowRadius: 16,
-          elevation: 6,
-        }}>
-          <View style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            backgroundColor: '#10b981',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <MaterialCommunityIcons name="wifi" size={22} color="#fff" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{
-              color: colors.textPrimary,
-              fontFamily: 'Outfit_700Bold',
-              fontSize: 14,
-              marginBottom: 2,
-            }}>
-              You're online now
-            </Text>
-            <Text style={{
-              color: colors.textMuted,
-              fontFamily: 'Outfit_500Medium',
-              fontSize: 12,
-            }}>
-              Hurray! Internet is connected.
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => setShowOnlineToast(false)}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#f8fafc',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <MaterialCommunityIcons name="close" size={16} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+    <AppContent
+      isLoaded={isLoaded}
+      isSignedIn={isSignedIn}
+      user={user}
+      api={api}
+      isDark={isDark}
+      colors={colors}
+      insets={insets}
+      showOfflineToast={showOfflineToast}
+      showOnlineToast={showOnlineToast}
+      progressAnim={progressAnim}
+      onlineProgressAnim={onlineProgressAnim}
+    />
   );
 }
 

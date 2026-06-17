@@ -35,6 +35,7 @@ import { validateRequestTime } from "@/lib/utils";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -178,6 +179,10 @@ export default function ReportSickness() {
   const [timeModalVisible, setTimeModalVisible] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [pendingModalVisible, setPendingModalVisible] = useState(false);
+  const [noContactModalVisible, setNoContactModalVisible] = useState(false);
+
   const TIME_SLOTS = [
     "08:00 AM", "09:00 AM", "10:00 AM", "11:00 AM",
     "01:00 PM", "02:00 PM", "03:00 PM", "04:00 PM", "05:00 PM"
@@ -278,17 +283,7 @@ export default function ReportSickness() {
     const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
 
     if (!hasPhone || !hasAddress) {
-      Alert.alert(
-        "Profile Incomplete",
-        "Please provide your contact number and home address in your profile before submitting a request.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Go to Profile",
-            onPress: () => router.push("/(farmer)/(tabs)/profile"),
-          },
-        ],
-      );
+      setProfileModalVisible(true);
       return;
     }
 
@@ -299,10 +294,8 @@ export default function ReportSickness() {
       (r: any) => r.animalId?._id === selectedAnimal._id && r.status === "pending"
     );
     if (isAlreadyPending) {
-      return Alert.alert(
-        "Request Already Pending",
-        "This animal already has an active health request waiting for a technician. Please wait for an update or contact support if urgent."
-      );
+      setPendingModalVisible(true);
+      return;
     }
 
     if (!symptoms.trim())
@@ -486,7 +479,7 @@ export default function ReportSickness() {
                           if (techPhone) {
                             Linking.openURL(`tel:${techPhone.replace(/\s+/g, '')}`);
                           } else {
-                            Alert.alert("No Contact Number", "This technician does not have a registered contact number.");
+                            setNoContactModalVisible(true);
                           }
                         }}
                         activeOpacity={0.8}
@@ -1034,6 +1027,45 @@ export default function ReportSickness() {
           </View>
         </View>
       </Modal>
+
+      <ConfirmationModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+        onConfirm={() => {
+          setProfileModalVisible(false);
+          router.push("/(farmer)/(tabs)/profile");
+        }}
+        title="Complete Your Profile"
+        message="Please provide your contact number and home address in your profile before submitting a request."
+        confirmText="Go to Profile"
+        cancelText="Cancel"
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={pendingModalVisible}
+        onClose={() => setPendingModalVisible(false)}
+        onConfirm={() => setPendingModalVisible(false)}
+        title="Request Already Pending"
+        message="This animal already has an active health request waiting for a technician. Please wait for an update or contact support if urgent."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={noContactModalVisible}
+        onClose={() => setNoContactModalVisible(false)}
+        onConfirm={() => setNoContactModalVisible(false)}
+        title="No Contact Number"
+        message="This technician does not have a registered contact number."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
     </View>
   );
 }

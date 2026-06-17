@@ -6,6 +6,7 @@ import { useSignIn } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
 import { useApi } from '@/lib/api';
 import { useRouter } from 'expo-router';
+import { Eye, EyeOff } from 'lucide-react-native';
 
 const AuthScreen = () => {
 
@@ -16,6 +17,7 @@ const AuthScreen = () => {
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const onSignInPress = async () => {
@@ -54,10 +56,17 @@ const AuthScreen = () => {
       console.warn("Login attempt failed:", err.message || "Invalid credentials");
       
       const errorMessage = err.errors?.[0]?.message || "Invalid credentials";
+      const errorCode = err.errors?.[0]?.code;
+      
+      let friendlyMessage = errorMessage;
+      if (errorMessage.includes("verification strategy is not valid") || errorCode === "strategy_for_user_invalid") {
+        friendlyMessage = "This account was created using Google. Please sign in with the Google button above.";
+      } else if (errorMessage === "Identifier is invalid.") {
+        friendlyMessage = "No account found with this username or email.";
+      }
+
       toast.error("Login Failed", { 
-        description: errorMessage === "Identifier is invalid." 
-          ? "No account found with this username or email." 
-          : errorMessage 
+        description: friendlyMessage 
       });
     } finally {
       setLoading(false);
@@ -112,7 +121,7 @@ const AuthScreen = () => {
           <View>
             <Text className="text-base font-medium text-slate-700 mb-2">Email or Username</Text>
             <TextInput
-              className="w-full border border-gray-300 rounded-xl p-4 bg-white focus:border-[#074033]"
+              className="w-full border border-gray-300 rounded-xl p-4 bg-white text-slate-800 focus:border-[#074033]"
               placeholder="Enter your email or username"
               placeholderTextColor="#9CA3AF"
               autoCapitalize="none"
@@ -120,18 +129,30 @@ const AuthScreen = () => {
               onChangeText={setIdentifier}
             />
           </View>
-
+          
           {/* Password Field */}
           <View className="mt-4">
             <Text className="text-base font-medium text-slate-700 mb-2">Password</Text>
-            <TextInput
-              className="w-full border border-gray-300 rounded-xl p-4 bg-white focus:border-blue-500"
-              placeholder="Enter your password"
-              placeholderTextColor="#9CA3AF"
-              secureTextEntry
-              value={password}
-              onChangeText={setPassword}
-            />
+            <View className="relative justify-center">
+              <TextInput
+                className="w-full border border-gray-300 rounded-xl p-4 pr-12 bg-white text-slate-800 focus:border-blue-500"
+                placeholder="Enter your password"
+                placeholderTextColor="#9CA3AF"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+              />
+              <TouchableOpacity 
+                onPress={() => setShowPassword(!showPassword)}
+                style={{ position: 'absolute', right: 16, height: '100%', justifyContent: 'center' }}
+              >
+                {showPassword ? (
+                  <EyeOff size={20} color="#9CA3AF" />
+                ) : (
+                  <Eye size={20} color="#9CA3AF" />
+                )}
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity 
               className="items-end mt-2"
               onPress={() => router.push('/(auth)/forgot-password' as any)}
@@ -165,7 +186,7 @@ const AuthScreen = () => {
           By Signing up, you agree to our <Text className="text-[#074033]">Terms & Conditions</Text> and <Text className="text-[#074033]">Privacy Policy</Text>.
         </Text>
         <Text className="text-center justify-center items-center text-gray-500 text-sm mt-10 leading-4">
-          © {new Date().getFullYear()} Ilo Agricultures. All rights reserved.
+          © {new Date().getFullYear()} BreedSmart. All rights reserved.
         </Text>
       </View>
     </SafeAreaView>

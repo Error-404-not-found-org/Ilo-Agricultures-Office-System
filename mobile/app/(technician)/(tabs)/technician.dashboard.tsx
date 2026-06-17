@@ -47,6 +47,7 @@ import NetInfo from "@react-native-community/netinfo";
 import { addToOfflineQueue } from "@/lib/offlineQueue";
 import { CATTLE_BREEDS } from "@/lib/constants";
 import { getSireCodeByBreed } from "@/lib/sireRegistry";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 export default function TechnicianDashboard() {
   const router = useRouter();
@@ -91,6 +92,20 @@ export default function TechnicianDashboard() {
     },
     enabled: !!isLoaded && !!isSignedIn,
   });
+
+  const [profileWarningVisible, setProfileWarningVisible] = useState(false);
+
+  useEffect(() => {
+    if (dbUser && Object.keys(dbUser).length > 0) {
+      const isPhoneMissing = !dbUser.phoneNumber;
+      const isBarangayMissing = !dbUser.address?.barangay;
+      if (isPhoneMissing || isBarangayMissing) {
+        setProfileWarningVisible(true);
+      } else {
+        setProfileWarningVisible(false);
+      }
+    }
+  }, [dbUser]);
 
   const unreadCount = unreadData?.count || 0;
 
@@ -492,7 +507,7 @@ export default function TechnicianDashboard() {
                     lineHeight: 14,
                   }}
                 >
-                  Hello, {clerkUser?.firstName || "User"}
+                  Hello, {clerkUser?.firstName || clerkUser?.username || "User"}
                 </Text>
                 <Text
                   variant="medium"
@@ -2266,6 +2281,21 @@ export default function TechnicianDashboard() {
           </View>
         </View>
       </Modal>
+
+      <ConfirmationModal
+        visible={profileWarningVisible}
+        onClose={() => setProfileWarningVisible(false)}
+        onConfirm={() => {
+          setProfileWarningVisible(false);
+          router.push("/(technician)/(tabs)/profile" as any);
+        }}
+        title="Complete Your Profile"
+        message="Please provide your contact number and service location in your profile so that farmers can reach you for veterinary and AI requests."
+        confirmText="Go to Profile"
+        cancelText="Cancel"
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
     </View>
   );
 }

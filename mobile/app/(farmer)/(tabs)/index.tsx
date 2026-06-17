@@ -310,7 +310,7 @@ export default function FarmerHome() {
                     />
                   ) : (
                     <Text className="text-white font-outfit-black text-lg">
-                      {user?.firstName?.charAt(0) || "F"}
+                      {user?.firstName?.charAt(0) || user?.username?.charAt(0) || "F"}
                     </Text>
                   )}
                 </View>
@@ -321,7 +321,7 @@ export default function FarmerHome() {
                   className="text-white text-[20px] font-outfit-bold tracking-tight"
                   numberOfLines={1}
                 >
-                  {t('welcomeBack')} {user?.firstName || "Farmer"}
+                  {t('welcomeBack')} {user?.firstName || user?.username || "Farmer"}
                 </Text>
                 <Text className="text-emerald-100 text-[12px] mt-0.5 font-outfit-medium">
                   {currentDate}

@@ -109,7 +109,7 @@ function App() {
             <Route path="inseminations" element={<TechnicianInseminations />} />
             <Route path="newborns" element={<Newborns />} />
             <Route path="health" element={<TechnicianHealth />} />
-            <Route path="health-map" element={<TechnicianHealthMap />} />
+            {/* <Route path="health-map" element={<TechnicianHealthMap />} /> */}
             <Route path="ledger" element={<BreedingLedger />} />
             <Route path="walk-in" element={<WalkInInsemination />} />
             <Route path="profile" element={<TechMyProfile />} />

@@ -35,6 +35,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -166,6 +167,11 @@ export default function RequestAI() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [preferredDate, setPreferredDate] = useState(new Date());
+
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [maleModalVisible, setMaleModalVisible] = useState(false);
+  const [pregnantModalVisible, setPregnantModalVisible] = useState(false);
+  const [pregnantSubmitModalVisible, setPregnantSubmitModalVisible] = useState(false);
 
   const handleToggleSign = (id: string) => {
     setSelectedSigns((prev) => {
@@ -330,17 +336,7 @@ export default function RequestAI() {
     const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
 
     if (!hasPhone || !hasAddress) {
-      Alert.alert(
-        "Profile Incomplete",
-        "Please provide your contact number and home address in your profile before requesting AI services.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Go to Profile",
-            onPress: () => router.push("/(farmer)/(tabs)/profile"),
-          },
-        ],
-      );
+      setProfileModalVisible(true);
       return;
     }
 
@@ -348,11 +344,8 @@ export default function RequestAI() {
       return toast.error("Please select an animal for this request.");
 
     if (selectedAnimal.reproductiveStatus === "Pregnant") {
-      return Alert.alert(
-        "Action Blocked",
-        "This animal is already marked as Pregnant. You cannot request artificial insemination unless you report heat signs first from the animal's profile.",
-        [{ text: "OK" }],
-      );
+      setPregnantSubmitModalVisible(true);
+      return;
     }
 
     if (selectedSigns.length === 0) {
@@ -913,17 +906,11 @@ export default function RequestAI() {
                   <TouchableOpacity
                     onPress={() => {
                       if (item.reproductiveStatus === "Pregnant") {
-                        Alert.alert(
-                          "Selection Unavailable",
-                          "This animal is currently pregnant and cannot be selected for A.I. services.",
-                        );
+                        setPregnantModalVisible(true);
                         return;
                       }
                       if (item.gender === "Male") {
-                        Alert.alert(
-                          "Selection Unavailable",
-                          "This animal is Male. Insemination is restricted to female animals only.",
-                        );
+                        setMaleModalVisible(true);
                         return;
                       }
                       setSelectedAnimal(item);
@@ -1169,6 +1156,57 @@ export default function RequestAI() {
           </View>
         </View>
       </Modal>
+
+      <ConfirmationModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+        onConfirm={() => {
+          setProfileModalVisible(false);
+          router.push("/(farmer)/(tabs)/profile");
+        }}
+        title="Complete Your Profile"
+        message="Please provide your contact number and home address in your profile before requesting AI services."
+        confirmText="Go to Profile"
+        cancelText="Cancel"
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={maleModalVisible}
+        onClose={() => setMaleModalVisible(false)}
+        onConfirm={() => setMaleModalVisible(false)}
+        title="Selection Unavailable"
+        message="This animal is Male. Insemination is restricted to female animals only."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={pregnantModalVisible}
+        onClose={() => setPregnantModalVisible(false)}
+        onConfirm={() => setPregnantModalVisible(false)}
+        title="Selection Unavailable"
+        message="This animal is currently pregnant and cannot be selected for A.I. services."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={pregnantSubmitModalVisible}
+        onClose={() => setPregnantSubmitModalVisible(false)}
+        onConfirm={() => setPregnantSubmitModalVisible(false)}
+        title="Action Blocked"
+        message="This animal is already marked as Pregnant. You cannot request artificial insemination unless you report heat signs first from the animal's profile."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
     </View>
   );
 }
