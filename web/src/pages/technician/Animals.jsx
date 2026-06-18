@@ -185,22 +185,23 @@ export default function AnimalRegistry() {
   const handleExportCSV = () => {
     const headers = ["Ear Tag", "Species", "Breed", "Owner/Farmer", "Barangay", "Reproductive Status"];
     const rows = processedAnimals.map((a) => [
-      `"${a.tag.replace(/"/g, '""')}"`,
-      `"${a.species.replace(/"/g, '""')}"`,
-      `"${a.breed.replace(/"/g, '""')}"`,
-      `"${a.farmer.replace(/"/g, '""')}"`,
-      `"${a.brgy.replace(/"/g, '""')}"`,
-      `"${a.repro.toUpperCase()}"`,
+      a.tag,
+      a.species,
+      a.breed,
+      a.farmer,
+      a.brgy,
+      a.repro.toUpperCase(),
     ]);
 
     const csvContent =
-      "data:text/csv;charset=utf-8," +
       headers.join(",") +
       "\n" +
-      rows.map((e) => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
+      rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute(
       "download",
       `DA_Livestock_Registry_${new Date().toLocaleDateString()}.csv`
@@ -208,6 +209,7 @@ export default function AnimalRegistry() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (

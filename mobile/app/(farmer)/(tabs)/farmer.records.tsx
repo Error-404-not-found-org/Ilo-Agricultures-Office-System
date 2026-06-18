@@ -289,6 +289,7 @@ export default function FarmerReports() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<ActivityFeedItem | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [shownSelectIds, setShownSelectIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (tab === 'records') {
@@ -299,14 +300,16 @@ export default function FarmerReports() {
   }, [tab]);
 
   useEffect(() => {
-    if (selectId && records.length > 0) {
+    if (selectId && records.length > 0 && !shownSelectIds.includes(selectId)) {
       const found = records.find(r => r.id === selectId);
       if (found) {
         setSelectedActivity(found);
         setIsModalVisible(true);
+        setShownSelectIds(prev => [...prev, selectId]);
+        router.setParams({ selectId: undefined });
       }
     }
-  }, [selectId, records]);
+  }, [selectId, records, router, shownSelectIds]);
 
   const fetchMilestones = useCallback(async (isRefresh = false) => {
     const netState = await NetInfo.fetch();
@@ -503,7 +506,7 @@ export default function FarmerReports() {
 
       {/* Detail Modal */}
       <Modal
-        animationType="slide"
+        animationType="fade"
         transparent={true}
         visible={isModalVisible}
         onRequestClose={() => setIsModalVisible(false)}
@@ -512,7 +515,7 @@ export default function FarmerReports() {
           <View style={{ backgroundColor: colors.card, borderRadius: 28, width: '100%', maxHeight: '80%', borderWidth: 1, borderColor: colors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 15, elevation: 8, overflow: 'hidden' }}>
             
             {/* Header */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#f8fafc' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.border }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Info size={18} color={isDark ? colors.primary : '#00643B'} />
                 <Text style={{ fontSize: 16, fontFamily: 'Outfit_700Bold', color: colors.textPrimary }}>Record Details</Text>
@@ -584,6 +587,21 @@ export default function FarmerReports() {
                       <>
                         {selectedActivity.type === 'ai' && (
                           <View style={{ gap: 10 }}>
+                            <DetailRow 
+                              label="Status" 
+                              value={
+                                selectedActivity.details.status === 'rejected' ? 'Declined' :
+                                selectedActivity.details.status === 'cancelled' ? 'Cancelled' :
+                                selectedActivity.details.status === 'approved' ? 'Accepted' :
+                                selectedActivity.details.status === 'done' ? 'Completed' :
+                                selectedActivity.details.status
+                              } 
+                              highlightColor={
+                                selectedActivity.details.status === 'rejected' || selectedActivity.details.status === 'cancelled' ? '#dc2626' :
+                                selectedActivity.details.status === 'approved' || selectedActivity.details.status === 'done' ? '#00643B' :
+                                '#d97706'
+                              }
+                            />
                             <DetailRow label="Sire Breed" value={selectedActivity.details.sireBreed} />
                             <DetailRow label="Sire Code" value={selectedActivity.details.sireCode} />
                             <DetailRow label="Attempt Number" value={selectedActivity.details.attemptNumber?.toString()} />
@@ -595,6 +613,21 @@ export default function FarmerReports() {
 
                         {selectedActivity.type === 'health' && (
                           <View style={{ gap: 10 }}>
+                            <DetailRow 
+                              label="Status" 
+                              value={
+                                selectedActivity.details.status === 'rejected' ? 'Declined' :
+                                selectedActivity.details.status === 'cancelled' ? 'Cancelled' :
+                                selectedActivity.details.status === 'approved' ? 'Accepted' :
+                                selectedActivity.details.status === 'resolved' ? 'Completed' :
+                                selectedActivity.details.status
+                              } 
+                              highlightColor={
+                                selectedActivity.details.status === 'rejected' || selectedActivity.details.status === 'cancelled' ? '#dc2626' :
+                                selectedActivity.details.status === 'approved' || selectedActivity.details.status === 'resolved' ? '#00643B' :
+                                '#d97706'
+                              }
+                            />
                             <DetailRow label="Request Type" value={selectedActivity.details.requestType} />
                             <DetailRow label="Symptoms" value={selectedActivity.details.symptoms} />
                             <DetailRow label="Urgency" value={selectedActivity.details.urgency} highlightColor={selectedActivity.details.urgency?.toLowerCase() === 'high' ? '#dc2626' : selectedActivity.details.urgency?.toLowerCase() === 'medium' ? '#d97706' : '#059669'} />
@@ -644,7 +677,7 @@ export default function FarmerReports() {
             </ScrollView>
 
             {/* Footer */}
-            <View style={{ paddingHorizontal: 24, paddingVertical: 18, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', gap: 12, backgroundColor: isDark ? 'rgba(255,255,255,0.01)' : '#f8fafc' }}>
+            <View style={{ paddingHorizontal: 24, paddingVertical: 18, borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', gap: 12 }}>
               <TouchableOpacity 
                 onPress={() => setIsModalVisible(false)}
                 style={{ flex: 1, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' }}

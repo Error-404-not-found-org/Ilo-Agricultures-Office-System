@@ -32,6 +32,8 @@ const MedicalRecordSchema = new mongoose.Schema(
       diagnosis: String,
       treatment: String,
       weight: Number, // in kg, if type is 'Weight Log'
+      withdrawalPeriodDays: Number,
+      withdrawalEndDate: Date,
     },
     note: String,
     followUpDate: Date,

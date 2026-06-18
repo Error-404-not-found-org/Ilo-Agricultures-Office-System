@@ -37,3 +37,64 @@ export const toggleHoliday = async (req, res) => {
     res.status(500).json({ message: "Failed to update holiday mode." });
   }
 };
+
+// GET /api/config/settings — Retrieve configuration settings parameters
+export const getConfigSettings = async (req, res) => {
+  try {
+    const keys = ["pregnancyWindowDays", "maxAttemptLimit", "emailNotificationEnabled", "smsNotificationEnabled", "registered_breeds"];
+    const configs = await Config.find({ key: { $in: keys } });
+    
+    const configMap = {};
+    configs.forEach(c => {
+      configMap[c.key] = c.value;
+    });
+
+    res.status(200).json({
+      pregnancyWindowDays: configMap["pregnancyWindowDays"] !== undefined ? configMap["pregnancyWindowDays"] : "60",
+      maxAttemptLimit: configMap["maxAttemptLimit"] !== undefined ? configMap["maxAttemptLimit"] : "3",
+      emailNotificationEnabled: configMap["emailNotificationEnabled"] !== undefined ? configMap["emailNotificationEnabled"] : true,
+      smsNotificationEnabled: configMap["smsNotificationEnabled"] !== undefined ? configMap["smsNotificationEnabled"] : true,
+      registered_breeds: configMap["registered_breeds"] !== undefined ? configMap["registered_breeds"] : [
+        "Brahman",
+        "Holstein",
+        "Simmental",
+        "Angus",
+        "Hereford"
+      ]
+    });
+  } catch (error) {
+    console.error("[getConfigSettings ERROR]", error.message);
+    res.status(500).json({ message: "Failed to fetch configurations." });
+  }
+};
+
+// POST /api/config/settings — Update configuration settings parameters
+export const updateConfigSettings = async (req, res) => {
+  try {
+    const { pregnancyWindowDays, maxAttemptLimit, emailNotificationEnabled, smsNotificationEnabled, registered_breeds } = req.body;
+    
+    const updates = [];
+    if (pregnancyWindowDays !== undefined) {
+      updates.push(Config.findOneAndUpdate({ key: "pregnancyWindowDays" }, { value: String(pregnancyWindowDays) }, { upsert: true }));
+    }
+    if (maxAttemptLimit !== undefined) {
+      updates.push(Config.findOneAndUpdate({ key: "maxAttemptLimit" }, { value: String(maxAttemptLimit) }, { upsert: true }));
+    }
+    if (emailNotificationEnabled !== undefined) {
+      updates.push(Config.findOneAndUpdate({ key: "emailNotificationEnabled" }, { value: Boolean(emailNotificationEnabled) }, { upsert: true }));
+    }
+    if (smsNotificationEnabled !== undefined) {
+      updates.push(Config.findOneAndUpdate({ key: "smsNotificationEnabled" }, { value: Boolean(smsNotificationEnabled) }, { upsert: true }));
+    }
+    if (registered_breeds !== undefined) {
+      updates.push(Config.findOneAndUpdate({ key: "registered_breeds" }, { value: registered_breeds }, { upsert: true }));
+    }
+
+    await Promise.all(updates);
+
+    res.status(200).json({ message: "Configuration settings updated successfully." });
+  } catch (error) {
+    console.error("[updateConfigSettings ERROR]", error.message);
+    res.status(500).json({ message: "Failed to update configuration settings." });
+  }
+};

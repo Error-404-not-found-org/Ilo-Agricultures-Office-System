@@ -19,6 +19,9 @@ import {
   Syringe,
   Stethoscope,
   MessageSquare,
+  X,
+  Info,
+  Sparkles,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -30,6 +33,7 @@ import { format } from "date-fns";
 import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useTranslation } from "../../../contexts/TranslationContext";
+import { calculateTargetCalvingDate } from "@/lib/cattleCore";
 
 const PRIMARY = "#00643B";
 
@@ -49,6 +53,13 @@ export default function FarmerHome() {
     animalTag: string;
   } | null>(null);
   const [submittingOutcome, setSubmittingOutcome] = React.useState(false);
+  const [selectedActivity, setSelectedActivity] = React.useState<any | null>(null);
+  const [isModalVisible, setIsModalVisible] = React.useState(false);
+
+  const [congratsModalVisible, setCongratsModalVisible] = React.useState(false);
+  const [congratsInfo, setCongratsInfo] = React.useState<{ animalName: string; expectedCalvingDate: string } | null>(null);
+  const [reInseminateModalVisible, setReInseminateModalVisible] = React.useState(false);
+  const [reInseminateInfo, setReInseminateInfo] = React.useState<{ requestId: string; animalId: string; animalName: string } | null>(null);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["user", "me"],
@@ -202,6 +213,7 @@ export default function FarmerHome() {
     isSuccess: boolean,
     animalName: string,
     animalId: string,
+    req?: any,
   ) => {
     if (submittingOutcome) return;
     setSubmittingOutcome(true);
@@ -209,36 +221,28 @@ export default function FarmerHome() {
       await api.patch(`/ai-request/${requestId}/outcome`, { isSuccess });
 
       if (!isSuccess) {
-        Alert.alert(
-          "Outcome Recorded",
-          `Did ${animalName} show signs of heat again? Would you like to request a 2nd attempt for re-insemination?`,
-          [
-            { text: "Not Now", style: "cancel" },
-            {
-              text: "Yes, Request AI",
-              onPress: () =>
-                router.push({
-                  pathname: "/(farmer)/request-ai",
-                  params: {
-                    requestId,
-                    mode: "re-inseminate",
-                    animalId,
-                    earTag: animalName,
-                  },
-                }),
-            },
-          ],
-        );
+        setReInseminateInfo({
+          requestId,
+          animalId,
+          animalName,
+        });
+        setReInseminateModalVisible(true);
       } else {
-        Alert.alert(
-          "Success!",
-          "Congratulations! Pregnancy has been recorded for your animal.",
+        const targetDate = calculateTargetCalvingDate(
+          req?.inseminationDate || req?.createdAt || new Date(),
+          req?.animalId?.species || "Cattle",
+          undefined,
+          req?.animalId?.breed
         );
+        setCongratsInfo({
+          animalName,
+          expectedCalvingDate: format(targetDate, "MMMM d, yyyy"),
+        });
+        setCongratsModalVisible(true);
       }
-
-      router.replace("/(farmer)/(tabs)");
     } catch (err) {
       console.error(err);
+      toast.error("Failed to record pregnancy outcome.");
     } finally {
       setSubmittingOutcome(false);
     }
@@ -576,6 +580,7 @@ export default function FarmerHome() {
                           true,
                           req.animalId?.earTag || req.animalId?.animalId,
                           req.animalId?._id,
+                          req,
                         )
                       }
                       disabled={submittingOutcome}
@@ -597,6 +602,7 @@ export default function FarmerHome() {
                           false,
                           req.animalId?.earTag || req.animalId?.animalId,
                           req.animalId?._id,
+                          req,
                         )
                       }
                       disabled={submittingOutcome}
@@ -840,12 +846,10 @@ export default function FarmerHome() {
                 <TouchableOpacity
                   key={item.id}
                   activeOpacity={0.7}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/(farmer)/(tabs)/farmer.records",
-                      params: { tab: "records", selectId: item.id },
-                    })
-                  }
+                  onPress={() => {
+                    setSelectedActivity(item);
+                    setIsModalVisible(true);
+                  }}
                 >
                   <RecordItem
                     title={item.title}
@@ -1049,6 +1053,410 @@ export default function FarmerHome() {
           isDestructive={true}
         />
       )}
+
+      {/* Detail Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={isModalVisible}
+        onRequestClose={() => setIsModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/50 justify-center items-center p-5">
+          <View 
+            className="rounded-[28px] w-full max-h-[80%] border overflow-hidden shadow-2xl" 
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            {/* Header */}
+            <View 
+              className="flex-row justify-between items-center px-6 py-4 border-b" 
+              style={{ 
+                borderBottomColor: colors.border, 
+              }}
+            >
+              <View className="flex-row items-center gap-2">
+                <Info size={18} color={isDark ? colors.primary : PRIMARY} />
+                <Text className="text-base font-outfit-bold" style={{ color: colors.textPrimary }}>Record Details</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsModalVisible(false)} className="p-1">
+                <X size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Content */}
+            <ScrollView contentContainerStyle={{ padding: 24 }}>
+              {selectedActivity && (
+                <View className="gap-y-5">
+                  
+                  {/* Category Header Card */}
+                  <View className="items-center gap-y-2 pb-4 border-b" style={{ borderBottomColor: colors.border }}>
+                    <View 
+                      className="rounded-2xl items-center justify-center"
+                      style={{ 
+                        width: 56,
+                        height: 56,
+                        backgroundColor: selectedActivity.type === 'health' 
+                          ? (isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2') 
+                          : selectedActivity.type === 'ai' 
+                            ? (isDark ? 'rgba(59, 130, 246, 0.15)' : '#eff6ff') 
+                            : (isDark ? 'rgba(16, 185, 129, 0.15)' : '#f0fdf4')
+                      }}
+                    >
+                      {selectedActivity.type === 'ai' ? (
+                        <Syringe size={26} color="#2563eb" />
+                      ) : selectedActivity.type === 'health' ? (
+                        <Stethoscope size={26} color="#dc2626" />
+                      ) : (
+                        <MaterialCommunityIcons name="cow" size={30} color="#b45309" />
+                      )}
+                    </View>
+                    <Text className="text-lg font-outfit-black text-center" style={{ color: colors.textPrimary }}>
+                      {selectedActivity.title}
+                    </Text>
+                    <Text className="text-[11px] font-outfit-bold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                      {selectedActivity.date ? format(new Date(selectedActivity.date), 'MMMM dd, yyyy • h:mm a') : 'No Date'}
+                    </Text>
+                  </View>
+
+                  {/* Animal Info */}
+                  {selectedActivity.animalId && (
+                    <View 
+                      className="rounded-2xl p-3 border" 
+                      style={{ 
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#f8fafc',
+                        borderColor: colors.border 
+                      }}
+                    >
+                      <Text className="text-[10px] font-outfit-bold uppercase mb-1" style={{ color: colors.textMuted }}>Subject Animal</Text>
+                      <Text className="text-sm font-outfit-bold" style={{ color: colors.textPrimary }}>
+                        Tag: #{selectedActivity.animalId.earTag || 'No Tag'}
+                      </Text>
+                      <Text className="text-xs font-outfit-medium mt-0.5" style={{ color: colors.textSecondary }}>
+                        {selectedActivity.animalId.breed || 'Unknown Breed'} • {selectedActivity.animalId.species || 'Unknown Species'}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Detailed Information */}
+                  <View className="gap-y-3.5">
+                    <Text className="text-[11px] font-outfit-bold uppercase pb-1 border-b" style={{ color: colors.textMuted, borderBottomColor: colors.border }}>Details</Text>
+                    
+                    {!selectedActivity.details ? (
+                      <View className="p-3 bg-red-50 dark:bg-red-950/20 rounded-xl border border-red-200 dark:border-red-900/20">
+                        <Text className="text-xs font-outfit-medium text-red-600 dark:text-red-400 leading-5">
+                          ⚠️ Detailed data is missing from the server.
+                        </Text>
+                      </View>
+                    ) : (
+                      <>
+                        {selectedActivity.type === 'ai' && (
+                          <View className="gap-y-2.5">
+                            <DetailRow 
+                              label="Status" 
+                              value={
+                                selectedActivity.details.status === 'rejected' ? 'Declined' :
+                                selectedActivity.details.status === 'cancelled' ? 'Cancelled' :
+                                selectedActivity.details.status === 'approved' ? 'Accepted' :
+                                selectedActivity.details.status === 'done' ? 'Completed' :
+                                selectedActivity.details.status
+                              } 
+                              highlightColor={
+                                selectedActivity.details.status === 'rejected' || selectedActivity.details.status === 'cancelled' ? '#dc2626' :
+                                selectedActivity.details.status === 'approved' || selectedActivity.details.status === 'done' ? '#00643B' :
+                                '#d97706'
+                              }
+                            />
+                            <DetailRow label="Sire Breed" value={selectedActivity.details.sireBreed} />
+                            <DetailRow label="Sire Code" value={selectedActivity.details.sireCode} />
+                            <DetailRow label="Attempt Number" value={selectedActivity.details.attemptNumber?.toString()} />
+                            <DetailRow label="Estrus Type" value={selectedActivity.details.estrus} />
+                            <DetailRow label="Outcome" value={selectedActivity.details.outcome} highlightColor={selectedActivity.details.outcome?.toLowerCase() === 'success' ? '#059669' : selectedActivity.details.outcome?.toLowerCase() === 'failed' ? '#dc2626' : undefined} />
+                            <DetailRow label="Technician" value={selectedActivity.details.technician} />
+                          </View>
+                        )}
+
+                        {selectedActivity.type === 'health' && (
+                          <View className="gap-y-2.5">
+                            <DetailRow 
+                              label="Status" 
+                              value={
+                                selectedActivity.details.status === 'rejected' ? 'Declined' :
+                                selectedActivity.details.status === 'cancelled' ? 'Cancelled' :
+                                selectedActivity.details.status === 'approved' ? 'Accepted' :
+                                selectedActivity.details.status === 'resolved' ? 'Completed' :
+                                selectedActivity.details.status
+                              } 
+                              highlightColor={
+                                selectedActivity.details.status === 'rejected' || selectedActivity.details.status === 'cancelled' ? '#dc2626' :
+                                selectedActivity.details.status === 'approved' || selectedActivity.details.status === 'resolved' ? '#00643B' :
+                                '#d97706'
+                              }
+                            />
+                            <DetailRow label="Request Type" value={selectedActivity.details.requestType} />
+                            <DetailRow label="Symptoms" value={selectedActivity.details.symptoms} />
+                            <DetailRow label="Urgency" value={selectedActivity.details.urgency} highlightColor={selectedActivity.details.urgency?.toLowerCase() === 'high' ? '#dc2626' : selectedActivity.details.urgency?.toLowerCase() === 'medium' ? '#d97706' : '#059669'} />
+                            <DetailRow label="Diagnosis" value={selectedActivity.details.diagnosis} />
+                            <DetailRow label="Treatment" value={selectedActivity.details.treatment} />
+                            <DetailRow label="Medicine / Advice" value={selectedActivity.details.advice} />
+                            <DetailRow label="Technician / Vet" value={selectedActivity.details.technician} />
+                          </View>
+                        )}
+
+                        {selectedActivity.type === 'calving' && (
+                          <View className="gap-y-2.5">
+                            <DetailRow label="Calving Ease" value={selectedActivity.details.calvingEase} />
+                            <DetailRow label="Number of Calves" value={selectedActivity.details.numberOfCalves?.toString()} />
+                            <DetailRow label="Technician" value={selectedActivity.details.technician} />
+                            
+                            {selectedActivity.details.calves && selectedActivity.details.calves.length > 0 && (
+                              <View className="mt-2 gap-y-1.5">
+                                <Text className="text-xs font-outfit-bold" style={{ color: colors.textSecondary }}>Calves Registered:</Text>
+                                {selectedActivity.details.calves.map((calf: any, index: number) => (
+                                  <View key={index} className="p-2.5 rounded-xl border" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : '#f8fafc', borderColor: colors.border }}>
+                                    <Text className="text-xs font-outfit-bold" style={{ color: colors.textPrimary }}>Calf #{index + 1}: {calf.sex}</Text>
+                                    {calf.earTag && <Text className="text-[11px] font-outfit-medium mt-0.5" style={{ color: colors.textSecondary }}>Tag: #{calf.earTag}</Text>}
+                                    {calf.weight && <Text className="text-[11px] font-outfit-medium" style={{ color: colors.textSecondary }}>Weight: {calf.weight} kg</Text>}
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        )}
+                      </>
+                    )}
+                  </View>
+
+                  {/* Technician Notes */}
+                  {selectedActivity.details?.technicianNote && (
+                    <View className="gap-y-1.5 p-4 rounded-2xl border" style={{ backgroundColor: isDark ? 'rgba(0, 100, 59, 0.05)' : '#f0fdf4', borderColor: isDark ? 'rgba(0, 100, 59, 0.2)' : '#d1fae5' }}>
+                      <Text className="text-[11px] font-outfit-black uppercase" style={{ color: isDark ? '#34d399' : '#00643B' }}>Observations / Notes</Text>
+                      <Text className="text-xs font-outfit-medium italic leading-5" style={{ color: colors.textPrimary }}>
+                        "{selectedActivity.details.technicianNote}"
+                      </Text>
+                    </View>
+                  )}
+
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Footer */}
+            <View className="px-6 py-4 border-t flex-row gap-3" style={{ borderTopColor: colors.border }}>
+              <TouchableOpacity 
+                onPress={() => setIsModalVisible(false)}
+                className="flex-1 py-3 rounded-2xl border items-center justify-center"
+                style={{ borderColor: colors.border }}
+              >
+                <Text className="text-xs font-outfit-bold" style={{ color: colors.textSecondary }}>Close</Text>
+              </TouchableOpacity>
+              
+              {selectedActivity?.animalId?._id && (
+                <TouchableOpacity 
+                  onPress={() => {
+                    setIsModalVisible(false);
+                    router.push(`/(farmer)/animal-details?id=${selectedActivity.animalId?._id}`);
+                  }}
+                  className="flex-1 py-3 rounded-2xl items-center justify-center"
+                  style={{ backgroundColor: isDark ? colors.primary : PRIMARY }}
+                >
+                  <Text className="text-xs font-outfit-bold text-white">View Animal</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+          </View>
+        </View>
+      </Modal>
+
+      {/* Congrats Pregnancy Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={congratsModalVisible}
+        onRequestClose={() => setCongratsModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-center items-center p-6">
+          <View 
+            className="rounded-[30px] w-full p-6 items-center border shadow-2xl relative overflow-hidden"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            {/* Ambient Background Glow decoration */}
+            <View className="absolute -top-12 -right-12 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full" />
+            <View className="absolute -bottom-12 -left-12 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full" />
+
+            {/* Floating Sparks */}
+            <View className="absolute top-6 left-8 opacity-25">
+              <Sparkles size={20} color="#fbbf24" />
+            </View>
+            <View className="absolute top-16 right-6 opacity-25">
+              <Sparkles size={24} color="#34d399" />
+            </View>
+            <View className="absolute bottom-28 left-6 opacity-25">
+              <Sparkles size={16} color="#fbbf24" />
+            </View>
+
+            {/* Double-Ringed Sparkling Icon Container */}
+            <View className="w-20 h-20 rounded-full bg-emerald-50 dark:bg-emerald-950/30 items-center justify-center mb-4 border border-emerald-100 dark:border-emerald-900/30">
+              <View className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/40 items-center justify-center">
+                <MaterialCommunityIcons name="check-decagram" size={30} color="#10b981" />
+              </View>
+            </View>
+
+            <Text className="text-xl font-outfit-black text-center" style={{ color: colors.textPrimary }}>
+              Pregnancy Confirmed! 🎉
+            </Text>
+            
+            <View className="mt-3 px-1 items-center flex-row flex-wrap justify-center gap-1.5">
+              <Text className="text-sm font-outfit-medium text-center" style={{ color: colors.textSecondary }}>
+                Wonderful news!
+              </Text>
+              <View className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100/50 dark:border-emerald-900/30 px-2.5 py-0.5 rounded-full">
+                <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-700 dark:text-emerald-400 text-xs">
+                  #{congratsInfo?.animalName}
+                </Text>
+              </View>
+              <Text className="text-sm font-outfit-medium text-center" style={{ color: colors.textSecondary }}>
+                is officially pregnant.
+              </Text>
+            </View>
+
+            {/* Expected Calving Date Card */}
+            {congratsInfo?.expectedCalvingDate && (
+              <View 
+                className="w-full rounded-2xl p-4 mt-6 border items-center flex-row gap-4"
+                style={{ 
+                  backgroundColor: isDark ? 'rgba(16, 185, 129, 0.05)' : '#f0fdf4',
+                  borderColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#dcfce7'
+                }}
+              >
+                <View className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-950/30 items-center justify-center">
+                  <MaterialCommunityIcons name="calendar-heart" size={26} color={isDark ? '#34d399' : '#047857'} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[10px] font-outfit-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                    Estimated Calving Date
+                  </Text>
+                  <Text className="text-[16px] font-outfit-black text-slate-800 dark:text-white mt-0.5">
+                    {congratsInfo.expectedCalvingDate}
+                  </Text>
+                  <Text className="text-[10px] font-outfit-medium text-slate-400 dark:text-slate-500 mt-0.5">
+                    Based on gestation milestones
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Confirm Button */}
+            <TouchableOpacity
+              onPress={() => {
+                setCongratsModalVisible(false);
+                queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+                queryClient.invalidateQueries({ queryKey: ["visits", "upcoming"] });
+                queryClient.invalidateQueries({ queryKey: ["ai-requests"] });
+                queryClient.invalidateQueries({ queryKey: ["user", "activity"] });
+              }}
+              style={{ backgroundColor: isDark ? colors.primary : PRIMARY }}
+              className="w-full py-4 rounded-2xl items-center mt-6 shadow-md active:opacity-90"
+            >
+              <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white text-sm tracking-wide uppercase">
+                Great, Thank You!
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reheat Re-Insemination Choice Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={reInseminateModalVisible}
+        onRequestClose={() => setReInseminateModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-center items-center p-6">
+          <View 
+            className="rounded-[30px] w-full p-6 items-center border shadow-2xl relative overflow-hidden"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            {/* Ambient Background Glow decoration */}
+            <View className="absolute -top-12 -right-12 w-28 h-28 bg-orange-500/5 dark:bg-orange-500/10 rounded-full" />
+            <View className="absolute -bottom-12 -left-12 w-28 h-28 bg-orange-500/5 dark:bg-orange-500/10 rounded-full" />
+
+            {/* Double-Ringed Warning Icon Container */}
+            <View className="w-20 h-20 rounded-full bg-orange-50 dark:bg-orange-950/30 items-center justify-center mb-4 border border-orange-100 dark:border-orange-900/30">
+              <View className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/40 items-center justify-center">
+                <MaterialCommunityIcons name="fire" size={28} color="#f97316" />
+              </View>
+            </View>
+
+            <Text className="text-xl font-outfit-black text-center" style={{ color: colors.textPrimary }}>
+              Outcome Recorded
+            </Text>
+            
+            <View className="mt-3 px-1 items-center flex-row flex-wrap justify-center gap-1.5">
+              <Text className="text-sm font-outfit-medium text-center" style={{ color: colors.textSecondary }}>
+                Reheat observed for
+              </Text>
+              <View className="bg-orange-50 dark:bg-orange-950/40 border border-orange-100/50 dark:border-orange-900/30 px-2.5 py-0.5 rounded-full">
+                <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-orange-700 dark:text-orange-400 text-xs">
+                  #{reInseminateInfo?.animalName}
+                </Text>
+              </View>
+              <Text className="text-sm font-outfit-medium text-center" style={{ color: colors.textSecondary }}>
+                .
+              </Text>
+            </View>
+            <Text className="text-sm font-outfit-medium text-center mt-1 px-2" style={{ color: colors.textSecondary }}>
+              Would you like to request another A.I. attempt for this animal?
+            </Text>
+
+            {/* Buttons Row */}
+            <View className="flex-row gap-3 w-full mt-6">
+              <TouchableOpacity
+                onPress={() => {
+                  setReInseminateModalVisible(false);
+                  queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+                  queryClient.invalidateQueries({ queryKey: ["visits", "upcoming"] });
+                  queryClient.invalidateQueries({ queryKey: ["ai-requests"] });
+                  queryClient.invalidateQueries({ queryKey: ["user", "activity"] });
+                }}
+                className="flex-1 py-3.5 border rounded-2xl items-center justify-center"
+                style={{ borderColor: colors.border, backgroundColor: colors.background }}
+              >
+                <Text className="font-outfit-bold text-xs" style={{ color: colors.textSecondary }}>
+                  NOT NOW
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setReInseminateModalVisible(false);
+                  queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+                  queryClient.invalidateQueries({ queryKey: ["visits", "upcoming"] });
+                  queryClient.invalidateQueries({ queryKey: ["ai-requests"] });
+                  queryClient.invalidateQueries({ queryKey: ["user", "activity"] });
+                  if (reInseminateInfo) {
+                    router.push({
+                      pathname: "/(farmer)/request-ai",
+                      params: {
+                        requestId: reInseminateInfo.requestId,
+                        mode: "re-inseminate",
+                        animalId: reInseminateInfo.animalId,
+                        earTag: reInseminateInfo.animalName,
+                      },
+                    });
+                  }
+                }}
+                style={{ backgroundColor: colors.primary }}
+                className="flex-1 py-3.5 rounded-2xl items-center justify-center shadow-md active:opacity-90"
+              >
+                <Text className="text-white font-outfit-bold text-xs">
+                  YES, REQUEST AI
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1102,6 +1510,21 @@ const HubOption = ({
         color={isDark ? colors.textMuted : "#CBD5E1"}
       />
     </TouchableOpacity>
+  );
+};
+
+const DetailRow = ({ label, value, highlightColor }: { label: string; value?: string; highlightColor?: string }) => {
+  const { colors } = useTheme();
+  return (
+    <View className="flex-row justify-between items-center py-1">
+      <Text className="text-xs font-outfit-medium" style={{ color: colors.textSecondary }}>{label}</Text>
+      <Text 
+        className="text-[13px] font-outfit-bold capitalize text-right flex-1 ml-4" 
+        style={{ color: highlightColor || colors.textPrimary }}
+      >
+        {value || 'N/A'}
+      </Text>
+    </View>
   );
 };
 

@@ -28,6 +28,7 @@ import {
   ClipboardList,
   Scale,
   X,
+  Sparkles,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useCallback } from "react";
@@ -129,6 +130,10 @@ export default function AnimalDetails() {
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [recordModalVisible, setRecordModalVisible] = useState(false);
 
+  const [congratsModalVisible, setCongratsModalVisible] = useState(false);
+  const [reheatModalVisible, setReheatModalVisible] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
       if (!id) return;
@@ -157,6 +162,58 @@ export default function AnimalDetails() {
       fetchAnimal();
     }, [id, api]),
   );
+
+  const handleConfirmPregnancy = async () => {
+    setIsUpdatingStatus(true);
+    try {
+      const lastInsem = animal?.inseminations?.[0];
+      if (lastInsem?._id) {
+        await api.patch(`/ai-request/${lastInsem._id}/outcome`, {
+          isSuccess: true,
+          note: "Farmer confirmed pregnancy via profile."
+        });
+      } else {
+        await api.patch(`/animals/${id}/reproductive-status`, {
+          status: "Pregnant",
+          note: "Farmer confirmed pregnancy."
+        });
+      }
+      toast.success("Pregnancy Confirmed! 🎉");
+      setAnimal({ ...animal, reproductiveStatus: "Pregnant" });
+      setCongratsModalVisible(false);
+      queryClient.invalidateQueries({ queryKey: ['animals', id] });
+    } catch {
+      toast.error("Failed to update pregnancy.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
+
+  const handleConfirmReheat = async () => {
+    setIsUpdatingStatus(true);
+    try {
+      const lastInsem = animal?.inseminations?.[0];
+      if (lastInsem?._id) {
+        await api.patch(`/ai-request/${lastInsem._id}/outcome`, {
+          isSuccess: false,
+          note: "Farmer manually logged reheat via profile."
+        });
+      } else {
+        await api.patch(`/animals/${id}/reproductive-status`, {
+          status: "In Heat",
+          note: "Farmer reported reheat."
+        });
+      }
+      toast.success("Status updated to In Heat.");
+      setAnimal({ ...animal, reproductiveStatus: "In Heat" });
+      setReheatModalVisible(false);
+      queryClient.invalidateQueries({ queryKey: ['animals', id] });
+    } catch {
+      toast.error("Failed to update status.");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   const handleDelete = () => {
     setDeleteModalVisible(true);
@@ -237,6 +294,21 @@ export default function AnimalDetails() {
     else ageDisplay = "Newborn";
   }
 
+  // Compute Breeding Statistics
+  const completedInseminations = (animal.inseminations || []).filter(
+    (ins: any) => ins.status === "done"
+  );
+  const totalAttempts = completedInseminations.length;
+  const successfulAttempts = completedInseminations.filter(
+    (ins: any) =>
+      ins.outcome === "Pregnant" ||
+      ins.isSuccess === true ||
+      ins.pregnancyStatus === "Pregnant"
+  ).length;
+  const successRate = totalAttempts > 0
+    ? Math.round((successfulAttempts / totalAttempts) * 100)
+    : 0;
+
   // Combine and sort medical history
   const combinedHistory = [
     ...(animal.inseminations || []).map((i: any) => ({
@@ -254,6 +326,13 @@ export default function AnimalDetails() {
     (a, b) =>
       new Date(b.recordDate).getTime() - new Date(a.recordDate).getTime(),
   );
+
+  // Check for active medicine withdrawal period
+  const activeWithdrawalRecord = (medicalRecords || []).find((record: any) => {
+    if (!record.details?.withdrawalEndDate) return false;
+    const endDate = new Date(record.details.withdrawalEndDate);
+    return endDate > new Date();
+  });
 
   return (
     <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950" style={{ backgroundColor: colors.background }}>
@@ -369,6 +448,28 @@ export default function AnimalDetails() {
           contentContainerStyle={{ paddingBottom: 100 }}
           className="px-6"
         >
+          {/* Active Withdrawal Warning Card */}
+          {activeWithdrawalRecord && (
+            <View 
+              className="mb-6 p-4 rounded-3xl border flex-row gap-3 items-center"
+              style={{
+                backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2',
+                borderColor: isDark ? 'rgba(239, 68, 68, 0.3)' : '#fecaca',
+              }}
+            >
+              <View className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950/40 items-center justify-center">
+                <MaterialCommunityIcons name="alert-decagram" size={24} color="#ef4444" />
+              </View>
+              <View className="flex-1">
+                <Text style={{ fontFamily: 'Outfit_900Black', color: '#ef4444' }} className="text-[12px] uppercase tracking-wider">
+                  ⚠️ Active Withdrawal Warning
+                </Text>
+                <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textSecondary }} className="text-[11px] leading-4 mt-0.5">
+                  Meat and milk from this animal are unsafe for consumption or sale until <Text className="font-outfit-bold text-red-600 dark:text-red-400">{new Date(activeWithdrawalRecord.details.withdrawalEndDate).toLocaleDateString("en-US", { month: 'long', day: 'numeric', year: 'numeric' })}</Text> due to recent <Text className="font-outfit-bold">{activeWithdrawalRecord.details.medicineName || "medicine"}</Text> treatment.
+                </Text>
+              </View>
+            </View>
+          )}
           {/* --- MOOWIE GREETING SECTION --- */}
           <View className="mb-8">
             <View className="flex-row items-end">
@@ -526,37 +627,9 @@ export default function AnimalDetails() {
                         <View className="flex-col gap-3">
                           <View className="flex-row gap-3">
                             {/* Reheat Button */}
+                            {/* Reheat Button */}
                             <TouchableOpacity
-                              onPress={() => {
-                                Alert.alert(
-                                  "Report Reheat",
-                                  "Did you observe signs of heat (estrus) in this animal? This means the AI was likely unsuccessful.",
-                                  [
-                                    { text: "Cancel", style: "cancel" },
-                                    { 
-                                      text: "Yes, Reheated", 
-                                      style: "destructive",
-                                      onPress: async () => {
-                                        try {
-                                          if (lastInsem?._id) {
-                                            await api.patch(`/ai-request/${lastInsem._id}/outcome`, {
-                                              isSuccess: false,
-                                              note: "Farmer manually logged reheat via profile."
-                                            });
-                                          } else {
-                                            await api.patch(`/animals/${id}/reproductive-status`, {
-                                              status: "In Heat",
-                                              note: "Farmer reported reheat."
-                                            });
-                                          }
-                                          toast.success("Status updated to In Heat.");
-                                          setAnimal({ ...animal, reproductiveStatus: "In Heat" });
-                                        } catch { toast.error("Failed to update."); }
-                                      }
-                                    }
-                                  ]
-                                );
-                              }}
+                              onPress={() => setReheatModalVisible(true)}
                               className="flex-1 py-3 rounded-2xl items-center"
                               style={{ backgroundColor: isDark ? 'rgba(249, 115, 22, 0.1)' : 'rgba(255, 255, 255, 0.6)', borderColor: isDark ? 'rgba(249, 115, 22, 0.3)' : '#fed7aa', borderWidth: 1 }}
                             >
@@ -565,35 +638,7 @@ export default function AnimalDetails() {
 
                             {/* Pregnant Button */}
                             <TouchableOpacity
-                              onPress={() => {
-                                Alert.alert(
-                                  "Confirm Pregnancy",
-                                  "Are you sure you want to mark this animal as successfully pregnant? This will register a PD record for the technician.",
-                                  [
-                                    { text: "Cancel", style: "cancel" },
-                                    { 
-                                      text: "Yes, Pregnant", 
-                                      onPress: async () => {
-                                        try {
-                                          if (lastInsem?._id) {
-                                            await api.patch(`/ai-request/${lastInsem._id}/outcome`, {
-                                              isSuccess: true,
-                                              note: "Farmer confirmed pregnancy via profile."
-                                            });
-                                          } else {
-                                            await api.patch(`/animals/${id}/reproductive-status`, {
-                                              status: "Pregnant",
-                                              note: "Farmer confirmed pregnancy."
-                                            });
-                                          }
-                                          toast.success("Pregnancy Confirmed! 🎉");
-                                          setAnimal({ ...animal, reproductiveStatus: "Pregnant" });
-                                        } catch { toast.error("Failed to update pregnancy."); }
-                                      }
-                                    }
-                                  ]
-                                );
-                              }}
+                              onPress={() => setCongratsModalVisible(true)}
                               className="flex-1 py-3 rounded-2xl items-center shadow-sm"
                               style={{ backgroundColor: color }}
                             >
@@ -742,22 +787,168 @@ export default function AnimalDetails() {
                 </View>
               )}
 
+              {/* --- BREEDING STATISTICS CARD --- */}
+              {animal.gender === "Female" && (
+                <View
+                  className="p-5 rounded-3xl border mb-2"
+                  style={{
+                    shadowColor: "#94a3b8",
+                    shadowOpacity: 0.05,
+                    shadowRadius: 8,
+                    elevation: 2,
+                    backgroundColor: colors.card,
+                    borderColor: colors.border
+                  }}
+                >
+                  <View className="flex-row items-center mb-5 gap-2">
+                    <MaterialCommunityIcons
+                      name="chart-bell-curve-cumulative"
+                      size={20}
+                      color={primaryColor}
+                    />
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="text-lg">
+                      Breeding Statistics
+                    </Text>
+                  </View>
+
+                  <View className="flex-row gap-4 mb-4">
+                    {/* Success Rate */}
+                    <View 
+                      className="flex-1 p-4 rounded-2xl border items-center justify-center"
+                      style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
+                    >
+                      <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textMuted }} className="text-[9px] uppercase tracking-widest mb-1 text-center">
+                        A.I. Success Rate
+                      </Text>
+                      <Text style={{ fontFamily: 'Outfit_900Black', color: successRate >= 50 ? '#10b981' : colors.textPrimary }} className="text-2xl mt-1">
+                        {totalAttempts > 0 ? `${successRate}%` : "0%"}
+                      </Text>
+                      <View className="px-2 py-0.5 rounded-full mt-2" style={{ backgroundColor: successRate >= 50 ? 'rgba(16, 185, 129, 0.15)' : 'rgba(148, 163, 184, 0.15)' }}>
+                        <Text style={{ fontFamily: 'Outfit_900Black', color: successRate >= 50 ? '#10b981' : colors.textMuted }} className="text-[8px] uppercase tracking-tighter">
+                          {totalAttempts} {totalAttempts === 1 ? 'Attempt' : 'Attempts'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Parity Tracker */}
+                    <View 
+                      className="flex-1 p-4 rounded-2xl border items-center justify-center"
+                      style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
+                    >
+                      <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textMuted }} className="text-[9px] uppercase tracking-widest mb-1 text-center">
+                        Parity (Births)
+                      </Text>
+                      <Text style={{ fontFamily: 'Outfit_900Black', color: primaryColor }} className="text-2xl mt-1">
+                        {animal.parity || 0}
+                      </Text>
+                      <View className="px-2 py-0.5 rounded-full mt-2" style={{ backgroundColor: colors.tint }}>
+                        <Text style={{ fontFamily: 'Outfit_900Black', color: primaryColor }} className="text-[8px] uppercase tracking-tighter">
+                          Total Offspring
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Last Calving Date */}
+                  {animal.lastCalvingDate && (
+                    <View 
+                      className="p-4 rounded-2xl border flex-row items-center justify-between"
+                      style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
+                    >
+                      <View className="flex-row items-center gap-2">
+                        <Calendar size={14} color={colors.textMuted} />
+                        <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary }} className="text-xs">
+                          Last Calving Date
+                        </Text>
+                      </View>
+                      <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-xs">
+                        {new Date(animal.lastCalvingDate).toLocaleDateString("en-US", { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+
               {/* Basic Info Section */}
+              {/* --- QUICK DETAILS GRID --- */}
+              <View className="flex-row flex-wrap justify-between gap-y-3 mb-2">
+                {/* Age Card */}
+                <View 
+                  className="w-[48%] p-4 rounded-3xl border flex-col justify-between shadow-sm"
+                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                >
+                  <View className="flex-row justify-between items-center mb-3">
+                    <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textMuted }} className="text-[9px] uppercase tracking-widest">
+                      Current Age
+                    </Text>
+                    <Calendar size={14} color={primaryColor} />
+                  </View>
+                  <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-sm" numberOfLines={1}>
+                    {ageDisplay}
+                  </Text>
+                </View>
+
+                {/* Gender Card */}
+                <View 
+                  className="w-[48%] p-4 rounded-3xl border flex-col justify-between shadow-sm"
+                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                >
+                  <View className="flex-row justify-between items-center mb-3">
+                    <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textMuted }} className="text-[9px] uppercase tracking-widest">
+                      Gender
+                    </Text>
+                    <User size={14} color={primaryColor} />
+                  </View>
+                  <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-sm" numberOfLines={1}>
+                    {animal.gender || "Female"}
+                  </Text>
+                </View>
+
+                {/* Species Card */}
+                <View 
+                  className="w-[48%] p-4 rounded-3xl border flex-col justify-between shadow-sm"
+                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                >
+                  <View className="flex-row justify-between items-center mb-3">
+                    <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textMuted }} className="text-[9px] uppercase tracking-widest">
+                      Species
+                    </Text>
+                    <Activity size={14} color={primaryColor} />
+                  </View>
+                  <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-sm" numberOfLines={1}>
+                    {animal.species || "Cattle"}
+                  </Text>
+                </View>
+
+                {/* Breed Card */}
+                <View 
+                  className="w-[48%] p-4 rounded-3xl border flex-col justify-between shadow-sm"
+                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                >
+                  <View className="flex-row justify-between items-center mb-3">
+                    <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textMuted }} className="text-[9px] uppercase tracking-widest">
+                      Breed Type
+                    </Text>
+                    <MaterialCommunityIcons name="tag-outline" size={14} color={primaryColor} />
+                  </View>
+                  <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-sm" numberOfLines={1}>
+                    {animal.breed || "Unspecified"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Registry Identifiers Card */}
               <View
-                className="p-5 rounded-3xl border"
+                className="p-5 rounded-3xl border mb-2 shadow-sm"
                 style={{
-                  shadowColor: "#94a3b8",
-                  shadowOpacity: 0.05,
-                  shadowRadius: 8,
-                  elevation: 2,
                   backgroundColor: colors.card,
                   borderColor: colors.border
                 }}
               >
                 <View className="flex-row items-center mb-5 gap-2">
-                  <Activity size={20} color={primaryColor} />
+                  <ClipboardList size={20} color={primaryColor} />
                   <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="text-lg">
-                    Biological Details
+                    Registry Identifiers
                   </Text>
                 </View>
 
@@ -765,20 +956,6 @@ export default function AnimalDetails() {
                   <InfoRow
                     label="System ID"
                     value={animal.animalId || "Missing"}
-                  />
-                  <Divider />
-                  <InfoRow label="Gender" value={animal.gender || "Female"} />
-                  <Divider />
-                  <InfoRow label="Current Age" value={ageDisplay} />
-                  <Divider />
-                  <InfoRow
-                    label="Species"
-                    value={animal.species || "Missing"}
-                  />
-                  <Divider />
-                  <InfoRow
-                    label="Breed Type"
-                    value={animal.breed || "Missing"}
                   />
                   <Divider />
                   <InfoRow
@@ -792,6 +969,123 @@ export default function AnimalDetails() {
                   />
                 </View>
               </View>
+
+              {/* --- FAMILY LINEAGE CARD --- */}
+              {(animal.motherId || (animal.offspring && animal.offspring.length > 0)) && (
+                <View
+                  className="p-5 rounded-3xl border mb-2"
+                  style={{
+                    shadowColor: "#94a3b8",
+                    shadowOpacity: 0.05,
+                    shadowRadius: 8,
+                    elevation: 2,
+                    backgroundColor: colors.card,
+                    borderColor: colors.border
+                  }}
+                >
+                  <View className="flex-row items-center mb-5 gap-2">
+                    <MaterialCommunityIcons
+                      name="family-tree"
+                      size={20}
+                      color={primaryColor}
+                    />
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="text-lg">
+                      Family Lineage
+                    </Text>
+                  </View>
+
+                  <View className="gap-y-4">
+                    {/* Mother Profile */}
+                    {animal.motherId && (
+                      <View>
+                        <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textMuted }} className="text-[9px] uppercase tracking-widest mb-2 ml-1">
+                          Mother (Dam)
+                        </Text>
+                        <TouchableOpacity
+                          onPress={() => router.push({ pathname: "/(farmer)/animal-details", params: { id: animal.motherId._id || animal.motherId } } as any)}
+                          className="flex-row items-center justify-between p-3 rounded-2xl border"
+                          style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
+                        >
+                          <View className="flex-row items-center gap-3">
+                            <View 
+                              className="w-10 h-10 rounded-xl items-center justify-center border"
+                              style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                            >
+                              {animal.motherId.imageUrl ? (
+                                <Image source={{ uri: animal.motherId.imageUrl }} className="w-full h-full rounded-xl" resizeMode="cover" />
+                              ) : (
+                                <MaterialCommunityIcons name="cow" size={20} color={primaryColor} />
+                              )}
+                            </View>
+                            <View>
+                              <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="text-sm">
+                                Tag #{animal.motherId.earTag || "Unknown"}
+                              </Text>
+                              <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textSecondary }} className="text-[10px] uppercase mt-0.5">
+                                {animal.motherId.breed} • {animal.motherId.species}
+                              </Text>
+                            </View>
+                          </View>
+                          <View className="flex-row items-center gap-1">
+                            <View className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                              <Text style={{ fontFamily: 'Outfit_900Black', color: '#10b981' }} className="text-[8px] uppercase tracking-wider">
+                                {animal.motherId.reproductiveStatus || "Normal"}
+                              </Text>
+                            </View>
+                          </View>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+
+                    {/* Offspring Profiles */}
+                    {animal.offspring && animal.offspring.length > 0 && (
+                      <View>
+                        <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textMuted }} className="text-[9px] uppercase tracking-widest mb-2 ml-1">
+                          Offspring ({animal.offspring.length})
+                        </Text>
+                        <View className="gap-y-2">
+                          {animal.offspring.map((calf: any) => (
+                            <TouchableOpacity
+                              key={calf._id}
+                              onPress={() => router.push({ pathname: "/(farmer)/animal-details", params: { id: calf._id } } as any)}
+                              className="flex-row items-center justify-between p-3 rounded-2xl border"
+                              style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
+                            >
+                              <View className="flex-row items-center gap-3">
+                                <View 
+                                  className="w-10 h-10 rounded-xl items-center justify-center border"
+                                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                                >
+                                  {calf.imageUrl ? (
+                                    <Image source={{ uri: calf.imageUrl }} className="w-full h-full rounded-xl" resizeMode="cover" />
+                                  ) : (
+                                    <MaterialCommunityIcons name="cow" size={20} color={primaryColor} />
+                                  )}
+                                </View>
+                                <View>
+                                  <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="text-sm">
+                                    Tag #{calf.earTag || "Unknown"}
+                                  </Text>
+                                  <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textSecondary }} className="text-[10px] uppercase mt-0.5">
+                                    {calf.gender === 'Male' ? 'Male ♂' : 'Female ♀'} • {calf.breed}
+                                  </Text>
+                                </View>
+                              </View>
+                              <View className="flex-row items-center gap-2">
+                                <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.border }}>
+                                  <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textSecondary }} className="text-[8px] uppercase tracking-wide">
+                                    {calf.reproductiveStatus || "Normal"}
+                                  </Text>
+                                </View>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              )}
 
               {/* Owner Info Section */}
               <View
@@ -1554,6 +1848,207 @@ export default function AnimalDetails() {
         cancelText="No, Keep it"
         isDestructive={true}
       />
+
+      {/* Congrats Pregnancy Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={congratsModalVisible}
+        onRequestClose={() => setCongratsModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-center items-center p-6">
+          <View 
+            className="rounded-[30px] w-full p-6 items-center border shadow-2xl relative overflow-hidden"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            {/* Ambient Background Glow decoration */}
+            <View className="absolute -top-12 -right-12 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full" />
+            <View className="absolute -bottom-12 -left-12 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full" />
+
+            {/* Floating Sparks */}
+            <View className="absolute top-6 left-8 opacity-25">
+              <Sparkles size={20} color="#fbbf24" />
+            </View>
+            <View className="absolute top-16 right-6 opacity-25">
+              <Sparkles size={24} color="#34d399" />
+            </View>
+            <View className="absolute bottom-28 left-6 opacity-25">
+              <Sparkles size={16} color="#fbbf24" />
+            </View>
+
+            {/* Double-Ringed Sparkling Icon Container */}
+            <View className="w-20 h-20 rounded-full bg-emerald-50 dark:bg-emerald-950/30 items-center justify-center mb-4 border border-emerald-100 dark:border-emerald-900/30">
+              <View className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/40 items-center justify-center">
+                <MaterialCommunityIcons name="check-decagram" size={30} color="#10b981" />
+              </View>
+            </View>
+
+            <Text className="text-xl font-outfit-black text-center" style={{ color: colors.textPrimary }}>
+              Confirm Pregnancy 🎉
+            </Text>
+            
+            <View className="mt-3 px-1 items-center flex-row flex-wrap justify-center gap-1.5">
+              <Text className="text-sm font-outfit-medium text-center" style={{ color: colors.textSecondary }}>
+                Are you sure you want to mark
+              </Text>
+              <View className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100/50 dark:border-emerald-900/30 px-2.5 py-0.5 rounded-full">
+                <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-emerald-700 dark:text-emerald-400 text-xs">
+                  #{animal?.earTag || animal?.animalId}
+                </Text>
+              </View>
+              <Text className="text-sm font-outfit-medium text-center" style={{ color: colors.textSecondary }}>
+                as pregnant?
+              </Text>
+            </View>
+
+            {/* Expected Calving Date Card */}
+            {(() => {
+              const lastInsem = animal.inseminations?.[0];
+              const lastInsemDate = lastInsem?.dateOfAI || lastInsem?.createdAt || animal.updatedAt;
+              const insemStartDate = new Date(lastInsemDate);
+              const normSpecies = normalizeSpecies(animal.species);
+              const profile = SPECIES_PROFILES[normSpecies] || SPECIES_PROFILES["Cattle"];
+              const gestationDays = profile.avgGestationDays;
+              const dueDate = new Date(insemStartDate);
+              dueDate.setDate(insemStartDate.getDate() + gestationDays);
+              const formattedDueDate = dueDate.toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              });
+
+              return (
+                <View 
+                  className="w-full rounded-2xl p-4 mt-6 border items-center flex-row gap-4"
+                  style={{ 
+                    backgroundColor: isDark ? 'rgba(16, 185, 129, 0.05)' : '#f0fdf4',
+                    borderColor: isDark ? 'rgba(16, 185, 129, 0.15)' : '#dcfce7'
+                  }}
+                >
+                  <View className="w-12 h-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 items-center justify-center">
+                    <MaterialCommunityIcons name="calendar-heart" size={26} color={isDark ? '#34d399' : '#047857'} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[10px] font-outfit-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                      Estimated Calving Date
+                    </Text>
+                    <Text className="text-[16px] font-outfit-black text-slate-800 dark:text-white mt-0.5">
+                      {formattedDueDate}
+                    </Text>
+                    <Text className="text-[10px] font-outfit-medium text-slate-400 dark:text-slate-500 mt-0.5">
+                      Gestation: ~{gestationDays} days ({normSpecies})
+                    </Text>
+                  </View>
+                </View>
+              );
+            })()}
+
+            {/* Actions */}
+            <View className="flex-row gap-3 mt-6 w-full">
+              <TouchableOpacity
+                onPress={() => setCongratsModalVisible(false)}
+                disabled={isUpdatingStatus}
+                className="flex-1 py-3.5 border rounded-2xl items-center justify-center"
+                style={{ borderColor: colors.border, backgroundColor: colors.background }}
+              >
+                <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary }} className="text-xs">
+                  CANCEL
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleConfirmPregnancy}
+                disabled={isUpdatingStatus}
+                className="flex-1 py-3.5 bg-emerald-600 rounded-2xl items-center shadow-md justify-center flex-row gap-2 active:opacity-90"
+              >
+                {isUpdatingStatus ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="check-bold" size={14} color="white" />
+                    <Text className="text-white font-outfit-bold text-xs tracking-wide">
+                      YES, PREGNANT
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Reheat Choice Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={reheatModalVisible}
+        onRequestClose={() => setReheatModalVisible(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-center items-center p-6">
+          <View 
+            className="rounded-[30px] w-full p-6 items-center border shadow-2xl relative overflow-hidden"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            {/* Ambient Background Glow decoration */}
+            <View className="absolute -top-12 -right-12 w-28 h-28 bg-orange-500/5 dark:bg-orange-500/10 rounded-full" />
+            <View className="absolute -bottom-12 -left-12 w-28 h-28 bg-orange-500/5 dark:bg-orange-500/10 rounded-full" />
+
+            {/* Double-Ringed Warning Icon Container */}
+            <View className="w-20 h-20 rounded-full bg-orange-50 dark:bg-orange-950/30 items-center justify-center mb-4 border border-orange-100 dark:border-orange-900/30">
+              <View className="w-14 h-14 rounded-full bg-orange-100 dark:bg-orange-900/40 items-center justify-center">
+                <MaterialCommunityIcons name="fire" size={28} color="#f97316" />
+              </View>
+            </View>
+
+            <Text className="text-xl font-outfit-black text-center" style={{ color: colors.textPrimary }}>
+              Observe Reheat Signs?
+            </Text>
+            
+            <View className="mt-3 px-1 items-center flex-row flex-wrap justify-center gap-1.5">
+              <Text className="text-sm font-outfit-medium text-center" style={{ color: colors.textSecondary }}>
+                Did you observe signs of heat in
+              </Text>
+              <View className="bg-orange-50 dark:bg-orange-950/40 border border-orange-100/50 dark:border-orange-900/30 px-2.5 py-0.5 rounded-full">
+                <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-orange-700 dark:text-orange-400 text-xs">
+                  #{animal?.earTag || animal?.animalId}
+                </Text>
+              </View>
+              <Text className="text-sm font-outfit-medium text-center" style={{ color: colors.textSecondary }}>
+                ? This indicates the insemination failed.
+              </Text>
+            </View>
+
+            {/* Actions */}
+            <View className="flex-row gap-3 mt-6 w-full">
+              <TouchableOpacity
+                onPress={() => setReheatModalVisible(false)}
+                disabled={isUpdatingStatus}
+                className="flex-1 py-3.5 border rounded-2xl items-center justify-center"
+                style={{ borderColor: colors.border, backgroundColor: colors.background }}
+              >
+                <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary }} className="text-xs">
+                  CANCEL
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleConfirmReheat}
+                disabled={isUpdatingStatus}
+                className="flex-1 py-3.5 bg-orange-600 rounded-2xl items-center shadow-md justify-center flex-row gap-2 active:opacity-90"
+              >
+                {isUpdatingStatus ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <>
+                    <MaterialCommunityIcons name="alert-circle-outline" size={14} color="white" />
+                    <Text className="text-white font-outfit-bold text-xs tracking-wide">
+                      YES, REHEATED
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

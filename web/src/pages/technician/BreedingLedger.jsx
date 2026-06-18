@@ -542,14 +542,20 @@ export default function BreedingLedger() {
       ]);
     }
 
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const csvContent =
+      headers.join(",") +
+      "\n" +
+      rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+      
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `BreedSmart_${activeTab}_records_${new Date().toLocaleDateString()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // ---- DYNAMIC DEPARTMENT OF AGRICULTURE (DA) COMPILATION PIPELINE ----
@@ -709,20 +715,22 @@ export default function BreedingLedger() {
       r.cdEase
     ]);
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + "DEPARTMENT OF AGRICULTURE\n"
+    const csvContent = 
+      "DEPARTMENT OF AGRICULTURE\n"
       + "Bureau of Animal Industry - Unified National Artificial Insemination Program\n"
       + "Monthly Accomplishment Report\n\n"
       + headers.join(",") + "\n" 
       + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
       
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute("download", `DA_Unified_AI_Accomplishment_Report_${new Date().toLocaleDateString()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const isSameDay = (d1, d2) => {

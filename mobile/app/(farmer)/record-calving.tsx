@@ -22,8 +22,12 @@ import {
   Palette,
   Hash,
   Info,
+  Camera,
+  Image as ImageIcon,
+  X,
 } from "lucide-react-native";
 import React, { useState, useEffect } from "react";
+import * as ImagePicker from "expo-image-picker";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
@@ -34,6 +38,8 @@ interface CalfEntry {
   sex: "M" | "F";
   earTag: string;
   color: string;
+  imageUri?: string;
+  imageBase64?: string;
 }
 
 export default function RecordCalving() {
@@ -78,6 +84,54 @@ export default function RecordCalving() {
     setCalves(newCalves);
   };
 
+  const pickCalfImage = async (index: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: true,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      const newCalves = [...calves];
+      newCalves[index].imageUri = result.assets[0].uri;
+      newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+      setCalves(newCalves);
+      toast.success(`Photo attached to Calf #${index + 1}`);
+    }
+  };
+
+  const takeCalfPhoto = async (index: number) => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      toast.error("Permission to access camera was denied");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets?.length > 0) {
+      const newCalves = [...calves];
+      newCalves[index].imageUri = result.assets[0].uri;
+      newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+      setCalves(newCalves);
+      toast.success(`Photo attached to Calf #${index + 1}`);
+    }
+  };
+
+  const removeCalfImage = (index: number) => {
+    const newCalves = [...calves];
+    newCalves[index].imageUri = undefined;
+    newCalves[index].imageBase64 = undefined;
+    setCalves(newCalves);
+  };
+
   const handleSubmit = async () => {
     // Basic validation
     for (let i = 0; i < calves.length; i++) {
@@ -98,6 +152,7 @@ export default function RecordCalving() {
           sex: c.sex,
           earTag: c.earTag,
           color: c.color,
+          imageUrl: c.imageBase64 || "",
         })),
         technicianNote,
       });
@@ -321,6 +376,43 @@ export default function RecordCalving() {
                     />
                   </View>
                 </View>
+              </View>
+
+              {/* Calf Image Picker */}
+              <View>
+                <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
+                  Calf Image / Photo (Optional)
+                </Text>
+                {calf.imageUri ? (
+                  <View className="rounded-2xl overflow-hidden border shadow-sm relative" style={{ borderColor: colors.border }}>
+                    <Image source={{ uri: calf.imageUri }} className="w-full h-32" resizeMode="cover" />
+                    <TouchableOpacity
+                      onPress={() => removeCalfImage(index)}
+                      className="absolute top-2 right-2 p-2 bg-black/60 rounded-full"
+                    >
+                      <X size={14} color="white" />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View className="flex-row gap-2">
+                    <TouchableOpacity
+                      onPress={() => takeCalfPhoto(index)}
+                      className="flex-1 py-3.5 rounded-xl border flex-row justify-center items-center gap-2"
+                      style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
+                    >
+                      <Camera size={14} color={primaryColor} />
+                      <Text className="text-[10px] font-black" style={{ color: primaryColor }}>Take Photo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => pickCalfImage(index)}
+                      className="flex-1 py-3.5 rounded-xl border flex-row justify-center items-center gap-2"
+                      style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
+                    >
+                      <ImageIcon size={14} color={primaryColor} />
+                      <Text className="text-[10px] font-black" style={{ color: primaryColor }}>Choose Gallery</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
             </View>
           </View>

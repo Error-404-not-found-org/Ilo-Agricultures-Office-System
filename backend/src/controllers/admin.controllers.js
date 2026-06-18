@@ -304,3 +304,49 @@ export const syncUserMetadata = async (req, res) => {
          res.status(500).json({ message: "Error syncing metadata", error: error.message });
     }
 };
+
+// GET /api/admin/backup — Export database snapshot
+export const exportDatabaseBackup = async (req, res) => {
+    try {
+        const { Config } = await import("../models/config.model.js");
+
+        const [
+            users,
+            animals,
+            inseminations,
+            pregnancies,
+            calvings,
+            healthRequests,
+            configs
+        ] = await Promise.all([
+            User.find({}).lean(),
+            Animal.find({}).lean(),
+            Insemination.find({}).lean(),
+            Pregnancy.find({}).lean(),
+            Calving.find({}).lean(),
+            HealthRequest.find({}).lean(),
+            Config.find({}).lean()
+        ]);
+
+        const backupData = {
+            version: "1.0.0",
+            exportedAt: new Date().toISOString(),
+            users,
+            animals,
+            inseminations,
+            pregnancies,
+            calvings,
+            healthRequests,
+            configs
+        };
+
+        const fileName = `BreedSmart_Backup_${new Date().toISOString().split('T')[0]}.json`;
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Content-Disposition", `attachment; filename=${fileName}`);
+        
+        res.status(200).send(JSON.stringify(backupData, null, 2));
+    } catch (error) {
+        console.error("[exportDatabaseBackup ERROR]", error.message);
+        res.status(500).json({ message: "Failed compiling system database backup.", error: error.message });
+    }
+};

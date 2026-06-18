@@ -697,7 +697,13 @@ export const getMyActivityFeed = async (req, res) => {
         title: isTechnicianOrAdmin 
           ? `AI on ${i.animalId?.animalId || i.animalId?.earTag || 'Animal'} (${i.farmerId?.name || 'Farmer'})`
           : `AI performed on ${i.animalId?.animalId || i.animalId?.earTag || 'Animal'}`, 
-        description: i.status === 'done' ? 'Completed Service' : `Status: ${i.status}`,
+        description: i.deletedAt 
+          ? 'Cancelled Request' 
+          : i.status === 'done' 
+            ? 'Completed Service' 
+            : i.status === 'rejected'
+              ? 'Declined by Technician'
+              : `Status: ${i.status}`,
         date: i.createdAt, 
         type: 'ai',
         animalId: i.animalId,
@@ -706,7 +712,7 @@ export const getMyActivityFeed = async (req, res) => {
           sireCode: i.sireCode || "N/A",
           attemptNumber: i.attemptNumber || 1,
           estrus: i.estrus || "Natural",
-          status: i.status,
+          status: i.deletedAt ? 'cancelled' : i.status,
           outcome: i.outcome || "Pending",
           technician: i.technicianId?.name || i.approvedBy?.name || "Pending",
           technicianNote: i.technicianNote || "No notes logged.",
@@ -719,7 +725,13 @@ export const getMyActivityFeed = async (req, res) => {
         title: isTechnicianOrAdmin 
           ? `Health Check — ${h.animalId?.animalId || h.animalId?.earTag || 'Animal'} (${h.farmerId?.name || 'Farmer'})`
           : `Health Check — ${h.animalId?.animalId || h.animalId?.earTag || 'Animal'}`, 
-        description: `Status: ${h.status}`,
+        description: h.deletedAt 
+          ? 'Cancelled Request' 
+          : h.status === 'resolved'
+            ? 'Completed checkup'
+            : h.status === 'rejected'
+              ? 'Declined by Technician'
+              : `Status: ${h.status}`,
         date: h.createdAt, 
         type: 'health',
         animalId: h.animalId,
@@ -727,7 +739,7 @@ export const getMyActivityFeed = async (req, res) => {
           requestType: h.requestType || "checkup",
           symptoms: h.symptoms || "N/A",
           urgency: h.urgency || "medium",
-          status: h.status,
+          status: h.deletedAt ? 'cancelled' : h.status,
           diagnosis: h.diagnosis || "No diagnosis logged.",
           treatment: h.treatment || "No treatment logged.",
           advice: h.advice || "No advice logged.",

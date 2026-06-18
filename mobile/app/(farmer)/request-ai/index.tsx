@@ -36,6 +36,7 @@ import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -46,6 +47,7 @@ interface Animal {
   breed: string;
   reproductiveStatus?: string;
   gender?: string;
+  birthDate?: string | Date;
 }
 interface FarmerProfile {
   _id: string;
@@ -172,6 +174,8 @@ export default function RequestAI() {
   const [maleModalVisible, setMaleModalVisible] = useState(false);
   const [pregnantModalVisible, setPregnantModalVisible] = useState(false);
   const [pregnantSubmitModalVisible, setPregnantSubmitModalVisible] = useState(false);
+  const [ageModalVisible, setAgeModalVisible] = useState(false);
+  const [ageCheckReason, setAgeCheckReason] = useState("");
 
   const handleToggleSign = (id: string) => {
     setSelectedSigns((prev) => {
@@ -345,6 +349,13 @@ export default function RequestAI() {
 
     if (selectedAnimal.reproductiveStatus === "Pregnant") {
       setPregnantSubmitModalVisible(true);
+      return;
+    }
+
+    const ageCheck = checkInseminationAgeEligibility(selectedAnimal.birthDate, selectedAnimal.species);
+    if (!ageCheck.isEligible) {
+      setAgeCheckReason(ageCheck.reason || "Animal is too young for insemination.");
+      setAgeModalVisible(true);
       return;
     }
 
@@ -913,10 +924,16 @@ export default function RequestAI() {
                         setMaleModalVisible(true);
                         return;
                       }
+                      const ageCheck = checkInseminationAgeEligibility(item.birthDate, item.species);
+                      if (!ageCheck.isEligible) {
+                        setAgeCheckReason(ageCheck.reason || "Animal is too young for insemination.");
+                        setAgeModalVisible(true);
+                        return;
+                      }
                       setSelectedAnimal(item);
                       setAnimalModalVisible(false);
                     }}
-                    className={`py-4 px-3 border-b flex-row items-center justify-between ${item.reproductiveStatus === "Pregnant" || item.gender === "Male" ? "opacity-50" : ""}`}
+                    className={`py-4 px-3 border-b flex-row items-center justify-between ${(item.reproductiveStatus === "Pregnant" || item.gender === "Male" || !checkInseminationAgeEligibility(item.birthDate, item.species).isEligible) ? "opacity-50" : ""}`}
                     style={{
                       borderBottomColor: colors.border,
                       backgroundColor:
@@ -960,6 +977,13 @@ export default function RequestAI() {
                               </Text>
                             </View>
                           )}
+                          {!checkInseminationAgeEligibility(item.birthDate, item.species).isEligible && (
+                            <View className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-200">
+                              <Text className="text-[9px] font-black uppercase text-amber-600">
+                                Underage
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       </View>
                       {item.reproductiveStatus === "Pregnant" && (
@@ -967,6 +991,9 @@ export default function RequestAI() {
                       )}
                       {item.gender === "Male" && (
                         <AlertCircle size={16} color="#ef4444" />
+                      )}
+                      {!checkInseminationAgeEligibility(item.birthDate, item.species).isEligible && (
+                        <AlertCircle size={16} color="#d97706" />
                       )}
                       {selectedAnimal?._id === item._id && (
                         <Check size={18} color={primaryColor} />
@@ -1202,6 +1229,18 @@ export default function RequestAI() {
         onConfirm={() => setPregnantSubmitModalVisible(false)}
         title="Action Blocked"
         message="This animal is already marked as Pregnant. You cannot request artificial insemination unless you report heat signs first from the animal's profile."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={ageModalVisible}
+        onClose={() => setAgeModalVisible(false)}
+        onConfirm={() => setAgeModalVisible(false)}
+        title="Selection Unavailable"
+        message={ageCheckReason}
         confirmText="OK"
         cancelText={null}
         isDestructive={true}

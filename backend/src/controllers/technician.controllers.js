@@ -477,8 +477,14 @@ export const getMyCalvings = async (req, res) => {
     const [records, total] = await Promise.all([
       Calving.find({ deletedAt: null })
         .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl color brand")
-        .populate("calves.animalId", "animalId earTag breed species color brand")
+        .populate(
+          "animalId",
+          "animalId earTag breed species imageUrl color brand",
+        )
+        .populate(
+          "calves.animalId",
+          "animalId earTag breed species color brand",
+        )
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -561,8 +567,12 @@ export const walkInInsemination = async (req, res) => {
       if (!farmer) {
         if (email) {
           try {
-            const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").trim();
-            const normalizedClientUrl = /^https?:\/\//i.test(clientUrl) ? clientUrl : `https://${clientUrl}`;
+            const clientUrl = (
+              process.env.CLIENT_URL || "http://localhost:5173"
+            ).trim();
+            const normalizedClientUrl = /^https?:\/\//i.test(clientUrl)
+              ? clientUrl
+              : `https://${clientUrl}`;
             const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
 
             await clerkClient.invitations.createInvitation({
@@ -797,11 +807,15 @@ export const updateInseminationStatus = async (req, res) => {
       let notifMessage = "";
 
       if (status === "approved") {
-        const rescheduled = scheduledDate ? ` The visit has been scheduled on ${new Date(scheduledDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}.` : " No schedule date has been set yet.";
+        const rescheduled = scheduledDate
+          ? ` The visit has been scheduled on ${new Date(scheduledDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}.`
+          : " No schedule date has been set yet.";
         notifTitle = "AI Request Accepted";
         notifMessage = `Your artificial insemination request for animal ${animalTag} has been accepted by Technician: ${techName}.${rescheduled}`;
       } else if (status === "in-progress") {
-        const rescheduled = scheduledDate ? ` The visit is rescheduled to ${new Date(scheduledDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}.` : "";
+        const rescheduled = scheduledDate
+          ? ` The visit is rescheduled to ${new Date(scheduledDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}.`
+          : "";
         notifTitle = "AI Request In Progress";
         notifMessage = `Your artificial insemination request for animal ${animalTag} is now in progress with Technician: ${techName}.${rescheduled}`;
       } else if (status === "done") {
@@ -1051,8 +1065,12 @@ export const registerFarmer = async (req, res) => {
     // 3. Handle Clerk Invitation (for tech-enabled farmers)
     if (email) {
       try {
-        const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").trim();
-        const normalizedClientUrl = /^https?:\/\//i.test(clientUrl) ? clientUrl : `https://${clientUrl}`;
+        const clientUrl = (
+          process.env.CLIENT_URL || "http://localhost:5173"
+        ).trim();
+        const normalizedClientUrl = /^https?:\/\//i.test(clientUrl)
+          ? clientUrl
+          : `https://${clientUrl}`;
         const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
 
         await clerkClient.invitations.createInvitation({
@@ -1145,7 +1163,12 @@ export const recordPregnancyCheck = async (req, res) => {
       },
       targetCalvingDate:
         result === "Pregnant"
-          ? calculateTargetCalvingDate(new Date(), animal.species, undefined, animal.breed)
+          ? calculateTargetCalvingDate(
+              new Date(),
+              animal.species,
+              undefined,
+              animal.breed,
+            )
           : undefined,
     });
 
@@ -1254,12 +1277,21 @@ export const recordCalving = async (req, res) => {
       return res.status(404).json({ message: "Pregnancy record not found" });
 
     // Check if calving record already exists to prevent E11000 duplicate key error
-    const existingCalving = await Calving.findOne({ pregnancyId: pregnancy._id, deletedAt: null });
+    const existingCalving = await Calving.findOne({
+      pregnancyId: pregnancy._id,
+      deletedAt: null,
+    });
     if (existingCalving) {
       if (mother.reproductiveStatus === "Pregnant") {
-         await Animal.findByIdAndUpdate(animalId, { $set: { reproductiveStatus: "Normal" } });
+        await Animal.findByIdAndUpdate(animalId, {
+          $set: { reproductiveStatus: "Normal" },
+        });
       }
-      return res.status(400).json({ message: "A calving record already exists for this pregnancy." });
+      return res
+        .status(400)
+        .json({
+          message: "A calving record already exists for this pregnancy.",
+        });
     }
 
     // Extract sire info from insemination if available
@@ -1275,6 +1307,20 @@ export const recordCalving = async (req, res) => {
       // Generate a unique ID for the calf
       const calfAnimalId = `ANM-${Date.now().toString().slice(-6)}-${i}`;
 
+      let calfImageUrl = "";
+      if (calfData.imageUrl && calfData.imageUrl.startsWith("data:image")) {
+        try {
+          const uploadRes = await cloudinary.uploader.upload(calfData.imageUrl, {
+            folder: "livestock_profiles",
+          });
+          calfImageUrl = uploadRes.secure_url;
+        } catch (uploadError) {
+          console.error(`[recordCalving TECH CALF IMAGE UPLOAD ERROR for index ${i}]`, uploadError);
+        }
+      } else if (calfData.imageUrl) {
+        calfImageUrl = calfData.imageUrl;
+      }
+
       const newCalf = await Animal.create({
         earTag:
           calfData.earTag || `CALF-${Date.now().toString().slice(-4)}-${i}`,
@@ -1286,6 +1332,7 @@ export const recordCalving = async (req, res) => {
             : mother.breed,
         farmerId: mother.farmerId,
         motherId: mother._id,
+        imageUrl: calfImageUrl,
         isVerified: true,
         gender: calfData.sex === "M" ? "Male" : "Female",
         color: calfData.color || mother.color || "Not Provided",
@@ -1939,17 +1986,15 @@ export const getFieldNotes = async (req, res) => {
     const isTech = req.user?.role === "technician";
     const userId = req.user?._id;
 
-    const insemQuery = isTech 
-      ? { technicianId: userId, imageUrl: { $exists: true, $ne: "" } } 
+    const insemQuery = isTech
+      ? { technicianId: userId, imageUrl: { $exists: true, $ne: "" } }
       : { imageUrl: { $exists: true, $ne: "" } };
 
-    const healthQuery = isTech 
-      ? { handledBy: userId, imageUrl: { $exists: true, $ne: "" } } 
+    const healthQuery = isTech
+      ? { handledBy: userId, imageUrl: { $exists: true, $ne: "" } }
       : { imageUrl: { $exists: true, $ne: "" } };
 
-    const noteQuery = isTech 
-      ? { technicianId: userId } 
-      : {};
+    const noteQuery = isTech ? { technicianId: userId } : {};
 
     const [inseminations, healthRequests, technicianNotes] = await Promise.all([
       Insemination.find(insemQuery)
@@ -2213,28 +2258,45 @@ export const deleteFieldNote = async (req, res) => {
     }
 
     if (targetType === "insemination") {
-      const ins = await Insemination.findOne({ _id: id, technicianId: req.user._id });
+      const ins = await Insemination.findOne({
+        _id: id,
+        technicianId: req.user._id,
+      });
       if (!ins) {
-        return res.status(404).json({ message: "Insemination record not found or unauthorized" });
+        return res
+          .status(404)
+          .json({ message: "Insemination record not found or unauthorized" });
       }
       await Insemination.findByIdAndDelete(id);
     } else if (targetType === "health") {
-      const hr = await HealthRequest.findOne({ _id: id, handledBy: req.user._id });
+      const hr = await HealthRequest.findOne({
+        _id: id,
+        handledBy: req.user._id,
+      });
       if (!hr) {
-        return res.status(404).json({ message: "Health request record not found or unauthorized" });
+        return res
+          .status(404)
+          .json({ message: "Health request record not found or unauthorized" });
       }
       await HealthRequest.findByIdAndDelete(id);
     } else {
-      const fn = await FieldNote.findOne({ _id: id, technicianId: req.user._id });
+      const fn = await FieldNote.findOne({
+        _id: id,
+        technicianId: req.user._id,
+      });
       if (!fn) {
-        return res.status(404).json({ message: "Field note not found or unauthorized" });
+        return res
+          .status(404)
+          .json({ message: "Field note not found or unauthorized" });
       }
       await FieldNote.findByIdAndDelete(id);
     }
 
     res.status(200).json({ message: "Field note deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Failed to delete field note", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to delete field note", error: error.message });
   }
 };
 
@@ -2254,7 +2316,9 @@ export const deleteFieldNoteRecord = async (req, res) => {
       }
       res
         .status(200)
-        .json({ message: `Insemination field note ${isPermanent ? "permanently" : "soft"} deleted successfully` });
+        .json({
+          message: `Insemination field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
+        });
     } else if (type === "health") {
       if (isPermanent) {
         await HealthRequest.findByIdAndDelete(id);
@@ -2265,7 +2329,9 @@ export const deleteFieldNoteRecord = async (req, res) => {
       }
       res
         .status(200)
-        .json({ message: `Health request field note ${isPermanent ? "permanently" : "soft"} deleted successfully` });
+        .json({
+          message: `Health request field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
+        });
     } else {
       if (isPermanent) {
         await FieldNote.findByIdAndDelete(id);
@@ -2274,15 +2340,17 @@ export const deleteFieldNoteRecord = async (req, res) => {
           $set: { deletedAt: new Date() },
         });
       }
-      res.status(200).json({ message: `Field note ${isPermanent ? "permanently" : "soft"} deleted successfully` });
+      res
+        .status(200)
+        .json({
+          message: `Field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
+        });
     }
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Failed to delete field note record",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Failed to delete field note record",
+      error: error.message,
+    });
   }
 };
 
@@ -2292,13 +2360,15 @@ export const markCalvingAsSeen = async (req, res) => {
     const calving = await Calving.findByIdAndUpdate(
       id,
       { $set: { isSeen: true } },
-      { new: true }
+      { new: true },
     );
     if (!calving) {
       return res.status(404).json({ message: "Calving record not found" });
     }
     res.status(200).json({ message: "Calving record marked as seen", calving });
   } catch (error) {
-    res.status(500).json({ message: "Error marking calving as seen", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error marking calving as seen", error: error.message });
   }
 };

@@ -186,21 +186,22 @@ export default function ClientRegistry() {
   const handleExportCSV = () => {
     const headers = ["Name", "Contact/Phone", "Barangay", "Registered Animals Count", "Verification Status"];
     const rows = processedClients.map((c) => [
-      `"${c.name.replace(/"/g, '""')}"`,
-      `"${c.contact.replace(/"/g, '""')}"`,
-      `"${c.brgy.replace(/"/g, '""')}"`,
+      c.name,
+      c.contact,
+      c.brgy,
       c.animals,
-      `"${c.status.toUpperCase()}"`,
+      c.status.toUpperCase(),
     ]);
 
     const csvContent =
-      "data:text/csv;charset=utf-8," +
       headers.join(",") +
       "\n" +
-      rows.map((e) => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
+      rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
+    link.setAttribute("href", url);
     link.setAttribute(
       "download",
       `DA_Farmers_Directory_${new Date().toLocaleDateString()}.csv`
@@ -208,6 +209,7 @@ export default function ClientRegistry() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const avatarStyles = [

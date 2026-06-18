@@ -174,8 +174,12 @@ export const getAnimalById = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const [animal, inseminationsList, calvings, pregnancies, healthRecords] = await Promise.all([
-      Animal.findOne({ _id: id, deletedAt: null }).populate("farmerId", "-password"),
+    const [animal, offspring, inseminationsList, calvings, pregnancies, healthRecords] = await Promise.all([
+      Animal.findOne({ _id: id, deletedAt: null })
+        .populate("farmerId", "-password")
+        .populate("motherId", "earTag animalId breed species imageUrl reproductiveStatus"),
+      Animal.find({ motherId: id, deletedAt: null })
+        .select("earTag animalId breed species gender imageUrl reproductiveStatus birthDate"),
       Insemination.find({ animalId: id, deletedAt: null })
         .populate("approvedBy", "name email imageUrl")
         .sort({ attemptNumber: -1 }),
@@ -198,6 +202,7 @@ export const getAnimalById = async (req, res) => {
 
     res.status(200).json({
       ...animal.toObject(),
+      offspring,
       inseminations,
       calvings,
       healthRecords,
@@ -525,6 +530,20 @@ export const recordCalving = async (req, res) => {
       const calfData = calves[i];
       const calfAnimalId = `ANM-${Date.now().toString().slice(-6)}-${i}`;
 
+      let calfImageUrl = "";
+      if (calfData.imageUrl && calfData.imageUrl.startsWith("data:image")) {
+        try {
+          const uploadRes = await cloudinary.uploader.upload(calfData.imageUrl, {
+            folder: "livestock_profiles",
+          });
+          calfImageUrl = uploadRes.secure_url;
+        } catch (uploadError) {
+          console.error(`[recordCalving CALF IMAGE UPLOAD ERROR for index ${i}]`, uploadError);
+        }
+      } else if (calfData.imageUrl) {
+        calfImageUrl = calfData.imageUrl;
+      }
+
       const newCalf = await Animal.create({
         earTag: calfData.earTag || `CALF-${Date.now().toString().slice(-4)}-${i}`,
         animalId: calfAnimalId,
@@ -532,6 +551,7 @@ export const recordCalving = async (req, res) => {
         breed: sireBreed !== "Unknown" ? `${mother.breed} x ${sireBreed}` : mother.breed,
         farmerId: mother.farmerId,
         motherId: mother._id,
+        imageUrl: calfImageUrl,
         isVerified: req.user.role === "technician", // Auto-verify if technician records it
         gender: calfData.sex === "M" ? "Male" : "Female",
         color: calfData.color || mother.color || "Not Provided",
