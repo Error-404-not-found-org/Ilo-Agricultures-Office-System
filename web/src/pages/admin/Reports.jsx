@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 import {
   Download,
   Printer,
@@ -26,28 +28,211 @@ export default function Reports() {
   const handleGenerateReport = async (action) => {
     setIsCompiling(true);
     try {
-      // Simulate compiling report data
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const [monthName, yearString] = dateRange.split(" ");
+      const monthMap = {
+        January: 1, February: 2, March: 3, April: 4, May: 5, June: 6,
+        July: 7, August: 8, September: 9, October: 10, November: 11, December: 12
+      };
+      const monthVal = monthMap[monthName] || 5;
+      const yearVal = parseInt(yearString) || 2026;
+
+      const isPrint = action === "print";
+
+      // 1. HEALTH REQUESTS
+      if (reportType === "health-diagnostics") {
+        const res = await axiosInstance.get("/health-request");
+        let data = res.data || [];
+        
+        // Filter by barangay
+        if (barangay !== "all") {
+          data = data.filter(item => 
+            item.farmerId?.address?.barangay?.toLowerCase() === barangay.toLowerCase()
+          );
+        }
+
+        // Filter by month/year matching dateRange
+        data = data.filter(item => {
+          if (!item.createdAt) return false;
+          const d = new Date(item.createdAt);
+          return d.getMonth() + 1 === monthVal && d.getFullYear() === yearVal;
+        });
+
+        if (data.length === 0) {
+          toast.error("Zero telemetry records located for selected parameters.");
+          return;
+        }
+
+        const headers = ["Incident Case #", "Logged Date", "Animal Tag", "Farmer Client", "Symptom Presentation", "Assigned Diagnosis", "Treatment Plan", "Urgency", "Status"];
+        const rows = data.map(item => [
+          item._id ? `#${item._id.slice(-6)}` : "—",
+          item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "—",
+          item.animalId?.earTag || "—",
+          item.farmerId?.name || "—",
+          item.symptoms || "—",
+          item.diagnosis || "—",
+          item.treatment || "—",
+          (item.urgency || "low").toUpperCase(),
+          (item.status || "pending").toUpperCase()
+        ]);
+
+        if (isPrint) {
+          const doc = new jsPDF({ orientation: "landscape", format: "a4", unit: "mm" });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.text("Veterinary Health Diagnostics & Triage Logs", doc.internal.pageSize.width / 2, 12, { align: "center" });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          doc.text(`HEALTH TRIAGE & DIAGNOSTIC LOGS - ${dateRange.toUpperCase()}`, doc.internal.pageSize.width / 2, 17, { align: "center" });
+          
+          doc.autoTable({
+            head: [headers],
+            body: rows,
+            theme: "grid",
+            styles: { fontSize: 7, cellPadding: 1.5 },
+            headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center" },
+            margin: { top: 23 }
+          });
+          window.open(doc.output("bloburl"), "_blank");
+          toast.success("Health diagnostics PDF registry print ready.");
+        } else {
+          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `BreedSmart_Health_Diagnostics_${barangay}_${dateRange.replace(" ", "_")}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          toast.success("Health diagnostics CSV registry downloaded.");
+        }
+        return;
+      }
+
+      // 2. INSEMINATION REGISTRY / UNIP ACCOMPLISHMENTS
+      const res = await axiosInstance.get(
+        `/reports/monthly-accomplishment?month=${monthVal}&year=${yearVal}`
+      );
+      let data = res.data || [];
+
+      // Filter by barangay
+      if (barangay !== "all") {
+        data = data.filter(item => 
+          item.farmer?.address?.barangay?.toLowerCase() === barangay.toLowerCase()
+        );
+      }
+
+      // If insemination registry only, filter entries having AI
+      if (reportType === "insemination-registry") {
+        data = data.filter(item => item.type?.includes("AI"));
+      }
+
+      if (data.length === 0) {
+        toast.error("Zero telemetry records located for selected parameters.");
+        return;
+      }
+
+      const headers = [
+        "Data", "No.", "Animal ID No.", "Ear Tag No.", "Brand", "Species", "Breed", "Color", "Address", "Farmer",
+        "AI Date", "No. of AI", "Estrus", "Sire Breed", "Sire Code",
+        "PD Date", "PD Result",
+        "CD Date", "No. of Calving", "Calf ID No.", "Sex", "Calving Ease"
+      ];
       
-      if (action === "csv") {
-        // Trigger a CSV download mock
-        const headers = ["Barangay", "Report Type", "Compiled Month", "Total AI attempts", "Conceptions Rate", "Health Dispatches"];
-        const row = [barangay.toUpperCase(), reportType.toUpperCase(), dateRange, "45", "87%", "14"];
-        const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + row.join(",");
-        const encodedUri = encodeURI(csvContent);
+      const rows = data.map((item, index) => [
+        item.type || "",
+        index + 1,
+        item.animal?.animalId || "—",
+        item.animal?.earTag || "—",
+        item.animal?.brand || "—",
+        item.animal?.species || "—",
+        item.animal?.breed || "—",
+        item.animal?.color || "—",
+        item.farmer?.address?.barangay || "—",
+        item.farmer?.name || "—",
+        item.date ? new Date(item.date).toLocaleDateString() : "—",
+        item.ai?.attempt || "—",
+        item.ai?.estrus || "—",
+        item.ai?.sireBreed || "—",
+        item.ai?.sireCode || "—",
+        item.pd?.date ? new Date(item.pd.date).toLocaleDateString() : "—",
+        item.pd?.result || "—",
+        item.cd?.date ? new Date(item.cd.date).toLocaleDateString() : "—",
+        item.cd?.count || "—",
+        item.cd?.calves?.[0]?.animalId || "—",
+        item.cd?.calves?.[0]?.sex || "—",
+        item.cd?.ease || "—"
+      ]);
+
+      if (isPrint) {
+        const doc = new jsPDF({ orientation: "landscape", format: "a4", unit: "mm" });
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.text("Bureau of Animal Industry - Local Government Units", doc.internal.pageSize.width / 2, 11, { align: "center" });
+        doc.text("Unified National Artificial Insemination Program", doc.internal.pageSize.width / 2, 14, { align: "center" });
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.text(
+          reportType === "insemination-registry" 
+            ? "VETERINARY AI INSEMINATION LOGS" 
+            : "MONTHLY ACCOMPLISHMENT REPORT", 
+          doc.internal.pageSize.width / 2, 19, { align: "center" }
+        );
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.text(`For the Month of: ${dateRange}    Sector Barangay: ${barangay.toUpperCase()}`, doc.internal.pageSize.width / 2, 23, { align: "center" });
+
+        const structuredHeaders = [
+          [
+            { content: "Data", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: "No.", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: "Animal Identification", colSpan: 7, styles: { halign: 'center' } },
+            { content: "Farmer", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: "Artificial Insemination", colSpan: 5, styles: { halign: 'center' } },
+            { content: "Pregnancy Diagnosis", colSpan: 2, styles: { halign: 'center' } },
+            { content: "Calf Drop", colSpan: 5, styles: { halign: 'center' } }
+          ],
+          [
+            "Animal ID No.", "Ear Tag No.", "Brand", "Species", "Breed", "Color", "Address",
+            "Date", "No. of AI", "Estrus", "Sire Breed", "Sire Code",
+            "Date", "Result",
+            "Date", "No. of Calving", "Calf ID No.", "Sex", "Calving Ease"
+          ]
+        ];
+
+        doc.autoTable({
+          head: structuredHeaders,
+          body: rows,
+          theme: "grid",
+          styles: { fontSize: 5, cellPadding: 1 },
+          headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center", fontSize: 5 },
+          margin: { top: 26 }
+        });
+        window.open(doc.output("bloburl"), "_blank");
+        toast.success("Breeding registry PDF print ready.");
+      } else {
+        const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `BreedSmart_${reportType}_Report_${dateRange.replace(" ", "_")}.csv`);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `DA_UNIP_${reportType}_${barangay}_${dateRange.replace(" ", "_")}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        toast.success("Spreadsheet compiled and downloaded.");
-      } else {
-        // Trigger landscape print simulation
-        window.print();
-        toast.success("Printing sequence finalized.");
+        URL.revokeObjectURL(url);
+        toast.success("Breeding registry CSV sheet downloaded.");
       }
     } catch (err) {
+      console.error(err);
       toast.error("Failed compiling requested report.");
     } finally {
       setIsCompiling(false);

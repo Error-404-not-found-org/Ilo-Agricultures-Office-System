@@ -138,14 +138,20 @@ export default function Sidebar() {
     today.setHours(0, 0, 0, 0);
 
     const overdueAI = aiList.filter((req) => {
-      if (req.status !== "in-progress" && req.status !== "approved") return false;
-      const d = new Date(req.scheduledDate || req.preferredDate || req.createdAt);
+      if (req.status !== "in-progress" && req.status !== "approved")
+        return false;
+      const d = new Date(
+        req.scheduledDate || req.preferredDate || req.createdAt,
+      );
       return d < today;
     }).length;
 
     const overdueHealth = healthList.filter((req) => {
-      if (req.status !== "in-progress" && req.status !== "approved") return false;
-      const d = new Date(req.scheduledDate || req.preferredDate || req.createdAt);
+      if (req.status !== "in-progress" && req.status !== "approved")
+        return false;
+      const d = new Date(
+        req.scheduledDate || req.preferredDate || req.createdAt,
+      );
       return d < today;
     }).length;
 
@@ -232,7 +238,7 @@ export default function Sidebar() {
       icon: <MapPin size={16} />,
       paths: [
         "/technician/schedule",
-        "/technician/health-map",
+        // "/technician/health-map",
         "/technician/field-notes",
       ],
       items: [
@@ -241,11 +247,11 @@ export default function Sidebar() {
           icon: <CalendarDays size={14} />,
           label: "Daily Schedule",
         },
-        {
-          path: "/technician/health-map",
-          icon: <MapPin size={14} />,
-          label: "GIS Field Hub",
-        },
+        // {
+        //   path: "/technician/health-map",
+        //   icon: <MapPin size={14} />,
+        //   label: "GIS Field Hub",
+        // },
         {
           path: "/technician/field-notes",
           icon: <Image size={14} />,
@@ -299,11 +305,7 @@ export default function Sidebar() {
       type: "group",
       label: "Service Records",
       icon: <HeartPulse size={16} />,
-      paths: [
-        "/admin/inseminations",
-        "/admin/newborns",
-        "/admin/reports",
-      ],
+      paths: ["/admin/inseminations", "/admin/newborns", "/admin/reports"],
       items: [
         {
           path: "/admin/inseminations",
@@ -327,11 +329,7 @@ export default function Sidebar() {
       type: "group",
       label: "Registries",
       icon: <Users size={16} />,
-      paths: [
-        "/admin/technicians",
-        "/admin/livestock",
-        "/admin/users",
-      ],
+      paths: ["/admin/technicians", "/admin/livestock", "/admin/users"],
       items: [
         {
           path: "/admin/technicians",
@@ -358,29 +356,10 @@ export default function Sidebar() {
     },
   ];
 
-  const FARMER_GROUPS = [
-    { type: "label", label: "Main" },
-    {
-      path: "/farmer/dashboard",
-      icon: <LayoutDashboard size={16} />,
-      label: "Dashboard",
-    },
-    { type: "label", label: "System" },
-    {
-      path: "/admin/settings", // Fallback for settings link
-      icon: <SettingsIcon size={16} />,
-      label: "Settings",
-    },
-  ];
-
   const rawRole = user?.publicMetadata?.role || "Field Officer";
   const normalizedRole = String(rawRole).toLowerCase();
 
-  const GROUPS = normalizedRole === "admin"
-    ? ADMIN_GROUPS
-    : normalizedRole === "farmer"
-      ? FARMER_GROUPS
-      : TECH_GROUPS;
+  const GROUPS = normalizedRole === "admin" ? ADMIN_GROUPS : TECH_GROUPS;
 
   // Auto-open the group that contains the active route
   useEffect(() => {
@@ -399,180 +378,190 @@ export default function Sidebar() {
 
   return (
     <>
-    <aside className={`fixed lg:relative inset-y-0 left-0 w-64 min-w-64 bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800/80 shadow-2xl z-40 transition-transform duration-300 lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}>
-      {/* Logo */}
-      <div className="flex items-center gap-3 p-6 border-b border-slate-800/60 group">
-        <div className="w-9 h-9 bg-white/10 text-white rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">
-          <img
-            src="/logo.png"
-            alt=""
-            className="w-full h-full object-cover rounded-full"
-          />
-        </div>
-        <div className="flex flex-col">
-          <span className="font-extrabold text-base tracking-tight leading-none text-white">
-            BreedSmart
-          </span>
-          <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest mt-1">
-            Tech Portal
-          </span>
-        </div>
-      </div>
-
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto p-4 space-y-0.5 custom-scrollbar">
-        {GROUPS.map((item, idx) => {
-          // Section label
-          if (item.type === "label") {
-            return (
-              <div
-                key={idx}
-                className="text-[9px] font-black uppercase text-slate-500 tracking-wider px-3 pt-4 pb-1"
-              >
-                {item.label}
-              </div>
-            );
-          }
-
-          // Collapsible group
-          if (item.type === "group") {
-            const isGroupActive = item.paths.some((p) =>
-              location.pathname.startsWith(p),
-            );
-            const isOpen = openGroups[item.label] || isGroupActive;
-
-            return (
-              <div key={idx} className="space-y-0.5">
-                <button
-                  onClick={() => toggleGroup(item.label)}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold hover:bg-white/5 text-slate-300 transition-all duration-150 cursor-pointer"
-                >
-                  <span className="opacity-75">{item.icon}</span>
-                  <span className="flex-1 text-left">{item.label}</span>
-                  <ChevronDown
-                    size={14}
-                    className={`opacity-50 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
-                  />
-                </button>
-
-                {isOpen && (
-                  <div className="pl-5 border-l border-slate-800 ml-5 space-y-0.5 mt-0.5 mb-1">
-                    {item.items.map((sub) => {
-                      const isActive = location.pathname === sub.path;
-                      return (
-                        <Link
-                          key={sub.path}
-                          to={sub.path}
-                          className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
-                            isActive
-                              ? "bg-[#00643b] text-white font-bold shadow-md shadow-slate-950/30 translate-x-1 border-l-4 border-emerald-400 pl-2"
-                              : "text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-0.5"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span
-                              className={isActive ? "text-white" : "opacity-60"}
-                            >
-                              {sub.icon}
-                            </span>
-                            <span className="truncate">{sub.label}</span>
-                          </div>
-                          {sub.badge && (
-                            <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse shrink-0">
-                              {sub.badge}
-                            </span>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          }
-
-          // Single link
-          const isActive = location.pathname === item.path;
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 ${
-                isActive
-                  ? "bg-[#00643b] text-white shadow-lg shadow-slate-950/30 translate-x-1 border-l-4 border-emerald-400 pl-2"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white hover:translate-x-0.5"
-              }`}
-            >
-              <span className={isActive ? "text-white" : "opacity-70"}>
-                {item.icon}
-              </span>
-              <span className="flex-1 text-left">{item.label}</span>
-              {item.badge && (
-                <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Footer User Block Integration */}
-      <div className="p-4 border-t border-slate-800/60 bg-slate-950/40">
-        <div className="flex items-center justify-between p-2.5 rounded-xl hover:bg-white/5 transition-colors mb-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <UserButton
-              appearance={{
-                elements: { userButtonAvatarImg: "w-9 h-9 rounded-md" },
-              }}
+      <aside
+        className={`fixed lg:relative inset-y-0 left-0 w-64 min-w-64 bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800/80 shadow-2xl z-40 transition-transform duration-300 lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+      >
+        {/* Logo */}
+        <div className="flex items-center gap-3 p-6 border-b border-slate-800/60 group">
+          <div className="w-9 h-9 bg-white/10 text-white rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">
+            <img
+              src="/logo.png"
+              alt=""
+              className="w-full h-full object-cover rounded-full"
             />
-            <div className="flex flex-col min-w-0">
-              <span className="font-bold text-xs text-white truncate">
-                {user?.fullName ?? "User"}
-              </span>
-              <span className="text-[9px] text-emerald-400 font-semibold uppercase tracking-wider">
-                {role}
-              </span>
-            </div>
+          </div>
+          <div className="flex flex-col">
+            <span className="font-extrabold text-base tracking-tight leading-none text-white">
+              BreedSmart
+            </span>
+            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest mt-1">
+              Tech Portal
+            </span>
           </div>
         </div>
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-slate-800 hover:bg-red-500/5 text-slate-400 hover:text-red-500 text-xs font-bold transition-all cursor-pointer"
-        >
-          <LogOut size={13} />
-          Sign Out
-        </button>
-      </div>
-    </aside>
 
-    {/* Smooth Logout Overlay */}
-    {isLoggingOut && (
-      <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
-        <div className="flex flex-col items-center gap-5">
-          <div className="relative w-16 h-16">
-            <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin"></div>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <LogOut size={20} className="text-emerald-400" />
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto p-4 space-y-0.5 custom-scrollbar">
+          {GROUPS.map((item, idx) => {
+            // Section label
+            if (item.type === "label") {
+              return (
+                <div
+                  key={idx}
+                  className="text-[9px] font-black uppercase text-slate-500 tracking-wider px-3 pt-4 pb-1"
+                >
+                  {item.label}
+                </div>
+              );
+            }
+
+            // Collapsible group
+            if (item.type === "group") {
+              const isGroupActive = item.paths.some((p) =>
+                location.pathname.startsWith(p),
+              );
+              const isOpen = openGroups[item.label] || isGroupActive;
+
+              return (
+                <div key={idx} className="space-y-0.5">
+                  <button
+                    onClick={() => toggleGroup(item.label)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold hover:bg-white/5 text-slate-300 transition-all duration-150 cursor-pointer"
+                  >
+                    <span className="opacity-75">{item.icon}</span>
+                    <span className="flex-1 text-left">{item.label}</span>
+                    <ChevronDown
+                      size={14}
+                      className={`opacity-50 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div className="pl-5 border-l border-slate-800 ml-5 space-y-0.5 mt-0.5 mb-1">
+                      {item.items.map((sub) => {
+                        const isActive = location.pathname === sub.path;
+                        return (
+                          <Link
+                            key={sub.path}
+                            to={sub.path}
+                            className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
+                              isActive
+                                ? "bg-[#00643b] text-white font-bold shadow-md shadow-slate-950/30 translate-x-1 border-l-4 border-emerald-400 pl-2"
+                                : "text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-0.5"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span
+                                className={
+                                  isActive ? "text-white" : "opacity-60"
+                                }
+                              >
+                                {sub.icon}
+                              </span>
+                              <span className="truncate">{sub.label}</span>
+                            </div>
+                            {sub.badge && (
+                              <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse shrink-0">
+                                {sub.badge}
+                              </span>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            // Single link
+            const isActive = location.pathname === item.path;
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 ${
+                  isActive
+                    ? "bg-[#00643b] text-white shadow-lg shadow-slate-950/30 translate-x-1 border-l-4 border-emerald-400 pl-2"
+                    : "text-slate-300 hover:bg-white/5 hover:text-white hover:translate-x-0.5"
+                }`}
+              >
+                <span className={isActive ? "text-white" : "opacity-70"}>
+                  {item.icon}
+                </span>
+                <span className="flex-1 text-left">{item.label}</span>
+                {item.badge && (
+                  <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Footer User Block Integration */}
+        <div className="p-4 border-t border-slate-800/60 bg-slate-950/40">
+          <div className="flex items-center justify-between p-2.5 rounded-xl hover:bg-white/5 transition-colors mb-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <UserButton
+                appearance={{
+                  elements: { userButtonAvatarImg: "w-9 h-9 rounded-md" },
+                }}
+              />
+              <div className="flex flex-col min-w-0">
+                <span className="font-bold text-xs text-white truncate">
+                  {user?.fullName ?? "User"}
+                </span>
+                <span className="text-[9px] text-emerald-400 font-semibold uppercase tracking-wider">
+                  {role}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="text-center">
-            <p className="text-white font-black text-sm uppercase tracking-widest">Signing Out</p>
-            <p className="text-slate-400 text-[11px] mt-1 font-medium">Clearing your session...</p>
-          </div>
-          <div className="flex gap-1.5 mt-1">
-            {[0, 1, 2].map((i) => (
-              <div
-                key={i}
-                className="w-1.5 h-1.5 rounded-full bg-emerald-500"
-                style={{ animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }}
-              />
-            ))}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-slate-800 hover:bg-red-500/5 text-slate-400 hover:text-red-500 text-xs font-bold transition-all cursor-pointer"
+          >
+            <LogOut size={13} />
+            Sign Out
+          </button>
+        </div>
+      </aside>
+
+      {/* Smooth Logout Overlay */}
+      {isLoggingOut && (
+        <div className="fixed inset-0 z-9999 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="flex flex-col items-center gap-5">
+            <div className="relative w-16 h-16">
+              <div className="absolute inset-0 rounded-full border-4 border-emerald-500/20"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-emerald-500 animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <LogOut size={20} className="text-emerald-400" />
+              </div>
+            </div>
+            <div className="text-center">
+              <p className="text-white font-black text-sm uppercase tracking-widest">
+                Signing Out
+              </p>
+              <p className="text-slate-400 text-[11px] mt-1 font-medium">
+                Clearing your session...
+              </p>
+            </div>
+            <div className="flex gap-1.5 mt-1">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="w-1.5 h-1.5 rounded-full bg-emerald-500"
+                  style={{
+                    animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
+                  }}
+                />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-    )}
-  </>
+      )}
+    </>
   );
 }

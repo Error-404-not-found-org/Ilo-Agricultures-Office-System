@@ -22,11 +22,12 @@ export default function TechnicianLayout() {
       <Stack.Screen name="record-ai" />
       <Stack.Screen name="technician.calendar" />
       <Stack.Screen name="task-details" />
-      <Stack.Screen name="heat-map" />
+      {/* <Stack.Screen name="heat-map" /> */}
       <Stack.Screen name="performance" />
       <Stack.Screen name="offline-maps" />
       <Stack.Screen name="sync-history" />
       <Stack.Screen name="photo-notes" />
+      <Stack.Screen name="ask-moowie" />
     </Stack>
   );
 }

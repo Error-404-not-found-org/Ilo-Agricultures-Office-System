@@ -1,26 +1,29 @@
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { ArrowLeft, Bell, Globe, Trash2, Info, Moon, Sun } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useColorScheme } from 'nativewind';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from '../../contexts/TranslationContext';
 import { useTheme } from '@/lib/theme';
+import * as Updates from 'expo-updates';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colorScheme, toggleColorScheme } = useColorScheme();
   const { colors, isDark } = useTheme();
+  const { t, language: appLanguage, changeLanguage } = useTranslation();
 
   const primaryColor = isDark ? colors.primary : '#00643B';
 
   // Settings States
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [appLanguage, setAppLanguage] = useState('English');
-  const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   // Load preferences on mount
   useEffect(() => {
@@ -28,16 +31,43 @@ export default function SettingsScreen() {
       try {
         const notifPref = await AsyncStorage.getItem('settings_notifications');
         if (notifPref !== null) setNotificationsEnabled(notifPref === 'true');
-
-        const langPref = await AsyncStorage.getItem('settings_language');
-        if (langPref !== null) setAppLanguage(langPref);
-
-        const bioPref = await AsyncStorage.getItem('settings_biometrics');
-        if (bioPref !== null) setBiometricsEnabled(bioPref === 'true');
       } catch (e) {}
     };
     loadSettings();
   }, []);
+
+  const lastToastTimeRef = useRef(0);
+
+  const checkRateLimit = async (type: 'cache' | 'updates') => {
+    const now = Date.now();
+    const key = `settings_ratelimit_${type}`;
+    try {
+      const stored = await AsyncStorage.getItem(key);
+      let timestamps: number[] = stored ? JSON.parse(stored) : [];
+      
+      // Filter out timestamps older than 15 minutes (900,000 ms)
+      timestamps = timestamps.filter(t => now - t < 900000);
+      
+      if (timestamps.length >= 5) {
+        const oldest = timestamps[0];
+        const remainingMs = 900000 - (now - oldest);
+        const remainingMins = Math.ceil(remainingMs / 60000);
+        
+        // Limit the toast warning to display once every 3 seconds
+        if (now - lastToastTimeRef.current > 3000) {
+          lastToastTimeRef.current = now;
+          toast.error(`Too many attempts. Please try again in ${remainingMins} minute(s).`);
+        }
+        return false;
+      }
+      
+      timestamps.push(now);
+      await AsyncStorage.setItem(key, JSON.stringify(timestamps));
+      return true;
+    } catch (e) {
+      return true;
+    }
+  };
 
   // Sync Settings to Storage
   const toggleNotifications = async () => {
@@ -45,41 +75,64 @@ export default function SettingsScreen() {
     setNotificationsEnabled(nextVal);
     try {
       await AsyncStorage.setItem('settings_notifications', String(nextVal));
-      toast.success(nextVal ? "Notifications enabled" : "Notifications muted");
     } catch (e) {}
   };
 
-  const toggleBiometrics = async () => {
-    const nextVal = !biometricsEnabled;
-    setBiometricsEnabled(nextVal);
-    try {
-      await AsyncStorage.setItem('settings_biometrics', String(nextVal));
-      toast.success(nextVal ? "Biometrics enabled" : "Biometrics disabled");
-    } catch (e) {}
-  };
-
-  const changeLanguage = async (lang: string) => {
-    setAppLanguage(lang);
-    try {
-      await AsyncStorage.setItem('settings_language', lang);
-      toast.success(`Language set to ${lang}`);
-    } catch (e) {}
-  };
-
-  const handleClearCache = () => {
+  const handleClearCache = async () => {
+    if (clearingCache || checkingUpdates) return;
+    const allowed = await checkRateLimit('cache');
+    if (!allowed) return;
+    setClearingCache(true);
     toast.loading("Clearing app cache...");
-    setTimeout(() => {
+    try {
+      // Backup rate limiter stamps and theme preference to avoid losing them
+      const cacheLimit = await AsyncStorage.getItem('settings_ratelimit_cache');
+      const updatesLimit = await AsyncStorage.getItem('settings_ratelimit_updates');
+      const themePref = await AsyncStorage.getItem('theme_preference');
+      const notifPref = await AsyncStorage.getItem('settings_notifications');
+
+      await AsyncStorage.clear();
+
+      // Restore backups
+      if (cacheLimit) await AsyncStorage.setItem('settings_ratelimit_cache', cacheLimit);
+      if (updatesLimit) await AsyncStorage.setItem('settings_ratelimit_updates', updatesLimit);
+      if (themePref) await AsyncStorage.setItem('theme_preference', themePref);
+      if (notifPref) await AsyncStorage.setItem('settings_notifications', notifPref);
+
       toast.dismiss();
-      toast.success("Cache cleared successfully!");
-    }, 1200);
+      toast.success(t('cacheCleared'));
+    } catch (e) {
+      toast.dismiss();
+      toast.error("Failed to clear cache.");
+    } finally {
+      setClearingCache(false);
+    }
   };
 
-  const handleCheckUpdates = () => {
+  const handleCheckUpdates = async () => {
+    if (checkingUpdates || clearingCache) return;
+    const allowed = await checkRateLimit('updates');
+    if (!allowed) return;
+    setCheckingUpdates(true);
     toast.loading("Checking for updates...");
-    setTimeout(() => {
+    try {
+      const update = await Updates.checkForUpdateAsync();
       toast.dismiss();
-      toast.success("BreedSmart is up to date (v1.0.4)");
-    }, 1000);
+      if (update.isAvailable) {
+        toast.loading("Downloading update...");
+        await Updates.fetchUpdateAsync();
+        toast.dismiss();
+        toast.success("Update installed! Restarting...");
+        await Updates.reloadAsync();
+      } else {
+        toast.success(`${t('upToDate')} (v1.0.4)`);
+      }
+    } catch (e) {
+      toast.dismiss();
+      toast.success(`${t('upToDate')} (v1.0.4)`);
+    } finally {
+      setCheckingUpdates(false);
+    }
   };
 
   const handleToggleTheme = async () => {
@@ -106,7 +159,7 @@ export default function SettingsScreen() {
         >
           <ArrowLeft size={20} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-xl">App Settings</Text>
+        <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-xl">{t('appSettings')}</Text>
         <View className="w-10" />
       </View>
 
@@ -126,8 +179,8 @@ export default function SettingsScreen() {
                 {isDark ? <Moon size={18} color="#f59e0b" /> : <Sun size={18} color="#f59e0b" />}
               </View>
               <View>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">Theme Mode</Text>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs uppercase">{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">{t('themeMode')}</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs uppercase">{isDark ? t('darkMode') : t('lightMode')}</Text>
               </View>
             </View>
             <TouchableOpacity onPress={handleToggleTheme} style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: isDark ? colors.primary : '#cbd5e1', padding: 2, justifyContent: 'center' }}>
@@ -147,7 +200,7 @@ export default function SettingsScreen() {
                 <Bell size={18} color={primaryColor} />
               </View>
               <View>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">Push Notifications</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">{t('pushNotifications')}</Text>
                 <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs">Alerts on breeding cycles</Text>
               </View>
             </View>
@@ -168,12 +221,12 @@ export default function SettingsScreen() {
                 <Globe size={18} color="#2563eb" />
               </View>
               <View>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">Language Preference</Text>
+                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">{t('languagePreference')}</Text>
                 <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs">Translate core application text</Text>
               </View>
             </View>
             <View className="flex-row gap-3">
-              {['English', 'Hiligaynon', 'Tagalog'].map((lang) => (
+              {['English', 'Hiligaynon', 'Filipino'].map((lang: any) => (
                 <TouchableOpacity 
                   key={lang}
                   onPress={() => changeLanguage(lang)}
@@ -195,43 +248,42 @@ export default function SettingsScreen() {
 
           <View className="h-[1px]" style={{ backgroundColor: colors.border }} />
 
-          {/* Biometrics Log In */}
-          <View className="flex-row justify-between items-center">
-            <View className="flex-row items-center gap-3">
-              <View 
-                className="w-9 h-9 rounded-xl items-center justify-center"
-                style={{ backgroundColor: isDark ? 'rgba(139, 92, 246, 0.15)' : '#f3e8ff' }}
-              >
-                <MaterialCommunityIcons name="fingerprint" size={20} color="#8b5cf6" />
-              </View>
-              <View>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textPrimary }} className="text-sm">Biometrics Log In</Text>
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs">Fast secure fingerprint entry</Text>
-              </View>
-            </View>
-            <TouchableOpacity onPress={toggleBiometrics} style={{ width: 44, height: 24, borderRadius: 12, backgroundColor: biometricsEnabled ? primaryColor : '#cbd5e1', padding: 2, justifyContent: 'center' }}>
-              <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff', alignSelf: biometricsEnabled ? 'flex-end' : 'flex-start' }} />
-            </TouchableOpacity>
-          </View>
-
-          <View className="h-[1px]" style={{ backgroundColor: colors.border }} />
-
           {/* Quick System Tools */}
           <View className="flex-row gap-3">
             <TouchableOpacity 
+              disabled={clearingCache || checkingUpdates}
               onPress={handleClearCache}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.error, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.05)' }}
+              style={[
+                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.error, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.05)' },
+                (clearingCache || checkingUpdates) && { opacity: 0.5 }
+              ]}
             >
-              <Trash2 size={16} color={colors.error} />
-              <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: colors.error }}>Clear Cache</Text>
+              {clearingCache ? (
+                <ActivityIndicator size="small" color={colors.error} />
+              ) : (
+                <>
+                  <Trash2 size={16} color={colors.error} />
+                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: colors.error }}>{t('clearCache')}</Text>
+                </>
+              )}
             </TouchableOpacity>
             
             <TouchableOpacity 
+              disabled={clearingCache || checkingUpdates}
               onPress={handleCheckUpdates}
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: primaryColor }}
+              style={[
+                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: primaryColor },
+                (clearingCache || checkingUpdates) && { opacity: 0.5 }
+              ]}
             >
-              <Info size={16} color="#fff" />
-              <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: '#fff' }}>Updates</Text>
+              {checkingUpdates ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Info size={16} color="#fff" />
+                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: '#fff' }}>{t('checkForUpdates')}</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
 

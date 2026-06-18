@@ -129,7 +129,7 @@ const ActionCategory = ({ title, icon, iconBg, onPress }: { title: string; icon:
       {icon}
     </View>
     <Text className="text-slate-700 dark:text-slate-200 text-[9.5px] font-bold text-center leading-3">
-      {title.split('\\n').map((line, i) => (
+      {title.split('\n').map((line, i) => (
         <Text key={i}>{line}{i === 0 ? '\n' : ''}</Text>
       ))}
     </Text>

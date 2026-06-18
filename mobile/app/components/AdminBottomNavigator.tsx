@@ -162,7 +162,7 @@ const TabItem = ({ icon: Icon, label, isFocused, onPress, colorScheme }: any) =>
     <View
       style={
         isFocused
-          ? { backgroundColor: colorScheme === 'dark' ? '#1e3a8a' : '#eff6ff', width: 52, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' }
+          ? { backgroundColor: colorScheme === 'dark' ? '#1e3a8a' : '#eff6ff', width: 52, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }
           : { alignItems: 'center', justifyContent: 'center' }
       }
     >

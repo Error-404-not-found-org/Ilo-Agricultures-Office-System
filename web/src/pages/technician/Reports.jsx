@@ -15,6 +15,8 @@ import {
 import Topbar from "../../components/ui/Topbar";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
+import { jsPDF } from "jspdf";
+import "jspdf-autotable";
 
 export default function FieldReports() {
   const toast = useToast();
@@ -255,6 +257,12 @@ export default function FieldReports() {
           format: format.toUpperCase(),
           type: typeLabels[reportType],
           status: "Published",
+          params: {
+            reportType,
+            dateRange,
+            barangay,
+            format
+          }
         };
 
         setReports((prev) => [newReport, ...prev]);
@@ -271,65 +279,347 @@ export default function FieldReports() {
     try {
       toast.info(`Fetching live data aggregates for: ${report.name}...`);
       
-      // Pull live accomplishment metrics from database
+      let monthVal, yearVal;
       const now = new Date();
-      const res = await axiosInstance.get(
-        `/reports/monthly-accomplishment?month=${now.getMonth() + 1}&year=${now.getFullYear()}`
-      );
-      const data = res.data || [];
-      
-      if (data.length === 0) {
-        return toast.error("Zero telemetry records located for selected month scope.");
+      if (report.params && report.params.dateRange) {
+        monthVal = now.getMonth() + 1;
+        yearVal = now.getFullYear();
+      } else {
+        monthVal = now.getMonth() + 1;
+        yearVal = now.getFullYear();
+        if (report.name.includes("May 2026")) {
+          monthVal = 5;
+          yearVal = 2026;
+        } else if (report.name.includes("April 2026")) {
+          monthVal = 4;
+          yearVal = 2026;
+        } else if (report.name.includes("March 2026")) {
+          monthVal = 3;
+          yearVal = 2026;
+        }
       }
 
-      // Build CSV output stream
+      const isPDF = report.format === "PDF";
+      const reportTypeClean = report.type || "Breeding Audit";
+
+      // 1. CENSUS / LIVESTOCK DEMOGRAPHICS
+      if (reportTypeClean === "Livestock Census") {
+        const res = await axiosInstance.get("/animals/all");
+        let data = res.data || [];
+        const targetBrgy = report.params?.barangay || "all";
+        if (targetBrgy !== "all") {
+          data = data.filter(item => 
+            item.farmerId?.address?.barangay?.toLowerCase() === targetBrgy.toLowerCase()
+          );
+        }
+
+        if (data.length === 0) {
+          return toast.error("Zero census records located for selected parameters.");
+        }
+
+        const headers = ["Animal ID", "Ear Tag", "Species", "Breed", "Color", "Farmer Owner", "Barangay", "Reproductive Status"];
+        const rows = data.map(item => [
+          item.animalId || "—",
+          item.earTag || "—",
+          item.type || item.species || "—",
+          item.breed || "—",
+          item.color || "—",
+          item.farmerId?.name || "—",
+          item.farmerId?.address?.barangay || "—",
+          item.reproductiveStatus || "—"
+        ]);
+
+        if (isPDF) {
+          const doc = new jsPDF({ orientation: "landscape", format: "a4", unit: "mm" });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.text("Municipal Agricultural Extension Office", doc.internal.pageSize.width / 2, 12, { align: "center" });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          doc.text("LIVESTOCK DEMOGRAPHICS CENSUS REPORT", doc.internal.pageSize.width / 2, 18, { align: "center" });
+          doc.text(`Sector Barangay: ${targetBrgy.toUpperCase()}`, doc.internal.pageSize.width / 2, 22, { align: "center" });
+          
+          doc.autoTable({
+            head: [headers],
+            body: rows,
+            theme: "grid",
+            styles: { fontSize: 7, cellPadding: 1.5 },
+            headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center" },
+            margin: { top: 26 }
+          });
+          doc.save(`DA_Census_Report_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
+        } else {
+          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `DA_Census_Report_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+        return toast.success("Census dataset exported successfully.");
+      }
+
+      // 2. FARMER ACTIVITIES / ENGAGEMENT LOGS
+      if (reportTypeClean === "Farmer Activities") {
+        const [farmersRes, animalsRes] = await Promise.all([
+          axiosInstance.get("/user?role=farmer"),
+          axiosInstance.get("/animals/all")
+        ]);
+        const farmers = farmersRes.data || [];
+        const animals = animalsRes.data || [];
+        
+        const counts = {};
+        animals.forEach(a => {
+          const fId = typeof a.farmerId === "object" ? a.farmerId?._id : a.farmerId;
+          if (fId) counts[fId] = (counts[fId] || 0) + 1;
+        });
+
+        let data = farmers.map(f => ({
+          name: f.name || "Unknown",
+          contact: f.phoneNumber || "N/A",
+          barangay: f.address?.barangay || "N/A",
+          animals: counts[f._id] || 0,
+          status: f.isVerified ? "Verified" : "Manual",
+          registered: f.createdAt ? new Date(f.createdAt).toLocaleDateString() : "N/A"
+        }));
+
+        const targetBrgy = report.params?.barangay || "all";
+        if (targetBrgy !== "all") {
+          data = data.filter(item => item.barangay?.toLowerCase() === targetBrgy.toLowerCase());
+        }
+
+        if (data.length === 0) {
+          return toast.error("Zero farmer records located for selected parameters.");
+        }
+
+        const headers = ["Farmer Name", "Contact Number", "Barangay", "Registered Livestock", "Status", "Registration Date"];
+        const rows = data.map(item => [
+          item.name,
+          item.contact,
+          item.barangay,
+          item.animals,
+          item.status,
+          item.registered
+        ]);
+
+        if (isPDF) {
+          const doc = new jsPDF({ orientation: "portrait", format: "a4", unit: "mm" });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 10, { align: "center" });
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(8);
+          doc.text("Unified National Artificial Insemination Program", doc.internal.pageSize.width / 2, 14, { align: "center" });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.text("FARMER ENGAGEMENT AND ROSTER REPORT", doc.internal.pageSize.width / 2, 20, { align: "center" });
+          
+          doc.autoTable({
+            head: [headers],
+            body: rows,
+            theme: "grid",
+            styles: { fontSize: 8, cellPadding: 2 },
+            headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center" },
+            margin: { top: 25 }
+          });
+          doc.save(`DA_Farmer_Roster_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
+        } else {
+          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `DA_Farmer_Roster_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+        return toast.success("Farmer activities database exported successfully.");
+      }
+
+      // 3. CLINICAL HEALTH REGISTRY (HEALTH SUMMARY)
+      if (reportTypeClean === "Health Summary") {
+        const res = await axiosInstance.get("/health-request");
+        let healthData = res.data || [];
+        
+        const targetBrgy = report.params?.barangay || "all";
+        if (targetBrgy !== "all") {
+          healthData = healthData.filter(item => 
+            item.farmerId?.address?.barangay?.toLowerCase() === targetBrgy.toLowerCase()
+          );
+        }
+
+        if (healthData.length === 0) {
+          return toast.error("Zero health incidents located for selected parameters.");
+        }
+
+        const headers = ["Logged Date", "Animal Tag", "Farmer Owner", "Barangay", "Symptoms", "Diagnosis", "Treatment Plan", "Urgency", "Status"];
+        const rows = healthData.map(item => [
+          item.createdAt ? new Date(item.createdAt).toLocaleDateString() : "N/A",
+          item.animalId?.earTag || "—",
+          item.farmerId?.name || "—",
+          item.farmerId?.address?.barangay || "—",
+          item.symptoms || "—",
+          item.diagnosis || "—",
+          item.treatment || "—",
+          (item.urgency || "low").toUpperCase(),
+          (item.status || "pending").toUpperCase()
+        ]);
+
+        if (isPDF) {
+          const doc = new jsPDF({ orientation: "landscape", format: "a4", unit: "mm" });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(10);
+          doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.text("Veterinary Health Diagnostics & Triage Logs", doc.internal.pageSize.width / 2, 12, { align: "center" });
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          doc.text("DISEASE OUTBREAK & HEALTH TELEMETRY REPORT", doc.internal.pageSize.width / 2, 18, { align: "center" });
+          
+          doc.autoTable({
+            head: [headers],
+            body: rows,
+            theme: "grid",
+            styles: { fontSize: 7, cellPadding: 1.5 },
+            headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center" },
+            margin: { top: 24 }
+          });
+          doc.save(`DA_Health_Summary_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
+        } else {
+          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.setAttribute("href", url);
+          link.setAttribute("download", `DA_Health_Summary_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        }
+        return toast.success("Health dispatches dataset exported successfully.");
+      }
+
+      // 4. BREEDING LEDGER AUDIT / UNIP
+      const res = await axiosInstance.get(
+        `/reports/monthly-accomplishment?month=${monthVal}&year=${yearVal}`
+      );
+      let data = res.data || [];
+      
+      const targetBrgy = report.params?.barangay || "all";
+      if (targetBrgy !== "all") {
+        data = data.filter(item => 
+          item.farmer?.address?.barangay?.toLowerCase() === targetBrgy.toLowerCase()
+        );
+      }
+
+      if (data.length === 0) {
+        return toast.error("Zero breeding ledger records located for selected parameters.");
+      }
+
       const headers = [
-        "Record Date",
-        "Animal Species",
-        "Animal Breed",
-        "Ear Tag",
-        "Farmer Owner",
-        "Service Scope",
-        "AI Estrus Type",
-        "AI Sire Code",
-        "PD Outcome Result",
-        "CD Calves Count"
+        "Data", "No.", "Animal ID No.", "Ear Tag No.", "Brand", "Species", "Breed", "Color", "Address", "Farmer",
+        "AI Date", "No. of AI", "Estrus", "Sire Breed", "Sire Code",
+        "PD Date", "PD Result",
+        "CD Date", "No. of Calving", "Calf ID No.", "Sex", "Calving Ease"
       ];
       
-      const rows = data.map((item) => [
-        item.date ? new Date(item.date).toLocaleDateString() : "N/A",
-        item.animal?.species || "N/A",
-        item.animal?.breed || "N/A",
-        item.animal?.earTag || "N/A",
-        item.farmer?.name || "N/A",
-        item.type || "N/A",
-        item.ai?.estrus || "N/A",
-        item.ai?.sireCode || "N/A",
-        item.pd?.result || "N/A",
-        item.cd?.count || "N/A"
+      const rows = data.map((item, index) => [
+        item.type || "",
+        index + 1,
+        item.animal?.animalId || "—",
+        item.animal?.earTag || "—",
+        item.animal?.brand || "—",
+        item.animal?.species || "—",
+        item.animal?.breed || "—",
+        item.animal?.color || "—",
+        item.farmer?.address?.barangay || "—",
+        item.farmer?.name || "—",
+        item.date ? new Date(item.date).toLocaleDateString() : "—",
+        item.ai?.attempt || "—",
+        item.ai?.estrus || "—",
+        item.ai?.sireBreed || "—",
+        item.ai?.sireCode || "—",
+        item.pd?.date ? new Date(item.pd.date).toLocaleDateString() : "—",
+        item.pd?.result || "—",
+        item.cd?.date ? new Date(item.cd.date).toLocaleDateString() : "—",
+        item.cd?.count || "—",
+        item.cd?.calves?.[0]?.animalId || "—",
+        item.cd?.calves?.[0]?.sex || "—",
+        item.cd?.ease || "—"
       ]);
 
-      const csvContent =
-        "data:text/csv;charset=utf-8," +
-        headers.join(",") +
-        "\n" +
-        rows.map((e) => e.map((val) => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+      if (isPDF) {
+        const doc = new jsPDF({ orientation: "landscape", format: "a4", unit: "mm" });
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.text("Bureau of Animal Industry - Local Government Units", doc.internal.pageSize.width / 2, 11, { align: "center" });
+        doc.text("Unified National Artificial Insemination Program", doc.internal.pageSize.width / 2, 14, { align: "center" });
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9);
+        doc.text("MONTHLY ACCOMPLISHMENT REPORT", doc.internal.pageSize.width / 2, 19, { align: "center" });
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7.5);
+        doc.text(`For the Month of: ${monthVal} / ${yearVal}    Sector Barangay: ${targetBrgy.toUpperCase()}`, doc.internal.pageSize.width / 2, 23, { align: "center" });
 
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute(
-        "download",
-        `DA_${report.name.replace(/\s+/g, "_")}_${new Date().toLocaleDateString()}.csv`
-      );
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast.success("Document published to spreadsheet and downloaded successfully!");
+        const structuredHeaders = [
+          [
+            { content: "Data", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: "No.", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: "Animal Identification", colSpan: 7, styles: { halign: 'center' } },
+            { content: "Farmer", rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: "Artificial Insemination", colSpan: 5, styles: { halign: 'center' } },
+            { content: "Pregnancy Diagnosis", colSpan: 2, styles: { halign: 'center' } },
+            { content: "Calf Drop", colSpan: 5, styles: { halign: 'center' } }
+          ],
+          [
+            "Animal ID No.", "Ear Tag No.", "Brand", "Species", "Breed", "Color", "Address",
+            "Date", "No. of AI", "Estrus", "Sire Breed", "Sire Code",
+            "Date", "Result",
+            "Date", "No. of Calving", "Calf ID No.", "Sex", "Calving Ease"
+          ]
+        ];
+
+        doc.autoTable({
+          head: structuredHeaders,
+          body: rows,
+          theme: "grid",
+          styles: { fontSize: 5, cellPadding: 1 },
+          headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center", fontSize: 5 },
+          margin: { top: 26 }
+        });
+        doc.save(`DA_UNIP_Report_${monthVal}_${yearVal}_${targetBrgy}.pdf`);
+      } else {
+        const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `DA_UNIP_Report_${monthVal}_${yearVal}_${targetBrgy}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+
+      toast.success("Municipal report document downloaded successfully!");
     } catch (error) {
       console.error(error);
-      toast.error("Failed to construct regional report spreadsheet.");
+      toast.error("Failed to construct accomplishment report.");
     }
   };
 

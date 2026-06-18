@@ -30,11 +30,72 @@ import tasksRoutes from "./routes/tasks.routes.js";
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: ENV.NODE_ENV === "production" ? ENV.CLIENT_URL : true,
-    credentials: true,
+
+// Setup dynamic allowed origins for CORS
+const allowedOrigins = [
+  "https://breedsmartoton.site",
+  "https://www.breedsmartoton.site",
+];
+
+if (ENV.CLIENT_URL) {
+  let clientUrl = ENV.CLIENT_URL.trim();
+  // If the user forgot to add the protocol, normalize it
+  if (!/^https?:\/\//i.test(clientUrl)) {
+    clientUrl = `https://${clientUrl}`;
+  }
+  allowedOrigins.push(clientUrl);
+  try {
+    const parsed = new URL(clientUrl);
+    const host = parsed.hostname;
+    if (host.startsWith("www.")) {
+      allowedOrigins.push(`${parsed.protocol}//${host.replace(/^www\./, "")}`);
+    } else {
+      allowedOrigins.push(`${parsed.protocol}//www.${host}`);
+    }
+  } catch (e) {
+    // ignore invalid URL parsing
+  }
+}
+
+const uniqueOrigins = [...new Set(allowedOrigins)];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Check if the origin matches our allowed list
+    if (uniqueOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    
+    // Check if the origin is a subdomain of breedsmartoton.site
+    try {
+      const parsedOrigin = new URL(origin);
+      if (
+        parsedOrigin.hostname === "breedsmartoton.site" ||
+        parsedOrigin.hostname.endsWith(".breedsmartoton.site")
+      ) {
+        return callback(null, true);
+      }
+    } catch (e) {
+      // ignore parsing error
+    }
+    
+    // In non-production, allow all
+    if (ENV.NODE_ENV !== "production") {
+      return callback(null, true);
+    }
+    
+    // Otherwise deny
+    console.warn(`[CORS Blocked] Request origin: ${origin}`);
+    callback(null, false);
   },
+  credentials: true,
+};
+
+const io = new Server(httpServer, {
+  cors: corsOptions,
 });
 
 // Attach io to app to be accessible in controllers
@@ -60,14 +121,7 @@ const __dirname = path.resolve();
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(clerkMiddleware()); // add auth object under req.auth
-app.use(
-  cors({
-    // React Native ignores CORS — this only affects web clients.
-    // In dev: accept any origin. In prod: lock to CLIENT_URL.
-    origin: ENV.NODE_ENV === "production" ? ENV.CLIENT_URL : true,
-    credentials: true,
-  }),
-);
+app.use(cors(corsOptions));
 
 app.use((req, res, next) => {
   console.log(`[HTTP] ${req.method} ${req.path}`);
@@ -114,12 +168,10 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3000;
 
-if (ENV.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../web/dist")));
-  app.get("/{*any}", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "../web", "dist", "index.html"));
-  });
-}
+// Serve a simple root response for API service health check
+app.get("/", (req, res) => {
+  res.json({ message: "Oton Agriculture Office API is running." });
+});
 
 // Socket.io connection logging
 io.on("connection", (socket) => {

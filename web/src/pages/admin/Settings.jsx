@@ -37,18 +37,38 @@ export default function Settings() {
   ]);
   const [newBreed, setNewBreed] = useState("");
 
+  // Load configurations from backend settings
+  React.useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await axiosInstance.get("/config/settings");
+        if (res.data) {
+          setPregWindow(String(res.data.pregnancyWindowDays || "60"));
+          setMaxAttempts(String(res.data.maxAttemptLimit || "3"));
+          setEmailAlerts(res.data.emailNotificationEnabled !== undefined ? res.data.emailNotificationEnabled : true);
+          setSmsToggles(res.data.smsNotificationEnabled !== undefined ? res.data.smsNotificationEnabled : true);
+          if (Array.isArray(res.data.registered_breeds)) {
+            setBreeds(res.data.registered_breeds);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error("Failed to load command settings.");
+      }
+    };
+    fetchSettings();
+  }, []);
+
   const handleSaveSettings = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // Send configurations update payload
       await axiosInstance.post("/config/settings", {
         pregnancyWindowDays: pregWindow,
         maxAttemptLimit: maxAttempts,
         emailNotificationEnabled: emailAlerts,
         smsNotificationEnabled: smsToggles,
-      }).catch(() => {
-        // Fallback for simulation
+        registered_breeds: breeds,
       });
       toast.success(" Breeding ledger settings updated successfully.");
     } catch (err) {
@@ -61,31 +81,52 @@ export default function Settings() {
   const handleBackup = async () => {
     setIsBackingUp(true);
     try {
-      // Simulate remote DB dump
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      toast.success("Database backup successfully compiled. Dump file saved to server.");
+      const res = await axiosInstance.get("/admin/backup", { responseType: "blob" });
+      const blob = new Blob([res.data], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `BreedSmart_Backup_${new Date().toISOString().split('T')[0]}.json`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("Database backup successfully compiled and downloaded.");
     } catch (err) {
+      console.error(err);
       toast.error("Failed compiling system backup.");
     } finally {
       setIsBackingUp(false);
     }
   };
 
-  const handleAddBreed = (e) => {
+  const handleAddBreed = async (e) => {
     e.preventDefault();
     if (!newBreed) return;
     if (breeds.includes(newBreed)) {
       toast.error("Breed already cataloged.");
       return;
     }
-    setBreeds([...breeds, newBreed]);
+    const updated = [...breeds, newBreed];
+    setBreeds(updated);
     setNewBreed("");
-    toast.success(`${newBreed} added to genetic breeds catalog.`);
+    try {
+      await axiosInstance.post("/config/settings", { registered_breeds: updated });
+      toast.success(`${newBreed} added to genetic breeds catalog.`);
+    } catch (err) {
+      toast.error("Failed to sync breed to server.");
+    }
   };
 
-  const handleRemoveBreed = (indexToRemove) => {
-    setBreeds(breeds.filter((_, idx) => idx !== indexToRemove));
-    toast.success("Breed catalog updated.");
+  const handleRemoveBreed = async (indexToRemove) => {
+    const updated = breeds.filter((_, idx) => idx !== indexToRemove);
+    setBreeds(updated);
+    try {
+      await axiosInstance.post("/config/settings", { registered_breeds: updated });
+      toast.success("Breed catalog updated.");
+    } catch (err) {
+      toast.error("Failed to sync breed removal to server.");
+    }
   };
 
   return (

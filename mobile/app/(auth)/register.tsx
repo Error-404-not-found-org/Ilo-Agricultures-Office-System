@@ -38,8 +38,8 @@ const RegisterScreen = () => {
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!cleanEmail || !password) {
-      toast.error("Required Fields", { description: "Please enter your email and password." });
+    if (!cleanFirstName || !cleanLastName || !cleanUsername || !cleanEmail || !password) {
+      toast.error("Required Fields", { description: "Please enter your first name, last name, username, email, and password." });
       setLoading(false);
       return;
     }
@@ -59,9 +59,9 @@ const RegisterScreen = () => {
     try {
       // Create user via Clerk
       const signUpAttempt = await signUp.create({
-        username: cleanUsername || undefined,
-        firstName: cleanFirstName || undefined,
-        lastName: cleanLastName || undefined,
+        username: cleanUsername,
+        firstName: cleanFirstName,
+        lastName: cleanLastName,
         emailAddress: cleanEmail,
         password,
       });
@@ -128,8 +128,7 @@ const RegisterScreen = () => {
               <View className="flex-row gap-3">
                 <View className="flex-1">
                   <View className="flex-row justify-between mb-1.5 px-0.5">
-                    <Text className="text-[13px] font-bold text-slate-800">First name</Text>
-                    <Text className="text-[11px] font-medium text-slate-400">Optional</Text>
+                    <Text className="text-[13px] font-bold text-slate-800">First name *</Text>
                   </View>
                   <TextInput
                     className="w-full border border-slate-200 rounded-xl p-3.5 bg-white text-slate-800 focus:border-slate-400"
@@ -141,8 +140,7 @@ const RegisterScreen = () => {
                 </View>
                 <View className="flex-1">
                   <View className="flex-row justify-between mb-1.5 px-0.5">
-                    <Text className="text-[13px] font-bold text-slate-800">Last name</Text>
-                    <Text className="text-[11px] font-medium text-slate-400">Optional</Text>
+                    <Text className="text-[13px] font-bold text-slate-800">Last name *</Text>
                   </View>
                   <TextInput
                     className="w-full border border-slate-200 rounded-xl p-3.5 bg-white text-slate-800 focus:border-slate-400"
@@ -156,8 +154,7 @@ const RegisterScreen = () => {
 
               <View>
                 <View className="flex-row justify-between mb-1.5 px-0.5">
-                  <Text className="text-[13px] font-bold text-slate-800">Username</Text>
-                  <Text className="text-[11px] font-medium text-slate-400">Optional</Text>
+                  <Text className="text-[13px] font-bold text-slate-800">Username *</Text>
                 </View>
                 <TextInput
                   className="w-full border border-slate-200 rounded-xl p-3.5 bg-white text-slate-800 focus:border-slate-400"

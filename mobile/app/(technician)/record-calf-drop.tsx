@@ -2,13 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, FlatList, Image } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Save, Plus, Trash2, Calendar, Info, User, ChevronDown, Search, X, ShieldAlert } from 'lucide-react-native';
+import { ArrowLeft, Save, Plus, Trash2, Calendar, Info, User, ChevronDown, Search, X, ShieldAlert, Camera, Image as ImageIcon } from 'lucide-react-native';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import EarTagGenerator from '@/components/EarTagGenerator';
+import * as ImagePicker from 'expo-image-picker';
+
+interface CalfEntry {
+    sex: string;
+    earTag: string;
+    color: string;
+    brand: string;
+    imageUri?: string;
+    imageBase64?: string;
+}
 
 export default function RecordCalfDropScreen() {
     const router = useRouter();
@@ -40,7 +50,7 @@ export default function RecordCalfDropScreen() {
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [calvingEase, setCalvingEase] = useState('Natural');
     const [numCalves, setNumCalves] = useState(1);
-    const [calves, setCalves] = useState([
+    const [calves, setCalves] = useState<CalfEntry[]>([
         { sex: 'F', earTag: '', color: '', brand: '' }
     ]);
     const [note, setNote] = useState('');
@@ -162,6 +172,54 @@ export default function RecordCalfDropScreen() {
         setCalves(newCalves);
     };
 
+    const pickCalfImage = async (index: number) => {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.5,
+            base64: true,
+        });
+        if (!result.canceled && result.assets?.length > 0) {
+            const newCalves = [...calves];
+            newCalves[index].imageUri = result.assets[0].uri;
+            newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+            setCalves(newCalves);
+            toast.success(`Photo attached to Calf #${index + 1}`);
+        }
+    };
+
+    const takeCalfPhoto = async (index: number) => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+            toast.error("Permission to access camera was denied");
+            return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ["images"],
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 0.5,
+            base64: true,
+        });
+
+        if (!result.canceled && result.assets?.length > 0) {
+            const newCalves = [...calves];
+            newCalves[index].imageUri = result.assets[0].uri;
+            newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+            setCalves(newCalves);
+            toast.success(`Photo attached to Calf #${index + 1}`);
+        }
+    };
+
+    const removeCalfImage = (index: number) => {
+        const newCalves = [...calves];
+        newCalves[index].imageUri = undefined;
+        newCalves[index].imageBase64 = undefined;
+        setCalves(newCalves);
+    };
+
     const handleSave = async () => {
         if (!motherId || !pregnancyId) {
             toast.error("Please select a mother with an active pregnancy.");
@@ -176,7 +234,13 @@ export default function RecordCalfDropScreen() {
                 date,
                 calvingEase,
                 numberOfCalves: numCalves,
-                calves,
+                calves: calves.map(c => ({
+                    sex: c.sex,
+                    earTag: c.earTag,
+                    color: c.color,
+                    brand: c.brand,
+                    imageUrl: c.imageBase64 || ""
+                })),
                 technicianNote: note
             };
 
@@ -406,6 +470,39 @@ export default function RecordCalfDropScreen() {
                                                     isDark={isDark}
                                                 />
                                             </View>
+                                        </View>
+
+                                        {/* Calf Image Picker */}
+                                        <View className="mt-2">
+                                            <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Calf Image / Photo (Optional)</Text>
+                                            {calf.imageUri ? (
+                                                <View className="rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800 shadow-sm relative">
+                                                    <Image source={{ uri: calf.imageUri }} className="w-full h-32" resizeMode="cover" />
+                                                    <TouchableOpacity
+                                                        onPress={() => removeCalfImage(idx)}
+                                                        className="absolute top-2 right-2 p-2 bg-black/60 rounded-full"
+                                                    >
+                                                        <X size={14} color="white" />
+                                                    </TouchableOpacity>
+                                                </View>
+                                            ) : (
+                                                <View className="flex-row gap-2">
+                                                    <TouchableOpacity
+                                                        onPress={() => takeCalfPhoto(idx)}
+                                                        className="flex-1 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5 shadow-sm"
+                                                    >
+                                                        <Camera size={14} color={isDark ? '#34d399' : '#00643B'} />
+                                                        <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-600 dark:text-slate-300 text-[10px]">Take Photo</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity
+                                                        onPress={() => pickCalfImage(idx)}
+                                                        className="flex-1 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5 shadow-sm"
+                                                    >
+                                                        <ImageIcon size={14} color={isDark ? '#34d399' : '#00643B'} />
+                                                        <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-600 dark:text-slate-300 text-[10px]">Gallery</Text>
+                                                    </TouchableOpacity>
+                                                </View>
+                                            )}
                                         </View>
                                     </View>
                                 </View>

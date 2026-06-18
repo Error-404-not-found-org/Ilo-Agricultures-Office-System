@@ -34,6 +34,9 @@ import { useQueryClient, useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useTheme } from "@/lib/theme";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -44,6 +47,7 @@ interface Animal {
   breed: string;
   reproductiveStatus?: string;
   gender?: string;
+  birthDate?: string | Date;
 }
 interface FarmerProfile {
   _id: string;
@@ -166,6 +170,13 @@ export default function RequestAI() {
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [preferredDate, setPreferredDate] = useState(new Date());
 
+  const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [maleModalVisible, setMaleModalVisible] = useState(false);
+  const [pregnantModalVisible, setPregnantModalVisible] = useState(false);
+  const [pregnantSubmitModalVisible, setPregnantSubmitModalVisible] = useState(false);
+  const [ageModalVisible, setAgeModalVisible] = useState(false);
+  const [ageCheckReason, setAgeCheckReason] = useState("");
+
   const handleToggleSign = (id: string) => {
     setSelectedSigns((prev) => {
       if (prev.includes(id)) {
@@ -229,6 +240,7 @@ export default function RequestAI() {
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [timeModalVisible, setTimeModalVisible] = useState(false);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   const TIME_SLOTS = [
     "08:00 AM",
@@ -296,6 +308,28 @@ export default function RequestAI() {
     }
   };
 
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      toast.error("Permission to access camera was denied");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets?.length > 0) {
+      setImageUri(result.assets[0].uri);
+      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+      toast.success("Photo attached!");
+    }
+  };
+
   const removeImage = () => {
     setImageUri(null);
     setImageBase64(null);
@@ -306,17 +340,7 @@ export default function RequestAI() {
     const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
 
     if (!hasPhone || !hasAddress) {
-      Alert.alert(
-        "Profile Incomplete",
-        "Please provide your contact number and home address in your profile before requesting AI services.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Go to Profile",
-            onPress: () => router.push("/(farmer)/(tabs)/profile"),
-          },
-        ],
-      );
+      setProfileModalVisible(true);
       return;
     }
 
@@ -324,11 +348,15 @@ export default function RequestAI() {
       return toast.error("Please select an animal for this request.");
 
     if (selectedAnimal.reproductiveStatus === "Pregnant") {
-      return Alert.alert(
-        "Action Blocked",
-        "This animal is already marked as Pregnant. You cannot request artificial insemination unless you report heat signs first from the animal's profile.",
-        [{ text: "OK" }],
-      );
+      setPregnantSubmitModalVisible(true);
+      return;
+    }
+
+    const ageCheck = checkInseminationAgeEligibility(selectedAnimal.birthDate, selectedAnimal.species);
+    if (!ageCheck.isEligible) {
+      setAgeCheckReason(ageCheck.reason || "Animal is too young for insemination.");
+      setAgeModalVisible(true);
+      return;
     }
 
     if (selectedSigns.length === 0) {
@@ -729,11 +757,16 @@ export default function RequestAI() {
           </Text>
           {imageUri ? (
             <View className="mb-5 relative">
-              <Image
-                source={{ uri: imageUri }}
-                className="w-full h-48 rounded-2xl"
-                resizeMode="cover"
-              />
+              <TouchableOpacity
+                onPress={() => setPhotoModalVisible(true)}
+                activeOpacity={0.9}
+              >
+                <Image
+                  source={{ uri: imageUri }}
+                  className="w-full h-48 rounded-2xl"
+                  resizeMode="cover"
+                />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={removeImage}
                 className="absolute top-2 right-2 bg-black/50 rounded-full w-8 h-8 items-center justify-center"
@@ -743,7 +776,7 @@ export default function RequestAI() {
             </View>
           ) : (
             <TouchableOpacity
-              onPress={pickImage}
+              onPress={() => setPhotoModalVisible(true)}
               className="w-full h-36 border-2 border-dashed rounded-2xl items-center justify-center mb-5 gap-2"
               style={{
                 backgroundColor: colors.card,
@@ -884,23 +917,23 @@ export default function RequestAI() {
                   <TouchableOpacity
                     onPress={() => {
                       if (item.reproductiveStatus === "Pregnant") {
-                        Alert.alert(
-                          "Selection Unavailable",
-                          "This animal is currently pregnant and cannot be selected for A.I. services.",
-                        );
+                        setPregnantModalVisible(true);
                         return;
                       }
                       if (item.gender === "Male") {
-                        Alert.alert(
-                          "Selection Unavailable",
-                          "This animal is Male. Insemination is restricted to female animals only.",
-                        );
+                        setMaleModalVisible(true);
+                        return;
+                      }
+                      const ageCheck = checkInseminationAgeEligibility(item.birthDate, item.species);
+                      if (!ageCheck.isEligible) {
+                        setAgeCheckReason(ageCheck.reason || "Animal is too young for insemination.");
+                        setAgeModalVisible(true);
                         return;
                       }
                       setSelectedAnimal(item);
                       setAnimalModalVisible(false);
                     }}
-                    className={`py-4 px-3 border-b flex-row items-center justify-between ${item.reproductiveStatus === "Pregnant" || item.gender === "Male" ? "opacity-50" : ""}`}
+                    className={`py-4 px-3 border-b flex-row items-center justify-between ${(item.reproductiveStatus === "Pregnant" || item.gender === "Male" || !checkInseminationAgeEligibility(item.birthDate, item.species).isEligible) ? "opacity-50" : ""}`}
                     style={{
                       borderBottomColor: colors.border,
                       backgroundColor:
@@ -944,6 +977,13 @@ export default function RequestAI() {
                               </Text>
                             </View>
                           )}
+                          {!checkInseminationAgeEligibility(item.birthDate, item.species).isEligible && (
+                            <View className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-200">
+                              <Text className="text-[9px] font-black uppercase text-amber-600">
+                                Underage
+                              </Text>
+                            </View>
+                          )}
                         </View>
                       </View>
                       {item.reproductiveStatus === "Pregnant" && (
@@ -951,6 +991,9 @@ export default function RequestAI() {
                       )}
                       {item.gender === "Male" && (
                         <AlertCircle size={16} color="#ef4444" />
+                      )}
+                      {!checkInseminationAgeEligibility(item.birthDate, item.species).isEligible && (
+                        <AlertCircle size={16} color="#d97706" />
                       )}
                       {selectedAnimal?._id === item._id && (
                         <Check size={18} color={primaryColor} />
@@ -1059,6 +1102,150 @@ export default function RequestAI() {
           </View>
         </View>
       </Modal>
+
+      {/* Photo Selector Modal */}
+      <Modal visible={photoModalVisible} transparent animationType="slide">
+        <View className="flex-1 bg-black/50 justify-end">
+          <View
+            className="rounded-t-[32px] p-6 pb-10"
+            style={{ backgroundColor: colors.card }}
+          >
+            <View className="flex-row justify-between items-center mb-6">
+              <Text className="text-lg font-bold" style={{ color: colors.textPrimary }}>
+                Select Photo Source
+              </Text>
+              <TouchableOpacity
+                onPress={() => setPhotoModalVisible(false)}
+                style={{ padding: 4 }}
+              >
+                <X size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <View className="flex-row justify-between">
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  takePhoto();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  borderColor: isDark ? colors.border : "#e2e8f0",
+                }}
+              >
+                <Camera size={24} color={primaryColor} style={{ marginBottom: 8 }} />
+                <Text
+                  className="font-bold text-xs"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Camera
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  pickImage();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
+                style={{
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  borderColor: isDark ? colors.border : "#e2e8f0",
+                }}
+              >
+                <MaterialCommunityIcons name="image-multiple" size={24} color={primaryColor} style={{ marginBottom: 8 }} />
+                <Text
+                  className="font-bold text-xs"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Albums / Gallery
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {imageUri && (
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  removeImage();
+                }}
+                className="mt-4 py-4 rounded-2xl items-center justify-center border flex-row gap-2"
+                style={{
+                  backgroundColor: isDark ? "rgba(239, 68, 68, 0.1)" : "#fef2f2",
+                  borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#fee2e2",
+                }}
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ef4444" />
+                <Text className="font-bold text-sm text-red-500">
+                  Remove Photo
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <ConfirmationModal
+        visible={profileModalVisible}
+        onClose={() => setProfileModalVisible(false)}
+        onConfirm={() => {
+          setProfileModalVisible(false);
+          router.push("/(farmer)/(tabs)/profile");
+        }}
+        title="Complete Your Profile"
+        message="Please provide your contact number and home address in your profile before requesting AI services."
+        confirmText="Go to Profile"
+        cancelText="Cancel"
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={maleModalVisible}
+        onClose={() => setMaleModalVisible(false)}
+        onConfirm={() => setMaleModalVisible(false)}
+        title="Selection Unavailable"
+        message="This animal is Male. Insemination is restricted to female animals only."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={pregnantModalVisible}
+        onClose={() => setPregnantModalVisible(false)}
+        onConfirm={() => setPregnantModalVisible(false)}
+        title="Selection Unavailable"
+        message="This animal is currently pregnant and cannot be selected for A.I. services."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={pregnantSubmitModalVisible}
+        onClose={() => setPregnantSubmitModalVisible(false)}
+        onConfirm={() => setPregnantSubmitModalVisible(false)}
+        title="Action Blocked"
+        message="This animal is already marked as Pregnant. You cannot request artificial insemination unless you report heat signs first from the animal's profile."
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={ageModalVisible}
+        onClose={() => setAgeModalVisible(false)}
+        onConfirm={() => setAgeModalVisible(false)}
+        title="Selection Unavailable"
+        message={ageCheckReason}
+        confirmText="OK"
+        cancelText={null}
+        isDestructive={true}
+        icon={<AlertCircle size={26} color={colors.error} />}
+      />
     </View>
   );
 }

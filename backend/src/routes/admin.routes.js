@@ -9,7 +9,7 @@ import { getAllReInseminations } from "../controllers/admin.controllers.js";
 import { getAllPregnancyChecks } from "../controllers/admin.controllers.js";
 import { getAllCalvings } from "../controllers/admin.controllers.js";
 import { deleteUser } from "../controllers/admin.controllers.js";
-import { deleteInsemination, syncUserMetadata, getChartData } from "../controllers/admin.controllers.js";
+import { deleteInsemination, syncUserMetadata, getChartData, exportDatabaseBackup } from "../controllers/admin.controllers.js";
 import { getMunicipalCensusData } from "../controllers/report.controllers.js";
 
 const router = Router();
@@ -29,6 +29,6 @@ router.get("/pregnancy-checks", getAllPregnancyChecks);
 router.get("/calvings", getAllCalvings);
 router.delete("/delete-insemination/:id", deleteInsemination);
 router.get("/reports-data", getMunicipalCensusData);
-
+router.get("/backup", exportDatabaseBackup);
 
 export default router;

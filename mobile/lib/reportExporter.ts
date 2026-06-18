@@ -294,10 +294,10 @@ export const generatePDF = async (
           <thead>
             <!-- Row 1: section group headers -->
             <tr>
-              <th rowspan="3" style="width:18px;">Data</th>
-              <th rowspan="3" style="width:16px;">No.</th>
-              <th colspan="8" class="th-group">Animal Identification</th>
-              <th rowspan="3" style="width:60px;">Farmer</th>
+              <th rowspan="2" style="width:18px;">Data</th>
+              <th rowspan="2" style="width:16px;">No.</th>
+              <th colspan="7" class="th-group">Animal Identification</th>
+              <th rowspan="2" style="width:60px;">Farmer</th>
               <th colspan="5" class="th-group">Artificial Insemination</th>
               <th colspan="2" class="th-group">Pregnancy Diagnosis</th>
               <th colspan="5" class="th-group">Calf Drop</th>
@@ -305,35 +305,28 @@ export const generatePDF = async (
             <!-- Row 2: sub-column headers -->
             <tr>
               <!-- Animal ID -->
-              <th rowspan="2" style="width:26px;" class="th-sub">Animal ID No.</th>
-              <th rowspan="2" style="width:22px;" class="th-sub">Ear Tag No.</th>
-              <th rowspan="2" style="width:22px;" class="th-sub">Brand</th>
-              <th rowspan="2" style="width:30px;" class="th-sub">Species</th>
-              <th rowspan="2" style="width:28px;" class="th-sub">Breed</th>
-              <th rowspan="2" style="width:28px;" class="th-sub">Color</th>
-              <th rowspan="2" style="width:50px;" class="th-sub">Address</th>
+              <th style="width:26px;" class="th-sub">Animal ID No.</th>
+              <th style="width:22px;" class="th-sub">Ear Tag No.</th>
+              <th style="width:22px;" class="th-sub">Brand</th>
+              <th style="width:30px;" class="th-sub">Species</th>
+              <th style="width:28px;" class="th-sub">Breed</th>
+              <th style="width:28px;" class="th-sub">Color</th>
+              <th style="width:50px;" class="th-sub">Address</th>
               <!-- AI -->
-              <th rowspan="2" style="width:30px;" class="th-sub">Date</th>
-              <th rowspan="2" style="width:18px;" class="th-sub">No. of AI</th>
-              <th rowspan="2" style="width:22px;" class="th-sub">Estrus</th>
-              <th rowspan="2" style="width:28px;" class="th-sub">Sire Breed</th>
-              <th rowspan="2" style="width:28px;" class="th-sub">Sire Code</th>
+              <th style="width:30px;" class="th-sub">Date</th>
+              <th style="width:18px;" class="th-sub">No. of AI</th>
+              <th style="width:22px;" class="th-sub">Estrus</th>
+              <th style="width:28px;" class="th-sub">Sire Breed</th>
+              <th style="width:28px;" class="th-sub">Sire Code</th>
               <!-- PD -->
-              <th rowspan="2" style="width:30px;" class="th-sub">Date</th>
-              <th rowspan="2" style="width:30px;" class="th-sub">Result</th>
+              <th style="width:30px;" class="th-sub">Date</th>
+              <th style="width:30px;" class="th-sub">Result</th>
               <!-- CD -->
-              <th rowspan="2" style="width:30px;" class="th-sub">Date</th>
-              <th rowspan="2" style="width:16px;" class="th-sub">No. of Calving</th>
-              <th colspan="2" class="th-sub">Calf 1</th>
-              <th colspan="2" class="th-sub">Calf 2</th>
-              <th rowspan="2" style="width:30px;" class="th-sub">Calving Ease</th>
-            </tr>
-            <!-- Row 3: calf sub-columns -->
-            <tr>
+              <th style="width:30px;" class="th-sub">Date</th>
+              <th style="width:16px;" class="th-sub">No. of Calving</th>
               <th style="width:26px;" class="th-sub">Calf ID No.</th>
               <th style="width:16px;" class="th-sub">Sex</th>
-              <th style="width:26px;" class="th-sub">Calf ID No.</th>
-              <th style="width:16px;" class="th-sub">Sex</th>
+              <th style="width:30px;" class="th-sub">Calving Ease</th>
             </tr>
           </thead>
           <tbody>

@@ -19,6 +19,8 @@ import {
   AlertTriangle,
   MapPin,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import DashboardChart from "../../components/data/DashboardChart";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/ui/Topbar";
@@ -37,6 +39,17 @@ export default function Dashboard() {
   });
 
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Query logged-in user profile to check for incomplete details
+  const { data: dbUser } = useQuery({
+    queryKey: ["technician", "profile-me"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/technician/profile");
+      return res.data || {};
+    },
+  });
+
+  const isProfileIncomplete = dbUser && (!dbUser.phoneNumber || !dbUser.address?.barangay);
 
   // Backend States
   const [dashboardData, setDashboardData] = useState({
@@ -176,6 +189,31 @@ export default function Dashboard() {
       />
 
       <main className="p-4 md:p-6 space-y-6">
+        {/* Profile Completion Alert Banner */}
+        {isProfileIncomplete && (
+          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 p-4 rounded-2xl flex items-center justify-between shadow-xs mb-2 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider leading-none">
+                  Profile Setup Required
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold mt-1.5 leading-relaxed">
+                  Your phone number or assigned barangay location is missing. Please complete your profile so local farmers can contact you directly during critical emergency dispatches.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/technician/profile"
+              className="btn btn-xs h-9 bg-amber-600 hover:bg-amber-700 text-white border-none rounded-xl text-[10px] font-black uppercase tracking-wider px-4 shrink-0 transition-all flex items-center justify-center"
+            >
+              Update Profile
+            </Link>
+          </div>
+        )}
+
         {/* Metric Cards Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Today's Missions */}

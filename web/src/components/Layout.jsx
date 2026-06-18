@@ -93,11 +93,11 @@ const Layout = () => {
       path: "/technician/ledger",
       icon: <Database size={24} />,
     },
-    {
-      name: "GIS Field Hub",
-      path: "/technician/health-map",
-      icon: <MapPin size={24} />,
-    },
+    // {
+    //   name: "GIS Field Hub",
+    //   path: "/technician/health-map",
+    //   icon: <MapPin size={24} />,
+    // },
     {
       name: "Task Requests",
       path: "/technician/requests",

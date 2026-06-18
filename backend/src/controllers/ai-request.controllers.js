@@ -4,7 +4,7 @@ import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { inngest } from "../config/inngest.js";
-import { calculateTargetCalvingDate } from "../utils/cattleCore.js";
+import { calculateTargetCalvingDate, checkInseminationAgeEligibility } from "../utils/cattleCore.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -33,6 +33,12 @@ export const createAIRequest = async (req, res) => {
         message:
           "Insemination is restricted to female animals only. This animal is registered as Male.",
       });
+    }
+
+    // Age check
+    const ageCheck = checkInseminationAgeEligibility(animal.birthDate, animal.species);
+    if (!ageCheck.isEligible) {
+      return res.status(400).json({ message: ageCheck.reason });
     }
 
     // --- DOUBLE REQUEST CONFIRMATION / DUPLICATE CHECK ---

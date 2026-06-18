@@ -226,6 +226,12 @@ export const updateHealthRequestStatus = async (req, res) => {
         const animalId = request.animalId._id || request.animalId;
         const farmerId = request.farmerId._id || request.farmerId;
 
+        const withdrawalDays = req.body.withdrawalPeriodDays;
+        let withdrawalEndDate = null;
+        if (withdrawalDays && !isNaN(withdrawalDays)) {
+          withdrawalEndDate = new Date(Date.now() + Number(withdrawalDays) * 24 * 60 * 60 * 1000);
+        }
+
         await MedicalRecord.create({
           animalId,
           farmerId,
@@ -236,10 +242,36 @@ export const updateHealthRequestStatus = async (req, res) => {
             medicineName: request.treatment || "None",
             diagnosis: request.diagnosis || "No specific diagnosis logged.",
             treatment: request.treatment || "No treatment logged.",
+            withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
+            withdrawalEndDate: withdrawalEndDate || undefined,
           },
           note: request.technicianNote || "Resolved through health request queue.",
         });
         console.log(`[Medical Record Cascade] Created successfully for Animal: ${animalId}`);
+
+        // Send a withdrawal period alert if active
+        if (withdrawalDays && Number(withdrawalDays) > 0 && withdrawalEndDate) {
+          const formattedDate = withdrawalEndDate.toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          });
+          const warningTitle = "⚠️ Active Withdrawal Warning";
+          const warningBody = `Meat and milk from animal Tag #${request.animalId.earTag || request.animalId.animalId} are unsafe for consumption or sale until ${formattedDate} due to treatment with ${request.treatment || 'medicine'}.`;
+
+          await Notification.create({
+            recipientId: farmerId,
+            senderId: req.user._id,
+            type: "system",
+            relatedId: animalId,
+            title: warningTitle,
+            message: warningBody,
+          });
+
+          if (request.farmerId.pushToken) {
+            await sendPushNotification(request.farmerId.pushToken, warningTitle, warningBody);
+          }
+        }
       } catch (medErr) {
         console.error("[Medical Record Cascade Error]", medErr.message);
       }
@@ -337,10 +369,14 @@ export const walkInHealthRequest = async (req, res) => {
       if (!farmer) {
       if (email) {
         try {
+          const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").trim();
+          const normalizedClientUrl = /^https?:\/\//i.test(clientUrl) ? clientUrl : `https://${clientUrl}`;
+          const finalRedirectUrl = `${normalizedClientUrl.replace(/\/$/, "")}/download-app`;
+
           await clerkClient.invitations.createInvitation({
             emailAddress: email,
             publicMetadata: { role: "farmer" },
-            redirectUrl: `${process.env.CLIENT_URL || "http://localhost:5173"}/download-app`,
+            redirectUrl: finalRedirectUrl,
           });
         } catch (clerkError) {
           console.error("[walkInHealth CLERK ERROR]", clerkError.message);
@@ -420,6 +456,12 @@ export const walkInHealthRequest = async (req, res) => {
         else if (request.requestType === "vaccination") recordType = "Vaccination";
         else if (request.requestType === "deworming") recordType = "Deworming";
 
+        const withdrawalDays = req.body.withdrawalPeriodDays;
+        let withdrawalEndDate = null;
+        if (withdrawalDays && !isNaN(withdrawalDays)) {
+          withdrawalEndDate = new Date(Date.now() + Number(withdrawalDays) * 24 * 60 * 60 * 1000);
+        }
+
         await MedicalRecord.create({
           animalId: animal._id,
           farmerId: farmer._id,
@@ -430,10 +472,36 @@ export const walkInHealthRequest = async (req, res) => {
             medicineName: treatment || "None",
             diagnosis: diagnosis || "No specific diagnosis logged.",
             treatment: treatment || "No treatment logged.",
+            withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
+            withdrawalEndDate: withdrawalEndDate || undefined,
           },
           note: technicianNote || "Recorded via walk-in service.",
         });
         console.log(`[Medical Record Cascade] Created successfully for Walk-in Animal: ${animal._id}`);
+
+        // Send a withdrawal period alert if active
+        if (withdrawalDays && Number(withdrawalDays) > 0 && withdrawalEndDate) {
+          const formattedDate = withdrawalEndDate.toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          });
+          const warningTitle = "⚠️ Active Withdrawal Warning";
+          const warningBody = `Meat and milk from animal Tag #${animal.earTag} are unsafe for consumption or sale until ${formattedDate} due to treatment with ${treatment || 'medicine'}.`;
+
+          await Notification.create({
+            recipientId: farmer._id,
+            senderId: req.user._id,
+            type: "system",
+            relatedId: animal._id,
+            title: warningTitle,
+            message: warningBody,
+          });
+
+          if (farmer.pushToken) {
+            await sendPushNotification(farmer.pushToken, warningTitle, warningBody);
+          }
+        }
       } catch (medErr) {
         console.error("[Medical Record Cascade Walk-in Error]", medErr.message);
       }

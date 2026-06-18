@@ -47,15 +47,16 @@ const handleUserSync = async ({ event }) => {
     user.name = name || user.name;
     await user.save();
   } else {
+    const role = (email && process.env.ADMIN_EMAIL && email.toLowerCase() === process.env.ADMIN_EMAIL.toLowerCase()) ? "admin" : "farmer";
     user = await User.create({
       clerkId,
       email,
       name: name || "New User",
       imageUrl: image_url || "",
-      role: "farmer", 
+      role, 
       isVerified,
     });
-    console.log(`Created new farmer from Clerk signup: ${email}`);
+    console.log(`Created new ${role} from Clerk signup: ${email}`);
   }
 
   const currentRole = event.data.public_metadata?.role;
@@ -218,6 +219,53 @@ const onInseminationApproved = inngest.createFunction(
         }));
       });
     }
+
+    // --- STEP 5: DAY 75 (MISSED PD DIAGNOSIS NUDGE) ---
+    await step.sleep("wait-for-missed-pd-window", "15 days"); // Day 60 + 15 = Day 75
+
+    const stillRelevant75 = await step.run("check-relevance-75", async () => {
+      const ins = await Insemination.findById(inseminationId);
+      return ins && ins.status === "done" && ins.isSuccess === null;
+    });
+
+    if (stillRelevant75) {
+      await step.run("send-missed-pd-nudge", async () => {
+        const ins = await Insemination.findById(inseminationId).populate("animalId", "earTag");
+        const title = "🧪 Missed Pregnancy Diagnosis";
+        const body = `Animal Tag #${ins.animalId?.earTag || 'your animal'} was inseminated 75 days ago, but no pregnancy check diagnostic outcome has been logged yet. Please schedule a checkup immediately.`;
+
+        // Notify Farmer
+        await Notification.create({
+          recipientId: farmerId,
+          senderId: "000000000000000000000000",
+          type: "system",
+          relatedId: animalId,
+          title,
+          message: body,
+        });
+
+        const farmer = await User.findById(farmerId);
+        if (farmer?.pushToken) {
+          await sendPushNotification(farmer.pushToken, title, body);
+        }
+
+        // Notify all technicians
+        const technicians = await User.find({ role: "technician" });
+        await Promise.all(technicians.map(async (tech) => {
+          await Notification.create({
+            recipientId: tech._id,
+            senderId: "000000000000000000000000",
+            type: "system",
+            relatedId: inseminationId,
+            title,
+            message: `Farmer ${farmer?.name || 'Farmer'}'s animal (Tag #${ins.animalId?.earTag || 'animal'}) is at Day 75 post-AI without a logged outcome.`,
+          });
+          if (tech.pushToken) {
+            await sendPushNotification(tech.pushToken, title, `Farmer ${farmer?.name || 'Farmer'}'s animal (Tag #${ins.animalId?.earTag || 'animal'}) is at Day 75 post-AI without a logged outcome.`);
+          }
+        }));
+      });
+    }
   }
 );
 
@@ -277,6 +325,105 @@ const onPregnancyConfirmed = inngest.createFunction(
         }
       }));
     });
+
+    // Step 3: Wait for calving overdue (approx 20 days later / Day 290 total)
+    await step.sleep("wait-for-calving-overdue", "20 days");
+
+    // Step 4: Check if animal is still marked as Pregnant (meaning no calving recorded yet)
+    const stillPregnant = await step.run("check-pregnant-status", async () => {
+      const animal = await Animal.findById(animalId);
+      return animal && animal.reproductiveStatus === "Pregnant";
+    });
+
+    if (stillPregnant) {
+      await step.run("send-overdue-calving-alert", async () => {
+        const animal = await Animal.findById(animalId);
+        const farmer = await User.findById(farmerId);
+        const title = "🚨 Overdue Calving Alert";
+        const body = `Warning: Animal Tag #${animal?.earTag || 'your animal'} is now 10+ days overdue for calving. Please inspect the animal immediately for signs of distress or difficulty (dystocia) and contact a technician.`;
+
+        // Notify Farmer
+        await Notification.create({
+          recipientId: farmerId,
+          senderId: "000000000000000000000000",
+          type: "system",
+          relatedId: animalId,
+          title,
+          message: body,
+        });
+
+        if (farmer?.pushToken) {
+          await sendPushNotification(farmer.pushToken, title, body);
+        }
+
+        // Notify all technicians
+        const technicians = await User.find({ role: "technician" });
+        await Promise.all(technicians.map(async (tech) => {
+          await Notification.create({
+            recipientId: tech._id,
+            senderId: "000000000000000000000000",
+            type: "system",
+            relatedId: animalId,
+            title,
+            message: `Farmer ${farmer?.name || 'Farmer'}'s animal (Tag #${animal?.earTag || 'animal'}) is overdue for calving. Dystocia risk.`,
+          });
+          if (tech.pushToken) {
+            await sendPushNotification(tech.pushToken, title, `Farmer ${farmer?.name || 'Farmer'}'s animal (Tag #${animal?.earTag || 'animal'}) is overdue for calving. Dystocia risk.`);
+          }
+        }));
+      });
+    }
+  }
+);
+
+/**
+ * Triggered when a calving event is recorded.
+ * Waits for the Voluntary Waiting Period (VWP, e.g. 60 days) to recommend re-breeding.
+ */
+const onCalvingRecorded = inngest.createFunction(
+  { id: "livestock/vwp-reminder" },
+  { event: "livestock/calving-recorded" },
+  async ({ event, step }) => {
+    await connectDB();
+    const { animalId, farmerId } = event.data;
+
+    // Wait for VWP period (typically 60 days)
+    await step.sleep("wait-for-vwp-window", "60 days");
+
+    // Check if the animal is still Open (reproductiveStatus is 'Open' or not Pregnant/Inseminated)
+    const readyForBreeding = await step.run("check-breeding-readiness", async () => {
+      const animal = await Animal.findById(animalId);
+      return (
+        animal &&
+        animal.reproductiveStatus !== "Pregnant" &&
+        animal.reproductiveStatus !== "Inseminated" &&
+        animal.reproductiveStatus !== "Likely Pregnant"
+      );
+    });
+
+    if (readyForBreeding) {
+      await step.run("send-vwp-reminder", async () => {
+        const animal = await Animal.findById(animalId);
+        const title = "🐮 Optimal Breeding Window Open";
+        const body = `Your animal Tag #${animal?.earTag || 'your animal'} has successfully completed the voluntary waiting period (60 days post-calving) and is ready for re-breeding.`;
+
+        // Notify Farmer (In-app)
+        await Notification.create({
+          recipientId: farmerId,
+          senderId: "000000000000000000000000",
+          type: "system",
+          relatedId: animalId,
+          title,
+          message: body,
+        });
+
+        // Notify Farmer (Push)
+        const farmer = await User.findById(farmerId);
+        if (farmer?.pushToken) {
+          await sendPushNotification(farmer.pushToken, title, body);
+        }
+      });
+    }
   }
 );
 
@@ -492,6 +639,7 @@ export const functions = [
   deleteUserFromDB, 
   onInseminationApproved, 
   onPregnancyConfirmed, 
+  onCalvingRecorded,
   dailyStatsAggregation,
   automatedGestationLifecycle,
   remindPendingServices

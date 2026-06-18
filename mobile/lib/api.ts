@@ -2,7 +2,7 @@ import axios from "axios";
 import { useAuth } from "@clerk/clerk-expo";
 
 const API_URL =
-  process.env.EXPO_PUBLIC_API_URL || "https://ilo-agricultures-inseminati-p5bbd.sevalla.app/api";
+  process.env.EXPO_PUBLIC_API_URL || "https://api.breedsmartoton.site/api";
 
 let getTokenRef: ((options?: any) => Promise<string | null>) | null = null;
 

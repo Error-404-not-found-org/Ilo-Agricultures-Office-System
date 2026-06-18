@@ -125,13 +125,13 @@ const BottomNavigator = ({
                     handleModalAction("/(technician)/photo-notes")
                   }
                 />
-                <ModalAction
+                {/* <ModalAction
                   icon={<Map size={24} color="#0d9488" />}
                   label="Heatmap"
                   onPress={() =>
                     handleModalAction("/(technician)/heat-map")
                   }
-                />
+                /> */}
                 <ModalAction
                   icon={<FileText size={24} color="#0d9488" />}
                   label="Field Reports"
@@ -256,7 +256,7 @@ const TabItem = ({
       alignItems: "center",
       justifyContent: "center",
       paddingTop: 8,
-      paddingBottom: 4,
+      paddingBottom: 10,
     }}
     activeOpacity={0.6}
   >
@@ -267,7 +267,7 @@ const TabItem = ({
               backgroundColor: colorScheme === "dark" ? "#134e4a" : "#f0fdfa",
               width: 52,
               height: 32,
-              borderRadius: 10,
+              borderRadius: 16,
               alignItems: "center",
               justifyContent: "center",
             }

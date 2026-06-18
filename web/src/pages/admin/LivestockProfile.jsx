@@ -61,6 +61,26 @@ function fmtTime(d) {
   });
 }
 
+function formatAge(birthDate) {
+  if (!birthDate) return "Unknown";
+  const birth = new Date(birthDate);
+  if (isNaN(birth.getTime())) return "Unknown";
+  const now = new Date();
+  let diffMonths =
+    (now.getFullYear() - birth.getFullYear()) * 12 +
+    (now.getMonth() - birth.getMonth());
+  if (diffMonths < 0) diffMonths = 0;
+  
+  const years = Math.floor(diffMonths / 12);
+  const months = diffMonths % 12;
+  
+  if (years > 0) {
+    return `${years} year${years > 1 ? "s" : ""}${months > 0 ? `, ${months} month${months > 1 ? "s" : ""}` : ""}`;
+  } else {
+    return `${months} month${months > 1 ? "s" : ""}`;
+  }
+}
+
 // ── Sub-components ─────────────────────────────────────────────────────────
 
 function MetricCard({ icon, label, value, sub, accent = false }) {
@@ -237,6 +257,12 @@ export default function LivestockProfile() {
         (a, b) => new Date(b.inseminationDate) - new Date(a.inseminationDate),
       )[0] || null;
 
+  const activeWithdrawalRecord = (medicalHistory || []).find((record) => {
+    if (!record.details?.withdrawalEndDate) return false;
+    const endDate = new Date(record.details.withdrawalEndDate);
+    return endDate > new Date();
+  });
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -277,6 +303,26 @@ export default function LivestockProfile() {
 
       {/* ── Page body ── */}
       <main className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex-1">
+        {activeWithdrawalRecord && (
+          <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/55 rounded-2xl flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-4 duration-300">
+            <AlertCircle className="text-rose-500 shrink-0 mt-0.5" size={18} />
+            <div className="flex-1 min-w-0">
+              <h4 className="text-xs font-bold text-rose-800 dark:text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                Active Medication Withdrawal Warning
+              </h4>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                Meat and milk from this animal are unsafe for consumption or sale until{" "}
+                <span className="font-bold text-rose-700 dark:text-rose-400">
+                  {fmtDate(activeWithdrawalRecord.details?.withdrawalEndDate, "long")}
+                </span>{" "}
+                due to recent treatment with{" "}
+                <span className="font-bold text-slate-800 dark:text-slate-200">
+                  {activeWithdrawalRecord.details?.medicineName || "medicine"}
+                </span>.
+              </p>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6 items-start">
           {/* ── Left sidebar ── */}
           <aside className="space-y-4">
@@ -292,7 +338,7 @@ export default function LivestockProfile() {
                   alt={animal.earTag}
                   className="w-full h-full object-cover"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 bg-linear-to-t from-black/30 to-transparent pointer-events-none" />
                 {/* Floating tag */}
                 <div className="absolute bottom-3 left-3 flex gap-1.5">
                   <span className="text-[10px] font-bold bg-black/60 text-white px-2 py-0.5 rounded-md backdrop-blur-sm">
@@ -346,6 +392,8 @@ export default function LivestockProfile() {
               <div className="grid grid-cols-2 gap-2">
                 <InfoCell label="Ear tag" value={animal.earTag} mono />
                 <InfoCell label="Gender" value={animal.gender || "Female"} />
+                <InfoCell label="Age" value={formatAge(animal.birthDate)} />
+                <InfoCell label="Birth Date" value={fmtDate(animal.birthDate, "medium")} />
                 <InfoCell label="Color" value={animal.color || "—"} />
                 <InfoCell
                   label="Repro. status"
@@ -721,6 +769,14 @@ export default function LivestockProfile() {
                   />
                   <InfoCell label="Coat color" value={animal.color || "—"} />
                   <InfoCell label="Ear tag ID" value={animal.earTag} mono />
+                  <InfoCell
+                    label="Age"
+                    value={formatAge(animal.birthDate)}
+                  />
+                  <InfoCell
+                    label="Birth Date"
+                    value={fmtDate(animal.birthDate, "medium")}
+                  />
                   <InfoCell
                     label="Ownership"
                     value={animal.farmerId?.name || "—"}

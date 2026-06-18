@@ -21,7 +21,7 @@ export const SocketProvider = ({ children }) => {
 
     // Connect to the backend (base URL without /api)
     let socketUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-    socketUrl = socketUrl.replace("/api", "");
+    socketUrl = socketUrl.replace(/\/api$/, "");
 
     console.log("[Socket] Attempting connection to:", socketUrl);
 

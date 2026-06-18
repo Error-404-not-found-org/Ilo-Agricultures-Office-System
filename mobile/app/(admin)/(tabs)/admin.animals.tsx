@@ -1,17 +1,20 @@
 import { View, Text, TextInput, TouchableOpacity, FlatList, StatusBar, ActivityIndicator } from 'react-native';
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Header from '@/components/Header';
 import { Search, ArrowRight } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
+import { useAuth } from '@clerk/clerk-expo';
 
 const PRIMARY = '#1e3a5f';
 
 export default function AdminAnimalsScreen() {
   const router = useRouter();
   const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+  const loadingRef = useRef(false);
 
   const [animals, setAnimals] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -27,7 +30,9 @@ export default function AdminAnimalsScreen() {
   }, [searchQuery]);
 
   const fetchAnimals = useCallback(async (pageNumber: number, searchRaw: string, isRefresh = false) => {
-    if (loading) return;
+    if (!isLoaded || !isSignedIn) return;
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     try {
       const res = await api.get(`/animals/all?page=${pageNumber}&limit=10&search=${encodeURIComponent(searchRaw)}`);
@@ -39,15 +44,17 @@ export default function AdminAnimalsScreen() {
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to load animals.');
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
-  }, [api, loading]);
+  }, [api, isLoaded, isSignedIn]);
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
     setPage(1);
     fetchAnimals(1, debouncedSearch, true);
-  }, [debouncedSearch, fetchAnimals]);
+  }, [debouncedSearch, fetchAnimals, isLoaded, isSignedIn]);
 
   const handleLoadMore = () => {
     if (!loading && hasMore) {
