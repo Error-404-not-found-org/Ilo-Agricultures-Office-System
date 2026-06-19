@@ -522,9 +522,10 @@ function InitialLayout() {
   }
 
   if (!isFullyLoaded) {
-    const splashBg = isDark ? '#020617' : '#004D2E';
-    const accentText = isDark ? '#10b981' : '#a7f3d0';
-    const brandNameColor = '#ffffff';
+    const splashBg = '#ffffff';
+    const accentText = '#00643B';
+    const brandNameColor = '#004D2E';
+    const subtextColor = '#64748b';
 
     return (
       <View style={{ 
@@ -540,7 +541,7 @@ function InitialLayout() {
           width: 300,
           height: 300,
           borderRadius: 150,
-          backgroundColor: isDark ? 'rgba(16,185,129,0.03)' : 'rgba(255,255,255,0.02)',
+          backgroundColor: 'rgba(0, 100, 59, 0.02)',
           top: '15%',
           left: -50,
         }} />
@@ -549,7 +550,7 @@ function InitialLayout() {
           width: 400,
           height: 400,
           borderRadius: 200,
-          backgroundColor: isDark ? 'rgba(16,185,129,0.02)' : 'rgba(255,255,255,0.03)',
+          backgroundColor: 'rgba(0, 100, 59, 0.02)',
           bottom: '10%',
           right: -100,
         }} />
@@ -565,13 +566,13 @@ function InitialLayout() {
             alignItems: 'center',
             justifyContent: 'center',
             shadowColor: '#000',
-            shadowOffset: { width: 0, height: 12 },
-            shadowOpacity: 0.15,
-            shadowRadius: 16,
-            elevation: 10,
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.06,
+            shadowRadius: 12,
+            elevation: 5,
             marginBottom: 28,
-            borderWidth: 4,
-            borderColor: isDark ? '#10b981' : '#ffffff',
+            borderWidth: 1,
+            borderColor: '#f1f5f9',
           }}>
             <Image 
               source={require('../assets/logo.png')} 
@@ -587,9 +588,6 @@ function InitialLayout() {
             fontSize: 34, 
             letterSpacing: 0.5,
             marginBottom: 4,
-            textShadowColor: 'rgba(0,0,0,0.15)',
-            textShadowOffset: { width: 0, height: 2 },
-            textShadowRadius: 4
           }}>
             BreedSmart
           </Text>
@@ -610,15 +608,15 @@ function InitialLayout() {
           <View style={{
             flexDirection: 'row',
             alignItems: 'center',
-            backgroundColor: 'rgba(255, 255, 255, 0.08)',
+            backgroundColor: '#f8fafc',
             paddingHorizontal: 20,
             paddingVertical: 10,
             borderRadius: 30,
             borderWidth: 1,
-            borderColor: 'rgba(255, 255, 255, 0.05)',
+            borderColor: '#e2e8f0',
             gap: 12
           }}>
-            <ActivityIndicator size="small" color={isDark ? '#10b981' : '#ffffff'} />
+            <ActivityIndicator size="small" color="#00643B" />
             <Text style={{ 
               color: brandNameColor, 
               fontFamily: 'Outfit_700Bold', 
@@ -638,11 +636,11 @@ function InitialLayout() {
           alignItems: 'center'
         }}>
           <Text style={{
-            color: brandNameColor,
+            color: subtextColor,
             fontFamily: 'Outfit_500Medium',
             fontSize: 11,
             letterSpacing: 1,
-            opacity: 0.4
+            opacity: 0.6
           }}>
             © 2026 BreedSmart Initiative
           </Text>
