@@ -11,8 +11,9 @@ A comprehensive livestock management and veterinary service platform designed fo
 ## 🎓 Capstone Project Documentation
 > [!NOTE]
 > This system is developed as a formal Capstone Research and Development initiative. For a comprehensive review of the **System Architecture**, **Developmental Methodologies**, and **Operational Manuals**, please refer to the official Technical Manuscript:
->
-> 🔗 **[Official Project Documentation](https://docs.google.com/document/d/1IDUMZrsnRKFWEgM076toGD3jdnSDn5FQFA26vg4Pwj0/edit?tab=t.0#heading=h.f28ozy528sjo)**
+>🔗** [BreedSmart A Web and Mobile-Based Livestock PDF.pdf](https://github.com/user-attachments/files/29154850/BreedSmart.A.Web.and.Mobile-Based.Livestock.PDF.pdf) **
+
+>  
 
 ---
 
