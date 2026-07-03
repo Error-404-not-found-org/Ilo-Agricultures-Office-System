@@ -23,6 +23,10 @@ export const getTechnicianDashboardData = async (req, res) => {
   try {
     const { fullAgenda } = req.query;
     const isFull = fullAgenda === "true";
+    const hideDeclinedForMe =
+      req.user?.role !== "admin" && req.user?._id
+        ? { declinedByTechnicianIds: { $ne: req.user._id } }
+        : {};
 
     const now = new Date();
     const PHT_OFFSET = 8 * 60 * 60 * 1000;
@@ -89,6 +93,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       Insemination.find({
         status: { $in: ["pending", "approved", "in-progress"] },
         deletedAt: null,
+        ...hideDeclinedForMe,
       })
         .populate("farmerId", "name address")
         .populate("animalId", "animalId earTag imageUrl breed species")
@@ -99,6 +104,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       HealthRequest.find({
         status: { $in: ["pending", "in-progress"] },
         deletedAt: null,
+        ...hideDeclinedForMe,
       })
         .populate("farmerId", "name address")
         .populate("animalId", "animalId earTag imageUrl breed species")
@@ -1636,10 +1642,16 @@ export const getDashboardStats = async (req, res) => {
 
 export const getDashboardFeed = async (req, res) => {
   try {
+    const hideDeclinedForMe =
+      req.user?.role !== "admin" && req.user?._id
+        ? { declinedByTechnicianIds: { $ne: req.user._id } }
+        : {};
+
     const [inseminations, healthReqs] = await Promise.all([
       Insemination.find({
         status: { $in: ["pending", "approved", "in-progress"] },
         deletedAt: null,
+        ...hideDeclinedForMe,
       })
         .populate("farmerId", "name address")
         .populate("animalId", "animalId earTag imageUrl breed species")
@@ -1650,6 +1662,7 @@ export const getDashboardFeed = async (req, res) => {
       HealthRequest.find({
         status: { $in: ["pending", "in-progress"] },
         deletedAt: null,
+        ...hideDeclinedForMe,
       })
         .populate("farmerId", "name address")
         .populate("animalId", "animalId earTag imageUrl breed species")
