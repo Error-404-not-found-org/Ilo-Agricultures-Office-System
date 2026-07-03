@@ -78,7 +78,7 @@ export const getDashboardStats = async (req, res) => {
 export const getTasks = async (req, res) => {
   try {
     const technicianId = req.user._id;
-    const { scope } = req.query;
+    const { scope, status, page, limit } = req.query;
 
     let query = {};
     if (scope === "mine") {
@@ -94,7 +94,7 @@ export const getTasks = async (req, res) => {
         taskType: { $nin: Array.from(OFFICIAL_SERVICE_TASK_TYPES) },
       };
     } else if (scope === "all") {
-      query = { status: "Pending" };
+      query = {};
     } else {
       // Legacy fallback: mine or unassigned
       query = {
@@ -107,10 +107,29 @@ export const getTasks = async (req, res) => {
       };
     }
 
-    const tasks = await Task.find(query)
+    if (status && status !== "all") {
+      query.status = status;
+    } else if (scope === "all" && status !== "all") {
+      query.status = "Pending";
+    }
+
+    const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 100);
+    const skip = (pageNum - 1) * limitNum;
+
+    let taskQuery = Task.find(query)
       .populate("farmerId", "name imageUrl phoneNumber address farmLocation")
       .populate("animalIds", "animalId earTag species breed color")
       .sort({ createdAt: -1 });
+
+    if (typeof taskQuery.skip === "function") {
+      taskQuery = taskQuery.skip(skip);
+    }
+    if (typeof taskQuery.limit === "function") {
+      taskQuery = taskQuery.limit(limitNum);
+    }
+
+    const tasks = await taskQuery;
 
     res.status(200).json(tasks);
   } catch (error) {

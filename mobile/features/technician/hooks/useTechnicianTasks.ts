@@ -42,6 +42,7 @@ export const useTechnicianTasks = (id?: string, filters?: { scope?: string }) =>
     onSuccess: (_, taskId) => {
       queryClient.invalidateQueries({ queryKey: tasksQueryKeys.all });
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
     },
   });
 

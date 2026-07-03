@@ -280,9 +280,9 @@ export default function RequestAI() {
   }, [profile]);
 
   const { data: animalsData, isLoading: isLoadingAnimals } = useQuery({
-    queryKey: ["animals", "my-all"],
+    queryKey: ["animals", "my", "request-ai-picker", 1, 25],
     queryFn: async () => {
-      const res = await api.get("/animals/my?limit=100");
+      const res = await api.get("/animals/my?page=1&limit=25");
       return res.data;
     },
   });

@@ -214,15 +214,43 @@ export const getMyRequests = async (req, res) => {
 // GET /api/ai-request
 export const getAllRequests = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, page, limit } = req.query;
     const query = status ? { status, deletedAt: null } : { deletedAt: null };
+
+    if (page || limit) {
+      const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+      const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+      const skip = (pageNum - 1) * limitNum;
+
+      const [requests, total] = await Promise.all([
+        Insemination.find(query)
+          .populate("farmerId", "name address imageUrl")
+          .populate("animalId", "animalId earTag species breed imageUrl")
+          .populate("approvedBy", "name")
+          .populate("technicianId", "name")
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        Insemination.countDocuments(query),
+      ]);
+
+      return res.status(200).json({
+        data: requests,
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      });
+    }
 
     const requests = await Insemination.find(query)
       .populate("farmerId", "name address imageUrl")
       .populate("animalId", "animalId earTag species breed imageUrl")
       .populate("approvedBy", "name")
       .populate("technicianId", "name")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(100);
 
     res.status(200).json(requests);
   } catch (error) {

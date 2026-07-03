@@ -210,9 +210,9 @@ export default function ReportSickness() {
 
   // Fetch farmer's animals for the dropdown
   const { data: animalsData, isLoading: isLoadingAnimals } = useQuery({
-    queryKey: ["animals", "my-all"],
+    queryKey: ["animals", "my", "health-picker", 1, 25],
     queryFn: async () => {
-      const res = await api.get("/animals/my?limit=100");
+      const res = await api.get("/animals/my?page=1&limit=25");
       return res.data;
     },
   });

@@ -88,10 +88,11 @@ export default function NotificationsScreen() {
   useEffect(() => {
     fetchNotifications();
 
-    // Poll for new notifications every 5 seconds for a "real-time" feel
+    // Keep a light safety refresh while this screen is open; push/focus refresh
+    // should carry urgent updates without draining battery.
     const interval = setInterval(() => {
       fetchNotifications(false, true);
-    }, 5000);
+    }, 60000);
 
     return () => clearInterval(interval);
   }, [fetchNotifications]);

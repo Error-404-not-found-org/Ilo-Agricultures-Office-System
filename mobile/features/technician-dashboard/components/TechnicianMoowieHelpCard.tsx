@@ -4,13 +4,15 @@ import { Text } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
 import { useTheme } from "@/lib/theme";
 import { ChevronRight } from "lucide-react-native";
+import { useRouter } from "expo-router";
 
 export function TechnicianMoowieHelpCard() {
   const { colors, isDark } = useTheme();
+  const router = useRouter();
 
   return (
     <Card
-      onPress={() => {}}
+      onPress={() => router.push("/ask-moowie" as any)}
       style={{
         backgroundColor: isDark ? "#1f2937" : "#FAF7F2",
         borderRadius: 28,

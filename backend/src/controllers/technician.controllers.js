@@ -16,6 +16,7 @@ import { inngest } from "../config/inngest.js";
 import {
   verifyPostpartumWindow,
   calculateTargetCalvingDate,
+  checkInseminationAgeEligibility,
 } from "../utils/cattleCore.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
@@ -709,6 +710,7 @@ export const walkInInsemination = async (req, res) => {
         species: animalDetails.species || "Cattle",
         breed: animalDetails.breed || "Crossbreed",
         color: animalDetails.color || "Not Provided",
+        gender: "Female",
         barangay: farmer.address?.barangay || "Not Provided",
         isVerified: true,
       });
@@ -718,14 +720,50 @@ export const walkInInsemination = async (req, res) => {
     if (animal.gender !== "Female") {
       return res.status(400).json({
         message:
-          "Insemination is restricted to female animals only. This animal is registered as Male.",
+          `Insemination is restricted to female animals only. This animal is registered as ${animal.gender || "unknown"}.`,
       });
+    }
+
+    const ageCheck = checkInseminationAgeEligibility(
+      animal.birthDate,
+      animal.species,
+    );
+    if (!ageCheck.isEligible) {
+      return res.status(400).json({ message: ageCheck.reason });
+    }
+
+    if (animal.reproductiveStatus === "Pregnant") {
+      return res.status(400).json({
+        message:
+          "This animal is currently marked as pregnant. Record calving or update the pregnancy outcome before recording another AI.",
+      });
+    }
+
+    if (animal.lastCalvingDate) {
+      const targetDate =
+        inseminationDetails?.inseminationDate ||
+        new Date().toISOString().split("T")[0];
+      const windowCheck = verifyPostpartumWindow(
+        animal.lastCalvingDate,
+        targetDate,
+        animal.species,
+        animal.breed,
+      );
+      if (!windowCheck.isSafe) {
+        return res.status(400).json({
+          message: `Postpartum recovery period is not complete. ${windowCheck.daysPassed} day(s) have passed; ${windowCheck.requiredDays} day(s) are required before insemination.`,
+        });
+      }
     }
 
     // --- DOUBLE REQUEST CONFIRMATION / DUPLICATE CHECK ---
     const existingActiveRequest = await Insemination.findOne({
       animalId: animal._id,
-      status: { $in: ["pending", "approved", "in-progress"] },
+      deletedAt: null,
+      $or: [
+        { status: { $in: ["pending", "approved", "in-progress", "scheduled"] } },
+        { status: "done", outcome: "Pending" },
+      ],
     });
 
     if (existingActiveRequest) {
@@ -1202,6 +1240,18 @@ export const recordPregnancyCheck = async (req, res) => {
     const animal = await Animal.findById(animalId);
     if (!animal) return res.status(404).json({ message: "Animal not found" });
 
+    const insemination = await Insemination.findOne({
+      _id: inseminationId,
+      animalId,
+      deletedAt: null,
+    });
+    if (!insemination) {
+      return res.status(404).json({
+        message:
+          "Insemination attempt not found for this animal. Please select a valid AI record.",
+      });
+    }
+
     // PROTECTION 1: Don't allow diagnosing a cow that's already pregnant
     if (animal.reproductiveStatus === "Pregnant") {
       return res.status(400).json({
@@ -1218,6 +1268,12 @@ export const recordPregnancyCheck = async (req, res) => {
       });
     }
 
+    const aiDate =
+      insemination.inseminationDate ||
+      insemination.scheduledDate ||
+      insemination.preferredDate ||
+      insemination.createdAt;
+
     // Create NEW record instead of updating an upsert
     const pregnancy = await Pregnancy.create({
       animalId,
@@ -1231,7 +1287,7 @@ export const recordPregnancyCheck = async (req, res) => {
       targetCalvingDate:
         result === "Pregnant"
           ? calculateTargetCalvingDate(
-              new Date(),
+              aiDate,
               animal.species,
               undefined,
               animal.breed,

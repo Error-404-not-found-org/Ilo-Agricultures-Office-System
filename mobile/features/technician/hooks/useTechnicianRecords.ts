@@ -50,7 +50,7 @@ export const useTechnicianRecords = () => {
 
   const tasksQuery = useQuery({
     queryKey: recordsQueryKeys.tasks,
-    queryFn: () => getTasks(api, { scope: "all" }),
+    queryFn: () => getTasks(api, { scope: "all", status: "all", page: 1, limit: 50 }),
   });
 
   const deleteRecordMutation = useMutation({

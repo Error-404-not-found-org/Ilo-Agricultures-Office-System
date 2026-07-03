@@ -35,10 +35,10 @@ export const useAdminUsers = (initialSearch: string = "") => {
   });
 
   const { data: allAnimals = [] } = useQuery({
-    queryKey: ["admin-all-animals"],
+    queryKey: ["admin-all-animals", "counts-preview", 1, 50],
     enabled: isLoaded && isSignedIn,
     queryFn: async () => {
-      const res = await api.get("/animals/all?page=1&limit=1000");
+      const res = await api.get("/animals/all?page=1&limit=50");
       return res.data?.animals || [];
     },
     staleTime: 1000 * 60 * 5,

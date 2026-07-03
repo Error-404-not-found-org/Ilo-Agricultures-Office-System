@@ -133,10 +133,10 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
       const end = activeReportTab === "monthly" ? endOfMonth(selectedReportDate) : endOfWeek(selectedReportDate);
 
       const [insRes, pregRes, calvRes, healthRes] = await Promise.all([
-        api.get("/technician/inseminations?limit=1000"),
-        api.get("/technician/pregnancy-checks?limit=1000"),
-        api.get("/technician/calvings?limit=1000"),
-        api.get("/health-request"),
+        api.get("/technician/inseminations?page=1&limit=50"),
+        api.get("/technician/pregnancy-checks?page=1&limit=50"),
+        api.get("/technician/calvings?page=1&limit=50"),
+        api.get("/health-request?page=1&limit=50"),
       ]);
 
       const allEvents: any[] = [];
@@ -208,7 +208,7 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
         }
       });
 
-      (Array.isArray(healthRes.data) ? healthRes.data : []).forEach((health: any) => {
+      (Array.isArray(healthRes.data) ? healthRes.data : healthRes.data?.data || []).forEach((health: any) => {
         const date = new Date(health.createdAt);
         if (date >= start && date <= end) {
           allEvents.push({

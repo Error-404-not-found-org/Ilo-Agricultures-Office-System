@@ -143,16 +143,43 @@ export const getMyHealthRequests = async (req, res) => {
 // GET /api/health-request  — all requests (technician/admin)
 export const getAllHealthRequests = async (req, res) => {
   try {
-    const { status, urgency } = req.query;
+    const { status, urgency, page, limit } = req.query;
     const query = { deletedAt: null };
     if (status) query.status = status;
     if (urgency) query.urgency = urgency;
+
+    if (page || limit) {
+      const pageNum = Math.max(parseInt(page, 10) || 1, 1);
+      const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+      const skip = (pageNum - 1) * limitNum;
+
+      const [requests, total] = await Promise.all([
+        HealthRequest.find(query)
+          .populate("farmerId", "name address imageUrl")
+          .populate("animalId", "animalId earTag species breed imageUrl")
+          .populate("handledBy", "name")
+          .sort({ urgency: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(limitNum)
+          .lean(),
+        HealthRequest.countDocuments(query),
+      ]);
+
+      return res.status(200).json({
+        data: requests,
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      });
+    }
 
     const requests = await HealthRequest.find(query)
       .populate("farmerId", "name address imageUrl")
       .populate("animalId", "animalId earTag species breed imageUrl")
       .populate("handledBy", "name")
-      .sort({ urgency: -1, createdAt: -1 });
+      .sort({ urgency: -1, createdAt: -1 })
+      .limit(100);
 
     res.status(200).json(requests);
   } catch (error) {

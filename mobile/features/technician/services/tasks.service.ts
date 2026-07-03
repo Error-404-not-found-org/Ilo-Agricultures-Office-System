@@ -12,7 +12,10 @@ export interface CreateTaskPayload {
   priority?: number;
 }
 
-export const getTasks = async (api: AxiosInstance, filters?: { scope?: string }) => {
+export const getTasks = async (
+  api: AxiosInstance,
+  filters?: { scope?: string; status?: string; page?: number; limit?: number },
+) => {
   const response = await api.get("/tasks", { params: filters });
   return response.data || [];
 };

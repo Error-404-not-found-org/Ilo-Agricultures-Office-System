@@ -401,7 +401,7 @@ const TechnicianProfile = () => {
             <ActionItem
               icon={<Briefcase size={18} color={colors.textSecondary} />}
               label="Service Schedule"
-              onPress={() => {}}
+              onPress={() => router.push("/(technician)/technician.calendar" as any)}
             />
 
             <Divider />

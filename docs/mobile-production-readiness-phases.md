@@ -89,12 +89,120 @@ Tasks:
 4. Run mobile TypeScript and lint checks.
 5. Report exactly what is safe to keep, what should be ignored, and what needs user approval before deletion.
 
-Stop after reporting. Do not proceed to Phase 1.
+Stop after reporting. Do not proceed to Phase 1A.
 ```
 
 ---
 
-## Phase 1: Critical Broken Actions And Release Blockers
+## Phase 1A: Data Integrity And Workflow Rule Bugs
+
+### Goal
+
+Fix record-correctness bugs before UI polish or broad offline work.
+
+### Why This Comes Before UI Work
+
+If pregnancy, insemination, or health records are calculated or validated incorrectly, the app can create misleading livestock history. UI cleanup should not happen before the core animal-record rules are safe.
+
+### Tasks
+
+- Fix pregnancy check estimated calving date logic:
+  - do not calculate from `Date.now()`
+  - use the related insemination date
+  - use species-specific gestation days from `cattleCore`
+  - keep wording as estimated, not guaranteed
+- Verify backend walk-in AI validation:
+  - animal must be female
+  - animal must meet breeding-age rules
+  - animal must not be pregnant
+  - animal must not be inside postpartum/voluntary waiting period
+  - animal must not have an active duplicate AI workflow
+- Verify newly registered walk-in AI animals have a safe gender value:
+  - default to female only when the form/workflow clearly represents an inseminated female
+  - otherwise require explicit gender selection before AI can be saved
+- Verify PD follow-up timing:
+  - automatic pregnancy diagnosis tasks should be based on insemination date
+  - too-early manual verification should warn or block based on product rules
+  - duplicate PD tasks for the same insemination should be prevented
+- Verify notification polling:
+  - remove or reduce 5-second `/notifications` polling
+  - prefer push notifications, focus refresh, query invalidation, or slower unread-count refresh
+- Verify direct record mutations that may need idempotency:
+  - record AI
+  - pregnancy check
+  - calving
+  - health log
+  - request status changes
+
+### Known Areas To Inspect
+
+- `mobile/app/(technician)/pregnancy-check.tsx`
+- `mobile/app/(technician)/record-ai.tsx`
+- `mobile/app/(technician)/pregnancy-verification.tsx`
+- `mobile/app/(technician)/record-calf-drop.tsx`
+- `mobile/app/(farmer)/record-calving.tsx`
+- `mobile/app/notifications.tsx`
+- `mobile/lib/cattleCore.ts`
+- `backend/src/utils/cattleCore.js`
+- `backend/src/controllers/technician.controllers.js`
+- `backend/src/controllers/ai-request.controllers.js`
+- `backend/src/controllers/animals.controllers.js`
+
+### Acceptance Criteria
+
+- Estimated calving dates use insemination date plus species gestation rules.
+- Backend refuses invalid walk-in AI records with clear messages.
+- Duplicate or too-early PD follow-ups are controlled.
+- Notification refresh no longer uses aggressive 5-second polling.
+- TypeScript and lint have no release-blocking errors.
+
+### Antigravity Prompt
+
+```text
+Read docs/mobile-production-readiness-phases.md.
+
+Implement Phase 1A only.
+
+Targets:
+C:\Users\Acer\Documents\Ilo-AgriculturesOffice-System\mobile
+C:\Users\Acer\Documents\Ilo-AgriculturesOffice-System\backend
+
+Goal:
+Fix data-integrity and workflow-rule bugs before UI/offline polish.
+
+Do not redesign screens.
+Do not refactor large files unless necessary to fix the bug safely.
+Do not change folder names.
+Keep technicians as the current handlers for AI, health assistance, pregnancy checks, and calving.
+
+Tasks:
+1. Fix pregnancy-check estimated calving date so it uses the related insemination date plus species-specific gestation from cattleCore, not Date.now() + 280.
+2. Verify and enforce backend walk-in AI validation:
+   - female animal only
+   - breeding-age eligible
+   - not pregnant
+   - not inside postpartum/voluntary waiting period
+   - no active duplicate AI workflow
+3. Verify walk-in animal registration cannot create an animal that bypasses later gender checks.
+4. Verify automatic PD follow-up timing is based on insemination date and cannot create duplicate tasks for the same insemination.
+5. Remove or reduce 5-second notifications polling; prefer focus refresh, push/event invalidation, or a safer slower unread-count refresh.
+6. Check record mutations for idempotency support or duplicate-submit protection.
+7. Run mobile TypeScript and lint.
+8. Run backend tests if available.
+
+Report:
+- files changed
+- validation rules confirmed
+- bugs fixed
+- tests/checks run
+- any remaining backend contract gaps
+
+Stop after Phase 1A.
+```
+
+---
+
+## Phase 1B: Critical Broken Actions And Release Blockers
 
 ### Goal
 
@@ -144,7 +252,7 @@ Fix visible broken interactions and release-blocking behavior before polishing U
 ```text
 Read docs/mobile-production-readiness-phases.md.
 
-Implement Phase 1 only.
+Implement Phase 1B only.
 
 Target folder:
 C:\Users\Acer\Documents\Ilo-AgriculturesOffice-System\mobile
@@ -163,7 +271,7 @@ Tasks:
 7. Run npm run lint.
 
 Report every file changed and every action fixed.
-Stop after Phase 1.
+Stop after Phase 1B.
 ```
 
 ---
@@ -772,18 +880,20 @@ Stop after Phase 8.
 Do the phases in this order:
 
 1. Phase 0: repository safety.
-2. Phase 1: broken actions.
-3. Phase 2: pagination and payloads.
-4. Phase 4: workflow verification.
-5. Phase 3: shared states.
-6. Phase 5: offline completion.
-7. Phase 6: large screen refactor.
-8. Phase 7: UI polish.
-9. Phase 8: final release pass.
+2. Phase 1A: data integrity and workflow rule bugs.
+3. Phase 1B: broken actions and release blockers.
+4. Phase 2: pagination and payloads.
+5. Phase 4: workflow verification.
+6. Phase 3: shared states.
+7. Phase 5: offline completion.
+8. Phase 6: large screen refactor.
+9. Phase 7: UI polish.
+10. Phase 8: final release pass.
 
 Reason:
 
 - Safety comes first.
+- Data-integrity bugs must be fixed before UI/offline polish because they can create misleading animal records.
 - Broken actions and large payloads affect testing immediately.
 - Workflow correctness should be confirmed before polishing.
 - Offline and refactoring are deeper work.
@@ -797,6 +907,9 @@ The mobile app can be considered ready for controlled pilot testing when:
 
 - TypeScript passes.
 - Lint has no release-blocking errors.
+- Pregnancy estimates use insemination date plus species gestation rules.
+- Backend rejects invalid AI, pregnancy, and postpartum workflow transitions.
+- Notification refresh no longer depends on aggressive 5-second polling.
 - No visible button does nothing.
 - Farmer and technician workflows work end-to-end.
 - Large lists are paginated or safely limited.
@@ -807,4 +920,3 @@ The mobile app can be considered ready for controlled pilot testing when:
 - Farmer Home shows upcoming visits correctly.
 - Small Android layouts are usable.
 - Known limitations are documented.
-

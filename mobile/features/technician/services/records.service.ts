@@ -1,27 +1,27 @@
 import type { AxiosInstance } from "axios";
 
 export const getInseminations = async (api: AxiosInstance) => {
-  const response = await api.get("/technician/inseminations");
+  const response = await api.get("/technician/inseminations?page=1&limit=25");
   return response.data;
 };
 
 export const getPregnancyChecks = async (api: AxiosInstance) => {
-  const response = await api.get("/technician/pregnancy-checks");
+  const response = await api.get("/technician/pregnancy-checks?page=1&limit=25");
   return response.data;
 };
 
 export const getCalvings = async (api: AxiosInstance) => {
-  const response = await api.get("/technician/calvings");
+  const response = await api.get("/technician/calvings?page=1&limit=25");
   return response.data;
 };
 
 export const getAiRequests = async (api: AxiosInstance) => {
-  const response = await api.get("/ai-request");
+  const response = await api.get("/ai-request?page=1&limit=25");
   return response.data;
 };
 
 export const getHealthRequests = async (api: AxiosInstance) => {
-  const response = await api.get("/health-request");
+  const response = await api.get("/health-request?page=1&limit=25");
   return response.data;
 };
 

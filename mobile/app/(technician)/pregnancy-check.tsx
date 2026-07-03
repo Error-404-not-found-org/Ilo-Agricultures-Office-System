@@ -28,6 +28,7 @@ import {
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
+import { calculateTargetCalvingDate } from "@/lib/cattleCore";
 
 export default function PregnancyCheckScreen() {
   const router = useRouter();
@@ -189,13 +190,23 @@ export default function PregnancyCheckScreen() {
     });
   };
 
-  // Estimated Calving Date
-  const estCalvingDate = new Date(
-    Date.now() + 280 * 24 * 60 * 60 * 1000,
-  ).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+  const selectedInseminationDate =
+    selectedInsemination?.inseminationDate ||
+    selectedInsemination?.scheduledDate ||
+    selectedInsemination?.preferredDate ||
+    selectedInsemination?.createdAt;
+
+  const estCalvingDate = selectedInseminationDate
+    ? calculateTargetCalvingDate(
+        selectedInseminationDate,
+        selectedAnimal?.species || "Cattle",
+        undefined,
+        selectedAnimal?.breed,
+      ).toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      })
+    : "Select an AI attempt";
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">

@@ -16,6 +16,13 @@ export function useTechnicianRequests() {
   const isEnabled = !!isLoaded && !!isSignedIn;
   const queryClient = useQueryClient();
 
+  const invalidateTechnicianWorkflow = () => {
+    queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
+    queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+    queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
+    queryClient.invalidateQueries({ queryKey: ["technician", "tasks"] });
+  };
+
   // Filters State
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -110,8 +117,7 @@ export function useTechnicianRequests() {
         },
         {
           onSuccess: () => {
-            // Invalidate requests query
-            queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
+            invalidateTechnicianWorkflow();
             resolve();
           },
           onError: (err) => {
@@ -136,7 +142,7 @@ export function useTechnicianRequests() {
         },
         {
           onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
+            invalidateTechnicianWorkflow();
             resolve();
           },
           onError: (err) => {
@@ -168,7 +174,7 @@ export function useTechnicianRequests() {
       return claimTechnicianRequest(api, type, requestId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
+      invalidateTechnicianWorkflow();
     },
   });
 
