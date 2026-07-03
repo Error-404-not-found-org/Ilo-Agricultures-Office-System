@@ -1,5 +1,5 @@
 import React from "react";
-import { View, TouchableOpacity } from "react-native";
+import { Image, View, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
@@ -104,6 +104,17 @@ export function RequestListCard({
   };
 
   const statusStyle = getStatusStyle(item.status);
+  const formatServiceType = (value?: string) => {
+    if (!value) {
+      if (isBreedingVerification) return "Pregnancy Check";
+      return isHealth ? "Health Assistance" : "Artificial Insemination";
+    }
+    return value
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const serviceTypeLabel = formatServiceType(item.serviceType || item.requestType || item.raw?.requestType);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -155,16 +166,45 @@ export function RequestListCard({
               width: 44,
               height: 44,
               borderRadius: 22,
-              backgroundColor: typeBg,
+              backgroundColor: item.farmerImageUrl ? colors.border : typeBg,
               alignItems: "center",
               justifyContent: "center",
+              position: "relative",
             }}
           >
-            <MaterialCommunityIcons
-              name={typeIcon as any}
-              size={22}
-              color={typeColor}
-            />
+            {item.farmerImageUrl ? (
+              <Image
+                source={{ uri: item.farmerImageUrl }}
+                style={{ width: 44, height: 44, borderRadius: 22 }}
+              />
+            ) : (
+              <MaterialCommunityIcons
+                name="account"
+                size={22}
+                color={typeColor}
+              />
+            )}
+            <View
+              style={{
+                position: "absolute",
+                right: -2,
+                bottom: -2,
+                width: 18,
+                height: 18,
+                borderRadius: 9,
+                backgroundColor: typeBg,
+                borderWidth: 1,
+                borderColor: colors.card,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <MaterialCommunityIcons
+                name={typeIcon as any}
+                size={11}
+                color={typeColor}
+              />
+            </View>
           </View>
 
           <View style={{ marginLeft: 12, flex: 1 }}>
@@ -253,6 +293,15 @@ export function RequestListCard({
                 }}
               >
                 {item.locationLabel || item.location}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "Outfit_600SemiBold",
+                  color: colors.textMuted,
+                  fontSize: 11,
+                }}
+              >
+                Sent {formatDate(item.createdAt)}
               </Text>
               
               {/* Distance badge */}
@@ -359,6 +408,44 @@ export function RequestListCard({
             />
           </TouchableOpacity>
         </View>
+
+        {isHealth && (
+          <>
+            <View
+              style={{
+                height: 1,
+                backgroundColor: colors.border,
+                marginVertical: 8,
+              }}
+            />
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "Outfit_600SemiBold",
+                  color: colors.textMuted,
+                }}
+                className="text-xs"
+              >
+                Service Type:
+              </Text>
+              <Text
+                style={{
+                  fontFamily: "Outfit_700Bold",
+                  color: colors.textPrimary,
+                }}
+                className="text-xs"
+              >
+                {serviceTypeLabel}
+              </Text>
+            </View>
+          </>
+        )}
 
         <View
           style={{

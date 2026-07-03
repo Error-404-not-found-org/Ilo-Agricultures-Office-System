@@ -20,6 +20,16 @@ interface CalfEntry {
     imageBase64?: string;
 }
 
+const CALF_COLOR_OPTIONS = [
+    'Black',
+    'Brown',
+    'White',
+    'Red',
+    'Gray',
+    'Spotted',
+    'Mixed',
+];
+
 export default function RecordCalfDropScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
@@ -50,6 +60,7 @@ export default function RecordCalfDropScreen() {
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [calvingEase, setCalvingEase] = useState('Natural');
     const [numCalves, setNumCalves] = useState(1);
+    const [numCalvesInput, setNumCalvesInput] = useState('1');
     const [calves, setCalves] = useState<CalfEntry[]>([
         { sex: 'F', earTag: '', color: '', brand: '' }
     ]);
@@ -151,8 +162,11 @@ export default function RecordCalfDropScreen() {
     };
 
     const handleNumChange = (val: string) => {
-        const count = parseInt(val) || 1;
-        if (count < 1) return;
+        const cleaned = val.replace(/[^0-9]/g, '');
+        setNumCalvesInput(cleaned);
+        if (!cleaned) return;
+
+        const count = Math.min(Math.max(parseInt(cleaned, 10), 1), 5);
         
         let newCalves = [...calves];
         if (count > newCalves.length) {
@@ -164,6 +178,12 @@ export default function RecordCalfDropScreen() {
         }
         setNumCalves(count);
         setCalves(newCalves);
+    };
+
+    const handleNumBlur = () => {
+        if (!numCalvesInput) {
+            setNumCalvesInput(numCalves.toString());
+        }
     };
 
     const updateCalf = (index: number, field: string, value: string) => {
@@ -185,7 +205,6 @@ export default function RecordCalfDropScreen() {
             newCalves[index].imageUri = result.assets[0].uri;
             newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
             setCalves(newCalves);
-            toast.success(`Photo attached to Calf #${index + 1}`);
         }
     };
 
@@ -209,7 +228,6 @@ export default function RecordCalfDropScreen() {
             newCalves[index].imageUri = result.assets[0].uri;
             newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
             setCalves(newCalves);
-            toast.success(`Photo attached to Calf #${index + 1}`);
         }
     };
 
@@ -421,9 +439,12 @@ export default function RecordCalfDropScreen() {
                                 <View className="flex-row items-center gap-3">
                                     <TextInput 
                                         className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-black shadow-sm flex-1"
-                                        value={numCalves.toString()}
+                                        value={numCalvesInput}
                                         onChangeText={handleNumChange}
+                                        onBlur={handleNumBlur}
                                         keyboardType="numeric"
+                                        placeholder="1"
+                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                                     />
                                     <Text className="text-slate-400 dark:text-slate-500 font-outfit-bold text-xs uppercase">Head</Text>
                                 </View>
@@ -484,13 +505,29 @@ export default function RecordCalfDropScreen() {
                                         <View className="flex-row gap-3">
                                             <View className="flex-1">
                                                 <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Color</Text>
-                                                <TextInput 
-                                                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-white font-outfit-bold text-xs"
-                                                    placeholder="White, Brown, Black..."
-                                                    placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                                    value={calf.color}
-                                                    onChangeText={(v) => updateCalf(idx, 'color', v)}
-                                                />
+                                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                                    <View className="flex-row gap-2 pr-2">
+                                                        {CALF_COLOR_OPTIONS.map((color) => (
+                                                            <TouchableOpacity
+                                                                key={color}
+                                                                onPress={() => updateCalf(idx, 'color', color)}
+                                                                className={`px-3 py-2 rounded-xl border ${
+                                                                    calf.color === color
+                                                                        ? 'bg-emerald-600 border-emerald-600'
+                                                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                                                                }`}
+                                                            >
+                                                                <Text className={`font-outfit-black text-[10px] ${
+                                                                    calf.color === color
+                                                                        ? 'text-white'
+                                                                        : 'text-slate-500 dark:text-slate-300'
+                                                                }`}>
+                                                                    {color}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </View>
+                                                </ScrollView>
                                             </View>
                                             <View className="flex-1">
                                                 <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Brand Mark</Text>

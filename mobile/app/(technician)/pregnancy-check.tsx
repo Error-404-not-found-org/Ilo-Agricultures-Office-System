@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Platform,
   Alert,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
@@ -30,11 +30,17 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { calculateTargetCalvingDate } from "@/lib/cattleCore";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function PregnancyCheckScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const api = useApi();
+  const queryClient = useQueryClient();
   const { isDark, colors } = useTheme();
+  const initialFarmerId = params.farmerId as string | undefined;
+  const initialFarmerName = params.farmerName as string | undefined;
+  const initialAnimalId = params.animalId as string | undefined;
 
   const [saving, setSaving] = useState(false);
   const [farmers, setFarmers] = useState<any[]>([]);
@@ -92,12 +98,7 @@ export default function PregnancyCheckScreen() {
     }
   };
 
-  const handleAnimalSelect = async (animal: any) => {
-    setSelectedAnimal(animal);
-    setSelectedInsemination(null);
-    setInseminations([]);
-    setResult("");
-    setShowAnimalModal(false);
+  const loadAnimalHistory = useCallback(async (animal: any) => {
     setLoadingHistory(true);
 
     try {
@@ -110,12 +111,10 @@ export default function PregnancyCheckScreen() {
 
       setInseminations(insemList);
 
-      // Sort insemList to ensure the latest attempt is first (by attemptNumber descending)
       const sortedInsemList = [...insemList].sort((a: any, b: any) => {
         return (b.attemptNumber || 0) - (a.attemptNumber || 0);
       });
 
-      // Auto-select latest valid insemination
       const latestPending = sortedInsemList.find(
         (item: any) =>
           (item.status === "done" || item.status === "completed" || item.status === "in-progress" || item.status === "approved") &&
@@ -131,7 +130,50 @@ export default function PregnancyCheckScreen() {
     } finally {
       setLoadingHistory(false);
     }
+  }, [api]);
+
+  const handleAnimalSelect = async (animal: any) => {
+    setSelectedAnimal(animal);
+    setSelectedInsemination(null);
+    setInseminations([]);
+    setResult("");
+    setShowAnimalModal(false);
+    await loadAnimalHistory(animal);
   };
+
+  useEffect(() => {
+    const prefillFromRoute = async () => {
+      if (!initialFarmerId || !initialAnimalId || selectedAnimal) return;
+
+      try {
+        const farmer = {
+          _id: initialFarmerId,
+          name: initialFarmerName || "Selected farmer",
+        };
+        setSelectedFarmer(farmer);
+
+        const animalsRes = await api.get(`/animals/farmer/${initialFarmerId}`);
+        const animalList = Array.isArray(animalsRes.data)
+          ? animalsRes.data
+          : animalsRes.data?.data || [];
+        setAnimals(animalList);
+
+        const matchedAnimal =
+          animalList.find((animal: any) => String(animal._id) === String(initialAnimalId)) ||
+          (await api.get(`/animals/${initialAnimalId}`)).data;
+
+        if (matchedAnimal) {
+          setSelectedAnimal(matchedAnimal);
+          await loadAnimalHistory(matchedAnimal);
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error("Could not prefill pregnancy check details.");
+      }
+    };
+
+    prefillFromRoute();
+  }, [api, initialAnimalId, initialFarmerId, initialFarmerName, loadAnimalHistory, selectedAnimal]);
 
   const validatePregnancyCheck = () => {
     toast.dismiss();
@@ -162,6 +204,11 @@ export default function PregnancyCheckScreen() {
       };
 
       await api.post("/technician/pregnancy-check", payload);
+      queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
+      queryClient.invalidateQueries({ queryKey: ["animal-details", selectedAnimal._id] });
+      queryClient.invalidateQueries({ queryKey: ["animalTimeline", selectedAnimal._id] });
       toast.success(`Diagnosis saved successfully: ${result}`);
       router.back();
     } catch (err: any) {

@@ -1,5 +1,5 @@
 import React from "react";
-import { View, TouchableOpacity } from "react-native";
+import { Image, View, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
@@ -160,14 +160,35 @@ const RequestCard = ({
   const { colors, isDark } = useTheme();
 
   const isHealth = item.type === "health";
-  const iconBg = isHealth
+  const isBreedingVerification = item.type === "breeding_verification";
+  const serviceTypeLabel = String(item.serviceType || item.requestType || item.raw?.requestType || (isHealth ? "Health Assistance" : "Artificial Insemination"))
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  const locationLabel = item.locationLabel || item.location || [item.barangay, item.municipality].filter(Boolean).join(", ");
+  const sentAt = item.createdAt
+    ? new Date(item.createdAt).toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "Recently";
+  const iconBg = isBreedingVerification
+    ? isDark
+      ? "rgba(139, 92, 246, 0.12)"
+      : "#f5f3ff"
+    : isHealth
     ? isDark
       ? "#78350f"
       : "#fffbeb"
     : isDark
       ? "#064e3b"
       : "#f0fdf4";
-  const iconColor = isHealth
+  const iconColor = isBreedingVerification
+    ? isDark
+      ? "#c4b5fd"
+      : "#7c3aed"
+    : isHealth
     ? isDark
       ? "#fbbf24"
       : "#d97706"
@@ -189,16 +210,45 @@ const RequestCard = ({
           width: 52,
           height: 52,
           borderRadius: 26,
-          backgroundColor: iconBg,
+          backgroundColor: item.farmerImageUrl ? colors.border : iconBg,
           alignItems: "center",
           justifyContent: "center",
+          position: "relative",
         }}
       >
-        <MaterialCommunityIcons
-          name={isHealth ? "stethoscope" : "needle"}
-          size={24}
-          color={iconColor}
-        />
+        {item.farmerImageUrl ? (
+          <Image
+            source={{ uri: item.farmerImageUrl }}
+            style={{ width: 52, height: 52, borderRadius: 26 }}
+          />
+        ) : (
+          <MaterialCommunityIcons
+            name="account"
+            size={24}
+            color={iconColor}
+          />
+        )}
+        <View
+          style={{
+            position: "absolute",
+            right: -2,
+            bottom: -2,
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            backgroundColor: iconBg,
+            borderWidth: 1,
+            borderColor: colors.card,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <MaterialCommunityIcons
+            name={isBreedingVerification ? "clipboard-pulse-outline" : isHealth ? "stethoscope" : "needle"}
+            size={12}
+            color={iconColor}
+          />
+        </View>
       </View>
 
       <View style={{ flex: 1, marginLeft: 16 }}>
@@ -212,7 +262,16 @@ const RequestCard = ({
           style={{ marginTop: 2 }}
           numberOfLines={1}
         >
-          {item.task}
+          {isHealth || isBreedingVerification ? serviceTypeLabel : item.task}
+        </Text>
+        <Text
+          variant="medium"
+          color="muted"
+          size={11}
+          style={{ marginTop: 2 }}
+          numberOfLines={1}
+        >
+          {locationLabel || "Location not listed"} • Sent {sentAt}
         </Text>
         {isLocked && (
           <View
@@ -262,7 +321,7 @@ const RequestCard = ({
             </Text>
           </TouchableOpacity>
 
-          {["pending", "approved", "assigned", "triaged"].includes(item.status?.toLowerCase()) && (
+          {!isBreedingVerification && ["pending", "approved", "assigned", "triaged"].includes(item.status?.toLowerCase()) && (
             <TouchableOpacity
               onPress={onDecline}
               disabled={isLocked || isUpdating}

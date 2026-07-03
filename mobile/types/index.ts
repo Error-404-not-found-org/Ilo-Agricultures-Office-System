@@ -9,6 +9,9 @@ export type ReproductiveStatus =
   | "In Heat"
   | "Inseminated"
   | "Pregnant"
+  | "Post-partum"
+  | "Lactating"
+  | "Dry"
   | "Calved"
   | "Open"
   | "Likely Pregnant";

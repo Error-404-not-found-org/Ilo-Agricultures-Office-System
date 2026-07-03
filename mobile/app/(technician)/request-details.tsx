@@ -418,6 +418,13 @@ export default function RequestDetailsScreen() {
   const animal = request.animalId;
   const farmer = request.farmerId;
   const technician = request.approvedBy || request.handledBy;
+  const formatServiceType = (value?: string) => {
+    if (!value) return isAI ? "Artificial Insemination" : "Health Assistance";
+    return value
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+  const serviceTypeLabel = formatServiceType(request.serviceType || request.requestType);
 
   return (
     <KeyboardAvoidingView
@@ -475,12 +482,18 @@ export default function RequestDetailsScreen() {
                 {request.urgency || request.priority || "Normal"}
               </Text>
             </View>
+            {!isAI && (
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ color: colors.textMuted }} variant="medium">Service Type</Text>
+                <Text style={{ color: colors.textPrimary }} variant="bold">{serviceTypeLabel}</Text>
+              </View>
+            )}
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={{ color: colors.textMuted }} variant="medium">Submitted Date</Text>
               <Text style={{ color: colors.textPrimary }} variant="bold">{formatDate(request.createdAt)}</Text>
             </View>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ color: colors.textMuted }} variant="medium">Preffered Date</Text>
+              <Text style={{ color: colors.textMuted }} variant="medium">Preferred Date</Text>
               <Text style={{ color: colors.textPrimary }} variant="bold">{formatDate(request.preferredDate)}</Text>
             </View>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>

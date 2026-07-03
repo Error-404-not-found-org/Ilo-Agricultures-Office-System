@@ -1,6 +1,8 @@
 export interface RequestItem {
   id: string;
   type: "ai" | "health" | "breeding_verification";
+  serviceType?: string;
+  requestType?: string;
   status: string;
   urgency: "urgent" | "normal";
   farmer: string;

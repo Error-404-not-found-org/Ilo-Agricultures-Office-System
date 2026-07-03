@@ -1405,16 +1405,52 @@ export const recordCalving = async (req, res) => {
       deletedAt: null,
     });
     if (existingCalving) {
-      if (mother.reproductiveStatus === "Pregnant") {
-        await Animal.findByIdAndUpdate(animalId, {
-          $set: { reproductiveStatus: "Normal" },
-        });
-      }
       return res
         .status(400)
         .json({
           message: "A calving record already exists for this pregnancy.",
         });
+    }
+
+    if (!Array.isArray(calves) || calves.length === 0) {
+      return res.status(400).json({
+        message: "At least one calf record is required.",
+      });
+    }
+
+    const calfEarTags = calves
+      .map((calf) => String(calf.earTag || "").trim())
+      .filter(Boolean);
+
+    if (calfEarTags.length !== calves.length) {
+      return res.status(400).json({
+        message: "Each calf must have an ear tag.",
+      });
+    }
+
+    const duplicateInPayload = calfEarTags.find(
+      (tag, index) =>
+        calfEarTags.findIndex(
+          (item) => item.toLowerCase() === tag.toLowerCase(),
+        ) !== index,
+    );
+
+    if (duplicateInPayload) {
+      return res.status(400).json({
+        message: `Duplicate calf ear tag detected: ${duplicateInPayload}`,
+      });
+    }
+
+    const existingCalfTag = await Animal.findOne({
+      farmerId: mother.farmerId,
+      earTag: { $in: calfEarTags },
+      deletedAt: null,
+    }).select("earTag");
+
+    if (existingCalfTag) {
+      return res.status(400).json({
+        message: `Ear tag ${existingCalfTag.earTag} is already used by this farmer.`,
+      });
     }
 
     // Extract sire info from insemination if available
@@ -1495,7 +1531,7 @@ export const recordCalving = async (req, res) => {
     // 4. Update Mother's Status, lastCalvingDate & Increment Parity
     await Animal.findByIdAndUpdate(animalId, {
       $set: {
-        reproductiveStatus: "Normal",
+        reproductiveStatus: "Post-partum",
         lastCalvingDate: date || new Date(),
       },
       $inc: { parity: 1 }, // Track number of births
@@ -1537,11 +1573,14 @@ export const recordCalving = async (req, res) => {
       console.error("[recordCalving INNGEST ERROR]", inngestErr.message);
     }
 
-    req.app.get("io").emit("dashboardUpdate", {
-      type: "CALVING_RECORDED",
-      motherId: animalId,
-      calvingId: calving._id,
-    });
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("dashboardUpdate", {
+        type: "CALVING_RECORDED",
+        motherId: animalId,
+        calvingId: calving._id,
+      });
+    }
 
     res.status(201).json({
       message: "Calving and offspring registered successfully",
@@ -2998,6 +3037,7 @@ export const getTechnicianRequests = async (req, res) => {
       return {
         id: rec._id,
         type: "ai",
+        serviceType: "Artificial Insemination",
         status: rec.status,
         isReadyToday: !!isReady,
         displayStatus: isReady
@@ -3053,6 +3093,8 @@ export const getTechnicianRequests = async (req, res) => {
       return {
         id: rec._id,
         type: "health",
+        serviceType: rec.requestType || "health",
+        requestType: rec.requestType || "health",
         status: rec.status,
         isReadyToday: !!isReady,
         displayStatus: isReady
@@ -3106,6 +3148,7 @@ export const getTechnicianRequests = async (req, res) => {
       return {
         id: task._id,
         type: "breeding_verification",
+        serviceType: "Pregnancy Check",
         status: task.status,
         isReadyToday: false,
         displayStatus: task.status,
