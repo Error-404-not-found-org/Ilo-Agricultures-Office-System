@@ -10,6 +10,7 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -132,21 +133,25 @@ export default function PregnancyCheckScreen() {
     }
   };
 
-  const handleSave = async () => {
+  const validatePregnancyCheck = () => {
     toast.dismiss();
     if (!selectedAnimal) {
       toast.error("Please select an animal first");
-      return;
+      return false;
     }
     if (!selectedInsemination) {
       toast.error("No breeding reference found. Please select an attempt.");
-      return;
+      return false;
     }
     if (!result) {
       toast.error("Please select a diagnosis result");
-      return;
+      return false;
     }
 
+    return true;
+  };
+
+  const submitPregnancyCheck = async () => {
     setSaving(true);
     try {
       const payload = {
@@ -167,6 +172,23 @@ export default function PregnancyCheckScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = () => {
+    if (saving || !validatePregnancyCheck()) return;
+
+    Alert.alert(
+      "Save Pregnancy Diagnosis?",
+      `This will mark ${selectedAnimal?.earTag || "the selected animal"} as ${result} for the selected breeding attempt and update the animal record history.`,
+      [
+        { text: "Review", style: "cancel" },
+        {
+          text: "Save Diagnosis",
+          style: "default",
+          onPress: submitPregnancyCheck,
+        },
+      ],
+    );
   };
 
   const filteredFarmers = farmers.filter(

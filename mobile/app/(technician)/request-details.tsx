@@ -257,7 +257,14 @@ export default function RequestDetailsScreen() {
             ]
           );
         } else {
-          await proceed();
+          Alert.alert(
+            "Complete AI Service?",
+            "This will create the official AI service record and update the animal breeding history. Please confirm the sire details and notes are correct.",
+            [
+              { text: "Review", style: "cancel" },
+              { text: "Complete", onPress: proceed },
+            ],
+          );
         }
       } else {
         if (!diagnosis || !diagnosis.trim()) {
@@ -298,7 +305,14 @@ export default function RequestDetailsScreen() {
             ]
           );
         } else {
-          await proceed();
+          Alert.alert(
+            "Resolve Health Request?",
+            "This will save the findings, treatment, and resolution notes as the official health assistance record.",
+            [
+              { text: "Review", style: "cancel" },
+              { text: "Resolve", onPress: proceed },
+            ],
+          );
         }
       }
     }

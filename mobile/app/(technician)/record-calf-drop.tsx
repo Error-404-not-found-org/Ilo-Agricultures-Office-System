@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, FlatList, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, FlatList, Image, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Save, Plus, Trash2, Calendar, Info, User, ChevronDown, Search, X, ShieldAlert, Camera, Image as ImageIcon } from 'lucide-react-native';
@@ -220,13 +220,46 @@ export default function RecordCalfDropScreen() {
         setCalves(newCalves);
     };
 
-    const handleSave = async () => {
+    const validateCalvingForm = () => {
         toast.dismiss();
         if (!motherId || !pregnancyId) {
             toast.error("Please select a mother with an active pregnancy.");
-            return;
+            return false;
         }
 
+        const normalizedCalves = calves.map((calf) => ({
+            ...calf,
+            sex: calf.sex?.trim(),
+            earTag: calf.earTag?.trim(),
+            color: calf.color?.trim(),
+            brand: calf.brand?.trim(),
+        }));
+
+        const incompleteIndex = normalizedCalves.findIndex(
+            (calf) => !["F", "M"].includes(calf.sex) || !calf.earTag || !calf.color,
+        );
+
+        if (incompleteIndex >= 0) {
+            toast.error(`Please complete sex, ear tag, and color for Calf #${incompleteIndex + 1}.`);
+            return false;
+        }
+
+        const duplicateEarTag = normalizedCalves.find((calf, index) =>
+            normalizedCalves.findIndex(
+                (item) => item.earTag.toLowerCase() === calf.earTag.toLowerCase(),
+            ) !== index,
+        );
+
+        if (duplicateEarTag) {
+            toast.error(`Duplicate calf ear tag detected: ${duplicateEarTag.earTag}`);
+            return false;
+        }
+
+        setCalves(normalizedCalves);
+        return true;
+    };
+
+    const submitCalvingRecord = async () => {
         setSaving(true);
         try {
             const payload = {
@@ -255,6 +288,23 @@ export default function RecordCalfDropScreen() {
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleSave = () => {
+        if (saving || !validateCalvingForm()) return;
+
+        Alert.alert(
+            "Submit Calving Registry?",
+            `This will create ${numCalves} offspring record${numCalves > 1 ? "s" : ""} for ${motherTag || "the selected mother"} and update the animal history. Please confirm the details are correct.`,
+            [
+                { text: "Review", style: "cancel" },
+                {
+                    text: "Submit",
+                    style: "default",
+                    onPress: submitCalvingRecord,
+                },
+            ],
+        );
     };
 
     const filteredFarmers = farmers.filter(f => 
