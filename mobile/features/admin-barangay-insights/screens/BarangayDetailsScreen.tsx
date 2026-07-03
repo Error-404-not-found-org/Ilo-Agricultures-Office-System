@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StatusBar,
   RefreshControl,
-  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -36,11 +35,8 @@ export default function BarangayDetailsScreen() {
   if (isLoading && !isRefetching) {
     return (
       <ScreenLayout>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}>
-          <ActivityIndicator size="large" color={PRIMARY} />
-          <Text style={{ marginTop: 12, fontFamily: 'Outfit_500Medium', color: colors.textSecondary }}>
-            Loading barangay details...
-          </Text>
+        <View style={{ flex: 1, paddingHorizontal: 24, paddingTop: 24, backgroundColor: colors.background }}>
+          <AsyncState state="loading" />
         </View>
       </ScreenLayout>
     );
@@ -49,17 +45,15 @@ export default function BarangayDetailsScreen() {
   if (isError || !name) {
     return (
       <ScreenLayout>
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: colors.background }}>
-          <MaterialCommunityIcons name="alert-circle-outline" size={48} color={colors.error} />
-          <Text style={{ fontSize: 18, fontFamily: 'Outfit_700Bold', color: colors.textPrimary, marginTop: 16 }}>
-            Error Loading Details
-          </Text>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={{ marginTop: 24, backgroundColor: PRIMARY, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}
-          >
-            <Text style={{ color: '#fff', fontFamily: 'Outfit_700Bold' }}>Go Back</Text>
-          </TouchableOpacity>
+        <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: colors.background }}>
+          <AsyncState
+            state="error"
+            title="Error loading details"
+            message="We could not load this barangay summary. Please try again."
+            actionLabel="Retry"
+            onAction={handleRefresh}
+            icon={<MaterialCommunityIcons name="alert-circle-outline" size={24} color={colors.error} />}
+          />
         </View>
       </ScreenLayout>
     );

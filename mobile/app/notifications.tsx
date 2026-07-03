@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StatusBar,
   FlatList,
-  ActivityIndicator,
   RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -21,6 +20,7 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner-native";
 import { useUser } from "@clerk/clerk-expo";
 import { useQueryClient } from "@tanstack/react-query";
+import { AsyncState } from "@/components/shared";
 
 interface NotificationItem {
   _id: string;
@@ -61,6 +61,7 @@ export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   const fetchNotifications = useCallback(
     async (isRefresh = false, isBackgroundPoll = false) => {
@@ -70,8 +71,10 @@ export default function NotificationsScreen() {
       try {
         const response = await api.get("/notifications");
         setNotifications(Array.isArray(response.data) ? response.data : []);
+        if (!isBackgroundPoll) setLoadError(false);
       } catch (error: any) {
         if (!isBackgroundPoll) {
+          setLoadError(true);
           console.error("Failed to fetch notifications:", error);
           toast.error(
             error.response?.data?.message || "Could not load notifications.",
@@ -277,8 +280,18 @@ export default function NotificationsScreen() {
         </View>
 
         {loading ? (
-          <View className="flex-1 items-center justify-center pb-20">
-            <ActivityIndicator size="large" color={THEME.primary} />
+          <View className="flex-1 px-6">
+            <AsyncState state="loading" />
+          </View>
+        ) : loadError ? (
+          <View className="flex-1 px-6">
+            <AsyncState
+              state="error"
+              title="Could not load notifications"
+              message="Check your connection, then try again."
+              actionLabel="Retry"
+              onAction={() => fetchNotifications(true)}
+            />
           </View>
         ) : notifications.length > 0 ? (
           <FlatList
@@ -296,14 +309,13 @@ export default function NotificationsScreen() {
             renderItem={renderItem}
           />
         ) : (
-          <View className="flex-1 items-center justify-center opacity-50 pb-20">
-            <Bell size={64} color="#94a3b8" />
-            <Text
-              style={{ fontFamily: "Outfit_700Bold" }}
-              className="text-slate-500 text-lg mt-4"
-            >
-              You&apos;re all caught up!
-            </Text>
+          <View className="flex-1 px-6">
+            <AsyncState
+              state="empty"
+              title="You're all caught up"
+              message="New AI, health, visit, and system updates will appear here."
+              icon={<Bell size={24} color={THEME.primary} />}
+            />
           </View>
         )}
       </View>

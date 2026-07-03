@@ -30,7 +30,7 @@ import {
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { useUserDetail } from "../hooks/useUserDetail";
 import { useTheme } from "@/lib/theme";
-import { StatusBadge, CustomDialog } from "@/components/shared";
+import { AsyncState, StatusBadge, CustomDialog } from "@/components/shared";
 
 const PRIMARY = "#1e3a5f";
 
@@ -61,11 +61,8 @@ export default function UserDetailScreen() {
   if (isLoading) {
     return (
       <ScreenLayout>
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={PRIMARY} />
-          <Text className="mt-4 font-medium" style={{ color: colors.textSecondary }}>
-            Loading user details...
-          </Text>
+        <View className="flex-1 px-6 pt-6">
+          <AsyncState state="loading" />
         </View>
       </ScreenLayout>
     );
@@ -74,17 +71,15 @@ export default function UserDetailScreen() {
   if (!user) {
     return (
       <ScreenLayout>
-        <View className="flex-1 items-center justify-center p-6">
-          <MaterialCommunityIcons name="account-alert" size={48} color={colors.textMuted} />
-          <Text className="text-lg font-bold mt-4" style={{ color: colors.textPrimary }}>
-            User Not Found
-          </Text>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="mt-6 bg-slate-200 px-6 py-3 rounded-xl"
-          >
-            <Text className="font-semibold text-slate-800">Go Back</Text>
-          </TouchableOpacity>
+        <View className="flex-1 px-6 justify-center">
+          <AsyncState
+            state="empty"
+            title="User not found"
+            message="This account may have been removed or is no longer available."
+            actionLabel="Go back"
+            onAction={() => router.back()}
+            icon={<MaterialCommunityIcons name="account-alert" size={24} color={PRIMARY} />}
+          />
         </View>
       </ScreenLayout>
     );

@@ -1,10 +1,11 @@
 import React from "react";
-import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
-import { AlertCircle, Inbox } from "lucide-react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import { AlertCircle, Inbox, WifiOff } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 interface AsyncStateProps {
-  state: "loading" | "empty" | "error";
+  state: "loading" | "empty" | "error" | "offline";
   title?: string;
   message?: string;
   actionLabel?: string;
@@ -20,41 +21,45 @@ export function AsyncState({
   onAction,
   icon: CustomIcon,
 }: AsyncStateProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   if (state === "loading") {
     return (
       <View
         style={{
-          paddingVertical: 40,
-          alignItems: "center",
+          paddingVertical: 24,
+          gap: 12,
         }}
         accessibilityLabel="Loading"
       >
-        <ActivityIndicator color={colors.primary} size="small" />
-        <View
-          style={{
-            height: 12,
-            width: 160,
-            marginTop: 16,
-            borderRadius: 4,
-            backgroundColor: isDark ? "#1f2937" : "#e2e8f0",
-          }}
-        />
-        <View
-          style={{
-            height: 12,
-            width: 96,
-            marginTop: 8,
-            borderRadius: 4,
-            backgroundColor: isDark ? "#111827" : "#f1f5f9",
-          }}
-        />
+        {[0, 1, 2].map((item) => (
+          <View
+            key={item}
+            style={{
+              padding: 16,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: colors.border,
+              backgroundColor: colors.card,
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <Skeleton shape="circle" height={40} />
+              <View style={{ flex: 1, gap: 8 }}>
+                <Skeleton width="72%" height={12} />
+                <Skeleton width="45%" height={10} />
+              </View>
+            </View>
+            <Skeleton width="100%" height={10} style={{ marginTop: 14 }} />
+            <Skeleton width="64%" height={10} style={{ marginTop: 8 }} />
+          </View>
+        ))}
       </View>
     );
   }
 
-  const FallbackIcon = state === "error" ? AlertCircle : Inbox;
+  const FallbackIcon =
+    state === "error" ? AlertCircle : state === "offline" ? WifiOff : Inbox;
   const renderIcon = () => {
     if (CustomIcon) return CustomIcon;
     return <FallbackIcon size={22} color={colors.primary} />;
@@ -83,7 +88,12 @@ export function AsyncState({
           fontSize: 15,
         }}
       >
-        {title || (state === "error" ? "Unable to load" : "Nothing here yet")}
+        {title ||
+          (state === "error"
+            ? "Unable to load"
+            : state === "offline"
+              ? "Offline right now"
+              : "Nothing here yet")}
       </Text>
       {message ? (
         <Text
