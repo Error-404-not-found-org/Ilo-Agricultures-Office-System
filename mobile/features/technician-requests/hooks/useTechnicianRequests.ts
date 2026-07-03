@@ -142,6 +142,25 @@ export function useTechnicianRequests() {
         },
         {
           onSuccess: () => {
+            queryClient.setQueriesData(
+              { queryKey: ["technician", "requests"] },
+              (oldData: any) => {
+                if (!oldData?.requests) return oldData;
+                const nextRequests = oldData.requests.filter(
+                  (request: any) => String(request.id) !== String(requestId),
+                );
+                return {
+                  ...oldData,
+                  requests: nextRequests,
+                  pagination: oldData.pagination
+                    ? {
+                        ...oldData.pagination,
+                        total: Math.max((oldData.pagination.total || 0) - 1, 0),
+                      }
+                    : oldData.pagination,
+                };
+              },
+            );
             invalidateTechnicianWorkflow();
             resolve();
           },

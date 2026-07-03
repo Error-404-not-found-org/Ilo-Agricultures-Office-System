@@ -2853,6 +2853,11 @@ export const getTechnicianRequests = async (req, res) => {
         aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
         healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
       }
+
+      if (status !== "declined") {
+        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
+      }
     } else {
       if (assignment === "mine") {
         aiQuery.approvedBy = req.user._id;
