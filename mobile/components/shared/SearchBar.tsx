@@ -38,6 +38,7 @@ export function SearchBar({
         marginBottom: 16,
         borderWidth: 1,
         borderColor: colors.border,
+        minHeight: 52,
       }}
     >
       <Search
@@ -61,11 +62,14 @@ export function SearchBar({
       {value.length > 0 && (
         <TouchableOpacity
           onPress={handleClear}
+          accessibilityRole="button"
+          accessibilityLabel="Clear search"
           style={{
-            width: 32,
-            height: 32,
+            width: 44,
+            height: 44,
             alignItems: "center",
             justifyContent: "center",
+            marginRight: -6,
           }}
         >
           <X size={16} color={colors.textMuted} />

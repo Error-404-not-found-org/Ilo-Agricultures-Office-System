@@ -40,6 +40,12 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import { BreedSelectorModal } from "@/features/technician-dashboard/components/BreedSelectorModal";
 import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
+import {
+  getTechnicianAnimalHistory,
+  getTechnicianRequestDetail,
+  respondToCancellationRequest,
+  updateRequestStatus,
+} from "@/features/technician/services/technician.service";
 
 export default function RequestDetailsScreen() {
   const { colors, isDark } = useTheme();
@@ -77,9 +83,11 @@ export default function RequestDetailsScreen() {
     try {
       setLoading(true);
       const isHealth = type === "health";
-      const detailEndpoint = isHealth ? `/health-request/${id}` : `/ai-request/${id}`;
-      const res = await api.get(detailEndpoint);
-      const requestData = res.data?.data || res.data;
+      const requestData = await getTechnicianRequestDetail(
+        api,
+        isHealth ? "health" : "ai",
+        String(id)
+      );
       setRequest(requestData);
 
       // Prepopulate scheduling or details
@@ -96,8 +104,8 @@ export default function RequestDetailsScreen() {
       setEstrus(requestData.estrus || "Natural");
 
       if (requestData.animalId?._id) {
-        const historyRes = await api.get(`/technician/animal-history/${requestData.animalId._id}`);
-        setTimeline(historyRes.data?.timeline || []);
+        const historyTimeline = await getTechnicianAnimalHistory(api, requestData.animalId._id);
+        setTimeline(historyTimeline);
       }
     } catch (err: any) {
       toast.error(err.message || "Failed to fetch request details");
@@ -115,12 +123,10 @@ export default function RequestDetailsScreen() {
   const handleUpdateStatus = async (nextStatus: string, payload: any) => {
     try {
       setUpdating(true);
-      const isHealth = type === "health";
-      const endpoint = isHealth
-        ? `/health-request/${id}/status`
-        : `/technician/inseminations/${id}/status`;
-
-      await api.patch(endpoint, { status: nextStatus, ...payload });
+      await updateRequestStatus(api, type === "health" ? "health" : "ai", String(id), {
+        status: nextStatus,
+        ...payload,
+      });
       toast.success("Status updated successfully");
       fetchRequestDetails();
     } catch (err: any) {
@@ -321,14 +327,12 @@ export default function RequestDetailsScreen() {
   const handleRespondCancellation = async (approved: boolean, customReason?: string) => {
     try {
       setCancelResponding(true);
-      const isHealth = type === "health";
-      const endpoint = isHealth ? `/health-request/${id}/cancel-respond` : `/ai-request/${id}/cancel-respond`;
       const payload = {
         approved,
         reason: customReason || note || (approved ? "Approved by technician." : "Declined by technician."),
       };
 
-      await api.patch(endpoint, payload);
+      await respondToCancellationRequest(api, type === "health" ? "health" : "ai", String(id), payload);
       toast.success(approved ? "Cancellation approved" : "Cancellation request rejected");
       setNote("");
       setRescheduleMode(false);
@@ -343,21 +347,14 @@ export default function RequestDetailsScreen() {
   const handleRescheduleConfirm = async () => {
     try {
       setCancelResponding(true);
-      const isHealth = type === "health";
-      
       // Step 1: Reject the cancellation request with a reschedule note
-      const cancelEndpoint = isHealth ? `/health-request/${id}/cancel-respond` : `/ai-request/${id}/cancel-respond`;
-      await api.patch(cancelEndpoint, {
+      await respondToCancellationRequest(api, type === "health" ? "health" : "ai", String(id), {
         approved: false,
         reason: "Rescheduled by technician",
       });
 
       // Step 2: Set status back to scheduled with new date
-      const statusEndpoint = isHealth
-        ? `/health-request/${id}/status`
-        : `/technician/inseminations/${id}/status`;
-      
-      await api.patch(statusEndpoint, {
+      await updateRequestStatus(api, type === "health" ? "health" : "ai", String(id), {
         status: "scheduled",
         scheduledDate: scheduledDate.toISOString(),
         technicianNote: note || "Rescheduled by technician.",

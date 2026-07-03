@@ -44,20 +44,30 @@ export function FilterChips({
           <TouchableOpacity
             key={optionValue}
             onPress={() => onChange(optionValue)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
+            accessibilityLabel={`Filter by ${optionLabel}`}
             style={{
               backgroundColor: isActive ? colors.primary : colors.card,
               paddingHorizontal: 16,
-              paddingVertical: 8,
+              paddingVertical: 9,
               borderRadius: 12,
               borderWidth: 1,
               borderColor: isActive ? colors.primary : colors.border,
+              minHeight: 44,
+              maxWidth: 160,
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
             <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
               style={{
                 color: isActive ? "#fff" : colors.textSecondary,
                 fontFamily: "Outfit_700Bold",
                 fontSize: 12,
+                textAlign: "center",
               }}
             >
               {optionLabel}

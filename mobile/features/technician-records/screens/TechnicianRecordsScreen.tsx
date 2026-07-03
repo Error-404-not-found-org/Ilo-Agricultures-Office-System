@@ -5,10 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import {
-  ClipboardList,
   Download,
   Calendar,
-  Search,
   X,
   Printer,
   ChevronRight,
@@ -18,13 +16,12 @@ import {
   ChevronDown,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useApi } from "@/lib/api";
-import { useAuth } from "@clerk/clerk-expo";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek } from "date-fns";
+import { format, startOfWeek, endOfWeek } from "date-fns";
 import { generatePDF, generateExcel } from "@/lib/reportExporter";
 
 import { useTechnicianRecords } from "../hooks/useTechnicianRecords";
-import { SearchBar, FilterChips } from "@/components/shared";
+import { useTechnicianReportData } from "../hooks/useTechnicianReportData";
+import { SearchBar } from "@/components/shared";
 import { RecordList } from "../components/RecordList";
 import { DateRangeSelector } from "../components/DateRangeSelector";
 import { LedgerDetailModal } from "../components/LedgerDetailModal";
@@ -49,8 +46,6 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const api = useApi();
-  const { isLoaded, isSignedIn } = useAuth();
 
   // Tab state switcher (Browse Records vs. Generate Report)
   const [activeSegment, setActiveSegment] = React.useState<"browse" | "reports">("browse");
@@ -97,18 +92,24 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
   } = useTechnicianRecords();
 
   // ---- REPORT GENERATION STATE & METHODS ----
-  const [activeReportTab, setActiveReportTab] = React.useState<"monthly" | "weekly">("monthly");
-  const [selectedReportDate, setSelectedReportDate] = React.useState(new Date());
-  const [reportLoading, setReportLoading] = React.useState(false);
-  const [reportData, setReportData] = React.useState<any[]>([]);
+  const {
+    activeReportTab,
+    setActiveReportTab,
+    selectedReportDate,
+    reportSearchQuery,
+    setReportSearchQuery,
+    selectedReportType,
+    setSelectedReportType,
+    selectedReportBarangay,
+    setSelectedReportBarangay,
+    filteredReportData,
+    reportLoading,
+    refetchReportData,
+    changeReportDate,
+  } = useTechnicianReportData(activeSegment === "reports");
 
-  // Search & Filters for Report
   const [filterModalOpen, setFilterModalOpen] = React.useState(false);
-  const [reportSearchQuery, setReportSearchQuery] = React.useState("");
-  const [selectedReportType, setSelectedReportType] = React.useState<"ALL" | "AI" | "PD" | "CD" | "HL">("ALL");
-  const [selectedReportBarangay, setSelectedReportBarangay] = React.useState<string>("ALL");
   const [showFilterDropdown, setShowFilterDropdown] = React.useState(false);
-
   // Temp filter states for report modal
   const [tempReportSearchQuery, setTempReportSearchQuery] = React.useState("");
   const [tempSelectedReportType, setTempSelectedReportType] = React.useState<"ALL" | "AI" | "PD" | "CD" | "HL">("ALL");
@@ -117,167 +118,6 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
   // Detail Modal states inside Generate Report
   const [selectedRow, setSelectedRow] = React.useState<any | null>(null);
   const [detailModalOpen, setDetailModalOpen] = React.useState(false);
-
-  const getFullAddress = (farmer: any) => {
-    if (!farmer?.address) return "—";
-    if (typeof farmer.address === "string") return farmer.address;
-    const { street, barangay, city } = farmer.address;
-    return [street, barangay, city].filter(Boolean).join(", ") || "—";
-  };
-
-  const fetchReportData = React.useCallback(async () => {
-    if (!isLoaded || !isSignedIn) return;
-    setReportLoading(true);
-    try {
-      const start = activeReportTab === "monthly" ? startOfMonth(selectedReportDate) : startOfWeek(selectedReportDate);
-      const end = activeReportTab === "monthly" ? endOfMonth(selectedReportDate) : endOfWeek(selectedReportDate);
-
-      const [insRes, pregRes, calvRes, healthRes] = await Promise.all([
-        api.get("/technician/inseminations?page=1&limit=50"),
-        api.get("/technician/pregnancy-checks?page=1&limit=50"),
-        api.get("/technician/calvings?page=1&limit=50"),
-        api.get("/health-request?page=1&limit=50"),
-      ]);
-
-      const allEvents: any[] = [];
-
-      (insRes.data?.inseminations || []).forEach((ins: any) => {
-        const date = new Date(ins.inseminationDate || ins.createdAt);
-        if (date >= start && date <= end) {
-          allEvents.push({
-            type: "AI",
-            animalId: ins.animalId?.animalId || "—",
-            earTag: ins.animalId?.earTag || "—",
-            brand: ins.animalId?.brand || "—",
-            species: ins.animalId?.species || "—",
-            breed: ins.animalId?.breed || "—",
-            color: ins.animalId?.color || "—",
-            address: getFullAddress(ins.farmerId),
-            farmer: ins.farmerId?.name || "—",
-            barangay: ins.farmerId?.address?.barangay || "—",
-            date: format(date, "MM/dd/yyyy"),
-            noOfAi: ins.attemptNumber,
-            estrus: ins.estrus || "NH",
-            sireBreed: ins.sireBreed || "—",
-            sireCode: ins.sireCode || "—",
-          });
-        }
-      });
-
-      (pregRes.data?.data || []).forEach((preg: any) => {
-        const date = new Date(preg.checkDate || preg.createdAt);
-        if (date >= start && date <= end) {
-          allEvents.push({
-            type: "PD",
-            animalId: preg.animalId?.animalId || "—",
-            earTag: preg.animalId?.earTag || "—",
-            brand: preg.animalId?.brand || "—",
-            species: preg.animalId?.species || "—",
-            breed: preg.animalId?.breed || "—",
-            color: preg.animalId?.color || "—",
-            address: getFullAddress(preg.farmerId),
-            farmer: preg.farmerId?.name || "—",
-            barangay: preg.farmerId?.address?.barangay || "—",
-            date: format(date, "MM/dd/yyyy"),
-            pdDate: format(date, "MM/dd/yyyy"),
-            pdResult: preg.pregnancyDiagnosis?.result || "—",
-          });
-        }
-      });
-
-      (calvRes.data?.data || []).forEach((calv: any) => {
-        const date = new Date(calv.date || calv.createdAt);
-        if (date >= start && date <= end) {
-          allEvents.push({
-            type: "CD",
-            animalId: calv.animalId?.animalId || "—",
-            earTag: calv.animalId?.earTag || "—",
-            brand: calv.animalId?.brand || "—",
-            species: calv.animalId?.species || "—",
-            breed: calv.animalId?.breed || "—",
-            color: calv.animalId?.color || "—",
-            address: getFullAddress(calv.farmerId),
-            farmer: calv.farmerId?.name || "—",
-            barangay: calv.farmerId?.address?.barangay || "—",
-            date: format(date, "MM/dd/yyyy"),
-            cdDate: format(date, "MM/dd/yyyy"),
-            cdNum: calv.numberOfCalves,
-            cdSex: calv.sexOfCalf,
-            cdEase: calv.calvingEase,
-          });
-        }
-      });
-
-      (Array.isArray(healthRes.data) ? healthRes.data : healthRes.data?.data || []).forEach((health: any) => {
-        const date = new Date(health.createdAt);
-        if (date >= start && date <= end) {
-          allEvents.push({
-            type: "HL",
-            animalId: health.animalId?.animalId || "—",
-            earTag: health.animalId?.earTag || "—",
-            brand: health.animalId?.brand || "—",
-            species: health.animalId?.species || "—",
-            breed: health.animalId?.breed || "—",
-            color: health.animalId?.color || "—",
-            address: getFullAddress(health.farmerId),
-            farmer: health.farmerId?.name || "—",
-            barangay: health.farmerId?.address?.barangay || "—",
-            date: format(date, "MM/dd/yyyy"),
-            sireBreed: health.issue || "Check-up",
-            sireCode: health.status?.toUpperCase() || "COMPLETED",
-          });
-        }
-      });
-
-      setReportData(allEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-    } catch (error) {
-      console.error("Report sync error:", error);
-      toast.error("Failed to sync records");
-    } finally {
-      setReportLoading(false);
-    }
-  }, [selectedReportDate, activeReportTab, isLoaded, isSignedIn, api]);
-
-  React.useEffect(() => {
-    if (activeSegment === "reports") {
-      fetchReportData();
-    }
-  }, [fetchReportData, activeSegment]);
-
-  const changeReportDate = (direction: number) => {
-    const newDate = new Date(selectedReportDate);
-    if (activeReportTab === "monthly") {
-      newDate.setMonth(newDate.getMonth() + direction);
-    } else {
-      newDate.setDate(newDate.getDate() + direction * 7);
-    }
-    setSelectedReportDate(newDate);
-  };
-
-  const filteredReportData = React.useMemo(() => {
-    return reportData.filter((row) => {
-      // 1. Keyword search
-      if (reportSearchQuery) {
-        const match = [row.animalId, row.earTag, row.breed, row.farmer, row.sireCode, row.pdResult, row.sireBreed]
-          .join(" ")
-          .toLowerCase()
-          .includes(reportSearchQuery.toLowerCase());
-        if (!match) return false;
-      }
-
-      // 2. Event type filter
-      if (selectedReportType !== "ALL" && row.type !== selectedReportType) {
-        return false;
-      }
-
-      // 3. Barangay filter
-      if (selectedReportBarangay !== "ALL" && row.barangay?.toLowerCase() !== selectedReportBarangay.toLowerCase()) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [reportData, reportSearchQuery, selectedReportType, selectedReportBarangay]);
 
   const handleDelete = (item: any) => {
     Alert.alert(
@@ -772,7 +612,7 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
             refreshControl={
               <RefreshControl
                 refreshing={reportLoading}
-                onRefresh={fetchReportData}
+                onRefresh={refetchReportData}
                 tintColor={isDark ? colors.primary : PRIMARY}
               />
             }

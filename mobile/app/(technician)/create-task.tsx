@@ -25,6 +25,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
+import { useTechnicianFullAgendaQuery } from "@/features/technician/hooks/useTechnicianDashboard";
 import { getAnimalsByFarmer } from "@/features/technician/services/animalManagement.service";
 import DateTimePicker from "@react-native-community/datetimepicker";
 // 1. Import your validation utility (Make sure the path matches your structure)
@@ -133,6 +134,7 @@ export default function CreateTaskScreen() {
 
   const { clientsQuery } = useTechnicianClients();
   const { createTaskMutation, tasksQuery } = useTechnicianTasks();
+  const dashboardQuery = useTechnicianFullAgendaQuery();
   const farmers = clientsQuery.data || [];
 
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
@@ -174,7 +176,7 @@ export default function CreateTaskScreen() {
   const [showAnimalModal, setShowAnimalModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const saving = createTaskMutation.isPending || isSubmitting;
-  const [dashboardData, setDashboardData] = useState<any>(null);
+  const dashboardData = dashboardQuery.data;
 
   const agendaItemsOnSelectedDay = React.useMemo(() => {
     if (!visitDate || !dashboardData?.agendaItems) return [];
@@ -257,18 +259,6 @@ export default function CreateTaskScreen() {
       return diffHours <= 2 && diffHours > 0;
     });
   }, [selectedFarmer, visitDate, agendaItemsOnSelectedDay]);
-
-  useEffect(() => {
-    const fetchDashboard = async () => {
-      try {
-        const res = await api.get("/technician/dashboard-data?fullAgenda=true");
-        setDashboardData(res.data);
-      } catch (err) {
-        console.error("Failed to fetch dashboard data", err);
-      }
-    };
-    fetchDashboard();
-  }, [api]);
 
   const handleFarmerSelect = async (farmer: any) => {
     setSelectedFarmer(farmer);

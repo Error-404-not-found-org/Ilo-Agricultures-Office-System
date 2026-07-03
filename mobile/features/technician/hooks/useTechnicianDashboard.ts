@@ -24,6 +24,16 @@ export const useTechnicianDashboardQuery = (enabled: boolean = true) => {
   });
 };
 
+export const useTechnicianFullAgendaQuery = (enabled: boolean = true) => {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...technicianKeys.dashboard(), "full-agenda"],
+    queryFn: () => getTechnicianDashboardData(api, { fullAgenda: true }),
+    enabled,
+    staleTime: 1000 * 60,
+  });
+};
+
 export const useTechnicianAnalyticsQuery = (enabled: boolean = true) => {
   const api = useApi();
   return useQuery({

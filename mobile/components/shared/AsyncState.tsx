@@ -112,12 +112,17 @@ export function AsyncState({
       {onAction ? (
         <TouchableOpacity
           onPress={onAction}
+          accessibilityRole="button"
+          accessibilityLabel={actionLabel}
           style={{
             marginTop: 16,
             paddingHorizontal: 16,
             paddingVertical: 10,
+            minHeight: 44,
             borderRadius: 8,
             backgroundColor: colors.primary,
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
           <Text

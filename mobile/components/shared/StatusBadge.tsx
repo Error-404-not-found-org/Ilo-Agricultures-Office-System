@@ -106,10 +106,13 @@ export function StatusBadge({ label, variant, size = 10 }: StatusBadgeProps) {
         paddingHorizontal: 10,
         paddingVertical: 5,
         alignSelf: "flex-start",
+        maxWidth: 180,
       }}
+      accessibilityLabel={`Status: ${label || "Unknown"}`}
     >
       <Text
         numberOfLines={1}
+        ellipsizeMode="tail"
         style={{
           color: isDark ? colors.textSecondary : foreground,
           fontFamily: "Outfit_700Bold",
