@@ -4,6 +4,8 @@ import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { MedicalRecord } from "../models/medical-record.model.js";
+import { Insemination } from "../models/insemination.model.js";
+import cloudinary from "../config/cloudinary.js";
 
 
 // POST /api/health-request
@@ -160,6 +162,7 @@ export const getAllHealthRequests = async (req, res) => {
 };
 
 import { sendPushNotification } from "../lib/push-notifications.js";
+import { createAuditLog } from "../services/audit.service.js";
 
 // PATCH /api/health-request/:id/status  — technician/admin updates
 export const updateHealthRequestStatus = async (req, res) => {
@@ -167,7 +170,7 @@ export const updateHealthRequestStatus = async (req, res) => {
     const { id } = req.params;
     const { status, technicianNote } = req.body;
 
-    const VALID = ["pending", "approved", "in-progress", "resolved", "cancelled"];
+    const VALID = ["pending", "approved", "scheduled", "in-progress", "resolved", "cancelled", "rejected"];
     if (!VALID.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
     }
@@ -189,9 +192,44 @@ export const updateHealthRequestStatus = async (req, res) => {
       });
     }
 
+    const targetTechId = (req.user.role === "admin" && req.body.handledBy) ? req.body.handledBy : req.user._id;
+
+    // Schedule conflict guard
+    if (status === "scheduled" && req.body.scheduledDate) {
+      const targetTime = new Date(req.body.scheduledDate);
+      if (targetTime.getTime() < Date.now() - 5 * 60 * 1000) {
+        return res.status(400).json({
+          message: "Scheduled date and time cannot be in the past.",
+        });
+      }
+      const startTime = new Date(targetTime.getTime() - 30 * 60 * 1000);
+      const endTime = new Date(targetTime.getTime() + 30 * 60 * 1000);
+
+      const insemConflict = await Insemination.findOne({
+        approvedBy: targetTechId,
+        status: "scheduled",
+        scheduledDate: { $gte: startTime, $lte: endTime },
+        deletedAt: null,
+      });
+
+      const healthConflict = await HealthRequest.findOne({
+        _id: { $ne: id },
+        handledBy: targetTechId,
+        status: "scheduled",
+        scheduledDate: { $gte: startTime, $lte: endTime },
+        deletedAt: null,
+      });
+
+      if (insemConflict || healthConflict) {
+        return res.status(409).json({
+          message: "Schedule conflict: The assigned technician already has another visit scheduled within 30 minutes of this time.",
+        });
+      }
+    }
+
     const updateFields = {
       status,
-      handledBy: req.user._id,
+      handledBy: targetTechId,
     };
 
     if (technicianNote !== undefined) updateFields.technicianNote = technicianNote;
@@ -200,6 +238,9 @@ export const updateHealthRequestStatus = async (req, res) => {
     if (req.body.advice !== undefined) updateFields.advice = req.body.advice;
     if (req.body.scheduledDate !== undefined) {
       updateFields.scheduledDate = req.body.scheduledDate ? new Date(req.body.scheduledDate) : undefined;
+    }
+    if (req.body.followUpDate !== undefined) {
+      updateFields.followUpDate = req.body.followUpDate ? new Date(req.body.followUpDate) : undefined;
     }
 
     const request = await HealthRequest.findByIdAndUpdate(
@@ -246,6 +287,7 @@ export const updateHealthRequestStatus = async (req, res) => {
             withdrawalEndDate: withdrawalEndDate || undefined,
           },
           note: request.technicianNote || "Resolved through health request queue.",
+          followUpDate: req.body.followUpDate ? new Date(req.body.followUpDate) : undefined,
         });
         console.log(`[Medical Record Cascade] Created successfully for Animal: ${animalId}`);
 
@@ -288,6 +330,8 @@ export const updateHealthRequestStatus = async (req, res) => {
         } else if (status === "approved" || status === "in-progress") {
           const schedDateStr = request.scheduledDate ? new Date(request.scheduledDate).toLocaleDateString() : "today";
           message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} has been approved and scheduled for ${schedDateStr}. Technician: ${req.user.name}.`;
+        } else if (status === "rejected") {
+          message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} was not approved. Note: ${technicianNote || "No details provided"}.`;
         }
 
         // 1. Database Notification
@@ -410,6 +454,18 @@ export const walkInHealthRequest = async (req, res) => {
     } else {
       animal = await Animal.findOne({ earTag: animalDetails.earTag });
       if (!animal) {
+        let animalImageUrl = "";
+        if (animalDetails.imageUrl && animalDetails.imageUrl.startsWith("data:image")) {
+          try {
+            const uploadResponse = await cloudinary.uploader.upload(animalDetails.imageUrl, {
+              folder: "livestock_profiles",
+            });
+            animalImageUrl = uploadResponse.secure_url;
+          } catch (err) {
+            console.error("Cloudinary animal image upload failed", err);
+          }
+        }
+
         const newAnimalId = `ANM-${Date.now().toString().slice(-6)}`;
         animal = await Animal.create({
           farmerId: farmer._id,
@@ -417,6 +473,10 @@ export const walkInHealthRequest = async (req, res) => {
           earTag: animalDetails.earTag,
           species: animalDetails.species || "Beef",
           breed: animalDetails.breed || "Crossbreed",
+          gender: animalDetails.gender || "Female",
+          color: animalDetails.color || "Brown",
+          dob: animalDetails.dob || new Date().toISOString().split('T')[0],
+          imageUrl: animalImageUrl || undefined,
           barangay: farmer.address?.barangay || "Not Provided",
           isVerified: true,
         });
@@ -476,6 +536,7 @@ export const walkInHealthRequest = async (req, res) => {
             withdrawalEndDate: withdrawalEndDate || undefined,
           },
           note: technicianNote || "Recorded via walk-in service.",
+          followUpDate: req.body.followUpDate ? new Date(req.body.followUpDate) : undefined,
         });
         console.log(`[Medical Record Cascade] Created successfully for Walk-in Animal: ${animal._id}`);
 
@@ -602,5 +663,299 @@ export const deleteHealthRequest = async (req, res) => {
   } catch (error) {
     console.error("[deleteHealthRequest ERROR]", error.message);
     res.status(500).json({ message: "Failed to delete health record." });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/health-request/:id/cancel
+// Smart cancellation — respects role + status rules
+// ─────────────────────────────────────────────────────────────────────────────
+export const cancelHealthRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const actor = req.user;
+    const role = actor.role;
+
+    const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
+      .populate("farmerId", "name pushToken")
+      .populate("animalId", "earTag animalId")
+      .populate("handledBy", "name pushToken");
+
+    if (!request) {
+      return res.status(404).json({ message: "Health request not found." });
+    }
+
+    const status = request.status;
+    const isFarmer = role === "farmer";
+    const isTechnician = role === "technician";
+    const isAdmin = role === "admin";
+    const isOwner = request.farmerId?._id.toString() === actor._id.toString();
+
+    if (isFarmer && !isOwner) {
+      return res.status(403).json({ message: "You do not own this request." });
+    }
+
+    // Block terminal states
+    if (["cancelled", "resolved", "rejected"].includes(status)) {
+      return res.status(400).json({ message: `Request is already ${status}. Cannot cancel.` });
+    }
+
+    // Block farmer and technician from cancelling in-progress
+    if (status === "in-progress" && !isAdmin) {
+      return res.status(403).json({ message: "This request is currently in progress and cannot be cancelled." });
+    }
+
+    const previousStatus = status;
+    const assignedTech = request.handledBy;
+    const farmer = request.farmerId;
+    const animal = request.animalId;
+    const animalTag = animal?.earTag || animal?.animalId || "the animal";
+    const now = new Date();
+
+    // Determine scheduled / Ready Today
+    const isScheduled = status === "scheduled";
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const scheduledDay = request.scheduledDate ? new Date(request.scheduledDate) : null;
+    if (scheduledDay) scheduledDay.setHours(0, 0, 0, 0);
+    const isReadyToday = isScheduled && scheduledDay && scheduledDay.getTime() === today.getTime();
+
+    // ─── FARMER path ──────────────────────────────────────────────────────────
+    if (isFarmer) {
+      if (isScheduled) {
+        if (!reason || reason.trim() === "") {
+          return res.status(400).json({ message: "A reason is required to request cancellation of a scheduled visit." });
+        }
+        request.cancellationStatus = "requested";
+        request.cancellationReason = reason.trim();
+        request.cancelledBy = actor._id;
+        request.cancellationRequestedAt = now;
+        request.statusHistory = request.statusHistory || [];
+        request.statusHistory.push({ status: "cancellation_requested", note: reason.trim(), actorId: actor._id });
+        await request.save();
+
+        await createAuditLog({
+          entityType: "HealthRequest",
+          entityId: request._id,
+          action: "CANCEL_REQUEST",
+          actorId: actor._id,
+          before: { status: previousStatus, cancellationStatus: "none" },
+          after: { cancellationStatus: "requested" },
+          metadata: { role, reason: reason.trim(), isReadyToday },
+        });
+
+        try {
+          if (assignedTech?.pushToken) {
+            await sendPushNotification(
+              assignedTech.pushToken,
+              "⚠️ Cancellation Requested",
+              `${farmer?.name} has requested to cancel the health checkup visit for ${animalTag}.${isReadyToday ? " This visit is scheduled for TODAY." : ""} Reason: ${reason.trim()}`,
+              { requestId: id, type: "HEALTH" }
+            );
+          }
+          const admins = await User.find({ role: "admin", pushToken: { $exists: true, $ne: "" } });
+          for (const admin of admins) {
+            await Notification.create({
+              userId: admin._id,
+              title: "Health Cancellation Request",
+              message: `${farmer?.name} requested cancellation of health checkup for ${animalTag}${isReadyToday ? " (TODAY)" : ""}. Reason: ${reason.trim()}`,
+              type: "cancellation_request",
+              relatedId: request._id,
+            });
+          }
+        } catch (notifyErr) {
+          console.error("[cancelHealthRequest notify ERROR]", notifyErr.message);
+        }
+
+        return res.status(200).json({ message: "Cancellation request submitted. Awaiting technician review.", cancellationStatus: "requested" });
+      }
+
+      if (!["pending", "approved"].includes(status)) {
+        return res.status(400).json({ message: `Farmers cannot directly cancel a request with status: ${status}.` });
+      }
+    }
+
+    // ─── TECHNICIAN / ADMIN direct cancel ─────────────────────────────────────
+    if ((isTechnician || isAdmin) && !reason?.trim()) {
+      return res.status(400).json({ message: "A cancellation reason is required." });
+    }
+
+    request.status = "cancelled";
+    request.cancellationReason = reason?.trim() || "";
+    request.cancelledBy = actor._id;
+    request.cancellationRequestedAt = now;
+    request.cancellationStatus = "approved";
+    request.statusHistory = request.statusHistory || [];
+    request.statusHistory.push({
+      status: "cancelled",
+      note: reason?.trim() || `Cancelled by ${role}`,
+      actorId: actor._id,
+    });
+    await request.save();
+
+    await createAuditLog({
+      entityType: "HealthRequest",
+      entityId: request._id,
+      action: "CANCEL",
+      actorId: actor._id,
+      before: { status: previousStatus },
+      after: { status: "cancelled" },
+      metadata: { role, reason: reason?.trim() || "" },
+    });
+
+    try {
+      if (isFarmer && assignedTech?.pushToken) {
+        await sendPushNotification(
+          assignedTech.pushToken,
+          "❌ Health Request Cancelled",
+          `${farmer?.name} cancelled the health checkup request for ${animalTag}.`,
+          { requestId: id, type: "HEALTH" }
+        );
+      } else if (!isFarmer && farmer?.pushToken) {
+        await sendPushNotification(
+          farmer.pushToken,
+          "❌ Health Request Cancelled",
+          `Your health checkup request for ${animalTag} was cancelled by the ${role}.${reason?.trim() ? ` Reason: ${reason.trim()}` : ""}`,
+          { requestId: id, type: "HEALTH" }
+        );
+        if (isAdmin && assignedTech?.pushToken) {
+          await sendPushNotification(
+            assignedTech.pushToken,
+            "❌ Health Request Cancelled (Admin Override)",
+            `Admin cancelled the health checkup for ${animalTag}.${reason?.trim() ? ` Reason: ${reason.trim()}` : ""}`,
+            { requestId: id, type: "HEALTH" }
+          );
+        }
+      }
+    } catch (notifyErr) {
+      console.error("[cancelHealthRequest notify ERROR]", notifyErr.message);
+    }
+
+    req.app.get("io").emit("requestCancelled", {
+      type: "HEALTH",
+      requestId: request._id,
+      technicianId: assignedTech?._id,
+      scheduledDate: request.scheduledDate,
+      farmerId: farmer?._id,
+    });
+
+    return res.status(200).json({ message: "Health request cancelled successfully." });
+  } catch (error) {
+    console.error("[cancelHealthRequest ERROR]", error.message);
+    return res.status(500).json({ message: "Failed to cancel health request." });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/health-request/:id/cancel-respond
+// Technician or Admin approves or rejects a farmer's cancellation request
+// ─────────────────────────────────────────────────────────────────────────────
+export const respondHealthCancellation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { approved, reason } = req.body;
+    const actor = req.user;
+    const role = actor.role;
+
+    if (!["technician", "admin"].includes(role)) {
+      return res.status(403).json({ message: "Only technicians or admins can respond to cancellation requests." });
+    }
+
+    const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
+      .populate("farmerId", "name pushToken")
+      .populate("animalId", "earTag animalId")
+      .populate("handledBy", "name pushToken");
+
+    if (!request) {
+      return res.status(404).json({ message: "Health request not found." });
+    }
+
+    if (request.cancellationStatus !== "requested") {
+      return res.status(400).json({ message: "This request does not have a pending cancellation request." });
+    }
+
+    const farmer = request.farmerId;
+    const animal = request.animalId;
+    const animalTag = animal?.earTag || animal?.animalId || "the animal";
+    const previousStatus = request.status;
+
+    if (approved) {
+      request.status = "cancelled";
+      request.cancellationStatus = "approved";
+      request.statusHistory = request.statusHistory || [];
+      request.statusHistory.push({
+        status: "cancelled",
+        note: reason?.trim() || `Cancellation approved by ${role}`,
+        actorId: actor._id,
+      });
+      await request.save();
+
+      await createAuditLog({
+        entityType: "HealthRequest",
+        entityId: request._id,
+        action: "CANCEL_APPROVED",
+        actorId: actor._id,
+        before: { status: previousStatus, cancellationStatus: "requested" },
+        after: { status: "cancelled", cancellationStatus: "approved" },
+        metadata: { role, reason: reason?.trim() || "" },
+      });
+
+      if (farmer?.pushToken) {
+        await sendPushNotification(
+          farmer.pushToken,
+          "✅ Cancellation Approved",
+          `Your cancellation request for the health checkup of ${animalTag} has been approved.`,
+          { requestId: id, type: "HEALTH" }
+        );
+      }
+
+      req.app.get("io").emit("requestCancelled", {
+        type: "HEALTH",
+        requestId: request._id,
+        technicianId: request.handledBy?._id,
+        scheduledDate: request.scheduledDate,
+        farmerId: farmer?._id,
+      });
+
+      return res.status(200).json({ message: "Cancellation approved." });
+    } else {
+      request.cancellationStatus = "rejected";
+      request.statusHistory = request.statusHistory || [];
+      request.statusHistory.push({
+        status: "cancellation_rejected",
+        note: reason?.trim() || `Cancellation rejected by ${role}`,
+        actorId: actor._id,
+      });
+      await request.save();
+
+      await createAuditLog({
+        entityType: "HealthRequest",
+        entityId: request._id,
+        action: "CANCEL_REJECTED",
+        actorId: actor._id,
+        before: { cancellationStatus: "requested" },
+        after: { cancellationStatus: "rejected" },
+        metadata: { role, reason: reason?.trim() || "" },
+      });
+
+      if (farmer?.pushToken) {
+        await sendPushNotification(
+          farmer.pushToken,
+          "❌ Cancellation Request Rejected",
+          `Your cancellation request for the health checkup of ${animalTag} was not approved.${reason?.trim() ? ` Reason: ${reason.trim()}` : ""}`,
+          { requestId: id, type: "HEALTH" }
+        );
+      }
+
+      setTimeout(async () => {
+        await HealthRequest.findByIdAndUpdate(id, { cancellationStatus: "none" });
+      }, 5000);
+
+      return res.status(200).json({ message: "Cancellation rejected. Farmer has been notified." });
+    }
+  } catch (error) {
+    console.error("[respondHealthCancellation ERROR]", error.message);
+    return res.status(500).json({ message: "Failed to respond to cancellation request." });
   }
 };

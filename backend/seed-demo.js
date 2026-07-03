@@ -7,6 +7,10 @@ import { Insemination } from "./src/models/insemination.model.js";
 import { Pregnancy } from "./src/models/pregnancy.model.js";
 import { HealthRequest } from "./src/models/health-request.model.js";
 import { Calving } from "./src/models/calving.model.js";
+import { Notification } from "./src/models/notification.model.js";
+import { MedicalRecord } from "./src/models/medical-record.model.js";
+import { AuditLog } from "./src/models/audit-log.model.js";
+import { AnimalTimelineEvent } from "./src/models/animal-timeline-event.model.js";
 
 dotenv.config();
 
@@ -22,79 +26,34 @@ if (process.env.FORCE_CUSTOM_DNS === "true") {
 
 const dbURI = process.env.NODE_ENV === "production" ? process.env.DB_URL : process.env.DB_URL_DEV || process.env.DB_URL;
 
-console.log("=== DB Seeding Demo Data ===");
+console.log("=== DB Seeding Advanced Demo Data ===");
 console.log(`Connecting to: ${dbURI ? dbURI.replace(/:([^:@]+)@/, ':****@') : 'None'}`);
 
 try {
   await mongoose.connect(dbURI);
   console.log("🚀 Connected to MongoDB successfully!");
 
-  // --- CLEAN UP EXISTING DEMO RECORDS ---
-  console.log("🧹 Cleaning up existing DEMO database records...");
-  const demoAnimals = await Animal.find({
-    $or: [
-      { animalId: /^COW-DEMO-/ },
-      { brand: "SMART-COW" },
-      { earTag: { $in: ["1234", "5678", "9012", "4321", "1235"] } },
-      { _id: { $in: ["6a26cf95570ed7df295dd624", "6a26cf97570ed7df295dd63f"] } }
-    ]
-  });
-  
-  const demoAnimalIds = demoAnimals.map(a => a._id);
-  // Guarantee manual IDs are included in deletion list
-  ["6a26cf95570ed7df295dd624", "6a26cf97570ed7df295dd63f"].forEach(id => {
-    if (!demoAnimalIds.map(x => x.toString()).includes(id)) {
-      demoAnimalIds.push(new mongoose.Types.ObjectId(id));
-    }
-  });
+  // --- CLEAN UP EXISTING OPERATIONAL RECORDS ---
+  console.log("🧹 Cleaning up ALL existing database collections (except Users)...");
+  await Calving.deleteMany({});
+  await Pregnancy.deleteMany({});
+  await Insemination.deleteMany({});
+  await HealthRequest.deleteMany({});
+  await Animal.deleteMany({});
+  await Notification.deleteMany({});
+  await MedicalRecord.deleteMany({});
+  await AuditLog.deleteMany({});
+  await AnimalTimelineEvent.deleteMany({});
+  console.log("✨ All operational collections cleaned!");
 
-  // Explicitly delete targets to bypass conditional skip checks
-  await Calving.deleteOne({ _id: "6a26cf97570ed7df295dd63e" });
-  await Pregnancy.deleteOne({ _id: "6a26cf96570ed7df295dd63c" });
-
-  if (demoAnimalIds.length > 0) {
-    const delCalvings = await Calving.deleteMany({
-      $or: [
-        { animalId: { $in: demoAnimalIds } },
-        { "calves.animalId": { $in: demoAnimalIds } }
-      ]
-    });
-    console.log(`Deleted ${delCalvings.deletedCount} calving records.`);
-
-    const delPregnancies = await Pregnancy.deleteMany({
-      animalId: { $in: demoAnimalIds }
-    });
-    console.log(`Deleted ${delPregnancies.deletedCount} pregnancy records.`);
-
-    const delInseminations = await Insemination.deleteMany({
-      animalId: { $in: demoAnimalIds }
-    });
-    console.log(`Deleted ${delInseminations.deletedCount} insemination records.`);
-
-    const delHealth = await HealthRequest.deleteMany({
-      animalId: { $in: demoAnimalIds }
-    });
-    console.log(`Deleted ${delHealth.deletedCount} health requests.`);
-
-    const delAnimals = await Animal.deleteMany({
-      _id: { $in: demoAnimalIds }
-    });
-    console.log(`Deleted ${delAnimals.deletedCount} demo animal records.`);
-  } else {
-    console.log("No existing demo animals found to clean up.");
-  }
-
-  // Find farmer by email "lloydcabanig@gmail.com"
+  // --- RESOLVE OR CREATE FARMER ---
   let farmer = await User.findOne({ email: "lloydcabanig@gmail.com" });
   if (!farmer) {
-    console.log("Farmer with email 'lloydcabanig@gmail.com' not found. Searching by name 'Lloyd Cabanig'...");
     farmer = await User.findOne({ name: /Lloyd Cabanig/i });
   }
   if (!farmer) {
-    console.log("Farmer not found by name. Searching for any farmer...");
     farmer = await User.findOne({ role: "farmer" });
   }
-
   if (!farmer) {
     farmer = await User.create({
       name: "Lloyd Cabanig",
@@ -114,24 +73,57 @@ try {
     console.log(`Using farmer: ${farmer.name} (${farmer.email}) (${farmer._id})`);
   }
 
-  // Create animals
+  // --- RESOLVE OR CREATE STAFF (TECHNICIAN/VETERINARIAN) ---
+  let technician = await User.findOne({ email: "cabanigjohnlloyd@gmail.com" });
+  if (!technician) {
+    technician = await User.findOne({ role: "technician" });
+  }
+  if (!technician) {
+    technician = await User.findOne({ role: "veterinarian" });
+  }
+  if (!technician) {
+    technician = await User.findOne({ role: "admin" });
+  }
+  if (!technician) {
+    technician = await User.create({
+      name: "Lloyd Cabanig (Tech)",
+      email: "cabanigjohnlloyd@gmail.com",
+      phoneNumber: "09187654321",
+      role: "technician",
+      isVerified: true,
+      address: {
+        barangay: "Poblacion South",
+        city: "Oton",
+        province: "Iloilo",
+        zipCode: "5201"
+      }
+    });
+    console.log(`Created mock technician: ${technician.name}`);
+  } else {
+    console.log(`Using technician: ${technician.name} (${technician.role}) (${technician._id})`);
+  }
+
+  // --- CREATE ANIMALS (LIVESTOCK) ---
+
+  // 1. Animal 1: Normal - Calving drop 10 days ago ( Holstein Friesian )
   const animal1 = await Animal.create({
-    _id: "6a26cf95570ed7df295dd624",
     farmerId: farmer._id,
-    animalId: "COW-DEMO-001",
+    animalId: "ANM-DEMO-001",
     earTag: "1234",
     brand: "SMART-COW",
     species: "Dairy Cattle",
     breed: "Holstein Friesian",
     color: "Black & White",
     gender: "Female",
-    reproductiveStatus: "Pregnant"
+    reproductiveStatus: "Normal",
+    lastCalvingDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
   });
   console.log(`Created Animal 1: ${animal1.animalId}`);
 
+  // 2. Animal 2: Inseminated - Insemination 20 days ago ( Brahman )
   const animal2 = await Animal.create({
     farmerId: farmer._id,
-    animalId: "COW-DEMO-002",
+    animalId: "ANM-DEMO-002",
     earTag: "5678",
     brand: "SMART-COW",
     species: "Beef Cattle",
@@ -142,9 +134,10 @@ try {
   });
   console.log(`Created Animal 2: ${animal2.animalId}`);
 
+  // 3. Animal 3: Normal - Ready / Eligible ( Angus )
   const animal3 = await Animal.create({
     farmerId: farmer._id,
-    animalId: "COW-DEMO-003",
+    animalId: "ANM-DEMO-003",
     earTag: "9012",
     brand: "SMART-COW",
     species: "Cattle",
@@ -155,37 +148,10 @@ try {
   });
   console.log(`Created Animal 3: ${animal3.animalId}`);
 
-  // Create breeding milestone data
-
-  // 1. Upcoming Calving milestone (Pregnancy with targetCalvingDate in 12 days)
-  const ins1 = await Insemination.create({
+  // 4. Animal 4: Pregnant - Calving due in 100 days ( Jersey )
+  const animal4 = await Animal.create({
     farmerId: farmer._id,
-    animalId: animal1._id,
-    status: "done",
-    outcome: "Pregnant",
-    sireBreed: "Holstein Friesian",
-    sireCode: "HF-909",
-    technicianNote: "Artificial insemination successful. Checked via ultrasound.",
-    inseminationDate: new Date(Date.now() - 270 * 24 * 60 * 60 * 1000)
-  });
-
-  await Pregnancy.create({
-    animalId: animal1._id,
-    farmerId: farmer._id,
-    inseminationId: ins1._id,
-    pregnancyDiagnosis: {
-      date: new Date(Date.now() - 210 * 24 * 60 * 60 * 1000),
-      result: "Pregnant"
-    },
-    targetCalvingDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // In 3 days
-    technicianNote: "Healthy fetus detected. Monitor feeding and gestation cycle."
-  });
-  console.log("Seeded Upcoming Calving Milestone");
-
-  // 2. Overdue Calving milestone (Pregnancy with targetCalvingDate 4 days overdue)
-  const animalOverdue = await Animal.create({
-    farmerId: farmer._id,
-    animalId: "COW-DEMO-004",
+    animalId: "ANM-DEMO-004",
     earTag: "4321",
     brand: "SMART-COW",
     species: "Dairy Cattle",
@@ -194,31 +160,25 @@ try {
     gender: "Female",
     reproductiveStatus: "Pregnant"
   });
+  console.log(`Created Animal 4: ${animal4.animalId}`);
 
-  const insOverdue = await Insemination.create({
+  // 5. Animal 5: In Heat ( Hereford )
+  const animal5 = await Animal.create({
     farmerId: farmer._id,
-    animalId: animalOverdue._id,
-    status: "done",
-    outcome: "Pregnant",
-    sireBreed: "Jersey",
-    sireCode: "JY-112",
-    inseminationDate: new Date(Date.now() - 285 * 24 * 60 * 60 * 1000)
+    animalId: "ANM-DEMO-005",
+    earTag: "5555",
+    brand: "SMART-COW",
+    species: "Beef Cattle",
+    breed: "Hereford",
+    color: "Red & White",
+    gender: "Female",
+    reproductiveStatus: "In Heat"
   });
+  console.log(`Created Animal 5: ${animal5.animalId}`);
 
-  const pregOverdue = await Pregnancy.create({
-    animalId: animalOverdue._id,
-    farmerId: farmer._id,
-    inseminationId: insOverdue._id,
-    pregnancyDiagnosis: {
-      date: new Date(Date.now() - 225 * 24 * 60 * 60 * 1000),
-      result: "Pregnant"
-    },
-    targetCalvingDate: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), // 4 days overdue
-    technicianNote: "Calving slightly delayed. Watch for signs of labor today."
-  });
-  console.log("Seeded Overdue Calving Milestone");
+  // --- SEED BREEDING & LIFE-CYCLE RECORDS ---
 
-  // 3. Heat Watch milestone (Insemination 18 days ago, status done, no outcome/isSuccess yet)
+  // Animal 2: Inseminated 20 days ago (Heat Watch)
   await Insemination.create({
     farmerId: farmer._id,
     animalId: animal2._id,
@@ -226,96 +186,198 @@ try {
     isSuccess: null,
     sireBreed: "Brahman",
     sireCode: "BR-501",
-    technicianNote: "Insemination complete. Watch closely for signs of heat around day 21.",
-    inseminationDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000) // 20 days ago
+    approvedBy: technician._id,
+    technicianNote: "Standard insemination. Monitor for heat signs at day 21.",
+    inseminationDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000)
   });
-  console.log("Seeded Heat Watch Milestone");
 
-  // 4. Preg-Check Due milestone (Insemination 45 days ago, status done, no outcome/isSuccess yet)
+  // Animal 4: Successful AI + Pregnancy -> Due in 100 days
+  const ins4 = await Insemination.create({
+    farmerId: farmer._id,
+    animalId: animal4._id,
+    status: "done",
+    outcome: "Pregnant",
+    sireBreed: "Jersey",
+    sireCode: "JY-112",
+    approvedBy: technician._id,
+    inseminationDate: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
+  });
+
+  await Pregnancy.create({
+    animalId: animal4._id,
+    farmerId: farmer._id,
+    inseminationId: ins4._id,
+    pregnancyDiagnosis: {
+      date: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000),
+      result: "Pregnant"
+    },
+    targetCalvingDate: new Date(Date.now() + 100 * 24 * 60 * 60 * 1000), // Due in 100 days
+    technicianNote: "Fetus active and gestation normal."
+  });
+
+  // --- SEED DISPATCH & OPERATIONAL QUEUES ---
+
+  // 1. AI REQUESTS:
+
+  // AI-1: Pending Request (Farmer submitted, technician needs to Accept/Decline)
+  await Insemination.create({
+    farmerId: farmer._id,
+    animalId: animal5._id,
+    status: "pending",
+    comment: "Cattle is showing strong standing heat and mounting behavior.",
+    heatSigns: ["Standing Heat", "Mucus Discharge"],
+    preferredDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000),
+    attemptNumber: 1
+  });
+
+  // AI-2: Scheduled Request (Assigned and scheduled with a technician)
   await Insemination.create({
     farmerId: farmer._id,
     animalId: animal3._id,
-    status: "done",
-    isSuccess: null,
-    sireBreed: "Angus",
-    sireCode: "AN-303",
-    technicianNote: "Inseminated. Scheduled pregnancy check due in 60 days.",
-    inseminationDate: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000) // 45 days ago
+    status: "approved",
+    approvedBy: technician._id,
+    comment: "Angus cow is in heat. Requesting technician visit.",
+    scheduledDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+    attemptNumber: 1
   });
-  console.log("Seeded Preg-Check Due Milestone");
 
-  // Seed Activity Feed records (Insemination, Health, Calving)
+  // AI-3: In-Progress Request (Active visit/task right now)
+  await Insemination.create({
+    farmerId: farmer._id,
+    animalId: animal3._id,
+    status: "in-progress",
+    approvedBy: technician._id,
+    comment: "Timed AI program.",
+    scheduledDate: new Date(),
+    attemptNumber: 2
+  });
 
-  // 1. Health Request (Resolved, high urgency)
+  // 2. HEALTH REQUESTS:
+
+  // Health-1: Pending Request (High urgency - nasal discharge)
   await HealthRequest.create({
     farmerId: farmer._id,
     animalId: animal2._id,
     requestType: "disease",
-    symptoms: "High fever, nasal discharge, loss of appetite.",
+    symptoms: "Lethargy, coughing, nasal discharge.",
     urgency: "high",
-    status: "resolved",
-    diagnosis: "Bovine Viral Diarrhea (BVD)",
-    treatment: "Hydration therapy and antibacterial course",
-    advice: "Isolate in a dry pasture. Feed high-quality hay.",
-    technicianNote: "Fever broken. Appetite returning. Monitor vitals daily.",
-    preferredDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    status: "pending",
+    preferredDate: new Date()
   });
 
-  // 2. Calving Event (Completed) - Needs its own Pregnancy
-  const insCalving = await Insemination.create({
+  // Health-2: In-Progress Request (Limb concern, assigned to current technician)
+  await HealthRequest.create({
+    farmerId: farmer._id,
+    animalId: animal1._id,
+    requestType: "injury",
+    symptoms: "Cattle is limping and favoring the rear left hoof.",
+    urgency: "medium",
+    status: "in-progress",
+    handledBy: technician._id,
+    preferredDate: new Date()
+  });
+
+  // Health-3: Resolved Request (Untracked resolved request - treated with 2 days withdrawal)
+  const resolvedHealth = await HealthRequest.create({
+    farmerId: farmer._id,
+    animalId: animal2._id,
+    requestType: "disease",
+    symptoms: "Fever and loss of appetite.",
+    urgency: "medium",
+    status: "resolved",
+    handledBy: technician._id,
+    diagnosis: "Bovine Viral Diarrhea (BVD)",
+    treatment: "Penicillin Antibiotics Injection",
+    advice: "Isolate from the milking herd.",
+    technicianNote: "Fever normalized. Appetite returned. Penicillin administered.",
+    preferredDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+    resolvedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
+  });
+
+  // --- CREATE COMPLEMENTARY HISTORICAL LOGS ---
+
+  // 1. Medical record cascading from Resolved Health-3 (with active withdrawal end date)
+  const withdrawalDays = 2;
+  const withdrawalEndDate = new Date(resolvedHealth.resolvedAt.getTime() + withdrawalDays * 24 * 60 * 60 * 1000);
+
+  await MedicalRecord.create({
+    animalId: animal2._id,
+    farmerId: farmer._id,
+    technicianId: technician._id,
+    healthRequestId: resolvedHealth._id,
+    type: "Treatment",
+    date: resolvedHealth.resolvedAt,
+    details: {
+      medicineName: "Penicillin",
+      diagnosis: resolvedHealth.diagnosis,
+      treatment: resolvedHealth.treatment,
+      withdrawalPeriodDays: withdrawalDays,
+      withdrawalEndDate: withdrawalEndDate
+    },
+    note: "Administered Penicillin intramuscularly. Advised withdrawal period."
+  });
+
+  // 2. Active Withdrawal Alert Notification to the Farmer
+  await Notification.create({
+    recipientId: farmer._id,
+    senderId: technician._id,
+    type: "system",
+    relatedId: animal2._id,
+    title: "⚠️ Active Withdrawal Warning",
+    message: `Meat and milk from animal Tag #${animal2.earTag} are unsafe for consumption or sale until ${withdrawalEndDate.toLocaleDateString()} due to treatment with Penicillin.`
+  });
+
+  // 3. Past Successful Calving Event
+  const pastIns = await Insemination.create({
     farmerId: farmer._id,
     animalId: animal1._id,
     status: "done",
     outcome: "Pregnant",
     sireBreed: "Holstein Friesian",
-    sireCode: "HF-707",
-    inseminationDate: new Date(Date.now() - 290 * 24 * 60 * 60 * 1000)
+    sireCode: "HF-331",
+    approvedBy: technician._id,
+    inseminationDate: new Date(Date.now() - 300 * 24 * 60 * 60 * 1000)
   });
 
-  const pregForCalving = await Pregnancy.create({
-    _id: "6a26cf96570ed7df295dd63c",
+  const pastPreg = await Pregnancy.create({
     animalId: animal1._id,
     farmerId: farmer._id,
-    inseminationId: insCalving._id,
+    inseminationId: pastIns._id,
     pregnancyDiagnosis: {
-      date: new Date(Date.now() - 230 * 24 * 60 * 60 * 1000),
+      date: new Date(Date.now() - 240 * 24 * 60 * 60 * 1000),
       result: "Pregnant"
     },
-    targetCalvingDate: new Date("2026-05-31T14:20:07.045Z")
+    targetCalvingDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
   });
 
-  const calfAnimal = await Animal.create({
-    _id: "6a26cf97570ed7df295dd63f",
+  const calf = await Animal.create({
     farmerId: farmer._id,
-    animalId: "ANM-DEMO-CF5",
-    earTag: "1235",
+    animalId: "ANM-DEMO-CLF1",
+    earTag: "9999",
     motherId: animal1._id,
     species: "Dairy Cattle",
     breed: "Holstein Friesian",
     color: "Black & White",
     gender: "Female",
-    birthDate: new Date("2026-05-31T14:20:07.045Z")
+    birthDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000)
   });
 
   await Calving.create({
-    _id: "6a26cf97570ed7df295dd63e",
-    farmerId: farmer._id,
     animalId: animal1._id,
-    pregnancyId: pregForCalving._id,
-    date: new Date("2026-05-31T14:20:07.045Z"),
+    farmerId: farmer._id,
+    pregnancyId: pastPreg._id,
+    date: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
     numberOfCalves: 1,
     calves: [{
-      _id: "6a26cf97570ed7df295dd63f",
       sex: "F",
-      earTag: "1235",
-      animalId: calfAnimal._id
+      earTag: "9999",
+      animalId: calf._id
     }],
     calvingEase: "Normal",
-    technicianNote: "Successful unassisted calving. Heifer calf is alert and nursing well.",
-    isSeen: true
+    technicianNote: "Unassisted birth. Healthy heifer calf, actively nursing."
   });
-  
-  console.log("🚀 Seeding completed successfully!");
+
+  console.log("🚀 Seeding completed successfully! All logics and workflows mapped.");
 } catch (error) {
   console.error("❌ Error during seeding:", error);
 } finally {

@@ -1,5 +1,4 @@
-import React from 'react';
-import { ShieldCheck, AlertTriangle, CheckCircle2, Circle } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
 const REQUIRED_VACCINES = [
   { name: "Foot and Mouth Disease (FMD)", interval: 6, icon: "💉" },
@@ -28,7 +27,6 @@ const VaccinationProtocol = ({ medicalHistory = [] }) => {
       <div className="space-y-4">
         {REQUIRED_VACCINES.map((vaccine, idx) => {
           const latest = getLatestVaccine(vaccine.name);
-          const isOverdue = latest ? (new Date().getTime() - new Date(latest.date).getTime()) > (vaccine.interval * 30 * 24 * 60 * 60 * 1000) : true;
 
           return (
             <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 transition-all hover:border-emerald-200">

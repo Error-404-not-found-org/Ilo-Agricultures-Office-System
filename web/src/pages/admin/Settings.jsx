@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import {
-  Settings as SettingsIcon,
   Save,
   Database,
   ShieldAlert,
@@ -10,8 +9,6 @@ import {
   Sliders,
   Bell,
   RefreshCw,
-  Sparkles,
-  Info,
   X,
 } from "lucide-react";
 import Topbar from "../../components/ui/Topbar";
@@ -51,13 +48,13 @@ export default function Settings() {
             setBreeds(res.data.registered_breeds);
           }
         }
-      } catch (err) {
-        console.error(err);
+      } catch (e) {
+        console.error(e);
         toast.error("Failed to load command settings.");
       }
     };
     fetchSettings();
-  }, []);
+  }, [toast]);
 
   const handleSaveSettings = async (e) => {
     e.preventDefault();
@@ -71,7 +68,7 @@ export default function Settings() {
         registered_breeds: breeds,
       });
       toast.success(" Breeding ledger settings updated successfully.");
-    } catch (err) {
+    } catch {
       toast.error("Failed to update system settings.");
     } finally {
       setIsSubmitting(false);
@@ -92,8 +89,8 @@ export default function Settings() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       toast.success("Database backup successfully compiled and downloaded.");
-    } catch (err) {
-      console.error(err);
+    } catch (e) {
+      console.error(e);
       toast.error("Failed compiling system backup.");
     } finally {
       setIsBackingUp(false);
@@ -113,7 +110,7 @@ export default function Settings() {
     try {
       await axiosInstance.post("/config/settings", { registered_breeds: updated });
       toast.success(`${newBreed} added to genetic breeds catalog.`);
-    } catch (err) {
+    } catch {
       toast.error("Failed to sync breed to server.");
     }
   };
@@ -124,7 +121,7 @@ export default function Settings() {
     try {
       await axiosInstance.post("/config/settings", { registered_breeds: updated });
       toast.success("Breed catalog updated.");
-    } catch (err) {
+    } catch {
       toast.error("Failed to sync breed removal to server.");
     }
   };
@@ -296,7 +293,12 @@ export default function Settings() {
                 </button>
                 
                 <button
-                  onClick={() => toast.success("Roster session cleared.")}
+                  onClick={() => {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    toast.success("Roster session and local cache cleared.");
+                    setTimeout(() => window.location.reload(), 1000);
+                  }}
                   className="w-full btn btn-sm btn-outline border-slate-200 dark:border-slate-800 text-xs font-bold gap-1.5 rounded-xl text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 >
                   Clear Cached Session

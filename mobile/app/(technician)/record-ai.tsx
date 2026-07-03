@@ -144,6 +144,7 @@ export default function RecordAIScreen() {
   };
 
   const handleSave = async () => {
+    toast.dismiss();
     // Validation
     if (isNewFarmer) {
       if (

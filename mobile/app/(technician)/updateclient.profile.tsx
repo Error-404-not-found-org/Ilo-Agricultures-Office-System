@@ -59,7 +59,6 @@ export default function UpdateClientProfileScreen() {
   }, [id]);
 
   const handleSave = async () => {
-      if (!formData.name.trim()) return toast.error("Farmer Name cannot be empty.");
       if (!formData.phoneNumber.trim() || !/^\d{11}$/.test(formData.phoneNumber)) {
         return toast.error("Phone number must be exactly 11 digits.");
       }
@@ -70,8 +69,6 @@ export default function UpdateClientProfileScreen() {
       try {
           setSaving(true);
           const payload = {
-              name: formData.name.trim(),
-              email: formData.email.trim(),
               phoneNumber: formData.phoneNumber.trim(),
               address: {
                   phoneNumber: formData.phoneNumber.trim(), // Syncing backwards to support legacy nested schema
@@ -80,8 +77,8 @@ export default function UpdateClientProfileScreen() {
                   province: formData.province.trim()
               }
           };
-
-          await api.put(`/user/${id}`, payload);
+ 
+          await api.patch(`/user/${id}/technician-update`, payload);
           toast.success("Profile Updated!", { duration: 3000, position: 'top-center' });
           router.back(); // Kick user directly back to the Profile Display!
       } catch (error: any) {
@@ -128,11 +125,12 @@ export default function UpdateClientProfileScreen() {
                 <Text variant="black" size={18} color="primary" className="mb-1">Personal Information</Text>
                 <Text variant="medium" size={13} color="muted" className="mb-5">Ensure the profile data is accurate.</Text>
                 
-                <InputField 
-                    label="Full Name *" 
+                 <InputField 
+                    label="Full Name (Read-Only)" 
                     value={formData.name} 
                     onChangeText={(t: string) => setFormData({...formData, name: t})} 
                     placeholder="Juan Dela Cruz" 
+                    editable={false}
                 />
 
                 <InputField 
@@ -145,11 +143,12 @@ export default function UpdateClientProfileScreen() {
                 />
 
                 <InputField 
-                    label="Email Address" 
+                    label="Email Address (Read-Only)" 
                     value={formData.email} 
                     onChangeText={(t: string) => setFormData({...formData, email: t})} 
                     placeholder="farmer@example.com" 
                     keyboardType="email-address"
+                    editable={false}
                 />
             </Card>
 

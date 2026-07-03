@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   History,
   Syringe,
   HeartPulse,
-  ChevronRight,
-  MapPin,
   Activity,
   AlertCircle
 } from "lucide-react";
@@ -16,24 +14,6 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
   const [animal, setAnimal] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (isOpen && animalId) {
-      fetchAnimalHistory();
-    }
-  }, [isOpen, animalId]);
-
-  const fetchAnimalHistory = async () => {
-    try {
-      setLoading(true);
-      const res = await axiosInstance.get(`/animals/${animalId}`);
-      setAnimal(res.data.animal);
-    } catch (error) {
-      console.error("Failed to fetch animal history", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     return new Intl.DateTimeFormat('en-US', { 
@@ -42,6 +22,24 @@ const AnimalHistoryDrawer = ({ isOpen, onClose, animalId }) => {
       year: 'numeric' 
     }).format(new Date(dateString));
   };
+
+  useEffect(() => {
+    const fetchAnimalHistory = async () => {
+      try {
+        setLoading(true);
+        const res = await axiosInstance.get(`/animals/${animalId}`);
+        setAnimal(res.data.animal);
+      } catch (error) {
+        console.error("Failed to fetch animal history", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (isOpen && animalId) {
+      fetchAnimalHistory();
+    }
+  }, [isOpen, animalId]);
 
   const timelineEvents = animal ? [
     ...(animal.breedingRecords || []).map(r => ({

@@ -3,6 +3,8 @@ import { Animal } from "../models/animal.model.js";
 import { Notification } from "../models/notification.model.js";
 import { User } from "../models/user.model.js";
 import { sendPushNotification } from "../lib/push-notifications.js";
+import { getPagination } from "../utils/pagination.js";
+import { sendList } from "../utils/api-response.js";
 
 export const addMedicalRecord = async (req, res) => {
   try {
@@ -77,7 +79,35 @@ export const addMedicalRecord = async (req, res) => {
 export const getAnimalMedicalHistory = async (req, res) => {
   try {
     const { animalId } = req.params;
-    const records = await MedicalRecord.find({ animalId })
+    const { page, limit, skip } = getPagination(req.query);
+    const query = { animalId };
+
+    if (req.query.type && req.query.type !== "All") {
+      query.type = req.query.type;
+    }
+
+    const fromDate = req.query.fromDate ? new Date(req.query.fromDate) : null;
+    const toDate = req.query.toDate ? new Date(req.query.toDate) : null;
+    const dateFilter = {};
+    if (fromDate && !Number.isNaN(fromDate.getTime())) dateFilter.$gte = fromDate;
+    if (toDate && !Number.isNaN(toDate.getTime())) dateFilter.$lte = toDate;
+    if (Object.keys(dateFilter).length) query.date = dateFilter;
+
+    if (req.query.page || req.query.limit) {
+      const [records, total] = await Promise.all([
+        MedicalRecord.find(query)
+          .populate("technicianId", "name")
+          .sort({ date: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        MedicalRecord.countDocuments(query),
+      ]);
+
+      return sendList(res, { data: records, page, limit, total });
+    }
+
+    const records = await MedicalRecord.find(query)
       .populate("technicianId", "name")
       .sort({ date: -1 });
 

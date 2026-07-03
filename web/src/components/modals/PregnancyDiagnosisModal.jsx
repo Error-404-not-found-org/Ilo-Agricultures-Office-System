@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle, AlertCircle, Sparkles, Calendar, History, Search, ChevronDown, User } from 'lucide-react';
+import { X, CheckCircle, AlertCircle, Sparkles, Calendar, History, Search } from 'lucide-react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
 const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
-const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
+
 
 const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess }) => {
     const queryClient = useQueryClient();
@@ -35,13 +35,15 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess }) => {
         if (isOpen) {
             window.addEventListener('keydown', handleKeyDown);
         } else {
-            setResult('');
-            setNote('');
-            setSelectedFarmerId('');
-            setSearchFarmer('');
-            setIsDropdownOpen(false);
-            setSelectedAnimalId('');
-            setSelectedInseminationId('');
+            Promise.resolve().then(() => {
+                setResult('');
+                setNote('');
+                setSelectedFarmerId('');
+                setSearchFarmer('');
+                setIsDropdownOpen(false);
+                setSelectedAnimalId('');
+                setSelectedInseminationId('');
+            });
         }
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
@@ -117,12 +119,18 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess }) => {
             );
             if (valid.length > 0) {
                 const sorted = [...valid].sort((a, b) => (b.attemptNumber || 0) - (a.attemptNumber || 0));
-                setSelectedInseminationId(sorted[0]._id || sorted[0].id);
+                Promise.resolve().then(() => {
+                    setSelectedInseminationId(sorted[0]._id || sorted[0].id);
+                });
             } else {
-                setSelectedInseminationId("");
+                Promise.resolve().then(() => {
+                    setSelectedInseminationId("");
+                });
             }
         } else if (!taskData) {
-            setSelectedInseminationId("");
+            Promise.resolve().then(() => {
+                setSelectedInseminationId("");
+            });
         }
     }, [animalHistory, taskData]);
 
@@ -212,7 +220,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess }) => {
                                 {recentAIs.length > 0 ? (
                                     recentAIs.map((record, idx) => (
                                         <div key={idx} className="relative pl-6 pb-4 last:pb-0 border-l border-base-300">
-                                            <div className="absolute -left-[5px] top-1 w-2.5 h-2.5 rounded-full bg-base-300" />
+                                            <div className="absolute left-[-5px] top-1 w-2.5 h-2.5 rounded-full bg-base-300" />
                                             <p className="text-[9px] font-black text-base-content/40 uppercase tracking-tighter leading-none mb-1">
                                                 Attempt #{record.attemptNumber || (recentAIs.length - idx)}
                                             </p>

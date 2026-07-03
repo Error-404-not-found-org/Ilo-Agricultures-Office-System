@@ -1,12 +1,10 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import axiosInstance from "../../lib/axios";
 import { TableRowSkeleton } from "../../components/Skeleton";
 import {
   PawPrint,
-  Search,
-  Plus,
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
@@ -27,7 +25,7 @@ export default function Livestock() {
   const itemsPerPage = 10;
 
   // ---- DYNAMIC DATA PIPELINE ----
-  const { data: animals = [], isLoading, refetch } = useQuery({
+  const { data: animals = [], isLoading} = useQuery({
     queryKey: ["admin", "livestock-all"],
     queryFn: async () => {
       const res = await axiosInstance.get("/animals/all");

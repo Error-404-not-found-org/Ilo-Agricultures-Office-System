@@ -19,7 +19,16 @@ export const protectedRoute = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized - invalid token" });
     }
 
-    let user = await User.findOne({ clerkId }).maxTimeMS(3000);
+    let user = req.user;
+    if (!user) {
+      user = await User.findOne({ clerkId }).maxTimeMS(3000);
+    }
+    if (user && (user.deletedAt || user.status === "suspended")) {
+      const isSuspended = user.status === "suspended";
+      console.log(`[AUTH-TRACE] Blocked ${isSuspended ? "suspended" : "deactivated"} user ${user.name}.`);
+      return res.status(403).json({ message: isSuspended ? "Account has been suspended." : "Account has been deactivated." });
+    }
+
     if (!user) {
       console.log(`[AUTH-TRACE] User not found in MongoDB for ClerkID: ${clerkId}. Attempting auto-sync.`);
       
@@ -43,6 +52,12 @@ export const protectedRoute = async (req, res, next) => {
             name: { $regex: new RegExp(`^${name}$`, 'i') },
             clerkId: { $exists: false }
           });
+        }
+
+        if (user && (user.deletedAt || user.status === "suspended")) {
+          const isSuspended = user.status === "suspended";
+          console.log(`[AUTH-TRACE] Blocked ${isSuspended ? "suspended" : "deactivated"} user ${user.name} during sync.`);
+          return res.status(403).json({ message: isSuspended ? "Account has been suspended." : "Account has been deactivated." });
         }
 
         if (user) {
@@ -108,4 +123,4 @@ export const AdminOnly = requireRole(["admin"]);
 
 // Example: Technician-only route
 export const TechnicianOnly = requireRole(["technician"]);
-
+export const ClinicalOnly = requireRole(["technician", "veterinarian", "admin"]);

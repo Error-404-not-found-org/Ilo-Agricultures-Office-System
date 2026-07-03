@@ -97,7 +97,7 @@ export default function PrivacyPolicyScreen() {
           }}
         >
           Welcome to the BreedSmart mobile application. We are deeply committed
-          to protecting your personal information and your farm's operational
+          to protecting your personal information and your farm&apos;s operational
           records. This Privacy Policy details how we handle data to support
           sustainable agriculture and technical operations in Oton, Iloilo.
         </Text>

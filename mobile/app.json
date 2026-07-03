@@ -2,7 +2,7 @@
   "expo": {
     "name": "BreedSmart",
     "slug": "mobile",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ilo-agriculture",
@@ -41,6 +41,12 @@
         }
       ],
       "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BreedSmart uses your location to save your farm pin so technicians can find the farm during scheduled visits."
+        }
+      ],
       "expo-font"
     ],
     "experiments": {

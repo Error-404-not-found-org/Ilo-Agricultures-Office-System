@@ -23,7 +23,7 @@ import {
   MapPin,
 } from "lucide-react-native";
 import { useApi } from "@/lib/api";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   format,
@@ -35,7 +35,6 @@ import {
   eachDayOfInterval,
 } from "date-fns";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 
 const PRIMARY = "#00643B";
@@ -44,7 +43,6 @@ export default function TechnicianCalendar() {
   const router = useRouter();
   const api = useApi();
   const insets = useSafeAreaInsets();
-  const queryClient = useQueryClient();
   const { colors, isDark } = useTheme();
 
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -77,31 +75,6 @@ export default function TechnicianCalendar() {
       return response.data || {};
     },
   });
-
-  const checkInMutation = useMutation({
-    mutationFn: async ({ id, type }: { id: string; type: "ai" | "health" }) => {
-      const endpoint =
-        type === "health"
-          ? `/health-request/${id}/status`
-          : `/technician/inseminations/${id}/status`;
-
-      return await api.patch(endpoint, {
-        status: "in-progress",
-        technicianNote: "Technician checked in via field calendar.",
-      });
-    },
-    onSuccess: () => {
-      toast.success("Checked in successfully");
-      queryClient.invalidateQueries({ queryKey: ["technician"] });
-    },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Failed to check in");
-    },
-  });
-
-  const handleCheckIn = (item: any) => {
-    checkInMutation.mutate({ id: item.id, type: item.type });
-  };
 
   const dailyTasks = useMemo(() => {
     const today = new Date();
@@ -197,7 +170,7 @@ export default function TechnicianCalendar() {
                   fontSize: 22,
                 }}
               >
-                Field Calendar
+                Visit Calendar
               </Text>
               <Text
                 style={{
@@ -342,10 +315,46 @@ export default function TechnicianCalendar() {
                 color: isDark ? colors.primary : "#059669",
               }}
             >
-              {dailyTasks.length} TASKS
+              {dailyTasks.length} VISITS
             </Text>
           </View>
         </View>
+
+        <TouchableOpacity
+          onPress={() =>
+            router.push({
+              pathname: "/(technician)/create-task",
+              params: { source: "visit-calendar" },
+            } as any)
+          }
+          activeOpacity={0.9}
+          style={{
+            backgroundColor: isDark ? colors.primary : PRIMARY,
+            borderRadius: 16,
+            paddingVertical: 13,
+            paddingHorizontal: 16,
+            marginBottom: 18,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
+        >
+          <MaterialCommunityIcons
+            name="calendar-plus"
+            size={19}
+            color="#fff"
+          />
+          <Text
+            style={{
+              color: "#fff",
+              fontSize: 13,
+              fontFamily: "Outfit_800ExtraBold",
+            }}
+          >
+            Schedule Farm Visit
+          </Text>
+        </TouchableOpacity>
 
         {isLoading ? (
           <ActivityIndicator color={isDark ? colors.primary : PRIMARY} style={{ marginTop: 40 }} />
@@ -412,12 +421,17 @@ export default function TechnicianCalendar() {
 
               return (
                 <TouchableOpacity
-                  onPress={() =>
-                    item.animalId?._id &&
-                    router.push(
-                      `/(technician)/animal-details?id=${item.animalId._id}`,
-                    )
-                  }
+                  onPress={() => {
+                    if (item.type === "task") {
+                      router.push(`/(technician)/task-details?id=${item.id}` as any);
+                      return;
+                    }
+                    const typeStr = item.type === "insemination" || item.type === "ai" ? "ai" : "health";
+                    router.push({
+                      pathname: "/(technician)/request-details",
+                      params: { id: item.id, type: typeStr },
+                    } as any);
+                  }}
                   activeOpacity={0.8}
                   style={{
                     backgroundColor: item.overdue ? (isDark ? '#2d1616' : '#fff5f5') : colors.card,
@@ -425,7 +439,7 @@ export default function TechnicianCalendar() {
                     padding: 20,
                     marginBottom: 12,
                     borderLeftWidth: 4,
-                    borderLeftColor: item.overdue ? "#ef4444" : (item.type === "health" ? "#ef4444" : (isDark ? colors.primary : PRIMARY)),
+                    borderLeftColor: item.overdue ? "#ef4444" : (item.type === "health" ? "#ef4444" : item.type === "task" ? "#64748b" : (isDark ? colors.primary : PRIMARY)),
                     shadowColor: "#000",
                     shadowOpacity: 0.03,
                     shadowRadius: 10,
@@ -523,8 +537,10 @@ export default function TechnicianCalendar() {
                       style={{
                         backgroundColor:
                           item.type === "health" 
-                            ? (isDark ? 'rgba(239,68,68,0.15)' : '#fef2f2') 
-                            : (isDark ? 'rgba(16,185,129,0.15)' : '#ecfdf5'),
+                            ? (isDark ? 'rgba(239, 68, 68, 0.15)' : '#fef2f2') 
+                            : item.type === "task"
+                              ? (isDark ? 'rgba(100, 116, 139, 0.2)' : '#f8fafc')
+                              : (isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5'),
                         paddingHorizontal: 8,
                         paddingVertical: 2,
                         borderRadius: 6,
@@ -534,7 +550,7 @@ export default function TechnicianCalendar() {
                         style={{
                           fontSize: 10,
                           fontFamily: "Outfit_800ExtraBold",
-                          color: item.type === "health" ? "#ef4444" : (isDark ? colors.primary : "#059669"),
+                          color: item.type === "health" ? "#ef4444" : item.type === "task" ? "#64748b" : (isDark ? colors.primary : "#059669"),
                           textTransform: "uppercase",
                         }}
                       >
@@ -548,10 +564,10 @@ export default function TechnicianCalendar() {
                   style={{
                     fontSize: 17,
                     fontFamily: "Outfit_800ExtraBold",
-                    color: colors.textPrimary,
+                  color: colors.textPrimary,
                   }}
                 >
-                  {item.farmerName}
+                  {item.farmerName || item.farmer || "Unknown Farmer"}
                 </Text>
                 <View
                   style={{
@@ -618,19 +634,25 @@ export default function TechnicianCalendar() {
                     </Text>
                   </View>
                   <TouchableOpacity
-                    onPress={() => !isLocked && handleCheckIn(item)}
-                    disabled={
-                      checkInMutation.isPending || item.status === "in-progress" || isLocked
-                    }
+                    onPress={() => {
+                      if (item.type === "task") {
+                        router.push(`/(technician)/task-details?id=${item.id}` as any);
+                        return;
+                      }
+                      const typeStr = item.type === "insemination" || item.type === "ai" ? "ai" : "health";
+                      router.push({
+                        pathname: "/(technician)/request-details",
+                        params: { id: item.id, type: typeStr },
+                      } as any);
+                    }}
                     style={{
                       backgroundColor:
-                        isLocked
-                          ? colors.textMuted
-                          : (item.status === "in-progress" ? colors.textMuted : (isDark ? colors.primary : PRIMARY)),
+                        item.type === "task"
+                          ? "#64748b"
+                          : (isDark ? colors.primary : PRIMARY),
                       paddingHorizontal: 12,
                       paddingVertical: 6,
                       borderRadius: 10,
-                      opacity: checkInMutation.isPending || isLocked ? 0.7 : 1,
                     }}
                   >
                     <Text
@@ -640,14 +662,7 @@ export default function TechnicianCalendar() {
                         fontFamily: "Outfit_800ExtraBold",
                       }}
                     >
-                      {checkInMutation.isPending &&
-                      checkInMutation.variables?.id === item.id
-                        ? "..."
-                        : isLocked
-                          ? "LOCKED"
-                          : item.status === "in-progress"
-                            ? "IN PROGRESS"
-                            : "CHECK IN"}
+                      OPEN
                     </Text>
                   </TouchableOpacity>
                 </View>

@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import { useAuth } from "@clerk/clerk-react";
 
 const SocketContext = createContext(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useSocket = () => useContext(SocketContext);
 
 export const SocketProvider = ({ children }) => {
@@ -12,40 +13,69 @@ export const SocketProvider = ({ children }) => {
 
   useEffect(() => {
     if (!isSignedIn) {
-      if (socket) {
-        socket.disconnect();
-        setSocket(null);
-      }
+      Promise.resolve().then(() => {
+        setSocket((currentSocket) => {
+          if (currentSocket) currentSocket.disconnect();
+          return null;
+        });
+      });
       return;
     }
 
-    // Connect to the backend (base URL without /api)
-    let socketUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
-    socketUrl = socketUrl.replace(/\/api$/, "");
+    let isMounted = true;
+    let newSocket = null;
 
-    console.log("[Socket] Attempting connection to:", socketUrl);
+    const establishConnection = async () => {
+      try {
+        const token = await getToken();
+        if (!isMounted) return;
 
-    const newSocket = io(socketUrl, {
-      withCredentials: true,
-      transports: ["websocket", "polling"], // Allow polling as fallback
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
-    });
+        let socketUrl = import.meta.env.VITE_API_URL || "http://localhost:3000";
+        socketUrl = socketUrl.replace(/\/api$/, "");
 
-    newSocket.on("connect", () => {
-      console.log("[Socket] Connected to server");
-    });
+        console.log("[Socket] Attempting connection to:", socketUrl);
 
-    newSocket.on("connect_error", (err) => {
-      console.error("[Socket] Connection error:", err.message);
-    });
+        newSocket = io(socketUrl, {
+          withCredentials: true,
+          transports: ["websocket", "polling"],
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+          auth: {
+            token
+          }
+        });
 
-    setSocket(newSocket);
+        newSocket.on("connect", () => {
+          console.log("[Socket] Connected to server");
+        });
+
+        newSocket.on("connect_error", async (err) => {
+          console.error("[Socket] Connection error:", err.message);
+          if (err.message && err.message.includes("Authentication error")) {
+            try {
+              const freshToken = await getToken();
+              newSocket.auth = { ...newSocket.auth, token: freshToken };
+            } catch (tokenErr) {
+              console.error("[Socket] Failed to refresh token:", tokenErr);
+            }
+          }
+        });
+
+        setSocket(newSocket);
+      } catch (err) {
+        console.error("[Socket] Init failed:", err);
+      }
+    };
+
+    establishConnection();
 
     return () => {
-      newSocket.disconnect();
+      isMounted = false;
+      if (newSocket) {
+        newSocket.disconnect();
+      }
     };
-  }, [isSignedIn]);
+  }, [isSignedIn, getToken]);
 
   return (
     <SocketContext.Provider value={socket}>

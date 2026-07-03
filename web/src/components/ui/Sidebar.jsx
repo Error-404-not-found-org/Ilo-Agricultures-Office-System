@@ -19,9 +19,10 @@ import {
   Settings as SettingsIcon,
   ChevronDown,
   LogOut,
-  Stethoscope,
   BookOpen,
   MessageSquare,
+  Activity,
+  ArchiveRestore,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import { useSidebar } from "../../contexts/SidebarContext";
@@ -64,7 +65,7 @@ export default function Sidebar() {
       }, 400);
       return () => clearTimeout(t);
     }
-  }, [user?.id]);
+  }, [user?.id, user?.firstName, user?.publicMetadata?.role]);
 
   const handleLogout = () => {
     // Clear today's welcome key so toast fires fresh on next login
@@ -91,21 +92,14 @@ export default function Sidebar() {
   });
 
   // ---- LIVE QUEUE TELEMETRY CONTROLLER ----
-  // Query both resource slots concurrently to derive a live pending workspace metric
-  const { data: aiRequests = [] } = useQuery({
-    queryKey: ["ai-requests-badge"],
+  // Use the same Backend 2.0 operational queue as the requests screen.
+  const { data: operationalQueue } = useQuery({
+    queryKey: ["technician-requests-badge"],
     queryFn: async () => {
-      const res = await axiosInstance.get("/ai-request");
-      return res.data || [];
-    },
-    refetchInterval: 1000 * 30, // Keep synchronizing metadata every 30s
-  });
-
-  const { data: healthRequests = [] } = useQuery({
-    queryKey: ["health-requests-badge"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/health-request");
-      return res.data || [];
+      const res = await axiosInstance.get("/technician/requests", {
+        params: { status: "pending", limit: 1 },
+      });
+      return res.data || {};
     },
     refetchInterval: 1000 * 30,
   });
@@ -121,42 +115,8 @@ export default function Sidebar() {
 
   // Compute live cumulative pending matrix values safely
   const livePendingCount = React.useMemo(() => {
-    const aiList = Array.isArray(aiRequests)
-      ? aiRequests
-      : aiRequests?.data || [];
-    const healthList = Array.isArray(healthRequests)
-      ? healthRequests
-      : healthRequests?.data || [];
-
-    const pendingAI = aiList.filter((req) => req.status === "pending").length;
-    const pendingHealth = healthList.filter(
-      (req) => req.status === "pending",
-    ).length;
-
-    // Overdue accepted/in-progress tasks: scheduled yesterday or earlier
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const overdueAI = aiList.filter((req) => {
-      if (req.status !== "in-progress" && req.status !== "approved")
-        return false;
-      const d = new Date(
-        req.scheduledDate || req.preferredDate || req.createdAt,
-      );
-      return d < today;
-    }).length;
-
-    const overdueHealth = healthList.filter((req) => {
-      if (req.status !== "in-progress" && req.status !== "approved")
-        return false;
-      const d = new Date(
-        req.scheduledDate || req.preferredDate || req.createdAt,
-      );
-      return d < today;
-    }).length;
-
-    return pendingAI + pendingHealth + overdueAI + overdueHealth;
-  }, [aiRequests, healthRequests]);
+    return operationalQueue?.pagination?.total || 0;
+  }, [operationalQueue]);
 
   const unseenCalvingsCount = React.useMemo(() => {
     const list = Array.isArray(calvingsData?.data) ? calvingsData.data : [];
@@ -164,7 +124,7 @@ export default function Sidebar() {
   }, [calvingsData]);
 
   // ---- MASTER SIDEBAR CONFIGURATION MATRICES ----
-  const TECH_GROUPS = [
+  const TECH_GROUPS = React.useMemo(() => [
     { type: "label", label: "Main" },
     {
       path: "/technician/dashboard",
@@ -238,7 +198,7 @@ export default function Sidebar() {
       icon: <MapPin size={16} />,
       paths: [
         "/technician/schedule",
-        // "/technician/health-map",
+        "/technician/health-map",
         "/technician/field-notes",
       ],
       items: [
@@ -247,11 +207,11 @@ export default function Sidebar() {
           icon: <CalendarDays size={14} />,
           label: "Daily Schedule",
         },
-        // {
-        //   path: "/technician/health-map",
-        //   icon: <MapPin size={14} />,
-        //   label: "GIS Field Hub",
-        // },
+        {
+          path: "/technician/health-map",
+          icon: <MapPin size={14} />,
+          label: "GIS Field Hub",
+        },
         {
           path: "/technician/field-notes",
           icon: <Image size={14} />,
@@ -285,9 +245,9 @@ export default function Sidebar() {
       icon: <SettingsIcon size={16} />,
       label: "Settings",
     },
-  ];
+  ], [livePendingCount, unseenCalvingsCount]);
 
-  const ADMIN_GROUPS = [
+  const ADMIN_GROUPS = React.useMemo(() => [
     { type: "label", label: "Main" },
     {
       path: "/admin/dashboard",
@@ -299,6 +259,16 @@ export default function Sidebar() {
       icon: <ClipboardList size={16} />,
       label: "Dispatch Tasks",
       badge: livePendingCount > 0 ? String(livePendingCount) : null,
+    },
+    {
+      path: "/admin/monitoring",
+      icon: <Activity size={16} />,
+      label: "System Monitoring",
+    },
+    {
+      path: "/admin/support-tickets",
+      icon: <MessageSquare size={16} />,
+      label: "Support Tickets",
     },
     { type: "label", label: "Operations & Logs" },
     {
@@ -323,13 +293,23 @@ export default function Sidebar() {
           icon: <FileText size={14} />,
           label: "Analytics & Audits",
         },
+        {
+          path: "/admin/audit-logs",
+          icon: <BookOpen size={14} />,
+          label: "Audit Logs",
+        },
+        {
+          path: "/admin/archived",
+          icon: <ArchiveRestore size={14} />,
+          label: "Archived Records",
+        },
       ],
     },
     {
       type: "group",
       label: "Registries",
       icon: <Users size={16} />,
-      paths: ["/admin/technicians", "/admin/livestock", "/admin/users"],
+      paths: ["/admin/technicians", "/admin/livestock", "/admin/users", "/admin/barangays"],
       items: [
         {
           path: "/admin/technicians",
@@ -346,6 +326,11 @@ export default function Sidebar() {
           icon: <Users size={14} />,
           label: "User Accounts",
         },
+        {
+          path: "/admin/barangays",
+          icon: <MapPin size={14} />,
+          label: "Barangay Insights",
+        },
       ],
     },
     { type: "label", label: "System" },
@@ -354,7 +339,7 @@ export default function Sidebar() {
       icon: <SettingsIcon size={16} />,
       label: "Settings",
     },
-  ];
+  ], [livePendingCount, unseenCalvingsCount]);
 
   const rawRole = user?.publicMetadata?.role || "Field Officer";
   const normalizedRole = String(rawRole).toLowerCase();
@@ -371,7 +356,7 @@ export default function Sidebar() {
         setOpenGroups((prev) => ({ ...prev, [item.label]: true }));
       }
     });
-  }, [location.pathname]);
+  }, [GROUPS, location.pathname]);
 
   const toggleGroup = (label) =>
     setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));

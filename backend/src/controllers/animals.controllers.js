@@ -8,12 +8,14 @@ import { Notification } from "../models/notification.model.js";
 import cloudinary from "../config/cloudinary.js";
 import { inngest } from "../config/inngest.js";
 import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../utils/cattleCore.js";
+import { assertAnimalAccess } from "../policies/animal.policy.js";
+import { getPagination } from "../utils/pagination.js";
 
 export const registerAnimal = async (req, res) => {
   try {
     let { farmerId, animalId, earTag, brand, species, breed, color, imageUrl, birthDate, gender } = req.body;
-
-    if (!farmerId && req.user?.role === "farmer") {
+ 
+    if (req.user?.role === "farmer") {
         farmerId = req.user._id.toString();
     }
 
@@ -111,9 +113,7 @@ export const getAllAnimals = async (req, res) => {
     }
  
     if (page && limit) {
-      const pageNum = parseInt(page, 10) || 1;
-      const limitNum = parseInt(limit, 10) || 10;
-      const skip = (pageNum - 1) * limitNum;
+      const { page: pageNum, limit: limitNum, skip } = getPagination(req.query);
  
       const animals = await Animal.find(query)
         .populate("farmerId", "name")
@@ -146,22 +146,33 @@ export const getAllAnimals = async (req, res) => {
 
 export const getMyAnimals = async (req, res) => {
   try {
-    const { page, limit } = req.query;
+    const { search, status, species } = req.query;
     const farmerId = req.user._id;
 
-    const pageNum = parseInt(page, 10) || 1;
-    const limitNum = parseInt(limit, 10) || 10;
-    const skip = (pageNum - 1) * limitNum;
+    const { page: pageNum, limit: limitNum, skip } = getPagination(req.query);
+    const query = { farmerId, deletedAt: null };
+
+    if (status && status !== "All") query.reproductiveStatus = status;
+    if (species && species !== "All") query.species = species;
+    if (search) {
+      query.$or = [
+        { animalId: { $regex: search, $options: "i" } },
+        { earTag: { $regex: search, $options: "i" } },
+        { breed: { $regex: search, $options: "i" } },
+        { species: { $regex: search, $options: "i" } },
+      ];
+    }
 
     const [animals, total] = await Promise.all([
-      Animal.find({ farmerId, deletedAt: null }).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
-      Animal.countDocuments({ farmerId, deletedAt: null }),
+      Animal.find(query).sort({ createdAt: -1 }).skip(skip).limit(limitNum).lean(),
+      Animal.countDocuments(query),
     ]);
 
     res.status(200).json({
       data: animals,
       total,
       page: pageNum,
+      limit: limitNum,
       totalPages: Math.ceil(total / limitNum)
     });
   } catch (error) {
@@ -191,9 +202,11 @@ export const getAnimalById = async (req, res) => {
     if (!animal) {
       return res.status(404).json({ message: "Animal not found" });
     }
+ 
+    assertAnimalAccess(req.user, animal);
 
     const inseminations = inseminationsList.map(ins => {
-      const preg = pregnancies.find(p => p.inseminationId.toString() === ins._id.toString());
+      const preg = pregnancies.find(p => p.inseminationId && p.inseminationId.toString() === ins._id.toString());
       return {
         ...ins.toObject(),
         pregnancy: preg || null
@@ -209,6 +222,9 @@ export const getAnimalById = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching animal details:", error);
+    if (error.status) {
+      return res.status(error.status).json({ message: error.message, code: error.code });
+    }
     res.status(500).json({ message: "Failed to fetch animal details" });
   }
 };
@@ -221,6 +237,8 @@ export const updateAnimalWizard = async (req, res) => {
     // Step 1: Handle Animal identity
     const animal = await Animal.findOne({ _id: id, deletedAt: null });
     if (!animal) return res.status(404).json({ message: "Animal not found" });
+ 
+    assertAnimalAccess(req.user, animal);
  
     if (payload.animalId) animal.animalId = payload.animalId;
     if (payload.earTag) animal.earTag = payload.earTag;
@@ -308,6 +326,9 @@ export const updateAnimalWizard = async (req, res) => {
     res.status(200).json({ message: "Animal & Medical records fully synchronized", animal });
   } catch (error) {
     console.error("Wizard Update API Error:", error);
+    if (error.status) {
+      return res.status(error.status).json({ message: error.message, code: error.code });
+    }
     res.status(500).json({ message: "Failed to construct full medical updates" });
   }
 };

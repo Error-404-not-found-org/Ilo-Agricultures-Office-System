@@ -91,6 +91,7 @@ export default function RegisterClient() {
   };
 
   const handleSave = async () => {
+    toast.dismiss();
     if (!formData.firstName || !formData.lastName || !formData.phone) {
       toast.error("Please fill in all required fields (First Name, Last Name, Phone Number).");
       return;

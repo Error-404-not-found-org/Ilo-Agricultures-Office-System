@@ -1,15 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Circle, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   MapPin,
-  HeartPulse,
-  Syringe,
-  Activity,
-  ShieldAlert,
-  Search,
   Layers,
   Map as MapIcon,
   RefreshCw,
@@ -20,7 +15,6 @@ import {
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/ui/Topbar";
-import { TableRowSkeleton } from "../../components/Skeleton";
 import {
   ILOILO_MUNICIPALITIES,
   MUNICIPALITY_BARANGAYS,
@@ -41,6 +35,7 @@ const MUNICIPALITY_CENTROIDS = {
 const DEFAULT_CENTER = MUNICIPALITY_CENTROIDS["Oton"];
 
 // Predefined fallback barangay coordinates for Oton region
+/* eslint-disable-next-line no-unused-vars */
 const OTON_BARANGAY_COORDS = {
   "Abilay Norte": [10.7442, 122.492],
   "Abilay Sur": [10.725, 122.4938],
@@ -294,20 +289,6 @@ export default function GISFieldHub() {
     }
   };
 
-  const activeCount = useMemo(() => {
-    switch (activeTab) {
-      case "health":
-        return filteredHealth.length;
-      case "breeding":
-        return filteredBreeding.length;
-      case "dispatches":
-        return filteredDispatches.length;
-      case "demographics":
-        return filteredDemographics.length;
-      default:
-        return 0;
-    }
-  }, [activeTab, filteredHealth, filteredBreeding, filteredDispatches, filteredDemographics]);
 
   if (isLoading) {
     return (

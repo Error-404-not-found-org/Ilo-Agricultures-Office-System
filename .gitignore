@@ -1,6 +1,13 @@
 node_modules
 .env
+.env.*
+.env
 scripts/
+
+# Local assistant / IDE state
+.codex/
+.agents/
+SKILL.md
 
 # Test Folders
 test/
@@ -21,6 +28,12 @@ todo.txt
 tools_and_technologies.txt
 proposed_system_features.txt
 test-icon-map.jsr
+scratch-*
+search-file.js
+fix-batch*.mjs
+fix-final.mjs
+fix2.mjs
+lint-output.txt
 clean_architecture_guide.txt
 delete_guide.txt
 

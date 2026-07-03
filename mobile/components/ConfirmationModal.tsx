@@ -15,6 +15,7 @@ interface ConfirmationModalProps {
   visible: boolean;
   onClose: () => void;
   onConfirm: () => void;
+  onCancel?: () => void;
   title: string;
   message: string;
   confirmText?: string;
@@ -27,6 +28,7 @@ export function ConfirmationModal({
   visible,
   onClose,
   onConfirm,
+  onCancel,
   title,
   message,
   confirmText = "Yes, Cancel",
@@ -51,6 +53,14 @@ export function ConfirmationModal({
   };
 
   const showCancel = cancelText !== null && cancelText !== "";
+  const handleCancel = () => {
+    if (confirming) return;
+    if (onCancel) {
+      onCancel();
+      return;
+    }
+    onClose();
+  };
 
   return (
     <Modal
@@ -116,7 +126,7 @@ export function ConfirmationModal({
             {showCancel && (
               <TouchableOpacity
                 disabled={confirming}
-                onPress={onClose}
+                onPress={handleCancel}
                 style={[
                   styles.button,
                   styles.cancelButton,

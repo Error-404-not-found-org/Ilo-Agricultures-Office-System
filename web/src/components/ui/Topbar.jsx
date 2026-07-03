@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Bell, Search, Check, Trash2, Info, AlertTriangle, Syringe, HeartPulse, Menu } from "lucide-react";
+import { useState } from "react";
+import { Bell, Search, Check, Trash2, Info, Syringe, HeartPulse, Menu } from "lucide-react";
 import ThemeToggle from "../ThemeToggle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";

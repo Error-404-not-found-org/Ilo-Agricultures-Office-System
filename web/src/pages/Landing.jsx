@@ -1,10 +1,10 @@
-import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useUser, SignInButton, SignOutButton } from "@clerk/clerk-react";
 import { 
   ShieldCheck, Smartphone, Download, ArrowRight, LayoutDashboard, 
-  CheckCircle2, Shield, Award, MapPin, Database, Sprout, HeartPulse, FileText 
+  Database, Sprout, HeartPulse, FileText 
 } from 'lucide-react';
+
 
 const Landing = () => {
     const { isSignedIn, isLoaded, user } = useUser();

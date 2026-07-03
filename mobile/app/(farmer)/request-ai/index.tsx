@@ -37,6 +37,7 @@ import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
+import { safeBack } from "@/utils/navigation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -61,6 +62,10 @@ interface FarmerProfile {
     city: string;
     province: string;
   };
+  farmLocation?: {
+    latitude?: number;
+    longitude?: number;
+  } | null;
   animals: Animal[];
 }
 
@@ -88,7 +93,8 @@ const HEAT_SIGNS: HeatSign[] = [
   {
     id: "standing_heat",
     label: "Standing to be Mounted (Standing Heat)",
-    description: "Cows stands perfectly still when mounted by others. The definitive sign of true peak heat.",
+    description:
+      "Cows stands perfectly still when mounted by others. The definitive sign of true peak heat.",
     category: "primary",
   },
   {
@@ -112,7 +118,8 @@ const HEAT_SIGNS: HeatSign[] = [
   {
     id: "flehmen",
     label: "Flehmen Response and Sniffing",
-    description: "Actively sniffing other cows' vulva and curling the upper lip.",
+    description:
+      "Actively sniffing other cows' vulva and curling the upper lip.",
     category: "secondary_behavioral",
   },
   {
@@ -142,7 +149,8 @@ const HEAT_SIGNS: HeatSign[] = [
   {
     id: "metestrus_bleeding",
     label: "Metestrus Bleeding (Bleeding Out)",
-    description: "Blood-stained mucus 1-3 days after heat, indicating heat window has closed.",
+    description:
+      "Blood-stained mucus 1-3 days after heat, indicating heat window has closed.",
     category: "secondary_physical",
   },
 ];
@@ -171,9 +179,11 @@ export default function RequestAI() {
   const [preferredDate, setPreferredDate] = useState(new Date());
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [farmPinModalVisible, setFarmPinModalVisible] = useState(false);
   const [maleModalVisible, setMaleModalVisible] = useState(false);
   const [pregnantModalVisible, setPregnantModalVisible] = useState(false);
-  const [pregnantSubmitModalVisible, setPregnantSubmitModalVisible] = useState(false);
+  const [pregnantSubmitModalVisible, setPregnantSubmitModalVisible] =
+    useState(false);
   const [ageModalVisible, setAgeModalVisible] = useState(false);
   const [ageCheckReason, setAgeCheckReason] = useState("");
 
@@ -204,7 +214,7 @@ export default function RequestAI() {
     {
       url: "/ai-request",
       method: "POST",
-      description: `AI Request for ${selectedAnimal?.earTag || "Livestock"}`,
+      description: `AI Service Request for ${selectedAnimal?.earTag || "Livestock"}`,
     },
     {
       onSuccess: () => {
@@ -219,7 +229,7 @@ export default function RequestAI() {
         setImageBase64(null);
 
         queryClient.invalidateQueries({ queryKey: ["farmer", "requests"] });
-        router.back();
+        safeBack();
       },
       onError: (error: any) => {
         if (error.message !== "OFFLINE_SAVED") {
@@ -228,13 +238,14 @@ export default function RequestAI() {
               "Failed to submit request. Please try again.",
           );
         } else {
-          router.back();
+          safeBack();
         }
       },
     },
   );
 
-  const submitting = mutation.isPending;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitting = mutation.isPending || isSubmitting;
 
   // UI states
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
@@ -335,9 +346,42 @@ export default function RequestAI() {
     setImageBase64(null);
   };
 
-  const handleSubmit = async () => {
+  const submitRequest = async () => {
+    if (!selectedAnimal) return;
+
+    const selectedLabels = HEAT_SIGNS.filter((s) =>
+      selectedSigns.includes(s.id),
+    ).map((s) => `• ${s.label}`);
+    const formattedComment = [
+      "Observed Heat Signs:\n" + selectedLabels.join("\n"),
+      comment.trim() ? `Additional Notes:\n${comment.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    setIsSubmitting(true);
+    try {
+      await mutation.mutateAsync({
+        animalId: selectedAnimal._id,
+        imageUrl: imageBase64,
+        comment: formattedComment,
+        heatSigns: selectedSigns,
+        preferredDate: preferredDate.toISOString(),
+      });
+    } catch {
+      // Handled by react-query mutation callbacks
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async (skipFarmPinWarning = false) => {
+    if (isSubmitting || mutation.isPending) return;
+
     const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
     const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
+    const farmLocation = farmer?.farmLocation || profile?.farmLocation;
+    const hasFarmPin = Boolean(farmLocation?.latitude && farmLocation?.longitude);
 
     if (!hasPhone || !hasAddress) {
       setProfileModalVisible(true);
@@ -352,9 +396,14 @@ export default function RequestAI() {
       return;
     }
 
-    const ageCheck = checkInseminationAgeEligibility(selectedAnimal.birthDate, selectedAnimal.species);
+    const ageCheck = checkInseminationAgeEligibility(
+      selectedAnimal.birthDate,
+      selectedAnimal.species,
+    );
     if (!ageCheck.isEligible) {
-      setAgeCheckReason(ageCheck.reason || "Animal is too young for insemination.");
+      setAgeCheckReason(
+        ageCheck.reason || "Animal is too young for insemination.",
+      );
       setAgeModalVisible(true);
       return;
     }
@@ -374,23 +423,12 @@ export default function RequestAI() {
       });
     }
 
-    const selectedLabels = HEAT_SIGNS.filter((s) => selectedSigns.includes(s.id)).map(
-      (s) => `• ${s.label}`
-    );
-    const formattedComment = [
-      "Observed Heat Signs:\n" + selectedLabels.join("\n"),
-      comment.trim() ? `Additional Notes:\n${comment.trim()}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    if (!skipFarmPinWarning && !hasFarmPin) {
+      setFarmPinModalVisible(true);
+      return;
+    }
 
-    mutation.mutate({
-      animalId: selectedAnimal._id,
-      imageUrl: imageBase64,
-      comment: formattedComment,
-      heatSigns: selectedSigns,
-      preferredDate: preferredDate.toISOString(),
-    });
+    await submitRequest();
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
@@ -433,7 +471,7 @@ export default function RequestAI() {
         className="px-6 pb-6 flex-row items-center gap-4 z-10"
       >
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => safeBack()}
           className="w-10 h-10 bg-white/20 rounded-full items-center justify-center border border-white/20"
           activeOpacity={0.7}
         >
@@ -441,7 +479,7 @@ export default function RequestAI() {
         </TouchableOpacity>
         <View>
           <Text className="text-[20px] font-bold text-white leading-tight">
-            Request AI Service
+            AI Service Request
           </Text>
           <Text className="text-[12px] text-emerald-100 font-medium">
             Artificial Insemination Request
@@ -694,7 +732,9 @@ export default function RequestAI() {
                     backgroundColor: isSelected ? primaryColor : "transparent",
                   }}
                 >
-                  {isSelected && <Check size={12} color="white" strokeWidth={3} />}
+                  {isSelected && (
+                    <Check size={12} color="white" strokeWidth={3} />
+                  )}
                 </View>
                 <View className="flex-1">
                   <Text
@@ -703,7 +743,10 @@ export default function RequestAI() {
                   >
                     {sign.label}
                   </Text>
-                  <Text className="text-xs mt-1 leading-normal" style={{ color: colors.textMuted }}>
+                  <Text
+                    className="text-xs mt-1 leading-normal"
+                    style={{ color: colors.textMuted }}
+                  >
                     {sign.description}
                   </Text>
                 </View>
@@ -722,31 +765,43 @@ export default function RequestAI() {
             >
               <AlertCircle size={20} color="#ef4444" className="mt-0.5" />
               <View className="flex-1">
-                <Text className="font-bold text-red-600 text-sm">Metestrus Bleeding Warning</Text>
+                <Text className="font-bold text-red-600 text-sm">
+                  Metestrus Bleeding Warning
+                </Text>
                 <Text className="text-xs mt-1 text-red-500 leading-relaxed">
-                  Bleeding indicates ovulation has already occurred and the current heat window is closed. Artificial Insemination (AI) is unlikely to succeed. We recommend waiting for the next window, expected in approximately 18-24 days.
+                  Bleeding indicates ovulation has already occurred and the
+                  current heat window is closed. Artificial Insemination (AI) is
+                  unlikely to succeed. We recommend waiting for the next window,
+                  expected in approximately 18-24 days.
                 </Text>
               </View>
             </View>
           )}
 
-          {selectedSigns.length > 0 && !selectedSigns.includes("standing_heat") && (
-            <View
-              className="p-4 rounded-2xl mb-5 flex-row gap-3 border"
-              style={{
-                backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#fffbeb",
-                borderColor: isDark ? "rgba(245, 158, 11, 0.2)" : "#fef3c7",
-              }}
-            >
-              <AlertCircle size={20} color="#f59e0b" className="mt-0.5" />
-              <View className="flex-1">
-                <Text className="font-bold text-amber-600 text-sm">Standing Heat Advisory</Text>
-                <Text className="text-xs mt-1 text-amber-500 leading-relaxed">
-                  "Standing to be Mounted" is the gold standard indicator of true peak heat. Proceeding with AI based solely on secondary signs might result in a lower success rate.
-                </Text>
+          {selectedSigns.length > 0 &&
+            !selectedSigns.includes("standing_heat") && (
+              <View
+                className="p-4 rounded-2xl mb-5 flex-row gap-3 border"
+                style={{
+                  backgroundColor: isDark
+                    ? "rgba(245, 158, 11, 0.1)"
+                    : "#fffbeb",
+                  borderColor: isDark ? "rgba(245, 158, 11, 0.2)" : "#fef3c7",
+                }}
+              >
+                <AlertCircle size={20} color="#f59e0b" className="mt-0.5" />
+                <View className="flex-1">
+                  <Text className="font-bold text-amber-600 text-sm">
+                    Standing Heat Advisory
+                  </Text>
+                  <Text className="text-xs mt-1 text-amber-500 leading-relaxed">
+                    &quot;Standing to be Mounted&quot; is the gold standard
+                    indicator of true peak heat. Proceeding with AI based solely
+                    on secondary signs might result in a lower success rate.
+                  </Text>
+                </View>
               </View>
-            </View>
-          )}
+            )}
 
           {/* ── Photo Attachment ─────────────────────────────────────────── */}
           <Text
@@ -830,7 +885,7 @@ export default function RequestAI() {
 
           {/* ── Submit Button ─────────────────────────────────────────────── */}
           <TouchableOpacity
-            onPress={handleSubmit}
+            onPress={() => handleSubmit()}
             disabled={submitting}
             activeOpacity={0.85}
             className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
@@ -845,7 +900,7 @@ export default function RequestAI() {
               <>
                 <Syringe size={20} color="white" />
                 <Text className="text-white font-bold text-lg">
-                  Submit AI Request
+                  Submit AI Service Request
                 </Text>
               </>
             )}
@@ -924,16 +979,22 @@ export default function RequestAI() {
                         setMaleModalVisible(true);
                         return;
                       }
-                      const ageCheck = checkInseminationAgeEligibility(item.birthDate, item.species);
+                      const ageCheck = checkInseminationAgeEligibility(
+                        item.birthDate,
+                        item.species,
+                      );
                       if (!ageCheck.isEligible) {
-                        setAgeCheckReason(ageCheck.reason || "Animal is too young for insemination.");
+                        setAgeCheckReason(
+                          ageCheck.reason ||
+                            "Animal is too young for insemination.",
+                        );
                         setAgeModalVisible(true);
                         return;
                       }
                       setSelectedAnimal(item);
                       setAnimalModalVisible(false);
                     }}
-                    className={`py-4 px-3 border-b flex-row items-center justify-between ${(item.reproductiveStatus === "Pregnant" || item.gender === "Male" || !checkInseminationAgeEligibility(item.birthDate, item.species).isEligible) ? "opacity-50" : ""}`}
+                    className={`py-4 px-3 border-b flex-row items-center justify-between ${item.reproductiveStatus === "Pregnant" || item.gender === "Male" || !checkInseminationAgeEligibility(item.birthDate, item.species).isEligible ? "opacity-50" : ""}`}
                     style={{
                       borderBottomColor: colors.border,
                       backgroundColor:
@@ -977,7 +1038,10 @@ export default function RequestAI() {
                               </Text>
                             </View>
                           )}
-                          {!checkInseminationAgeEligibility(item.birthDate, item.species).isEligible && (
+                          {!checkInseminationAgeEligibility(
+                            item.birthDate,
+                            item.species,
+                          ).isEligible && (
                             <View className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-200">
                               <Text className="text-[9px] font-black uppercase text-amber-600">
                                 Underage
@@ -992,9 +1056,10 @@ export default function RequestAI() {
                       {item.gender === "Male" && (
                         <AlertCircle size={16} color="#ef4444" />
                       )}
-                      {!checkInseminationAgeEligibility(item.birthDate, item.species).isEligible && (
-                        <AlertCircle size={16} color="#d97706" />
-                      )}
+                      {!checkInseminationAgeEligibility(
+                        item.birthDate,
+                        item.species,
+                      ).isEligible && <AlertCircle size={16} color="#d97706" />}
                       {selectedAnimal?._id === item._id && (
                         <Check size={18} color={primaryColor} />
                       )}
@@ -1111,7 +1176,10 @@ export default function RequestAI() {
             style={{ backgroundColor: colors.card }}
           >
             <View className="flex-row justify-between items-center mb-6">
-              <Text className="text-lg font-bold" style={{ color: colors.textPrimary }}>
+              <Text
+                className="text-lg font-bold"
+                style={{ color: colors.textPrimary }}
+              >
                 Select Photo Source
               </Text>
               <TouchableOpacity
@@ -1133,7 +1201,11 @@ export default function RequestAI() {
                   borderColor: isDark ? colors.border : "#e2e8f0",
                 }}
               >
-                <Camera size={24} color={primaryColor} style={{ marginBottom: 8 }} />
+                <Camera
+                  size={24}
+                  color={primaryColor}
+                  style={{ marginBottom: 8 }}
+                />
                 <Text
                   className="font-bold text-xs"
                   style={{ color: colors.textPrimary }}
@@ -1152,7 +1224,12 @@ export default function RequestAI() {
                   borderColor: isDark ? colors.border : "#e2e8f0",
                 }}
               >
-                <MaterialCommunityIcons name="image-multiple" size={24} color={primaryColor} style={{ marginBottom: 8 }} />
+                <MaterialCommunityIcons
+                  name="image-multiple"
+                  size={24}
+                  color={primaryColor}
+                  style={{ marginBottom: 8 }}
+                />
                 <Text
                   className="font-bold text-xs"
                   style={{ color: colors.textPrimary }}
@@ -1170,11 +1247,17 @@ export default function RequestAI() {
                 }}
                 className="mt-4 py-4 rounded-2xl items-center justify-center border flex-row gap-2"
                 style={{
-                  backgroundColor: isDark ? "rgba(239, 68, 68, 0.1)" : "#fef2f2",
+                  backgroundColor: isDark
+                    ? "rgba(239, 68, 68, 0.1)"
+                    : "#fef2f2",
                   borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#fee2e2",
                 }}
               >
-                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ef4444" />
+                <MaterialCommunityIcons
+                  name="trash-can-outline"
+                  size={20}
+                  color="#ef4444"
+                />
                 <Text className="font-bold text-sm text-red-500">
                   Remove Photo
                 </Text>
@@ -1200,6 +1283,25 @@ export default function RequestAI() {
       />
 
       <ConfirmationModal
+        visible={farmPinModalVisible}
+        onClose={() => setFarmPinModalVisible(false)}
+        onCancel={() => {
+          setFarmPinModalVisible(false);
+          router.push("/(farmer)/(tabs)/profile");
+        }}
+        onConfirm={() => {
+          setFarmPinModalVisible(false);
+          handleSubmit(true);
+        }}
+        title="Farm Pin Missing"
+        message="You can still submit this AI request, but technicians will only see your barangay. Add an exact farm pin so they can find your cattle faster."
+        confirmText="Continue Anyway"
+        cancelText="Add Farm Pin"
+        isDestructive={false}
+        icon={<MapPin size={26} color={colors.warning} />}
+      />
+
+      <ConfirmationModal
         visible={maleModalVisible}
         onClose={() => setMaleModalVisible(false)}
         onConfirm={() => setMaleModalVisible(false)}
@@ -1216,7 +1318,7 @@ export default function RequestAI() {
         onClose={() => setPregnantModalVisible(false)}
         onConfirm={() => setPregnantModalVisible(false)}
         title="Selection Unavailable"
-        message="This animal is currently pregnant and cannot be selected for A.I. services."
+        message="There is already an active pregnancy registered for this animal."
         confirmText="OK"
         cancelText={null}
         isDestructive={true}
@@ -1228,7 +1330,7 @@ export default function RequestAI() {
         onClose={() => setPregnantSubmitModalVisible(false)}
         onConfirm={() => setPregnantSubmitModalVisible(false)}
         title="Action Blocked"
-        message="This animal is already marked as Pregnant. You cannot request artificial insemination unless you report heat signs first from the animal's profile."
+        message="There is already an active pregnancy registered for this animal."
         confirmText="OK"
         cancelText={null}
         isDestructive={true}

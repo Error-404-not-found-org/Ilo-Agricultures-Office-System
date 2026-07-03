@@ -7,9 +7,6 @@ import {
   Tractor,
   HeartPulse,
   Baby,
-  Bell,
-  Moon,
-  Sun,
   Search,
   ArrowRight,
   TrendingUp,
@@ -93,7 +90,7 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    fetchDashboardMetrics();
+    Promise.resolve().then(() => fetchDashboardMetrics());
     // Automated 30-second synchronization sequence
     const telemetryInterval = setInterval(fetchDashboardMetrics, 1000 * 30);
     return () => clearInterval(telemetryInterval);
@@ -128,7 +125,10 @@ export default function Dashboard() {
     completedToday: 0,
   };
   const pendingRequests = dashboardData?.pendingRequests || [];
-  const agendaItems = dashboardData?.agendaItems || [];
+  const agendaItems = React.useMemo(
+    () => dashboardData?.agendaItems || [],
+    [dashboardData?.agendaItems],
+  );
 
   const activePendingCount = pendingRequests.filter(
     (r) => r.status === "pending",

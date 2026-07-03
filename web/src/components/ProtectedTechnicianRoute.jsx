@@ -21,7 +21,7 @@ const ProtectedTechnicianRoute = ({ children }) => {
       return config;
     });
 
-    setIsInterceptorSetup(true);
+    Promise.resolve().then(() => setIsInterceptorSetup(true));
 
     return () => {
       axiosInstance.interceptors.request.eject(interceptor);
@@ -40,8 +40,8 @@ const ProtectedTechnicianRoute = ({ children }) => {
   // We sync role to publicMetadata from the backend.
   const role = user?.publicMetadata?.role;
 
-  if (role !== "technician") {
-    // Redirect non-technicians to home
+  if (role !== "technician" && role !== "veterinarian") {
+    // Redirect non-technicians and non-veterinarians to home
     return <Navigate to="/" replace />;
   }
 

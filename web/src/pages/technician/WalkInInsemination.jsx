@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Syringe, User, Activity, Search, MapPin, Phone, Mail,
@@ -40,7 +40,7 @@ export default function WalkInInsemination() {
   // Barangay autocomplete for new-entry mode
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     firstName: "",
     lastName: "",
     phoneNumber: "",
@@ -55,7 +55,7 @@ export default function WalkInInsemination() {
       estrus: "Natural",
       status: "done",
     },
-  });
+  }));
 
   // --- QUERIES ---
   const { data: farmers = [] } = useQuery({

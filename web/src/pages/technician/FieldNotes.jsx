@@ -1,14 +1,11 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
-  Search,
-  Bell,
   Image as ImageIcon,
   Syringe,
   HeartPulse,
   FileText,
   X,
   Trash2,
-  Filter,
   Grid3X3,
   Calendar,
   AlertCircle,
@@ -31,7 +28,6 @@ export default function FieldNotesGallery() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const [selectedNote, setSelectedNote] = useState(null);
-  const [isFullscreenImage, setIsFullscreenImage] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
@@ -54,7 +50,7 @@ export default function FieldNotesGallery() {
   };
 
   useEffect(() => {
-    fetchFieldNotes();
+    Promise.resolve().then(() => fetchFieldNotes());
   }, []);
 
   // ---- LIVE METRIC COMPUTATION ENGINE ----

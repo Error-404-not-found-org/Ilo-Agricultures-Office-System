@@ -1,0 +1,72 @@
+export interface Animal {
+  _id: string;
+  animalId: string;
+  earTag?: string;
+  breed: string;
+  species: string;
+  reproductiveStatus?: string;
+}
+
+export interface Milestone {
+  type: "calving" | "heat_check" | "pd_check";
+  title: string;
+  animal?: {
+    _id: string;
+    earTag?: string;
+    breed?: string;
+    species?: string;
+  };
+  date: string;
+  daysLeft: number;
+  priority: "high" | "medium";
+  relatedId: string;
+}
+
+export interface ActivityFeedItem {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  type: "ai" | "health" | "calving";
+  animalId?: {
+    _id: string;
+    earTag?: string;
+    breed?: string;
+    species?: string;
+  };
+  details?: {
+    sireBreed?: string;
+    sireCode?: string;
+    attemptNumber?: number;
+    estrus?: string;
+    status?: string;
+    outcome?: string;
+    technician?: string;
+    technicianNote?: string;
+    inseminationDate?: string;
+    scheduledDate?: string;
+
+    requestType?: string;
+    symptoms?: string;
+    urgency?: string;
+    diagnosis?: string;
+    treatment?: string;
+    advice?: string;
+
+    calvingEase?: string;
+    numberOfCalves?: number;
+    calves?: Array<{
+      sex: string;
+      earTag?: string;
+      weight?: number;
+      imageUrl?: string;
+    }>;
+  };
+}
+
+export interface RecordStats {
+  total: number;
+  approved: number;
+  pending: number;
+  rejected: number;
+}

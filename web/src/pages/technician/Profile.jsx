@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   User,
   Phone,
   Mail,
   MapPin,
   Award,
-  Calendar,
   Edit2,
   Check,
   X,
@@ -61,7 +60,7 @@ export default function TechMyProfile() {
   // Sync edit form when DB user is loaded
   useEffect(() => {
     if (dbUser) {
-      setEditForm({
+      Promise.resolve().then(() => setEditForm({
         name: dbUser.name || "",
         phone: dbUser.phoneNumber || "",
         email: dbUser.email || "",
@@ -75,7 +74,7 @@ export default function TechMyProfile() {
           localStorage.getItem(`tech_license_${dbUser._id}`) ||
           "DOA Region VI Licensed (Lic #9420-VI)",
         imageUrl: dbUser.imageUrl || "",
-      });
+      }));
     }
   }, [dbUser]);
 
@@ -629,7 +628,7 @@ export default function TechMyProfile() {
                   <div key={idx} className="relative">
                     {/* Circle bullet overlay */}
                     <span
-                      className={`absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-950 ${item.color}`}
+                      className={`absolute left-[-21px] top-1 w-2.5 h-2.5 rounded-full border-2 border-white dark:border-slate-950 ${item.color}`}
                     />
 
                     <div className="min-w-0">

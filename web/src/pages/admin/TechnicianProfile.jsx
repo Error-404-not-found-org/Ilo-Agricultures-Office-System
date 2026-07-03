@@ -1,17 +1,14 @@
-import React, { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import {
   ChevronLeft,
-  User,
   Phone,
   Mail,
   MapPin,
   Briefcase,
   Activity,
-  Award,
-  Calendar,
   Layers,
   CheckCircle,
   Clock,
@@ -19,7 +16,6 @@ import {
   ClipboardList,
   AlertCircle,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
 
 export default function TechnicianProfile() {
   const { id } = useParams();

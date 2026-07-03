@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from "react";
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle, Users, HeartPulse } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';

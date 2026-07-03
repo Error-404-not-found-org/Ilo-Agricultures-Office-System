@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Syringe, User, Activity, Calendar, Search, MapPin, Phone, AlertCircle, AlertTriangle, BadgeCheck, Dna, History, Mail } from "lucide-react";
+import { X, Syringe, User, Activity, Search, MapPin, Phone, AlertCircle, AlertTriangle, BadgeCheck, History, Mail } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -29,7 +29,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
   const [ageWarning, setAgeWarning] = useState("");
   const [vwpWarning, setVwpWarning] = useState("");
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     firstName: "",
     lastName: "",
     phoneNumber: "",
@@ -52,7 +52,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
       estrus: "Natural",
       status: "done",
     },
-  });
+  }));
 
   const { data: config } = useQuery({
     queryKey: ["config"],
@@ -122,39 +122,41 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     if (isOpen) {
       window.addEventListener("keydown", handleKeyDown);
     } else {
-      setIsExistingRecord(true);
-      setSelectedFarmerId("");
-      setSearchFarmer("");
-      setIsDropdownOpen(false);
-      setSelectedAnimalId("");
-      setShowPregnancyWarning(false);
-      setAgeWarning("");
-      setVwpWarning("");
-      setIsOverriding(false);
-      setIsBarangayDropdownOpen(false);
-      setFormData({
-        firstName: "",
-        lastName: "",
-        phoneNumber: "",
-        address: {
-          barangay: "",
-          city: "Oton"
-        },
-        email: "",
-        animalDetails: {
-          earTag: "",
-          species: "Beef Cattle",
-          breed: "",
-          color: "",
-        },
-        inseminationDetails: {
-          inseminationDate: new Date().toISOString().split("T")[0],
-          time: "08:00",
-          sireBreed: "",
-          sireCode: `SIRE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-          estrus: "Natural",
-          status: "done",
-        },
+      Promise.resolve().then(() => {
+        setIsExistingRecord(true);
+        setSelectedFarmerId("");
+        setSearchFarmer("");
+        setIsDropdownOpen(false);
+        setSelectedAnimalId("");
+        setShowPregnancyWarning(false);
+        setAgeWarning("");
+        setVwpWarning("");
+        setIsOverriding(false);
+        setIsBarangayDropdownOpen(false);
+        setFormData({
+          firstName: "",
+          lastName: "",
+          phoneNumber: "",
+          address: {
+            barangay: "",
+            city: "Oton"
+          },
+          email: "",
+          animalDetails: {
+            earTag: "",
+            species: "Beef Cattle",
+            breed: "",
+            color: "",
+          },
+          inseminationDetails: {
+            inseminationDate: new Date().toISOString().split("T")[0],
+            time: "08:00",
+            sireBreed: "",
+            sireCode: `SIRE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+            estrus: "Natural",
+            status: "done",
+          },
+        });
       });
     }
     return () => {
@@ -177,19 +179,23 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     if (species) {
       const validBreeds = BREED_OPTIONS_BY_SPECIES[species] || [];
       if (formData.animalDetails.breed && !validBreeds.includes(formData.animalDetails.breed)) {
-        setFormData((prev) => ({
-          ...prev,
-          animalDetails: { ...prev.animalDetails, breed: "" },
-        }));
+        Promise.resolve().then(() => {
+          setFormData((prev) => ({
+            ...prev,
+            animalDetails: { ...prev.animalDetails, breed: "" },
+          }));
+        });
       }
       if (formData.inseminationDetails.sireBreed && !validBreeds.includes(formData.inseminationDetails.sireBreed)) {
-        setFormData((prev) => ({
-          ...prev,
-          inseminationDetails: { ...prev.inseminationDetails, sireBreed: "", sireCode: "" },
-        }));
+        Promise.resolve().then(() => {
+          setFormData((prev) => ({
+            ...prev,
+            inseminationDetails: { ...prev.inseminationDetails, sireBreed: "", sireCode: "" },
+          }));
+        });
       }
     }
-  }, [selectedAnimalId, formData.animalDetails.species, isExistingRecord, animals]);
+  }, [selectedAnimalId, formData.animalDetails.species, isExistingRecord, animals, formData.animalDetails.breed, formData.inseminationDetails.sireBreed]);
 
   if (!isOpen) return null;
 

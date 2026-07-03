@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   X,
   Syringe,
@@ -19,6 +19,24 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import axiosInstance from "../../lib/axios";
 
+const FieldItem = ({ icon: Icon, label, value }) => (
+  <div className="flex items-center justify-between gap-3 py-2 border-b border-base-200/50 last:border-none">
+    <div className="flex items-center gap-2.5 min-w-[110px]">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
+        <Icon size={12} strokeWidth={2.5} />
+      </div>
+      <span className="text-[9px] font-black uppercase tracking-[0.2em] text-base-content/30">
+        {label}
+      </span>
+    </div>
+    <div className="flex-1 text-right">
+      <p className="text-[11px] font-bold text-base-content leading-tight truncate">
+        {value || "---"}
+      </p>
+    </div>
+  </div>
+);
+
 export default function AnimalHistoryModal({ isOpen, onClose, animalId }) {
   const [loading, setLoading] = useState(true);
   const [historyData, setHistoryData] = useState(null);
@@ -26,7 +44,7 @@ export default function AnimalHistoryModal({ isOpen, onClose, animalId }) {
 
   useEffect(() => {
     if (isOpen && animalId) {
-      setLoading(true);
+      Promise.resolve().then(() => setLoading(true));
       const fetchHistory = async () => {
         try {
           const response = await axiosInstance.get(
@@ -56,24 +74,6 @@ export default function AnimalHistoryModal({ isOpen, onClose, animalId }) {
 
   const animal = historyData?.animal || {};
   const timeline = historyData?.timeline || [];
-
-  const FieldItem = ({ icon: Icon, label, value }) => (
-    <div className="flex items-center justify-between gap-3 py-2 border-b border-base-200/50 last:border-none">
-      <div className="flex items-center gap-2.5 min-w-[110px]">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600">
-          <Icon size={12} strokeWidth={2.5} />
-        </div>
-        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-base-content/30">
-          {label}
-        </span>
-      </div>
-      <div className="flex-1 text-right">
-        <p className="text-[11px] font-bold text-base-content leading-tight truncate">
-          {value || "---"}
-        </p>
-      </div>
-    </div>
-  );
 
   return (
     <AnimatePresence>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   MessageSquare,
   Send,
@@ -7,9 +7,7 @@ import {
   Sparkles,
   PawPrint,
   Loader2,
-  Clock,
   ArrowRight,
-  Bot,
   User,
   Info,
 } from "lucide-react";
@@ -101,7 +99,8 @@ export default function MoowieChatPage() {
       toast.error("You must retain at least one chat thread.");
       return;
     }
-    const index = threads.findIndex((t) => t.id === id);
+    const _idx = threads.findIndex((t) => t.id === id);
+    void _idx;
     const updated = threads.filter((t) => t.id !== id);
     setThreads(updated);
     if (activeThreadId === id) {
@@ -391,11 +390,11 @@ export default function MoowieChatPage() {
 
             {/* Core Dialogue Loops */}
             <div className="max-w-4xl mx-auto space-y-4">
-              {activeThread.messages.map((msg, index) => {
+              {activeThread.messages.map((msg, msgIndex) => {
                 const isAI = msg.sender === "moowie";
                 return (
                   <div
-                    key={index}
+                    key={msgIndex}
                     className={`flex gap-3 max-w-[85%] ${isAI ? "self-start" : "ml-auto flex-row-reverse"}`}
                   >
                     {/* Avatar Block */}

@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
-  Text,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  Platform,
   Linking,
+  Image,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -19,57 +18,44 @@ import {
   User,
   Info,
   Navigation,
+  Lock,
 } from "lucide-react-native";
-import MapView, {
-  Marker,
-  UrlTile,
-  PROVIDER_GOOGLE,
-} from "@/components/MapShim";
-import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
-import * as FileSystem from "expo-file-system/legacy";
-import { getLocalTilePath, OTON_BBOX } from "@/lib/mapCache";
 import { useTheme } from "@/lib/theme";
+import { Text } from "@/components/ui/Text";
+import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
 
 export default function TaskDetailsScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
-  const api = useApi();
-  const [task, setTask] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [completing, setCompleting] = useState(false);
-
-  // Oton Center as fallback
-  const INITIAL_REGION = {
-    latitude: 10.693,
-    longitude: 122.474,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
-  };
-
   const { colors, isDark } = useTheme();
 
-  useEffect(() => {
-    const fetchTask = async () => {
-      try {
-        const res = await api.get(`/tasks/${id}`);
-        setTask(res.data);
-      } catch (err) {
-        console.error(err);
-        toast.error("Failed to load task details");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchTask();
-  }, [id, api]);
+  const { taskDetailsQuery, claimTaskMutation, completeTaskMutation } = useTechnicianTasks(String(id));
+  const { data: task, isLoading, refetch } = taskDetailsQuery;
+
+  const [completing, setCompleting] = useState(false);
+  const [claiming, setClaiming] = useState(false);
+
+  const handleClaim = async () => {
+    if (claiming) return;
+    setClaiming(true);
+    try {
+      await claimTaskMutation.mutateAsync(String(id));
+      toast.success("Task claimed successfully!");
+      refetch();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to claim task");
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   const handleComplete = async () => {
     if (completing) return;
     setCompleting(true);
     try {
-      await api.put(`/tasks/${id}/complete`);
-      toast.success("Task completed!");
+      await completeTaskMutation.mutateAsync(String(id));
+      toast.success("Visit marked as completed!");
       router.back();
     } catch (err) {
       toast.error("Update failed");
@@ -78,7 +64,55 @@ export default function TaskDetailsScreen() {
     }
   };
 
-  if (loading)
+  const getPrimaryAction = () => {
+    const taskType = task?.taskType;
+    if (taskType === "AI") {
+      return { label: "Record AI Service", pathname: "/(technician)/record-ai" };
+    }
+    if (["Health", "Treatment", "Vaccination", "Deworming"].includes(taskType)) {
+      return { label: "Record Health Assistance", pathname: "/(technician)/health-log" };
+    }
+    if (taskType === "PD") {
+      return { label: "Record Pregnancy Check", pathname: "/(technician)/pregnancy-verification" };
+    }
+    if (taskType === "CD" || taskType === "Calving") {
+      return { label: "Record Calving", pathname: "/(technician)/record-calf-drop" };
+    }
+    return { label: "Complete General Visit", pathname: null };
+  };
+
+  const handlePrimaryAction = () => {
+    const action = getPrimaryAction();
+    if (!action.pathname) {
+      handleComplete();
+      return;
+    }
+
+    const animal = task.animalIds?.[0];
+    const params: Record<string, string> = {
+      taskId: String(task._id),
+      farmerId: String(task.farmerId?._id || ""),
+      farmerName: String(task.farmerId?.name || ""),
+      source: "task",
+    };
+
+    if (animal?._id) {
+      if (task.taskType === "CD" || task.taskType === "Calving") {
+        params.motherId = String(animal._id);
+      } else {
+        params.animalId = String(animal._id);
+      }
+    }
+
+    if (task.taskType === "PD") {
+      router.push(`/(technician)/pregnancy-verification?id=${task._id}` as any);
+      return;
+    }
+
+    router.push({ pathname: action.pathname as any, params } as any);
+  };
+
+  if (isLoading) {
     return (
       <View
         style={{
@@ -94,8 +128,9 @@ export default function TaskDetailsScreen() {
         />
       </View>
     );
+  }
 
-  if (!task)
+  if (!task) {
     return (
       <View
         style={{
@@ -105,15 +140,27 @@ export default function TaskDetailsScreen() {
           backgroundColor: colors.background,
         }}
       >
-        <Text style={{ color: colors.textPrimary }}>Task not found</Text>
+        <Text style={{ color: colors.textPrimary }}>Visit or task not found</Text>
       </View>
     );
+  }
 
-  const farmerCoords = task.farmerId?.address?.coordinates || {
-    lat: 10.693,
-    lng: 122.474,
-  };
-  const tileUrlTemplate = `${(FileSystem as any).documentDirectory}tiles/{z}/{x}/{y}.png`;
+  const isClaimed = !!task.technicianId;
+
+  const farmLocation = task.farmerId?.farmLocation;
+  const farmerCoords =
+    typeof farmLocation?.latitude === "number" &&
+    typeof farmLocation?.longitude === "number"
+      ? {
+          lat: farmLocation.latitude,
+          lng: farmLocation.longitude,
+          isExact: true,
+        }
+      : {
+          lat: task.farmerId?.address?.coordinates?.lat || 10.693,
+          lng: task.farmerId?.address?.coordinates?.lng || 122.474,
+          isExact: false,
+        };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -129,72 +176,16 @@ export default function TaskDetailsScreen() {
           <ArrowLeft size={24} color={isDark ? "white" : "#1e293b"} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          Task Details
+          Visit / Task Details
         </Text>
       </View>
 
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        {/* Map View Section */}
-        <View style={styles.mapContainer}>
-          <MapView
-            style={styles.map}
-            initialRegion={{
-              latitude: farmerCoords.lat,
-              longitude: farmerCoords.lng,
-              latitudeDelta: 0.01,
-              longitudeDelta: 0.01,
-            }}
-            // If offline tiles exist, this will overlay them
-            mapType={Platform.OS === "android" ? "none" : "standard"}
-          >
-            <UrlTile
-              urlTemplate={tileUrlTemplate}
-              zIndex={1}
-              maximumZ={15}
-              minimumZ={12}
-              offlineMode={true}
-            />
-            <Marker
-              coordinate={{
-                latitude: farmerCoords.lat,
-                longitude: farmerCoords.lng,
-              }}
-              title={task.farmerId?.name}
-              description={task.notes}
-            >
-              <View style={styles.customMarker}>
-                <MapPin size={24} color="#fff" />
-              </View>
-            </Marker>
-          </MapView>
-
-          <Text style={styles.attributionText}>
-            © OpenStreetMap contributors
-          </Text>
-
-          <TouchableOpacity
-            style={[
-              styles.floatingNav,
-              {
-                backgroundColor: isDark ? "#10b981" : "#00643B",
-                shadowColor: isDark ? "transparent" : "#000",
-              },
-            ]}
-            onPress={() => {
-              const url = `https://www.google.com/maps/dir/?api=1&destination=${farmerCoords.lat},${farmerCoords.lng}`;
-              Linking.openURL(url).catch((err) =>
-                console.error("Failed to open maps", err),
-              );
-            }}
-          >
-            <Navigation size={20} color="#fff" />
-            <Text style={styles.navText}>Navigate</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Task Info */}
+        {/* Task Info Content */}
         <View style={styles.content}>
-          <View style={styles.section}>
+          
+          {/* Farmer Info section */}
+          <View style={[styles.section, styles.cardContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.sectionHeader}>
               <User size={18} color={isDark ? "#34d399" : "#00643B"} />
               <Text
@@ -206,25 +197,100 @@ export default function TaskDetailsScreen() {
                 Farmer Info
               </Text>
             </View>
-            <Text style={[styles.farmerName, { color: colors.textPrimary }]}>
-              {task.farmerId?.name}
-            </Text>
-            <View style={styles.row}>
-              <Phone size={14} color={colors.textSecondary} />
-              <Text style={[styles.farmerSub, { color: colors.textSecondary }]}>
-                {task.farmerId?.phoneNumber || "No contact"}
-              </Text>
+            
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 }}>
+              {/* Farmer Profile Pic */}
+              {task.farmerId?.imageUrl ? (
+                <Image
+                  source={{ uri: task.farmerId.imageUrl }}
+                  style={styles.profileAvatar}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.profileAvatar, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
+                  <User size={24} color={colors.textSecondary} />
+                </View>
+              )}
+              
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.farmerName, { color: colors.textPrimary }]}>
+                  {task.farmerId?.name}
+                </Text>
+                
+                {isClaimed ? (
+                  <>
+                    <View style={styles.row}>
+                      <Phone size={14} color={colors.textSecondary} />
+                      <Text style={[styles.farmerSub, { color: colors.textSecondary }]}>
+                        {task.farmerId?.phoneNumber || "No contact"}
+                      </Text>
+                    </View>
+                    <View style={styles.row}>
+                      <MapPin size={14} color={colors.textSecondary} />
+                      <Text style={[styles.farmerSub, { color: colors.textSecondary }]}>
+                        {task.farmerId?.address?.barangay},{" "}
+                        {task.farmerId?.address?.city || task.farmerId?.address?.municipality || "Iloilo"}
+                      </Text>
+                    </View>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                      Landmark: {task.farmerId?.farmLocation?.landmark || task.farmerId?.address?.landmark || "None listed"}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                      Directions: {task.farmerId?.farmLocation?.directionsNote || "None listed"}
+                    </Text>
+                  </>
+                ) : (
+                  <View style={styles.row}>
+                    <Lock size={14} color={colors.textMuted} />
+                    <Text style={[styles.farmerSub, { color: colors.textMuted, fontStyle: "italic" }]}>
+                      Claim task to view contact details
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
-            <View style={styles.row}>
-              <MapPin size={14} color={colors.textSecondary} />
-              <Text style={[styles.farmerSub, { color: colors.textSecondary }]}>
-                {task.farmerId?.address?.barangay},{" "}
-                {task.farmerId?.address?.city}
-              </Text>
-            </View>
+            
+            {/* Navigate Button */}
+            {isClaimed && (
+              <TouchableOpacity
+                style={[
+                  styles.navigateBtn,
+                  {
+                    backgroundColor: isDark ? '#064e3b' : '#f0fdf4',
+                    borderColor: isDark ? '#065f46' : '#bbf7d0',
+                  }
+                ]}
+                onPress={() => {
+                  let destinationQuery = "";
+                  if (farmLocation?.latitude && farmLocation?.longitude) {
+                    destinationQuery = `${farmLocation.latitude},${farmLocation.longitude}`;
+                  } else if (task.farmerId?.address?.coordinates?.lat && task.farmerId?.address?.coordinates?.lng) {
+                    destinationQuery = `${task.farmerId.address.coordinates.lat},${task.farmerId.address.coordinates.lng}`;
+                  } else {
+                    const addr = task.farmerId?.address || {};
+                    destinationQuery = `${addr.barangay || ""}, ${addr.city || addr.municipality || "Iloilo"}`;
+                  }
+
+                  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
+                  Linking.openURL(url).catch((err) =>
+                    console.error("Failed to open maps", err),
+                  );
+                }}
+              >
+                <Navigation size={14} color={isDark ? '#34d399' : '#00643B'} />
+                <Text style={[styles.navigateBtnText, { color: isDark ? '#34d399' : '#00643B' }]}>
+                  {typeof farmLocation?.latitude === "number"
+                    ? "Navigate to Farm Pin"
+                    : (task.farmerId?.address?.coordinates?.lat
+                      ? "Navigate to Address Coordinates"
+                      : "Navigate to Barangay Area")}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
-          <View style={styles.section}>
+          {/* Task Description section */}
+          <View style={[styles.section, styles.cardContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.sectionHeader}>
               <Info size={18} color={isDark ? "#34d399" : "#00643B"} />
               <Text
@@ -233,7 +299,7 @@ export default function TaskDetailsScreen() {
                   { color: isDark ? "#34d399" : "#00643B" },
                 ]}
               >
-                Task Description
+                Visit / Task Description
               </Text>
             </View>
             <View
@@ -260,12 +326,13 @@ export default function TaskDetailsScreen() {
             </Text>
           </View>
 
+          {/* Associated Animals section */}
           {task.animalIds && task.animalIds.length > 0 && (
             <View style={styles.section}>
               <Text
                 style={[
                   styles.sectionTitle,
-                  { color: isDark ? "#34d399" : "#00643B", marginBottom: 12 },
+                  { color: isDark ? "#34d399" : "#00643B", marginBottom: 12, marginLeft: 4 },
                 ]}
               >
                 Associated Animals
@@ -286,6 +353,21 @@ export default function TaskDetailsScreen() {
                     )
                   }
                 >
+                  {/* Animal Profile Pic */}
+                  {anim.imageUrl ? (
+                    <Image
+                      source={{ uri: anim.imageUrl }}
+                      style={styles.animalAvatar}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={[styles.animalAvatar, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
+                      <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary, fontSize: 16 }}>
+                        {(anim.species || 'A').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+
                   <View style={styles.animalInfo}>
                     <Text
                       style={[styles.animalTag, { color: colors.textPrimary }]}
@@ -307,31 +389,74 @@ export default function TaskDetailsScreen() {
             </View>
           )}
 
-          <TouchableOpacity
-            disabled={completing}
-            style={[
-              styles.completeBtn,
-              {
-                backgroundColor: completing
-                  ? "#34d399"
-                  : isDark
-                    ? "#10b981"
-                    : "#00643B",
-                shadowColor: isDark ? "transparent" : "#00643B",
-                opacity: completing ? 0.7 : 1,
-              },
-            ]}
-            onPress={handleComplete}
-          >
-            {completing ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <CheckCircle size={20} color="#fff" />
-                <Text style={styles.completeBtnText}>Mark as Completed</Text>
-              </>
-            )}
-          </TouchableOpacity>
+          {/* Save/Action Button */}
+          {!isClaimed ? (
+            <TouchableOpacity
+              disabled={claiming}
+              style={[
+                styles.completeBtn,
+                {
+                  backgroundColor: claiming
+                    ? "#34d399"
+                    : isDark
+                      ? "#10b981"
+                      : "#00643B",
+                  shadowColor: isDark ? "transparent" : "#00643B",
+                  opacity: claiming ? 0.7 : 1,
+                },
+              ]}
+              onPress={handleClaim}
+            >
+              {claiming ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <CheckCircle size={20} color="#fff" />
+                  <Text style={styles.completeBtnText}>Claim Task</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          ) : task.status === "Completed" ? (
+            <View
+              style={[
+                styles.completeBtn,
+                {
+                  backgroundColor: colors.border,
+                  shadowColor: "transparent",
+                  opacity: 0.8,
+                },
+              ]}
+            >
+              <CheckCircle size={20} color={colors.textMuted} />
+              <Text style={[styles.completeBtnText, { color: colors.textMuted }]}>Completed</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              disabled={completing}
+              style={[
+                styles.completeBtn,
+                {
+                  backgroundColor: completing
+                    ? "#34d399"
+                    : isDark
+                      ? "#10b981"
+                      : "#00643B",
+                  shadowColor: isDark ? "transparent" : "#00643B",
+                  opacity: completing ? 0.7 : 1,
+                },
+              ]}
+              onPress={handlePrimaryAction}
+            >
+              {completing ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <CheckCircle size={20} color="#fff" />
+                  <Text style={styles.completeBtnText}>{getPrimaryAction().label}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -358,47 +483,21 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: "#1e293b",
   },
-  mapContainer: {
-    height: 300,
-    width: "100%",
-    position: "relative",
-  },
-  map: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  floatingNav: {
-    position: "absolute",
-    bottom: 20,
-    right: 20,
-    backgroundColor: "#00643B",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
-  },
-  navText: {
-    color: "#fff",
-    fontFamily: "Outfit_700Bold",
-    fontSize: 14,
-  },
-  customMarker: {
-    backgroundColor: "#dc2626",
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
   content: {
-    padding: 24,
+    padding: 20,
   },
   section: {
-    marginBottom: 32,
+    marginBottom: 20,
+  },
+  cardContainer: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    elevation: 2,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -408,43 +507,71 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontFamily: "Outfit_800ExtraBold",
-    fontSize: 14,
+    fontSize: 13,
     color: "#00643B",
     textTransform: "uppercase",
     letterSpacing: 1,
   },
+  profileAvatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   farmerName: {
     fontFamily: "Outfit_800ExtraBold",
-    fontSize: 24,
+    fontSize: 20,
     color: "#1e293b",
   },
   farmerSub: {
     fontFamily: "Outfit_500Medium",
-    fontSize: 14,
+    fontSize: 13,
     color: "#64748b",
     marginLeft: 8,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 6,
+    marginTop: 4,
+  },
+  navigateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  navigateBtnText: {
+    fontSize: 13,
+    fontFamily: 'Outfit_700Bold',
   },
   notesText: {
     fontFamily: "Outfit_500Medium",
-    fontSize: 16,
+    fontSize: 15,
     color: "#475569",
-    lineHeight: 24,
+    lineHeight: 22,
   },
   animalCard: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#f8fafc",
     padding: 16,
-    borderRadius: 16,
-    marginTop: 12,
+    borderRadius: 20,
+    marginTop: 10,
     borderWidth: 1,
-    borderColor: "#f1f5f9",
+  },
+  animalAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   animalInfo: {
     flex: 1,
@@ -467,7 +594,7 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 24,
     gap: 12,
-    marginTop: 20,
+    marginTop: 10,
     shadowColor: "#00643B",
     shadowOpacity: 0.2,
     shadowRadius: 15,
@@ -477,18 +604,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontFamily: "Outfit_800ExtraBold",
     fontSize: 16,
-  },
-  attributionText: {
-    position: "absolute",
-    left: 12,
-    bottom: 12,
-    fontSize: 9,
-    fontFamily: "Outfit_500Medium",
-    color: "rgba(0,0,0,0.45)",
-    backgroundColor: "rgba(255,255,255,0.85)",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    zIndex: 101,
   },
 });

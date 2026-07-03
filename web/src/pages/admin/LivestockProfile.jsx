@@ -1,11 +1,10 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   Download,
   Phone,
-  Mail,
   MapPin,
   User,
   Activity,
@@ -15,10 +14,8 @@ import {
   AlertCircle,
   ShieldCheck,
   CheckCircle2,
-  Clock,
   Tag,
   Heart,
-  Scale,
   Calendar,
   ChevronRight,
 } from "lucide-react";
@@ -26,7 +23,6 @@ import axiosInstance from "../../lib/axios";
 import EditInseminationModal from "../../components/EditInseminationModal";
 import AddMedicalRecordModal from "../../components/modals/AddMedicalRecordModal";
 import ActivityDetailsModal from "../../components/modals/ActivityDetailsModal";
-import BreedingTimeline from "../../components/BreedingTimeline";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -125,47 +121,7 @@ function InfoCell({ label, value, mono = false, accent = false }) {
   );
 }
 
-function VaccBar({ label, pct, status }) {
-  const barColor =
-    status === "due"
-      ? "bg-amber-400"
-      : status === "overdue"
-        ? "bg-rose-400"
-        : "bg-emerald-500";
-  const chipColor =
-    status === "due"
-      ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-800"
-      : status === "overdue"
-        ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-800"
-        : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800";
-  const chipLabel =
-    status === "due"
-      ? "Due soon"
-      : status === "overdue"
-        ? "Overdue"
-        : "Current";
 
-  return (
-    <div className="flex items-center justify-between gap-3 py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <div className="flex-1 min-w-0">
-        <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-300 truncate">
-          {label}
-        </p>
-        <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 mt-1.5 overflow-hidden">
-          <div
-            className={`h-full rounded-full ${barColor} transition-all duration-500`}
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-      </div>
-      <span
-        className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${chipColor}`}
-      >
-        {chipLabel}
-      </span>
-    </div>
-  );
-}
 
 // ── Tabs config ────────────────────────────────────────────────────────────
 
@@ -181,9 +137,12 @@ const TABS = [
 export default function LivestockProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedInsemination, setSelectedInsemination] = useState(null);
   const [selectedActivity, setSelectedActivity] = useState(null);
+  const [isAddMedicalModalOpen, setIsAddMedicalModalOpen] = useState(false);
+  const isAdminPath = window.location.pathname.startsWith("/admin");
 
   const { data: medicalHistory = [], isLoading: isLoadingMedical } = useQuery({
     queryKey: ["medical", id],
@@ -644,7 +603,27 @@ export default function LivestockProfile() {
                             </td>
                             <td className="px-4 py-3.5 text-right">
                               <button
-                                onClick={() => setSelectedInsemination(ins)}
+                                onClick={() => {
+                                  if (isAdminPath) {
+                                    setSelectedActivity({
+                                      ...ins,
+                                      type: "Insemination",
+                                      title: `AI Service — ${ins.sireBreed || "N/A"}`,
+                                      description: ins.technicianNote || "Artificial insemination recorded.",
+                                      date: ins.inseminationDate,
+                                      status: ins.status || "Done",
+                                      iconType: "Syringe",
+                                      technicianName: ins.technicianId?.name,
+                                      details: {
+                                        sireBreed: ins.sireBreed,
+                                        sireCode: ins.sireCode,
+                                        attemptNumber: ins.attemptNumber,
+                                      },
+                                    });
+                                  } else {
+                                    setSelectedInsemination(ins);
+                                  }
+                                }}
                                 className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                               >
                                 <ChevronRight size={13} />
@@ -664,10 +643,18 @@ export default function LivestockProfile() {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-in fade-in duration-150">
                 {/* Treatment table */}
                 <div className="xl:col-span-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-                  <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+                  <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                     <h3 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                       <Stethoscope size={12} /> Treatment ledger
                     </h3>
+                    {!isAdminPath && (
+                      <button
+                        onClick={() => setIsAddMedicalModalOpen(true)}
+                        className="btn btn-xs bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-[10px] font-bold rounded-lg cursor-pointer transition-all active:scale-95 shadow-xs"
+                      >
+                        + Add Record
+                      </button>
+                    )}
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs border-collapse">
@@ -813,6 +800,15 @@ export default function LivestockProfile() {
         isOpen={!!selectedActivity}
         onClose={() => setSelectedActivity(null)}
         activity={selectedActivity}
+      />
+      <AddMedicalRecordModal
+        isOpen={isAddMedicalModalOpen}
+        onClose={() => setIsAddMedicalModalOpen(false)}
+        animalId={id}
+        animalTag={animal.earTag}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["medical", id] });
+        }}
       />
     </div>
   );

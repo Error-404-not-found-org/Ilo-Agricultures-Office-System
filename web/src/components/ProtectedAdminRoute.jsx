@@ -21,7 +21,7 @@ const ProtectedAdminRoute = ({ children }) => {
       return config;
     });
 
-    setIsInterceptorSetup(true);
+    Promise.resolve().then(() => setIsInterceptorSetup(true));
 
     return () => {
       axiosInstance.interceptors.request.eject(interceptor);

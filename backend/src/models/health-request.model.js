@@ -15,7 +15,11 @@ const HealthRequestSchema = new mongoose.Schema(
     // What kind of request is this?
     requestType: {
       type: String,
-      enum: ["disease", "medicine", "checkup", "injury", "vaccination", "deworming", "other"],
+      enum: [
+        "disease", "medicine", "checkup", "injury", "vaccination", "deworming",
+        "weakness", "abnormal_behavior", "loss_of_appetite", "pregnancy_complication",
+        "wound", "fever", "difficult_calving", "other"
+      ],
       default: "disease",
     },
     // Description of symptoms or issue
@@ -26,13 +30,18 @@ const HealthRequestSchema = new mongoose.Schema(
     // 'low' = can wait, 'medium' = soon, 'high' = urgent / emergency
     urgency: {
       type: String,
-      enum: ["low", "medium", "high"],
+      enum: ["low", "medium", "high", "emergency"],
       default: "medium",
     },
     imageUrl: {
       type: String,
       default: "",
     },
+    photos: {
+      type: [String],
+      default: [],
+    },
+    farmerNotes: { type: String, default: "" },
     preferredDate: {
       type: Date,
       default: Date.now,
@@ -42,13 +51,23 @@ const HealthRequestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "approved", "in-progress", "resolved", "cancelled"],
+      enum: ["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress", "resolved", "cancelled", "rejected"],
       default: "pending",
     },
     handledBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    declinedByTechnicianIds: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    }],
+    claimedAt: {
+      type: Date,
+      default: null,
+    },
+    assignedTechnicianId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    assignedVeterinarianId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     technicianNote: {
       type: String,
       default: "",
@@ -57,14 +76,37 @@ const HealthRequestSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    findings: { type: String, default: "" },
     treatment: {
       type: String,
       default: "", // Medicine or procedures given
     },
+    medicineGiven: { type: String, default: "" },
+    dosage: { type: String, default: "" },
+    withdrawalPeriodDays: { type: Number },
+    withdrawalEndDate: { type: Date },
+    followUpDate: { type: Date },
+    resolutionNotes: { type: String, default: "" },
+    resolvedAt: { type: Date },
+    statusHistory: [{
+      status: { type: String, required: true },
+      note: { type: String, default: "" },
+      actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      createdAt: { type: Date, default: Date.now },
+    }],
     advice: {
       type: String,
       default: "", // Advice for the farmer
     },
+    // Cancellation tracking
+    cancellationStatus: {
+      type: String,
+      enum: ["none", "requested", "approved", "rejected"],
+      default: "none",
+    },
+    cancellationReason: { type: String, default: "" },
+    cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    cancellationRequestedAt: { type: Date },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
@@ -76,6 +118,9 @@ HealthRequestSchema.index({ farmerId: 1 });
 HealthRequestSchema.index({ status: 1 });
 HealthRequestSchema.index({ urgency: -1, createdAt: -1 });
 HealthRequestSchema.index({ scheduledDate: 1 });
+HealthRequestSchema.index({ assignedTechnicianId: 1, status: 1 });
+HealthRequestSchema.index({ assignedVeterinarianId: 1, status: 1 });
 HealthRequestSchema.index({ deletedAt: 1 });
+HealthRequestSchema.index({ declinedByTechnicianIds: 1 });
 
 export const HealthRequest = mongoose.model("HealthRequest", HealthRequestSchema);

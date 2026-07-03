@@ -8,6 +8,10 @@ import {
   RefreshControl,
   Alert,
   Image,
+  TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
@@ -19,20 +23,21 @@ import {
   AlertCircle,
   ChevronRight,
   CheckCircle2,
+  XCircle,
+  Ban,
 } from "lucide-react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { format } from "date-fns";
 import { toast } from "sonner-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { ScreenLayout } from "@/components/ScreenLayout";
 
 export default function MyRequests() {
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
-  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
 
   const primaryColor = isDark ? colors.primary : "#00643B";
@@ -41,7 +46,11 @@ export default function MyRequests() {
   const [status, setStatus] = React.useState("all");
   const [allRequests, setAllRequests] = React.useState<any[]>([]);
   const [modalVisible, setModalVisible] = React.useState(false);
-  const [deleteInfo, setDeleteInfo] = React.useState<{ id: string; type: string; animalTag: string; isCancel: boolean } | null>(null);
+  const [deleteInfo, setDeleteInfo] = React.useState<{ id: string; type: string; animalTag: string; isCancel: boolean; isScheduled: boolean } | null>(null);
+  const [reasonModalVisible, setReasonModalVisible] = React.useState(false);
+  const [cancellationReason, setCancellationReason] = React.useState("");
+  const [pendingCancelInfo, setPendingCancelInfo] = React.useState<{ id: string; type: string; animalTag: string } | null>(null);
+  const [isSubmittingCancel, setIsSubmittingCancel] = React.useState(false);
 
   const {
     data: aiData,
@@ -138,32 +147,68 @@ export default function MyRequests() {
   const STATUS_FILTERS = [
     { label: "All", value: "all" },
     { label: "Pending", value: "pending" },
+    { label: "Approved", value: "approved" },
+    { label: "Scheduled", value: "scheduled" },
     { label: "In-Progress", value: "in-progress" },
     { label: "Resolved", value: "done" },
+    { label: "Pending Cancellation", value: "pending_cancellation" },
   ];
 
-  const handleDelete = (id: string, type: string, animalTag: string, isCancel: boolean) => {
-    setDeleteInfo({ id, type, animalTag, isCancel });
-    setModalVisible(true);
+  const handleDelete = (id: string, type: string, animalTag: string, isCancel: boolean, isScheduled: boolean) => {
+    setDeleteInfo({ id, type, animalTag, isCancel, isScheduled });
+    if (isCancel && isScheduled) {
+      // Scheduled cancellation requires a reason — show reason modal
+      setPendingCancelInfo({ id, type, animalTag });
+      setCancellationReason("");
+      setReasonModalVisible(true);
+    } else {
+      setModalVisible(true);
+    }
   };
 
   const handleConfirmDelete = async () => {
     if (!deleteInfo) return;
     const { id, type, isCancel } = deleteInfo;
-    const endpoint = type === "ai" ? `/ai-request/${id}` : `/health-request/${id}`;
+    if (isCancel) {
+      // Direct cancel (pending/approved)
+      const endpoint = type === "ai" ? `/ai-request/${id}/cancel` : `/health-request/${id}/cancel`;
+      try {
+        await api.patch(endpoint, {});
+        toast.success("Request cancelled successfully");
+        queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
+        queryClient.invalidateQueries({ queryKey: ["farmer", "health-requests"] });
+      } catch (err: any) {
+        toast.error(err.response?.data?.message || "Failed to cancel request");
+      }
+    } else {
+      // Remove from history — admin-only DELETE is now blocked; just refresh list
+      toast.info("Removed from view.");
+      queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["farmer", "health-requests"] });
+    }
+  };
+
+  const handleConfirmScheduledCancel = async () => {
+    if (!pendingCancelInfo) return;
+    if (!cancellationReason.trim()) {
+      toast.error("Please provide a reason for cancellation.");
+      return;
+    }
+    setIsSubmittingCancel(true);
+    const { id, type } = pendingCancelInfo;
+    const endpoint = type === "ai" ? `/ai-request/${id}/cancel` : `/health-request/${id}/cancel`;
     try {
-      await api.delete(endpoint);
-      toast.success(isCancel ? "Request cancelled successfully" : "Request removed successfully");
-      queryClient.invalidateQueries({
-        queryKey: ["farmer", "ai-requests"],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["farmer", "health-requests"],
-      });
+      await api.patch(endpoint, { reason: cancellationReason.trim() });
+      toast.success("Cancellation request submitted. Awaiting technician review.");
+      setReasonModalVisible(false);
+      setCancellationReason("");
+      setPendingCancelInfo(null);
+      queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["farmer", "health-requests"] });
     } catch (err: any) {
-      toast.error(
-        err.response?.data?.message || (isCancel ? "Failed to cancel request" : "Failed to remove request"),
-      );
+      toast.error(err.response?.data?.message || "Failed to submit cancellation request");
+    } finally {
+      setIsSubmittingCancel(false);
     }
   };
 
@@ -178,6 +223,11 @@ export default function MyRequests() {
         return {
           bg: isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5",
           text: isDark ? "#34d399" : "#065F46",
+        };
+      case "scheduled":
+        return {
+          bg: isDark ? "rgba(2, 132, 199, 0.15)" : "#E0F2FE",
+          text: isDark ? "#38bdf8" : "#0369A1",
         };
       case "in-progress":
         return {
@@ -217,14 +267,11 @@ export default function MyRequests() {
   };
 
   return (
-    <View
-      className="flex-1 bg-[#F9FAFB] dark:bg-slate-950"
-      style={{ backgroundColor: colors.background }}
-    >
+    <ScreenLayout>
       {/* Header */}
       <View
         style={{
-          paddingTop: insets.top + 10,
+          paddingTop: 10,
           backgroundColor: colors.card,
           borderBottomColor: colors.border,
         }}
@@ -241,7 +288,7 @@ export default function MyRequests() {
           className="text-lg font-black"
           style={{ color: colors.textPrimary }}
         >
-          Service Hub
+          My Service Requests
         </Text>
         <View className="w-10" />
       </View>
@@ -266,7 +313,7 @@ export default function MyRequests() {
           className="text-[10px] font-bold uppercase tracking-widest mb-6"
           style={{ color: colors.textMuted }}
         >
-          Track and manage your requests
+          Track and manage your service requests
         </Text>
 
         {/* Status Filter Bar */}
@@ -322,7 +369,7 @@ export default function MyRequests() {
               className="text-[13px] font-black"
               style={{ color: colors.textPrimary }}
             >
-              Request AI
+              AI Service Request
             </Text>
             <Text
               className="text-[9px] font-bold mt-1 text-center"
@@ -344,13 +391,13 @@ export default function MyRequests() {
               className="text-[13px] font-black"
               style={{ color: colors.textPrimary }}
             >
-              Request Vet
+              Report Health Concern
             </Text>
             <Text
               className="text-[9px] font-bold mt-1 text-center"
               style={{ color: colors.textMuted }}
             >
-              Health Checkup
+              Health Assistance
             </Text>
           </TouchableOpacity>
         </View>
@@ -359,7 +406,7 @@ export default function MyRequests() {
           className="text-sm font-black uppercase tracking-widest mb-4"
           style={{ color: colors.textPrimary }}
         >
-          Request Activity
+          Service Request Activity
         </Text>
 
         {isLoading ? (
@@ -370,9 +417,13 @@ export default function MyRequests() {
           allRequests.map((req: any) => {
             const statusStyle = getStatusColor(req.status);
             const isHealth = req.type === "health";
-            const canCancel = ["pending", "approved", "in-progress"].includes(req.status);
+            const isPendingCancellation = req.cancellationStatus === "requested";
+            const canCancelDirectly = ["pending", "approved"].includes(req.status) && !isPendingCancellation;
+            const canRequestCancellation = req.status === "scheduled" && !isPendingCancellation;
             const canRemove = ["rejected", "cancelled"].includes(req.status);
-            const canDelete = canCancel || canRemove;
+            const canDelete = canCancelDirectly || canRequestCancellation || canRemove;
+            // Filter for pending_cancellation tab
+            if (status === "pending_cancellation" && !isPendingCancellation) return null;
 
             return (
               <View
@@ -569,31 +620,27 @@ export default function MyRequests() {
                   </View>
                 ) : null}
 
-                {/* Scheduled Info if approved/in-progress */}
-                {["approved", "in-progress"].includes(req.status) &&
-                  req.scheduledDate && (
-                    <View
-                      className="flex-row items-center gap-2 mb-4 p-3 rounded-xl border"
-                      style={{
-                        backgroundColor: isDark
-                          ? "rgba(16, 185, 129, 0.1)"
-                          : "#f0fdf4",
-                        borderColor: isDark ? "transparent" : "#d1fae5",
-                      }}
+                {/* Scheduled Info if scheduledDate is set */}
+                {req.scheduledDate ? (
+                  <View
+                    className="flex-row items-center gap-2 mb-4 p-3 rounded-xl border"
+                    style={{
+                      backgroundColor: isDark
+                        ? "rgba(2, 132, 199, 0.1)"
+                        : "#e0f2fe",
+                      borderColor: isDark ? "transparent" : "#bae6fd",
+                    }}
+                  >
+                    <Clock size={14} color={isDark ? "#38bdf8" : "#0284c7"} />
+                    <Text
+                      className="text-[12px] font-bold"
+                      style={{ color: isDark ? "#7dd3fc" : "#0369a1" }}
                     >
-                      <Clock size={14} color={primaryColor} />
-                      <Text
-                        className="text-[12px] font-bold"
-                        style={{ color: isDark ? "#a7f3d0" : "#065f46" }}
-                      >
-                        Scheduled for{" "}
-                        {format(new Date(req.scheduledDate), "MMM d, h:mm a")}
-                      </Text>
-                    </View>
-                  )}
-
-                {/* Preferred Date Info if pending */}
-                {req.status === "pending" && req.preferredDate && (
+                      Scheduled for{" "}
+                      {format(new Date(req.scheduledDate), "MMM d, h:mm a")}
+                    </Text>
+                  </View>
+                ) : req.preferredDate ? (
                   <View
                     className="flex-row items-center gap-2 mb-4 p-3 rounded-xl border"
                     style={{
@@ -612,7 +659,7 @@ export default function MyRequests() {
                       {format(new Date(req.preferredDate), "MMM d, h:mm a")}
                     </Text>
                   </View>
-                )}
+                ) : null}
 
                 {/* Technician Info */}
                 {(req.approvedBy || req.handledBy || req.technicianId) && (
@@ -631,9 +678,38 @@ export default function MyRequests() {
                   </View>
                 )}
 
+                {/* Pending Cancellation Badge */}
+                {isPendingCancellation && (
+                  <View
+                    className="flex-row items-center gap-2 p-3 rounded-xl border mb-4"
+                    style={{
+                      backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#FFFBEB",
+                      borderColor: isDark ? "rgba(245, 158, 11, 0.3)" : "#FEF3C7",
+                    }}
+                  >
+                    <XCircle size={14} color={isDark ? "#fbbf24" : "#d97706"} />
+                    <View className="flex-1">
+                      <Text
+                        className="text-[11px] font-black uppercase tracking-wider"
+                        style={{ color: isDark ? "#fbbf24" : "#92400E" }}
+                      >
+                        Pending Cancellation
+                      </Text>
+                      {req.cancellationReason ? (
+                        <Text
+                          className="text-[10px] mt-0.5"
+                          style={{ color: isDark ? "#fde68a" : "#b45309" }}
+                        >
+                          Reason: {req.cancellationReason}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                )}
+
                 {/* Actions */}
                 <View
-                  className="flex-row gap-3 pt-2 border-t"
+                  className="flex-row gap-3 pt-2 border-t flex-wrap"
                   style={{ borderTopColor: colors.border }}
                 >
                   {req.animalId?._id && (
@@ -643,7 +719,7 @@ export default function MyRequests() {
                           `/(farmer)/animal-details?id=${req.animalId?._id}`,
                         )
                       }
-                      className="flex-row items-center gap-2"
+                      className="flex-row items-center gap-1"
                     >
                       <Text
                         className="text-[11px] font-black uppercase tracking-widest"
@@ -652,6 +728,64 @@ export default function MyRequests() {
                         Animal Details
                       </Text>
                       <ChevronRight size={12} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  )}
+
+                  {isHealth ? (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(farmer)/health-request-detail",
+                          params: { id: req._id },
+                        })
+                      }
+                      className="flex-row items-center gap-1 ml-3"
+                    >
+                      <Text
+                        className="text-[11px] font-black uppercase tracking-widest"
+                        style={{ color: primaryColor }}
+                      >
+                        View Request
+                      </Text>
+                      <ChevronRight size={12} color={primaryColor} />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(farmer)/ai-request-detail",
+                          params: { id: req._id },
+                        })
+                      }
+                      className="flex-row items-center gap-1 ml-3"
+                    >
+                      <Text
+                        className="text-[11px] font-black uppercase tracking-widest"
+                        style={{ color: primaryColor }}
+                      >
+                        View Request
+                      </Text>
+                      <ChevronRight size={12} color={primaryColor} />
+                    </TouchableOpacity>
+                  )}
+
+                  {isHealth && (req.status === "resolved" || req.status === "done") && (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(farmer)/health-report-preview",
+                          params: { id: req._id },
+                        })
+                      }
+                      className="flex-row items-center gap-1 ml-3"
+                    >
+                      <Text
+                        className="text-[11px] font-black uppercase tracking-widest"
+                        style={{ color: primaryColor }}
+                      >
+                        View Report
+                      </Text>
+                      <ChevronRight size={12} color={primaryColor} />
                     </TouchableOpacity>
                   )}
 
@@ -666,7 +800,8 @@ export default function MyRequests() {
                           req.animalId?.earTag ||
                             req.animalId?.animalId ||
                             "this animal",
-                          canCancel,
+                          canCancelDirectly || canRequestCancellation,
+                          canRequestCancellation,
                         )
                       }
                       className="px-4 py-2 rounded-xl flex-row items-center gap-2"
@@ -676,12 +811,16 @@ export default function MyRequests() {
                           : "#fef2f2",
                       }}
                     >
-                      <Trash2 size={14} color={colors.error} />
+                      {canRequestCancellation ? (
+                        <Ban size={14} color={colors.error} />
+                      ) : (
+                        <Trash2 size={14} color={colors.error} />
+                      )}
                       <Text
                         className="text-[11px] font-black"
                         style={{ color: colors.error }}
                       >
-                        {canCancel ? "Cancel" : "Remove"}
+                        {canRequestCancellation ? "Request Cancellation" : canCancelDirectly ? "Cancel" : "Remove"}
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -743,6 +882,110 @@ export default function MyRequests() {
           isDestructive={true}
         />
       )}
-    </View>
+
+      {/* Scheduled Cancellation — Reason Modal */}
+      <Modal
+        visible={reasonModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReasonModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={{ flex: 1 }}
+        >
+          <View
+            style={{
+              flex: 1,
+              justifyContent: "flex-end",
+              backgroundColor: "rgba(0,0,0,0.5)",
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: colors.card,
+                borderTopLeftRadius: 28,
+                borderTopRightRadius: 28,
+                padding: 24,
+                paddingBottom: 40,
+              }}
+            >
+              <View className="flex-row items-center justify-between mb-2">
+                <Text
+                  className="text-[16px] font-black"
+                  style={{ color: colors.textPrimary }}
+                >
+                  Request Cancellation
+                </Text>
+                <TouchableOpacity onPress={() => setReasonModalVisible(false)}>
+                  <XCircle size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <View
+                className="flex-row items-start gap-2 p-3 rounded-xl border mb-4"
+                style={{
+                  backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#FFFBEB",
+                  borderColor: isDark ? "rgba(245, 158, 11, 0.3)" : "#FEF3C7",
+                }}
+              >
+                <AlertCircle size={14} color={isDark ? "#fbbf24" : "#d97706"} style={{ marginTop: 2 }} />
+                <Text
+                  className="text-[11px] font-bold flex-1"
+                  style={{ color: isDark ? "#fde68a" : "#92400E" }}
+                >
+                  This visit is already scheduled. Your request will be sent to your assigned technician for review. Please contact your assigned technician or the Municipal Agriculture Office if urgent.
+                </Text>
+              </View>
+
+              <Text
+                className="text-[11px] font-black uppercase tracking-widest mb-2"
+                style={{ color: colors.textMuted }}
+              >
+                Reason for Cancellation *
+              </Text>
+              <TextInput
+                value={cancellationReason}
+                onChangeText={setCancellationReason}
+                placeholder="e.g. Animal is sick, I will be travelling..."
+                placeholderTextColor={colors.textMuted}
+                multiline
+                numberOfLines={3}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 14,
+                  padding: 12,
+                  color: colors.textPrimary,
+                  backgroundColor: isDark ? colors.background : "#f8fafc",
+                  fontSize: 13,
+                  fontFamily: "Outfit_500Medium",
+                  minHeight: 80,
+                  textAlignVertical: "top",
+                }}
+              />
+
+              <TouchableOpacity
+                onPress={handleConfirmScheduledCancel}
+                disabled={isSubmittingCancel || !cancellationReason.trim()}
+                className="mt-4 py-4 rounded-2xl items-center"
+                style={{
+                  backgroundColor:
+                    isSubmittingCancel || !cancellationReason.trim()
+                      ? colors.border
+                      : colors.error,
+                }}
+              >
+                <Text
+                  className="text-[13px] font-black text-white"
+                >
+                  {isSubmittingCancel ? "Submitting..." : "Submit Cancellation Request"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+    </ScreenLayout>
   );
 }

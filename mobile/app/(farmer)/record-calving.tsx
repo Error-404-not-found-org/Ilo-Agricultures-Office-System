@@ -133,6 +133,7 @@ export default function RecordCalving() {
   };
 
   const handleSubmit = async () => {
+    toast.dismiss();
     // Basic validation
     for (let i = 0; i < calves.length; i++) {
       if (!calves[i].earTag) {

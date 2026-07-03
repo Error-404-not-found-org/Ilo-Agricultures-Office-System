@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Calendar, BadgeCheck, Info, Stethoscope, Syringe, FileText } from "lucide-react";
@@ -26,12 +26,14 @@ const EditHealthModal = ({ isOpen, onClose, health }) => {
 
   useEffect(() => {
     if (health) {
-      setFormData({
-        scheduledDate: formatDateForInput(health.scheduledDate || health.preferredDate || health.updatedAt),
-        status: health.status || "pending",
-        diagnosis: health.diagnosis || "",
-        treatment: health.treatment || health.medicine || "",
-        technicianNote: health.technicianNote || health.comment || "",
+      Promise.resolve().then(() => {
+        setFormData({
+          scheduledDate: formatDateForInput(health.scheduledDate || health.preferredDate || health.updatedAt),
+          status: health.status || "pending",
+          diagnosis: health.diagnosis || "",
+          treatment: health.treatment || health.medicine || "",
+          technicianNote: health.technicianNote || health.comment || "",
+        });
       });
     }
   }, [health]);

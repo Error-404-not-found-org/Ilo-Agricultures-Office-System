@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   FileText,
   Clock,
@@ -7,10 +7,8 @@ import {
   Download,
   Trash2,
   Play,
-  CheckCircle,
   Settings,
-  Calendar,
-  Layers,
+    Calendar,
 } from "lucide-react";
 import Topbar from "../../components/ui/Topbar";
 import axiosInstance from "../../lib/axios";
@@ -201,7 +199,8 @@ export default function FieldReports() {
   };
 
   useEffect(() => {
-    fetchActivityRecords();
+    Promise.resolve().then(() => fetchActivityRecords());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleSchedule = (id) => {

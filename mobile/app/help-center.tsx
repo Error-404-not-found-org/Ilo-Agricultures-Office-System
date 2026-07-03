@@ -28,7 +28,7 @@ export default function HelpCenter() {
   const farmerFAQs = [
     {
       q: "How do I request Artificial Insemination (AI)?",
-      a: "Go to your Home tab, tap 'Request AI', fill in the animal's details (Ear Tag, breed), select your preferred schedule, and submit. A technician will receive a notification to approve and complete the visit."
+      a: "Go to your Home tab, tap 'AI Service Request', fill in the animal's details (Ear Tag, breed), select your preferred schedule, and submit. A technician will receive a notification to claim or schedule the visit."
     },
     {
       q: "What is 'Ask Moowie' AI assistant?",
@@ -69,18 +69,14 @@ export default function HelpCenter() {
     if (!supportMessage.trim()) return toast.error("Please enter a message.");
     setIsSubmittingTicket(true);
     try {
-      const userLabel = isTechnician ? 'Technician' : 'Farmer';
-      await api.post('/notification', {
-        title: "Support Ticket Submitted",
-        message: `${userLabel} ${clerkUser?.fullName || 'User'} submitted a query: ${supportMessage}`,
-        type: "system",
-        recipientId: "000000000000000000000000"
+      await api.post('/support-tickets', {
+        message: supportMessage,
       });
       toast.success("Message sent! Support will contact you shortly.");
       setSupportMessage('');
-    } catch (err) {
-      toast.success("Ticket submitted successfully!");
-      setSupportMessage('');
+    } catch (err: any) {
+      const errMsg = err.response?.data?.message || err.message || "Failed to submit ticket.";
+      toast.error(errMsg);
     } finally {
       setIsSubmittingTicket(false);
     }

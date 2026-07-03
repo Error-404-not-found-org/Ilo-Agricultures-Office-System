@@ -8,21 +8,24 @@ import {
   toggleFarmerVerification, getTechnicianAnalytics, deleteAnimal,
   deletePregnancyCheck, deleteCalving, getFieldNotes,
   createFieldNote, getTechnicianFieldNotes, deleteFieldNote, deleteFieldNoteRecord,
-  markCalvingAsSeen
+  markCalvingAsSeen, getTechnicianRequests, declineTechnicianRequest, claimRequest
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import { getCleanupSurvey, executeCleanup } from "../controllers/maintenance.controllers.js";
 
 const router = Router();
 
-router.use(protectedRoute, requireRole(["admin", "technician"]));
+router.use(protectedRoute, requireRole(["admin", "technician", "veterinarian"]));
 
 // Maintenance
-router.get("/cleanup-survey", getCleanupSurvey);
-router.post("/cleanup-execute", executeCleanup);
+router.get("/cleanup-survey", requireRole(["admin"]), getCleanupSurvey);
+router.post("/cleanup-execute", requireRole(["admin"]), executeCleanup);
 
 // Get functions for technician
 router.get("/dashboard-data", getTechnicianDashboardData);
+router.get("/requests", getTechnicianRequests);
+router.patch("/requests/:type/:id/decline", declineTechnicianRequest);
+router.patch("/requests/:type/:id/claim", claimRequest);
 router.get("/field-notes", getFieldNotes);
 router.get("/dashboard-stats", getDashboardStats);
 router.get("/dashboard-feed", getDashboardFeed);

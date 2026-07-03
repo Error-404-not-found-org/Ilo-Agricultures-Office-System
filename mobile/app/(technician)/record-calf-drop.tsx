@@ -221,6 +221,7 @@ export default function RecordCalfDropScreen() {
     };
 
     const handleSave = async () => {
+        toast.dismiss();
         if (!motherId || !pregnancyId) {
             toast.error("Please select a mother with an active pregnancy.");
             return;
@@ -245,7 +246,7 @@ export default function RecordCalfDropScreen() {
             };
 
             await api.post('/technician/record-calving', payload);
-            toast.success("Calf Drop recorded successfully!");
+            toast.success("Calving recorded successfully!");
             queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
             router.back();
         } catch (err: any) {
@@ -274,7 +275,7 @@ export default function RecordCalfDropScreen() {
                     <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e2937'} />
                 </TouchableOpacity>
                 <View>
-                    <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colors.textPrimary }}>Record Calf Drop</Text>
+                    <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colors.textPrimary }}>Record Calving / Offspring</Text>
                     {motherTag && (
                         <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 10, color: isDark ? '#6b7280' : '#94a3b8', textTransform: 'uppercase' }}>Mother: #{motherTag}</Text>
                     )}

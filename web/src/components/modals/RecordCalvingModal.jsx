@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Baby, Calendar, ClipboardCheck, Search, ChevronDown, User, AlertCircle, Info, Sparkles } from 'lucide-react';
+import { X, Baby, Calendar, ClipboardCheck, Search, AlertCircle, Sparkles } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
@@ -49,20 +49,22 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
         if (isOpen) {
             window.addEventListener('keydown', handleKeyDown);
         } else {
-            setSelectedFarmerId('');
-            setSearchFarmer('');
-            setIsDropdownOpen(false);
-            setSelectedAnimalId('');
-            setFormData({
-                pregnancyId: '',
-                animalId: '',
-                date: new Date().toISOString().split('T')[0],
-                calvingEase: 'Natural',
-                numberOfCalves: 1,
-                calves: [
-                    { sex: 'F', earTag: '', color: '', brand: '' }
-                ],
-                technicianNote: ''
+            Promise.resolve().then(() => {
+                setSelectedFarmerId('');
+                setSearchFarmer('');
+                setIsDropdownOpen(false);
+                setSelectedAnimalId('');
+                setFormData({
+                    pregnancyId: '',
+                    animalId: '',
+                    date: new Date().toISOString().split('T')[0],
+                    calvingEase: 'Natural',
+                    numberOfCalves: 1,
+                    calves: [
+                        { sex: 'F', earTag: '', color: '', brand: '' }
+                    ],
+                    technicianNote: ''
+                });
             });
         }
         return () => {
@@ -103,25 +105,34 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
         ? [] 
         : animals.filter(a => a.reproductiveStatus === "Pregnant");
 
-    const pregnanciesList = animalHistory.pregnancies || [];
-    const activePregnancy = pregnancyData || (pregnanciesList.length > 0 ? pregnanciesList[0] : null);
+    const activePregnancy = useMemo(
+        () => {
+            const pregnanciesList = animalHistory.pregnancies || [];
+            return pregnancyData || (pregnanciesList.length > 0 ? pregnanciesList[0] : null);
+        },
+        [animalHistory.pregnancies, pregnancyData]
+    );
 
     // Sync active pregnancy details with form data
     useEffect(() => {
         if (activePregnancy) {
-            setFormData(prev => ({
-                ...prev,
-                pregnancyId: activePregnancy._id || activePregnancy.id,
-                animalId: activePregnancy.animalId?._id || activePregnancy.animalId || selectedAnimalId
-            }));
+            Promise.resolve().then(() => {
+                setFormData(prev => ({
+                    ...prev,
+                    pregnancyId: activePregnancy._id || activePregnancy.id,
+                    animalId: activePregnancy.animalId?._id || activePregnancy.animalId || selectedAnimalId
+                }));
+            });
         } else if (!pregnancyData) {
-            setFormData(prev => ({
-                ...prev,
-                pregnancyId: '',
-                animalId: ''
-            }));
+            Promise.resolve().then(() => {
+                setFormData(prev => ({
+                    ...prev,
+                    pregnancyId: '',
+                    animalId: ''
+                }));
+            });
         }
-    }, [activePregnancy, selectedAnimalId, isOpen]);
+    }, [activePregnancy, selectedAnimalId, isOpen, pregnancyData]);
 
     const handleNumCalvesChange = (num) => {
         const count = parseInt(num);

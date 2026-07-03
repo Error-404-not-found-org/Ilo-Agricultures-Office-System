@@ -10,7 +10,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import Topbar from "../../components/ui/Topbar";
-import { OTON_BARANGAYS, ILOILO_MUNICIPALITIES, MUNICIPALITY_BARANGAYS } from "../../constants/barangays";
+import { ILOILO_MUNICIPALITIES, MUNICIPALITY_BARANGAYS } from "../../constants/barangays";
 
 export default function Users() {
   const [activeTab, setActiveTab] = useState("farmer"); // "farmer", "technician", "admin"
@@ -32,14 +32,7 @@ export default function Users() {
     refetch();
   }, [activeTab, refetch]);
 
-  // ---- DYNAMIC STATS RESOLVERS ----
-  const stats = useMemo(() => {
-    return {
-      farmersCount: activeTab === "farmer" ? users.length : 12, // fallback indicators
-      techsCount: activeTab === "technician" ? users.length : 4,
-      adminsCount: activeTab === "admin" ? users.length : 2,
-    };
-  }, [users, activeTab]);
+
 
   const activeBarangays = useMemo(() => {
     if (!municipalityFilter) return [];
@@ -176,7 +169,7 @@ export default function Users() {
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((u, i) => {
+                  filteredUsers.map((u) => {
                     const initials = u.name
                       ? u.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()
                       : "FI";
@@ -195,9 +188,16 @@ export default function Users() {
                         <td className="p-3.5 font-mono text-slate-600 dark:text-slate-400">{u.phoneNumber || "No contact"}</td>
                         <td className="p-3.5 text-slate-500 font-medium">{u.email || "—"}</td>
                         <td className="p-3.5">
-                          <span className="badge badge-outline border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[9px] px-2.5 py-1">
-                            {u.role || activeTab}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="badge badge-outline border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[9px] px-2.5 py-1">
+                              {u.role || activeTab}
+                            </span>
+                            {!u.clerkId && (
+                              <span className="badge bg-amber-500/10 text-amber-600 dark:text-amber-400 border-none font-bold uppercase tracking-wider text-[9px] px-2 py-1">
+                                Invited
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-3.5 pr-5 text-right font-semibold text-slate-500 flex items-center justify-end gap-1">
                           <MapPin size={11} className="text-slate-400 shrink-0" />

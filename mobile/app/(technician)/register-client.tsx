@@ -7,13 +7,13 @@ import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { OTON_BARANGAYS } from '@/lib/constants';
 import { useTheme } from '@/lib/theme';
+import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 
 export default function RegisterClientScreen() {
   const router = useRouter();
   const api = useApi();
   const { isDark, colors } = useTheme();
   
-  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -25,6 +25,22 @@ export default function RegisterClientScreen() {
   const [showBrgyModal, setShowBrgyModal] = useState(false);
   const [searchBrgy, setSearchBrgy] = useState('');
   const [errors, setErrors] = useState<any>({});
+
+  const mutation = useOfflineMutation({
+    url: '/technician/register-farmer',
+    method: 'POST',
+    description: `Register Farmer: ${formData.firstName} ${formData.lastName}`
+  }, {
+    onSuccess: (result) => {
+      if (result.status === "synced") {
+        toast.success('Farmer registered successfully!');
+      }
+      router.back();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Failed to register farmer.');
+    }
+  });
 
   const validate = () => {
     const newErrors: any = {};
@@ -44,29 +60,19 @@ export default function RegisterClientScreen() {
       return;
     }
     
-    setLoading(true);
-    try {
-      const payload = {
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        phoneNumber: formData.phoneNumber.trim(),
-        email: formData.email.trim() || undefined,
-        address: {
-          barangay: formData.barangay,
-          city: "Oton",
-          province: "Iloilo",
-        }
-      };
+    const payload = {
+      firstName: formData.firstName.trim(),
+      lastName: formData.lastName.trim(),
+      phoneNumber: formData.phoneNumber.trim(),
+      email: formData.email.trim() || undefined,
+      address: {
+        barangay: formData.barangay,
+        city: "Oton",
+        province: "Iloilo",
+      }
+    };
 
-      await api.post('/technician/register-farmer', payload);
-      toast.success('Farmer registered successfully!');
-      router.back();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.message || 'Failed to register farmer.');
-    } finally {
-      setLoading(false);
-    }
+    mutation.mutate(payload);
   };
 
   // Filter barangays based on text input
@@ -106,12 +112,12 @@ export default function RegisterClientScreen() {
                    {errors.firstName && <Text className="text-red-500 text-[9px] font-outfit-bold">{errors.firstName}</Text>}
                 </View>
                 <TextInput
-                  className={`bg-slate-50 dark:bg-slate-800 border ${errors.firstName ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium`}
-                  placeholder="Juan"
-                  placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                  value={formData.firstName}
-                  onChangeText={(t) => setFormData({...formData, firstName: t})}
-                  maxLength={50}
+                   className={`bg-slate-50 dark:bg-slate-800 border ${errors.firstName ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium`}
+                   placeholder="Juan"
+                   placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                   value={formData.firstName}
+                   onChangeText={(t) => setFormData({...formData, firstName: t})}
+                   maxLength={50}
                 />
              </View>
 
@@ -121,12 +127,12 @@ export default function RegisterClientScreen() {
                    {errors.lastName && <Text className="text-red-500 text-[9px] font-outfit-bold">{errors.lastName}</Text>}
                 </View>
                 <TextInput
-                  className={`bg-slate-50 dark:bg-slate-800 border ${errors.lastName ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium`}
-                  placeholder="Dela Cruz"
-                  placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                  value={formData.lastName}
-                  onChangeText={(t) => setFormData({...formData, lastName: t})}
-                  maxLength={50}
+                   className={`bg-slate-50 dark:bg-slate-800 border ${errors.lastName ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium`}
+                   placeholder="Dela Cruz"
+                   placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                   value={formData.lastName}
+                   onChangeText={(t) => setFormData({...formData, lastName: t})}
+                   maxLength={50}
                 />
              </View>
           </View>
@@ -140,13 +146,13 @@ export default function RegisterClientScreen() {
                    {errors.phoneNumber && <Text className="text-red-500 text-[9px] font-outfit-bold">{errors.phoneNumber}</Text>}
                 </View>
                 <TextInput
-                  className={`bg-slate-50 dark:bg-slate-800 border ${errors.phoneNumber ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium`}
-                  placeholder="09123456789"
-                  placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                  keyboardType="phone-pad"
-                  maxLength={11}
-                  value={formData.phoneNumber}
-                  onChangeText={(t) => setFormData({...formData, phoneNumber: t})}
+                   className={`bg-slate-50 dark:bg-slate-800 border ${errors.phoneNumber ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium`}
+                   placeholder="09123456789"
+                   placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                   keyboardType="phone-pad"
+                   maxLength={11}
+                   value={formData.phoneNumber}
+                   onChangeText={(t) => setFormData({...formData, phoneNumber: t})}
                 />
              </View>
 
@@ -156,13 +162,13 @@ export default function RegisterClientScreen() {
                    {errors.email && <Text className="text-red-500 text-[9px] font-outfit-bold">{errors.email}</Text>}
                 </View>
                 <TextInput
-                  className={`bg-slate-50 dark:bg-slate-800 border ${errors.email ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium`}
-                  placeholder="farmer@example.com"
-                  placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  value={formData.email}
-                  onChangeText={(t) => setFormData({...formData, email: t})}
+                   className={`bg-slate-50 dark:bg-slate-800 border ${errors.email ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium`}
+                   placeholder="farmer@example.com"
+                   placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                   keyboardType="email-address"
+                   autoCapitalize="none"
+                   value={formData.email}
+                   onChangeText={(t) => setFormData({...formData, email: t})}
                 />
              </View>
 
@@ -170,26 +176,26 @@ export default function RegisterClientScreen() {
              <View className="flex-row gap-3">
                 <View className="flex-1">
                    <View className="flex-row justify-between mb-1 ml-1">
-                     <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">Barangay *</Text>
-                     {errors.barangay && <Text className="text-red-500 text-[9px] font-outfit-bold">{errors.barangay}</Text>}
+                      <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">Barangay *</Text>
+                      {errors.barangay && <Text className="text-red-500 text-[9px] font-outfit-bold">{errors.barangay}</Text>}
                    </View>
                    <TouchableOpacity
-                     onPress={() => setShowBrgyModal(true)}
-                     className={`bg-slate-50 dark:bg-slate-800 border ${errors.barangay ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 flex-row justify-between items-center`}
+                      onPress={() => setShowBrgyModal(true)}
+                      className={`bg-slate-50 dark:bg-slate-800 border ${errors.barangay ? 'border-red-300' : 'border-slate-100 dark:border-slate-700'} rounded-xl p-3.5 flex-row justify-between items-center`}
                    >
-                     <Text className={`font-outfit-medium ${formData.barangay ? 'text-slate-800 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
-                       {formData.barangay || 'Select...'}
-                     </Text>
-                     <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} />
+                      <Text className={`font-outfit-medium ${formData.barangay ? 'text-slate-800 dark:text-white' : 'text-slate-400 dark:text-slate-600'}`}>
+                        {formData.barangay || 'Select...'}
+                      </Text>
+                      <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} />
                    </TouchableOpacity>
                 </View>
 
                 <View className="flex-1">
                    <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Municipality</Text>
                    <TextInput
-                     className="bg-slate-100 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3.5 text-slate-400 dark:text-slate-500 font-outfit-medium"
-                     value="OTON"
-                     editable={false}
+                      className="bg-slate-100 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3.5 text-slate-400 dark:text-slate-500 font-outfit-medium"
+                      value="OTON"
+                      editable={false}
                    />
                 </View>
              </View>
@@ -197,11 +203,11 @@ export default function RegisterClientScreen() {
 
           {/* SAVE BUTTON */}
           <TouchableOpacity 
-              className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${loading ? 'bg-slate-400' : 'bg-[#00643B]'}`}
+              className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${mutation.isPending ? 'bg-slate-400' : 'bg-[#00643B]'}`}
               onPress={handleSave}
-              disabled={loading}
+              disabled={mutation.isPending}
           >
-              {loading ? <ActivityIndicator color="white" /> : (
+              {mutation.isPending ? <ActivityIndicator color="white" /> : (
                  <>
                     <UserPlus size={20} color="white" style={{ marginRight: 10 }} />
                     <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white text-base">Register Farmer</Text>

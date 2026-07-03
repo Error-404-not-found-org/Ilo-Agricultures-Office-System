@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { ChevronLeft, Send, Sparkles, Trash2 } from "lucide-react-native";
 import { useRouter } from "expo-router";
+import { safeBack } from "../utils/navigation";
 import { StatusBar } from "expo-status-bar";
 import { useUser } from "@clerk/clerk-expo";
 import { useApi } from "../lib/api";
@@ -168,7 +169,7 @@ export default function AskMoowie() {
       {/* Header */}
       <View className="pt-14 pb-6 px-6 bg-[#00643B] rounded-b-[32px] flex-row items-center justify-between shadow-lg">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => safeBack(role === "technician" ? "/(technician)/(tabs)" : "/(farmer)/(tabs)")}
           className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
         >
           <ChevronLeft size={24} color="white" />

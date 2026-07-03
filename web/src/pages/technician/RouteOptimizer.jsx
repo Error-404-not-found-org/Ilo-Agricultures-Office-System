@@ -1,25 +1,17 @@
-import React, { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   MapPin,
   Navigation,
-  Clock,
-  Syringe,
-  HeartPulse,
-  ArrowRight,
   CheckCircle2,
   List as ListIcon,
   X,
   Compass,
-  Layers,
   RefreshCw,
-  Sparkles,
-  Info
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/ui/Topbar";
@@ -166,7 +158,7 @@ export default function RouteOptimizer() {
           const status = t.status?.toLowerCase();
           return status === "in-progress" || status === "approved" || status === "pending";
         })
-        .map((item, index) => {
+        .map((item) => {
           const brgy = item.farmerId?.address?.barangay || "Abilay Norte";
           const baseCoords = OTON_BARANGAY_COORDS[brgy] || BASE_LOCATION;
           

@@ -1,4 +1,3 @@
-import React from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -6,12 +5,13 @@ import {
   PointElement,
   LineElement,
   BarElement,
+  ArcElement,
   Title,
   Tooltip,
   Legend,
   Filler,
 } from 'chart.js';
-import { Line, Bar } from 'react-chartjs-2';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
 
 // Register Chart.js elements
 ChartJS.register(
@@ -20,6 +20,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   BarElement,
+  ArcElement,
   Title,
   Tooltip,
   Legend,
@@ -31,7 +32,7 @@ ChartJS.register(
  * global Chart.js settings with Outfit typography, responsive scaling, and color options.
  */
 export default function DashboardChart({
-  type = 'line', // 'line' or 'bar'
+  type = 'line', // 'line', 'bar', or 'doughnut'
   labels = [],
   datasets = [],
   height = 300,
@@ -45,9 +46,12 @@ export default function DashboardChart({
     weight: '500',
   };
 
+  const isCircular = type === 'doughnut';
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
+    cutout: isCircular ? '68%' : undefined,
     plugins: {
       legend: {
         position: 'bottom',
@@ -76,7 +80,7 @@ export default function DashboardChart({
         usePointStyle: true,
       },
     },
-    scales: {
+    scales: isCircular ? undefined : {
       y: {
         grid: {
           color: darkTheme ? 'rgba(51, 65, 85, 0.4)' : 'rgba(226, 232, 240, 0.6)',
@@ -113,7 +117,9 @@ export default function DashboardChart({
 
   return (
     <div className="relative w-full" style={{ height: `${height}px` }}>
-      {type === 'bar' ? (
+      {type === 'doughnut' ? (
+        <Doughnut data={chartData} options={chartOptions} />
+      ) : type === 'bar' ? (
         <Bar data={chartData} options={chartOptions} />
       ) : (
         <Line data={chartData} options={chartOptions} />

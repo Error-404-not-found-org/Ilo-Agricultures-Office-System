@@ -12,7 +12,7 @@ import {
   Modal,
   TextInput,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
@@ -24,6 +24,9 @@ import {
   X,
   Save,
   Image as ImageIcon,
+  ChevronDown,
+  Search,
+  User,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { toast } from "sonner-native";
@@ -44,19 +47,52 @@ export default function PhotoNotesScreen() {
   const router = useRouter();
   const api = useApi();
   const { colors, isDark } = useTheme();
+  
+  const params = useLocalSearchParams<{
+    farmerId?: string;
+    farmerName?: string;
+  }>();
+
   const [notes, setNotes] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
+
+  // Farmer Selector State
+  const [farmers, setFarmers] = useState<any[]>([]);
+  const [showFarmerModal, setShowFarmerModal] = useState(false);
+  const [searchFarmerQuery, setSearchFarmerQuery] = useState("");
 
   // Form State
   const [newNote, setNewNote] = useState({
     title: "",
     description: "",
     image: "",
-    farmer: "",
+    farmer: "", // farmerName
+    farmerId: "",
     latitude: "",
     longitude: "",
   });
+
+  useEffect(() => {
+    if (params?.farmerId) {
+      setNewNote((prev) => ({
+        ...prev,
+        farmerId: params.farmerId || "",
+        farmer: params.farmerName || "",
+      }));
+    }
+  }, [params?.farmerId, params?.farmerName]);
+
+  const fetchFarmers = async () => {
+    try {
+      const res = await api.get("/user?role=farmer");
+      setFarmers(res.data || []);
+    } catch (err) {
+      console.error("Failed to load farmers", err);
+    }
+  };
 
   const fetchNotes = async () => {
     try {
@@ -73,11 +109,12 @@ export default function PhotoNotesScreen() {
 
   useEffect(() => {
     fetchNotes();
+    fetchFarmers();
   }, []);
 
   const pickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.6,
@@ -134,6 +171,7 @@ export default function PhotoNotesScreen() {
         title: newNote.title,
         description: newNote.description,
         imageUrl: newNote.image,
+        farmerId: newNote.farmerId || undefined,
         farmerName: newNote.farmer,
         latitude: newNote.latitude,
         longitude: newNote.longitude,
@@ -146,6 +184,7 @@ export default function PhotoNotesScreen() {
         description: "",
         image: "",
         farmer: "",
+        farmerId: "",
         latitude: "",
         longitude: "",
       });
@@ -158,31 +197,26 @@ export default function PhotoNotesScreen() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    Alert.alert(
-      "Delete Note",
-      "Are you sure you want to permanently remove this photo note?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setLoading(true);
-              await api.delete(`/technician/photo-notes/${id}`);
-              toast.success("Note deleted successfully");
-              fetchNotes();
-            } catch (err: any) {
-              console.error(err);
-              toast.error("Failed to delete note");
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
-      ],
-    );
+  const handleDeleteTrigger = (id: string) => {
+    setNoteToDelete(id);
+    setDeleteModalVisible(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!noteToDelete) return;
+    try {
+      setLoading(true);
+      await api.delete(`/technician/photo-notes/${noteToDelete}`);
+      toast.success("Note deleted successfully");
+      setDeleteModalVisible(false);
+      setNoteToDelete(null);
+      fetchNotes();
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Failed to delete note");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const renderNote = ({ item }: { item: any }) => {
@@ -244,7 +278,7 @@ export default function PhotoNotesScreen() {
             </Text>
           </View>
           <TouchableOpacity
-            onPress={() => handleDelete(item._id)}
+            onPress={() => handleDeleteTrigger(item._id)}
             style={{
               position: "absolute",
               top: 12,
@@ -741,22 +775,49 @@ export default function PhotoNotesScreen() {
                   >
                     FARMER NAME
                   </Text>
-                  <TextInput
-                    placeholder="Who is this note for?"
-                    placeholderTextColor={colors.textMuted}
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSearchFarmerQuery("");
+                      setShowFarmerModal(true);
+                    }}
                     style={{
                       backgroundColor: colors.background,
                       borderRadius: 16,
                       padding: 16,
-                      fontFamily: "Outfit_600SemiBold",
-                      fontSize: 15,
                       borderWidth: 1,
                       borderColor: colors.border,
-                      color: colors.textPrimary,
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      alignItems: "center",
                     }}
-                    value={newNote.farmer}
-                    onChangeText={(t) => setNewNote({ ...newNote, farmer: t })}
-                  />
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1 }}>
+                      <View
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 16,
+                          backgroundColor: isDark ? "rgba(16,185,129,0.15)" : "#ecfdf5",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <User size={16} color={isDark ? colors.primary : PRIMARY} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_600SemiBold",
+                            fontSize: 15,
+                            color: newNote.farmer ? colors.textPrimary : colors.textMuted,
+                          }}
+                        >
+                          {newNote.farmer || "Select Farmer (Optional)"}
+                        </Text>
+                      </View>
+                    </View>
+                    <ChevronDown size={20} color={colors.textSecondary} />
+                  </TouchableOpacity>
                 </View>
 
                 <View>
@@ -839,6 +900,364 @@ export default function PhotoNotesScreen() {
 
               <View style={{ height: 40 }} />
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal visible={deleteModalVisible} animationType="fade" transparent={true}>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 23, 42, 0.6)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 24,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 28,
+              padding: 24,
+              width: "100%",
+              maxWidth: 340,
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: colors.border,
+              shadowColor: "#000",
+              shadowOpacity: 0.1,
+              shadowRadius: 20,
+              elevation: 10,
+            }}
+          >
+            <View
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 28,
+                backgroundColor: "rgba(239, 68, 68, 0.15)",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 16,
+              }}
+            >
+              <Trash2 size={24} color="#ef4444" />
+            </View>
+
+            <Text
+              style={{
+                fontSize: 20,
+                fontFamily: "Outfit_800ExtraBold",
+                color: colors.textPrimary,
+                marginBottom: 8,
+                textAlign: "center",
+              }}
+            >
+              Delete Photo Note?
+            </Text>
+
+            <Text
+              style={{
+                fontSize: 14,
+                fontFamily: "Outfit_500Medium",
+                color: colors.textSecondary,
+                textAlign: "center",
+                lineHeight: 20,
+                marginBottom: 24,
+              }}
+            >
+              Are you sure you want to permanently remove this photo note? This action cannot be undone.
+            </Text>
+
+            <View style={{ flexDirection: "row", gap: 12, width: "100%" }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setDeleteModalVisible(false);
+                  setNoteToDelete(null);
+                }}
+                disabled={loading}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.background,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 14,
+                  }}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={confirmDelete}
+                disabled={loading}
+                style={{
+                  flex: 1,
+                  backgroundColor: "#ef4444",
+                  borderRadius: 16,
+                  paddingVertical: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexDirection: "row",
+                  gap: 6,
+                }}
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <>
+                    <Trash2 size={16} color="#ffffff" />
+                    <Text
+                      style={{
+                        color: "#ffffff",
+                        fontFamily: "Outfit_900Black",
+                        fontSize: 14,
+                      }}
+                    >
+                      Delete
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Searchable Farmer Selection Modal */}
+      <Modal
+        visible={showFarmerModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFarmerModal(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 23, 42, 0.8)",
+            justifyContent: "flex-end",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderTopLeftRadius: 32,
+              borderTopRightRadius: 32,
+              padding: 24,
+              maxHeight: "80%",
+              minHeight: "50%",
+            }}
+          >
+            {/* Modal Header */}
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 20,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: "Outfit_900Black",
+                  fontSize: 22,
+                  color: colors.textPrimary,
+                }}
+              >
+                Select Farmer
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowFarmerModal(false)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: colors.background,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <X size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Input */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.background,
+                borderRadius: 16,
+                paddingHorizontal: 16,
+                borderWidth: 1,
+                borderColor: colors.border,
+                marginBottom: 16,
+              }}
+            >
+              <Search size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
+              <TextInput
+                placeholder="Search by name, phone or barangay..."
+                placeholderTextColor={colors.textMuted}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 14,
+                  color: colors.textPrimary,
+                }}
+                value={searchFarmerQuery}
+                onChangeText={setSearchFarmerQuery}
+              />
+            </View>
+
+            {/* General Note Option */}
+            <TouchableOpacity
+              onPress={() => {
+                setNewNote({ ...newNote, farmer: "", farmerId: "" });
+                setShowFarmerModal(false);
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                backgroundColor: colors.background,
+                padding: 16,
+                borderRadius: 16,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}
+            >
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: isDark ? "rgba(245,158,11,0.15)" : "#fffbeb",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: 12,
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="note-outline"
+                  size={18}
+                  color={isDark ? "#fbbf24" : "#d97706"}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 14,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  General Note (No Farmer)
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 11,
+                    color: colors.textMuted,
+                    marginTop: 2,
+                  }}
+                >
+                  Create a general note not linked to any specific client
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Farmers List */}
+            {farmers.length === 0 ? (
+              <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 40 }}>
+                <ActivityIndicator size="small" color={isDark ? colors.primary : PRIMARY} />
+              </View>
+            ) : (
+              <FlatList
+                data={farmers.filter((f) => {
+                  const query = searchFarmerQuery.toLowerCase();
+                  const nameMatch = (f.name || "").toLowerCase().includes(query);
+                  const phoneMatch = (f.address?.phoneNumber || f.phoneNumber || "").includes(query);
+                  const barangayMatch = (f.address?.barangay || "").toLowerCase().includes(query);
+                  return nameMatch || phoneMatch || barangayMatch;
+                })}
+                keyExtractor={(item) => item._id}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 24 }}
+                renderItem={({ item }) => {
+                  const brgy = item.address?.barangay || "";
+                  const phone = item.address?.phoneNumber || item.phoneNumber || "";
+                  return (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setNewNote({ ...newNote, farmer: item.name, farmerId: item._id });
+                        setShowFarmerModal(false);
+                      }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        padding: 16,
+                        backgroundColor: colors.background,
+                        borderRadius: 16,
+                        marginBottom: 8,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 20,
+                          backgroundColor: isDark ? "rgba(16,185,129,0.15)" : "#ecfdf5",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: 12,
+                        }}
+                      >
+                        <User size={20} color={isDark ? colors.primary : PRIMARY} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 14,
+                            color: colors.textPrimary,
+                          }}
+                        >
+                          {item.name}
+                        </Text>
+                        {brgy || phone ? (
+                          <Text
+                            style={{
+                              fontFamily: "Outfit_500Medium",
+                              fontSize: 11,
+                              color: colors.textMuted,
+                              marginTop: 2,
+                            }}
+                          >
+                            {brgy ? brgy : ""}
+                            {brgy && phone ? " • " : ""}
+                            {phone ? phone : ""}
+                          </Text>
+                        ) : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
           </View>
         </View>
       </Modal>

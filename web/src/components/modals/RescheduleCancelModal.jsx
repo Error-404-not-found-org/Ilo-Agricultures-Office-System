@@ -16,11 +16,13 @@ const RescheduleCancelModal = ({ isOpen, onClose, taskData, onSuccess }) => {
     // Reset state when modal opens
     React.useEffect(() => {
         if (isOpen && taskData) {
-            setMode('select');
-            const d = new Date(taskData.preferredDate || new Date());
-            setScheduledDate(isNaN(d.getTime()) ? new Date().toISOString().slice(0, 16) : d.toISOString().slice(0, 16));
-            setReason('');
-            setIsSubmitting(false);
+            Promise.resolve().then(() => {
+                setMode('select');
+                const d = new Date(taskData.preferredDate || new Date());
+                setScheduledDate(isNaN(d.getTime()) ? new Date().toISOString().slice(0, 16) : d.toISOString().slice(0, 16));
+                setReason('');
+                setIsSubmitting(false);
+            });
         }
     }, [isOpen, taskData]);
 
@@ -28,31 +30,47 @@ const RescheduleCancelModal = ({ isOpen, onClose, taskData, onSuccess }) => {
 
     const handleAction = async (type) => {
         setIsSubmitting(true);
-        const status = type === 'cancel' 
-            ? (taskData.type === 'health' ? 'cancelled' : 'rejected')
-            : (taskData.type === 'health' ? 'in-progress' : 'approved');
         
-        const payload = {
-            status,
-            technicianNote: reason || (type === 'cancel' ? 'Technician unavailable' : 'Rescheduled by technician'),
-            ...(type === 'reschedule' ? { scheduledDate: new Date(scheduledDate) } : {})
-        };
-
-        const endpoint = taskData.type === 'health' ? `/health-request/${taskData.id}/status` : `/ai-request/${taskData.id}/status`;
-
-        toast.promise(axiosInstance.patch(endpoint, payload), {
-            loading: type === 'cancel' ? 'Cancelling request...' : 'Rescheduling request...',
-            success: async () => {
-                queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
-                if (onSuccess) onSuccess();
-                onClose();
-                return type === 'cancel' ? 'Request Cancelled' : 'Request Rescheduled!';
-            },
-            error: (err) => {
-                setIsSubmitting(false);
-                return "Action failed: " + (err.response?.data?.message || err.message);
-            },
-        });
+        if (type === 'cancel') {
+            const endpoint = taskData.type === 'health' ? `/health-request/${taskData.id}/cancel` : `/ai-request/${taskData.id}/cancel`;
+            const payload = { reason: reason || 'Technician unavailable' };
+            
+            toast.promise(axiosInstance.patch(endpoint, payload), {
+                loading: 'Cancelling request...',
+                success: async () => {
+                    queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+                    if (onSuccess) onSuccess();
+                    onClose();
+                    return 'Request Cancelled';
+                },
+                error: (err) => {
+                    setIsSubmitting(false);
+                    return "Action failed: " + (err.response?.data?.message || err.message);
+                },
+            });
+        } else {
+            const status = taskData.type === 'health' ? 'in-progress' : 'approved';
+            const payload = {
+                status,
+                technicianNote: reason || 'Rescheduled by technician',
+                scheduledDate: new Date(scheduledDate)
+            };
+            const endpoint = taskData.type === 'health' ? `/health-request/${taskData.id}/status` : `/ai-request/${taskData.id}/status`;
+            
+            toast.promise(axiosInstance.patch(endpoint, payload), {
+                loading: 'Rescheduling request...',
+                success: async () => {
+                    queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+                    if (onSuccess) onSuccess();
+                    onClose();
+                    return 'Request Rescheduled!';
+                },
+                error: (err) => {
+                    setIsSubmitting(false);
+                    return "Action failed: " + (err.response?.data?.message || err.message);
+                },
+            });
+        }
     };
 
     return (

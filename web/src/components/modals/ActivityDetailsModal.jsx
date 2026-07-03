@@ -1,18 +1,14 @@
-import React from "react";
 import { 
   X, 
   Syringe, 
   HeartPulse, 
   CheckCircle2, 
   FileText, 
-  Calendar, 
   User, 
   MapPin, 
   Info,
   Clock,
-  ChevronRight,
   ShieldCheck,
-  Stethoscope,
   Activity
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";

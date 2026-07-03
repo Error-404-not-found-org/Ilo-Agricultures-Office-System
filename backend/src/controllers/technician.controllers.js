@@ -11,6 +11,7 @@ import { AIRequest } from "../models/ai-request.model.js";
 import { Config } from "../models/config.model.js";
 import { FieldNote } from "../models/field-note.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import { Task } from "../models/task.model.js";
 import { inngest } from "../config/inngest.js";
 import {
   verifyPostpartumWindow,
@@ -46,6 +47,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       healthReqs,
       animalRegistryData,
       totalInsemMonth,
+      scheduledTasks,
     ] = await Promise.all([
       // Stats
       Insemination.countDocuments({
@@ -167,6 +169,16 @@ export const getTechnicianDashboardData = async (req, res) => {
       Insemination.countDocuments({
         inseminationDate: { $gte: monthStart },
       }),
+      // 8. Tasks (Claimed/Scheduled tasks)
+      Task.find({
+        status: { $in: ["Pending", "In Progress"] },
+        dueDate: { $ne: null },
+        ...(req.user.role !== "admin" ? { technicianId: req.user._id } : {}),
+      })
+        .populate("farmerId", "name address farmLocation")
+        .populate("animalIds", "animalId earTag imageUrl breed species")
+        .sort({ dueDate: 1, createdAt: -1 })
+        .lean(),
     ]);
 
     // 2. Fetch Success Rate from Cache or Calculate
@@ -301,6 +313,61 @@ export const getTechnicianDashboardData = async (req, res) => {
         if (req.status !== "pending") {
           agendaItems.push(item);
         }
+      }
+    });
+
+    // Process scheduled technician tasks / general visits
+    scheduledTasks.forEach((taskDoc) => {
+      const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
+      const isOverdue =
+        ["Pending", "In Progress"].includes(taskDoc.status) &&
+        new Date(itemDisplayDate) < todayStart;
+      const firstAnimal = Array.isArray(taskDoc.animalIds)
+        ? taskDoc.animalIds[0]
+        : null;
+
+      const getFarmLocationTarget = (farmer) => {
+        const loc = farmer?.farmLocation;
+        if (
+          typeof loc?.latitude === "number" &&
+          typeof loc?.longitude === "number"
+        ) {
+          return `${loc.latitude},${loc.longitude}`;
+        }
+        return null;
+      };
+
+      const item = {
+        id: taskDoc._id,
+        type: "task",
+        taskType: taskDoc.taskType || "Other",
+        status: taskDoc.status,
+        displayStatus: taskDoc.status,
+        time: formatTime(itemDisplayDate),
+        displayDate: itemDisplayDate,
+        farmer: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
+        location: formatAddress(taskDoc.farmerId?.address),
+        navigationTarget: getFarmLocationTarget(taskDoc.farmerId),
+        farmLocation: taskDoc.farmerId?.farmLocation || null,
+        animalId: firstAnimal || null,
+        animalTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
+        preferredTime: formatTime(itemDisplayDate),
+        task: `${taskDoc.taskType || "Visit"}${firstAnimal ? ` - ${firstAnimal.animalId || firstAnimal.earTag || "Unknown"}` : ""}`,
+        urgent: taskDoc.category === "Urgent" || taskDoc.category === "Emergency",
+        overdue: isOverdue,
+        sentTime: formatTime(taskDoc.createdAt),
+        raw: taskDoc,
+      };
+
+      const isDateToday = (d) => {
+        if (!d) return false;
+        const dateVal = new Date(d);
+        return dateVal >= todayStart && dateVal < todayEnd;
+      };
+
+      if (isFull || isDateToday(itemDisplayDate) || isOverdue) {
+        agendaItems.push(item);
       }
     });
 
@@ -2370,5 +2437,701 @@ export const markCalvingAsSeen = async (req, res) => {
     res
       .status(500)
       .json({ message: "Error marking calving as seen", error: error.message });
+  }
+};
+
+export const declineTechnicianRequest = async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    const note = req.body?.technicianNote || "Declined by technician.";
+
+    if (!["ai", "health"].includes(type)) {
+      return res.status(400).json({ message: "Invalid request type." });
+    }
+
+    const Model = type === "ai" ? Insemination : HealthRequest;
+    const assignedField = type === "ai" ? "approvedBy" : "handledBy";
+    const request = await Model.findOne({ _id: id, deletedAt: null });
+
+    if (!request) {
+      return res.status(404).json({ message: "Request not found." });
+    }
+
+    if (
+      ["done", "resolved", "completed", "rejected", "cancelled"].includes(
+        request.status,
+      )
+    ) {
+      return res.status(400).json({
+        message: `This request is already ${request.status} and cannot be declined.`,
+      });
+    }
+
+    const assignedTo = request[assignedField];
+    const isAssignedToAnother =
+      assignedTo &&
+      assignedTo.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin";
+
+    if (isAssignedToAnother) {
+      const assignedTech = await User.findById(assignedTo)
+        .select("name")
+        .lean();
+      return res.status(403).json({
+        message: `This request is already assigned to ${assignedTech?.name || "another technician"}.`,
+      });
+    }
+
+    const update = {
+      $addToSet: { declinedByTechnicianIds: req.user._id },
+      $push: {
+        statusHistory: {
+          status: "declined_by_technician",
+          note,
+          actorId: req.user._id,
+          createdAt: new Date(),
+        },
+      },
+    };
+
+    if (assignedTo && assignedTo.toString() === req.user._id.toString()) {
+      update.$unset = {
+        [assignedField]: "",
+        scheduledDate: "",
+      };
+      update.$set = {
+        status: "pending",
+        technicianNote: note,
+      };
+      if (type === "health") {
+        update.$unset.assignedTechnicianId = "";
+      }
+    }
+
+    const updated = await Model.findByIdAndUpdate(id, update, {
+      new: true,
+    });
+
+    req.app.get("io").to("role:technician").emit("dashboardUpdate", {
+      type: "REQUEST_DECLINED_FOR_TECHNICIAN",
+      requestType: type,
+      requestId: id,
+      technicianId: req.user._id,
+    });
+
+    res.status(200).json({
+      message:
+        "Request hidden from your queue. Other technicians can still accept it.",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("[declineTechnicianRequest ERROR]", error);
+    res.status(500).json({
+      message: "Failed to decline request for this technician.",
+      error: error.message,
+    });
+  }
+};
+
+export const claimRequest = async (req, res) => {
+  try {
+    const { type, id } = req.params;
+
+    if (req.user.role === "farmer") {
+      return res.status(403).json({ message: "Farmers cannot claim technician requests." });
+    }
+
+    if (!["ai", "health", "breeding_verification"].includes(type)) {
+      return res.status(400).json({ message: "Invalid request type." });
+    }
+
+    let updated = null;
+
+    if (type === "ai") {
+      const existing = await Insemination.findById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "AI request record not found." });
+      }
+      if (existing.approvedBy) {
+        return res.status(409).json({
+          message: "This request has already been claimed by another technician.",
+          code: "REQUEST_ALREADY_CLAIMED"
+        });
+      }
+
+      updated = await Insemination.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          approvedBy: { $in: [null, undefined] }
+        },
+        {
+          $set: {
+            approvedBy: req.user._id,
+            claimedAt: new Date(),
+            status: "approved"
+          }
+        },
+        { new: true }
+      )
+        .populate("farmerId", "name address imageUrl phoneNumber")
+        .populate("animalId", "animalId earTag species breed imageUrl");
+    } else if (type === "health") {
+      const existing = await HealthRequest.findById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Health request record not found." });
+      }
+      if (existing.handledBy) {
+        return res.status(409).json({
+          message: "This request has already been claimed by another technician.",
+          code: "REQUEST_ALREADY_CLAIMED"
+        });
+      }
+
+      updated = await HealthRequest.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          handledBy: { $in: [null, undefined] }
+        },
+        {
+          $set: {
+            handledBy: req.user._id,
+            assignedTechnicianId: req.user._id,
+            claimedAt: new Date(),
+            status: "approved"
+          }
+        },
+        { new: true }
+      )
+        .populate("farmerId", "name address imageUrl phoneNumber")
+        .populate("animalId", "animalId earTag species breed imageUrl");
+    } else if (type === "breeding_verification") {
+      const existing = await Task.findById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found." });
+      }
+      if (existing.technicianId) {
+        return res.status(409).json({
+          message: "This request has already been claimed by another technician.",
+          code: "REQUEST_ALREADY_CLAIMED"
+        });
+      }
+
+      updated = await Task.findOneAndUpdate(
+        {
+          _id: id,
+          taskType: "PD",
+          technicianId: { $in: [null, undefined] }
+        },
+        {
+          $set: {
+            technicianId: req.user._id,
+            claimedAt: new Date()
+          }
+        },
+        { new: true }
+      )
+        .populate("farmerId", "name address imageUrl phoneNumber")
+        .populate("animalIds", "animalId earTag species breed imageUrl");
+    }
+
+    if (!updated) {
+      return res.status(409).json({
+        message: "This request has already been claimed by another technician.",
+        code: "REQUEST_ALREADY_CLAIMED"
+      });
+    }
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("role:technician").emit("dashboardUpdate", {
+        type: "REQUEST_CLAIMED",
+        requestType: type,
+        requestId: id,
+        technicianId: req.user._id,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Request claimed successfully.",
+      data: updated
+    });
+  } catch (error) {
+    console.error("[claimRequest ERROR]", error);
+    return res.status(500).json({
+      message: "Failed to claim request.",
+      error: error.message
+    });
+  }
+};
+
+export const getTechnicianRequests = async (req, res) => {
+  try {
+    let {
+      type,
+      status,
+      urgency,
+      assignment,
+      search,
+      page,
+      limit,
+      includeUpcoming,
+      nearLat,
+      nearLng,
+      sortBy,
+      municipality,
+      barangay,
+    } = req.query;
+    page = parseInt(page, 10) || 1;
+    limit = parseInt(limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const now = new Date();
+    const PHT_OFFSET = 8 * 60 * 60 * 1000;
+    const todayStart = new Date(now.getTime() + PHT_OFFSET);
+    todayStart.setUTCHours(0, 0, 0, 0);
+    todayStart.setTime(todayStart.getTime() - PHT_OFFSET);
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const aiQuery = { deletedAt: null };
+    const healthQuery = { deletedAt: null };
+    const taskQuery = { taskType: "PD" };
+    const taskAndFilters = [];
+
+    // Apply municipality/barangay filters if provided
+    if (municipality || barangay) {
+      const addressQuery = {};
+      if (municipality) {
+        addressQuery["address.city"] = { $regex: new RegExp(`^${municipality}$`, "i") };
+      }
+      if (barangay) {
+        addressQuery["address.barangay"] = { $regex: new RegExp(`^${barangay}$`, "i") };
+      }
+      const matchingFarmers = await User.find({
+        role: "farmer",
+        ...addressQuery
+      }).select("_id");
+      const matchingFarmerIds = matchingFarmers.map((f) => f._id);
+      
+      aiQuery.farmerId = { $in: matchingFarmerIds };
+      healthQuery.farmerId = { $in: matchingFarmerIds };
+      taskAndFilters.push({ farmerId: { $in: matchingFarmerIds } });
+    }
+
+    if (includeUpcoming !== "true") {
+      taskAndFilters.push({
+        $or: [
+          // Manual or farmer-requested: show immediately
+          { sourceType: { $in: ["manual", "farmer_requested_verification"] } },
+          // Automatic follow-ups: only show when dueDate has arrived
+          { sourceType: "automatic_pd_followup", dueDate: { $lte: now } },
+          // Legacy tasks (no sourceType): show immediately
+          { sourceType: { $exists: false } },
+        ],
+      });
+    }
+
+    // 1. Assignment & Visibility Filter
+    if (req.user.role !== "admin") {
+      if (assignment === "mine") {
+        aiQuery.approvedBy = req.user._id;
+        healthQuery.handledBy = req.user._id;
+        taskQuery.technicianId = req.user._id;
+      } else if (assignment === "unassigned" || assignment === "available") {
+        aiQuery.approvedBy = { $in: [null, undefined] };
+        healthQuery.handledBy = { $in: [null, undefined] };
+        taskQuery.technicianId = { $in: [null, undefined] };
+        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        
+        aiQuery.status = "pending";
+        healthQuery.status = { $in: ["pending", "triaged", "assigned"] };
+        taskQuery.status = "Pending";
+      } else if (assignment === "all") {
+        // No assignment filter
+      } else {
+        // Default: Show mine or unassigned
+        aiQuery.approvedBy = { $in: [req.user._id, null, undefined] };
+        healthQuery.handledBy = { $in: [req.user._id, null, undefined] };
+        taskQuery.technicianId = { $in: [req.user._id, null, undefined] };
+        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
+      }
+    } else {
+      if (assignment === "mine") {
+        aiQuery.approvedBy = req.user._id;
+        healthQuery.handledBy = req.user._id;
+        taskQuery.technicianId = req.user._id;
+      } else if (assignment === "unassigned" || assignment === "available") {
+        aiQuery.approvedBy = { $in: [null, undefined] };
+        healthQuery.handledBy = { $in: [null, undefined] };
+        taskQuery.technicianId = { $in: [null, undefined] };
+        
+        aiQuery.status = "pending";
+        healthQuery.status = { $in: ["pending", "triaged", "assigned"] };
+        taskQuery.status = "Pending";
+      } else if (assignment === "all") {
+        // No assignment filter
+      }
+    }
+
+    // 2. Urgency Filter
+    if (urgency === "urgent") {
+      healthQuery.urgency = { $in: ["high", "emergency"] };
+      taskQuery.priority = 1;
+    }
+
+    // 3. Status Filter Mapping
+    if (status && status !== "all") {
+      if (status === "pending") {
+        aiQuery.status = "pending";
+        healthQuery.status = { $in: ["pending", "triaged", "assigned"] };
+        taskQuery.status = "Pending";
+      } else if (status === "scheduled") {
+        aiQuery.status = { $in: ["approved", "scheduled"] };
+        healthQuery.status = { $in: ["approved", "scheduled"] };
+        taskQuery.status = "In Progress";
+      } else if (status === "in_progress") {
+        aiQuery.status = "in-progress";
+        healthQuery.status = { $in: ["in-progress", "in_progress"] };
+        taskQuery.status = "In Progress";
+      } else if (status === "completed") {
+        aiQuery.status = "done";
+        healthQuery.status = "resolved";
+        taskQuery.status = "Completed";
+      } else if (status === "declined") {
+        aiQuery.status = "rejected";
+        healthQuery.status = { $in: ["rejected", "cancelled"] };
+        taskQuery.status = "Cancelled";
+      }
+    }
+
+    // 4. Search Filter
+    if (search) {
+      const farmers = await User.find({
+        name: { $regex: search, $options: "i" },
+        role: "farmer",
+      }).select("_id");
+      const farmerIds = farmers.map((f) => f._id);
+
+      const animals = await Animal.find({
+        $or: [
+          { earTag: { $regex: search, $options: "i" } },
+          { animalId: { $regex: search, $options: "i" } },
+        ],
+      }).select("_id");
+      const animalIds = animals.map((a) => a._id);
+
+      aiQuery.$or = [
+        { farmerId: { $in: farmerIds } },
+        { animalId: { $in: animalIds } },
+      ];
+      healthQuery.$or = [
+        { farmerId: { $in: farmerIds } },
+        { animalId: { $in: animalIds } },
+      ];
+      taskAndFilters.push({
+        $or: [
+          { farmerId: { $in: farmerIds } },
+          { animalIds: { $in: animalIds } },
+        ],
+      });
+    }
+
+    if (taskAndFilters.length > 0) {
+      taskQuery.$and = taskAndFilters;
+    }
+
+    // 5. Fetch Records
+    const fetchAI = type === "all" || type === "ai" || !type;
+    const fetchHealth = type === "all" || type === "health" || !type;
+    const fetchPregnancyChecks =
+      type === "all" || type === "breeding_verification" || !type;
+
+    const [aiRecords, healthRecords, pregnancyCheckTasks] = await Promise.all([
+      fetchAI
+        ? Insemination.find(aiQuery)
+            .populate("farmerId", "name address imageUrl farmLocation")
+            .populate("animalId", "animalId earTag species breed imageUrl")
+            .populate("approvedBy", "name")
+            .lean()
+        : [],
+      fetchHealth
+        ? HealthRequest.find(healthQuery)
+            .populate("farmerId", "name address imageUrl farmLocation")
+            .populate("animalId", "animalId earTag species breed imageUrl")
+            .populate("handledBy", "name")
+            .lean()
+        : [],
+      fetchPregnancyChecks
+        ? Task.find(taskQuery)
+            .populate("farmerId", "name address imageUrl farmLocation")
+            .populate("animalIds", "animalId earTag species breed imageUrl")
+            .populate("technicianId", "name")
+            .lean()
+        : [],
+    ]);
+
+    const formatAddress = (addr) => {
+      if (!addr) return "Unknown Location";
+      if (typeof addr === "string") return addr;
+      if (Array.isArray(addr) && addr.length > 0) {
+        const first = addr[0];
+        return (
+          `${first.barangay || ""}, ${first.city || ""}`
+            .replace(/^,|,$/g, "")
+            .trim() || "Unknown Location"
+        );
+      }
+      if (typeof addr === "object") {
+        return (
+          `${addr.barangay || ""}, ${addr.city || ""}`
+            .replace(/^,|,$/g, "")
+            .trim() || "Unknown Location"
+        );
+      }
+      return "Unknown Location";
+    };
+
+    // Helper to check if a date is today
+    const isDateToday = (d) => {
+      if (!d) return false;
+      const dateVal = new Date(d);
+      return dateVal >= todayStart && dateVal < todayEnd;
+    };
+
+    const getHaversineDistance = (lat1, lon1, lat2, lon2) => {
+      const R = 6371; // Radius of the Earth in km
+      const dLat = (lat2 - lat1) * (Math.PI / 180);
+      const dLon = (lon2 - lon1) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) *
+          Math.cos(lat2 * (Math.PI / 180)) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c; // Distance in km
+    };
+
+    const techLat = nearLat ? parseFloat(nearLat) : null;
+    const techLng = nearLng ? parseFloat(nearLng) : null;
+
+    // Normalize AI Inseminations
+    const normalizedAI = aiRecords.map((rec) => {
+      const isReady =
+        (rec.status === "scheduled" || rec.status === "approved") &&
+        rec.scheduledDate &&
+        isDateToday(rec.scheduledDate) &&
+        rec.approvedBy &&
+        rec.approvedBy._id?.toString() === req.user._id.toString();
+
+      const farmer = rec.farmerId || {};
+      const farmLoc = farmer.farmLocation || {};
+      const addr = farmer.address || {};
+      const hasFarmPin = !!(farmLoc.latitude && farmLoc.longitude);
+      const city = addr.city || "";
+      const barangay = addr.barangay || "";
+
+      let distanceKm = null;
+      if (techLat !== null && !isNaN(techLat) && techLng !== null && !isNaN(techLng) && hasFarmPin) {
+        distanceKm = parseFloat(getHaversineDistance(techLat, techLng, farmLoc.latitude, farmLoc.longitude).toFixed(2));
+      }
+
+      return {
+        id: rec._id,
+        type: "ai",
+        status: rec.status,
+        isReadyToday: !!isReady,
+        displayStatus: isReady
+          ? "Ready Today"
+          : rec.status === "approved"
+            ? "Assigned"
+            : rec.status,
+        urgency: "normal",
+        farmer: farmer.name || "Unknown Farmer",
+        farmerId: farmer._id || farmer,
+        farmerImageUrl: farmer.imageUrl || "",
+        animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
+        animalId: rec.animalId?._id || rec.animalId,
+        earTag: rec.animalId?.earTag || "",
+        breed: rec.animalId?.breed || "",
+        species: rec.animalId?.species || "",
+        location: formatAddress(farmer.address),
+        locationLabel: barangay && city ? `${barangay}, ${city}` : (formatAddress(farmer.address) || "Unknown Location"),
+        municipality: city,
+        barangay: barangay,
+        hasFarmPin,
+        distanceKm,
+        farmPinStatus: hasFarmPin ? "available" : "missing",
+        preferredDate: rec.preferredDate || rec.createdAt,
+        scheduledDate: rec.scheduledDate || null,
+        assignedTechnician: rec.approvedBy?.name || "",
+        createdAt: rec.createdAt,
+        raw: rec,
+      };
+    });
+
+    // Normalize Health Requests
+    const normalizedHealth = healthRecords.map((rec) => {
+      const isReady =
+        (rec.status === "scheduled" || rec.status === "approved") &&
+        rec.scheduledDate &&
+        isDateToday(rec.scheduledDate) &&
+        rec.handledBy &&
+        rec.handledBy._id?.toString() === req.user._id.toString();
+
+      const farmer = rec.farmerId || {};
+      const farmLoc = farmer.farmLocation || {};
+      const addr = farmer.address || {};
+      const hasFarmPin = !!(farmLoc.latitude && farmLoc.longitude);
+      const city = addr.city || "";
+      const barangay = addr.barangay || "";
+
+      let distanceKm = null;
+      if (techLat !== null && !isNaN(techLat) && techLng !== null && !isNaN(techLng) && hasFarmPin) {
+        distanceKm = parseFloat(getHaversineDistance(techLat, techLng, farmLoc.latitude, farmLoc.longitude).toFixed(2));
+      }
+
+      return {
+        id: rec._id,
+        type: "health",
+        status: rec.status,
+        isReadyToday: !!isReady,
+        displayStatus: isReady
+          ? "Ready Today"
+          : rec.status === "approved"
+            ? "Assigned"
+            : rec.status,
+        urgency:
+          rec.urgency === "high" || rec.urgency === "emergency"
+            ? "urgent"
+            : "normal",
+        farmer: farmer.name || "Unknown Farmer",
+        farmerId: farmer._id || farmer,
+        farmerImageUrl: farmer.imageUrl || "",
+        animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
+        animalId: rec.animalId?._id || rec.animalId,
+        earTag: rec.animalId?.earTag || "",
+        breed: rec.animalId?.breed || "",
+        species: rec.animalId?.species || "",
+        location: formatAddress(farmer.address),
+        locationLabel: barangay && city ? `${barangay}, ${city}` : (formatAddress(farmer.address) || "Unknown Location"),
+        municipality: city,
+        barangay: barangay,
+        hasFarmPin,
+        distanceKm,
+        farmPinStatus: hasFarmPin ? "available" : "missing",
+        preferredDate: rec.preferredDate || rec.createdAt,
+        scheduledDate: rec.scheduledDate || null,
+        assignedTechnician: rec.handledBy?.name || "",
+        createdAt: rec.createdAt,
+        raw: rec,
+      };
+    });
+
+    // Normalize Pregnancy Checks
+    const normalizedPregnancyChecks = pregnancyCheckTasks.map((task) => {
+      const animal = Array.isArray(task.animalIds) ? task.animalIds[0] : null;
+
+      const farmer = task.farmerId || {};
+      const farmLoc = farmer.farmLocation || {};
+      const addr = farmer.address || {};
+      const hasFarmPin = !!(farmLoc.latitude && farmLoc.longitude);
+      const city = addr.city || "";
+      const barangay = addr.barangay || "";
+
+      let distanceKm = null;
+      if (techLat !== null && !isNaN(techLat) && techLng !== null && !isNaN(techLng) && hasFarmPin) {
+        distanceKm = parseFloat(getHaversineDistance(techLat, techLng, farmLoc.latitude, farmLoc.longitude).toFixed(2));
+      }
+
+      return {
+        id: task._id,
+        type: "breeding_verification",
+        status: task.status,
+        isReadyToday: false,
+        displayStatus: task.status,
+        urgency:
+          task.priority === 1 || task.category === "Urgent"
+            ? "urgent"
+            : "normal",
+        farmer: farmer.name || "Unknown Farmer",
+        farmerId: farmer._id || farmer,
+        farmerImageUrl: farmer.imageUrl || "",
+        animal: animal?.animalId || animal?.earTag || "Unknown",
+        animalId: animal?._id || animal,
+        earTag: animal?.earTag || "",
+        breed: animal?.breed || "",
+        species: animal?.species || "",
+        location: formatAddress(farmer.address),
+        locationLabel: barangay && city ? `${barangay}, ${city}` : (formatAddress(farmer.address) || "Unknown Location"),
+        municipality: city,
+        barangay: barangay,
+        hasFarmPin,
+        distanceKm,
+        farmPinStatus: hasFarmPin ? "available" : "missing",
+        preferredDate: task.dueDate || task.createdAt,
+        scheduledDate: task.dueDate || null,
+        assignedTechnician: task.technicianId?.name || "",
+        createdAt: task.createdAt,
+        raw: task,
+      };
+    });
+
+    // Combine & Sort
+    const sortByVal = sortBy || "newest";
+    const combined = [
+      ...normalizedAI,
+      ...normalizedHealth,
+      ...normalizedPregnancyChecks,
+    ].sort((a, b) => {
+      // 1. Emergency/Urgent priority first:
+      const aUrgent = a.urgency === "urgent";
+      const bUrgent = b.urgency === "urgent";
+      if (aUrgent && !bUrgent) return -1;
+      if (!aUrgent && bUrgent) return 1;
+
+      // 2. Sort by sortBy parameter:
+      if (sortByVal === "distance" && techLat !== null && techLng !== null) {
+        const aHasDist = a.distanceKm !== null;
+        const bHasDist = b.distanceKm !== null;
+        if (aHasDist && !bHasDist) return -1;
+        if (!aHasDist && bHasDist) return 1;
+        if (aHasDist && bHasDist) {
+          return a.distanceKm - b.distanceKm;
+        }
+      } else if (sortByVal === "preferredDate") {
+        return new Date(a.preferredDate).getTime() - new Date(b.preferredDate).getTime();
+      } else if (sortByVal === "oldest") {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+
+      // Fallback: newest first
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    // Apply pagination slice
+    const total = combined.length;
+    const paginated = combined.slice(skip, skip + limit);
+
+    res.status(200).json({
+      requests: paginated,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("[getTechnicianRequests ERROR]", error);
+    res
+      .status(500)
+      .json({
+        message: "Failed to fetch technician requests",
+        error: error.message,
+      });
   }
 };

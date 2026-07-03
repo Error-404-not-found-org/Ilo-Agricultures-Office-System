@@ -57,6 +57,10 @@ interface FarmerProfile {
     city: string;
     province: string;
   };
+  farmLocation?: {
+    latitude?: number;
+    longitude?: number;
+  } | null;
   animals: Animal[];
 }
 
@@ -100,14 +104,6 @@ const URGENCY_OPTIONS = [
     color: "#f59e0b",
     bg: "#fffbeb",
     darkBg: "rgba(245, 158, 11, 0.15)",
-  },
-  {
-    value: "high",
-    label: "Urgent",
-    desc: "Emergency / critical now",
-    color: "#ef4444",
-    bg: "#fef2f2",
-    darkBg: "rgba(239, 68, 68, 0.15)",
   },
 ];
 
@@ -171,7 +167,8 @@ export default function ReportSickness() {
     },
   });
 
-  const submitting = mutation.isPending;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitting = mutation.isPending || isSubmitting;
 
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
   const [typeModalVisible, setTypeModalVisible] = useState(false);
@@ -180,6 +177,7 @@ export default function ReportSickness() {
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
+  const [farmPinModalVisible, setFarmPinModalVisible] = useState(false);
   const [pendingModalVisible, setPendingModalVisible] = useState(false);
   const [noContactModalVisible, setNoContactModalVisible] = useState(false);
 
@@ -285,9 +283,33 @@ export default function ReportSickness() {
   };
 
   // ── Submit ─────────────────────────────────────────────────────────────────
-  const handleSubmit = async () => {
+  const submitRequest = async () => {
+    if (!selectedAnimal) return;
+
+    setIsSubmitting(true);
+    try {
+      await mutation.mutateAsync({
+        animalId: selectedAnimal._id,
+        requestType,
+        symptoms: symptoms.trim(),
+        urgency,
+        imageUrl: imageBase64,
+        preferredDate: preferredDate.toISOString(),
+      });
+    } catch {
+      // Handled by react-query callbacks
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSubmit = async (skipFarmPinWarning = false) => {
+    if (isSubmitting || mutation.isPending) return;
+
     const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
     const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
+    const farmLocation = farmer?.farmLocation || profile?.farmLocation;
+    const hasFarmPin = Boolean(farmLocation?.latitude && farmLocation?.longitude);
 
     if (!hasPhone || !hasAddress) {
       setProfileModalVisible(true);
@@ -318,14 +340,12 @@ export default function ReportSickness() {
       });
     }
 
-    mutation.mutate({
-      animalId: selectedAnimal._id,
-      requestType,
-      symptoms: symptoms.trim(),
-      urgency,
-      imageUrl: imageBase64,
-      preferredDate: preferredDate.toISOString(),
-    });
+    if (!skipFarmPinWarning && !hasFarmPin) {
+      setFarmPinModalVisible(true);
+      return;
+    }
+
+    await submitRequest();
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
@@ -900,7 +920,7 @@ export default function ReportSickness() {
 
           {/* Submit */}
           <TouchableOpacity
-            onPress={handleSubmit}
+            onPress={() => handleSubmit()}
             disabled={submitting}
             activeOpacity={0.85}
             className="rounded-full py-5 items-center flex-row justify-center gap-2 shadow-xl"
@@ -1338,6 +1358,25 @@ export default function ReportSickness() {
         cancelText="Cancel"
         isDestructive={true}
         icon={<AlertCircle size={26} color={colors.error} />}
+      />
+
+      <ConfirmationModal
+        visible={farmPinModalVisible}
+        onClose={() => setFarmPinModalVisible(false)}
+        onCancel={() => {
+          setFarmPinModalVisible(false);
+          router.push("/(farmer)/(tabs)/profile");
+        }}
+        onConfirm={() => {
+          setFarmPinModalVisible(false);
+          handleSubmit(true);
+        }}
+        title="Farm Pin Missing"
+        message="You can still submit this health request, but technicians will only see your barangay. Add an exact farm pin if you want them to navigate directly to the animal."
+        confirmText="Continue Anyway"
+        cancelText="Add Farm Pin"
+        isDestructive={false}
+        icon={<MapPin size={26} color={colors.warning} />}
       />
 
       <ConfirmationModal

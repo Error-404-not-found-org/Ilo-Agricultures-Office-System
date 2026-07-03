@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -115,31 +115,35 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
           ? new Date(livestock.birthDate).toISOString().split("T")[0] 
           : "";
         
-        setFormData({
-          earTag: livestock.earTag || "",
-          brand: livestock.brand || "",
-          species: livestock.species || "Beef Cattle",
-          breed: livestock.breed || "",
-          color: livestock.color || "",
-          gender: livestock.gender || "Female",
-          dob: formattedDob,
-          farmerName: livestock.farmerId?._id || livestock.farmerId || "",
+        Promise.resolve().then(() => {
+          setFormData({
+            earTag: livestock.earTag || "",
+            brand: livestock.brand || "",
+            species: livestock.species || "Beef Cattle",
+            breed: livestock.breed || "",
+            color: livestock.color || "",
+            gender: livestock.gender || "Female",
+            dob: formattedDob,
+            farmerName: livestock.farmerId?._id || livestock.farmerId || "",
+          });
+          setSearchFarmer(livestock.farmerId?.name || "Unknown Farmer");
+          setImagePreview(livestock.imageUrl || null);
         });
-        setSearchFarmer(livestock.farmerId?.name || "Unknown Farmer");
-        setImagePreview(livestock.imageUrl || null);
       } else {
-        setFormData({
-          earTag: "",
-          brand: "",
-          species: "Beef Cattle",
-          breed: "",
-          color: "",
-          gender: "Female",
-          dob: "",
-          farmerName: "",
+        Promise.resolve().then(() => {
+          setFormData({
+            earTag: "",
+            brand: "",
+            species: "Beef Cattle",
+            breed: "",
+            color: "",
+            gender: "Female",
+            dob: "",
+            farmerName: "",
+          });
+          setSearchFarmer("");
+          setImagePreview(null);
         });
-        setSearchFarmer("");
-        setImagePreview(null);
       }
     }
   }, [livestock, isOpen]);
@@ -148,10 +152,12 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
     if (formData.species) {
       const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
       if (formData.breed && !validBreeds.includes(formData.breed)) {
-        setFormData((prev) => ({ ...prev, breed: "" }));
+        Promise.resolve().then(() => {
+          setFormData((prev) => ({ ...prev, breed: "" }));
+        });
       }
     }
-  }, [formData.species]);
+  }, [formData.species, formData.breed]);
 
   if (!isOpen) return null;
 

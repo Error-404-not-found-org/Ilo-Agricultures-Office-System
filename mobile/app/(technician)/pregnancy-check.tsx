@@ -132,6 +132,7 @@ export default function PregnancyCheckScreen() {
   };
 
   const handleSave = async () => {
+    toast.dismiss();
     if (!selectedAnimal) {
       toast.error("Please select an animal first");
       return;

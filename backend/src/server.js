@@ -2,13 +2,18 @@ import express from "express";
 import path from "path";
 import { createServer } from "http";
 import { Server } from "socket.io";
+import { clerkClient } from "@clerk/clerk-sdk-node";
+import { User } from "./models/user.model.js";
 import { clerkMiddleware } from "@clerk/express";
 import { serve } from "inngest/express";
 import cors from "cors";
 import { rateLimit } from "express-rate-limit";
+import { idempotencyMiddleware } from "./middleware/idempotency.middleware.js";
+import { resolveUserMiddleware } from "./middleware/resolveUser.middleware.js";
 
 import { inngest, functions } from "./config/inngest.js";
 
+import mongoose from "mongoose";
 import { ENV } from "./config/env.js";
 import { connectDB } from "./config/db.js";
 
@@ -27,6 +32,8 @@ import analyticsRoutes from "./routes/analytics.routes.js";
 import moowieRoutes from "./routes/moowie.routes.js";
 import gisRoutes from "./routes/gis.routes.js";
 import tasksRoutes from "./routes/tasks.routes.js";
+import supportTicketRoutes from "./routes/support-ticket.routes.js";
+import auditRoutes from "./routes/audit.routes.js";
 
 const app = express();
 const httpServer = createServer(app);
@@ -122,6 +129,8 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 app.use(clerkMiddleware()); // add auth object under req.auth
 app.use(cors(corsOptions));
+app.use(resolveUserMiddleware);
+app.use(idempotencyMiddleware);
 
 app.use((req, res, next) => {
   console.log(`[HTTP] ${req.method} ${req.path}`);
@@ -148,6 +157,8 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/moowie", moowieRoutes);
 app.use("/api/gis", gisRoutes);
 app.use("/api/tasks", tasksRoutes);
+app.use("/api/support-tickets", supportTicketRoutes);
+app.use("/api/audit-logs", auditRoutes);
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
 // MUST be defined after all routes. Catches any unhandled error from middleware
@@ -162,6 +173,8 @@ app.use((err, req, res, next) => {
   );
   res.status(status).json({
     message: err.message || "An unexpected server error occurred.",
+    code: err.code || "INTERNAL_ERROR",
+    ...(err.details && { details: err.details }),
     ...(process.env.NODE_ENV !== "production" && { stack: err.stack }),
   });
 });
@@ -173,13 +186,59 @@ app.get("/", (req, res) => {
   res.json({ message: "Oton Agriculture Office API is running." });
 });
 
-// Socket.io connection logging
+// Serve version check for mobile development builds
+app.get("/api/health/version", (req, res) => {
+  res.json({ version: "2.0" });
+});
+
+// Authenticate socket connections using Clerk JWT token
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.split(" ")[1];
+    if (!token) {
+      return next(new Error("Authentication error: No token provided"));
+    }
+
+    const decoded = await clerkClient.verifyToken(token);
+    if (!decoded || !decoded.sub) {
+      return next(new Error("Authentication error: Invalid token"));
+    }
+
+    const user = await User.findOne({ clerkId: decoded.sub });
+    if (!user || user.deletedAt) {
+      return next(new Error("Authentication error: User not found or deactivated"));
+    }
+
+    socket.user = user;
+    next();
+  } catch (error) {
+    console.error("[Socket Auth Error]", error);
+    next(new Error(`Authentication error: ${error.message}`));
+  }
+});
+
+// Socket.io connection logging & room routing
 io.on("connection", (socket) => {
-  console.log(`[Socket] User connected: ${socket.id}`);
+  const user = socket.user;
+  console.log(`[Socket] User connected: ${socket.id} (${user.name}, Role: ${user.role})`);
+  
+  // Join role-specific room and individual room
+  socket.join(user.role);
+  socket.join(user._id.toString());
+
   socket.on("disconnect", () => {
     console.log(`[Socket] User disconnected: ${socket.id}`);
   });
 });
+
+// Intercept global emissions of dashboardUpdate to protect role boundaries
+const originalEmit = io.emit;
+io.emit = function (event, ...args) {
+  if (event === "dashboardUpdate") {
+    return io.to(["admin", "technician", "veterinarian"]).emit(event, ...args);
+  }
+  return originalEmit.apply(io, arguments);
+};
 
 const startServer = async () => {
   await connectDB();
@@ -189,3 +248,27 @@ const startServer = async () => {
 };
 
 startServer();
+
+// Graceful shutdown on process termination
+const gracefulShutdown = async (signal) => {
+  console.log(`\n[Server] Received ${signal}. Shutting down gracefully...`);
+  httpServer.close(() => {
+    console.log("[Server] HTTP server closed.");
+    mongoose.connection.close(false).then(() => {
+      console.log("[Server] MongoDB connection closed.");
+      process.exit(0);
+    }).catch((err) => {
+      console.error("[Server] Error closing MongoDB connection:", err);
+      process.exit(1);
+    });
+  });
+
+  // Force shutdown after 3 seconds if graceful shutdown hangs
+  setTimeout(() => {
+    console.error("[Server] Forceful shutdown triggered.");
+    process.exit(1);
+  }, 3000);
+};
+
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));

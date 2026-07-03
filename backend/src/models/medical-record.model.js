@@ -17,6 +17,11 @@ const MedicalRecordSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    healthRequestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "HealthRequest",
+      sparse: true,
+    },
     type: {
       type: String,
       enum: ["Vaccination", "Treatment", "Deworming", "Check-up", "Weight Log"],

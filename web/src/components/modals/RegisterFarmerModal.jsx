@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -52,7 +52,7 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
             phoneNumber: data.phoneNumber,
           },
         };
-        const res = await axiosInstance.put(`/user/${farmer.id || farmer._id}`, payload);
+        const res = await axiosInstance.patch(`/user/${farmer.id || farmer._id}/technician-update`, payload);
         return res.data;
       } else {
         const res = await axiosInstance.post("/technician/register-farmer", {
@@ -101,24 +101,28 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
         const nameParts = (farmer.name || "").trim().split(" ");
         const first = nameParts[0] || "";
         const last = nameParts.slice(1).join(" ") || "";
-        setFormData({
-          firstName: first,
-          lastName: last,
-          phoneNumber: farmer.contact || farmer.phoneNumber || "",
-          email: farmer.email || "",
-          barangay: farmer.brgy || farmer.address?.barangay || "",
-          city: farmer.address?.city || "Oton",
-          province: farmer.address?.province || "Iloilo",
+        Promise.resolve().then(() => {
+          setFormData({
+            firstName: first,
+            lastName: last,
+            phoneNumber: farmer.contact || farmer.phoneNumber || "",
+            email: farmer.email || "",
+            barangay: farmer.brgy || farmer.address?.barangay || "",
+            city: farmer.address?.city || "Oton",
+            province: farmer.address?.province || "Iloilo",
+          });
         });
       } else {
-        setFormData({
-          firstName: "",
-          lastName: "",
-          phoneNumber: "",
-          email: "",
-          barangay: "",
-          city: "Oton",
-          province: "Iloilo",
+        Promise.resolve().then(() => {
+          setFormData({
+            firstName: "",
+            lastName: "",
+            phoneNumber: "",
+            email: "",
+            barangay: "",
+            city: "Oton",
+            province: "Iloilo",
+          });
         });
       }
     }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "../lib/axios";
 
@@ -21,19 +21,21 @@ const EditTechnicianModal = ({ isOpen, onClose, technician }) => {
 
   useEffect(() => {
     if (technician) {
-      setFormData({
-        phoneNumber: technician.phoneNumber || "",
-        status: technician.status || "active",
-        address: {
-          houseNumber: technician.address?.houseNumber || "",
-          street: technician.address?.street || "",
-          subdivision: technician.address?.subdivision || "",
-          barangay: technician.address?.barangay || "",
-          city: technician.address?.city || "",
-          province: technician.address?.province || "",
-          region: technician.address?.region || "",
-          zipCode: technician.address?.zipCode || "",
-        },
+      Promise.resolve().then(() => {
+        setFormData({
+          phoneNumber: technician.phoneNumber || "",
+          status: technician.status || "active",
+          address: {
+            houseNumber: technician.address?.houseNumber || "",
+            street: technician.address?.street || "",
+            subdivision: technician.address?.subdivision || "",
+            barangay: technician.address?.barangay || "",
+            city: technician.address?.city || "",
+            province: technician.address?.province || "",
+            region: technician.address?.region || "",
+            zipCode: technician.address?.zipCode || "",
+          },
+        });
       });
     }
   }, [technician]);

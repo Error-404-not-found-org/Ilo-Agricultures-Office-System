@@ -1,9 +1,8 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { TableRowSkeleton } from "../../components/Skeleton";
 import {
-  Search,
   Download,
   Syringe,
   Sparkles,

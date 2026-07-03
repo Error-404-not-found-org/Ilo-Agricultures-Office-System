@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Calendar as CalendarIcon,
   Syringe,
@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Search,
-  Zap,
   Lock,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -81,6 +80,7 @@ export default function DeploymentSchedule() {
   };
 
   // ---- LIVE INDICATOR (DOTS) MATRIX CALCULATOR ----
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const taskCountsByDate = useMemo(() => {
     return (rawAgenda || []).reduce((acc, item) => {
       const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
@@ -96,6 +96,7 @@ export default function DeploymentSchedule() {
       }
       return acc;
     }, {});
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [rawAgenda, currentMonth, currentYear]);
 
   // ---- DYNAMIC MATRIX FILTERING PIPELINE ----

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Check, Info, AlertTriangle, AlertCircle, HeartPulse, Settings, Trash2 } from 'lucide-react';
+import { Bell, Check, Trash2 } from 'lucide-react';
 import axios from '../lib/axios';
 
 const NotificationBell = () => {
@@ -23,7 +23,7 @@ const NotificationBell = () => {
             return await axios.patch('/notifications/mark-read', { notificationId: id });
         },
         onSuccess: () => {
-            queryClient.invalidateQueries(['notifications']);
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
         }
     });
 
@@ -32,7 +32,7 @@ const NotificationBell = () => {
             return await axios.patch('/notifications/mark-read');
         },
         onSuccess: () => {
-            queryClient.invalidateQueries(['notifications']);
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
         }
     });
 
@@ -41,17 +41,10 @@ const NotificationBell = () => {
             return await axios.delete('/notifications');
         },
         onSuccess: () => {
-            queryClient.invalidateQueries(['notifications']);
+            queryClient.invalidateQueries({ queryKey: ['notifications'] });
         }
     });
 
-    const getIcon = (type) => {
-        switch(type) {
-            case 'health-request': return <HeartPulse size={18} className="text-blue-500" />;
-            case 'ai-request': return <Settings size={18} className="text-emerald-500" />;
-            default: return <Info size={18} className="text-gray-500" />;
-        }
-    };
 
     return (
         <div className="relative">

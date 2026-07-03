@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -7,7 +7,6 @@ import {
   Search,
   Download,
   Printer,
-  ListChecks,
   Syringe,
   Clock,
   CheckCircle,
@@ -443,10 +442,10 @@ export default function BreedingLedger() {
           toast.success("Entry removed successfully.");
           
           // Invalidate queries to trigger refresh
-          queryClient.invalidateQueries(["technician", "inseminations-list"]);
-          queryClient.invalidateQueries(["technician", "pregnancy-checks-list"]);
-          queryClient.invalidateQueries(["technician", "calvings-list"]);
-        } catch (err) {
+          queryClient.invalidateQueries({ queryKey: ["technician", "inseminations-list"] });
+          queryClient.invalidateQueries({ queryKey: ["technician", "pregnancy-checks-list"] });
+          queryClient.invalidateQueries({ queryKey: ["technician", "calvings-list"] });
+        } catch {
           toast.error("Failed to remove historical entry.");
         }
       }

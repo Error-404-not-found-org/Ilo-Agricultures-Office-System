@@ -1,138 +1,265 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, RefreshControl, ActivityIndicator } from 'react-native';
-import { Plus, CheckCircle } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { useApi } from '@/lib/api';
-import { toast } from 'sonner-native';
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+} from "react-native";
+import { Plus, CheckCircle, Search, ClipboardList } from "lucide-react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
+import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
+import { useTheme } from "@/lib/theme";
+import { Text } from "@/components/ui/Text";
+import { SearchBar } from "@/components/shared";
 
 export default function TasksScreen() {
   const router = useRouter();
-  const api = useApi();
-  const [tasks, setTasks] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('Urgent');
-  const [mounted, setMounted] = useState(false);
+  const { colors, isDark } = useTheme();
 
-  const fetchTasks = useCallback(async () => {
-    try {
-      const res = await api.get('/tasks');
-      setTasks(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load tasks');
-    } finally {
-      setLoading(false);
+  // Filters State
+  const [scope, setScope] = useState<"mine" | "available">("mine");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<"All" | "Urgent" | "Routine" | "Follow-up" | "Emergency">("All");
+
+  const { tasksQuery } = useTechnicianTasks(undefined, { scope });
+  const { data: tasks = [], isLoading, refetch, isRefetching } = tasksQuery;
+
+  // Local filter logic
+  const filteredTasks = (tasks || []).filter((t: any) => {
+    // Category match
+    const categoryMatch = activeCategory === "All" || t.category === activeCategory;
+
+    // Search query match (farmer name or ear tag or notes)
+    const text = searchQuery.toLowerCase();
+    const farmerName = t.farmerId?.name?.toLowerCase() || "";
+    const notes = t.notes?.toLowerCase() || "";
+    const animalTags = (t.animalIds || []).map((a: any) => (a.earTag || a.animalId || "").toLowerCase());
+    const searchMatch =
+      !searchQuery ||
+      farmerName.includes(text) ||
+      notes.includes(text) ||
+      animalTags.some((tag: string) => tag.includes(text));
+
+    return categoryMatch && searchMatch;
+  });
+
+  const getTaskBadgeStyle = (taskType: string) => {
+    const type = String(taskType).toUpperCase();
+    if (type === "AI") {
+      return { bg: isDark ? "bg-purple-950/40" : "bg-purple-50", text: "text-purple-600", label: "Official AI Service" };
     }
-  }, [api]);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!mounted) return;
-      fetchTasks();
-    }, [mounted, fetchTasks])
-  );
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchTasks();
-    setRefreshing(false);
+    if (type === "HEALTH") {
+      return { bg: isDark ? "bg-red-950/40" : "bg-red-50", text: "text-red-600", label: "Official Health Assistance" };
+    }
+    if (type === "PD") {
+      return { bg: isDark ? "bg-cyan-950/40" : "bg-cyan-50", text: "text-cyan-600", label: "Pregnancy Verification" };
+    }
+    if (type === "CD" || type === "CALVING") {
+      return { bg: isDark ? "bg-orange-950/40" : "bg-orange-50", text: "text-orange-600", label: "Calving / Offspring" };
+    }
+    if (type === "FOLLOWUP") {
+      return { bg: isDark ? "bg-blue-950/40" : "bg-blue-50", text: "text-blue-600", label: "Follow-up Visit" };
+    }
+    if (type === "FARMINSPECTION") {
+      return { bg: isDark ? "bg-amber-950/40" : "bg-amber-50", text: "text-amber-600", label: "Farm Inspection" };
+    }
+    return { bg: isDark ? "bg-slate-800" : "bg-slate-100", text: isDark ? "text-slate-300" : "text-slate-600", label: "General Visit" };
   };
 
-  const handleComplete = async (id: string) => {
-    try {
-      await api.put(`/tasks/${id}/complete`);
-      toast.success('Task marked as completed!');
-      fetchTasks();
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to update task.');
+  const getCategoryColor = (category: string) => {
+    switch (category) {
+      case "Urgent":
+      case "Emergency":
+        return { bg: isDark ? "bg-rose-950/40" : "bg-rose-50", text: "text-rose-600" };
+      case "Routine":
+        return { bg: isDark ? "bg-blue-950/40" : "bg-blue-50", text: "text-blue-500" };
+      case "Follow-up":
+        return { bg: isDark ? "bg-emerald-950/40" : "bg-emerald-50", text: "text-emerald-600" };
+      default:
+        return { bg: isDark ? "bg-slate-800" : "bg-slate-100", text: "text-slate-600" };
     }
   };
-
-  const filteredTasks = (tasks || []).filter((t: any) => t.category === activeTab);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
-      <View className="px-6 py-4 flex-row justify-between items-center bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10 w-full relative">
-        <Text className="text-2xl font-black text-[#00643B] dark:text-emerald-500">To-Do List</Text>
-        <TouchableOpacity 
-          className="bg-[#00643B] w-10 h-10 rounded-full items-center justify-center shadow-sm"
+    <SafeAreaView className="flex-1" style={{ backgroundColor: colors.background }}>
+      {/* Header */}
+      <View className="px-6 py-4 flex-row justify-between items-center border-b shadow-sm z-10 w-full relative"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+        <Text className="text-2xl font-black" style={{ color: isDark ? "#10b981" : "#00643B" }}>My Work Queue</Text>
+        <TouchableOpacity
+          className="w-10 h-10 rounded-full items-center justify-center shadow-sm"
+          style={{ backgroundColor: isDark ? "#10b981" : "#00643B" }}
           onPress={() => router.push('/(technician)/create-task')}
         >
           <Plus size={24} color="white" />
         </TouchableOpacity>
       </View>
 
-      <View className="flex-row px-4 py-3 bg-white dark:bg-slate-900">
-        {['Urgent', 'Routine', 'Follow-up'].map(tab => (
-          <TouchableOpacity
-            key={tab}
-            className={`flex-1 items-center py-2 border-b-2 ${activeTab === tab ? 'border-[#0f766e]' : 'border-transparent'}`}
-            onPress={() => setActiveTab(tab)}
-          >
-            <Text className={`font-bold ${activeTab === tab ? 'text-[#0f766e]' : 'text-slate-400'}`}>{tab}</Text>
-          </TouchableOpacity>
-        ))}
+      {/* Segmented Queue Selector */}
+      <View className="flex-row p-1 mx-4 mt-4 rounded-xl"
+            style={{ backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9" }}>
+        <TouchableOpacity
+          onPress={() => setScope("mine")}
+          style={{
+            flex: 1,
+            paddingVertical: 10,
+            alignItems: "center",
+            borderRadius: 8,
+            backgroundColor: scope === "mine" ? (isDark ? "#1e293b" : "#fff") : "transparent",
+          }}
+        >
+          <Text style={{
+            fontFamily: "Outfit_700Bold",
+            color: scope === "mine" ? (isDark ? "#10b981" : "#00643B") : (isDark ? "#94a3b8" : "#64748b"),
+            fontSize: 13,
+          }}>
+            My Queue
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => setScope("available")}
+          style={{
+            flex: 1,
+            paddingVertical: 10,
+            alignItems: "center",
+            borderRadius: 8,
+            backgroundColor: scope === "available" ? (isDark ? "#1e293b" : "#fff") : "transparent",
+          }}
+        >
+          <Text style={{
+            fontFamily: "Outfit_700Bold",
+            color: scope === "available" ? (isDark ? "#10b981" : "#00643B") : (isDark ? "#94a3b8" : "#64748b"),
+            fontSize: 13,
+          }}>
+            Available Tasks
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {loading ? (
+      {/* Search Input */}
+      <View className="px-4 mt-3">
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search by farmer name, ear tag or notes..."
+        />
+      </View>
+
+      {/* Category Chips Scrollbar */}
+      <View className="mt-2 mb-3">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
+        >
+          {["All", "Urgent", "Routine", "Follow-up", "Emergency"].map((cat) => {
+            const isActive = activeCategory === cat;
+            return (
+              <TouchableOpacity
+                key={cat}
+                onPress={() => setActiveCategory(cat as any)}
+                className="px-4 py-2 rounded-full border"
+                style={{
+                  backgroundColor: isActive ? (isDark ? "#10b981" : "#00643B") : (isDark ? "#1e293b" : "#fff"),
+                  borderColor: isActive ? "transparent" : colors.border,
+                }}
+              >
+                <Text style={{
+                  fontFamily: "Outfit_700Bold",
+                  color: isActive ? "#fff" : colors.textSecondary,
+                  fontSize: 12,
+                }}>
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Task List Feed */}
+      {isLoading && !isRefetching ? (
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color="#00643B" />
+          <ActivityIndicator size="large" color={isDark ? "#10b981" : "#00643B"} />
         </View>
       ) : (
-        <ScrollView 
-          className="flex-1 p-4"
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        <ScrollView
+          className="flex-1 px-4"
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={refetch}
+              colors={[isDark ? "#10b981" : "#00643B"]}
+            />
+          }
         >
           {filteredTasks.length === 0 ? (
-            <View className="items-center justify-center py-10 opacity-70">
-              <CheckCircle size={48} color="#0d9488" className="mb-4" />
-              <Text className="text-slate-500 font-medium">All caught up! No {activeTab.toLowerCase()} tasks found.</Text>
+            <View className="items-center justify-center py-16 opacity-70">
+              <CheckCircle size={48} color={isDark ? "#10b981" : "#0d9488"} className="mb-4" />
+              <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_600SemiBold", textAlign: "center" }}>
+                All caught up! No {activeCategory.toLowerCase() !== "all" ? activeCategory.toLowerCase() : ""} tasks found.
+              </Text>
             </View>
           ) : (
-            filteredTasks.map((t: any) => (
-              <TouchableOpacity 
-                key={t._id} 
-                activeOpacity={0.7}
-                className="bg-white rounded-2xl p-4 mb-4 border border-slate-100 shadow-sm"
-                onPress={() => router.push(`/(technician)/task-details?id=${t._id}` as any)}
-              >
-                <View className="flex-row justify-between items-start mb-2">
-                  <Text className="font-bold text-base text-slate-800 flex-1 mr-2" numberOfLines={2}>{t.notes}</Text>
-                  <View className={`px-2 py-1 rounded-md ${
-                    t.category === 'Urgent' ? 'bg-red-50' : 
-                    t.category === 'Routine' ? 'bg-blue-50' : 'bg-emerald-50'
-                  }`}>
-                    <Text className={`text-[10px] font-bold uppercase ${
-                      t.category === 'Urgent' ? 'text-red-500' : 
-                      t.category === 'Routine' ? 'text-blue-500' : 'text-emerald-600'
-                    }`}>{t.category}</Text>
+            filteredTasks.map((t: any) => {
+              const badge = getTaskBadgeStyle(t.taskType);
+              const catColor = getCategoryColor(t.category);
+              return (
+                <TouchableOpacity
+                  key={t._id}
+                  activeOpacity={0.7}
+                  className="rounded-2xl p-4 mb-4 border shadow-sm"
+                  style={{ backgroundColor: colors.card, borderColor: colors.border }}
+                  onPress={() => router.push(`/(technician)/task-details?id=${t._id}` as any)}
+                >
+                  {/* Badge Row */}
+                  <View className="flex-row justify-between items-center mb-2">
+                    <View className={`px-2 py-1 rounded-md ${badge.bg}`}>
+                      <Text className={`text-[10px] font-bold uppercase ${badge.text}`}>
+                        {badge.label}
+                      </Text>
+                    </View>
+                    <View className={`px-2 py-0.5 rounded-md ${catColor.bg}`}>
+                      <Text className={`text-[9px] font-bold uppercase ${catColor.text}`}>
+                        {t.category}
+                      </Text>
+                    </View>
                   </View>
-                </View>
 
-                <View className="bg-slate-50 rounded-lg p-3 mb-3">
-                  <Text className="text-slate-700 font-semibold mb-1 text-sm">{t.farmerId?.name}</Text>
-                  {t.animalIds && t.animalIds.length > 0 && (
-                    <Text className="text-slate-500 text-xs mt-1">
-                      Animals: {t.animalIds.map((a: any) => a.earTag || a.animalId).join(', ')}
+                  <Text className="font-bold text-base mt-1 flex-1" numberOfLines={2} style={{ color: colors.textPrimary }}>
+                    {t.notes}
+                  </Text>
+
+                  <View className="rounded-lg p-3 mt-3" style={{ backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc" }}>
+                    <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textPrimary, fontSize: 13 }}>
+                      {t.farmerId?.name || "Unknown Farmer"}
                     </Text>
-                  )}
-                </View>
-
-                <View className="flex-row justify-end border-t border-slate-100 pt-3">
-                  <View className="flex-row items-center border border-slate-200 px-3 py-1.5 rounded-lg">
-                    <CheckCircle size={16} color="#0f766e" />
-                    <Text className="text-[#0f766e] font-bold ml-1.5 text-xs">View Details</Text>
+                    {t.dueDate && (
+                      <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>
+                        Due Date: {new Date(t.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </Text>
+                    )}
+                    {t.animalIds && t.animalIds.length > 0 && (
+                      <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
+                        Animals: {t.animalIds.map((a: any) => a.earTag || a.animalId).join(', ')}
+                      </Text>
+                    )}
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))
+
+                  <View className="flex-row justify-end border-t pt-3 mt-3" style={{ borderColor: colors.border }}>
+                    <View className="flex-row items-center border px-3 py-1.5 rounded-lg" style={{ borderColor: colors.border }}>
+                      <ClipboardList size={14} color={isDark ? "#10b981" : "#00643B"} />
+                      <Text style={{ fontFamily: "Outfit_700Bold", color: isDark ? "#10b981" : "#00643B", fontSize: 11, marginLeft: 6 }}>
+                        View Details
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
         </ScrollView>
       )}

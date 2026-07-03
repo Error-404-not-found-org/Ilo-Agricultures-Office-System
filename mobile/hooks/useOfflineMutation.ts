@@ -1,6 +1,6 @@
 import { useMutation, UseMutationOptions } from "@tanstack/react-query";
 import { useApi } from "../lib/api";
-import { addToOfflineQueue } from "../lib/offlineQueue";
+import { addToOfflineQueue, createStableId } from "../lib/offlineQueue";
 import NetInfo from "@react-native-community/netinfo";
 import { toast } from "sonner-native";
 
@@ -10,48 +10,55 @@ interface OfflineMutationParams {
   description: string;
 }
 
+export interface MutationResult<TData = any> {
+  status: "synced" | "queued";
+  data?: TData;
+}
+
 export function useOfflineMutation<TData = any, TError = any, TVariables = any, TContext = any>(
   params: OfflineMutationParams,
-  options?: UseMutationOptions<TData, TError, TVariables, TContext>
+  options?: UseMutationOptions<MutationResult<TData>, TError, TVariables, TContext>
 ) {
   const api = useApi();
 
   return useMutation({
     ...options,
-    mutationFn: async (variables: TVariables) => {
+    mutationFn: async (variables: TVariables): Promise<MutationResult<TData>> => {
       const state = await NetInfo.fetch();
       
       if (!state.isConnected) {
-        // Save to offline queue
-        await addToOfflineQueue({
+        const queuedItem = await addToOfflineQueue({
           url: params.url,
           method: params.method,
           data: variables,
           description: params.description,
         });
         
-        // Return a mock success response or throw a specific "Offline" error
-        // that we can catch in the UI
-        throw new Error("OFFLINE_SAVED");
+        return { status: "queued", data: queuedItem as any };
       }
 
-      // If online, proceed normally
+      // Generate a stable idempotency key for online mutations too
+      const idempotencyKey = createStableId();
+
       const response = await api({
         method: params.method,
         url: params.url,
         data: variables,
+        headers: {
+          "Idempotency-Key": idempotencyKey,
+        },
       });
-      return response.data;
+      return { status: "synced", data: response.data };
     },
-    onError: (error: any, variables, context) => {
-      if (error.message === "OFFLINE_SAVED") {
+    onSuccess: (data, variables, context, mutation) => {
+      if (data.status === "queued") {
         toast.success("Saved offline! Will sync when connected.", {
           description: params.description,
           icon: "☁️",
         });
-      } else if (options?.onError) {
-        // @ts-ignore - Some versions of TanStack Query expect 4 arguments
-        options.onError(error, variables, context as any);
+      }
+      if (options?.onSuccess) {
+        options.onSuccess(data, variables, context as any, mutation);
       }
     },
   });

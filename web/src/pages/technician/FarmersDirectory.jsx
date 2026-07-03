@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Search,
-  Bell,
   UserPlus,
   Download,
   Users,
@@ -13,7 +12,6 @@ import {
   Phone,
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
   AlertCircle,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";

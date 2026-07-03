@@ -5,7 +5,11 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "inngest": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
+    "inngest": "npx inngest-cli@latest dev -u http://localhost:3030/api/inngest",
+    "check": "node --check src/server.js",
+    "seed:longterm-demo": "node scripts/seed-longterm-demo.js",
+    "seed:longterm-demo:reset": "node scripts/seed-longterm-demo.js --reset",
+    "test": "node --test tests/*.test.js"
   },
   "keywords": [],
   "author": "",

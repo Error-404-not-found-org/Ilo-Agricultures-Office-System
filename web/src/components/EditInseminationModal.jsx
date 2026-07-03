@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Calendar, ChevronDown, BadgeCheck, Syringe, Info, Check, Sparkles } from "lucide-react";
+import { X, Calendar, Info, BadgeCheck } from "lucide-react";
 import axios from "../lib/axios";
 import { CATTLE_BREEDS } from "../constants/breeds";
 import { getSireCodeByBreed } from "../constants/sireRegistry";
@@ -28,12 +28,14 @@ const EditInseminationModal = ({ isOpen, onClose, insemination, animalId }) => {
 
   useEffect(() => {
     if (insemination) {
-      setFormData({
-        inseminationDate: formatDateForInput(insemination.inseminationDate),
-        sireBreed: insemination.sireBreed || "",
-        sireCode: insemination.sireCode || "",
-        estrus: insemination.estrus || "Natural",
-        status: insemination.status || "pending",
+      Promise.resolve().then(() => {
+        setFormData({
+          inseminationDate: formatDateForInput(insemination.inseminationDate),
+          sireBreed: insemination.sireBreed || "",
+          sireCode: insemination.sireCode || "",
+          estrus: insemination.estrus || "Natural",
+          status: insemination.status || "pending",
+        });
       });
     }
   }, [insemination]);

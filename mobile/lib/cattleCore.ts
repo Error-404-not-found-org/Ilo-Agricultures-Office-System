@@ -169,8 +169,8 @@ export function verifyPostpartumWindow(lastCalvingDate: Date | string, targetAct
   
   const breedProfile = getBreedProfile(species, breed);
   const requiredDays = breedProfile.voluntaryWaitingPeriodDays;
-  const timeDifference = Math.abs(action.getTime() - calving.getTime());
-  const daysPassed = Math.ceil(timeDifference / (1000 * 60 * 60 * 24));
+  const timeDifference = action.getTime() - calving.getTime();
+  const daysPassed = Math.floor(timeDifference / (1000 * 60 * 60 * 24));
 
   return {
     isSafe: daysPassed >= requiredDays,

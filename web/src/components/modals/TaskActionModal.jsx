@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+/* eslint-disable react-hooks/set-state-in-effect */
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -20,10 +21,6 @@ import axiosInstance from "../../lib/axios";
 import { toast } from "sonner";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { CATTLE_BREEDS } from "../../constants/breeds";
-import {
-  generatePregnancyTimeline,
-  verifyPostpartumWindow,
-} from "../../utils/cattleCore";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
@@ -42,10 +39,9 @@ const getAdditionalNotesOnly = (fullComment) => {
   return fullComment;
 };
 
-const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
+const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }) => {
   const queryClient = useQueryClient();
 
-  const [isConfirmingDecline, setIsConfirmingDecline] = useState(false);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [note, setNote] = useState("");
@@ -56,6 +52,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   const [sireCode, setSireCode] = useState("");
   const [estrus, setEstrus] = useState("Natural");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedTech, setSelectedTech] = useState("");
 
   const isHealth = taskData?.type === "health";
 
@@ -75,7 +72,16 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
       const res = await axiosInstance.get("/technician/profile");
       return res.data || {};
     },
-    enabled: isOpen,
+    enabled: isOpen && !isAdmin,
+  });
+
+  const { data: technicians = [] } = useQuery({
+    queryKey: ["technicianListForAdmin"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/user?role=technician");
+      return Array.isArray(res.data) ? res.data : res.data?.users || [];
+    },
+    enabled: isOpen && !!isAdmin,
   });
 
   const assignedTechId =
@@ -91,16 +97,14 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
     (assignedTechId ? "another technician" : null);
 
   const isAssignedToOther =
+    !isAdmin &&
     assignedTechId &&
     dbUser?._id &&
     String(assignedTechId) !== String(dbUser._id);
 
-  const isReadOnly = isCompleted || isArchived || isAssignedToOther;
+  const isReadOnly = isCompleted || isArchived || isAssignedToOther || !!isAdmin;
 
   useEffect(() => {
-    setIsConfirmingDecline(false);
-    setIsSubmitting(false);
-
     if (taskData) {
       try {
         const dateVal =
@@ -133,7 +137,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
           const minutes = String(now.getMinutes()).padStart(2, "0");
           setScheduledTime(`${hours}:${minutes}`);
         }
-      } catch (e) {
+      } catch {
         const now = new Date();
         const year = now.getFullYear();
         const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -152,6 +156,14 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
       setSireBreed(taskData.raw?.sireBreed || "");
       setSireCode(taskData.raw?.sireCode || "");
       setEstrus(taskData.raw?.estrus || "Natural");
+
+      const rawTechId =
+        taskData.raw?.approvedBy?._id ||
+        taskData.raw?.approvedBy ||
+        taskData.raw?.handledBy?._id ||
+        taskData.raw?.handledBy ||
+        "";
+      setSelectedTech(typeof rawTechId === "object" ? rawTechId._id : rawTechId);
     }
   }, [taskData, isOpen]);
 
@@ -165,33 +177,16 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   const animal = taskData.raw?.animalId || {};
   const preferredDateTime = taskData.preferredDate || taskData.displayDate;
 
-  const timeline =
-    !isHealth && combinedScheduledDate && animal.species
-      ? generatePregnancyTimeline(combinedScheduledDate, animal.species, undefined, animal.breed)
-      : null;
-
-  const vwpCheck =
-    !isHealth && animal.lastCalvingDate && combinedScheduledDate
-      ? verifyPostpartumWindow(
-          animal.lastCalvingDate,
-          combinedScheduledDate,
-          animal.species,
-          animal.breed,
-        )
-      : null;
-
   const handleRejectTask = () => {
-    const status = taskData.type === "health" ? "cancelled" : "rejected";
     const endpoint =
       taskData.type === "health"
-        ? `/health-request/${taskData.id}/status`
-        : `/technician/inseminations/${taskData.id}/status`;
+        ? `/health-request/${taskData.id}/cancel`
+        : `/ai-request/${taskData.id}/cancel`;
 
     setIsSubmitting(true);
     toast.promise(
       axiosInstance.patch(endpoint, {
-        status,
-        technicianNote: note || "Declined by technician.",
+        reason: note || "Declined by technician.",
       }),
       {
         loading: "Processing decline...",
@@ -201,7 +196,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
           });
           if (onSuccess) onSuccess();
           onClose();
-          return "Mission Declined";
+          return "Mission Cancelled";
         },
         error: (err) => {
           setIsSubmitting(false);
@@ -212,12 +207,9 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
   };
 
   const handleAction = () => {
-    let status = "";
-    if (isPending || isApproved) {
-      status = "in-progress";
-    } else {
-      status = taskData.type === "health" ? "resolved" : "done";
-    }
+    const nextStatus = (isPending || isApproved)
+      ? "in-progress"
+      : (taskData.type === "health" ? "resolved" : "done");
 
     const endpoint =
       taskData.type === "health"
@@ -227,7 +219,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
     setIsSubmitting(true);
     toast.promise(
       axiosInstance.patch(endpoint, {
-        status,
+        status: nextStatus,
         technicianNote:
           note || `${isPending ? "Accepted" : "Updated"} by technician.`,
         diagnosis,
@@ -253,6 +245,55 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
           return "Error: " + (err.response?.data?.message || err.message);
         },
       },
+    );
+  };
+
+  const handleAdminAssign = () => {
+    if (!selectedTech) {
+      toast.error("Please select a technician first.");
+      return;
+    }
+    const endpoint =
+      taskData.type === "health"
+        ? `/health-request/${taskData.id}/status`
+        : `/ai-request/${taskData.id}/status`;
+
+    const body =
+      taskData.type === "health"
+        ? {
+            status: scheduledDate ? "scheduled" : "in-progress",
+            handledBy: selectedTech,
+            scheduledDate: combinedScheduledDate || undefined,
+            technicianNote: note || "Assigned by Administrator.",
+          }
+        : {
+            status: scheduledDate ? "scheduled" : "approved",
+            approvedBy: selectedTech,
+            scheduledDate: combinedScheduledDate || undefined,
+            technicianNote: note || "Assigned by Administrator.",
+          };
+
+    setIsSubmitting(true);
+    toast.promise(
+      axiosInstance.patch(endpoint, body),
+      {
+        loading: "Saving assignment...",
+        success: () => {
+          queryClient.invalidateQueries({
+            queryKey: ["technician", "requests"],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["admin", "dashboard-overview"],
+          });
+          if (onSuccess) onSuccess();
+          onClose();
+          return "Assignment successfully updated!";
+        },
+        error: (err) => {
+          setIsSubmitting(false);
+          return "Failed to assign: " + (err.response?.data?.message || err.message);
+        },
+      }
     );
   };
 
@@ -406,6 +447,65 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
                 </div>
               </section>
 
+              {isAdmin && !isCompleted && !isArchived && (
+                <section className={sectionClass}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <User size={14} className="text-emerald-600" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Administrative Assignment
+                    </h4>
+                  </div>
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>Select Attending Officer</label>
+                      <select
+                        value={selectedTech}
+                        onChange={(e) => setSelectedTech(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">-- Choose a Technician --</option>
+                        {technicians.map((t) => (
+                          <option key={t._id} value={t._id}>
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Scheduled Date</label>
+                        <input
+                          type="date"
+                          value={scheduledDate}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Scheduled Time</label>
+                        <input
+                          type="time"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>Assignment / Internal Note</label>
+                      <textarea
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Add special instructions, notes or dispatch remarks for the technician..."
+                        className="w-full h-20 bg-base-200 border border-base-300 rounded-xl p-3 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all resize-none custom-scrollbar"
+                      />
+                    </div>
+                  </div>
+                </section>
+              )}
+
               {/* SECTION 2: SERVICE METRICS & PARAMETERS */}
               {!isPending && !isApproved && (
                 <section className={sectionClass}>
@@ -509,65 +609,67 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
               )}
 
               {/* SECTION 3: SCHEDULE & OBSERVATIONS */}
-              <section className={sectionClass}>
-                <div className="flex items-center gap-2 mb-1">
-                  <CalendarDays size={14} className="text-emerald-600" />
-                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                    Schedule & Findings
-                  </h4>
-                </div>
+              {(!isAdmin || isCompleted || isArchived) && (
+                <section className={sectionClass}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CalendarDays size={14} className="text-emerald-600" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Schedule & Findings
+                    </h4>
+                  </div>
 
-                <div className="grid grid-cols-1 gap-4">
-                  {/* Scheduled Inputs block arranged in an equal inline grid */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Scheduled Date</label>
-                      <div className="relative">
-                        <Calendar
-                          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/20"
-                          size={14}
-                        />
-                        <input
-                          type="date"
-                          disabled={isReadOnly}
-                          value={scheduledDate}
-                          onChange={(e) => setScheduledDate(e.target.value)}
-                          className={`${inputClass} pl-10 cursor-pointer`}
-                        />
+                  <div className="grid grid-cols-1 gap-4">
+                    {/* Scheduled Inputs block arranged in an equal inline grid */}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Scheduled Date</label>
+                        <div className="relative">
+                          <Calendar
+                            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/20"
+                            size={14}
+                          />
+                          <input
+                            type="date"
+                            disabled={isReadOnly}
+                            value={scheduledDate}
+                            onChange={(e) => setScheduledDate(e.target.value)}
+                            className={`${inputClass} pl-10 cursor-pointer`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Scheduled Time</label>
+                        <div className="relative">
+                          <Clock3
+                            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/20"
+                            size={14}
+                          />
+                          <input
+                            type="time"
+                            disabled={isReadOnly}
+                            value={scheduledTime}
+                            onChange={(e) => setScheduledTime(e.target.value)}
+                            className={`${inputClass} pl-10 cursor-pointer`}
+                          />
+                        </div>
                       </div>
                     </div>
 
+                    {/* Observations Block expanded smoothly underneath fields */}
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Scheduled Time</label>
-                      <div className="relative">
-                        <Clock3
-                          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/20"
-                          size={14}
-                        />
-                        <input
-                          type="time"
-                          disabled={isReadOnly}
-                          value={scheduledTime}
-                          onChange={(e) => setScheduledTime(e.target.value)}
-                          className={`${inputClass} pl-10 cursor-pointer`}
-                        />
-                      </div>
+                      <label className={labelClass}>Observations</label>
+                      <textarea
+                        disabled={isReadOnly}
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Enter specific behavioral changes, physical observations or custom internal notes here..."
+                        className="w-full h-24 bg-base-200 border border-base-300 rounded-xl p-3 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all resize-none custom-scrollbar"
+                      />
                     </div>
                   </div>
-
-                  {/* Observations Block expanded smoothly underneath fields */}
-                  <div className="space-y-1.5">
-                    <label className={labelClass}>Observations</label>
-                    <textarea
-                      disabled={isReadOnly}
-                      value={note}
-                      onChange={(e) => setNote(e.target.value)}
-                      placeholder="Enter specific behavioral changes, physical observations or custom internal notes here..."
-                      className="w-full h-24 bg-base-200 border border-base-300 rounded-xl p-3 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all resize-none custom-scrollbar"
-                    />
-                  </div>
-                </div>
-              </section>
+                </section>
+              )}
 
               {/* SECTION 4: FARMER OBSERVATIONS & HEAT SIGNS */}
               {!isHealth && (
@@ -639,44 +741,83 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess }) => {
 
             {/* FOOTER */}
             <div className="bg-base-200/20 border-t border-base-300 px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-              <button
-                onClick={handleRejectTask}
-                disabled={isSubmitting || isReadOnly}
-                className="flex items-center gap-2 px-5 h-11 rounded-xl hover:bg-red-800 hover:text-white text-rose-500 bg-rose-500/10 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-30 cursor-pointer w-full sm:w-auto justify-center"
-              >
-                <Trash2 size={14} />
-                Decline
-              </button>
+              {isAdmin ? (
+                // Admin Footer
+                <div className="flex justify-between items-center w-full">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    {assignedTechName ? `Assigned to: ${assignedTechName}` : "Unassigned request"}
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={onClose}
+                      className="h-11 px-6 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    {!isCompleted && !isArchived && (
+                      <button
+                        onClick={handleAdminAssign}
+                        disabled={isSubmitting}
+                        className="h-11 px-8 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2.5 shadow-md bg-[#00643b] hover:bg-[#004d2e] cursor-pointer"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <BadgeCheck size={14} />
+                            {assignedTechId ? "Reassign & Schedule" : "Assign & Schedule"}
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                // Technician Footer
+                <>
+                  <button
+                    onClick={handleRejectTask}
+                    disabled={isSubmitting || isReadOnly}
+                    className="flex items-center gap-2 px-5 h-11 rounded-xl hover:bg-red-800 hover:text-white text-rose-500 bg-rose-500/10 transition-all text-[10px] font-black uppercase tracking-widest disabled:opacity-30 cursor-pointer w-full sm:w-auto justify-center"
+                  >
+                    <Trash2 size={14} />
+                    Decline
+                  </button>
 
-              <div className="flex gap-3 w-full sm:w-auto">
-                <button
-                  onClick={onClose}
-                  className="flex-1 sm:flex-none h-11 px-6 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleAction}
-                  disabled={isSubmitting || isReadOnly}
-                  className="flex-2 sm:flex-none h-11 px-8 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2.5 shadow-md bg-[#074033] hover:bg-[#0d5948] cursor-pointer"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      Synchronizing...
-                    </>
-                  ) : (
-                    <>
-                      <BadgeCheck size={14} />
-                      {isPending || isApproved
-                        ? "Accept Request"
-                        : isHealth
-                          ? "Resolve & Complete"
-                          : "Complete Insemination"}
-                    </>
-                  )}
-                </button>
-              </div>
+                  <div className="flex gap-3 w-full sm:w-auto">
+                    <button
+                      onClick={onClose}
+                      className="flex-1 sm:flex-none h-11 px-6 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={handleAction}
+                      disabled={isSubmitting || isReadOnly}
+                      className="flex-2 sm:flex-none h-11 px-8 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center justify-center gap-2.5 shadow-md bg-[#074033] hover:bg-[#0d5948] cursor-pointer"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          Synchronizing...
+                        </>
+                      ) : (
+                        <>
+                          <BadgeCheck size={14} />
+                          {isPending || isApproved
+                            ? "Accept Request"
+                            : isHealth
+                              ? "Resolve & Complete"
+                              : "Complete Insemination"}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </motion.div>
         </div>

@@ -20,7 +20,21 @@ const TaskSchema = new mongoose.Schema(
     ],
     taskType: {
       type: String,
-      enum: ["AI", "PD", "CD", "Vaccination", "Deworming", "Treatment", "Registration", "Other"],
+      enum: [
+        "GeneralVisit",
+        "FarmInspection",
+        "FollowUp",
+        "Health",
+        "AI",
+        "PD",
+        "CD",
+        "Calving",
+        "Vaccination",
+        "Deworming",
+        "Treatment",
+        "Registration",
+        "Other",
+      ],
       default: "Other",
     },
     category: {
@@ -41,8 +55,47 @@ const TaskSchema = new mongoose.Schema(
       enum: ["Pending", "In Progress", "Completed", "Cancelled"],
       default: "Pending",
     },
+    dueDate: {
+      type: Date,
+      default: null,
+    },
+    sourceType: {
+      type: String,
+      enum: [
+        "manual",
+        "client_profile",
+        "task_scheduler",
+        "automatic_pd_followup",
+        "farmer_requested_verification",
+      ],
+      default: "manual",
+    },
+    relatedRecordType: {
+      type: String,
+      enum: [null, "insemination", "health", "pregnancy", "calving"],
+      default: null,
+    },
+    relatedRecordId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+    claimedAt: {
+      type: Date,
+      default: null,
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
+
+TaskSchema.index({ taskType: 1, sourceType: 1, dueDate: 1, status: 1 });
+TaskSchema.index({ taskType: 1, sourceType: 1, "metadata.inseminationId": 1 });
 
 export const Task = mongoose.model("Task", TaskSchema);

@@ -1,14 +1,12 @@
-import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Printer, FileText } from 'lucide-react';
 
-const DailyReportModal = ({ isOpen, onClose, agendaItems, stats }) => {
-  const printRef = useRef(null);
+const DailyReportModal = ({ isOpen, onClose, agendaItems }) => {
+
 
   if (!isOpen) return null;
 
   const completedTasks = agendaItems.filter(item => item.status === 'done' || item.status === 'resolved');
-  const pendingTasks = agendaItems.filter(item => item.status !== 'done' && item.status !== 'resolved');
 
   const handlePrint = () => {
     window.print();

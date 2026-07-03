@@ -8,3 +8,21 @@ export const requestLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Too many requests. Please wait a minute before submitting again." }
 });
+
+// Moowie chat API rate limiter: 15 requests per 1 minute
+export const moowieLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 15,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many questions sent to Moowie. Please wait a minute." }
+});
+
+// Voiceflow unauthenticated connection rate limiter: 5 requests per 1 minute
+export const voiceflowLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many connections from this client. Access restricted." }
+});

@@ -20,12 +20,40 @@ const AddressSchema = new mongoose.Schema({
   phoneNumber: { type: String, required: false },
 
   landmark: { type: String },
+  detectedAddress: { type: String },
+  locationCapturedAt: { type: Date },
   coordinates: {
     lat: { type: Number },
     lng: { type: Number },
   },
   isDefault: { type: Boolean, default: false },
 });
+
+const FarmLocationSchema = new mongoose.Schema(
+  {
+    latitude: { type: Number },
+    longitude: { type: Number },
+    accuracy: { type: Number },
+    landmark: { type: String, default: "" },
+    directionsNote: { type: String, default: "" },
+    detectedAddress: { type: String, default: "" },
+    sameAsContactAddress: { type: Boolean, default: false },
+    isConfirmed: { type: Boolean, default: false },
+    confirmedAt: { type: Date, default: null },
+    capturedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    capturedAt: { type: Date },
+    source: {
+      type: String,
+      enum: ["farmer_current_location", "technician_current_location", "manual"],
+      default: "manual",
+    },
+  },
+  { _id: false },
+);
 
 const userSchema = new mongoose.Schema(
   {
@@ -51,9 +79,13 @@ const userSchema = new mongoose.Schema(
       type: AddressSchema,
       required: false,
     },
+    farmLocation: {
+      type: FarmLocationSchema,
+      default: null,
+    },
     role: {
       type: String,
-      enum: ["admin", "technician", "farmer"],
+      enum: ["admin", "technician", "veterinarian", "farmer"],
       default: "farmer",
     },
     isVerified: {
@@ -62,12 +94,24 @@ const userSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "on-site", "on-leave"],
+      enum: ["active", "on-site", "on-leave", "suspended"],
       default: "active",
+    },
+    lastLogin: {
+      type: Date,
     },
     pushToken: {
       type: String,
       default: "",
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deactivatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
   },
   { timestamps: true },
@@ -76,5 +120,6 @@ const userSchema = new mongoose.Schema(
 // Performance indexes
 userSchema.index({ name: 1 });
 userSchema.index({ role: 1 });
+userSchema.index({ deletedAt: 1 });
 
 export const User = mongoose.model("User", userSchema);

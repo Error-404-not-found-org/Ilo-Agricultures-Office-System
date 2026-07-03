@@ -1,6 +1,5 @@
-import React from "react";
 import { motion } from "framer-motion";
-import { Calendar, Baby, CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { Calendar, Baby, AlertCircle, Clock } from "lucide-react";
 
 const BreedingTimeline = ({ history = [], reproductiveStatus = "Normal", onStepClick }) => {
   // Find latest events

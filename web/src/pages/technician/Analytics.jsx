@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   TrendingUp,
@@ -41,7 +41,7 @@ export default function TechnicianAnalytics() {
   // ---- MAP DYNAMIC TELEMETRY OR FALLBACKS ----
   const monthlyLabels = analytics.monthlyTrends?.length > 0
     ? analytics.monthlyTrends.map((m) => m.month)
-    : ["Dec '25", "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26"];
+    : ["Dec '25 (Demo)", "Jan '26 (Demo)", "Feb '26 (Demo)", "Mar '26 (Demo)", "Apr '26 (Demo)", "May '26 (Demo)"];
 
   const aiConceptionDataset = [
     {
@@ -89,16 +89,16 @@ export default function TechnicianAnalytics() {
         };
       })
     : [
-        { name: "Cattle (Bovine)", count: 724, percentage: 58, color: "bg-emerald-600" },
-        { name: "Swine (Porcine)", count: 312, percentage: 25, color: "bg-blue-600" },
-        { name: "Goats (Caprine)", count: 150, percentage: 12, color: "bg-amber-600" },
-        { name: "Buffaloes (Bubaline)", count: 62, percentage: 5, color: "bg-purple-600" },
+        { name: "Cattle (Demo)", count: 724, percentage: 58, color: "bg-emerald-600" },
+        { name: "Swine (Demo)", count: 312, percentage: 25, color: "bg-blue-600" },
+        { name: "Goats (Demo)", count: 150, percentage: 12, color: "bg-amber-600" },
+        { name: "Buffaloes (Demo)", count: 62, percentage: 5, color: "bg-purple-600" },
       ];
 
   const sectorPerformance = analytics.barangayActivity?.length > 0
     ? analytics.barangayActivity.map((b) => {
-        const totalServices = Math.round(b.farmers * 2.8 + 1);
-        const successRate = `${Math.min(98, 85 + (b.farmers % 13))}%`;
+        const totalServices = `${Math.round(b.farmers * 2.8 + 1)} (Est.)`;
+        const successRate = `${Math.min(98, 85 + (b.farmers % 13))}% (Est.)`;
         const efficiency = b.farmers > 5 ? "Excellent" : b.farmers > 3 ? "Very High" : "High";
         return {
           name: `${b.barangay} Sector`,
@@ -108,18 +108,18 @@ export default function TechnicianAnalytics() {
         };
       })
     : [
-        { name: "Pavia Sector", totalServices: 342, successRate: "94.2%", efficiency: "Very High" },
-        { name: "San Miguel Sector", totalServices: 284, successRate: "96.5%", efficiency: "Excellent" },
-        { name: "Santa Barbara Sector", totalServices: 210, successRate: "92.1%", efficiency: "High" },
-        { name: "Oton Sector", totalServices: 198, successRate: "91.4%", efficiency: "High" },
-        { name: "Mandurriao Sector", totalServices: 142, successRate: "88.9%", efficiency: "Moderate" },
+        { name: "Pavia Sector (Demo)", totalServices: "342 (Demo)", successRate: "94.2% (Demo)", efficiency: "Very High" },
+        { name: "San Miguel Sector (Demo)", totalServices: "284 (Demo)", successRate: "96.5% (Demo)", efficiency: "Excellent" },
+        { name: "Santa Barbara Sector (Demo)", totalServices: "210 (Demo)", successRate: "92.1% (Demo)", efficiency: "High" },
+        { name: "Oton Sector (Demo)", totalServices: "198 (Demo)", successRate: "91.4% (Demo)", efficiency: "High" },
+        { name: "Mandurriao Sector (Demo)", totalServices: "142 (Demo)", successRate: "88.9% (Demo)", efficiency: "Moderate" },
       ];
 
   const totalFarmers = analytics.barangayActivity?.reduce((sum, b) => sum + (b.farmers || 0), 0) || 142;
   const stats = [
     {
       label: "AI Conception Rate",
-      val: `${analytics.successRate ?? 68}%`,
+      val: analytics.successRate !== undefined ? `${analytics.successRate}%` : "68% (Demo)",
       color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
       icon: <Percent size={16} />,
       trend: "+2.1% this month",
@@ -127,7 +127,7 @@ export default function TechnicianAnalytics() {
     },
     {
       label: "Total AI Cycles",
-      val: `${analytics.totalInsem ?? 1248} runs`,
+      val: analytics.totalInsem !== undefined ? `${analytics.totalInsem} runs` : "1248 runs (Demo)",
       color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
       icon: <Activity size={16} />,
       trend: `${analytics.totalAI_Week ?? 12} runs this week`,
@@ -135,7 +135,7 @@ export default function TechnicianAnalytics() {
     },
     {
       label: "Farmers Onboarded",
-      val: `${totalFarmers} Clients`,
+      val: analytics.barangayActivity?.length > 0 ? `${totalFarmers} Clients` : `${totalFarmers} Clients (Demo)`,
       color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
       icon: <Users size={16} />,
       trend: "Across Oton barangays",
@@ -143,7 +143,7 @@ export default function TechnicianAnalytics() {
     },
     {
       label: "Active Health Checks",
-      val: `${analytics.totalHealth_Month ?? 94} cases`,
+      val: analytics.totalHealth_Month !== undefined ? `${analytics.totalHealth_Month} cases` : "94 cases (Demo)",
       color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
       icon: <Award size={16} />,
       trend: "Reported this month",

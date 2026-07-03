@@ -27,7 +27,7 @@ import "../global.css"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, persistOptions } from "../lib/queryClient";
 import { tokenCache } from "../utils/cache";
-import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
+import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
 import { useEffect, useState, useRef } from "react";
 import { View, ActivityIndicator, Text, Image, useColorScheme, TouchableOpacity, Animated } from "react-native";
 import { Toaster, toast } from 'sonner-native';
@@ -93,11 +93,12 @@ function AppContent({
   useEffect(() => {
     if (!navigationState?.key) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const isVerifying = segments[1] === 'verify';
-    const inTechnicianGroup = segments[0] === '(technician)';
-    const inFarmerGroup = segments[0] === '(farmer)';
-    const inAdminGroup = segments[0] === '(admin)';
+    const routeSegments = segments as string[];
+    const inAuthGroup = routeSegments[0] === '(auth)';
+    const isVerifying = routeSegments[1] === 'verify';
+    const inTechnicianGroup = routeSegments[0] === '(technician)';
+    const inFarmerGroup = routeSegments[0] === '(farmer)';
+    const inAdminGroup = routeSegments[0] === '(admin)';
 
     const isActuallySignedIn = isSignedIn && !!user;
 
@@ -116,7 +117,7 @@ function AppContent({
       }
 
       // 2. Redirect to correct dashboard
-      const atRoot = (segments as any).length === 0 || (segments as any)[0] === '';
+      const atRoot = routeSegments.length === 0 || routeSegments[0] === '';
       
       // FIX: Only consider it a "wrong group" if the role is actually loaded/defined
       // This prevents the "bounce" effect while role metadata is still syncing
@@ -143,7 +144,12 @@ function AppContent({
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      />
       
       {/* Redesigned Offline Mode Dialog (Floating Top Card) */}
       {showOfflineToast && (
@@ -183,7 +189,7 @@ function AppContent({
                 fontSize: 14,
                 marginBottom: 2,
               }}>
-                You're offline now
+                You&apos;re offline now
               </Text>
               <Text style={{
                 color: colors.textMuted,
@@ -258,7 +264,7 @@ function AppContent({
                 fontSize: 14,
                 marginBottom: 2,
               }}>
-                You're online now
+                You&apos;re online now
               </Text>
               <Text style={{
                 color: colors.textMuted,
@@ -406,6 +412,8 @@ function InitialLayout() {
       } else if (prev === null) {
         if (isOfflineMode && !isToastCooldownRef.current) {
           setShowOfflineToast(true);
+        } else if (isConnected) {
+          processOfflineQueue(api);
         }
       }
       connectionRef.current = isConnected;

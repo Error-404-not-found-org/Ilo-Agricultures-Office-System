@@ -17,4 +17,5 @@ export const ENV = {
   ADMIN_EMAIL: process.env.ADMIN_EMAIL,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
+  VOICEFLOW_API_KEY: process.env.VOICEFLOW_API_KEY,
 };

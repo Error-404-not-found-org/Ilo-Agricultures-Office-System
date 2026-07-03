@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   Upload,
-  CalendarDays,
   FileText,
   User2,
   Loader2,
   Camera,
-  MapPin,
   ClipboardList,
   Navigation,
 } from "lucide-react";

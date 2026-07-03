@@ -16,12 +16,41 @@ export const queryClient = new QueryClient({
   },
 });
 
-// Create the persister for Async Storage with a filter to avoid large rows (images)
-export const asyncStoragePersister = createAsyncStoragePersister({
+const defaultPersister = createAsyncStoragePersister({
   storage: AsyncStorage,
   serialize: (data) => JSON.stringify(data),
   deserialize: (data) => JSON.parse(data),
 });
+
+export const asyncStoragePersister = {
+  persistClient: async (client: any) => {
+    try {
+      await defaultPersister.persistClient(client);
+    } catch (err) {
+      console.error("Failed to persist query client state", err);
+    }
+  },
+  restoreClient: async () => {
+    try {
+      return await defaultPersister.restoreClient();
+    } catch (err) {
+      console.error("Failed to restore query client state, clearing cache", err);
+      try {
+        await AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE');
+      } catch (cleanErr) {
+        console.error("Failed to remove corrupted query cache", cleanErr);
+      }
+      return undefined;
+    }
+  },
+  removeClient: async () => {
+    try {
+      await defaultPersister.removeClient();
+    } catch (err) {
+      console.error("Failed to remove query client state", err);
+    }
+  }
+};
 
 // Configure dehydration to skip large queries
 export const persistOptions = {

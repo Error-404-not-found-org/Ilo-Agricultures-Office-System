@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react";
 import { Outlet } from 'react-router-dom';
 import { useClerk } from '@clerk/clerk-react';
 import { toast } from 'sonner';

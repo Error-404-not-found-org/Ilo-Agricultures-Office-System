@@ -12,7 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
@@ -28,17 +28,27 @@ import {
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import * as ImagePicker from "expo-image-picker";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "@/lib/constants";
+import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES, COLOR_OPTIONS_BY_SPECIES } from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
+
+import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 
 export default function RegisterAnimalScreen() {
   const router = useRouter();
   const api = useApi();
   const { isDark, colors } = useTheme();
+  
+  const { farmerId, farmerName, phoneNumber, barangay, municipality, source } = useLocalSearchParams<{
+    farmerId?: string;
+    farmerName?: string;
+    phoneNumber?: string;
+    barangay?: string;
+    municipality?: string;
+    source?: string;
+  }>();
 
-  const [saving, setSaving] = useState(false);
   const [farmers, setFarmers] = useState<any[]>([]);
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [searchFarmerQuery, setSearchFarmerQuery] = useState("");
@@ -51,12 +61,31 @@ export default function RegisterAnimalScreen() {
     breed: "",
     color: "",
     dob: new Date().toISOString().split("T")[0],
+    gender: "Female",
   });
+
+  const [showGenderModal, setShowGenderModal] = useState(false);
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [farmerAnimalsCount, setFarmerAnimalsCount] = useState<number>(0);
+
+  const mutation = useOfflineMutation({
+    url: "/technician/walk-in-livestock",
+    method: "POST",
+    description: `Register Animal: Tag #${formData.earTag}`
+  }, {
+    onSuccess: (result) => {
+      if (result.status === "synced") {
+        toast.success("Animal registered successfully!");
+      }
+      router.back();
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || "Failed to register animal");
+    }
+  });
 
   const handleFarmerSelect = async (farmer: any) => {
     setSelectedFarmer(farmer);
@@ -88,17 +117,41 @@ export default function RegisterAnimalScreen() {
   }, [api]);
 
   useEffect(() => {
+    if (farmerId) {
+      const existingFarmer = farmers.find((f: any) => f._id === farmerId);
+      if (existingFarmer) {
+        handleFarmerSelect(existingFarmer);
+      } else {
+        const fallbackFarmer = {
+          _id: farmerId,
+          name: farmerName || "Farmer",
+          phoneNumber: phoneNumber || "",
+          address: {
+            barangay: barangay || "",
+            municipality: municipality || "",
+          },
+        };
+        handleFarmerSelect(fallbackFarmer);
+      }
+    }
+  }, [farmerId, farmers]);
+
+  useEffect(() => {
     if (formData.species) {
       const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
       if (formData.breed && !validBreeds.includes(formData.breed)) {
         setFormData((prev) => ({ ...prev, breed: "" }));
+      }
+      const validColors = COLOR_OPTIONS_BY_SPECIES[formData.species] || [];
+      if (formData.color && !validColors.includes(formData.color)) {
+        setFormData((prev) => ({ ...prev, color: "" }));
       }
     }
   }, [formData.species]);
 
   const handlePickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
@@ -112,6 +165,7 @@ export default function RegisterAnimalScreen() {
   };
 
   const handleSave = async () => {
+    toast.dismiss();
     if (!selectedFarmer) {
       toast.error("Please select an owner/farmer first");
       return;
@@ -125,29 +179,19 @@ export default function RegisterAnimalScreen() {
       return;
     }
 
-    setSaving(true);
-    try {
-      const payload = {
-        farmerName: selectedFarmer._id,
-        earTag: formData.earTag.trim(),
-        brand: formData.brand.trim() || undefined,
-        species: formData.species,
-        breed: formData.breed,
-        color: formData.color,
-        dob: formData.dob,
-        gender: "Female", // Set to default Breeding Female target for programs
-        imageUrl: imageBase64 || undefined,
-      };
+    const payload = {
+      farmerName: selectedFarmer._id,
+      earTag: formData.earTag.trim(),
+      brand: formData.brand.trim() || undefined,
+      species: formData.species,
+      breed: formData.breed,
+      color: formData.color,
+      dob: formData.dob,
+      gender: formData.gender,
+      imageUrl: imageBase64 || undefined,
+    };
 
-      await api.post("/technician/walk-in-livestock", payload);
-      toast.success("Animal registered successfully!");
-      router.back();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.message || "Failed to register animal");
-    } finally {
-      setSaving(false);
-    }
+    mutation.mutate(payload);
   };
 
   const filteredFarmers = farmers.filter(
@@ -225,7 +269,7 @@ export default function RegisterAnimalScreen() {
                     className="text-[10px] text-slate-400 dark:text-slate-500 uppercase mt-0.5"
                   >
                     {selectedFarmer.address?.barangay || "No Barangay"} •{" "}
-                    {selectedFarmer.address?.phoneNumber || "No Phone"}
+                    {selectedFarmer.phoneNumber || selectedFarmer.address?.phoneNumber || "No Phone"}
                   </Text>
                 )}
               </View>
@@ -261,42 +305,7 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row gap-3">
-              <View className="flex-1">
-                <View className="flex-row justify-between items-center mb-1 px-1">
-                  <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">
-                    Ear Tag *
-                  </Text>
-                </View>
-                <TextInput
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                  placeholder="TAG-XXXX"
-                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                  value={formData.earTag}
-                  onChangeText={(t) => setFormData({ ...formData, earTag: t })}
-                />
-              </View>
-
-              <View className="flex-1">
-                <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase ">
-                  Brand
-                </Text>
-                <TextInput
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                  value={formData.brand}
-                  placeholder="optional"
-                  onChangeText={(t) => setFormData({ ...formData, brand: t })}
-                />
-              </View>
-            </View>
-            <EarTagGenerator
-              farmerName={selectedFarmer?.name}
-              animalCount={farmerAnimalsCount}
-              onGenerate={(tag) => setFormData({ ...formData, earTag: tag })}
-              isDark={isDark}
-            />
-
+            {/* ROW 1: Species & Breed */}
             <View className="flex-row gap-3">
               <View className="flex-1">
                 <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">
@@ -346,13 +355,40 @@ export default function RegisterAnimalScreen() {
               </View>
             </View>
 
+            {/* ROW 2: Gender & Color */}
             <View className="flex-row gap-3">
               <View className="flex-1">
                 <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">
-                  Color
+                  Gender *
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setShowColorModal(true)}
+                  onPress={() => setShowGenderModal(true)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
+                >
+                  <Text
+                    style={{ fontFamily: "Outfit_600SemiBold" }}
+                    className="text-slate-700 dark:text-slate-200 text-xs"
+                  >
+                    {formData.gender}
+                  </Text>
+                  <ChevronDown
+                    size={14}
+                    color={isDark ? "#6b7280" : "#64748b"}
+                  />
+                </TouchableOpacity>
+              </View>
+              <View className="flex-1">
+                <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">
+                  Color *
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!formData.species) {
+                      toast.error("Please select a species first.");
+                      return;
+                    }
+                    setShowColorModal(true);
+                  }}
                   className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                 >
                   <Text
@@ -367,50 +403,87 @@ export default function RegisterAnimalScreen() {
                   />
                 </TouchableOpacity>
               </View>
+            </View>
 
-              {/* Estimated DOB */}
+            {/* ROW 3: Ear Tag & Brand/Markings */}
+            <View className="flex-row gap-3">
               <View className="flex-1">
-                <View className="flex-row justify-between items-center mb-1 ml-1">
+                <View className="flex-row justify-between items-center mb-1 px-1">
                   <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">
-                    Date of Birth
+                    Ear Tag *
                   </Text>
-                  <TouchableOpacity
-                    onPress={() =>
-                      setFormData({
-                        ...formData,
-                        dob: new Date().toISOString().split("T")[0],
-                      })
-                    }
-                    className="active:opacity-50"
-                  >
-                    <Text className="text-emerald-600 dark:text-emerald-400 text-[9px] font-outfit-bold uppercase tracking-wider">
-                      Today
-                    </Text>
-                  </TouchableOpacity>
                 </View>
+                <TextInput
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
+                  placeholder="TAG-XXXX"
+                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                  value={formData.earTag}
+                  onChangeText={(t) => setFormData({ ...formData, earTag: t })}
+                />
+              </View>
+
+              <View className="flex-1">
+                <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase ">
+                  Brand/Markings
+                </Text>
+                <TextInput
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
+                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                  value={formData.brand}
+                  placeholder="optional"
+                  onChangeText={(t) => setFormData({ ...formData, brand: t })}
+                />
+              </View>
+            </View>
+            <EarTagGenerator
+              farmerName={selectedFarmer?.name}
+              animalCount={farmerAnimalsCount}
+              onGenerate={(tag) => setFormData({ ...formData, earTag: tag })}
+              isDark={isDark}
+            />
+
+            {/* ROW 4: Date of Birth */}
+            <View className="mb-3">
+              <View className="flex-row justify-between items-center mb-1 ml-1">
+                <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">
+                  Date of Birth
+                </Text>
                 <TouchableOpacity
-                  onPress={() => setShowDatePicker(true)}
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
+                  onPress={() =>
+                    setFormData({
+                      ...formData,
+                      dob: new Date().toISOString().split("T")[0],
+                    })
+                  }
+                  className="active:opacity-50"
                 >
-                  <Text
-                    style={{ fontFamily: "Outfit_600SemiBold" }}
-                    className="text-slate-700 dark:text-slate-200 text-xs"
-                  >
-                    {formData.dob}
+                  <Text className="text-emerald-600 dark:text-emerald-400 text-[9px] font-outfit-bold uppercase tracking-wider">
+                    Today
                   </Text>
-                  <Calendar size={16} color={isDark ? "#6b7280" : "#64748b"} />
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                onPress={() => setShowDatePicker(true)}
+                className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
+              >
+                <Text
+                  style={{ fontFamily: "Outfit_600SemiBold" }}
+                  className="text-slate-700 dark:text-slate-200 text-xs"
+                >
+                  {formData.dob}
+                </Text>
+                <Calendar size={16} color={isDark ? "#6b7280" : "#64748b"} />
+              </TouchableOpacity>
             </View>
           </View>
 
           {/* SUBMIT BUTTON */}
           <TouchableOpacity
-            className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${saving ? "bg-slate-400" : "bg-[#00643B]"}`}
+            className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${mutation.isPending ? "bg-slate-400" : "bg-[#00643B]"}`}
             onPress={handleSave}
-            disabled={saving}
+            disabled={mutation.isPending}
           >
-            {saving ? (
+            {mutation.isPending ? (
               <ActivityIndicator color="white" />
             ) : (
               <>
@@ -618,7 +691,7 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={CATTLE_COLORS}
+              data={formData.species ? (COLOR_OPTIONS_BY_SPECIES[formData.species] || []) : CATTLE_COLORS}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <TouchableOpacity
@@ -637,6 +710,48 @@ export default function RegisterAnimalScreen() {
                 </TouchableOpacity>
               )}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* GENDER SELECTION MODAL */}
+      <Modal visible={showGenderModal} animationType="slide" transparent>
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[70%]">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text
+                style={{
+                  fontFamily: "Outfit_900Black",
+                  fontSize: 18,
+                  color: colors.textPrimary,
+                }}
+              >
+                Select Gender
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowGenderModal(false)}
+                className="p-1 bg-slate-50 dark:bg-slate-800 rounded-full"
+              >
+                <X size={20} color={isDark ? "#94a3b8" : "black"} />
+              </TouchableOpacity>
+            </View>
+            {["Female", "Male"].map((g) => (
+              <TouchableOpacity
+                key={g}
+                onPress={() => {
+                  setFormData({ ...formData, gender: g });
+                  setShowGenderModal(false);
+                }}
+                className="py-3.5 border-b border-slate-100 dark:border-slate-800"
+              >
+                <Text
+                  style={{ fontFamily: "Outfit_600SemiBold" }}
+                  className="text-sm text-slate-800 dark:text-white"
+                >
+                  {g}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       </Modal>

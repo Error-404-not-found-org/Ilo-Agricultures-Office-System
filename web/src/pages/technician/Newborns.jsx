@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@clerk/clerk-react";
 import axiosInstance from "../../lib/axios";
@@ -6,12 +6,10 @@ import { TableRowSkeleton } from "../../components/Skeleton";
 import {
   Search,
   Download,
-  Tractor,
   Sparkles,
   HeartPulse,
   X,
   Eye,
-  Info,
   ChevronLeft,
   ChevronRight,
   Filter,

@@ -1,9 +1,6 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Search,
-  Moon,
-  Sun,
-  Bell,
   ClipboardList,
   MapPin,
   Check,
@@ -15,7 +12,7 @@ import {
   ShieldAlert,
   Lock,
 } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import Topbar from "../../components/ui/Topbar";
@@ -23,7 +20,6 @@ import { TableRowSkeleton } from "../../components/Skeleton";
 import TaskActionModal from "../../components/modals/TaskActionModal";
 
 export default function OperationalInbox() {
-  const queryClient = useQueryClient();
   const isAdmin = window.location.pathname.startsWith("/admin");
   
   const { data: dbUser } = useQuery({
@@ -50,90 +46,44 @@ export default function OperationalInbox() {
   const itemsPerPage = 10;
   const toast = useToast();
 
-  // Helper function to format addresses
-  const formatAddress = (addr) => {
-    if (!addr) return "Oton, Iloilo";
-    if (typeof addr === "string") return addr;
-    if (Array.isArray(addr) && addr.length > 0) {
-      const first = addr[0];
-      return (
-        `${first.barangay || ""}, ${first.city || "Oton"}`
-          .replace(/^,|,$/g, "")
-          .trim() || "Oton, Iloilo"
-      );
-    }
-    if (typeof addr === "object") {
-      return (
-        `${addr.barangay || ""}, ${addr.city || "Oton"}`
-          .replace(/^,|,$/g, "")
-          .trim() || "Oton, Iloilo"
-      );
-    }
-    return "Oton, Iloilo";
-  };
+  const statusParam = statusFilter === "in-progress" ? "in_progress" : statusFilter;
 
-  // Queries to pull data from backend with internal loading tracking
+  // Unified Backend 2.0 operational queue. This replaces the old local merge
+  // of AI requests and health requests so the screen follows backend workflow rules.
   const {
-    data: aiRequests = [],
-    refetch: refetchAI,
-    isLoading: isLoadingAI,
+    data: queueData,
+    refetch: refetchQueue,
+    isLoading: isLoadingQueue,
   } = useQuery({
-    queryKey: ["ai-requests"],
+    queryKey: ["technician", "requests", statusParam, searchQuery, currentPage],
     queryFn: async () => {
-      const res = await axiosInstance.get("/ai-request");
+      const res = await axiosInstance.get("/technician/requests", {
+        params: {
+          status: statusParam,
+          search: searchQuery || undefined,
+          page: currentPage,
+          limit: itemsPerPage,
+        },
+      });
       return res.data;
     },
-  });
-
-  const {
-    data: healthRequests = [],
-    refetch: refetchHealth,
-    isLoading: isLoadingHealth,
-  } = useQuery({
-    queryKey: ["health-requests"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/health-request");
-      return res.data;
-    },
+    keepPreviousData: true,
   });
 
   // Calculate master aggregate loading variable context handles
-  const isMasterLoading = isLoadingAI || isLoadingHealth;
+  const isMasterLoading = isLoadingQueue;
 
-  // Combined requests memoized
   const requests = useMemo(() => {
-    const aiList = Array.isArray(aiRequests)
-      ? aiRequests
-      : aiRequests?.data || [];
-    const healthList = Array.isArray(healthRequests)
-      ? healthRequests
-      : healthRequests?.data || [];
-
-    const ai = aiList.map((req) => ({
-      id: req._id,
-      farmer: req.farmerId?.name || "Unknown Farmer",
-      location: formatAddress(req.farmerId?.address),
-      type: "insemination",
-      task: `AI Attempt #${req.attemptNumber || 1} request for Tag #${req.animalId?.earTag || "Unknown"} (${req.animalId?.breed || "Crossbreed"})`,
-      date: new Date(req.scheduledDate || req.preferredDate || req.createdAt).toLocaleString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }),
-      status: req.status,
-      createdAt: req.createdAt,
-      visitDate: req.scheduledDate || req.preferredDate || null,
-      raw: req,
-    }));
-
-    const health = healthList.map((req) => ({
-      id: req._id,
-      farmer: req.farmerId?.name || "Unknown Farmer",
-      location: formatAddress(req.farmerId?.address),
-      type: "health",
-      task: `Health Check for Tag #${req.animalId?.earTag || "Unknown"} - ${req.symptoms || "No symptoms listed"}`,
+    const queue = Array.isArray(queueData?.requests) ? queueData.requests : [];
+    return queue.map((req) => ({
+      id: req.id,
+      farmer: req.farmer || "Unknown Farmer",
+      location: req.location || "Oton, Iloilo",
+      type: req.type === "ai" ? "insemination" : "health",
+      task:
+        req.type === "ai"
+          ? `AI request for Tag #${req.earTag || req.animal || "Unknown"} (${req.breed || "Crossbreed"})`
+          : `Health Assistance for Tag #${req.earTag || req.animal || "Unknown"} - ${req.raw?.symptoms || req.raw?.requestType || "No symptoms listed"}`,
       date: new Date(req.scheduledDate || req.preferredDate || req.createdAt).toLocaleString("en-US", {
         year: "numeric",
         month: "short",
@@ -144,30 +94,10 @@ export default function OperationalInbox() {
       status: req.status === "resolved" ? "done" : req.status,
       createdAt: req.createdAt,
       visitDate: req.scheduledDate || req.preferredDate || null,
-      raw: req,
+      urgency: req.urgency,
+      raw: req.raw || req,
     }));
-
-    return [...ai, ...health].sort((a, b) => {
-      // 1. Primary Sort: status weight (pending = 1, in-progress = 2, completed = 3)
-      const getStatusWeight = (status) => {
-        if (status === "pending") return 1;
-        if (status === "in-progress") return 2;
-        return 3;
-      };
-
-      const weightA = getStatusWeight(a.status);
-      const weightB = getStatusWeight(b.status);
-
-      if (weightA !== weightB) {
-        return weightA - weightB;
-      }
-
-      // 2. Secondary Sort: Chronological order (earliest/first request first)
-      const dateA = new Date(a.visitDate || a.createdAt).getTime();
-      const dateB = new Date(b.visitDate || b.createdAt).getTime();
-      return dateA - dateB;
-    });
-  }, [aiRequests, healthRequests]);
+  }, [queueData]);
 
   // State Action Dispatchers using API requests
   const handleUpdateStatus = async (id, type, newStatus) => {
@@ -178,13 +108,20 @@ export default function OperationalInbox() {
         const endpoint =
           type === "insemination"
             ? `/ai-request/${id}/status`
-            : `/health-request/${id}/status`;
+            : newStatus === "in-progress"
+              ? `/health-request/${id}/triage`
+              : `/health-request/${id}/status`;
         const statusValue =
           newStatus === "done" && type === "health" ? "resolved" : newStatus;
 
-        await axiosInstance.patch(endpoint, { status: statusValue });
+        await axiosInstance.patch(
+          endpoint,
+          type === "health" && newStatus === "in-progress"
+            ? { technicianNote: "Health assistance accepted by technician." }
+            : { status: statusValue },
+        );
         toast.success(`Request status updated to ${newStatus.toUpperCase()}`);
-        await Promise.all([refetchAI(), refetchHealth()]);
+        await refetchQueue();
       } catch (error) {
         toast.error(
           "Failed to update status: " +
@@ -242,7 +179,7 @@ export default function OperationalInbox() {
               : `/health-request/${id}`;
           await axiosInstance.delete(endpoint);
           toast.success("Request removed successfully");
-          await Promise.all([refetchAI(), refetchHealth()]);
+          await refetchQueue();
         } catch (error) {
           toast.error(
             "Failed to delete request: " +
@@ -255,25 +192,11 @@ export default function OperationalInbox() {
     });
   };
 
-  // Live Query Filters
-  const filteredRequests = requests.filter((req) => {
-    const matchesSearch = [req.farmer, req.id, req.location, req.task]
-      .join(" ")
-      .toLowerCase()
-      .includes(searchQuery.toLowerCase());
-
-    if (statusFilter === "all") return matchesSearch;
-    return matchesSearch && req.status === statusFilter;
-  });
-
   // Pagination Engine Math
-  const totalItems = filteredRequests.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+  const totalItems = queueData?.pagination?.total || requests.length;
+  const totalPages = queueData?.pagination?.totalPages || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedRequests = filteredRequests.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
+  const paginatedRequests = requests;
 
   const activeQueueCount = requests.filter(
     (r) => r.status === "pending",
@@ -311,7 +234,7 @@ export default function OperationalInbox() {
         {/* Tab Filter Controls Row */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-1 rounded-xl flex gap-1 shadow-sm">
-            {["pending", "in-progress", "all"].map((status) => (
+            {["pending", "scheduled", "in-progress", "completed", "all"].map((status) => (
               <button
                 key={status}
                 onClick={() => {
@@ -451,7 +374,7 @@ export default function OperationalInbox() {
                             <span className="font-bold text-slate-700 dark:text-slate-300">
                               {req.type === "insemination"
                                 ? "Artificial Insemination"
-                                : "Medical Diagnostics"}
+                                : "Health Assistance"}
                             </span>
                           </div>
                           <div className="text-[11px] text-slate-400 font-medium mt-1.5">
@@ -650,9 +573,9 @@ export default function OperationalInbox() {
         onClose={() => setIsTaskModalOpen(false)}
         task={selectedTask}
         onSuccess={() => {
-          refetchAI();
-          refetchHealth();
+          refetchQueue();
         }}
+        isAdmin={isAdmin}
       />
     </div>
   );

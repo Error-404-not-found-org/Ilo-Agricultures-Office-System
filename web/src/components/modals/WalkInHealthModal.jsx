@@ -1,16 +1,14 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   HeartPulse,
   User,
   Activity,
-  ClipboardList,
   Search,
   Phone,
   MapPin,
   Calendar,
-  Clock,
   Stethoscope,
   BadgeCheck,
   StickyNote,
@@ -92,43 +90,47 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
       window.addEventListener("keydown", handleKeyDown);
     }
     if (isOpen && prefillData) {
-      setFormData((prev) => ({
-        ...prev,
-        firstName: prefillData.farmerName?.split(" ")[0] || "",
-        lastName: prefillData.farmerName?.split(" ").slice(1).join(" ") || "",
-        animalDetails: { ...prev.animalDetails, earTag: prefillData.earTag || "" },
-      }));
-      setIsExistingRecord(false);
+      Promise.resolve().then(() => {
+        setFormData((prev) => ({
+          ...prev,
+          firstName: prefillData.farmerName?.split(" ")[0] || "",
+          lastName: prefillData.farmerName?.split(" ").slice(1).join(" ") || "",
+          animalDetails: { ...prev.animalDetails, earTag: prefillData.earTag || "" },
+        }));
+        setIsExistingRecord(false);
+      });
     } else if (!isOpen) {
-      setIsExistingRecord(true);
-      setSelectedFarmerId("");
-      setSearchFarmer("");
-      setIsDropdownOpen(false);
-      setSelectedAnimalId("");
-      setIsBarangayDropdownOpen(false);
-      setFormData({
-        firstName: "",
-        lastName: "",
-        phoneNumber: "",
-        email: "",
-        address: {
-          barangay: "",
-          city: "Oton"
-        },
-        animalDetails: {
-          earTag: "",
-          species: "Beef Cattle",
-          breed: "",
-        },
-        requestType: "disease",
-        urgency: "medium",
-        status: "resolved", 
-        preferredDate: new Date().toISOString().split("T")[0],
-        preferredTime: "08:00",
-        diagnosis: "",
-        treatment: "",
-        advice: "",
-        technicianNote: "",
+      Promise.resolve().then(() => {
+        setIsExistingRecord(true);
+        setSelectedFarmerId("");
+        setSearchFarmer("");
+        setIsDropdownOpen(false);
+        setSelectedAnimalId("");
+        setIsBarangayDropdownOpen(false);
+        setFormData({
+          firstName: "",
+          lastName: "",
+          phoneNumber: "",
+          email: "",
+          address: {
+            barangay: "",
+            city: "Oton"
+          },
+          animalDetails: {
+            earTag: "",
+            species: "Beef Cattle",
+            breed: "",
+          },
+          requestType: "disease",
+          urgency: "medium",
+          status: "resolved", 
+          preferredDate: new Date().toISOString().split("T")[0],
+          preferredTime: "08:00",
+          diagnosis: "",
+          treatment: "",
+          advice: "",
+          technicianNote: "",
+        });
       });
     }
     return () => {
@@ -140,12 +142,15 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     if (formData.animalDetails.species) {
       const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || [];
       if (formData.animalDetails.breed && !validBreeds.includes(formData.animalDetails.breed)) {
-        setFormData((prev) => ({
-          ...prev,
-          animalDetails: { ...prev.animalDetails, breed: "" },
-        }));
+        Promise.resolve().then(() => {
+          setFormData((prev) => ({
+            ...prev,
+            animalDetails: { ...prev.animalDetails, breed: "" },
+          }));
+        });
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.animalDetails.species]);
 
   const mutation = useMutation({

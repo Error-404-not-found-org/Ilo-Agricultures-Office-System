@@ -1,6 +1,6 @@
-import React, { useMemo, useState, useEffect } from "react";
+import { useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   User,
@@ -15,32 +15,14 @@ import {
   ExternalLink,
   AlertCircle,
   FileSpreadsheet,
-  Settings,
-  X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { } from "framer-motion";
 import axiosInstance from "../../lib/axios";
-import { useToast } from "../../contexts/ToastContext";
-import { OTON_BARANGAYS } from "../../constants/barangays";
+import { } from "../../constants/barangays";
 
 export default function FarmerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const toast = useToast();
-  const queryClient = useQueryClient();
-
-  // ---- APPLICATION LOCAL MODAL STATES ----
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
-  const [editData, setEditData] = useState({
-    id: "",
-    firstName: "",
-    lastName: "",
-    phoneNumber: "",
-    barangay: "",
-    email: "",
-  });
 
   // ---- BACKEND RECOVERY PIPELINES ----
   const {
@@ -94,51 +76,7 @@ export default function FarmerProfile() {
     };
   }, [ownedAnimals]);
 
-  // ---- MODAL LIFECYCLE EVENT HANDLERS ----
-  const openEditModal = () => {
-    if (!farmer) return;
-    const nameParts = farmer.name?.split(" ") || ["", ""];
-    setEditData({
-      id: farmer._id,
-      firstName: nameParts[0] || "",
-      lastName: nameParts.slice(1).join(" ") || "",
-      phoneNumber: farmer.phoneNumber || "",
-      barangay: farmer.address?.barangay || "",
-      email: farmer.email || "",
-    });
-    setIsEditModalOpen(true);
-  };
 
-  const handleEditSubmit = async (e) => {
-    e.preventDefault();
-
-    // Explicit Validation Safeguards
-    if (editData.phoneNumber.length < 10) {
-      toast.error("Please provide a valid complete mobile contact number.");
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      await axiosInstance.put(`/user/${editData.id}`, {
-        name: `${editData.firstName.trim()} ${editData.lastName.trim()}`,
-        phoneNumber: editData.phoneNumber,
-        address: {
-          barangay: editData.barangay,
-          city: "Oton",
-          province: "Iloilo",
-        },
-        email: editData.email,
-      });
-      toast.success("Profile updated successfully");
-      queryClient.invalidateQueries({ queryKey: ["technician", "farmer", id] });
-      setIsEditModalOpen(false);
-    } catch (error) {
-      toast.error("Failed to update official profile ledger parameters");
-    } finally {
-      setIsUpdating(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -179,7 +117,7 @@ export default function FarmerProfile() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
       {/* Sticky Header Bar */}
-      <header className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 px-4 sm:px-8 h-16 flex items-center justify-between flex-shrink-0 current-row sticky top-0 z-30 backdrop-blur-md bg-white/90 dark:bg-slate-950/90">
+      <header className="bg-white/90 dark:bg-slate-950/90 border-b border-slate-200 dark:border-slate-800/80 px-4 sm:px-8 h-16 flex items-center justify-between shrink-0 current-row sticky top-0 z-30 backdrop-blur-md">
         <div className="flex items-center gap-4 min-w-0">
           <button
             onClick={() => navigate("/technician/farmers")}
@@ -289,12 +227,6 @@ export default function FarmerProfile() {
               >
                 <Phone size={13} className="mr-1" /> Call Partner
               </a>
-              <button
-                onClick={openEditModal}
-                className="btn btn-sm bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 font-bold text-xs rounded-xl px-4 flex-1 h-9 cursor-pointer transition-colors"
-              >
-                <Settings size={13} className="mr-1" /> Update Profile
-              </button>
             </div>
 
             <div className="divider my-0 opacity-40 dark:border-slate-800" />
@@ -450,212 +382,6 @@ export default function FarmerProfile() {
           </div>
         </div>
       </main>
-
-      {/* EDIT REGISTRY PROFILE DIALOG WINDOW */}
-      <AnimatePresence>
-        {isEditModalOpen && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsEditModalOpen(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 15 }}
-              className="relative w-full max-w-lg bg-white dark:bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800"
-            >
-              <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                <div>
-                  <h3 className="text-sm font-black uppercase text-slate-800 dark:text-slate-100">
-                    Update Partner Profile
-                  </h3>
-                  <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                    Modifying Official Registry Data
-                  </p>
-                </div>
-                <button
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="btn btn-ghost btn-sm btn-square flex items-center justify-center text-slate-400"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="p-6">
-                <form
-                  id="edit-farmer-form"
-                  onSubmit={handleEditSubmit}
-                  className="space-y-4"
-                >
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400 block">
-                        First Name
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={30}
-                        value={editData.firstName}
-                        onChange={(e) =>
-                          setEditData({
-                            ...editData,
-                            firstName: e.target.value,
-                          })
-                        }
-                        className="input input-bordered w-full rounded-xl h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 focus:outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400 block">
-                        Last Name
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={30}
-                        value={editData.lastName}
-                        onChange={(e) =>
-                          setEditData({ ...editData, lastName: e.target.value })
-                        }
-                        className="input input-bordered w-full rounded-xl h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 block">
-                      Contact Number
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      maxLength={11}
-                      placeholder="09XXXXXXXXX"
-                      value={editData.phoneNumber}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        // Strict numeric pattern protector guard
-                        if (val === "" || /^\d+$/.test(val)) {
-                          setEditData({ ...editData, phoneNumber: val });
-                        }
-                      }}
-                      className="input input-bordered w-full rounded-xl h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 focus:outline-none font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-1 relative">
-                    <label className="text-[10px] font-black uppercase text-slate-400 block">
-                      Barangay Sector Location
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={editData.barangay}
-                      onChange={(e) => {
-                        setEditData({ ...editData, barangay: e.target.value });
-                        setIsBarangayDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsBarangayDropdownOpen(true)}
-                      onBlur={() =>
-                        setTimeout(() => setIsBarangayDropdownOpen(false), 200)
-                      }
-                      className="input input-bordered w-full rounded-xl h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 focus:outline-none"
-                    />
-                    <AnimatePresence>
-                      {isBarangayDropdownOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -5 }}
-                          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-xl rounded-xl custom-scrollbar"
-                        >
-                          {OTON_BARANGAYS.filter((b) =>
-                            (b || "")
-                              .toLowerCase()
-                              .includes(
-                                (editData.barangay || "").toLowerCase(),
-                              ),
-                          ).length > 0 ? (
-                            OTON_BARANGAYS.filter((b) =>
-                              (b || "")
-                                .toLowerCase()
-                                .includes(
-                                  (editData.barangay || "").toLowerCase(),
-                                ),
-                            ).map((b) => (
-                              <button
-                                key={b}
-                                onClick={() =>
-                                  setEditData({ ...editData, barangay: b })
-                                }
-                                type="button"
-                                className="w-full px-4 py-2 text-left text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-900 block border-b border-slate-100 dark:border-slate-900/60 last:border-0 cursor-pointer text-slate-700 dark:text-slate-200"
-                              >
-                                {b}
-                              </button>
-                            ))
-                          ) : (
-                            <div className="py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                              No matching barangay
-                            </div>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 block">
-                      Email Address{" "}
-                      {farmer?.email
-                        ? "(Locked · Contact Registry System)"
-                        : "(Available to Add)"}
-                    </label>
-                    <input
-                      type="email"
-                      disabled={!!farmer?.email}
-                      placeholder={farmer?.email ? "" : "example@domain.com"}
-                      value={editData.email}
-                      onChange={(e) =>
-                        setEditData({ ...editData, email: e.target.value })
-                      }
-                      className={`input input-bordered w-full rounded-xl h-10 text-xs font-bold focus:outline-none border-slate-200 dark:border-slate-800
-                        ${
-                          farmer?.email
-                            ? "bg-slate-100/80 dark:bg-slate-900/40 text-slate-400 cursor-not-allowed select-none"
-                            : "bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                        }`}
-                    />
-                  </div>
-                </form>
-              </div>
-
-              <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 px-5 py-4 flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="btn btn-sm btn-ghost text-xs font-bold rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  form="edit-farmer-form"
-                  type="submit"
-                  disabled={isUpdating}
-                  className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white font-bold text-xs rounded-xl px-4 shadow-sm"
-                >
-                  {isUpdating ? "Updating..." : "Update Profile"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

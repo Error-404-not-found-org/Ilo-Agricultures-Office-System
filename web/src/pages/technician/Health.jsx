@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -9,7 +9,6 @@ import {
   Stethoscope,
   AlertTriangle,
   ShieldCheck,
-  Filter,
   Eye,
   X,
   ChevronLeft,
@@ -128,7 +127,7 @@ export default function HealthLog() {
           await axiosInstance.delete(`/health-request/${c.id}`);
           toast.success("Health incident record removed successfully.");
           refetch();
-        } catch (err) {
+        } catch {
           toast.error("Failed to remove incident entry.");
         }
       }
