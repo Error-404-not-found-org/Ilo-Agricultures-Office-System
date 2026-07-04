@@ -75,6 +75,11 @@ export const respondToCancellationRequest = async (
   return response.data;
 };
 
+export const createWalkInInsemination = async (api: AxiosInstance, payload: any) => {
+  const response = await api.post("/technician/walk-in-insemination", payload);
+  return response.data;
+};
+
 export const declineTechnicianRequest = async (
   api: AxiosInstance,
   type: "health" | "ai",

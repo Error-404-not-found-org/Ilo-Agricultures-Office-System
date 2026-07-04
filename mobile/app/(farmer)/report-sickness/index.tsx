@@ -9,7 +9,6 @@ import {
   StatusBar,
   ActivityIndicator,
   Image,
-  Alert,
   Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -29,13 +28,19 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useEffect, useRef } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { validateRequestTime } from "@/lib/utils";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import {
+  useFarmerAnimalsForHealthQuery,
+  useFarmerSelfProfileQuery,
+  useMyHealthRequestsQuery,
+  useSubmitHealthRequestMutation,
+  useSystemConfigQuery,
+  useTechnicianDirectoryQuery,
+} from "@/features/farmer-requests/hooks/useFarmerRequestForms";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -110,7 +115,6 @@ const URGENCY_OPTIONS = [
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ReportSickness() {
   const router = useRouter();
-  const api = useApi();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const { colors, isDark } = useTheme();
@@ -132,40 +136,8 @@ export default function ReportSickness() {
     return d;
   });
 
-  const queryClient = useQueryClient();
-
-  const { data: config } = useQuery({
-    queryKey: ["system", "config"],
-    queryFn: async () => {
-      const res = await api.get("/config");
-      return res.data;
-    },
-  });
-
-  const mutation = useMutation({
-    mutationFn: async (data: any) => {
-      return await api.post("/health-request", data);
-    },
-    onSuccess: () => {
-      toast.success(
-        "Request submitted! A technician will attend to your animal.",
-        { duration: 4000, position: "top-center" },
-      );
-      // Reset Form
-      setSelectedAnimal(null);
-      setSymptoms("");
-      setImageUri(null);
-      setImageBase64(null);
-
-      queryClient.invalidateQueries({ queryKey: ["farmer", "requests"] });
-      router.back();
-    },
-    onError: (error: any) => {
-      toast.error(
-        error.response?.data?.message || "Failed to submit. Please try again.",
-      );
-    },
-  });
+  const { data: config } = useSystemConfigQuery();
+  const mutation = useSubmitHealthRequestMutation();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitting = mutation.isPending || isSubmitting;
@@ -194,13 +166,7 @@ export default function ReportSickness() {
   ];
 
   // ── Load profile ────────────────────────────────────────────────────────────
-  const { data: profile, isLoading: loadingProfile } = useQuery({
-    queryKey: ["user", "me"],
-    queryFn: async () => {
-      const res = await api.get("/user/me");
-      return res.data;
-    },
-  });
+  const { data: profile, isLoading: loadingProfile } = useFarmerSelfProfileQuery();
 
   useEffect(() => {
     if (profile) {
@@ -209,31 +175,13 @@ export default function ReportSickness() {
   }, [profile]);
 
   // Fetch farmer's animals for the dropdown
-  const { data: animalsData, isLoading: isLoadingAnimals } = useQuery({
-    queryKey: ["animals", "my", "health-picker", 1, 25],
-    queryFn: async () => {
-      const res = await api.get("/animals/my?page=1&limit=25");
-      return res.data;
-    },
-  });
+  const { data: animalsData, isLoading: isLoadingAnimals } = useFarmerAnimalsForHealthQuery();
 
   // Fetch pending health requests to block duplicates
-  const { data: myHealthRequests } = useQuery({
-    queryKey: ["health-requests", "my"],
-    queryFn: async () => {
-      const res = await api.get("/health-request/my");
-      return res.data;
-    },
-  });
+  const { data: myHealthRequests } = useMyHealthRequestsQuery();
 
   // Fetch technicians list for direct call emergency contacts
-  const { data: technicians, isLoading: isLoadingTechs } = useQuery({
-    queryKey: ["technicians", "list"],
-    queryFn: async () => {
-      const res = await api.get("/user?role=technician");
-      return Array.isArray(res.data) ? res.data : [];
-    },
-  });
+  const { data: technicians, isLoading: isLoadingTechs } = useTechnicianDirectoryQuery();
 
   useEffect(() => {
     if (animalsData) {
@@ -296,8 +244,19 @@ export default function ReportSickness() {
         imageUrl: imageBase64,
         preferredDate: preferredDate.toISOString(),
       });
-    } catch {
-      // Handled by react-query callbacks
+      toast.success(
+        "Request submitted! A technician will attend to your animal.",
+        { duration: 4000, position: "top-center" },
+      );
+      setSelectedAnimal(null);
+      setSymptoms("");
+      setImageUri(null);
+      setImageBase64(null);
+      router.back();
+    } catch (error: any) {
+      toast.error(
+        error.response?.data?.message || "Failed to submit. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }

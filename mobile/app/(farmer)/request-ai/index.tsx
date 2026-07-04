@@ -9,7 +9,6 @@ import {
   StatusBar,
   ActivityIndicator,
   Image,
-  Alert,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,10 +26,9 @@ import {
 } from "lucide-react-native";
 import React, { useState, useEffect, useRef } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { validateRequestTime } from "@/lib/utils";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useTheme } from "@/lib/theme";
@@ -38,6 +36,11 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
 import { safeBack } from "@/utils/navigation";
+import {
+  useFarmerAnimalsForAiQuery,
+  useFarmerSelfProfileQuery,
+  useSystemConfigQuery,
+} from "@/features/farmer-requests/hooks/useFarmerRequestForms";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -159,7 +162,6 @@ const HEAT_SIGNS: HeatSign[] = [
 export default function RequestAI() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const api = useApi();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const { colors, isDark } = useTheme();
@@ -202,13 +204,7 @@ export default function RequestAI() {
 
   const queryClient = useQueryClient();
 
-  const { data: config } = useQuery({
-    queryKey: ["system", "config"],
-    queryFn: async () => {
-      const res = await api.get("/config");
-      return res.data;
-    },
-  });
+  const { data: config } = useSystemConfigQuery();
 
   const mutation = useOfflineMutation(
     {
@@ -265,13 +261,7 @@ export default function RequestAI() {
     "05:00 PM",
   ];
 
-  const { data: profile, isLoading: loadingProfile } = useQuery({
-    queryKey: ["user", "me"],
-    queryFn: async () => {
-      const res = await api.get("/user/me");
-      return res.data;
-    },
-  });
+  const { data: profile, isLoading: loadingProfile } = useFarmerSelfProfileQuery();
 
   useEffect(() => {
     if (profile) {
@@ -279,13 +269,7 @@ export default function RequestAI() {
     }
   }, [profile]);
 
-  const { data: animalsData, isLoading: isLoadingAnimals } = useQuery({
-    queryKey: ["animals", "my", "request-ai-picker", 1, 25],
-    queryFn: async () => {
-      const res = await api.get("/animals/my?page=1&limit=25");
-      return res.data;
-    },
-  });
+  const { data: animalsData, isLoading: isLoadingAnimals } = useFarmerAnimalsForAiQuery();
 
   useEffect(() => {
     if (animalsData) {

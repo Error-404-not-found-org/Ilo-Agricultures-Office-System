@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -26,13 +26,18 @@ import { CATTLE_BREEDS, CATTLE_SPECIES, OTON_BARANGAYS } from "@/lib/constants";
 import { getSireCodeByBreed } from "@/lib/sireRegistry";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
+import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
+import { useWalkInInseminationMutation } from "@/features/technician/hooks/useTechnicianFieldRecords";
+import { getAnimalsByFarmer } from "@/features/technician/services/animalManagement.service";
 
 export default function RecordAIScreen() {
   const router = useRouter();
   const api = useApi();
   const { isDark, colors } = useTheme();
+  const { clientsQuery } = useTechnicianClients();
+  const walkInInseminationMutation = useWalkInInseminationMutation();
 
-  const [farmers, setFarmers] = useState<any[]>([]);
+  const farmers = clientsQuery.data || [];
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [showFarmerModal, setShowFarmerModal] = useState(false);
 
@@ -46,7 +51,7 @@ export default function RecordAIScreen() {
   );
   const [estrus, setEstrus] = useState("Natural");
   const [notes, setNotes] = useState("");
-  const [saving, setSaving] = useState(false);
+  const saving = walkInInseminationMutation.isPending;
   const [status, setStatus] = useState<"done" | "in-progress">("done");
   const [showBreedModal, setShowBreedModal] = useState(false);
   const [showAnimalModal, setShowAnimalModal] = useState(false);
@@ -112,18 +117,6 @@ export default function RecordAIScreen() {
     b.toLowerCase().includes(searchBrgy.toLowerCase()),
   );
 
-  useEffect(() => {
-    const fetchFarmers = async () => {
-      try {
-        const res = await api.get("/user?role=farmer");
-        setFarmers(res.data);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchFarmers();
-  }, [api]);
-
   const handleFarmerSelect = async (farmer: any) => {
     setSelectedFarmer(farmer);
     setIsNewFarmer(false);
@@ -131,9 +124,8 @@ export default function RecordAIScreen() {
     setSelectedAnimal(null);
     setLoadingAnimals(true);
     try {
-      const res = await api.get(`/animals/farmer/${farmer._id}`);
-      // Defensive parsing for standardized response
-      const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
+      const res = await getAnimalsByFarmer(api, farmer._id);
+      const list = Array.isArray(res) ? res : res?.data || [];
       setAnimals(list);
     } catch (err) {
       console.error(err);
@@ -173,7 +165,6 @@ export default function RecordAIScreen() {
       }
     }
 
-    setSaving(true);
     try {
       const payload = isNewFarmer
         ? {
@@ -214,14 +205,12 @@ export default function RecordAIScreen() {
             },
           };
 
-      await api.post("/technician/walk-in-insemination", payload);
+      await walkInInseminationMutation.mutateAsync(payload);
       toast.success("AI Record saved successfully");
       router.back();
     } catch (err: any) {
       console.error(err);
       toast.error(err.response?.data?.message || "Failed to save record");
-    } finally {
-      setSaving(false);
     }
   };
 

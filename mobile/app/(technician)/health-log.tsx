@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -20,10 +20,7 @@ import {
   ChevronDown,
   X,
   Stethoscope,
-  Activity,
   Calendar,
-  AlertTriangle,
-  Check,
   Clock,
   Camera,
 } from "lucide-react-native";
@@ -37,6 +34,8 @@ import { CATTLE_BREEDS, CATTLE_SPECIES, OTON_BARANGAYS, CATTLE_COLORS, COLOR_OPT
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useAnimalContext } from "@/hooks/useAnimalContext";
 import AnimalContextHeader from "@/components/AnimalContextHeader";
+import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
+import { completeTask } from "@/features/technician/services/tasks.service";
 
 const getReproductiveStatusStyle = (status?: string) => {
   switch (status) {
@@ -97,6 +96,7 @@ const SERVICE_TYPES = [
 export default function HealthLogScreen() {
   const router = useRouter();
   const api = useApi();
+  const { clientsQuery } = useTechnicianClients();
 
   const {
     selectedFarmer,
@@ -116,7 +116,7 @@ export default function HealthLogScreen() {
   const [isNewFarmer, setIsNewFarmer] = useState(false);
 
   // Existing mode states
-  const [farmers, setFarmers] = useState<any[]>([]);
+  const farmers = clientsQuery.data || [];
   const [showFarmerModal, setShowFarmerModal] = useState(false);
   const [showAnimalModal, setShowAnimalModal] = useState(false);
 
@@ -187,7 +187,7 @@ export default function HealthLogScreen() {
       result.data?.data?._id;
     if (!recordId) return;
     try {
-      await api.put(`/tasks/${taskId}/complete`, {
+      await completeTask(api, taskId, {
         relatedRecordType: "health",
         relatedRecordId: recordId,
       });
@@ -252,18 +252,6 @@ export default function HealthLogScreen() {
   });
 
   const isMutationPending = requestId ? requestMutation.isPending : walkInMutation.isPending;
-
-  useEffect(() => {
-    const fetchFarmers = async () => {
-      try {
-        const res = await api.get("/user?role=farmer");
-        setFarmers(res.data);
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchFarmers();
-  }, [api]);
 
   const handleFarmerSelect = (farmer: any) => {
     setSelectedFarmer(farmer);
