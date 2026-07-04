@@ -385,7 +385,10 @@ export default function HealthLogScreen() {
       <View className="flex-row items-center px-6 py-4 bg-white border-b border-gray-100 shadow-sm z-10">
         <TouchableOpacity
           onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
           className="mr-4 p-2 bg-slate-50 rounded-full"
+          style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}
         >
           <ArrowLeft size={20} color="#1e2937" />
         </TouchableOpacity>
@@ -900,6 +903,8 @@ export default function HealthLogScreen() {
           }`}
           onPress={handleSave}
           disabled={isMutationPending}
+          accessibilityRole="button"
+          accessibilityLabel={status === "resolved" ? "Save health assistance record" : "Schedule health visit"}
           style={
             !isMutationPending
               ? status === 'resolved'

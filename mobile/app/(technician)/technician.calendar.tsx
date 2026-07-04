@@ -22,8 +22,6 @@ import {
   Clock,
   MapPin,
 } from "lucide-react-native";
-import { useApi } from "@/lib/api";
-import { useQuery } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   format,
@@ -36,12 +34,15 @@ import {
 } from "date-fns";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme";
+import {
+  useCurrentTechnicianProfileQuery,
+  useTechnicianFullAgendaQuery,
+} from "@/features/technician/hooks/useTechnicianDashboard";
 
 const PRIMARY = "#00643B";
 
 export default function TechnicianCalendar() {
   const router = useRouter();
-  const api = useApi();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
 
@@ -60,21 +61,13 @@ export default function TechnicianCalendar() {
   );
 
   // Fetch data dynamically based on the visible month
-  const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ["technician", "tasks", format(currentMonth, "yyyy-MM")],
-    queryFn: async () => {
-      const res = await api.get("/technician/dashboard-data?fullAgenda=true");
-      return res.data?.agendaItems || [];
-    },
-  });
+  const { data: dashboardData, isLoading } = useTechnicianFullAgendaQuery();
+  const tasks = useMemo(
+    () => dashboardData?.agendaItems || [],
+    [dashboardData?.agendaItems],
+  );
 
-  const { data: dbUser } = useQuery({
-    queryKey: ["user", "me"],
-    queryFn: async () => {
-      const response = await api.get("/user/me");
-      return response.data || {};
-    },
-  });
+  const { data: dbUser } = useCurrentTechnicianProfileQuery();
 
   const dailyTasks = useMemo(() => {
     const today = new Date();
@@ -151,10 +144,12 @@ export default function TechnicianCalendar() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
             <TouchableOpacity
               onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
+                width: 44,
+                height: 44,
+                borderRadius: 22,
                 backgroundColor: "rgba(255,255,255,0.2)",
                 alignItems: "center",
                 justifyContent: "center",
@@ -188,10 +183,12 @@ export default function TechnicianCalendar() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <TouchableOpacity
               onPress={handlePrevMonth}
+              accessibilityRole="button"
+              accessibilityLabel="Previous month"
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+                width: 44,
+                height: 44,
+                borderRadius: 22,
                 backgroundColor: "rgba(255,255,255,0.1)",
                 alignItems: "center",
                 justifyContent: "center",
@@ -201,10 +198,12 @@ export default function TechnicianCalendar() {
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleNextMonth}
+              accessibilityRole="button"
+              accessibilityLabel="Next month"
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
+                width: 44,
+                height: 44,
+                borderRadius: 22,
                 backgroundColor: "rgba(255,255,255,0.1)",
                 alignItems: "center",
                 justifyContent: "center",
@@ -234,6 +233,9 @@ export default function TechnicianCalendar() {
               return (
                 <TouchableOpacity
                   onPress={() => setSelectedDate(day)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${format(day, "EEEE, MMMM d")}`}
+                  accessibilityState={{ selected: isSelected }}
                   style={{
                     alignItems: "center",
                     gap: 8,
@@ -327,6 +329,8 @@ export default function TechnicianCalendar() {
               params: { source: "visit-calendar" },
             } as any)
           }
+          accessibilityRole="button"
+          accessibilityLabel="Schedule farm visit"
           activeOpacity={0.9}
           style={{
             backgroundColor: isDark ? colors.primary : PRIMARY,

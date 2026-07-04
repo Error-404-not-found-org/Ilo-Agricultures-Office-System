@@ -69,6 +69,8 @@ export function TechnicianRequestsSection({
         </View>
         <TouchableOpacity
           onPress={() => router.push("/(technician)/requests")}
+          accessibilityRole="button"
+          accessibilityLabel="View all technician requests"
           style={{ flexDirection: "row", alignItems: "center" }}
         >
           <Text
@@ -295,14 +297,21 @@ const RequestCard = ({
           <TouchableOpacity
             onPress={onAccept}
             disabled={isLocked || isUpdating}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.status?.toLowerCase() === "pending" ? "Claim" :
+               ["approved", "assigned", "triaged"].includes(item.status?.toLowerCase()) ? "Schedule" :
+               item.status?.toLowerCase() === "scheduled" ? "Start" :
+               item.type === "health" ? "Resolve" : "Complete"} ${serviceTypeLabel} request from ${item.farmer}`}
             style={{
               backgroundColor:
                 isLocked || isUpdating ? colors.textMuted : colors.primary,
               paddingHorizontal: 16,
               paddingVertical: 8,
               borderRadius: 12,
+              minHeight: 44,
               minWidth: 80,
               alignItems: "center",
+              justifyContent: "center",
               opacity: isLocked || isUpdating ? 0.5 : 1,
             }}
           >
@@ -325,13 +334,17 @@ const RequestCard = ({
             <TouchableOpacity
               onPress={onDecline}
               disabled={isLocked || isUpdating}
+              accessibilityRole="button"
+              accessibilityLabel={`Decline ${serviceTypeLabel} request from ${item.farmer}`}
               style={{
                 backgroundColor: isDark ? "#450a0a" : "#fef2f2",
                 paddingHorizontal: 16,
                 paddingVertical: 6,
                 borderRadius: 10,
+                minHeight: 44,
                 minWidth: 80,
                 alignItems: "center",
+                justifyContent: "center",
                 opacity: isLocked || isUpdating ? 0.5 : 1,
               }}
             >

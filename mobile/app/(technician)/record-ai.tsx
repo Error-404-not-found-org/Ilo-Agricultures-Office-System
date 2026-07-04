@@ -228,7 +228,10 @@ export default function RecordAIScreen() {
       <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
         <TouchableOpacity
           onPress={() => router.back()}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
           className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full"
+          style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}
         >
           <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e2937"} />
         </TouchableOpacity>
@@ -880,6 +883,8 @@ export default function RecordAIScreen() {
           }`}
           onPress={handleSave}
           disabled={saving}
+          accessibilityRole="button"
+          accessibilityLabel={status === "done" ? "Save AI record" : "Schedule AI visit"}
           style={
             !saving
               ? status === "done"

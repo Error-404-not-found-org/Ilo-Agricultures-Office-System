@@ -456,7 +456,9 @@ export default function RequestAI() {
       >
         <TouchableOpacity
           onPress={() => safeBack()}
-          className="w-10 h-10 bg-white/20 rounded-full items-center justify-center border border-white/20"
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          className="w-11 h-11 bg-white/20 rounded-full items-center justify-center border border-white/20"
           activeOpacity={0.7}
         >
           <ArrowLeft size={20} color="white" />
@@ -871,6 +873,8 @@ export default function RequestAI() {
           <TouchableOpacity
             onPress={() => handleSubmit()}
             disabled={submitting}
+            accessibilityRole="button"
+            accessibilityLabel="Submit AI service request"
             activeOpacity={0.85}
             className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
             style={{

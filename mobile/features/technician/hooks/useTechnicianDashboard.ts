@@ -4,6 +4,7 @@ import { technicianKeys } from "../../../lib/queryKeys";
 import {
   getTechnicianDashboardData,
   getTechnicianAnalytics,
+  getCurrentTechnicianProfile,
   getAssignedFarmers,
   getFarmerDetail,
   updateRequestStatus,
@@ -42,6 +43,16 @@ export const useTechnicianAnalyticsQuery = (enabled: boolean = true) => {
     enabled,
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchInterval: 1000 * 60 * 2, // Auto-refresh every 2 minutes instead of 30s
+  });
+};
+
+export const useCurrentTechnicianProfileQuery = (enabled: boolean = true) => {
+  const api = useApi();
+  return useQuery({
+    queryKey: ["user", "me"],
+    queryFn: () => getCurrentTechnicianProfile(api),
+    enabled,
+    staleTime: 1000 * 60 * 5,
   });
 };
 

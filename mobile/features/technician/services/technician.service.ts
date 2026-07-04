@@ -25,6 +25,11 @@ export const getTechnicianAnalytics = async (api: AxiosInstance) => {
   return response.data || {};
 };
 
+export const getCurrentTechnicianProfile = async (api: AxiosInstance) => {
+  const response = await api.get("/user/me");
+  return response.data || {};
+};
+
 export const getAssignedFarmers = async (api: AxiosInstance) => {
   const response = await api.get("/user?role=farmer");
   return response.data || {};

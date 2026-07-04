@@ -217,6 +217,8 @@ export function RequestListCard({
                     `/(technician)/client.profile?id=${item.farmerId}` as any,
                   )
                 }
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${item.farmer} profile`}
               >
                 <Text
                   style={{
@@ -388,13 +390,24 @@ export function RequestListCard({
                 `/(technician)/animal-details?id=${item.animalId}` as any,
               )
             }
-            style={{ flexDirection: "row", alignItems: "center" }}
+            accessibilityRole="button"
+            accessibilityLabel={`Open animal details for ${item.earTag || item.animal}`}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              minHeight: 44,
+              justifyContent: "flex-end",
+              flexShrink: 1,
+            }}
           >
             <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
               style={{
                 fontFamily: "Outfit_700Bold",
                 color: colors.primary,
                 textDecorationLine: "underline",
+                flexShrink: 1,
               }}
               className="text-xs"
             >
@@ -507,14 +520,18 @@ export function RequestListCard({
           {item.raw?.cancellationStatus === "requested" ? (
             <TouchableOpacity
               onPress={onPress}
+              accessibilityRole="button"
+              accessibilityLabel={`Review cancellation request from ${item.farmer}`}
               style={{
                 flex: 1,
                 backgroundColor: isDark ? "rgba(239, 68, 68, 0.15)" : "#fef2f2",
                 borderWidth: 1,
                 borderColor: isDark ? "rgba(239, 68, 68, 0.3)" : "#fecaca",
                 paddingVertical: 10,
+                minHeight: 44,
                 borderRadius: 12,
                 alignItems: "center",
+                justifyContent: "center",
               }}
             >
               <Text
@@ -533,6 +550,8 @@ export function RequestListCard({
                   <TouchableOpacity
                     onPress={onDecline}
                     disabled={isUpdating}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Decline ${serviceTypeLabel} request from ${item.farmer}`}
                     style={{
                       backgroundColor: isDark
                         ? "rgba(239, 68, 68, 0.1)"
@@ -540,8 +559,10 @@ export function RequestListCard({
                       paddingHorizontal: 16,
                       paddingVertical: 8,
                       borderRadius: 12,
+                      minHeight: 44,
                       minWidth: 80,
                       alignItems: "center",
+                      justifyContent: "center",
                       opacity: isUpdating ? 0.5 : 1,
                     }}
                   >
@@ -560,13 +581,29 @@ export function RequestListCard({
               <TouchableOpacity
                 onPress={onAccept}
                 disabled={isUpdating}
+                accessibilityRole="button"
+                accessibilityLabel={`${isBreedingVerification
+                    ? "Open task"
+                    : item.status.toLowerCase() === "pending"
+                      ? "Claim"
+                      : ["approved", "assigned", "triaged"].includes(
+                            item.status.toLowerCase(),
+                          )
+                        ? "Schedule"
+                        : item.status.toLowerCase() === "scheduled"
+                          ? "Start"
+                          : item.type === "health"
+                            ? "Resolve"
+                            : "Complete"} ${serviceTypeLabel} request from ${item.farmer}`}
                 style={{
                   backgroundColor: colors.primary,
                   paddingHorizontal: 16,
                   paddingVertical: 8,
                   borderRadius: 12,
+                  minHeight: 44,
                   minWidth: 80,
                   alignItems: "center",
+                  justifyContent: "center",
                   opacity: isUpdating ? 0.5 : 1,
                 }}
               >
