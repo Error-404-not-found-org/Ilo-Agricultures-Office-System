@@ -1,0 +1,305 @@
+# Admin Mobile Feature Roadmap
+
+## Goal
+
+Improve the Admin side of the BreedSmart mobile app so administrators can monitor users, requests, technician workload, farmer claim status, animal records, reports, alerts, and operational issues from mobile.
+
+The Admin mobile app should stay focused on monitoring and operational control. It should not become overloaded with every desktop dashboard feature, but it must expose the important workflows needed during field testing and real deployment.
+
+## Priority 1: Admin Dashboard Overview
+
+Add a clear mobile dashboard summary for:
+
+- Total farmers.
+- Total technicians.
+- Total animals.
+- Active AI requests.
+- Active health assistance requests.
+- Pending cancellation requests.
+- Overdue visits or uncompleted service logs.
+- Unclaimed farmer profiles.
+- Barangay/municipality summary.
+- Emergency or urgent health cases.
+
+Recommended UI:
+
+- Compact metric cards.
+- Priority alert strip.
+- Recent activity list.
+- Quick filters by municipality/barangay.
+- Quick links to Users, Requests, Workload, Reports.
+
+Acceptance:
+
+- Admin can understand the current system state within one screen.
+- Dashboard does not require excessive scrolling.
+- Metrics match Backend 2.0 data.
+
+## Priority 2: User Management
+
+Admin mobile should support:
+
+- Farmer list.
+- Technician list.
+- Admin list.
+- Search by name, email, phone number.
+- Filter by role, municipality, barangay, status.
+- View user profile.
+- Suspend/reactivate user.
+- Verify user.
+- Restore deleted users.
+- See account connection status.
+
+Account status badges:
+
+- `Connected`: user has real Clerk login linked.
+- `No App Account`: technician-created farmer with no app login yet.
+- `Claimable`: no-email walk-in farmer can claim by verifying phone.
+- `Blocked`: claim conflict or duplicate phone problem.
+
+Acceptance:
+
+- Admin can identify which farmers can already use the app.
+- Admin can see which walk-in farmers are not yet claimed.
+- Admin can manage users without needing the web dashboard for basic operations.
+
+## Priority 3: Farmer Profile Claim Monitoring
+
+Because the app now supports OTP-based farmer profile claiming, Admin mobile should eventually show:
+
+- Unclaimed technician-created farmer profiles.
+- Claimed farmer profiles.
+- Claim date.
+- Claimed email/account.
+- Duplicate phone conflicts.
+- Blocked claim attempts.
+- Audit history for claim events.
+
+Recommended first version:
+
+- Read-only list of unclaimed and claimed farmer profiles.
+- Conflict list for duplicate phone or already-linked phone cases.
+
+Later version:
+
+- Manual unlink/relink only for authorized admins.
+- Admin override approval if a claim cannot be auto-linked.
+
+Acceptance:
+
+- Admin can answer: “Which farmers still do not have app accounts?”
+- Admin can investigate phone/account conflicts.
+- Claim activity is auditable.
+
+## Priority 4: Request Monitoring
+
+Admin should be able to monitor all service requests:
+
+- AI requests.
+- Health assistance requests.
+- Pregnancy check tasks.
+- Calving concerns.
+- Cancellation requests.
+
+Filters:
+
+- Status.
+- Urgency.
+- Service type.
+- Technician.
+- Municipality.
+- Barangay.
+- Date range.
+
+Actions:
+
+- View request detail.
+- Reassign technician if needed.
+- View cancellation reason.
+- View decline/cancel notes.
+- Escalate urgent cases.
+
+Acceptance:
+
+- Admin can see all active and delayed service workflows.
+- Admin can identify stuck requests.
+- Admin can reassign or intervene when needed.
+
+## Priority 5: Technician Workload
+
+Admin should see:
+
+- Available request board overview.
+- Claimed work queue per technician.
+- Scheduled visits per technician.
+- Completed services.
+- Missed or overdue tasks.
+- Technician performance summary.
+
+Useful metrics:
+
+- Active assigned requests.
+- Completed visits this week/month.
+- Overdue service logs.
+- Pending follow-ups.
+- AI success/failure counts.
+- Health assistance resolved/in progress.
+
+Acceptance:
+
+- Admin can answer: “Who is overloaded?”
+- Admin can see which requests still have no technician.
+- Admin can monitor field work without opening each technician account.
+
+## Priority 6: Animal Records Monitoring
+
+Admin should be able to:
+
+- Search all animals.
+- Filter by farmer, municipality, barangay, reproductive status, health alert.
+- View animal profile.
+- View reproductive timeline.
+- View health history.
+- View offspring/calving records.
+- View linked farmer and technician activity.
+
+Acceptance:
+
+- Admin can locate animal records quickly.
+- Admin can inspect full animal history from mobile.
+- Admin can verify whether breeding/health records are complete.
+
+## Priority 7: Reports And Exports
+
+Admin mobile should support mobile-friendly report access:
+
+- Monthly AI report.
+- Health assistance report.
+- Calving/offspring report.
+- Farmer records report.
+- Technician activity report.
+- Barangay/municipality summary report.
+
+Recommended first version:
+
+- Report preview and summary cards.
+- Share/download existing PDF/Excel generated by backend.
+
+Later version:
+
+- Full report builder on mobile.
+- Date range and barangay filters.
+
+Acceptance:
+
+- Admin can generate or access common reports.
+- Export behavior is consistent with backend/web.
+- Reports are role-filtered and safe.
+
+## Priority 8: Notifications And Alerts
+
+Admin should receive or view alerts for:
+
+- Emergency health cases.
+- Overdue AI service logs.
+- Overdue pregnancy checks.
+- Overdue calving follow-ups.
+- Farmer cancellation requests.
+- Profile-claim conflicts.
+- Failed sync or operational warnings.
+
+Recommended UI:
+
+- Admin notification center.
+- Alert severity badges.
+- Direct link to affected request/user/animal.
+
+Acceptance:
+
+- Admin does not miss urgent system events.
+- Alerts navigate to the correct detail screen.
+
+## Priority 9: Support Tickets
+
+Admin should be able to:
+
+- View support tickets.
+- Filter open/in progress/resolved.
+- Assign to admin/technician.
+- Add response notes.
+- Mark as resolved.
+
+Acceptance:
+
+- Support messages are not lost.
+- Admin can track issue status.
+- Farmers/technicians get clearer support handling.
+
+## Priority 10: Audit And Activity Logs
+
+Admin should see important activity:
+
+- User created.
+- User suspended/reactivated.
+- User restored.
+- Role/status changed.
+- Farmer profile claimed.
+- Request reassigned.
+- Request cancelled/declined.
+- Important record edited.
+
+Recommended first version:
+
+- Read-only audit feed.
+- Filter by entity type and actor.
+
+Acceptance:
+
+- Admin can investigate important changes.
+- Claim/profile changes are traceable.
+
+## Priority 11: System Settings
+
+Admin mobile may later expose:
+
+- Registered breeds.
+- Pregnancy window days.
+- Max AI attempt limit.
+- Notification settings.
+- Emergency escalation settings.
+- Report settings.
+
+Recommendation:
+
+- Keep advanced settings primarily on web first.
+- Add mobile settings only if admins need them in the field.
+
+Acceptance:
+
+- Mobile does not become cluttered.
+- Important operational settings remain controlled.
+
+## Suggested Implementation Order
+
+1. Admin Dashboard Overview.
+2. User Management with claim/account status.
+3. Request Monitoring.
+4. Technician Workload.
+5. Farmer Profile Claim Monitoring.
+6. Animal Records Monitoring.
+7. Reports and Exports.
+8. Notifications and Alerts.
+9. Support Tickets.
+10. Audit and Activity Logs.
+11. System Settings.
+
+## Notes For Antigravity
+
+- Work inside the current `mobile` folder.
+- Keep existing BreedSmart mobile design language.
+- Do not redesign all admin screens at once.
+- Implement one feature group at a time.
+- Use existing shared components where possible.
+- Keep loading, empty, error, retry, and pagination states.
+- Use Backend 2.0/current backend APIs; do not create fake data unless explicitly needed for placeholder UI.
+- Preserve farmer/technician behavior while improving admin.
