@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -32,6 +32,26 @@ export default function Reports() {
       return res.data;
     },
   });
+
+  const { data: farmers = [] } = useQuery({
+    queryKey: ["admin", "farmers-list-for-reports"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/user?role=farmer");
+      return Array.isArray(res.data) ? res.data : res.data?.data || [];
+    },
+  });
+
+  const dynamicBarangays = useMemo(() => {
+    const brgys = new Set();
+    OTON_BARANGAYS.forEach((b) => brgys.add(b.trim()));
+    farmers.forEach((f) => {
+      const b = f.address?.barangay;
+      if (b) {
+        brgys.add(b.trim());
+      }
+    });
+    return Array.from(brgys).sort();
+  }, [farmers]);
 
   const handleGenerateReport = async (action) => {
     setIsCompiling(true);
@@ -338,7 +358,7 @@ export default function Reports() {
                       className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold select select-bordered"
                     >
                       <option value="all">All Barangays</option>
-                      {OTON_BARANGAYS.map((brgy) => (
+                      {dynamicBarangays.map((brgy) => (
                         <option key={brgy} value={brgy.toLowerCase()}>
                           {brgy}
                         </option>

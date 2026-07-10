@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -12,13 +12,24 @@ import {
   Stethoscope,
   BadgeCheck,
   StickyNote,
-  Mail
+  Mail,
+  ChevronDown,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { CATTLE_BREEDS, CATTLE_SPECIES, BREED_OPTIONS_BY_SPECIES } from "../../constants/breeds";
-import { OTON_BARANGAYS } from "../../constants/barangays";
+import {
+  CATTLE_BREEDS,
+  CATTLE_SPECIES,
+  BREED_OPTIONS_BY_SPECIES,
+} from "../../constants/breeds";
+import {
+  formatBarangayWithDistrict,
+  getIloiloBarangayOptions,
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from "../../utils/addressOptions";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
@@ -36,6 +47,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [selectedAnimalId, setSelectedAnimalId] = useState("");
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
+  const [selectedDistrict, setSelectedDistrict] = useState("");
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -44,7 +56,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     email: "",
     address: {
       barangay: "",
-      city: "Oton"
+      city: "Oton",
     },
     animalDetails: {
       earTag: "",
@@ -53,7 +65,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     },
     requestType: "disease",
     urgency: "medium",
-    status: "resolved", 
+    status: "resolved",
     preferredDate: new Date().toISOString().split("T")[0],
     preferredTime: "08:00",
     diagnosis: "",
@@ -61,6 +73,11 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     advice: "",
     technicianNote: "",
   });
+
+  const targetBarangays = useMemo(() => {
+    const selectedCity = formData.address?.city || "Oton";
+    return getIloiloBarangayOptions(selectedCity, selectedDistrict);
+  }, [formData.address?.city, selectedDistrict]);
 
   const { data: farmers = [] } = useQuery({
     queryKey: ["farmers", "list"],
@@ -74,7 +91,9 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
   const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({
     queryKey: ["farmer-animals", selectedFarmerId],
     queryFn: async () => {
-      const res = await axiosInstance.get(`/animals/farmer/${selectedFarmerId}`);
+      const res = await axiosInstance.get(
+        `/animals/farmer/${selectedFarmerId}`,
+      );
       return Array.isArray(res.data) ? res.data : res.data.data || [];
     },
     enabled: !!selectedFarmerId && isExistingRecord,
@@ -95,7 +114,10 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
           ...prev,
           firstName: prefillData.farmerName?.split(" ")[0] || "",
           lastName: prefillData.farmerName?.split(" ").slice(1).join(" ") || "",
-          animalDetails: { ...prev.animalDetails, earTag: prefillData.earTag || "" },
+          animalDetails: {
+            ...prev.animalDetails,
+            earTag: prefillData.earTag || "",
+          },
         }));
         setIsExistingRecord(false);
       });
@@ -107,6 +129,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
         setIsDropdownOpen(false);
         setSelectedAnimalId("");
         setIsBarangayDropdownOpen(false);
+        setSelectedDistrict("");
         setFormData({
           firstName: "",
           lastName: "",
@@ -114,7 +137,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
           email: "",
           address: {
             barangay: "",
-            city: "Oton"
+            city: "Oton",
           },
           animalDetails: {
             earTag: "",
@@ -123,7 +146,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
           },
           requestType: "disease",
           urgency: "medium",
-          status: "resolved", 
+          status: "resolved",
           preferredDate: new Date().toISOString().split("T")[0],
           preferredTime: "08:00",
           diagnosis: "",
@@ -140,8 +163,12 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
   useEffect(() => {
     if (formData.animalDetails.species) {
-      const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || [];
-      if (formData.animalDetails.breed && !validBreeds.includes(formData.animalDetails.breed)) {
+      const validBreeds =
+        BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || [];
+      if (
+        formData.animalDetails.breed &&
+        !validBreeds.includes(formData.animalDetails.breed)
+      ) {
         Promise.resolve().then(() => {
           setFormData((prev) => ({
             ...prev,
@@ -150,7 +177,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
         });
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.animalDetails.species]);
 
   const mutation = useMutation({
@@ -159,13 +186,20 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
       return res.data;
     },
     onSuccess: () => {
-      toast.success(formData.status === "resolved" ? "Health record saved!" : "Visit scheduled successfully!");
+      toast.success(
+        formData.status === "resolved"
+          ? "Health record saved!"
+          : "Visit scheduled successfully!",
+      );
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
       if (onSuccess) onSuccess();
       onClose();
     },
     onError: (error) => {
-      toast.error("Failed to process request: " + (error.response?.data?.message || error.message));
+      toast.error(
+        "Failed to process request: " +
+          (error.response?.data?.message || error.message),
+      );
     },
   });
 
@@ -185,15 +219,27 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
         firstName: farmer.name.split(" ")[0],
         lastName: farmer.name.split(" ").slice(1).join(" "),
         phoneNumber: farmer.phoneNumber || "",
-        address: typeof farmer.address === "string" ? farmer.address : farmer.address?.street || "",
+        address:
+          typeof farmer.address === "string"
+            ? farmer.address
+            : farmer.address?.street || "",
         animalDetails: {
           earTag: animal.earTag,
           species: animal.species,
           breed: animal.breed,
         },
-        ...formData
+        ...formData,
       };
     } else {
+      if (!formData.address.city) {
+        return toast.error("Municipality or city is required.");
+      }
+      if (formData.address.city === ILOILO_CITY_NAME && !selectedDistrict) {
+        return toast.error("Please select the Iloilo City district.");
+      }
+      if (!formData.address.barangay) {
+        return toast.error("Barangay is required.");
+      }
       if (!formData.phoneNumber || !formData.animalDetails.earTag) {
         return toast.error("Phone number and Ear Tag are required.");
       }
@@ -203,7 +249,19 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
       if (!formData.phoneNumber.startsWith("09")) {
         return toast.error("Phone number must start with 09.");
       }
-      submissionData = formData;
+      submissionData = {
+        ...formData,
+        address: {
+          ...formData.address,
+          barangay: formatBarangayWithDistrict(
+            formData.address.barangay,
+            formData.address.city,
+            selectedDistrict,
+          ),
+          district:
+            formData.address.city === ILOILO_CITY_NAME ? selectedDistrict : "",
+        },
+      };
     }
 
     if (!submissionData.diagnosis) {
@@ -211,9 +269,13 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     }
 
     if (submissionData.status === "in-progress") {
-      const selectedDateTime = new Date(`${submissionData.preferredDate}T${submissionData.preferredTime}:00`);
+      const selectedDateTime = new Date(
+        `${submissionData.preferredDate}T${submissionData.preferredTime}:00`,
+      );
       if (selectedDateTime < new Date()) {
-        return toast.error("Cannot schedule a visit for a date and time that has already passed.");
+        return toast.error(
+          "Cannot schedule a visit for a date and time that has already passed.",
+        );
       }
     }
 
@@ -223,7 +285,6 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
-        
         {/* MODAL */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -234,17 +295,17 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
           {/* HEADER */}
           <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
             <div className="flex items-center gap-4">
-               <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
-                  <HeartPulse size={20} />
-               </div>
-               <div>
-                  <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                    Livestock Health Hub
-                  </h3>
-                  <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                    Veterinary Field Protocol
-                  </p>
-               </div>
+              <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
+                <HeartPulse size={20} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
+                  Livestock Health Hub
+                </h3>
+                <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
+                  Veterinary Field Protocol
+                </p>
+              </div>
             </div>
 
             <button
@@ -276,13 +337,17 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
               <div className="flex gap-2">
                 <button
-                  onClick={() => setFormData({ ...formData, status: "resolved" })}
+                  onClick={() =>
+                    setFormData({ ...formData, status: "resolved" })
+                  }
                   className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.status === "resolved" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600" : "border-transparent text-base-content/20"}`}
                 >
                   Service Completed
                 </button>
                 <button
-                  onClick={() => setFormData({ ...formData, status: "in-progress" })}
+                  onClick={() =>
+                    setFormData({ ...formData, status: "in-progress" })
+                  }
                   className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.status === "in-progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-600" : "border-transparent text-base-content/20"}`}
                 >
                   Schedule Visit
@@ -293,8 +358,10 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
             {isExistingRecord ? (
               <section className={sectionClass}>
                 <div className="flex items-center gap-2 mb-1">
-                   <BadgeCheck size={14} className="text-emerald-500" />
-                   <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Asset Selection</h4>
+                  <BadgeCheck size={14} className="text-emerald-500" />
+                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                    Asset Selection
+                  </h4>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -375,10 +442,15 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                         onChange={(e) => setSelectedAnimalId(e.target.value)}
                         className={`${selectClass} disabled:opacity-50 cursor-pointer`}
                       >
-                        <option value="">{isLoadingAnimals ? "Synchronizing..." : "Select animal"}</option>
+                        <option value="">
+                          {isLoadingAnimals
+                            ? "Synchronizing..."
+                            : "Select animal"}
+                        </option>
                         {animals.map((a) => (
                           <option key={a._id} value={a._id}>
-                            Tag #{a.earTag} ({a.breed}) — {a.reproductiveStatus || "Normal"}
+                            Tag #{a.earTag} ({a.breed}) —{" "}
+                            {a.reproductiveStatus || "Normal"}
                           </option>
                         ))}
                       </select>
@@ -390,105 +462,244 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2 mb-1">
-                     <User size={14} className="text-emerald-500" />
-                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Owner Data</h4>
+                    <User size={14} className="text-emerald-500" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Owner Data
+                    </h4>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className={labelClass}>First Name</label>
-                      <input type="text" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} placeholder="JUAN" className={inputClass} />
+                      <input
+                        type="text"
+                        value={formData.firstName}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            firstName: e.target.value,
+                          })
+                        }
+                        placeholder="JUAN"
+                        className={inputClass}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <label className={labelClass}>Last Name</label>
-                      <input type="text" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} placeholder="DELA CRUZ" className={inputClass} />
+                      <input
+                        type="text"
+                        value={formData.lastName}
+                        onChange={(e) =>
+                          setFormData({ ...formData, lastName: e.target.value })
+                        }
+                        placeholder="DELA CRUZ"
+                        className={inputClass}
+                      />
                     </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className={labelClass}>Email (For App Access)</label>
                     <div className="relative">
-                      <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                      <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="juan@example.com" className={`${inputClass} pl-11`} />
+                      <Mail
+                        size={16}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                      />
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) =>
+                          setFormData({ ...formData, email: e.target.value })
+                        }
+                        placeholder="juan@example.com"
+                        className={`${inputClass} pl-11`}
+                      />
                     </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className={labelClass}>Contact Number</label>
                     <div className="relative">
-                      <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                      <input 
-                        type="tel" 
+                      <Phone
+                        size={16}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                      />
+                      <input
+                        type="tel"
                         maxLength={11}
-                        value={formData.phoneNumber} 
+                        value={formData.phoneNumber}
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, "");
                           if (val.length <= 11) {
                             setFormData({ ...formData, phoneNumber: val });
                           }
-                        }} 
-                        placeholder="0912 345 6789" 
-                        className={`${inputClass} pl-10`} 
+                        }}
+                        placeholder="0912 345 6789"
+                        className={`${inputClass} pl-10`}
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5 relative">
-                      <label className={labelClass}>Barangay</label>
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>
+                        Municipality / City *
+                      </label>
                       <div className="relative">
-                        <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                        <input 
-                          type="text" 
-                          value={formData.address.barangay} 
-                          onChange={(e) => {
-                            setFormData({ ...formData, address: { ...formData.address, barangay: e.target.value } });
-                            setIsBarangayDropdownOpen(true);
-                          }} 
-                          onFocus={() => setIsBarangayDropdownOpen(true)}
-                          placeholder="Search barangay..." 
-                          className={`${inputClass} pl-11`} 
+                        <MapPin
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20 pointer-events-none"
                         />
-                        <AnimatePresence>
-                          {isBarangayDropdownOpen && formData.address.barangay && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -5 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -5 }}
-                              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
-                            >
-                              {OTON_BARANGAYS.filter((b) =>
-                                b.toLowerCase().includes(formData.address.barangay.toLowerCase())
-                              ).length > 0 ? (
-                                OTON_BARANGAYS
-                                  .filter((b) => b.toLowerCase().includes(formData.address.barangay.toLowerCase()))
-                                  .map((brgy) => (
-                                    <button
-                                      key={brgy}
-                                      onClick={() => {
-                                        setFormData({ ...formData, address: { ...formData.address, barangay: brgy } });
-                                        setIsBarangayDropdownOpen(false);
-                                      }}
-                                      className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 border-b border-base-200/50 last:border-0 cursor-pointer"
-                                    >
-                                      <span className="text-xs font-bold text-base-content block">
-                                        {brgy}
-                                      </span>
-                                    </button>
-                                  ))
-                              ) : (
-                                <div className="p-4 text-center">
-                                  <span className="text-[10px] font-black uppercase tracking-widest text-base-content/40">
-                                    No matches found
-                                  </span>
-                                </div>
-                              )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+                        <select
+                          value={formData.address.city || "Oton"}
+                          onChange={(e) => {
+                            const newCity = e.target.value;
+                            setSelectedDistrict("");
+                            setFormData({
+                              ...formData,
+                              address: {
+                                ...formData.address,
+                                city: newCity,
+                                barangay: "",
+                              },
+                            });
+                          }}
+                          className={`${selectClass} pl-11 pr-10 appearance-none cursor-pointer`}
+                        >
+                          {ILOILO_MUNICIPALITY_OPTIONS.map((m) => (
+                            <option key={m} value={m}>
+                              {m}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown
+                          size={14}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
+                        />
                       </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Municipality</label>
+
+                    {formData.address.city === ILOILO_CITY_NAME && (
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>
+                          Iloilo City District *
+                        </label>
+                        <div className="relative">
+                          <MapPin
+                            size={16}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20 pointer-events-none"
+                          />
+                          <select
+                            value={selectedDistrict}
+                            onChange={(e) => {
+                              setSelectedDistrict(e.target.value);
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, barangay: "" },
+                              });
+                            }}
+                            className={`${selectClass} pl-11 pr-10 appearance-none cursor-pointer`}
+                          >
+                            <option value="" disabled>
+                              Select District
+                            </option>
+                            {ILOILO_CITY_DISTRICT_OPTIONS.map((district) => (
+                              <option key={district} value={district}>
+                                {district}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown
+                            size={14}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5 relative">
+                      <label className={labelClass}>Barangay *</label>
                       <div className="relative">
-                        <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                        <input type="text" value={formData.address.city} onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })} placeholder="Oton" className={`${inputClass} pl-11`} />
+                        <MapPin
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                        />
+                        <input
+                          type="text"
+                          value={formData.address.barangay}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              address: {
+                                ...formData.address,
+                                barangay: e.target.value,
+                              },
+                            });
+                            setIsBarangayDropdownOpen(true);
+                          }}
+                          onFocus={() => setIsBarangayDropdownOpen(true)}
+                          placeholder={
+                            formData.address.city === ILOILO_CITY_NAME &&
+                            !selectedDistrict
+                              ? "Select district first"
+                              : "Search barangay..."
+                          }
+                          disabled={
+                            formData.address.city === ILOILO_CITY_NAME &&
+                            !selectedDistrict
+                          }
+                          className={`${inputClass} pl-11 disabled:opacity-50`}
+                        />
+                        <AnimatePresence>
+                          {isBarangayDropdownOpen &&
+                            formData.address.barangay && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -5 }}
+                                className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
+                              >
+                                {targetBarangays.filter((b) =>
+                                  b
+                                    .toLowerCase()
+                                    .includes(
+                                      formData.address.barangay.toLowerCase(),
+                                    ),
+                                ).length > 0 ? (
+                                  targetBarangays
+                                    .filter((b) =>
+                                      b
+                                        .toLowerCase()
+                                        .includes(
+                                          formData.address.barangay.toLowerCase(),
+                                        ),
+                                    )
+                                    .map((brgy) => (
+                                      <button
+                                        key={brgy}
+                                        onClick={() => {
+                                          setFormData({
+                                            ...formData,
+                                            address: {
+                                              ...formData.address,
+                                              barangay: brgy,
+                                            },
+                                          });
+                                          setIsBarangayDropdownOpen(false);
+                                        }}
+                                        className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 border-b border-base-200/50 last:border-0 cursor-pointer"
+                                      >
+                                        <span className="text-xs font-bold text-base-content block">
+                                          {brgy}
+                                        </span>
+                                      </button>
+                                    ))
+                                ) : (
+                                  <div className="p-4 text-center">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-base-content/40">
+                                      No matches found
+                                    </span>
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                        </AnimatePresence>
                       </div>
                     </div>
                   </div>
@@ -496,23 +707,50 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2 mb-1">
-                     <Activity size={14} className="text-emerald-500" />
-                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Asset Profile</h4>
+                    <Activity size={14} className="text-emerald-500" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Asset Profile
+                    </h4>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className={labelClass}>Ear Tag</label>
-                      <input type="text" maxLength={3} value={formData.animalDetails.earTag} onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, earTag: e.target.value.toUpperCase() } })} placeholder="104" className={inputClass} />
+                      <input
+                        type="text"
+                        maxLength={3}
+                        value={formData.animalDetails.earTag}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            animalDetails: {
+                              ...formData.animalDetails,
+                              earTag: e.target.value.toUpperCase(),
+                            },
+                          })
+                        }
+                        placeholder="104"
+                        className={inputClass}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <label className={labelClass}>Species</label>
                       <select
                         value={formData.animalDetails.species}
-                        onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, species: e.target.value } })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            animalDetails: {
+                              ...formData.animalDetails,
+                              species: e.target.value,
+                            },
+                          })
+                        }
                         className={`${selectClass} cursor-pointer`}
                       >
-                        {CATTLE_SPECIES.map(s => (
-                            <option key={s} value={s}>{s}</option>
+                        {CATTLE_SPECIES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -521,12 +759,28 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                     <label className={labelClass}>Breed</label>
                     <select
                       value={formData.animalDetails.breed}
-                      onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, breed: e.target.value } })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          animalDetails: {
+                            ...formData.animalDetails,
+                            breed: e.target.value,
+                          },
+                        })
+                      }
                       className={`${selectClass} cursor-pointer`}
                     >
-                      <option value="" disabled>Select Breed</option>
-                      {(BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || CATTLE_BREEDS).map(b => (
-                          <option key={b} value={b}>{b}</option>
+                      <option value="" disabled>
+                        Select Breed
+                      </option>
+                      {(
+                        BREED_OPTIONS_BY_SPECIES[
+                          formData.animalDetails.species
+                        ] || CATTLE_BREEDS
+                      ).map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -537,8 +791,10 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
             {/* Service Logistics */}
             <section className={sectionClass}>
               <div className="flex items-center gap-2 mb-1">
-                 <Calendar size={14} className="text-emerald-500" />
-                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Service Logistics</h4>
+                <Calendar size={14} className="text-emerald-500" />
+                <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                  Service Logistics
+                </h4>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -547,7 +803,12 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                   <div className="relative">
                     <select
                       value={formData.requestType}
-                      onChange={(e) => setFormData({ ...formData, requestType: e.target.value })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          requestType: e.target.value,
+                        })
+                      }
                       className={`${selectClass} cursor-pointer`}
                     >
                       <option value="disease">Disease Control</option>
@@ -563,22 +824,32 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                 <div className="space-y-1.5">
                   <label className={labelClass}>Mission Date</label>
                   <div className="relative">
-                    <input 
-                      type="date" 
-                      value={formData.preferredDate} 
-                      onChange={(e) => setFormData({ ...formData, preferredDate: e.target.value })} 
-                      className={`${inputClass} cursor-pointer`} 
+                    <input
+                      type="date"
+                      value={formData.preferredDate}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          preferredDate: e.target.value,
+                        })
+                      }
+                      className={`${inputClass} cursor-pointer`}
                     />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className={labelClass}>Expected T-Time</label>
                   <div className="relative">
-                    <input 
-                      type="time" 
-                      value={formData.preferredTime} 
-                      onChange={(e) => setFormData({ ...formData, preferredTime: e.target.value })} 
-                      className={`${inputClass} cursor-pointer`} 
+                    <input
+                      type="time"
+                      value={formData.preferredTime}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          preferredTime: e.target.value,
+                        })
+                      }
+                      className={`${inputClass} cursor-pointer`}
                     />
                   </div>
                 </div>
@@ -593,9 +864,11 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                       onClick={() => setFormData({ ...formData, urgency: u })}
                       className={`flex-1 h-11 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
                         formData.urgency === u
-                          ? u === "high" ? "bg-rose-500/10 border-rose-500/30 text-rose-600" :
-                            u === "medium" ? "bg-amber-500/10 border-amber-500/30 text-amber-600" :
-                            "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
+                          ? u === "high"
+                            ? "bg-rose-500/10 border-rose-500/30 text-rose-600"
+                            : u === "medium"
+                              ? "bg-amber-500/10 border-amber-500/30 text-amber-600"
+                              : "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
                           : "border-base-300 text-base-content/40 hover:bg-base-200"
                       }`}
                     >
@@ -609,45 +882,62 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
             {/* Medical Findings */}
             <section className={sectionClass}>
               <div className="flex items-center gap-2 mb-1">
-                 <StickyNote size={14} className="text-emerald-500" />
-                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Field Findings & Symptoms</h4>
+                <StickyNote size={14} className="text-emerald-500" />
+                <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                  Field Findings & Symptoms
+                </h4>
               </div>
               <div className="relative">
-                <textarea 
-                  value={formData.diagnosis} 
-                  onChange={(e) => setFormData({ ...formData, diagnosis: e.target.value })} 
-                  placeholder={formData.status === 'resolved' ? "DESCRIBE TREATMENT GIVEN AND RECOMMENDATIONS..." : "DESCRIBE SYMPTOMS OR REASON FOR VISIT REQUEST..."} 
-                  className={textareaClass} 
+                <textarea
+                  value={formData.diagnosis}
+                  onChange={(e) =>
+                    setFormData({ ...formData, diagnosis: e.target.value })
+                  }
+                  placeholder={
+                    formData.status === "resolved"
+                      ? "DESCRIBE TREATMENT GIVEN AND RECOMMENDATIONS..."
+                      : "DESCRIBE SYMPTOMS OR REASON FOR VISIT REQUEST..."
+                  }
+                  className={textareaClass}
                 />
               </div>
             </section>
 
-            {formData.status === 'resolved' && (
+            {formData.status === "resolved" && (
               <>
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2 mb-1">
-                     <Stethoscope size={14} className="text-emerald-500" />
-                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Treatment Action & Medication</h4>
+                    <Stethoscope size={14} className="text-emerald-500" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Treatment Action & Medication
+                    </h4>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className={labelClass}>Treatment Action</label>
-                      <input 
-                        type="text" 
-                        value={formData.treatment} 
-                        onChange={(e) => setFormData({ ...formData, treatment: e.target.value })} 
-                        placeholder="e.g. Wound cleaning, Injection..." 
-                        className={inputClass} 
+                      <input
+                        type="text"
+                        value={formData.treatment}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            treatment: e.target.value,
+                          })
+                        }
+                        placeholder="e.g. Wound cleaning, Injection..."
+                        className={inputClass}
                       />
                     </div>
                     <div className="space-y-1.5">
                       <label className={labelClass}>Medicine & Dosage</label>
-                      <input 
-                        type="text" 
-                        value={formData.advice} 
-                        onChange={(e) => setFormData({ ...formData, advice: e.target.value })} 
-                        placeholder="e.g. Penicillin 10ml" 
-                        className={inputClass} 
+                      <input
+                        type="text"
+                        value={formData.advice}
+                        onChange={(e) =>
+                          setFormData({ ...formData, advice: e.target.value })
+                        }
+                        placeholder="e.g. Penicillin 10ml"
+                        className={inputClass}
                       />
                     </div>
                   </div>
@@ -655,15 +945,22 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2 mb-1">
-                     <StickyNote size={14} className="text-emerald-500" />
-                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Additional Observations</h4>
+                    <StickyNote size={14} className="text-emerald-500" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Additional Observations
+                    </h4>
                   </div>
                   <div className="relative">
-                    <textarea 
-                      value={formData.technicianNote} 
-                      onChange={(e) => setFormData({ ...formData, technicianNote: e.target.value })} 
-                      placeholder="Any other clinical signs noticed..." 
-                      className={textareaClass} 
+                    <textarea
+                      value={formData.technicianNote}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          technicianNote: e.target.value,
+                        })
+                      }
+                      placeholder="Any other clinical signs noticed..."
+                      className={textareaClass}
                     />
                   </div>
                 </section>
@@ -673,8 +970,8 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
 
           {/* FOOTER */}
           <div className="bg-base-200/20 border-t border-base-300 px-6 py-4 flex justify-end gap-3">
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="h-11 px-8 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
             >
               Cancel
@@ -683,12 +980,16 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
               disabled={mutation.isPending}
               onClick={handleSubmit}
               className={`h-11 px-8 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center gap-2 shadow-md cursor-pointer ${
-                formData.status === 'resolved' 
+                formData.status === "resolved"
                   ? "bg-[#074033] hover:bg-[#0d5948]"
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              {mutation.isPending ? "Synchronizing Record..." : formData.status === "resolved" ? "Save Health Record" : "Schedule Mission"}
+              {mutation.isPending
+                ? "Synchronizing Record..."
+                : formData.status === "resolved"
+                  ? "Save Health Record"
+                  : "Schedule Mission"}
             </button>
           </div>
         </motion.div>

@@ -1,12 +1,12 @@
 
 const Skeleton = ({ className }) => {
     return (
-        <div className={`animate-pulse bg-base-300/50 rounded-2xl ${className}`}></div>
+        <div className={`animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800/70 ${className}`}></div>
     );
 };
 
 export const CardSkeleton = () => (
-    <div className="card bg-base-100 shadow-xl border border-base-300 rounded-3xl p-6 space-y-4">
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950 space-y-4">
         <div className="flex justify-center">
             <Skeleton className="w-24 h-24 rounded-full" />
         </div>
@@ -26,7 +26,7 @@ export const CardSkeleton = () => (
 );
 
 export const TableRowSkeleton = () => (
-    <tr className="animate-pulse border-b border-base-300">
+    <tr className="animate-pulse border-b border-slate-100 dark:border-slate-800/60">
         <td className="py-4 px-6"><Skeleton className="h-4 w-20" /></td>
         <td className="py-4 px-4"><Skeleton className="h-4 w-24" /></td>
         <td className="py-4 px-4"><Skeleton className="h-4 w-32" /></td>

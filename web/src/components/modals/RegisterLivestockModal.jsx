@@ -212,8 +212,9 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
             </div>
 
             <button
-              onClick={onClose}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content cursor-pointer"
+              onClick={() => !mutation.isPending && onClose()}
+              disabled={mutation.isPending}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-base-200 text-base-content/40 transition-all hover:bg-base-300 hover:text-base-content cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <X size={16} />
             </button>
@@ -479,8 +480,9 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
           {/* FOOTER */}
           <div className="px-6 py-4 border-t border-base-300 bg-base-200/20 flex justify-end gap-3">
             <button
-              onClick={onClose}
-              className="h-11 px-6 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
+              onClick={() => !mutation.isPending && onClose()}
+              disabled={mutation.isPending}
+              className="h-11 px-6 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Cancel
             </button>

@@ -15,6 +15,37 @@ import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
+import { downloadCsv, ensureExportableRows, safeReportValue } from "../../lib/reportExport";
+
+const filterActivityRecords = (records, { searchQuery, reportType, barangay, dateRange }) => {
+  const query = searchQuery.toLowerCase();
+  const now = new Date().getTime();
+
+  return records.filter((record) => {
+    const matchesSearch = [record.farmer, record.animalId, record.earTag, record.breed, record.details]
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
+    if (!matchesSearch) return false;
+
+    if (reportType === "breeding-audit" && !["AI", "PD", "CD"].includes(record.type)) return false;
+    if (reportType === "health-summary" && record.type !== "HL") return false;
+    if (barangay !== "all" && record.barangay.toLowerCase() !== barangay.toLowerCase()) return false;
+
+    const recordTime = record.date.getTime();
+    if (dateRange === "7-days") {
+      return recordTime >= now - 7 * 24 * 60 * 60 * 1000;
+    }
+    if (dateRange === "30-days") {
+      return recordTime >= now - 30 * 24 * 60 * 60 * 1000;
+    }
+    if (dateRange === "ytd") {
+      return recordTime >= new Date(new Date().getFullYear(), 0, 1).getTime();
+    }
+
+    return true;
+  });
+};
 
 export default function FieldReports() {
   const toast = useToast();
@@ -84,10 +115,10 @@ export default function FieldReports() {
     setIsLoadingActivities(true);
     try {
       const [insRes, pregRes, calvRes, healthRes] = await Promise.all([
-        axiosInstance.get("/technician/inseminations?limit=1000"),
-        axiosInstance.get("/technician/pregnancy-checks?limit=1000"),
-        axiosInstance.get("/technician/calvings?limit=1000"),
-        axiosInstance.get("/health-request"),
+        axiosInstance.get("/technician/inseminations?limit=100"),
+        axiosInstance.get("/technician/pregnancy-checks?limit=100"),
+        axiosInstance.get("/technician/calvings?limit=100"),
+        axiosInstance.get("/health-request", { params: { page: 1, limit: 100 } }),
       ]);
 
       const allEvents = [];
@@ -164,7 +195,7 @@ export default function FieldReports() {
         });
       });
 
-      (Array.isArray(healthRes.data) ? healthRes.data : []).forEach((health) => {
+      (healthRes.data?.data || []).forEach((health) => {
         const date = new Date(health.createdAt);
         allEvents.push({
           id: health._id,
@@ -213,6 +244,8 @@ export default function FieldReports() {
   const handleGenerateReport = (e) => {
     e.preventDefault();
     if (isCompiling) return;
+    const reportRows = filterActivityRecords(activityRecords, { searchQuery, reportType, barangay, dateRange });
+    if (!ensureExportableRows(reportRows, toast, "No activity records match the selected report filters.")) return;
 
     setIsCompiling(true);
     const steps = [
@@ -234,10 +267,10 @@ export default function FieldReports() {
         clearInterval(interval);
         
         const typeLabels = {
-          "breeding-audit": "Breeding Audit",
-          "health-summary": "Health Summary",
-          "farmer-activity": "Farmer Activities",
-          "census": "Livestock Census"
+          "breeding-audit": "Breeding Accomplishment",
+          "health-summary": "Health Assistance Summary",
+          "farmer-activity": "Farmer Activity",
+          "census": "Livestock Registry"
         };
 
         const newReportName = `${typeLabels[reportType]} - ${
@@ -302,9 +335,11 @@ export default function FieldReports() {
       const reportTypeClean = report.type || "Breeding Audit";
 
       // 1. CENSUS / LIVESTOCK DEMOGRAPHICS
-      if (reportTypeClean === "Livestock Census") {
-        const res = await axiosInstance.get("/animals/all");
-        let data = res.data || [];
+      if (["Livestock Census", "Livestock Registry"].includes(reportTypeClean)) {
+        const res = await axiosInstance.get("/animals/all", {
+          params: { page: 1, limit: 100, barangay: report.params?.barangay !== "all" ? report.params?.barangay : undefined },
+        });
+        let data = res.data?.data || res.data?.animals || [];
         const targetBrgy = report.params?.barangay || "all";
         if (targetBrgy !== "all") {
           data = data.filter(item => 
@@ -312,9 +347,7 @@ export default function FieldReports() {
           );
         }
 
-        if (data.length === 0) {
-          return toast.error("Zero census records located for selected parameters.");
-        }
+        if (!ensureExportableRows(data, toast, "No livestock registry records match this report.")) return;
 
         const headers = ["Animal ID", "Ear Tag", "Species", "Breed", "Color", "Farmer Owner", "Barangay", "Reproductive Status"];
         const rows = data.map(item => [
@@ -339,7 +372,7 @@ export default function FieldReports() {
           doc.setFont("helvetica", "bold");
           doc.setFontSize(9);
           doc.text("LIVESTOCK DEMOGRAPHICS CENSUS REPORT", doc.internal.pageSize.width / 2, 18, { align: "center" });
-          doc.text(`Sector Barangay: ${targetBrgy.toUpperCase()}`, doc.internal.pageSize.width / 2, 22, { align: "center" });
+          doc.text(`Sector Barangay: ${safeReportValue(targetBrgy).toUpperCase()}`, doc.internal.pageSize.width / 2, 22, { align: "center" });
           
           doc.autoTable({
             head: [headers],
@@ -351,28 +384,19 @@ export default function FieldReports() {
           });
           doc.save(`DA_Census_Report_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
         } else {
-          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.setAttribute("href", url);
-          link.setAttribute("download", `DA_Census_Report_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+          downloadCsv({ headers, rows, fileName: `DA_Livestock_Registry_${targetBrgy}_${new Date().toLocaleDateString()}` });
         }
         return toast.success("Census dataset exported successfully.");
       }
 
       // 2. FARMER ACTIVITIES / ENGAGEMENT LOGS
-      if (reportTypeClean === "Farmer Activities") {
+      if (["Farmer Activities", "Farmer Activity"].includes(reportTypeClean)) {
         const [farmersRes, animalsRes] = await Promise.all([
           axiosInstance.get("/user?role=farmer"),
-          axiosInstance.get("/animals/all")
+          axiosInstance.get("/animals/all", { params: { page: 1, limit: 100 } })
         ]);
         const farmers = farmersRes.data || [];
-        const animals = animalsRes.data || [];
+        const animals = animalsRes.data?.data || animalsRes.data?.animals || [];
         
         const counts = {};
         animals.forEach(a => {
@@ -394,9 +418,7 @@ export default function FieldReports() {
           data = data.filter(item => item.barangay?.toLowerCase() === targetBrgy.toLowerCase());
         }
 
-        if (data.length === 0) {
-          return toast.error("Zero farmer records located for selected parameters.");
-        }
+        if (!ensureExportableRows(data, toast, "No farmer activity records match this report.")) return;
 
         const headers = ["Farmer Name", "Contact Number", "Barangay", "Registered Livestock", "Status", "Registration Date"];
         const rows = data.map(item => [
@@ -430,24 +452,15 @@ export default function FieldReports() {
           });
           doc.save(`DA_Farmer_Roster_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
         } else {
-          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.setAttribute("href", url);
-          link.setAttribute("download", `DA_Farmer_Roster_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+          downloadCsv({ headers, rows, fileName: `DA_Farmer_Activity_${targetBrgy}_${new Date().toLocaleDateString()}` });
         }
         return toast.success("Farmer activities database exported successfully.");
       }
 
       // 3. CLINICAL HEALTH REGISTRY (HEALTH SUMMARY)
-      if (reportTypeClean === "Health Summary") {
-        const res = await axiosInstance.get("/health-request");
-        let healthData = res.data || [];
+      if (["Health Summary", "Health Assistance Summary"].includes(reportTypeClean)) {
+        const res = await axiosInstance.get("/health-request", { params: { page: 1, limit: 100 } });
+        let healthData = res.data?.data || [];
         
         const targetBrgy = report.params?.barangay || "all";
         if (targetBrgy !== "all") {
@@ -456,9 +469,7 @@ export default function FieldReports() {
           );
         }
 
-        if (healthData.length === 0) {
-          return toast.error("Zero health incidents located for selected parameters.");
-        }
+        if (!ensureExportableRows(healthData, toast, "No health assistance records match this report.")) return;
 
         const headers = ["Logged Date", "Animal Tag", "Farmer Owner", "Barangay", "Symptoms", "Diagnosis", "Treatment Plan", "Urgency", "Status"];
         const rows = healthData.map(item => [
@@ -495,16 +506,7 @@ export default function FieldReports() {
           });
           doc.save(`DA_Health_Summary_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
         } else {
-          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.setAttribute("href", url);
-          link.setAttribute("download", `DA_Health_Summary_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+          downloadCsv({ headers, rows, fileName: `DA_Health_Assistance_Summary_${targetBrgy}_${new Date().toLocaleDateString()}` });
         }
         return toast.success("Health dispatches dataset exported successfully.");
       }
@@ -522,9 +524,7 @@ export default function FieldReports() {
         );
       }
 
-      if (data.length === 0) {
-        return toast.error("Zero breeding ledger records located for selected parameters.");
-      }
+      if (!ensureExportableRows(data, toast, "No breeding accomplishment records match this report.")) return;
 
       const headers = [
         "Data", "No.", "Animal ID No.", "Ear Tag No.", "Brand", "Species", "Breed", "Color", "Address", "Farmer",
@@ -573,7 +573,7 @@ export default function FieldReports() {
         doc.text("MONTHLY ACCOMPLISHMENT REPORT", doc.internal.pageSize.width / 2, 19, { align: "center" });
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
-        doc.text(`For the Month of: ${monthVal} / ${yearVal}    Sector Barangay: ${targetBrgy.toUpperCase()}`, doc.internal.pageSize.width / 2, 23, { align: "center" });
+        doc.text(`For the Month of: ${monthVal} / ${yearVal}    Sector Barangay: ${safeReportValue(targetBrgy).toUpperCase()}`, doc.internal.pageSize.width / 2, 23, { align: "center" });
 
         const structuredHeaders = [
           [
@@ -603,16 +603,7 @@ export default function FieldReports() {
         });
         doc.save(`DA_UNIP_Report_${monthVal}_${yearVal}_${targetBrgy}.pdf`);
       } else {
-        const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `DA_UNIP_Report_${monthVal}_${yearVal}_${targetBrgy}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadCsv({ headers, rows, fileName: `DA_Breeding_Accomplishment_${monthVal}_${yearVal}_${targetBrgy}` });
       }
 
       toast.success("Municipal report document downloaded successfully!");
@@ -635,43 +626,7 @@ export default function FieldReports() {
   }, [searchQuery, reports]);
 
   const filteredActivityRecords = useMemo(() => {
-    return activityRecords.filter((record) => {
-      // 1. Search Query Filter (Matches farmer name, animal ID, ear tag, breed, details)
-      const matchesSearch = [record.farmer, record.animalId, record.earTag, record.breed, record.details]
-        .join(" ")
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase());
-      if (!matchesSearch) return false;
-
-      // 2. Report Type Filter
-      if (reportType === "breeding-audit" && !["AI", "PD", "CD"].includes(record.type)) {
-        return false;
-      }
-      if (reportType === "health-summary" && record.type !== "HL") {
-        return false;
-      }
-
-      // 3. Barangay Filter
-      if (barangay !== "all" && record.barangay.toLowerCase() !== barangay.toLowerCase()) {
-        return false;
-      }
-
-      // 4. Date Range Filter
-      const recordTime = record.date.getTime();
-      const now = new Date().getTime();
-      if (dateRange === "7-days") {
-        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-        if (recordTime < sevenDaysAgo) return false;
-      } else if (dateRange === "30-days") {
-        const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
-        if (recordTime < thirtyDaysAgo) return false;
-      } else if (dateRange === "ytd") {
-        const startOfYear = new Date(new Date().getFullYear(), 0, 1).getTime();
-        if (recordTime < startOfYear) return false;
-      }
-
-      return true;
-    });
+    return filterActivityRecords(activityRecords, { searchQuery, reportType, barangay, dateRange });
   }, [activityRecords, searchQuery, reportType, barangay, dateRange]);
 
   return (
@@ -755,10 +710,10 @@ export default function FieldReports() {
                     onChange={(e) => setReportType(e.target.value)}
                     className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
                   >
-                    <option value="breeding-audit">Breeding Ledger Audit</option>
-                    <option value="health-summary">Health & Disease Outbreaks Summary</option>
-                    <option value="farmer-activity">Farmer Engagement logs</option>
-                    <option value="census">Livestock Demographics Census</option>
+                    <option value="breeding-audit">Breeding Accomplishment</option>
+                    <option value="health-summary">Health Assistance Summary</option>
+                    <option value="farmer-activity">Farmer Activity</option>
+                    <option value="census">Livestock Registry</option>
                   </select>
                 </div>
 
@@ -799,19 +754,24 @@ export default function FieldReports() {
                     className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
                   >
                     <option value="pdf">PDF Document (.pdf)</option>
-                    <option value="excel">Excel Spreadsheet (.xlsx)</option>
-                    <option value="csv">Comma Separated Dataset (.csv)</option>
+                    <option value="csv">CSV Spreadsheet (.csv)</option>
                   </select>
                 </div>
 
                 <div className="md:col-span-2 pt-3 flex justify-end">
                   <button
                     type="submit"
+                    disabled={isCompiling || filteredActivityRecords.length === 0}
                     className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold rounded-xl px-5 flex items-center gap-1.5"
                   >
                     <Play size={12} /> Compile &amp; Publish Report
                   </button>
                 </div>
+                {filteredActivityRecords.length === 0 && (
+                  <p className="md:col-span-2 text-[11px] font-semibold text-amber-600 dark:text-amber-300">
+                    No live records match the selected filters. Adjust the report type, barangay, or date range before compiling.
+                  </p>
+                )}
               </form>
             )}
           </div>

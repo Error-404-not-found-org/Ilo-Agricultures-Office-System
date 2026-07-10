@@ -134,7 +134,7 @@ export default function RouteOptimizer() {
   const { data: inseminations = [], isLoading: loadingInsem, refetch: refetchInsem } = useQuery({
     queryKey: ["inseminations-route"],
     queryFn: async () => {
-      const res = await axiosInstance.get("/technician/inseminations?limit=1000");
+      const res = await axiosInstance.get("/technician/inseminations?limit=100");
       return res.data?.inseminations || [];
     },
   });
@@ -143,8 +143,8 @@ export default function RouteOptimizer() {
   const { data: healthRequests = [], isLoading: loadingHealth, refetch: refetchHealth } = useQuery({
     queryKey: ["health-route"],
     queryFn: async () => {
-      const res = await axiosInstance.get("/health-request");
-      return res.data || [];
+      const res = await axiosInstance.get("/health-request", { params: { page: 1, limit: 100 } });
+      return res.data?.data || res.data || [];
     },
   });
 

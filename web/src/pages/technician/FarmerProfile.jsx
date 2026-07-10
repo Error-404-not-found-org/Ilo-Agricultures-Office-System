@@ -39,26 +39,21 @@ export default function FarmerProfile() {
   });
 
   const { data: animals = [], isLoading: isAnimalsLoading } = useQuery({
-    queryKey: ["animals"],
+    queryKey: ["animals", "farmer", id],
     queryFn: async () => {
-      const res = await axiosInstance.get("/animals/all");
-      return res.data || [];
+      const res = await axiosInstance.get(`/animals/farmer/${id}`);
+      return res.data?.data || res.data?.animals || res.data || [];
     },
+    enabled: !!id,
   });
 
   const isLoading = isFarmerLoading || isAnimalsLoading;
 
   // ---- DYNAMIC CROSS-REFERENCE FILTER MATRIX ----
   const ownedAnimals = useMemo(() => {
-    if (!Array.isArray(animals) || !id) return [];
-    return animals.filter((animal) => {
-      const fId =
-        typeof animal.farmerId === "object"
-          ? animal.farmerId?._id
-          : animal.farmerId;
-      return fId === id;
-    });
-  }, [animals, id]);
+    if (!Array.isArray(animals)) return [];
+    return animals;
+  }, [animals]);
 
   const stats = useMemo(() => {
     return {

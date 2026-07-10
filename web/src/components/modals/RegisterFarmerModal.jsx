@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -12,21 +12,34 @@ import {
   BadgeCheck,
   Info,
   Search,
+  ChevronDown
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { OTON_BARANGAYS } from "../../constants/barangays";
+import iloiloPsgc from "../../constants/iloilo-psgc.json";
+import { ILOILO_CITY_BARANGAYS_BY_DISTRICT } from "../../constants/barangays";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 pl-11 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
 const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
+
+const parseIloiloCityBarangay = (value) => {
+  if (value && value.includes("(") && value.includes(")")) {
+    const match = value.match(/(.+?)\s*\(([^)]+)\)/);
+    if (match) {
+      return { brgy: match[1].trim(), district: match[2].trim() };
+    }
+  }
+  return { brgy: value || "", district: "" };
+};
 
 const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
+  const [selectedDistrict, setSelectedDistrict] = useState("");
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -38,15 +51,27 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
     province: "Iloilo",
   });
 
+  const targetBarangays = useMemo(() => {
+    const selectedCity = formData.city || "Oton";
+    if (selectedCity === "Iloilo City") {
+      return ILOILO_CITY_BARANGAYS_BY_DISTRICT[selectedDistrict] || [];
+    }
+    return iloiloPsgc[selectedCity] || [];
+  }, [formData.city, selectedDistrict]);
+
   const mutation = useMutation({
     mutationFn: async (data) => {
+      const finalBarangay = data.city === "Iloilo City" && selectedDistrict
+        ? `${data.barangay} (${selectedDistrict})`
+        : data.barangay;
+
       if (farmer) {
         const payload = {
           name: `${data.firstName} ${data.lastName}`.trim(),
           email: data.email || "",
           phoneNumber: data.phoneNumber,
           address: {
-            barangay: data.barangay,
+            barangay: finalBarangay,
             city: data.city,
             province: data.province,
             phoneNumber: data.phoneNumber,
@@ -58,7 +83,7 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
         const res = await axiosInstance.post("/technician/register-farmer", {
           ...data,
           address: {
-            barangay: data.barangay,
+            barangay: finalBarangay,
             city: data.city,
             province: data.province,
           },
@@ -101,19 +126,24 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
         const nameParts = (farmer.name || "").trim().split(" ");
         const first = nameParts[0] || "";
         const last = nameParts.slice(1).join(" ") || "";
+        const rawBrgy = farmer.brgy || farmer.address?.barangay || "";
+        const parsed = parseIloiloCityBarangay(rawBrgy);
+        const city = farmer.address?.city || "Oton";
         Promise.resolve().then(() => {
+          setSelectedDistrict(parsed.district);
           setFormData({
             firstName: first,
             lastName: last,
             phoneNumber: farmer.contact || farmer.phoneNumber || "",
             email: farmer.email || "",
-            barangay: farmer.brgy || farmer.address?.barangay || "",
-            city: farmer.address?.city || "Oton",
+            barangay: parsed.brgy,
+            city: city,
             province: farmer.address?.province || "Iloilo",
           });
         });
       } else {
         Promise.resolve().then(() => {
+          setSelectedDistrict("");
           setFormData({
             firstName: "",
             lastName: "",
@@ -162,6 +192,9 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
     }
     if (!formData.city.trim()) {
       return toast.error("Municipality is required.");
+    }
+    if (formData.city === "Iloilo City" && !selectedDistrict) {
+      return toast.error("Please select the Iloilo City district.");
     }
     mutation.mutate(formData);
   };
@@ -338,7 +371,67 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-1.5">
-                        <label className={labelClass}>Barangay Sector</label>
+                        <label className={labelClass}>Municipality / City *</label>
+                        <div className="relative">
+                          <MapPin
+                            size={16}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20 pointer-events-none"
+                          />
+                          <select
+                            value={formData.city || "Oton"}
+                            onChange={(e) => {
+                              const newCity = e.target.value;
+                              setFormData({
+                                ...formData,
+                                city: newCity,
+                                barangay: ""
+                              });
+                              setSelectedDistrict("");
+                            }}
+                            className={`${inputClass} pr-10 appearance-none cursor-pointer`}
+                          >
+                            {Object.keys(iloiloPsgc).map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <ChevronDown
+                            size={14}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
+                          />
+                        </div>
+                      </div>
+
+                      {formData.city === "Iloilo City" && (
+                        <div className="space-y-1.5">
+                          <label className={labelClass}>District *</label>
+                          <div className="relative">
+                            <MapPin
+                              size={16}
+                              className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20 pointer-events-none"
+                            />
+                            <select
+                              value={selectedDistrict}
+                              onChange={(e) => {
+                                setSelectedDistrict(e.target.value);
+                                setFormData({ ...formData, barangay: "" });
+                              }}
+                              className={`${inputClass} pr-10 appearance-none cursor-pointer`}
+                            >
+                              <option value="" disabled>Select District</option>
+                              {Object.keys(ILOILO_CITY_BARANGAYS_BY_DISTRICT).map((d) => (
+                                <option key={d} value={d}>{d}</option>
+                              ))}
+                            </select>
+                            <ChevronDown
+                              size={14}
+                              className="absolute right-4 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Barangay Sector *</label>
                         <div className="relative">
                           <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20 z-10" />
                           <input
@@ -362,10 +455,10 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
                                 exit={{ opacity: 0, y: -5 }}
                                 className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
                               >
-                                {OTON_BARANGAYS.filter((b) =>
+                                {targetBarangays.filter((b) =>
                                   b.toLowerCase().includes(formData.barangay.toLowerCase())
                                 ).length > 0 ? (
-                                  OTON_BARANGAYS.filter((b) =>
+                                  targetBarangays.filter((b) =>
                                     b.toLowerCase().includes(formData.barangay.toLowerCase())
                                   ).map((b) => (
                                     <button
@@ -390,31 +483,6 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
                               </motion.div>
                             )}
                           </AnimatePresence>
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className={labelClass}>Municipality</label>
-                        <div className="relative">
-                          <MapPin
-                            size={16}
-                            className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
-                          />
-                          <input
-                            type="text"
-                            placeholder="OTON"
-                            value={formData.city}
-                            onChange={(e) => {
-                              const value = e.target.value.replace(
-                                /[^a-zA-Z\sñÑ-]/g,
-                                "",
-                              );
-                              if (value.length <= 50) {
-                                setFormData({ ...formData, city: value });
-                              }
-                            }}
-                            maxLength={50}
-                            className={inputClass}
-                          />
                         </div>
                       </div>
                     </div>

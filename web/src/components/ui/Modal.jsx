@@ -87,7 +87,7 @@ export default function Modal({
         {/* Dynamic Type Header Banner */}
         <div className={`flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 ${type !== 'default' ? typeConfigs.bg : ''}`}>
           {type !== 'default' && (
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
               {typeConfigs.icon}
             </div>
           )}

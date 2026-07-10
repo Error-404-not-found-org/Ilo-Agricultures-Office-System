@@ -38,38 +38,25 @@ export default function ClientRegistry() {
   const itemsPerPage = 10;
 
   // ---- LIVE BACKEND DATA PIEPELINE ----
-  const { data: rawFarmers = [], isLoading: isFarmersLoading } = useQuery({
-    queryKey: ["technician", "farmers"],
+  const { data: farmersPage = {}, isLoading: isFarmersLoading } = useQuery({
+    queryKey: ["technician", "farmers", currentPage, searchQuery, barangayFilter, statusFilter],
     queryFn: async () => {
-      const res = await axiosInstance.get("/user?role=farmer");
-      return res.data || [];
-    },
-  });
-
-  const { data: rawAnimals = [], isLoading: isAnimalsLoading } = useQuery({
-    queryKey: ["animals"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/animals/all");
-      return res.data || [];
-    },
-  });
-
-  const isMasterLoading = isFarmersLoading || isAnimalsLoading;
-
-  // ---- CORRELATION LOGIC ENGINE ----
-  const farmerAnimalCounts = useMemo(() => {
-    const counts = {};
-    if (Array.isArray(rawAnimals)) {
-      rawAnimals.forEach((animal) => {
-        const fId =
-          typeof animal.farmerId === "object"
-            ? animal.farmerId?._id
-            : animal.farmerId;
-        if (fId) counts[fId] = (counts[fId] || 0) + 1;
+      const res = await axiosInstance.get("/user", {
+        params: {
+          role: "farmer",
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchQuery || undefined,
+          barangay: barangayFilter || undefined,
+          status: statusFilter || undefined,
+        },
       });
-    }
-    return counts;
-  }, [rawAnimals]);
+      return res.data || {};
+    },
+    keepPreviousData: true,
+  });
+  const rawFarmers = useMemo(() => farmersPage.data || [], [farmersPage]);
+  const isMasterLoading = isFarmersLoading;
 
   const clients = useMemo(() => {
     if (!Array.isArray(rawFarmers)) return [];
@@ -79,7 +66,7 @@ export default function ClientRegistry() {
       name: farmer.name || "Unknown Farmer",
       contact: farmer.phoneNumber || "--- --- ----",
       brgy: farmer.address?.barangay || "Oton Proper",
-      animals: farmerAnimalCounts[farmer._id] || 0,
+      animals: farmer.animalsCount || 0,
       lastVisit: farmer.updatedAt
         ? new Date(farmer.updatedAt).toLocaleDateString("en-US", {
             month: "short",
@@ -96,7 +83,7 @@ export default function ClientRegistry() {
         : "N/A",
       status: farmer.isVerified ? "active" : "inactive",
     }));
-  }, [rawFarmers, farmerAnimalCounts]);
+  }, [rawFarmers]);
 
   // ---- LIVE SUMMARY METRICS ENGINE ----
   const stats = useMemo(() => {
@@ -125,20 +112,6 @@ export default function ClientRegistry() {
   const processedClients = useMemo(() => {
     let result = [...clients];
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.contact.toLowerCase().includes(q) ||
-          c.brgy.toLowerCase().includes(q),
-      );
-    }
-
-    if (barangayFilter)
-      result = result.filter((c) => c.brgy === barangayFilter);
-    if (statusFilter) result = result.filter((c) => c.status === statusFilter);
-
     if (sortConfig.key) {
       result.sort((a, b) => {
         const valA = a[sortConfig.key];
@@ -155,16 +128,13 @@ export default function ClientRegistry() {
     }
 
     return result;
-  }, [searchQuery, barangayFilter, statusFilter, sortConfig, clients]);
+  }, [sortConfig, clients]);
 
   // ---- PAGINATION COMPUTATION ----
-  const totalItems = processedClients.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+  const totalItems = farmersPage.total || processedClients.length;
+  const totalPages = farmersPage.totalPages || Math.ceil(totalItems / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedClients = processedClients.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
+  const paginatedClients = processedClients;
 
   const handleSort = (key) => {
     let direction = "asc";

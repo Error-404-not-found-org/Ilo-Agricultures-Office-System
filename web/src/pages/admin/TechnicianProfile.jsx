@@ -37,8 +37,8 @@ export default function TechnicianProfile() {
     queryFn: async () => {
       // Fetch dynamic requests as historical trace
       const [aiRes, healthRes] = await Promise.all([
-        axiosInstance.get("/ai-request?limit=1000").catch(() => ({ data: [] })),
-        axiosInstance.get("/health-request?limit=1000").catch(() => ({ data: [] })),
+        axiosInstance.get("/ai-request", { params: { page: 1, limit: 100 } }).catch(() => ({ data: [] })),
+        axiosInstance.get("/health-request", { params: { page: 1, limit: 100 } }).catch(() => ({ data: [] })),
       ]);
       const allAI = Array.isArray(aiRes.data) ? aiRes.data : aiRes.data?.data || [];
       const allHealth = Array.isArray(healthRes.data) ? healthRes.data : healthRes.data?.data || [];

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Syringe, User, Activity, Search, MapPin, Phone, Mail,
   AlertCircle, AlertTriangle, BadgeCheck, History, ArrowLeft,
-  CheckCircle2, Info, Dna,
+  CheckCircle2, Info, Dna, ChevronDown
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,7 +11,13 @@ import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { CATTLE_BREEDS, CATTLE_SPECIES } from "../../constants/breeds";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
-import { OTON_BARANGAYS } from "../../constants/barangays";
+import {
+  formatBarangayWithDistrict,
+  getIloiloBarangayOptions,
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from "../../utils/addressOptions";
 import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../../utils/cattleCore";
 
 const inputClass = `w-full h-11 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 text-xs font-bold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none transition-all`;
@@ -39,6 +45,7 @@ export default function WalkInInsemination() {
 
   // Barangay autocomplete for new-entry mode
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
+  const [selectedDistrict, setSelectedDistrict] = useState("");
 
   const [formData, setFormData] = useState(() => ({
     firstName: "",
@@ -65,6 +72,11 @@ export default function WalkInInsemination() {
       return Array.isArray(res.data) ? res.data : res.data.data || [];
     },
   });
+
+  const targetBarangays = useMemo(() => {
+    const selectedCity = formData.address.city || "Oton";
+    return getIloiloBarangayOptions(selectedCity, selectedDistrict);
+  }, [formData.address.city, selectedDistrict]);
 
   const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({
     queryKey: ["farmer-animals", selectedFarmerId],
@@ -178,8 +190,11 @@ export default function WalkInInsemination() {
         inseminationDetails: formData.inseminationDetails,
       };
     } else {
-      if (!formData.firstName || !formData.lastName || !formData.phoneNumber || !formData.address.barangay) {
-        return toast.error("Please fill in all owner details (First Name, Last Name, Phone, and Barangay).");
+      if (!formData.firstName || !formData.lastName || !formData.phoneNumber || !formData.address.city || !formData.address.barangay) {
+        return toast.error("Please fill in all owner details (First Name, Last Name, Phone, Municipality/City, and Barangay).");
+      }
+      if (formData.address.city === ILOILO_CITY_NAME && !selectedDistrict) {
+        return toast.error("Please select the Iloilo City district.");
       }
       if (formData.phoneNumber.length < 11) {
         return toast.error("Phone number must be exactly 11 digits.");
@@ -190,7 +205,18 @@ export default function WalkInInsemination() {
       if (!formData.animalDetails.earTag || !formData.animalDetails.breed) {
         return toast.error("Please fill in animal Ear Tag and Breed details.");
       }
-      submissionData = formData;
+      submissionData = {
+        ...formData,
+        address: {
+          ...formData.address,
+          barangay: formatBarangayWithDistrict(
+            formData.address.barangay,
+            formData.address.city,
+            selectedDistrict
+          ),
+          district: formData.address.city === ILOILO_CITY_NAME ? selectedDistrict : "",
+        },
+      };
     }
 
     if (!formData.inseminationDetails.sireBreed || !formData.inseminationDetails.sireCode) {
@@ -471,6 +497,51 @@ export default function WalkInInsemination() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>Municipality / City *</label>
+                        <div className="relative">
+                          <select
+                            value={formData.address.city || "Oton"}
+                            onChange={(e) => {
+                              const newCity = e.target.value;
+                              setSelectedDistrict("");
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, city: newCity, barangay: "" }
+                              });
+                            }}
+                            className={`${selectClass} pr-10 appearance-none cursor-pointer`}
+                          >
+                            {ILOILO_MUNICIPALITY_OPTIONS.map((m) => (
+                              <option key={m} value={m}>{m}</option>
+                            ))}
+                          </select>
+                          <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      {formData.address.city === ILOILO_CITY_NAME && (
+                        <div className="space-y-1.5">
+                          <label className={labelClass}>Iloilo City District *</label>
+                          <div className="relative">
+                            <select
+                              value={selectedDistrict}
+                              onChange={(e) => {
+                                setSelectedDistrict(e.target.value);
+                                setFormData({ ...formData, address: { ...formData.address, barangay: "" } });
+                              }}
+                              className={`${selectClass} pr-10 appearance-none cursor-pointer`}
+                            >
+                              <option value="" disabled>Select District</option>
+                              {ILOILO_CITY_DISTRICT_OPTIONS.map((district) => (
+                                <option key={district} value={district}>{district}</option>
+                              ))}
+                            </select>
+                            <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                          </div>
+                        </div>
+                      )}
+
                       <div className="space-y-1.5 relative">
                         <label className={labelClass}>Barangay *</label>
                         <div className="relative">
@@ -480,8 +551,13 @@ export default function WalkInInsemination() {
                             value={formData.address.barangay}
                             onChange={(e) => { setFormData({ ...formData, address: { ...formData.address, barangay: e.target.value } }); setIsBarangayDropdownOpen(true); }}
                             onFocus={() => setIsBarangayDropdownOpen(true)}
-                            placeholder="Search barangay..."
-                            className={`${inputClass} pl-10`}
+                            placeholder={
+                              formData.address.city === ILOILO_CITY_NAME && !selectedDistrict
+                                ? "Select district first"
+                                : "Search barangay..."
+                            }
+                            disabled={formData.address.city === ILOILO_CITY_NAME && !selectedDistrict}
+                            className={`${inputClass} pl-10 disabled:opacity-50`}
                           />
                           <AnimatePresence>
                             {isBarangayDropdownOpen && formData.address.barangay && (
@@ -489,8 +565,8 @@ export default function WalkInInsemination() {
                                 initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
                                 className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 shadow-xl rounded-xl custom-scrollbar"
                               >
-                                {OTON_BARANGAYS.filter((b) => b.toLowerCase().includes(formData.address.barangay.toLowerCase())).length > 0
-                                  ? OTON_BARANGAYS.filter((b) => b.toLowerCase().includes(formData.address.barangay.toLowerCase())).map((brgy) => (
+                                {targetBarangays.filter((b) => b.toLowerCase().includes(formData.address.barangay.toLowerCase())).length > 0
+                                  ? targetBarangays.filter((b) => b.toLowerCase().includes(formData.address.barangay.toLowerCase())).map((brgy) => (
                                       <button
                                         key={brgy}
                                         onClick={() => { setFormData({ ...formData, address: { ...formData.address, barangay: brgy } }); setIsBarangayDropdownOpen(false); }}
@@ -503,10 +579,6 @@ export default function WalkInInsemination() {
                             )}
                           </AnimatePresence>
                         </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className={labelClass}>Municipality</label>
-                        <input type="text" value={formData.address.city} onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })} placeholder="Oton" className={inputClass} />
                       </div>
                     </div>
                   </div>

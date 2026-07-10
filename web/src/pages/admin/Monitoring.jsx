@@ -3,9 +3,10 @@ import { Activity, AlertTriangle, Database, ShieldCheck, Users, LifeBuoy, BarCha
 import { Link } from "react-router-dom";
 import Topbar from "../../components/ui/Topbar";
 import axiosInstance from "../../lib/axios";
+import { ui } from "../../components/ui/uiClasses";
 
 const StatCard = ({ icon, label, value, note }) => (
-  <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
+  <div className={ui.panelPadded}>
     <div className="flex items-center justify-between gap-3">
       <div>
         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
@@ -24,7 +25,7 @@ const StatCard = ({ icon, label, value, note }) => (
 );
 
 const HealthLine = ({ label, value }) => (
-  <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-3">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-3">
     <span className="text-xs font-bold text-slate-500 dark:text-slate-400">{label}</span>
     <span className="text-sm font-black text-slate-900 dark:text-white">{value}</span>
   </div>
@@ -42,6 +43,21 @@ const ProgressRow = ({ label, value }) => (
   </div>
 );
 
+const sourceResult = (label, result, fallback) => {
+  if (result.status !== "fulfilled") {
+    return {
+      ok: false,
+      label,
+      data: fallback,
+      error:
+        result.reason?.response?.data?.message ||
+        result.reason?.message ||
+        "Unable to load this section.",
+    };
+  }
+  return { ok: true, label, data: result.value?.data ?? fallback, error: null };
+};
+
 export default function AdminMonitoring() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["admin", "monitoring-dashboard-combined"],
@@ -54,23 +70,27 @@ export default function AdminMonitoring() {
         axiosInstance.get("/support-tickets", { params: { status: "resolved", limit: 1 } }),
       ]);
 
-      const unwrap = (result, fallback) => {
-        if (result.status !== "fulfilled") return { data: fallback };
-        return { data: result.value?.data ?? fallback };
-      };
-
       const asArray = (value) => {
         if (Array.isArray(value)) return value;
         if (Array.isArray(value?.data)) return value.data;
         return [];
       };
 
+      const sources = {
+        monitoring: sourceResult("System monitoring", monitoring, {}),
+        stats: sourceResult("Core statistics", stats, {}),
+        supportPending: sourceResult("Pending support tickets", supportPending, {}),
+        supportProgress: sourceResult("In-progress support tickets", supportProgress, {}),
+        supportResolved: sourceResult("Resolved support tickets", supportResolved, {}),
+      };
+
       return {
-        monitoring: unwrap(monitoring, {}).data,
-        stats: unwrap(stats, {}).data,
-        supportPending: asArray(unwrap(supportPending, {}).data),
-        supportProgress: asArray(unwrap(supportProgress, {}).data),
-        supportResolved: asArray(unwrap(supportResolved, {}).data),
+        sources,
+        monitoring: sources.monitoring.data,
+        stats: sources.stats.data,
+        supportPending: asArray(sources.supportPending.data),
+        supportProgress: asArray(sources.supportProgress.data),
+        supportResolved: asArray(sources.supportResolved.data),
       };
     },
   });
@@ -82,14 +102,17 @@ export default function AdminMonitoring() {
   const registryMonitor = monitoring.registryMonitor || {};
   const backupMonitor = monitoring.backupMonitor || {};
   const moowieInsights = monitoring.moowieInsights || {};
+  const sources = data?.sources || {};
+  const failedSources = Object.values(sources).filter((source) => source && !source.ok);
+  const sourceValue = (key, value) => (sources?.[key]?.ok === false ? "Unavailable" : value);
 
   const totalAnimals = stats.animals || 0;
   const missingAnimals = registryMonitor.missingAnimalData || 0;
   const completionRate = totalAnimals ? Math.max(0, Math.round(((totalAnimals - missingAnimals) / totalAnimals) * 100)) : 100;
 
-  const supportPending = data?.supportPending?.length || 0;
-  const supportProgress = data?.supportProgress?.length || 0;
-  const supportResolved = data?.supportResolved?.length || 0;
+  const supportPending = sourceValue("supportPending", data?.supportPending?.length || 0);
+  const supportProgress = sourceValue("supportProgress", data?.supportProgress?.length || 0);
+  const supportResolved = sourceValue("supportResolved", data?.supportResolved?.length || 0);
 
   const formatDate = (date) => {
     if (!date) return "No date";
@@ -101,13 +124,13 @@ export default function AdminMonitoring() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100">
+    <div className={ui.page}>
       <Topbar
         title="System Monitoring"
         subtitle="Backend 2.0 health, registry quality, and operational alerts"
       />
 
-      <main className="p-6 space-y-5">
+      <main className={ui.main}>
         {error && (
           <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900 rounded-2xl p-4 flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
@@ -118,17 +141,39 @@ export default function AdminMonitoring() {
             </button>
           </div>
         )}
+        {!error && failedSources.length > 0 && (
+          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-2xl p-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-black text-amber-800 dark:text-amber-200">
+                Some monitoring sections did not load.
+              </p>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                Failed widgets are marked unavailable so they are not confused with real zero counts.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {failedSources.map((source) => (
+                  <span key={source.label} className="rounded-full border border-amber-200 dark:border-amber-800 bg-white/70 dark:bg-slate-950/40 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-200" title={source.error}>
+                    {source.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <button onClick={() => refetch()} className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-bold">
+              Retry
+            </button>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <StatCard icon={<Users size={18} />} label="Online devices" value={isLoading ? "..." : systemHealth.onlineDevices} note={`${systemHealth.offlineDevices ?? 0} offline profiles`} />
-          <StatCard icon={<Database size={18} />} label="Duplicate ear tags" value={isLoading ? "..." : registryMonitor.duplicateEarTags} note="Registry records needing review" />
-          <StatCard icon={<AlertTriangle size={18} />} label="Missing animal data" value={isLoading ? "..." : registryMonitor.missingAnimalData} note="Incomplete livestock profiles" />
-          <StatCard icon={<ShieldCheck size={18} />} label="AI success rate" value={isLoading ? "..." : `${moowieInsights.aiSuccessRate ?? 0}%`} note="Backend monitoring estimate" />
+          <StatCard icon={<Users size={18} />} label="Online devices" value={isLoading ? "..." : sourceValue("monitoring", systemHealth.onlineDevices)} note={sources.monitoring?.ok === false ? "Monitoring unavailable" : `${systemHealth.offlineDevices ?? 0} offline profiles`} />
+          <StatCard icon={<Database size={18} />} label="Duplicate ear tags" value={isLoading ? "..." : sourceValue("monitoring", registryMonitor.duplicateEarTags)} note="Registry records needing review" />
+          <StatCard icon={<AlertTriangle size={18} />} label="Missing animal data" value={isLoading ? "..." : sourceValue("monitoring", registryMonitor.missingAnimalData)} note="Incomplete livestock profiles" />
+          <StatCard icon={<ShieldCheck size={18} />} label="AI success rate" value={isLoading ? "..." : sourceValue("monitoring", `${moowieInsights.aiSuccessRate ?? 0}%`)} note="Backend monitoring estimate" />
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           {/* Panel 1: System and Data Health */}
-          <section className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm p-5 space-y-4">
+          <section className={`${ui.panelPadded} space-y-4`}>
             <div>
               <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">System and Data Diagnostics</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Database completeness, backup schedules and synchronization queue</p>
@@ -144,7 +189,7 @@ export default function AdminMonitoring() {
           </section>
 
           {/* Panel 2: Support Ticket Summary */}
-          <section className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm p-5 flex flex-col justify-between">
+          <section className={`${ui.panelPadded} flex flex-col justify-between`}>
             <div className="space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>

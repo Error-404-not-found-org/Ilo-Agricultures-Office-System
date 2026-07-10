@@ -116,7 +116,7 @@ export default function DownloadApp() {
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.18, duration: 0.45 }}
-              className="mt-8 grid max-w-xl gap-4 rounded-[2rem] border border-emerald-900/10 bg-white/85 p-4 shadow-xl shadow-emerald-900/10 backdrop-blur sm:grid-cols-[148px_1fr]"
+              className="mt-8 grid max-w-xl gap-4 rounded-4xl border border-emerald-900/10 bg-white/85 p-4 shadow-xl shadow-emerald-900/10 backdrop-blur sm:grid-cols-[148px_1fr]"
             >
               <div className="rounded-3xl border border-emerald-900/10 bg-white p-3 shadow-sm">
                 <img

@@ -11,8 +11,11 @@ import {
   CheckCircle,
 } from "lucide-react";
 import Topbar from "../../components/ui/Topbar";
+import { useToast } from "../../contexts/ToastContext";
+import { ui } from "../../components/ui/uiClasses";
 
 export default function TechSettings() {
+  const toast = useToast();
   // ---- PORTAL SETTINGS STATES ----
   const [themeMode, setThemeMode] = useState(() => {
     return localStorage.getItem("theme") || "emerald";
@@ -46,6 +49,7 @@ export default function TechSettings() {
   const [compactMode, setCompactMode] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isFlushing, setIsFlushing] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [cacheSize, setCacheSize] = useState("14.5 MB");
 
   // ---- FORM CONFIGS ----
@@ -65,11 +69,19 @@ export default function TechSettings() {
   const handlePasswordUpdate = (e) => {
     e.preventDefault();
     if (passwords.new !== passwords.confirm) {
-      alert("New password confirmation mismatch.");
+      toast.error("New password confirmation does not match.");
       return;
     }
-    alert("System security credentials successfully updated.");
-    setPasswords({ current: "", new: "", confirm: "" });
+    if (passwords.new.length < 8) {
+      toast.error("New password must be at least 8 characters.");
+      return;
+    }
+    setIsUpdatingPassword(true);
+    setTimeout(() => {
+      toast.success("Security credentials updated.");
+      setPasswords({ current: "", new: "", confirm: "" });
+      setIsUpdatingPassword(false);
+    }, 600);
   };
 
   const handleFlushCache = () => {
@@ -78,12 +90,12 @@ export default function TechSettings() {
     setTimeout(() => {
       setCacheSize("0 KB");
       setIsFlushing(false);
-      alert("Offline database buffer successfully flushed. Browser storage reclaimed.");
+      toast.success("Offline database buffer flushed.");
     }, 1500);
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300 font-sans">
+    <div className={`${ui.page} font-sans`}>
       {/* Reusable Topbar */}
       <Topbar
         title="Portal Settings"
@@ -91,7 +103,7 @@ export default function TechSettings() {
       />
 
       {/* Main Framework Container */}
-      <main className="p-6 space-y-6 flex-1 max-w-4xl mx-auto w-full">
+      <main className="p-4 md:p-6 space-y-6 flex-1 max-w-4xl mx-auto w-full">
         {/* Double Column layout grids */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
           
@@ -247,9 +259,10 @@ export default function TechSettings() {
               <div className="pt-2 flex justify-end">
                 <button
                   type="submit"
-                  className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold rounded-xl px-5"
+                  disabled={isUpdatingPassword}
+                  className={ui.primaryButton}
                 >
-                  Update Credentials
+                  {isUpdatingPassword ? "Updating..." : "Update Credentials"}
                 </button>
               </div>
             </form>

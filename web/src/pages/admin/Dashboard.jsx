@@ -19,6 +19,7 @@ import { useToast } from "../../contexts/ToastContext";
 import Topbar from "../../components/ui/Topbar";
 import DashboardChart from "../../components/data/DashboardChart";
 import AssignTaskModal from "../../components/modals/AssignTaskModal";
+import { ui } from "../../components/ui/uiClasses";
 
 const GREEN = "#00643b";
 const GREEN_SOFT = "rgba(0, 100, 59, 0.72)";
@@ -28,11 +29,19 @@ const BLUE = "#1d4ed8";
 const EMPTY_ARRAY = [];
 const EMPTY_OBJECT = {};
 
-const emptyResult = (fallback) => ({ ok: false, data: fallback });
-
-const unwrap = (result, fallback) => {
-  if (result.status !== "fulfilled") return emptyResult(fallback);
-  return { ok: true, data: result.value?.data ?? fallback };
+const sourceResult = (label, result, fallback) => {
+  if (result.status !== "fulfilled") {
+    return {
+      ok: false,
+      label,
+      data: fallback,
+      error:
+        result.reason?.response?.data?.message ||
+        result.reason?.message ||
+        "Unable to load this section.",
+    };
+  }
+  return { ok: true, label, data: result.value?.data ?? fallback, error: null };
 };
 
 const asArray = (value) => {
@@ -45,7 +54,11 @@ const asArray = (value) => {
   return [];
 };
 
-const numberValue = (value) => Number(value || 0).toLocaleString();
+const numberValue = (value) => {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric.toLocaleString();
+  return value ?? "Unavailable";
+};
 
 const getBarangayName = (item) => item?.barangay || item?.name || item?._id || "Unspecified";
 
@@ -139,25 +152,42 @@ export default function Dashboard() {
         axiosInstance.get("/technician/dashboard-registry"),
       ]);
 
+      const sources = {
+        stats: sourceResult("Core statistics", stats, {}),
+        monitoring: sourceResult("System monitoring", monitoring, {}),
+        analytics: sourceResult("Analytics", analytics, {}),
+        chartData: sourceResult("Chart data", chartData, {}),
+        barangays: sourceResult("Barangay insights", barangays, []),
+        technicians: sourceResult("Technician directory", technicians, []),
+        technicianRequests: sourceResult("Service queue", technicianRequests, {}),
+        supportPending: sourceResult("Pending support tickets", supportPending, {}),
+        supportProgress: sourceResult("In-progress support tickets", supportProgress, {}),
+        supportResolved: sourceResult("Resolved support tickets", supportResolved, {}),
+        auditLogs: sourceResult("Audit logs", auditLogs, {}),
+        registry: sourceResult("Dashboard registry", registry, []),
+      };
+
       return {
-        stats: unwrap(stats, {}).data,
-        monitoring: unwrap(monitoring, {}).data,
-        analytics: unwrap(analytics, {}).data,
-        chartData: unwrap(chartData, {}).data,
-        barangays: asArray(unwrap(barangays, []).data),
-        technicians: asArray(unwrap(technicians, []).data),
-        requests: getQueueRequests(unwrap(technicianRequests, {}).data).map(toDashboardRequest),
-        supportPending: unwrap(supportPending, {}).data,
-        supportProgress: unwrap(supportProgress, {}).data,
-        supportResolved: unwrap(supportResolved, {}).data,
-        auditLogs: asArray(unwrap(auditLogs, {}).data),
-        registry: asArray(unwrap(registry, []).data),
+        sources,
+        stats: sources.stats.data,
+        monitoring: sources.monitoring.data,
+        analytics: sources.analytics.data,
+        chartData: sources.chartData.data,
+        barangays: asArray(sources.barangays.data),
+        technicians: asArray(sources.technicians.data),
+        requests: getQueueRequests(sources.technicianRequests.data).map(toDashboardRequest),
+        supportPending: sources.supportPending.data,
+        supportProgress: sources.supportProgress.data,
+        supportResolved: sources.supportResolved.data,
+        auditLogs: asArray(sources.auditLogs.data),
+        registry: asArray(sources.registry.data),
       };
     },
     refetchInterval: 1000 * 45,
   });
 
   const darkTheme = theme === "night";
+  const sources = data?.sources || EMPTY_OBJECT;
   const stats = data?.stats || EMPTY_OBJECT;
   const monitoring = data?.monitoring || EMPTY_OBJECT;
   const registryMonitor = monitoring.registryMonitor || {};
@@ -166,6 +196,9 @@ export default function Dashboard() {
   const barangays = data?.barangays || EMPTY_ARRAY;
   const technicians = data?.technicians || EMPTY_ARRAY;
   const auditLogs = data?.auditLogs || EMPTY_ARRAY;
+  const failedSources = Object.values(sources).filter((source) => source && !source.ok);
+  const isSourceOk = (key) => sources?.[key]?.ok !== false;
+  const unavailableIfFailed = (key, value) => (isSourceOk(key) ? value : "Unavailable");
 
   const urgentHealth = useMemo(
     () =>
@@ -270,29 +303,31 @@ export default function Dashboard() {
   const summaryCards = [
     {
       label: "Farmers",
-      value: stats.farmers,
+      value: unavailableIfFailed("stats", stats.farmers),
       note: "Registered farmer accounts",
       icon: Users,
       color: "text-[#00643b] dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30",
     },
     {
       label: "Animals",
-      value: stats.animals,
-      note: `${registryMonitor.missingAnimalData || 0} incomplete records`,
+      value: unavailableIfFailed("stats", stats.animals),
+      note: isSourceOk("monitoring")
+        ? `${registryMonitor.missingAnimalData || 0} incomplete records`
+        : "Registry monitor unavailable",
       icon: Activity,
       color: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30",
     },
     {
       label: "Technicians",
-      value: stats.technicians ?? technicians.length,
+      value: isSourceOk("stats") ? stats.technicians ?? technicians.length : "Unavailable",
       note: "Active field workforce",
       icon: UserCheck,
       color: "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-900",
     },
     {
       label: "Open requests",
-      value: serviceRequests.length,
-      note: `${urgentHealth.length} urgent requests`,
+      value: unavailableIfFailed("technicianRequests", serviceRequests.length),
+      note: isSourceOk("technicianRequests") ? `${urgentHealth.length} urgent requests` : "Service queue unavailable",
       icon: ClipboardList,
       color: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30",
     },
@@ -339,7 +374,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className={ui.page}>
       <Topbar
         title="Admin Dashboard"
         subtitle="Municipal agriculture operations, service demand, and registry health"
@@ -353,9 +388,12 @@ export default function Dashboard() {
         </button>
       </Topbar>
 
-      <main className="p-4 md:p-6 space-y-5">
+      <main className={ui.main}>
         {isError && (
           <ErrorPanel title="Dashboard data unavailable" message="Some operational data could not be loaded. Check the backend connection and try again." onRetry={handleRefresh} />
+        )}
+        {!isError && failedSources.length > 0 && (
+          <PartialDataPanel sources={failedSources} onRetry={handleRefresh} />
         )}
 
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -694,6 +732,33 @@ const ErrorPanel = ({ title, message, onRetry }) => (
       <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">{message}</p>
     </div>
     <button onClick={onRetry} className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700">
+      Retry
+    </button>
+  </div>
+);
+
+const PartialDataPanel = ({ sources, onRetry }) => (
+  <div className="rounded-2xl border border-amber-200 dark:border-amber-900/70 bg-amber-50 dark:bg-amber-950/20 p-4 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <p className="text-sm font-black text-amber-800 dark:text-amber-200">
+        Some dashboard sections did not load
+      </p>
+      <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+        Loaded sections remain visible. Failed widgets are marked as unavailable instead of showing fake zeroes.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {sources.map((source) => (
+          <span
+            key={source.label}
+            className="rounded-full border border-amber-200 dark:border-amber-800 bg-white/70 dark:bg-slate-950/40 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-200"
+            title={source.error}
+          >
+            {source.label}
+          </span>
+        ))}
+      </div>
+    </div>
+    <button onClick={onRetry} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700">
       Retry
     </button>
   </div>

@@ -19,6 +19,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import Topbar from "../../components/ui/Topbar";
+import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
 
 export default function HealthLog() {
   const toast = useToast();
@@ -38,13 +39,23 @@ export default function HealthLog() {
   const itemsPerPage = 8;
 
   // ---- LIVE DATA PIPELINE ----
-  const { data: rawCases = [], isLoading, refetch } = useQuery({
-    queryKey: ["technician", "health-requests-list"],
+  const { data: healthPage = {}, isLoading, refetch } = useQuery({
+    queryKey: ["technician", "health-requests-list", currentPage, searchQuery, urgencyFilter, statusFilter],
     queryFn: async () => {
-      const res = await axiosInstance.get("/health-request");
-      return res.data || [];
-    }
+      const res = await axiosInstance.get("/health-request", {
+        params: {
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchQuery || undefined,
+          urgency: urgencyFilter || undefined,
+          status: statusFilter || undefined,
+        },
+      });
+      return res.data || {};
+    },
+    keepPreviousData: true,
   });
+  const rawCases = useMemo(() => healthPage.data || [], [healthPage]);
 
   // ---- DYNAMIC METRIC RESOLVERS ----
   const metrics = useMemo(() => {
@@ -75,40 +86,15 @@ export default function HealthLog() {
       };
     });
 
-    // Apply text search queries
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((c) =>
-        c.farmer.toLowerCase().includes(q) ||
-        c.tag.toLowerCase().includes(q) ||
-        c.diagnosis.toLowerCase().includes(q) ||
-        c.symptoms.toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q)
-      );
-    }
-
-    // Apply urgency level filters
-    if (urgencyFilter) {
-      result = result.filter((c) => c.urgency === urgencyFilter);
-    }
-
-    // Apply status filters
-    if (statusFilter) {
-      result = result.filter((c) => c.status === statusFilter);
-    }
-
     // Sort chronologically by rawDate
     return result.sort((a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime());
-  }, [rawCases, searchQuery, urgencyFilter, statusFilter]);
+  }, [rawCases]);
 
   // ---- PAGINATION COMPUTATION ----
-  const totalItems = filteredCases.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+  const totalItems = healthPage.total || filteredCases.length;
+  const totalPages = healthPage.totalPages || Math.ceil(totalItems / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedCases = filteredCases.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
+  const paginatedCases = filteredCases;
 
   const clearFilters = () => {
     setSearchQuery("");
@@ -136,10 +122,7 @@ export default function HealthLog() {
 
   // Export CSV Handler
   const handleExportCSV = () => {
-    if (filteredCases.length === 0) {
-      toast.error("No entries available to export.");
-      return;
-    }
+    if (!ensureExportableRows(filteredCases, toast, "No health assistance entries match the current filters.")) return;
     const headers = ["Incident Case #", "Logged Date", "Animal Tag", "Farmer Client", "Symptom Presentation", "Assigned Diagnosis", "Treatment Plan", "Urgency", "Status"];
     const rows = filteredCases.map(c => [
       c.id,
@@ -152,20 +135,12 @@ export default function HealthLog() {
       c.urgency.toUpperCase(),
       c.status.toUpperCase()
     ]);
-    const csvContent =
-      headers.join(",") +
-      "\n" +
-      rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-      
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `BreedSmart_Health_Diagnostics_${new Date().toLocaleDateString()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadCsv({
+      headers,
+      rows,
+      fileName: `BreedSmart_Health_Assistance_Summary_${new Date().toLocaleDateString()}`,
+    });
+    toast.success("Health assistance CSV exported.");
   };
 
   return (
@@ -240,6 +215,7 @@ export default function HealthLog() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleExportCSV}
+                disabled={filteredCases.length === 0}
                 className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
               >
                 <Download size={13} /> Export CSV

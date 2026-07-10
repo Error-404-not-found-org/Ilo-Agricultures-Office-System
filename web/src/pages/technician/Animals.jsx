@@ -41,13 +41,26 @@ export default function AnimalRegistry() {
   const itemsPerPage = 10;
 
   // ---- LIVE BACKEND DATA PIEPELINE ----
-  const { data: rawAnimals = [], isLoading } = useQuery({
-    queryKey: ["animals", "registry-list"],
+  const { data: animalPage = {}, isLoading } = useQuery({
+    queryKey: ["animals", "registry-list", currentPage, searchQuery, speciesFilter, reproFilter, breedFilter, sortConfig],
     queryFn: async () => {
-      const res = await axiosInstance.get("/animals/all");
-      return res.data || [];
+      const res = await axiosInstance.get("/animals/all", {
+        params: {
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchQuery || undefined,
+          species: speciesFilter || undefined,
+          reproductiveStatus: reproFilter || undefined,
+          breed: breedFilter || undefined,
+          sortBy: sortConfig.key || undefined,
+          sortOrder: sortConfig.direction,
+        },
+      });
+      return res.data || {};
     },
+    keepPreviousData: true,
   });
+  const rawAnimals = useMemo(() => animalPage.animals || animalPage.data || [], [animalPage]);
 
   // ---- TRANSLATION PARSING ENGINE ----
   const animals = useMemo(() => {
@@ -119,23 +132,6 @@ export default function AnimalRegistry() {
   const processedAnimals = useMemo(() => {
     let result = [...animals];
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (a) =>
-          a.tag.toLowerCase().includes(q) ||
-          a.farmer.toLowerCase().includes(q) ||
-          a.breed.toLowerCase().includes(q) ||
-          a.brgy.toLowerCase().includes(q),
-      );
-    }
-
-    if (speciesFilter)
-      result = result.filter((a) => a.species === speciesFilter);
-    if (reproFilter) result = result.filter((a) => a.repro === reproFilter);
-    if (breedFilter)
-      result = result.filter((a) => a.breed.includes(breedFilter));
-
     if (sortConfig.key) {
       result.sort((a, b) => {
         const valA = String(a[sortConfig.key] || "");
@@ -147,23 +143,13 @@ export default function AnimalRegistry() {
     }
 
     return result;
-  }, [
-    searchQuery,
-    speciesFilter,
-    reproFilter,
-    breedFilter,
-    sortConfig,
-    animals,
-  ]);
+  }, [sortConfig, animals]);
 
   // ---- PAGINATION CALCULATOR ----
-  const totalItems = processedAnimals.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+  const totalItems = animalPage.total || processedAnimals.length;
+  const totalPages = animalPage.totalPages || animalPage.pages || Math.ceil(totalItems / itemsPerPage) || 1;
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedAnimals = processedAnimals.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
+  const paginatedAnimals = processedAnimals;
 
   const handleSort = (key) => {
     let direction = "asc";

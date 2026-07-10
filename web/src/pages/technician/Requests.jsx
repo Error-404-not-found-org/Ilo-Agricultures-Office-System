@@ -18,16 +18,112 @@ import { useToast } from "../../contexts/ToastContext";
 import Topbar from "../../components/ui/Topbar";
 import { TableRowSkeleton } from "../../components/Skeleton";
 import TaskActionModal from "../../components/modals/TaskActionModal";
+import { ui } from "../../components/ui/uiClasses";
+
+const getServiceMeta = (request = {}) => {
+  const raw = request.raw || request;
+  const rawType = String(
+    request.type ||
+      raw.type ||
+      raw.serviceType ||
+      raw.taskType ||
+      raw.requestType ||
+      "",
+  ).toLowerCase();
+  const hasHealthSignal =
+    raw.symptoms || raw.issueDescription || raw.diagnosis || raw.treatment;
+
+  if (["ai", "insemination", "artificial_insemination"].includes(rawType)) {
+    return {
+      workflow: "insemination",
+      serviceType: "ai",
+      label: "Artificial Insemination",
+      badge: "AI",
+      badgeClass:
+        "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800",
+    };
+  }
+
+  if (rawType.includes("pregnancy") || rawType === "pd") {
+    return {
+      workflow: "pregnancy_check",
+      serviceType: "pregnancy_check",
+      label: "Pregnancy Check",
+      badge: "PD",
+      badgeClass:
+        "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/20 dark:text-fuchsia-400 dark:border-fuchsia-900/60",
+    };
+  }
+
+  if (rawType.includes("calving") || rawType === "cd") {
+    return {
+      workflow: "calving",
+      serviceType: "calving",
+      label: "Calving Assistance",
+      badge: "CD",
+      badgeClass:
+        "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/20 dark:text-cyan-400 dark:border-cyan-900/60",
+    };
+  }
+
+  if (rawType.includes("follow")) {
+    return {
+      workflow: "task",
+      serviceType: "follow_up",
+      label: "Follow-up Visit",
+      badge: "TASK",
+      badgeClass:
+        "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/60",
+    };
+  }
+
+  if (rawType.includes("visit") || rawType.includes("inspection") || rawType === "task") {
+    return {
+      workflow: "task",
+      serviceType: "general_visit",
+      label: "General Visit",
+      badge: "TASK",
+      badgeClass:
+        "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700",
+    };
+  }
+
+  if (
+    rawType === "health" ||
+    rawType.includes("health") ||
+    rawType.includes("medical") ||
+    hasHealthSignal
+  ) {
+    return {
+      workflow: "health",
+      serviceType: raw.requestType || rawType || "health",
+      label: "Health Assistance",
+      badge: "HEALTH",
+      badgeClass:
+        "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-800",
+    };
+  }
+
+  return {
+    workflow: "service",
+    serviceType: rawType || "service",
+    label: "Service Request",
+    badge: "SERVICE",
+    badgeClass:
+      "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700",
+  };
+};
 
 export default function OperationalInbox() {
   const isAdmin = window.location.pathname.startsWith("/admin");
   
   const { data: dbUser } = useQuery({
-    queryKey: ["technician", "profile-me"],
+    queryKey: ["technician", "profile-me", "operational-inbox"],
     queryFn: async () => {
       const res = await axiosInstance.get("/technician/profile");
       return res.data || {};
     },
+    enabled: !isAdmin,
   });
 
   const [statusFilter, setStatusFilter] = useState("pending");
@@ -75,33 +171,50 @@ export default function OperationalInbox() {
 
   const requests = useMemo(() => {
     const queue = Array.isArray(queueData?.requests) ? queueData.requests : [];
-    return queue.map((req) => ({
-      id: req.id,
-      farmer: req.farmer || "Unknown Farmer",
-      location: req.location || "Oton, Iloilo",
-      type: req.type === "ai" ? "insemination" : "health",
-      task:
-        req.type === "ai"
-          ? `AI request for Tag #${req.earTag || req.animal || "Unknown"} (${req.breed || "Crossbreed"})`
-          : `Health Assistance for Tag #${req.earTag || req.animal || "Unknown"} - ${req.raw?.symptoms || req.raw?.requestType || "No symptoms listed"}`,
-      date: new Date(req.scheduledDate || req.preferredDate || req.createdAt).toLocaleString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      }),
-      status: req.status === "resolved" ? "done" : req.status,
-      createdAt: req.createdAt,
-      visitDate: req.scheduledDate || req.preferredDate || null,
-      urgency: req.urgency,
-      raw: req.raw || req,
-    }));
+    return queue.map((req) => {
+      const service = getServiceMeta(req);
+      const animalTag = req.earTag || req.animal || "Unknown";
+      const breed = req.breed || req.raw?.animalId?.breed || "Livestock";
+      const healthDetail = req.raw?.symptoms || req.raw?.requestType || "No symptoms listed";
+
+      return {
+        id: req.id,
+        farmer: req.farmer || "Unknown Farmer",
+        location: req.location || req.raw?.farmerId?.address?.barangay || "Location unavailable",
+        type: service.workflow,
+        serviceType: service.serviceType,
+        serviceLabel: service.label,
+        serviceBadge: service.badge,
+        badgeClass: service.badgeClass,
+        task:
+          service.workflow === "insemination"
+            ? `AI request for Tag #${animalTag} (${breed})`
+            : service.workflow === "health"
+              ? `Health Assistance for Tag #${animalTag} - ${healthDetail}`
+              : `${service.label} for Tag #${animalTag}`,
+        date: new Date(req.scheduledDate || req.preferredDate || req.createdAt).toLocaleString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+        status: req.status === "resolved" ? "done" : req.status,
+        createdAt: req.createdAt,
+        visitDate: req.scheduledDate || req.preferredDate || null,
+        urgency: req.urgency,
+        raw: req.raw || req,
+      };
+    });
   }, [queueData]);
 
   // State Action Dispatchers using API requests
   const handleUpdateStatus = async (id, type, newStatus) => {
     if (isUpdating) return;
+    if (!["insemination", "health"].includes(type)) {
+      toast.error("Open this service from its official workflow detail screen.");
+      return;
+    }
     setIsUpdating(true);
     const triggerUpdate = async () => {
       try {
@@ -166,23 +279,29 @@ export default function OperationalInbox() {
 
   const handleDeleteRequest = async (id, type) => {
     if (isUpdating) return;
+    if (!["insemination", "health"].includes(type)) {
+      toast.error("This service type cannot be cancelled from the generic queue.");
+      return;
+    }
     setConfirmModal({
       isOpen: true,
-      title: "Drop Task Request",
-      message: "Are you sure you want to drop this field service request? This operation cannot be undone.",
+      title: "Cancel Request",
+      message: "Are you sure you want to cancel this field service request? The record stays available for audit/history.",
       onConfirm: async () => {
         setIsUpdating(true);
         try {
           const endpoint =
             type === "insemination"
-              ? `/ai-request/${id}`
-              : `/health-request/${id}`;
-          await axiosInstance.delete(endpoint);
-          toast.success("Request removed successfully");
+              ? `/ai-request/${id}/cancel`
+              : `/health-request/${id}/cancel`;
+          await axiosInstance.patch(endpoint, {
+            reason: "Cancelled from web operational inbox.",
+          });
+          toast.success("Request cancelled successfully");
           await refetchQueue();
         } catch (error) {
           toast.error(
-            "Failed to delete request: " +
+            "Failed to cancel request: " +
               (error.response?.data?.message || error.message),
           );
         } finally {
@@ -203,13 +322,13 @@ export default function OperationalInbox() {
   ).length;
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className={ui.page}>
       <Topbar
         title={isAdmin ? "Operational Queue Monitor" : "Operational Inbox"}
         subtitle={isAdmin ? "Monitor and inspect field service queues and task assignments municipal-wide" : "Triage and accept field service missions from registered livestock owners"}
       />
 
-      <main className="p-6 flex-1 flex flex-col min-h-0 space-y-4">
+      <main className={ui.main}>
         {/* Header Banner */}
         <div className="bg-linear-to-r from-[#074033] to-[#065f46] text-white p-6 rounded-2xl flex justify-between items-center flex-wrap gap-4 shadow-sm">
           <div className="space-y-1">
@@ -233,7 +352,7 @@ export default function OperationalInbox() {
 
         {/* Tab Filter Controls Row */}
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-1 rounded-xl flex gap-1 shadow-sm">
+          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-xl flex gap-1 shadow-sm">
             {["pending", "scheduled", "in-progress", "completed", "all"].map((status) => (
               <button
                 key={status}
@@ -261,7 +380,7 @@ export default function OperationalInbox() {
               <input
                 type="text"
                 placeholder="Search by farmer, tag, location..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                className={`${ui.input} pl-9 py-1.5`}
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -279,11 +398,11 @@ export default function OperationalInbox() {
         </div>
 
         {/* Table View Component Card */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className={`${ui.panel} flex-1 flex flex-col min-h-0`}>
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full text-left border-collapse">
+            <table className={`${ui.table} text-left`}>
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800/60 text-[11px] font-bold uppercase tracking-wider">
+                <tr className={ui.tableHead}>
                   <th className="p-4 pl-6">Identifier</th>
                   <th className="p-4">Farmer / Location</th>
                   <th className="p-4">Service Scope</th>
@@ -292,7 +411,7 @@ export default function OperationalInbox() {
                   {!isAdmin && <th className="p-4 pr-6 text-right">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+              <tbody className={ui.tableBody}>
                 {isMasterLoading ? (
                   // Map structural rows over the loading indicator parameters seamlessly
                   [...Array(5)].map((_, idx) => <TableRowSkeleton key={idx} />)
@@ -300,9 +419,9 @@ export default function OperationalInbox() {
                   <tr>
                     <td
                       colSpan={isAdmin ? 5 : 6}
-                      className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium"
+                      className="p-6"
                     >
-                      <div className="flex flex-col items-center justify-center gap-2">
+                      <div className={`${ui.empty} flex flex-col items-center justify-center gap-2`}>
                         <ShieldAlert size={24} className="text-slate-300" />
                         <span>
                           No operational tasks matching this queue view
@@ -341,7 +460,7 @@ export default function OperationalInbox() {
                           setSelectedTask(req);
                           setIsTaskModalOpen(true);
                         }}
-                        className="hover:bg-slate-50/80 dark:hover:bg-slate-900/40 transition-colors cursor-pointer"
+                        className={`${ui.tableRow} cursor-pointer`}
                       >
                         <td className="p-4 pl-6 font-extrabold text-[#00643b] dark:text-[#10b981] relative">
                           <div className="flex items-center gap-1.5">
@@ -364,17 +483,13 @@ export default function OperationalInbox() {
                           <div className="flex items-center gap-2 flex-wrap">
                             <span
                               className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider border ${
-                                req.type === "insemination"
-                                  ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800"
-                                  : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-800"
+                                req.badgeClass
                               }`}
                             >
-                              {req.type === "insemination" ? "AI" : "HEALTH"}
+                              {req.serviceBadge}
                             </span>
                             <span className="font-bold text-slate-700 dark:text-slate-300">
-                              {req.type === "insemination"
-                                ? "Artificial Insemination"
-                                : "Health Assistance"}
+                              {req.serviceLabel}
                             </span>
                           </div>
                           <div className="text-[11px] text-slate-400 font-medium mt-1.5">
@@ -457,7 +572,7 @@ export default function OperationalInbox() {
                                     setIsTaskModalOpen(true);
                                   }}
                                   className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/50 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                  title={isAssignedToOther ? `Locked by ${reqTechName}` : "Complete Insemination"}
+                                  title={isAssignedToOther ? `Locked by ${reqTechName}` : `Complete ${req.serviceLabel}`}
                                 >
                                   <CheckCircle size={12} /> Complete
                                 </button>
@@ -468,7 +583,7 @@ export default function OperationalInbox() {
                                   handleDeleteRequest(req.id, req.type)
                                 }
                                 className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                                title={isAssignedToOther ? `Locked by ${reqTechName}` : "Remove Task"}
+                                title={isAssignedToOther ? `Locked by ${reqTechName}` : "Cancel Request"}
                               >
                                 <Trash2 size={13} />
                               </button>
@@ -494,7 +609,7 @@ export default function OperationalInbox() {
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1 || isMasterLoading}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1 disabled:opacity-40"
+                className={ui.iconButton}
               >
                 <ChevronLeft size={12} />
               </button>
@@ -519,7 +634,7 @@ export default function OperationalInbox() {
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }
                 disabled={currentPage === totalPages || isMasterLoading}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1 disabled:opacity-40"
+                className={ui.iconButton}
               >
                 <ChevronRight size={12} />
               </button>
@@ -531,7 +646,7 @@ export default function OperationalInbox() {
       {/* ===== CUSTOM MODERN CONFIRMATION MODAL ===== */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/45 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="card w-full max-w-sm bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
+          <div className={`${ui.panelPadded} w-full max-w-sm space-y-4 shadow-xl`}>
             <div className="flex items-center gap-2 text-slate-400 font-extrabold text-[10px] tracking-widest uppercase">
               <span>{confirmModal.title || "Confirm Action"}</span>
             </div>
@@ -541,7 +656,7 @@ export default function OperationalInbox() {
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
               <button
                 onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
-                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer text-slate-500 dark:text-slate-400"
+                className={ui.ghostButton}
               >
                 Cancel
               </button>
@@ -550,11 +665,12 @@ export default function OperationalInbox() {
                   if (confirmModal.onConfirm) confirmModal.onConfirm();
                   setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
                 }}
-                className="btn btn-sm text-white border-none rounded-xl px-5 text-xs font-black cursor-pointer"
+                className={`${ui.primaryButton} border-none`}
                 style={{
                   backgroundColor:
                     confirmModal.title.toLowerCase().includes("drop") ||
                     confirmModal.title.toLowerCase().includes("delete") ||
+                    confirmModal.title.toLowerCase().includes("cancel") ||
                     confirmModal.title.toLowerCase().includes("decline")
                       ? "#e11d48"
                       : "#00643b",

@@ -87,14 +87,25 @@ export default function NewbornsLog() {
   };
 
   // ---- FETCH REAL DATA ----
-  const endpoint = normalizedRole === "admin" ? "/admin/calvings?limit=1000" : "/technician/calvings?limit=1000";
-  const { data: calvings = [], isLoading } = useQuery({
-    queryKey: ["technician", "calvings-list-isolated"],
+  const endpoint = normalizedRole === "admin" ? "/admin/calvings" : "/technician/calvings";
+  const { data: calvingPage = {}, isLoading } = useQuery({
+    queryKey: ["technician", "calvings-list-isolated", normalizedRole, currentPage, searchQuery, speciesFilter, easeFilter, seenFilter],
     queryFn: async () => {
-      const res = await axiosInstance.get(endpoint);
-      return res.data?.data || res.data || [];
-    }
+      const res = await axiosInstance.get(endpoint, {
+        params: {
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchQuery || undefined,
+          species: speciesFilter || undefined,
+          calvingEase: easeFilter || undefined,
+          seen: seenFilter || undefined,
+        },
+      });
+      return res.data || {};
+    },
+    keepPreviousData: true,
   });
+  const calvings = useMemo(() => calvingPage.data || calvingPage.calvings || [], [calvingPage]);
 
   // ---- MARK SEEN MUTATION ----
   const markSeenMutation = useMutation({
@@ -137,34 +148,13 @@ export default function NewbornsLog() {
 
   // ---- FILTER ENGINE ----
   const filteredLogs = useMemo(() => {
-    return processedLogs.filter((l) => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        l.farmer.toLowerCase().includes(q) ||
-        l.motherTag.toLowerCase().includes(q) ||
-        l.motherBreed.toLowerCase().includes(q) ||
-        l.calvesSummary.toLowerCase().includes(q) ||
-        l.id.toLowerCase().includes(q);
-      const matchesSpecies = !speciesFilter || l.motherSpecies === speciesFilter;
-      const matchesEase = !easeFilter || l.calvingEase === easeFilter;
-      const matchesSeen = 
-        seenFilter === "" 
-          ? true 
-          : seenFilter === "unseen" 
-            ? !l.isSeen 
-            : l.isSeen;
-            
-      return matchesSearch && matchesSpecies && matchesEase && matchesSeen;
-    });
-  }, [searchQuery, speciesFilter, easeFilter, seenFilter, processedLogs]);
+    return processedLogs;
+  }, [processedLogs]);
 
   // ---- PAGINATION COMPUTATION ----
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedLogs = filteredLogs.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage) || 1;
+  const paginatedLogs = filteredLogs;
+  const totalPages = calvingPage.totalPages || calvingPage.pagination?.totalPages || Math.ceil((calvingPage.total || calvingPage.pagination?.total || filteredLogs.length) / itemsPerPage) || 1;
 
   // ---- CSV EXPORTER ----
   const handleExportCSV = () => {

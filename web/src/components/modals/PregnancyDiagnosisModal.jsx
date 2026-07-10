@@ -4,6 +4,7 @@ import { X, CheckCircle, AlertCircle, Sparkles, Calendar, History, Search } from
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
+import { calculateTargetCalvingDate } from "../../utils/cattleCore";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
@@ -151,7 +152,12 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess }) => {
     const baseInseminationDate = taskData
         ? (taskData.inseminationDate || new Date())
         : (selectedInsemination ? new Date(selectedInsemination.inseminationDate) : new Date());
-    const estCalvingDate = new Date(new Date(baseInseminationDate).getTime() + 280 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', {
+    const estCalvingDate = calculateTargetCalvingDate(
+        baseInseminationDate,
+        animal?.species || "Cattle",
+        undefined,
+        animal?.breed
+    ).toLocaleDateString('en-US', {
         month: 'long',
         year: 'numeric'
     });
@@ -268,7 +274,11 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess }) => {
                                         {taskData ? `Animal: #${animal.earTag || 'N/A'} • ${animal.breed || 'Unknown'}` : 'Standalone Hub Registry'}
                                     </p>
                                 </div>
-                                <button onClick={onClose} className="p-2 bg-base-200 text-base-content/40 rounded-full hover:bg-base-300 transition-all cursor-pointer">
+                                <button
+                                    onClick={() => !isSubmitting && onClose()}
+                                    disabled={isSubmitting}
+                                    className="p-2 bg-base-200 text-base-content/40 rounded-full hover:bg-base-300 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
                                     <X size={18} />
                                 </button>
                             </div>

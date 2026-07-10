@@ -4,6 +4,7 @@ import ThemeToggle from "../ThemeToggle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useSidebar } from "../../contexts/SidebarContext";
+import { ui } from "./uiClasses";
 
 export default function Topbar({
   title,
@@ -14,7 +15,7 @@ export default function Topbar({
   actionLabel,
   actionIcon,
   onActionClick,
-  actionClass = "bg-[#00643b] hover:bg-[#004d2e] border-none text-white",
+  actionClass = "",
   children,
 }) {
   const [showNotifications, setShowNotifications] = useState(false);
@@ -93,11 +94,11 @@ export default function Topbar({
   };
 
   return (
-    <header className="navbar bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 px-4 md:px-6 py-4 shrink-0 flex items-center justify-between z-10 transition-colors duration-300 gap-3">
+    <header className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 px-4 md:px-6 py-4 shrink-0 flex items-center justify-between z-10 transition-colors duration-300 gap-3">
       {/* Hamburger button for mobile */}
       <button
         onClick={toggle}
-        className="btn btn-sm btn-ghost btn-circle text-slate-500 dark:text-slate-400 lg:hidden flex items-center justify-center shrink-0 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+        className={`${ui.iconButton} lg:hidden shrink-0`}
         aria-label="Toggle Sidebar"
       >
         <Menu size={20} />
@@ -126,7 +127,7 @@ export default function Topbar({
             <input
               type="text"
               placeholder={searchPlaceholder}
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+              className={`${ui.input} pl-9 py-1.5`}
               value={searchValue}
               onChange={onSearchChange}
             />
@@ -143,7 +144,7 @@ export default function Topbar({
         <div className="relative">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className="btn btn-sm btn-ghost btn-circle text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 relative flex items-center justify-center transition-colors"
+            className={`${ui.iconButton} relative`}
           >
             <Bell size={16} />
             {unreadCount > 0 && (
@@ -243,7 +244,7 @@ export default function Topbar({
         {actionLabel && (
           <button
             onClick={onActionClick}
-            className={`btn btn-sm text-xs font-bold gap-1.5 rounded-xl px-4 ${actionClass}`}
+            className={`${ui.primaryButton} ${actionClass}`}
           >
             {actionIcon}
             {actionLabel}

@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/ui/Topbar";
 import { useToast } from "../../contexts/ToastContext";
+import Modal from "../../components/ui/Modal";
 
 export default function MoowieChatPage() {
   const toast = useToast();
@@ -49,6 +50,7 @@ export default function MoowieChatPage() {
   const [inputMessage, setInputMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedAnimalId, setSelectedAnimalId] = useState("");
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
 
   // Persist chat threads to localStorage
   useEffect(() => {
@@ -109,25 +111,24 @@ export default function MoowieChatPage() {
   };
 
   const handleClearAllHistory = () => {
-    if (window.confirm("Are you sure you want to delete all chat history threads?")) {
-      const defaultThread = [
-        {
-          id: "default",
-          title: "Fresh Veterinary Session",
-          messages: [
-            {
-              sender: "moowie",
-              text: "Moo! History cleared successfully. Ready for your veterinary field audit inputs!",
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            },
-          ],
-        },
-      ];
-      setThreads(defaultThread);
-      setActiveThreadId("default");
-      setSelectedAnimalId("");
-      toast.success("Chat history cleared.");
-    }
+    const defaultThread = [
+      {
+        id: "default",
+        title: "Fresh Veterinary Session",
+        messages: [
+          {
+            sender: "moowie",
+            text: "Moo! History cleared successfully. Ready for your veterinary field audit inputs!",
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ],
+      },
+    ];
+    setThreads(defaultThread);
+    setActiveThreadId("default");
+    setSelectedAnimalId("");
+    setIsClearConfirmOpen(false);
+    toast.success("Chat history cleared.");
   };
 
   // ---- SEND MESSAGE PROCESSOR ----
@@ -283,7 +284,7 @@ export default function MoowieChatPage() {
           {/* Bottom Settings Block */}
           <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/50">
             <button
-              onClick={handleClearAllHistory}
+              onClick={() => setIsClearConfirmOpen(true)}
               className="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 border border-rose-500/20 cursor-pointer"
             >
               <Trash2 size={12} /> Clear Chat History
@@ -503,6 +504,16 @@ export default function MoowieChatPage() {
 
         </main>
       </div>
+      <Modal
+        isOpen={isClearConfirmOpen}
+        onClose={() => setIsClearConfirmOpen(false)}
+        title="Clear Chat History"
+        type="warning"
+        confirmText="Clear History"
+        onConfirm={handleClearAllHistory}
+      >
+        This will remove all saved Moowie chat threads from this browser. This action cannot be undone.
+      </Modal>
     </div>
   );
 }

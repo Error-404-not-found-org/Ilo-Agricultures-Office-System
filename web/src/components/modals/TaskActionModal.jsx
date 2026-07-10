@@ -54,7 +54,9 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedTech, setSelectedTech] = useState("");
 
-  const isHealth = taskData?.type === "health";
+  const serviceType = taskData?.type;
+  const isHealth = serviceType === "health";
+  const isAI = serviceType === "insemination" || serviceType === "ai";
 
   const isPending = taskData?.status?.toLowerCase() === "pending";
   const isApproved = taskData?.status?.toLowerCase() === "approved";
@@ -102,7 +104,8 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
     dbUser?._id &&
     String(assignedTechId) !== String(dbUser._id);
 
-  const isReadOnly = isCompleted || isArchived || isAssignedToOther || !!isAdmin;
+  const isUnsupportedService = !isAI && !isHealth;
+  const isReadOnly = isCompleted || isArchived || isAssignedToOther || !!isAdmin || isUnsupportedService;
 
   useEffect(() => {
     if (taskData) {
@@ -178,8 +181,12 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
   const preferredDateTime = taskData.preferredDate || taskData.displayDate;
 
   const handleRejectTask = () => {
+    if (isUnsupportedService) {
+      toast.error("Open this service from its official workflow detail screen.");
+      return;
+    }
     const endpoint =
-      taskData.type === "health"
+      isHealth
         ? `/health-request/${taskData.id}/cancel`
         : `/ai-request/${taskData.id}/cancel`;
 
@@ -207,14 +214,18 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
   };
 
   const handleAction = () => {
+    if (isUnsupportedService) {
+      toast.error("Open this service from its official workflow detail screen.");
+      return;
+    }
     const nextStatus = (isPending || isApproved)
       ? "in-progress"
-      : (taskData.type === "health" ? "resolved" : "done");
+      : (isHealth ? "resolved" : "done");
 
     const endpoint =
-      taskData.type === "health"
+      isHealth
         ? `/health-request/${taskData.id}/status`
-        : `/technician/inseminations/${taskData.id}/status`;
+        : `/ai-request/${taskData.id}/status`;
 
     setIsSubmitting(true);
     toast.promise(
@@ -249,17 +260,21 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
   };
 
   const handleAdminAssign = () => {
+    if (isUnsupportedService) {
+      toast.error("Open this service from its official workflow detail screen.");
+      return;
+    }
     if (!selectedTech) {
       toast.error("Please select a technician first.");
       return;
     }
     const endpoint =
-      taskData.type === "health"
+      isHealth
         ? `/health-request/${taskData.id}/status`
         : `/ai-request/${taskData.id}/status`;
 
     const body =
-      taskData.type === "health"
+      isHealth
         ? {
             status: scheduledDate ? "scheduled" : "in-progress",
             handledBy: selectedTech,
@@ -324,7 +339,9 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                    {isHealth
+                    {isUnsupportedService
+                      ? taskData.serviceLabel || "Service Request"
+                      : isHealth
                       ? "Medical Diagnostic"
                       : "Artificial Insemination"}
                   </h3>

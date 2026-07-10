@@ -1,13 +1,41 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Syringe, User, Activity, Search, MapPin, Phone, AlertCircle, AlertTriangle, BadgeCheck, History, Mail } from "lucide-react";
+import {
+  X,
+  Syringe,
+  User,
+  Activity,
+  Search,
+  MapPin,
+  Phone,
+  AlertCircle,
+  AlertTriangle,
+  BadgeCheck,
+  History,
+  Mail,
+  ChevronDown,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "../../constants/breeds";
+import {
+  CATTLE_BREEDS,
+  CATTLE_SPECIES,
+  CATTLE_COLORS,
+  BREED_OPTIONS_BY_SPECIES,
+} from "../../constants/breeds";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
-import { OTON_BARANGAYS } from "../../constants/barangays";
-import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../../utils/cattleCore";
+import {
+  formatBarangayWithDistrict,
+  getIloiloBarangayOptions,
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from "../../utils/addressOptions";
+import {
+  checkInseminationAgeEligibility,
+  verifyPostpartumWindow,
+} from "../../utils/cattleCore";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
@@ -26,6 +54,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
   const [showPregnancyWarning, setShowPregnancyWarning] = useState(false);
   const [isOverriding, setIsOverriding] = useState(false);
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
+  const [selectedDistrict, setSelectedDistrict] = useState("");
   const [ageWarning, setAgeWarning] = useState("");
   const [vwpWarning, setVwpWarning] = useState("");
 
@@ -35,7 +64,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     phoneNumber: "",
     address: {
       barangay: "",
-      city: "Oton"
+      city: "Oton",
     },
     email: "",
     animalDetails: {
@@ -53,6 +82,11 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
       status: "done",
     },
   }));
+
+  const targetBarangays = useMemo(() => {
+    const selectedCity = formData.address?.city || "Oton";
+    return getIloiloBarangayOptions(selectedCity, selectedDistrict);
+  }, [formData.address?.city, selectedDistrict]);
 
   const { data: config } = useQuery({
     queryKey: ["config"],
@@ -75,7 +109,9 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
   const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({
     queryKey: ["farmer-animals", selectedFarmerId],
     queryFn: async () => {
-      const res = await axiosInstance.get(`/animals/farmer/${selectedFarmerId}`);
+      const res = await axiosInstance.get(
+        `/animals/farmer/${selectedFarmerId}`,
+      );
       return Array.isArray(res.data) ? res.data : res.data.data || [];
     },
     enabled: !!selectedFarmerId && isExistingRecord,
@@ -83,7 +119,10 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
 
   const mutation = useMutation({
     mutationFn: async (data) => {
-      const res = await axiosInstance.post("/technician/walk-in-insemination", data);
+      const res = await axiosInstance.post(
+        "/technician/walk-in-insemination",
+        data,
+      );
       return res.data;
     },
     onSuccess: () => {
@@ -94,16 +133,22 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
       onClose();
     },
     onError: (error) => {
-      toast.error("Failed to record AI: " + (error.response?.data?.message || error.message));
+      toast.error(
+        "Failed to record AI: " +
+          (error.response?.data?.message || error.message),
+      );
     },
   });
 
   const overrideMutation = useMutation({
     mutationFn: async (animalId) => {
-      return await axiosInstance.patch(`/animals/${animalId}/reproductive-status`, {
-        status: "Normal",
-        note: "Technician override: Farmer confirmed animal is not pregnant during field visit.",
-      });
+      return await axiosInstance.patch(
+        `/animals/${animalId}/reproductive-status`,
+        {
+          status: "Normal",
+          note: "Technician override: Farmer confirmed animal is not pregnant during field visit.",
+        },
+      );
     },
     onSuccess: () => {
       toast.success("Animal status reset to Normal.");
@@ -133,13 +178,14 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
         setVwpWarning("");
         setIsOverriding(false);
         setIsBarangayDropdownOpen(false);
+        setSelectedDistrict("");
         setFormData({
           firstName: "",
           lastName: "",
           phoneNumber: "",
           address: {
             barangay: "",
-            city: "Oton"
+            city: "Oton",
           },
           email: "",
           animalDetails: {
@@ -173,12 +219,16 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
   };
 
   useEffect(() => {
-    const species = isExistingRecord && selectedAnimalId
-      ? animals.find((a) => a._id === selectedAnimalId)?.species
-      : formData.animalDetails.species;
+    const species =
+      isExistingRecord && selectedAnimalId
+        ? animals.find((a) => a._id === selectedAnimalId)?.species
+        : formData.animalDetails.species;
     if (species) {
       const validBreeds = BREED_OPTIONS_BY_SPECIES[species] || [];
-      if (formData.animalDetails.breed && !validBreeds.includes(formData.animalDetails.breed)) {
+      if (
+        formData.animalDetails.breed &&
+        !validBreeds.includes(formData.animalDetails.breed)
+      ) {
         Promise.resolve().then(() => {
           setFormData((prev) => ({
             ...prev,
@@ -186,16 +236,30 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
           }));
         });
       }
-      if (formData.inseminationDetails.sireBreed && !validBreeds.includes(formData.inseminationDetails.sireBreed)) {
+      if (
+        formData.inseminationDetails.sireBreed &&
+        !validBreeds.includes(formData.inseminationDetails.sireBreed)
+      ) {
         Promise.resolve().then(() => {
           setFormData((prev) => ({
             ...prev,
-            inseminationDetails: { ...prev.inseminationDetails, sireBreed: "", sireCode: "" },
+            inseminationDetails: {
+              ...prev.inseminationDetails,
+              sireBreed: "",
+              sireCode: "",
+            },
           }));
         });
       }
     }
-  }, [selectedAnimalId, formData.animalDetails.species, isExistingRecord, animals, formData.animalDetails.breed, formData.inseminationDetails.sireBreed]);
+  }, [
+    selectedAnimalId,
+    formData.animalDetails.species,
+    isExistingRecord,
+    animals,
+    formData.animalDetails.breed,
+    formData.inseminationDetails.sireBreed,
+  ]);
 
   if (!isOpen) return null;
 
@@ -207,10 +271,12 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
       }
       const farmer = farmers.find((f) => f._id === selectedFarmerId);
       const animal = animals.find((a) => a._id === selectedAnimalId);
-      
+
       // Gender Check
       if (animal && animal.gender === "Male") {
-        return toast.error("Insemination is restricted to female animals only. This animal is registered as Male.");
+        return toast.error(
+          "Insemination is restricted to female animals only. This animal is registered as Male.",
+        );
       }
 
       submissionData = {
@@ -220,7 +286,10 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
         lastName: farmer.name.split(" ").slice(1).join(" "),
         phoneNumber: farmer.phoneNumber || "",
         email: farmer.email || "",
-        address: typeof farmer.address === "string" ? farmer.address : farmer.address?.street || "",
+        address:
+          typeof farmer.address === "string"
+            ? farmer.address
+            : farmer.address?.street || "",
         animalDetails: {
           earTag: animal.earTag,
           species: animal.species,
@@ -229,8 +298,19 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
         inseminationDetails: formData.inseminationDetails,
       };
     } else {
+      if (!formData.address.city) {
+        return toast.error("Municipality or city is required.");
+      }
+      if (formData.address.city === ILOILO_CITY_NAME && !selectedDistrict) {
+        return toast.error("Please select the Iloilo City district.");
+      }
+      if (!formData.address.barangay) {
+        return toast.error("Barangay is required.");
+      }
       if (!formData.phoneNumber || !formData.animalDetails.earTag) {
-        return toast.error("Farmer phone number and animal ear tag are required.");
+        return toast.error(
+          "Farmer phone number and animal ear tag are required.",
+        );
       }
       if (formData.phoneNumber.length < 11) {
         return toast.error("Phone number must be exactly 11 digits.");
@@ -238,9 +318,24 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
       if (!formData.phoneNumber.startsWith("09")) {
         return toast.error("Phone number must start with 09.");
       }
-      submissionData = formData;
+      submissionData = {
+        ...formData,
+        address: {
+          ...formData.address,
+          barangay: formatBarangayWithDistrict(
+            formData.address.barangay,
+            formData.address.city,
+            selectedDistrict,
+          ),
+          district:
+            formData.address.city === ILOILO_CITY_NAME ? selectedDistrict : "",
+        },
+      };
     }
-    if (!formData.inseminationDetails.sireBreed || !formData.inseminationDetails.sireCode) {
+    if (
+      !formData.inseminationDetails.sireBreed ||
+      !formData.inseminationDetails.sireCode
+    ) {
       return toast.error("Please provide both Sire Breed and Sire Code.");
     }
 
@@ -269,7 +364,10 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
 
     // Check minimum breeding age eligibility
     if (animal.birthDate) {
-      const ageCheck = checkInseminationAgeEligibility(animal.birthDate, animal.species);
+      const ageCheck = checkInseminationAgeEligibility(
+        animal.birthDate,
+        animal.species,
+      );
       if (!ageCheck.isEligible) {
         setAgeWarning(ageCheck.reason);
       } else {
@@ -281,10 +379,15 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
 
     // Check Postpartum Voluntary Waiting Period
     if (animal.lastCalvingDate) {
-      const vwpCheck = verifyPostpartumWindow(animal.lastCalvingDate, formData.inseminationDetails.inseminationDate || new Date(), animal.species, animal.breed);
+      const vwpCheck = verifyPostpartumWindow(
+        animal.lastCalvingDate,
+        formData.inseminationDetails.inseminationDate || new Date(),
+        animal.species,
+        animal.breed,
+      );
       if (!vwpCheck.isSafe) {
         setVwpWarning(
-          `Postpartum Voluntary Waiting Period violated. Only ${vwpCheck.daysPassed} days have passed since calving on ${new Date(animal.lastCalvingDate).toLocaleDateString()}. Minimum required recovery window is ${vwpCheck.requiredDays} days.`
+          `Postpartum Voluntary Waiting Period violated. Only ${vwpCheck.daysPassed} days have passed since calving on ${new Date(animal.lastCalvingDate).toLocaleDateString()}. Minimum required recovery window is ${vwpCheck.requiredDays} days.`,
         );
       } else {
         setVwpWarning("");
@@ -297,7 +400,6 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
-        
         {/* MODAL */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -308,17 +410,17 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
           {/* HEADER */}
           <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
             <div className="flex items-center gap-4">
-               <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
-                  <Syringe size={20} />
-               </div>
-               <div>
-                  <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                    Artificial Insemination Hub
-                  </h3>
-                  <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                    Field Registry Protocol
-                  </p>
-               </div>
+              <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
+                <Syringe size={20} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
+                  Artificial Insemination Hub
+                </h3>
+                <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
+                  Field Registry Protocol
+                </p>
+              </div>
             </div>
 
             <button
@@ -333,10 +435,18 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
           <div className="overflow-y-auto flex-1 custom-scrollbar p-6 space-y-6 bg-base-100">
             {config?.isHoliday && (
               <div className="border border-rose-500/20 bg-rose-500/5 p-5 flex items-start gap-4 rounded-2xl">
-                <AlertCircle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                <AlertCircle
+                  size={18}
+                  className="text-rose-500 shrink-0 mt-0.5"
+                />
                 <div>
-                  <h3 className="text-[10px] font-black text-rose-500 uppercase tracking-widest leading-none">Off-Schedule Entry</h3>
-                  <p className="text-[9px] font-bold text-rose-500/40 uppercase tracking-widest mt-2 leading-none">Office operations are currently closed. Marked as manual field entry.</p>
+                  <h3 className="text-[10px] font-black text-rose-500 uppercase tracking-widest leading-none">
+                    Off-Schedule Entry
+                  </h3>
+                  <p className="text-[9px] font-bold text-rose-500/40 uppercase tracking-widest mt-2 leading-none">
+                    Office operations are currently closed. Marked as manual
+                    field entry.
+                  </p>
                 </div>
               </div>
             )}
@@ -363,20 +473,30 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => setFormData({
-                    ...formData,
-                    inseminationDetails: { ...formData.inseminationDetails, status: "done" }
-                  })}
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      inseminationDetails: {
+                        ...formData.inseminationDetails,
+                        status: "done",
+                      },
+                    })
+                  }
                   className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.inseminationDetails.status !== "in-progress" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600" : "border-transparent text-base-content/20"}`}
                 >
                   Service Completed
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormData({
-                    ...formData,
-                    inseminationDetails: { ...formData.inseminationDetails, status: "in-progress" }
-                  })}
+                  onClick={() =>
+                    setFormData({
+                      ...formData,
+                      inseminationDetails: {
+                        ...formData.inseminationDetails,
+                        status: "in-progress",
+                      },
+                    })
+                  }
                   className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.inseminationDetails.status === "in-progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-600" : "border-transparent text-base-content/20"}`}
                 >
                   Schedule Visit
@@ -387,8 +507,10 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
             {isExistingRecord ? (
               <section className={sectionClass}>
                 <div className="flex items-center gap-2 mb-1">
-                   <BadgeCheck size={14} className="text-emerald-500" />
-                   <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Registry Selection</h4>
+                  <BadgeCheck size={14} className="text-emerald-500" />
+                  <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                    Registry Selection
+                  </h4>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
@@ -470,11 +592,19 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                         className={`${selectClass} cursor-pointer disabled:opacity-50 ${showPregnancyWarning ? "border-rose-500/50" : ""}`}
                       >
                         <option value="">
-                          {isLoadingAnimals ? "Synchronizing..." : "Select animal"}
+                          {isLoadingAnimals
+                            ? "Synchronizing..."
+                            : "Select animal"}
                         </option>
                         {animals?.map((a) => (
-                          <option key={a._id} value={a._id} disabled={a.gender === "Male"}>
-                            Tag #{a.earTag} ({a.breed}) — {a.reproductiveStatus || "Normal"}{a.gender === "Male" ? " (Male - Restricted)" : ""}
+                          <option
+                            key={a._id}
+                            value={a._id}
+                            disabled={a.gender === "Male"}
+                          >
+                            Tag #{a.earTag} ({a.breed}) —{" "}
+                            {a.reproductiveStatus || "Normal"}
+                            {a.gender === "Male" ? " (Male - Restricted)" : ""}
                           </option>
                         ))}
                       </select>
@@ -491,20 +621,29 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                           onChange={(e) => {
                             const breed = e.target.value;
                             const code = getSireCodeByBreed(breed);
-                            setFormData({ 
-                              ...formData, 
-                              inseminationDetails: { 
-                                ...formData.inseminationDetails, 
+                            setFormData({
+                              ...formData,
+                              inseminationDetails: {
+                                ...formData.inseminationDetails,
                                 sireBreed: breed,
-                                sireCode: code || formData.inseminationDetails.sireCode
-                              } 
+                                sireCode:
+                                  code || formData.inseminationDetails.sireCode,
+                              },
                             });
                           }}
                           className={`${selectClass} cursor-pointer`}
                         >
-                          <option value="" disabled>Select Sire Breed</option>
-                          {(BREED_OPTIONS_BY_SPECIES[getSelectedAnimalSpecies()] || CATTLE_BREEDS).map(b => (
-                              <option key={b} value={b}>{b}</option>
+                          <option value="" disabled>
+                            Select Sire Breed
+                          </option>
+                          {(
+                            BREED_OPTIONS_BY_SPECIES[
+                              getSelectedAnimalSpecies()
+                            ] || CATTLE_BREEDS
+                          ).map((b) => (
+                            <option key={b} value={b}>
+                              {b}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -512,13 +651,16 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                     <div className="space-y-1.5">
                       <label className={labelClass}>Sire Code</label>
                       <div className="relative">
-                        <BadgeCheck size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                        <input 
-                          type="text" 
-                          value={formData.inseminationDetails.sireCode} 
+                        <BadgeCheck
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                        />
+                        <input
+                          type="text"
+                          value={formData.inseminationDetails.sireCode}
                           readOnly
-                          placeholder="Automatic Code" 
-                          className={`${inputClass} pl-11 bg-base-200/50 cursor-not-allowed`} 
+                          placeholder="Automatic Code"
+                          className={`${inputClass} pl-11 bg-base-200/50 cursor-not-allowed`}
                         />
                       </div>
                     </div>
@@ -535,20 +677,29 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                     >
                       <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div className="flex items-start gap-3">
-                          <AlertTriangle size={20} className="text-rose-500 shrink-0 mt-0.5" />
+                          <AlertTriangle
+                            size={20}
+                            className="text-rose-500 shrink-0 mt-0.5"
+                          />
                           <div>
-                            <h4 className="text-[10px] font-black text-rose-500 uppercase tracking-widest leading-none">Pregnancy Warning</h4>
+                            <h4 className="text-[10px] font-black text-rose-500 uppercase tracking-widest leading-none">
+                              Pregnancy Warning
+                            </h4>
                             <p className="text-[9px] font-bold text-rose-500/40 uppercase tracking-widest mt-2 leading-none">
                               Asset recorded as PREGNANT. Insemination is risky.
                             </p>
                           </div>
                         </div>
                         <button
-                          onClick={() => overrideMutation.mutate(selectedAnimalId)}
+                          onClick={() =>
+                            overrideMutation.mutate(selectedAnimalId)
+                          }
                           disabled={overrideMutation.isPending}
                           className="w-full sm:w-auto h-11 px-6 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-[9px] font-black uppercase tracking-widest transition-all shadow-md cursor-pointer"
                         >
-                          {overrideMutation.isPending ? "Updating..." : "Override Status"}
+                          {overrideMutation.isPending
+                            ? "Updating..."
+                            : "Override Status"}
                         </button>
                       </div>
                     </motion.div>
@@ -564,9 +715,14 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                       className="mt-3 overflow-hidden"
                     >
                       <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 flex items-start gap-3">
-                        <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
+                        <AlertTriangle
+                          size={20}
+                          className="text-amber-500 shrink-0 mt-0.5"
+                        />
                         <div>
-                          <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none">Age Eligibility Warning</h4>
+                          <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none">
+                            Age Eligibility Warning
+                          </h4>
                           <p className="text-[11px] font-medium text-base-content/85 mt-2 leading-tight">
                             {ageWarning}
                           </p>
@@ -585,9 +741,14 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                       className="mt-3 overflow-hidden"
                     >
                       <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-5 flex items-start gap-3">
-                        <AlertTriangle size={20} className="text-amber-500 shrink-0 mt-0.5" />
+                        <AlertTriangle
+                          size={20}
+                          className="text-amber-500 shrink-0 mt-0.5"
+                        />
                         <div>
-                          <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none">Postpartum Window Warning</h4>
+                          <h4 className="text-[10px] font-black text-amber-500 uppercase tracking-widest leading-none">
+                            Postpartum Window Warning
+                          </h4>
                           <p className="text-[11px] font-medium text-base-content/85 mt-2 leading-tight">
                             {vwpWarning}
                           </p>
@@ -601,105 +762,244 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2 mb-1">
-                     <User size={14} className="text-emerald-500" />
-                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Owner Data</h4>
+                    <User size={14} className="text-emerald-500" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Owner Data
+                    </h4>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className={labelClass}>First Name</label>
-                      <input type="text" value={formData.firstName} onChange={(e) => setFormData({ ...formData, firstName: e.target.value })} placeholder="JUAN" className={inputClass} />
+                      <input
+                        type="text"
+                        value={formData.firstName}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            firstName: e.target.value,
+                          })
+                        }
+                        placeholder="JUAN"
+                        className={inputClass}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <label className={labelClass}>Last Name</label>
-                      <input type="text" value={formData.lastName} onChange={(e) => setFormData({ ...formData, lastName: e.target.value })} placeholder="DELA CRUZ" className={inputClass} />
+                      <input
+                        type="text"
+                        value={formData.lastName}
+                        onChange={(e) =>
+                          setFormData({ ...formData, lastName: e.target.value })
+                        }
+                        placeholder="DELA CRUZ"
+                        className={inputClass}
+                      />
                     </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className={labelClass}>Email (For App Access)</label>
                     <div className="relative">
-                      <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                      <input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="juan@example.com" className={`${inputClass} pl-11`} />
+                      <Mail
+                        size={16}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                      />
+                      <input
+                        type="email"
+                        value={formData.email}
+                        onChange={(e) =>
+                          setFormData({ ...formData, email: e.target.value })
+                        }
+                        placeholder="juan@example.com"
+                        className={`${inputClass} pl-11`}
+                      />
                     </div>
                   </div>
                   <div className="space-y-1.5">
                     <label className={labelClass}>Contact Number</label>
                     <div className="relative">
-                      <Phone size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                      <input 
-                        type="tel" 
+                      <Phone
+                        size={16}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                      />
+                      <input
+                        type="tel"
                         maxLength={11}
-                        value={formData.phoneNumber} 
+                        value={formData.phoneNumber}
                         onChange={(e) => {
                           const val = e.target.value.replace(/\D/g, "");
                           if (val.length <= 11) {
                             setFormData({ ...formData, phoneNumber: val });
                           }
-                        }} 
-                        placeholder="0912 345 6789" 
-                        className={`${inputClass} pl-10`} 
+                        }}
+                        placeholder="0912 345 6789"
+                        className={`${inputClass} pl-10`}
                       />
                     </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5 relative">
-                      <label className={labelClass}>Barangay</label>
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>
+                        Municipality / City *
+                      </label>
                       <div className="relative">
-                        <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                        <input 
-                          type="text" 
-                          value={formData.address.barangay} 
-                          onChange={(e) => {
-                            setFormData({ ...formData, address: { ...formData.address, barangay: e.target.value } });
-                            setIsBarangayDropdownOpen(true);
-                          }} 
-                          onFocus={() => setIsBarangayDropdownOpen(true)}
-                          placeholder="Search barangay..." 
-                          className={`${inputClass} pl-11`} 
+                        <MapPin
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20 pointer-events-none"
                         />
-                        <AnimatePresence>
-                          {isBarangayDropdownOpen && formData.address.barangay && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -5 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: -5 }}
-                              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
-                            >
-                              {OTON_BARANGAYS.filter((b) =>
-                                b.toLowerCase().includes(formData.address.barangay.toLowerCase())
-                              ).length > 0 ? (
-                                OTON_BARANGAYS
-                                  .filter((b) => b.toLowerCase().includes(formData.address.barangay.toLowerCase()))
-                                  .map((brgy) => (
-                                    <button
-                                      key={brgy}
-                                      onClick={() => {
-                                        setFormData({ ...formData, address: { ...formData.address, barangay: brgy } });
-                                        setIsBarangayDropdownOpen(false);
-                                      }}
-                                      className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 border-b border-base-200/50 last:border-0 cursor-pointer"
-                                    >
-                                      <span className="text-xs font-bold text-base-content block">
-                                        {brgy}
-                                      </span>
-                                    </button>
-                                  ))
-                              ) : (
-                                <div className="p-4 text-center">
-                                  <span className="text-[10px] font-black uppercase tracking-widest text-base-content/40">
-                                    No matches found
-                                  </span>
-                                </div>
-                              )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
+                        <select
+                          value={formData.address.city || "Oton"}
+                          onChange={(e) => {
+                            const newCity = e.target.value;
+                            setSelectedDistrict("");
+                            setFormData({
+                              ...formData,
+                              address: {
+                                ...formData.address,
+                                city: newCity,
+                                barangay: "",
+                              },
+                            });
+                          }}
+                          className={`${selectClass} pl-11 pr-10 appearance-none cursor-pointer`}
+                        >
+                          {ILOILO_MUNICIPALITY_OPTIONS.map((m) => (
+                            <option key={m} value={m}>
+                              {m}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown
+                          size={14}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
+                        />
                       </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className={labelClass}>Municipality</label>
+
+                    {formData.address.city === ILOILO_CITY_NAME && (
+                      <div className="space-y-1.5">
+                        <label className={labelClass}>
+                          Iloilo City District *
+                        </label>
+                        <div className="relative">
+                          <MapPin
+                            size={16}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20 pointer-events-none"
+                          />
+                          <select
+                            value={selectedDistrict}
+                            onChange={(e) => {
+                              setSelectedDistrict(e.target.value);
+                              setFormData({
+                                ...formData,
+                                address: { ...formData.address, barangay: "" },
+                              });
+                            }}
+                            className={`${selectClass} pl-11 pr-10 appearance-none cursor-pointer`}
+                          >
+                            <option value="" disabled>
+                              Select District
+                            </option>
+                            {ILOILO_CITY_DISTRICT_OPTIONS.map((district) => (
+                              <option key={district} value={district}>
+                                {district}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown
+                            size={14}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5 relative">
+                      <label className={labelClass}>Barangay *</label>
                       <div className="relative">
-                        <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                        <input type="text" value={formData.address.city} onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })} placeholder="Oton" className={`${inputClass} pl-11`} />
+                        <MapPin
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                        />
+                        <input
+                          type="text"
+                          value={formData.address.barangay}
+                          onChange={(e) => {
+                            setFormData({
+                              ...formData,
+                              address: {
+                                ...formData.address,
+                                barangay: e.target.value,
+                              },
+                            });
+                            setIsBarangayDropdownOpen(true);
+                          }}
+                          onFocus={() => setIsBarangayDropdownOpen(true)}
+                          placeholder={
+                            formData.address.city === ILOILO_CITY_NAME &&
+                            !selectedDistrict
+                              ? "Select district first"
+                              : "Search barangay..."
+                          }
+                          disabled={
+                            formData.address.city === ILOILO_CITY_NAME &&
+                            !selectedDistrict
+                          }
+                          className={`${inputClass} pl-11 disabled:opacity-50`}
+                        />
+                        <AnimatePresence>
+                          {isBarangayDropdownOpen &&
+                            formData.address.barangay && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -5 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -5 }}
+                                className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
+                              >
+                                {targetBarangays.filter((b) =>
+                                  b
+                                    .toLowerCase()
+                                    .includes(
+                                      formData.address.barangay.toLowerCase(),
+                                    ),
+                                ).length > 0 ? (
+                                  targetBarangays
+                                    .filter((b) =>
+                                      b
+                                        .toLowerCase()
+                                        .includes(
+                                          formData.address.barangay.toLowerCase(),
+                                        ),
+                                    )
+                                    .map((brgy) => (
+                                      <button
+                                        key={brgy}
+                                        onClick={() => {
+                                          setFormData({
+                                            ...formData,
+                                            address: {
+                                              ...formData.address,
+                                              barangay: brgy,
+                                            },
+                                          });
+                                          setIsBarangayDropdownOpen(false);
+                                        }}
+                                        className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 border-b border-base-200/50 last:border-0 cursor-pointer"
+                                      >
+                                        <span className="text-xs font-bold text-base-content block">
+                                          {brgy}
+                                        </span>
+                                      </button>
+                                    ))
+                                ) : (
+                                  <div className="p-4 text-center">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-base-content/40">
+                                      No matches found
+                                    </span>
+                                  </div>
+                                )}
+                              </motion.div>
+                            )}
+                        </AnimatePresence>
                       </div>
                     </div>
                   </div>
@@ -707,23 +1007,50 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
 
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2 mb-1">
-                     <Activity size={14} className="text-emerald-500" />
-                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Asset Profile</h4>
+                    <Activity size={14} className="text-emerald-500" />
+                    <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                      Asset Profile
+                    </h4>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <label className={labelClass}>Ear Tag</label>
-                      <input type="text" maxLength={3} value={formData.animalDetails.earTag} onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, earTag: e.target.value.toUpperCase() } })} placeholder="104" className={inputClass} />
+                      <input
+                        type="text"
+                        maxLength={3}
+                        value={formData.animalDetails.earTag}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            animalDetails: {
+                              ...formData.animalDetails,
+                              earTag: e.target.value.toUpperCase(),
+                            },
+                          })
+                        }
+                        placeholder="104"
+                        className={inputClass}
+                      />
                     </div>
                     <div className="space-y-1.5">
                       <label className={labelClass}>Species</label>
                       <select
                         value={formData.animalDetails.species}
-                        onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, species: e.target.value } })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            animalDetails: {
+                              ...formData.animalDetails,
+                              species: e.target.value,
+                            },
+                          })
+                        }
                         className={`${selectClass} cursor-pointer`}
                       >
-                        {CATTLE_SPECIES.map(s => (
-                            <option key={s} value={s}>{s}</option>
+                        {CATTLE_SPECIES.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
                         ))}
                       </select>
                     </div>
@@ -732,12 +1059,28 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                     <label className={labelClass}>Breed</label>
                     <select
                       value={formData.animalDetails.breed}
-                      onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, breed: e.target.value } })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          animalDetails: {
+                            ...formData.animalDetails,
+                            breed: e.target.value,
+                          },
+                        })
+                      }
                       className={`${selectClass} cursor-pointer`}
                     >
-                      <option value="" disabled>Select Breed</option>
-                       {(BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || CATTLE_BREEDS).map(b => (
-                          <option key={b} value={b}>{b}</option>
+                      <option value="" disabled>
+                        Select Breed
+                      </option>
+                      {(
+                        BREED_OPTIONS_BY_SPECIES[
+                          formData.animalDetails.species
+                        ] || CATTLE_BREEDS
+                      ).map((b) => (
+                        <option key={b} value={b}>
+                          {b}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -745,12 +1088,24 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                     <label className={labelClass}>Color</label>
                     <select
                       value={formData.animalDetails.color}
-                      onChange={(e) => setFormData({ ...formData, animalDetails: { ...formData.animalDetails, color: e.target.value } })}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          animalDetails: {
+                            ...formData.animalDetails,
+                            color: e.target.value,
+                          },
+                        })
+                      }
                       className={`${selectClass} cursor-pointer`}
                     >
-                      <option value="" disabled>Select Color</option>
-                      {CATTLE_COLORS.map(c => (
-                          <option key={c} value={c}>{c}</option>
+                      <option value="" disabled>
+                        Select Color
+                      </option>
+                      {CATTLE_COLORS.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
                       ))}
                     </select>
                   </div>
@@ -758,27 +1113,38 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                   {/* Sire Selection for Full Reg */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-base-300 mt-4 col-span-2">
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Sire Breed (AI Setup)</label>
+                      <label className={labelClass}>
+                        Sire Breed (AI Setup)
+                      </label>
                       <div className="relative">
                         <select
                           value={formData.inseminationDetails.sireBreed}
                           onChange={(e) => {
                             const breed = e.target.value;
                             const code = getSireCodeByBreed(breed);
-                            setFormData({ 
-                              ...formData, 
-                              inseminationDetails: { 
-                                ...formData.inseminationDetails, 
+                            setFormData({
+                              ...formData,
+                              inseminationDetails: {
+                                ...formData.inseminationDetails,
                                 sireBreed: breed,
-                                sireCode: code || formData.inseminationDetails.sireCode
-                              } 
+                                sireCode:
+                                  code || formData.inseminationDetails.sireCode,
+                              },
                             });
                           }}
                           className={`${selectClass} cursor-pointer`}
                         >
-                          <option value="" disabled>Select Sire Breed</option>
-                          {(BREED_OPTIONS_BY_SPECIES[formData.animalDetails.species] || CATTLE_BREEDS).map(b => (
-                              <option key={b} value={b}>{b}</option>
+                          <option value="" disabled>
+                            Select Sire Breed
+                          </option>
+                          {(
+                            BREED_OPTIONS_BY_SPECIES[
+                              formData.animalDetails.species
+                            ] || CATTLE_BREEDS
+                          ).map((b) => (
+                            <option key={b} value={b}>
+                              {b}
+                            </option>
                           ))}
                         </select>
                       </div>
@@ -786,13 +1152,16 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                     <div className="space-y-1.5">
                       <label className={labelClass}>Sire Code</label>
                       <div className="relative">
-                        <BadgeCheck size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                        <input 
-                          type="text" 
-                          value={formData.inseminationDetails.sireCode} 
+                        <BadgeCheck
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                        />
+                        <input
+                          type="text"
+                          value={formData.inseminationDetails.sireCode}
                           readOnly
-                          placeholder="Automatic Code" 
-                          className={`${inputClass} pl-11 bg-base-200/50 cursor-not-allowed`} 
+                          placeholder="Automatic Code"
+                          className={`${inputClass} pl-11 bg-base-200/50 cursor-not-allowed`}
                         />
                       </div>
                     </div>
@@ -803,24 +1172,60 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
 
             <section className={sectionClass}>
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-base-300">
-                 <History size={14} className="text-emerald-500" />
-                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">Service Metrics</h4>
+                <History size={14} className="text-emerald-500" />
+                <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
+                  Service Metrics
+                </h4>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className={labelClass}>Mission Date</label>
-                  <input type="date" value={formData.inseminationDetails.inseminationDate} onChange={(e) => setFormData({ ...formData, inseminationDetails: { ...formData.inseminationDetails, inseminationDate: e.target.value } })} className={`${inputClass} cursor-pointer`} />
+                  <input
+                    type="date"
+                    value={formData.inseminationDetails.inseminationDate}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        inseminationDetails: {
+                          ...formData.inseminationDetails,
+                          inseminationDate: e.target.value,
+                        },
+                      })
+                    }
+                    className={`${inputClass} cursor-pointer`}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <label className={labelClass}>T-Time</label>
-                  <input type="time" value={formData.inseminationDetails.time} onChange={(e) => setFormData({ ...formData, inseminationDetails: { ...formData.inseminationDetails, time: e.target.value } })} className={`${inputClass} cursor-pointer`} />
+                  <input
+                    type="time"
+                    value={formData.inseminationDetails.time}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        inseminationDetails: {
+                          ...formData.inseminationDetails,
+                          time: e.target.value,
+                        },
+                      })
+                    }
+                    className={`${inputClass} cursor-pointer`}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <label className={labelClass}>Estrus Cycle</label>
                   <select
                     value={formData.inseminationDetails.estrus}
-                    onChange={(e) => setFormData({ ...formData, inseminationDetails: { ...formData.inseminationDetails, estrus: e.target.value } })}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        inseminationDetails: {
+                          ...formData.inseminationDetails,
+                          estrus: e.target.value,
+                        },
+                      })
+                    }
                     className={`${selectClass} cursor-pointer`}
                   >
                     <option>Natural</option>
@@ -834,27 +1239,28 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
 
           {/* FOOTER */}
           <div className="bg-base-200/20 border-t border-base-300 px-6 py-4 flex justify-end gap-3">
-            <button 
-              onClick={onClose} 
+            <button
+              onClick={onClose}
               className="h-11 px-6 rounded-xl bg-base-200 hover:bg-base-300 text-[10px] font-black uppercase tracking-widest transition-all text-base-content/50 cursor-pointer"
             >
               Cancel
             </button>
             <button
-              disabled={mutation.isPending || (showPregnancyWarning && !isOverriding)}
+              disabled={
+                mutation.isPending || (showPregnancyWarning && !isOverriding)
+              }
               onClick={handleSubmit}
               className={`h-11 px-8 rounded-xl text-white text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-50 flex items-center gap-2 shadow-md cursor-pointer ${
-                formData.inseminationDetails.status !== 'in-progress' 
+                formData.inseminationDetails.status !== "in-progress"
                   ? "bg-[#074033] hover:bg-[#0d5948]"
                   : "bg-blue-600 hover:bg-blue-700"
               }`}
             >
-              {mutation.isPending 
-                ? "Synchronizing Registry..." 
-                : formData.inseminationDetails.status !== 'in-progress' 
-                  ? "Save AI Record" 
-                  : "Schedule AI Visit"
-              }
+              {mutation.isPending
+                ? "Synchronizing Registry..."
+                : formData.inseminationDetails.status !== "in-progress"
+                  ? "Save AI Record"
+                  : "Schedule AI Visit"}
             </button>
           </div>
         </motion.div>

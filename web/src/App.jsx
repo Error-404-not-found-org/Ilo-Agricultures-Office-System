@@ -1,6 +1,6 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { SignedIn, SignedOut } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, useClerk, useAuth } from "@clerk/clerk-react";
 
 // Utilities
 import PageMeta from "./components/PageMeta";
@@ -61,6 +61,68 @@ const LoadingView = () => (
 );
 
 function App() {
+  const { signOut } = useClerk();
+  const { isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      localStorage.removeItem("breedsmart_last_activity");
+      localStorage.removeItem("breedsmart_session_start");
+      return;
+    }
+
+    const now = Date.now();
+
+    // Set initial activity and session timestamps
+    if (!localStorage.getItem("breedsmart_session_start")) {
+      localStorage.setItem("breedsmart_session_start", String(now));
+    }
+    if (!localStorage.getItem("breedsmart_last_activity")) {
+      localStorage.setItem("breedsmart_last_activity", String(now));
+    }
+
+    const updateActivity = () => {
+      localStorage.setItem("breedsmart_last_activity", String(Date.now()));
+    };
+
+    const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
+    events.forEach((event) => window.addEventListener(event, updateActivity));
+
+    // Check session status every 30 seconds
+    const interval = setInterval(() => {
+      const lastActivity = localStorage.getItem("breedsmart_last_activity");
+      const sessionStart = localStorage.getItem("breedsmart_session_start");
+      const currentTime = Date.now();
+
+      const INACTIVITY_TIMEOUT = 24 * 60 * 60 * 1000; // 24 Hours inactivity limit
+      const ABSOLUTE_TIMEOUT = 7 * 24 * 60 * 60 * 1000; // 7 Days absolute limit
+
+      if (lastActivity) {
+        const inactiveElapsed = currentTime - Number(lastActivity);
+        if (inactiveElapsed > INACTIVITY_TIMEOUT) {
+          localStorage.removeItem("breedsmart_last_activity");
+          localStorage.removeItem("breedsmart_session_start");
+          signOut();
+          return;
+        }
+      }
+
+      if (sessionStart) {
+        const absoluteElapsed = currentTime - Number(sessionStart);
+        if (absoluteElapsed > ABSOLUTE_TIMEOUT) {
+          localStorage.removeItem("breedsmart_last_activity");
+          localStorage.removeItem("breedsmart_session_start");
+          signOut();
+        }
+      }
+    }, 30000);
+
+    return () => {
+      events.forEach((event) => window.removeEventListener(event, updateActivity));
+      clearInterval(interval);
+    };
+  }, [isSignedIn, signOut]);
+
   return (
     <ToastProvider>
       <SidebarProvider>

@@ -21,6 +21,7 @@ import { Link } from "react-router-dom";
 import DashboardChart from "../../components/data/DashboardChart";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/ui/Topbar";
+import { ui } from "../../components/ui/uiClasses";
 
 // Import dedicated quick action modals
 import WalkInAIModal from "../../components/modals/WalkInAIModal";
@@ -61,6 +62,10 @@ export default function Dashboard() {
     totalInsem: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [dashboardLoadState, setDashboardLoadState] = useState({
+    dashboardData: { ok: true, label: "Dashboard schedule and requests", error: null },
+    analytics: { ok: true, label: "Technician analytics", error: null },
+  });
 
   // Dedicated Modals Visibility States
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -72,21 +77,38 @@ export default function Dashboard() {
 
   // ---- FETCH INTEGRATED TELEMETRY DATA ----
   const fetchDashboardMetrics = async () => {
-    try {
-      setIsLoading(true);
-      // Run concurrent requests using your reliable axiosInstance setup
-      const [dashRes, analyticsRes] = await Promise.all([
-        axiosInstance.get("/technician/dashboard-data"),
-        axiosInstance.get("/technician/analytics"),
-      ]);
+    setIsLoading(true);
+    const [dashRes, analyticsRes] = await Promise.allSettled([
+      axiosInstance.get("/technician/dashboard-data"),
+      axiosInstance.get("/technician/analytics"),
+    ]);
 
-      if (dashRes.data) setDashboardData(dashRes.data);
-      if (analyticsRes.data) setAnalytics(analyticsRes.data);
-    } catch (error) {
-      console.error("Failed pulling operational ecosystem statistics:", error);
-    } finally {
-      setIsLoading(false);
+    if (dashRes.status === "fulfilled" && dashRes.value.data) {
+      setDashboardData(dashRes.value.data);
     }
+    if (analyticsRes.status === "fulfilled" && analyticsRes.value.data) {
+      setAnalytics(analyticsRes.value.data);
+    }
+
+    setDashboardLoadState({
+      dashboardData: {
+        ok: dashRes.status === "fulfilled",
+        label: "Dashboard schedule and requests",
+        error:
+          dashRes.reason?.response?.data?.message ||
+          dashRes.reason?.message ||
+          null,
+      },
+      analytics: {
+        ok: analyticsRes.status === "fulfilled",
+        label: "Technician analytics",
+        error:
+          analyticsRes.reason?.response?.data?.message ||
+          analyticsRes.reason?.message ||
+          null,
+      },
+    });
+    setIsLoading(false);
   };
 
   useEffect(() => {
@@ -180,15 +202,25 @@ export default function Dashboard() {
       v.farmer.toLowerCase().includes(searchQuery.toLowerCase()) ||
       v.location.toLowerCase().includes(searchQuery.toLowerCase()),
   );
+  const failedDashboardSources = Object.values(dashboardLoadState).filter((source) => !source.ok);
+  const dashboardValue = (sourceKey, value) =>
+    dashboardLoadState[sourceKey]?.ok === false ? "Unavailable" : value;
+  const analyticsAvailable = dashboardLoadState.analytics.ok;
+  const monthlyTrendRows = analytics.monthlyTrends || [];
+  const chartLabels = analyticsAvailable
+    ? monthlyTrendRows.length > 0
+      ? monthlyTrendRows.map((m) => m.month)
+      : ["No records yet"]
+    : ["Unavailable"];
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
+    <div className={ui.page}>
       <Topbar
         title="Dashboard"
         subtitle="Welcome back! Monitor operational timelines and livestock registries."
       />
 
-      <main className="p-4 md:p-6 space-y-6">
+      <main className={ui.main}>
         {/* Profile Completion Alert Banner */}
         {isProfileIncomplete && (
           <div className="bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 p-4 rounded-2xl flex items-center justify-between shadow-xs mb-2 gap-4">
@@ -213,6 +245,40 @@ export default function Dashboard() {
             </Link>
           </div>
         )}
+        {failedDashboardSources.length > 0 && (
+          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 p-4 rounded-2xl flex items-start justify-between shadow-xs mb-2 gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider leading-none">
+                  Some dashboard data did not load
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold mt-1.5 leading-relaxed">
+                  Loaded widgets remain visible. Failed widgets show unavailable instead of fake zero counts.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {failedDashboardSources.map((source) => (
+                    <span
+                      key={source.label}
+                      className="rounded-full bg-white/70 dark:bg-slate-950/40 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"
+                      title={source.error || "Unable to load"}
+                    >
+                      {source.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={fetchDashboardMetrics}
+              className="btn btn-xs h-9 bg-amber-600 hover:bg-amber-700 text-white border-none rounded-xl text-[10px] font-black uppercase tracking-wider px-4 shrink-0 transition-all flex items-center justify-center"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* Metric Cards Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -230,11 +296,11 @@ export default function Dashboard() {
               {isLoading ? (
                 <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
               ) : (
-                (stats?.todayActivities ?? 0)
+                dashboardValue("dashboardData", stats?.todayActivities ?? 0)
               )}
             </div>
             <span className="text-[10px] text-[#00643b] font-bold mt-2 flex items-center gap-1">
-              <TrendingUp size={11} /> {stats?.completedToday ?? 0} secured
+              <TrendingUp size={11} /> {dashboardValue("dashboardData", stats?.completedToday ?? 0)} secured
               clean logs
             </span>
           </div>
@@ -253,7 +319,7 @@ export default function Dashboard() {
               {isLoading ? (
                 <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
               ) : (
-                (analytics?.totalAI_Week ?? 0)
+                dashboardValue("analytics", analytics?.totalAI_Week ?? 0)
               )}
             </div>
             <span className="text-[10px] text-amber-600 font-bold mt-2 flex items-center gap-1">
@@ -275,12 +341,13 @@ export default function Dashboard() {
               {isLoading ? (
                 <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
               ) : (
-                activePendingCount
+                dashboardValue("dashboardData", activePendingCount)
               )}
             </div>
             <span className="text-[10px] text-slate-400 font-bold mt-2">
-              {inseminationPendingCount} Insemination &nbsp;·&nbsp;{" "}
-              {healthPendingCount} Health
+              {dashboardLoadState.dashboardData.ok === false
+                ? "Request queue unavailable"
+                : `${inseminationPendingCount} Insemination · ${healthPendingCount} Health`}
             </span>
           </div>
 
@@ -298,12 +365,12 @@ export default function Dashboard() {
               {isLoading ? (
                 <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
               ) : (
-                (analytics?.totalHealth_Month ?? 0)
+                dashboardValue("analytics", analytics?.totalHealth_Month ?? 0)
               )}
             </div>
             <span className="text-[10px] text-purple-600 font-bold mt-2 flex items-center gap-1">
               <TrendingUp size={11} /> Total sessions:{" "}
-              {analytics?.totalInsem ?? 0}
+              {dashboardValue("analytics", analytics?.totalInsem ?? 0)}
             </span>
           </div>
         </div>
@@ -389,28 +456,18 @@ export default function Dashboard() {
             </div>
             <DashboardChart
               type="line"
-              labels={
-                analytics.monthlyTrends?.length > 0
-                  ? analytics.monthlyTrends.map((m) => m.month)
-                  : ["Dec '25", "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26"]
-              }
+              labels={chartLabels}
               datasets={[
                 {
                   label: "AI service Cycle",
-                  data:
-                    analytics.monthlyTrends?.length > 0
-                      ? analytics.monthlyTrends.map((m) => m.ai)
-                      : [3, 5, 4, 7, 6, 8, 4],
+                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => m.ai) : [0],
                   borderColor: "#00643B",
                   backgroundColor: "rgba(0, 100, 59, 0.06)",
                   fill: true,
                 },
                 {
                   label: "Clinical Ledger",
-                  data:
-                    analytics.monthlyTrends?.length > 0
-                      ? analytics.monthlyTrends.map((m) => Math.max(0, Math.round(m.ai * 0.6)))
-                      : [2, 3, 1, 4, 3, 2, 3],
+                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => Math.max(0, Math.round(m.ai * 0.6))) : [0],
                   borderColor: "#10b981",
                   backgroundColor: "rgba(16, 185, 129, 0.03)",
                   fill: true,
@@ -434,18 +491,11 @@ export default function Dashboard() {
             </div>
             <DashboardChart
               type="bar"
-              labels={
-                analytics.monthlyTrends?.length > 0
-                  ? analytics.monthlyTrends.map((m) => m.month)
-                  : ["Dec '25", "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26"]
-              }
+              labels={chartLabels}
               datasets={[
                 {
                   label: "Completed Tasks",
-                  data:
-                    analytics.monthlyTrends?.length > 0
-                      ? analytics.monthlyTrends.map((m) => Math.round(m.ai * 1.3))
-                      : [5, 8, 6, 11, 9, 10, 7],
+                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => Math.round(m.ai * 1.3)) : [0],
                   borderColor: "#00643B",
                   backgroundColor: "rgba(0, 100, 59, 0.8)",
                   borderWidth: 0,

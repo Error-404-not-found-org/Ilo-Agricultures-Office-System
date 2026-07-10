@@ -224,7 +224,11 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                 </p>
                             </div>
                         </div>
-                        <button onClick={onClose} className="p-2 bg-base-200 text-base-content/40 hover:text-base-content rounded-full transition-colors cursor-pointer">
+                        <button
+                            onClick={() => !mutation.isPending && onClose()}
+                            disabled={mutation.isPending}
+                            className="p-2 bg-base-200 text-base-content/40 hover:text-base-content rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
                             <X size={18} />
                         </button>
                     </div>
@@ -495,8 +499,9 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                     {/* Footer Actions */}
                     <div className="p-6 border-t border-base-300 bg-base-200/20 flex gap-4">
                         <button 
-                            onClick={onClose}
-                            className="flex-1 h-12 rounded-xl font-black text-[10px] uppercase tracking-widest text-base-content/50 hover:bg-base-200 transition-all cursor-pointer"
+                            onClick={() => !mutation.isPending && onClose()}
+                            disabled={mutation.isPending}
+                            className="flex-1 h-12 rounded-xl font-black text-[10px] uppercase tracking-widest text-base-content/50 hover:bg-base-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                             Discard
                         </button>

@@ -3,11 +3,16 @@ import { ArchiveRestore, PawPrint, RotateCcw, Search, UserRound } from "lucide-r
 import { useMemo, useState } from "react";
 import Topbar from "../../components/ui/Topbar";
 import axiosInstance from "../../lib/axios";
+import Modal from "../../components/ui/Modal";
+import { useToast } from "../../contexts/ToastContext";
+import { ui } from "../../components/ui/uiClasses";
 
 export default function ArchivedRecords() {
   const [activeTab, setActiveTab] = useState("users");
   const [search, setSearch] = useState("");
+  const [restoreTarget, setRestoreTarget] = useState(null);
   const queryClient = useQueryClient();
+  const toast = useToast();
 
   const archivedUsers = useQuery({
     queryKey: ["admin", "archived-users"],
@@ -33,6 +38,11 @@ export default function ArchivedRecords() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "archived-users"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "users-list-all"] });
+      toast.success("User restored successfully.");
+      setRestoreTarget(null);
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || "Failed to restore user.");
     },
   });
 
@@ -44,6 +54,11 @@ export default function ArchivedRecords() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "archived-animals"] });
       queryClient.invalidateQueries({ queryKey: ["admin", "livestock-all"] });
+      toast.success("Animal restored successfully.");
+      setRestoreTarget(null);
+    },
+    onError: (error) => {
+      toast.error(error.response?.data?.message || "Failed to restore animal.");
     },
   });
 
@@ -66,15 +81,25 @@ export default function ArchivedRecords() {
 
   const isLoading = activeTab === "users" ? archivedUsers.isLoading : archivedAnimals.isLoading;
   const activeCount = activeTab === "users" ? users.length : animals.length;
+  const isRestoring = restoreUser.isPending || restoreAnimal.isPending;
+
+  const confirmRestore = () => {
+    if (!restoreTarget || isRestoring) return;
+    if (restoreTarget.type === "user") {
+      restoreUser.mutate(restoreTarget.id);
+      return;
+    }
+    restoreAnimal.mutate(restoreTarget.id);
+  };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100">
+    <div className={ui.page}>
       <Topbar
         title="Archived Records"
         subtitle="Restore soft-deleted users and livestock records without losing audit history"
       />
 
-      <main className="p-6 space-y-5">
+      <main className={ui.main}>
         <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 flex items-center justify-center">
@@ -107,8 +132,8 @@ export default function ArchivedRecords() {
                 title={user.name || "Unnamed user"}
                 meta={`${user.role || "user"} · ${user.email || "No email"}`}
                 deletedAt={user.deletedAt}
-                onRestore={() => restoreUser.mutate(user._id)}
-                restoring={restoreUser.isPending}
+                onRestore={() => setRestoreTarget({ type: "user", id: user._id, name: user.name || "this user" })}
+                restoring={restoreUser.isPending && restoreTarget?.id === user._id}
               />
             )}
           />
@@ -124,13 +149,24 @@ export default function ArchivedRecords() {
                 title={`Tag #${animal.earTag || animal.animalId || "N/A"}`}
                 meta={`${animal.species || "Animal"} · ${animal.breed || "Unknown breed"} · ${animal.farmerId?.name || "No farmer"}`}
                 deletedAt={animal.deletedAt}
-                onRestore={() => restoreAnimal.mutate(animal._id)}
-                restoring={restoreAnimal.isPending}
+                onRestore={() => setRestoreTarget({ type: "animal", id: animal._id, name: `Tag #${animal.earTag || animal.animalId || "N/A"}` })}
+                restoring={restoreAnimal.isPending && restoreTarget?.id === animal._id}
               />
             )}
           />
         )}
       </main>
+      <Modal
+        isOpen={Boolean(restoreTarget)}
+        onClose={() => !isRestoring && setRestoreTarget(null)}
+        title="Restore Archived Record"
+        type="warning"
+        confirmText="Restore"
+        onConfirm={confirmRestore}
+        isConfirmLoading={isRestoring}
+      >
+        Restore {restoreTarget?.name || "this record"} to the active registry? Its audit history will remain preserved.
+      </Modal>
     </div>
   );
 }

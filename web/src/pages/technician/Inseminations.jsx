@@ -26,13 +26,23 @@ export default function InseminationLog() {
   const itemsPerPage = 8;
 
   // ---- FETCH REAL DATA ----
-  const { data: inseminations = [], isLoading } = useQuery({
-    queryKey: ["technician", "inseminations-list-isolated"],
+  const { data: inseminationPage = {}, isLoading } = useQuery({
+    queryKey: ["technician", "inseminations-list-isolated", currentPage, searchQuery, estrusFilter, pResultFilter],
     queryFn: async () => {
-      const res = await axiosInstance.get("/technician/inseminations?limit=1000");
-      return res.data?.inseminations || [];
-    }
+      const res = await axiosInstance.get("/technician/inseminations", {
+        params: {
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchQuery || undefined,
+          estrus: estrusFilter || undefined,
+          outcome: pResultFilter || undefined,
+        },
+      });
+      return res.data || {};
+    },
+    keepPreviousData: true,
   });
+  const inseminations = useMemo(() => inseminationPage.inseminations || inseminationPage.data || [], [inseminationPage]);
 
   // ---- DYNAMIC DATA PROCESSING AND MAPPING ----
   const processedLogs = useMemo(() => {
@@ -58,26 +68,13 @@ export default function InseminationLog() {
 
   // ---- FILTER ENGINE ----
   const filteredLogs = useMemo(() => {
-    return processedLogs.filter((l) => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        l.farmer.toLowerCase().includes(q) ||
-        l.tag.toLowerCase().includes(q) ||
-        l.sireBreed.toLowerCase().includes(q) ||
-        l.id.toLowerCase().includes(q);
-      const matchesEstrus = !estrusFilter || l.estrus === estrusFilter;
-      const matchesPD = !pResultFilter || l.pdResult === pResultFilter;
-      return matchesSearch && matchesEstrus && matchesPD;
-    });
-  }, [searchQuery, estrusFilter, pResultFilter, processedLogs]);
+    return processedLogs;
+  }, [processedLogs]);
 
   // ---- PAGINATION COMPUTATION ----
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedLogs = filteredLogs.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage) || 1;
+  const paginatedLogs = filteredLogs;
+  const totalPages = inseminationPage.totalPages || inseminationPage.pagination?.totalPages || Math.ceil((inseminationPage.total || inseminationPage.pagination?.total || filteredLogs.length) / itemsPerPage) || 1;
 
   // ---- REAL EXPORTER TO CSV ----
   const handleExportCSV = () => {

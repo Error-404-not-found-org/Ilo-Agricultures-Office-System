@@ -15,6 +15,7 @@ import {
   Tag,
 } from "lucide-react";
 import Topbar from "../../components/ui/Topbar";
+import { Badge, ui } from "../../components/ui/uiClasses";
 
 export default function Livestock() {
   const navigate = useNavigate();
@@ -25,13 +26,23 @@ export default function Livestock() {
   const itemsPerPage = 10;
 
   // ---- DYNAMIC DATA PIPELINE ----
-  const { data: animals = [], isLoading} = useQuery({
-    queryKey: ["admin", "livestock-all"],
+  const { data: animalPage = {}, isLoading} = useQuery({
+    queryKey: ["admin", "livestock-all", currentPage, searchQuery, speciesFilter, statusFilter],
     queryFn: async () => {
-      const res = await axiosInstance.get("/animals/all");
-      return Array.isArray(res.data) ? res.data : res.data?.data || [];
+      const res = await axiosInstance.get("/animals/all", {
+        params: {
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchQuery || undefined,
+          species: speciesFilter || undefined,
+          reproductiveStatus: statusFilter || undefined,
+        },
+      });
+      return res.data || {};
     },
+    keepPreviousData: true,
   });
+  const animals = useMemo(() => animalPage.animals || animalPage.data || [], [animalPage]);
 
   // ---- DYNAMIC STATS RESOLVERS ----
   const stats = useMemo(() => {
@@ -53,28 +64,16 @@ export default function Livestock() {
 
   // ---- MEMOIZED DATA FILTERING ----
   const filteredAnimals = useMemo(() => {
-    return animals.filter((a) => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        (a.earTag || "").toLowerCase().includes(q) ||
-        (a.breed || "").toLowerCase().includes(q) ||
-        (a.farmerId?.name || "").toLowerCase().includes(q);
-      const matchesSpecies = !speciesFilter || (a.species || "").toLowerCase() === speciesFilter.toLowerCase();
-      const matchesStatus = !statusFilter || (a.reproductiveStatus || "").toLowerCase() === statusFilter.toLowerCase();
-      return matchesSearch && matchesSpecies && matchesStatus;
-    });
-  }, [animals, searchQuery, speciesFilter, statusFilter]);
+    return animals;
+  }, [animals]);
 
   // ---- PAGINATION COMPUTATION ----
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedAnimals = filteredAnimals.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
-  const totalPages = Math.ceil(filteredAnimals.length / itemsPerPage) || 1;
+  const paginatedAnimals = filteredAnimals;
+  const totalPages = animalPage.totalPages || animalPage.pages || Math.ceil((animalPage.total || filteredAnimals.length) / itemsPerPage) || 1;
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className={ui.page}>
       <Topbar
         title="Livestock Assets"
         subtitle="Auditable database registry of all municipal biological livestock assets"
@@ -86,10 +85,10 @@ export default function Livestock() {
         }}
       />
 
-      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
+      <main className={ui.main}>
         {/* Dynamic Metric Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+          <div className={ui.metricCard}>
             <div className="p-2.5 rounded-xl shrink-0 text-[#00643b] bg-emerald-50 dark:bg-emerald-950/20">
               <PawPrint size={16} />
             </div>
@@ -100,7 +99,7 @@ export default function Livestock() {
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+          <div className={ui.metricCard}>
             <div className="p-2.5 rounded-xl shrink-0 text-purple-600 bg-purple-50 dark:bg-purple-950/20">
               <Heart size={16} />
             </div>
@@ -111,7 +110,7 @@ export default function Livestock() {
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+          <div className={ui.metricCard}>
             <div className="p-2.5 rounded-xl shrink-0 text-blue-600 bg-blue-50 dark:bg-blue-950/20">
               <Activity size={16} />
             </div>
@@ -122,7 +121,7 @@ export default function Livestock() {
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+          <div className={ui.metricCard}>
             <div className="p-2.5 rounded-xl shrink-0 text-amber-600 bg-amber-50 dark:bg-amber-950/20">
               <Baby size={16} />
             </div>
@@ -136,16 +135,16 @@ export default function Livestock() {
         </div>
 
         {/* Datatable Card Wrapper */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className={`${ui.panel} p-5 flex-1 flex flex-col min-h-0`}>
           
           {/* Top Filters Ribbon */}
-          <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
+          <div className={ui.filterBar}>
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
               <SlidersHorizontal size={13} />
               <span>Filters:</span>
             </div>
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:border-[#00643b] dark:focus:border-emerald-500 transition-all duration-200"
+              className={ui.select}
               value={speciesFilter}
               onChange={(e) => {
                 setSpeciesFilter(e.target.value);
@@ -159,7 +158,7 @@ export default function Livestock() {
               <option value="Goat">Goat</option>
             </select>
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:border-[#00643b] dark:focus:border-emerald-500 transition-all duration-200"
+              className={ui.select}
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
@@ -179,9 +178,9 @@ export default function Livestock() {
 
           {/* Database Grid Table */}
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full border-collapse">
+            <table className={ui.table}>
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none">
+                <tr className={ui.tableHead}>
                   <th className="p-3.5 pl-5">Ear Tag</th>
                   <th className="p-3.5">Species</th>
                   <th className="p-3.5">Genetic Breed</th>
@@ -192,13 +191,13 @@ export default function Livestock() {
                   <th className="p-3.5 pr-5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+              <tbody className={ui.tableBody}>
                 {isLoading ? (
                   [...Array(6)].map((_, idx) => <TableRowSkeleton key={idx} />)
                 ) : paginatedAnimals.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium">
-                      No registered biological assets matching filter criteria found.
+                    <td colSpan={8} className="p-6">
+                      <div className={ui.empty}>No registered biological assets matching filter criteria found.</div>
                     </td>
                   </tr>
                 ) : (
@@ -206,7 +205,7 @@ export default function Livestock() {
                     <tr
                       key={a._id}
                       onClick={() => navigate(`/admin/livestock/${a._id}`)}
-                      className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors cursor-pointer"
+                      className={`${ui.tableRow} cursor-pointer`}
                     >
                       <td className="p-3.5 pl-5 font-bold text-slate-500 flex items-center gap-1.5">
                         <Tag size={12} className="text-slate-400 shrink-0" />
@@ -220,19 +219,7 @@ export default function Livestock() {
                         {a.farmerId?.name || "N/A"}
                       </td>
                       <td className="p-3.5 text-center">
-                        <span
-                          className={`inline-block text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border ${
-                            a.reproductiveStatus?.toLowerCase() === "pregnant"
-                              ? "bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400"
-                              : a.reproductiveStatus?.toLowerCase() === "inseminated"
-                                ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400"
-                                : a.reproductiveStatus?.toLowerCase() === "open"
-                                  ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400"
-                                  : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400"
-                          }`}
-                        >
-                          {a.reproductiveStatus || "Normal"}
-                        </span>
+                        <Badge status={a.reproductiveStatus || "Normal"} />
                       </td>
                       <td
                         className="p-3.5 pr-5 text-right"
@@ -240,7 +227,7 @@ export default function Livestock() {
                       >
                         <button
                           onClick={() => navigate(`/admin/livestock/${a._id}`)}
-                          className="px-2.5 py-1 text-[11px] font-extrabold rounded-lg border border-slate-200 dark:border-slate-800 hover:border-[#00643b] hover:text-[#00643b] flex items-center gap-1 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 transition-all cursor-pointer"
+                          className={ui.ghostButton}
                         >
                           <Eye size={12} /> Inspect
                         </button>
@@ -262,7 +249,7 @@ export default function Livestock() {
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1 || isLoading}
-                  className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                  className={ui.iconButton}
                 >
                   <ChevronLeft size={12} />
                 </button>
@@ -283,7 +270,7 @@ export default function Livestock() {
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages || isLoading}
-                  className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                  className={ui.iconButton}
                 >
                   <ChevronRight size={12} />
                 </button>
