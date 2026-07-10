@@ -9,10 +9,11 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Linking,
+  Modal,
 } from "react-native";
 import { Text } from "@/components/ui/Text";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useTheme } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -73,11 +74,21 @@ export default function RequestDetailsScreen() {
   const [showBreedModal, setShowBreedModal] = useState(false);
   const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
   const [showFollowUpDatePicker, setShowFollowUpDatePicker] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    confirmText: string;
+    cancelText: string;
+    isDestructive?: boolean;
+    onConfirm: () => Promise<void> | void;
+  } | null>(null);
 
   // Cancellation review states
   const { user: clerkUser } = useUser();
   const [rescheduleMode, setRescheduleMode] = useState(false);
   const [cancelResponding, setCancelResponding] = useState(false);
+  const [declineModalVisible, setDeclineModalVisible] = useState(false);
+  const [declineReason, setDeclineReason] = useState("");
 
   const fetchRequestDetails = async () => {
     try {
@@ -254,23 +265,23 @@ export default function RequestDetailsScreen() {
 
         const isTooEarly = request.scheduledDate && (new Date(request.scheduledDate).getTime() - Date.now() > 2 * 60 * 60 * 1000);
         if (isTooEarly) {
-          Alert.alert(
-            "Complete Early?",
-            `This service is scheduled for ${new Date(request.scheduledDate).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Are you sure you want to log it complete now?`,
-            [
-              { text: "Cancel", style: "cancel" },
-              { text: "Yes, Complete", onPress: proceed }
-            ]
-          );
+          setConfirmAction({
+            title: "Complete Early?",
+            message: `This service is scheduled for ${new Date(request.scheduledDate).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Are you sure you want to log it complete now?`,
+            cancelText: "Review",
+            confirmText: "Yes, Complete",
+            isDestructive: false,
+            onConfirm: proceed,
+          });
         } else {
-          Alert.alert(
-            "Complete AI Service?",
-            "This will create the official AI service record and update the animal breeding history. Please confirm the sire details and notes are correct.",
-            [
-              { text: "Review", style: "cancel" },
-              { text: "Complete", onPress: proceed },
-            ],
-          );
+          setConfirmAction({
+            title: "Complete AI Service?",
+            message: "This will create the official AI service record and update the animal breeding history. Please confirm the sire details and notes are correct.",
+            cancelText: "Review",
+            confirmText: "Complete",
+            isDestructive: false,
+            onConfirm: proceed,
+          });
         }
       } else {
         if (!diagnosis || !diagnosis.trim()) {
@@ -302,23 +313,23 @@ export default function RequestDetailsScreen() {
 
         const isTooEarly = request.scheduledDate && (new Date(request.scheduledDate).getTime() - Date.now() > 2 * 60 * 60 * 1000);
         if (isTooEarly) {
-          Alert.alert(
-            "Complete Early?",
-            `This visit is scheduled for ${new Date(request.scheduledDate).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Are you sure you want to resolve it now?`,
-            [
-              { text: "Cancel", style: "cancel" },
-              { text: "Yes, Resolve", onPress: proceed }
-            ]
-          );
+          setConfirmAction({
+            title: "Complete Early?",
+            message: `This visit is scheduled for ${new Date(request.scheduledDate).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Are you sure you want to resolve it now?`,
+            cancelText: "Review",
+            confirmText: "Yes, Resolve",
+            isDestructive: false,
+            onConfirm: proceed,
+          });
         } else {
-          Alert.alert(
-            "Resolve Health Request?",
-            "This will save the findings, treatment, and resolution notes as the official health assistance record.",
-            [
-              { text: "Review", style: "cancel" },
-              { text: "Resolve", onPress: proceed },
-            ],
-          );
+          setConfirmAction({
+            title: "Resolve Health Request?",
+            message: "This will save the findings, treatment, and resolution notes as the official health assistance record.",
+            cancelText: "Review",
+            confirmText: "Resolve",
+            isDestructive: false,
+            onConfirm: proceed,
+          });
         }
       }
     }
@@ -368,6 +379,27 @@ export default function RequestDetailsScreen() {
       toast.error(err.response?.data?.message || err.message || "Failed to reschedule request");
     } finally {
       setCancelResponding(false);
+    }
+  };
+
+  const handleTechnicianDecline = async () => {
+    if (!declineReason.trim()) {
+      toast.error("Please provide a reason for declining this request.");
+      return;
+    }
+
+    try {
+      setUpdating(true);
+      const endpoint = type === "health" ? `/health-request/${id}/cancel` : `/ai-request/${id}/cancel`;
+      await api.patch(endpoint, { reason: declineReason.trim() });
+      toast.success("Request declined and farmer notified");
+      setDeclineReason("");
+      setDeclineModalVisible(false);
+      router.back();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || "Failed to decline request");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -1177,6 +1209,31 @@ export default function RequestDetailsScreen() {
                 </Text>
               )}
             </TouchableOpacity>
+
+            {["approved", "assigned", "triaged", "scheduled"].includes(
+              request.status?.toLowerCase(),
+            ) && (
+              <TouchableOpacity
+                onPress={() => setDeclineModalVisible(true)}
+                disabled={updating}
+                style={{
+                  marginTop: 10,
+                  backgroundColor: isDark ? "rgba(239, 68, 68, 0.12)" : "#fef2f2",
+                  borderWidth: 1,
+                  borderColor: isDark ? "rgba(248, 113, 113, 0.25)" : "#fecaca",
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{ color: isDark ? "#f87171" : "#dc2626", fontSize: 14 }}
+                  variant="extrabold"
+                >
+                  Decline / Cancel With Reason
+                </Text>
+              </TouchableOpacity>
+            )}
           </>
         )}
           </View>
@@ -1358,6 +1415,111 @@ export default function RequestDetailsScreen() {
           setShowBreedModal(false);
         }}
       />
+
+      <ConfirmationModal
+        visible={!!confirmAction}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={() => confirmAction?.onConfirm()}
+        title={confirmAction?.title || ""}
+        message={confirmAction?.message || ""}
+        confirmText={confirmAction?.confirmText || "Confirm"}
+        cancelText={confirmAction?.cancelText || "Review"}
+        isDestructive={confirmAction?.isDestructive ?? false}
+      />
+
+      <Modal
+        visible={declineModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDeclineModalVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(15, 23, 42, 0.55)",
+            justifyContent: "center",
+            padding: 24,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: colors.card,
+              borderRadius: 20,
+              padding: 20,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text
+              variant="extrabold"
+              size={18}
+              style={{ color: colors.textPrimary, marginBottom: 6 }}
+            >
+              Decline Request?
+            </Text>
+            <Text
+              variant="medium"
+              size={13}
+              style={{ color: colors.textSecondary, lineHeight: 18, marginBottom: 14 }}
+            >
+              This will cancel the claimed service and notify the farmer. Add a clear reason so the farmer knows what happened.
+            </Text>
+            <TextInput
+              placeholder="Reason, e.g. schedule conflict or duplicate request..."
+              placeholderTextColor={colors.textMuted}
+              multiline
+              numberOfLines={4}
+              value={declineReason}
+              onChangeText={setDeclineReason}
+              style={{
+                minHeight: 96,
+                borderRadius: 14,
+                padding: 12,
+                backgroundColor: colors.border,
+                color: colors.textPrimary,
+                fontFamily: "Outfit_600SemiBold",
+                textAlignVertical: "top",
+              }}
+            />
+            <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+              <TouchableOpacity
+                onPress={() => setDeclineModalVisible(false)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  backgroundColor: colors.border,
+                  alignItems: "center",
+                }}
+              >
+                <Text variant="bold" size={13} style={{ color: colors.textPrimary }}>
+                  Keep Request
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleTechnicianDecline}
+                disabled={updating || !declineReason.trim()}
+                style={{
+                  flex: 1,
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  backgroundColor: !declineReason.trim() ? colors.textMuted : "#dc2626",
+                  alignItems: "center",
+                  opacity: updating ? 0.7 : 1,
+                }}
+              >
+                {updating ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text variant="bold" size={13} style={{ color: "#fff" }}>
+                    Decline
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

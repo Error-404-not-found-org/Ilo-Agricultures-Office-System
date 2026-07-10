@@ -20,6 +20,16 @@ export default function AdminLayout() {
       <Stack.Screen name="profile" />
       <Stack.Screen name="create-user" />
       <Stack.Screen name="user-details" />
+      <Stack.Screen name="claim-monitoring" />
+      <Stack.Screen name="request-monitoring" />
+      <Stack.Screen name="request-details" />
+      <Stack.Screen name="technician-workload" />
+      <Stack.Screen name="animal-details" />
+      <Stack.Screen name="reports" />
+      <Stack.Screen name="notifications" />
+      <Stack.Screen name="support-tickets" />
+      <Stack.Screen name="audit-logs" />
+      <Stack.Screen name="system-settings" />
     </Stack>
   );
 }

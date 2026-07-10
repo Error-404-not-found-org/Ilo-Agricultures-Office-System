@@ -110,6 +110,14 @@ const URGENCY_OPTIONS = [
     bg: "#fffbeb",
     darkBg: "rgba(245, 158, 11, 0.15)",
   },
+  {
+    value: "critical",
+    label: "Critical",
+    desc: "Needs attention immediately",
+    color: "#b91c1c",
+    bg: "#fef2f2",
+    darkBg: "rgba(185, 28, 28, 0.15)",
+  },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -117,6 +125,7 @@ export default function ReportSickness() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const submitLockRef = useRef(false);
   const { colors, isDark } = useTheme();
 
   const primaryColor = isDark ? colors.error : "#b91c1c";
@@ -130,17 +139,21 @@ export default function ReportSickness() {
   const [symptoms, setSymptoms] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [preferredDate, setPreferredDate] = useState(() => {
-    const d = new Date();
-    d.setHours(8, 0, 0, 0); // Defaults to 08:00 AM standard slot
-    return d;
-  });
+  const [preferredDate, setPreferredDate] = useState<Date | null>(null);
 
   const { data: config } = useSystemConfigQuery();
   const mutation = useSubmitHealthRequestMutation();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitting = mutation.isPending || isSubmitting;
+
+  const showSubmitError = (
+    message: string,
+    options?: Parameters<typeof toast.error>[1],
+  ) => {
+    toast.dismiss();
+    toast.error(message, options);
+  };
 
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
   const [typeModalVisible, setTypeModalVisible] = useState(false);
@@ -230,13 +243,12 @@ export default function ReportSickness() {
     }
   };
 
-  // ── Submit ─────────────────────────────────────────────────────────────────
   const submitRequest = async () => {
-    if (!selectedAnimal) return;
+    if (!selectedAnimal || !preferredDate) return;
 
     setIsSubmitting(true);
     try {
-      await mutation.mutateAsync({
+      const result = await mutation.mutateAsync({
         animalId: selectedAnimal._id,
         requestType,
         symptoms: symptoms.trim(),
@@ -244,10 +256,12 @@ export default function ReportSickness() {
         imageUrl: imageBase64,
         preferredDate: preferredDate.toISOString(),
       });
-      toast.success(
-        "Request submitted! A technician will attend to your animal.",
-        { duration: 4000, position: "top-center" },
-      );
+      if (result.status === "synced") {
+        toast.success(
+          "Request submitted! A technician will attend to your animal.",
+          { duration: 4000, position: "top-center" },
+        );
+      }
       setSelectedAnimal(null);
       setSymptoms("");
       setImageUri(null);
@@ -263,54 +277,78 @@ export default function ReportSickness() {
   };
 
   const handleSubmit = async (skipFarmPinWarning = false) => {
-    if (isSubmitting || mutation.isPending) return;
+    if (submitLockRef.current || isSubmitting || mutation.isPending) return;
 
-    const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
-    const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
-    const farmLocation = farmer?.farmLocation || profile?.farmLocation;
-    const hasFarmPin = Boolean(farmLocation?.latitude && farmLocation?.longitude);
+    submitLockRef.current = true;
+    toast.dismiss();
 
-    if (!hasPhone || !hasAddress) {
-      setProfileModalVisible(true);
-      return;
+    try {
+      const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
+      const hasAddress =
+        farmer?.address?.barangay || profile?.address?.barangay;
+      const farmLocation = farmer?.farmLocation || profile?.farmLocation;
+      const hasFarmPin = Boolean(
+        farmLocation?.latitude && farmLocation?.longitude,
+      );
+
+      if (!hasPhone || !hasAddress) {
+        setProfileModalVisible(true);
+        return;
+      }
+
+      if (!selectedAnimal) {
+        showSubmitError("Please select an animal.");
+        return;
+      }
+
+      const requestsArray = Array.isArray(myHealthRequests)
+        ? myHealthRequests
+        : myHealthRequests?.data || [];
+      const isAlreadyPending = requestsArray.some(
+        (r: any) =>
+          r.animalId?._id === selectedAnimal._id && r.status === "pending",
+      );
+      if (isAlreadyPending) {
+        setPendingModalVisible(true);
+        return;
+      }
+
+      if (!symptoms.trim()) {
+        showSubmitError("Please describe the symptoms or condition.");
+        return;
+      }
+
+      if (!preferredDate) {
+        showSubmitError("Please select a preferred date and time slot.");
+        return;
+      }
+
+      const validation = validateRequestTime(
+        preferredDate,
+        !!config?.isHoliday,
+      );
+      if (!validation.isValid) {
+        showSubmitError(validation.message || "Invalid request time.", {
+          duration: 5000,
+        });
+        return;
+      }
+
+      if (!skipFarmPinWarning && !hasFarmPin) {
+        setFarmPinModalVisible(true);
+        return;
+      }
+
+      await submitRequest();
+    } finally {
+      submitLockRef.current = false;
     }
-
-    if (!selectedAnimal) return toast.error("Please select an animal.");
-
-    const requestsArray = Array.isArray(myHealthRequests)
-      ? myHealthRequests
-      : myHealthRequests?.data || [];
-    const isAlreadyPending = requestsArray.some(
-      (r: any) =>
-        r.animalId?._id === selectedAnimal._id && r.status === "pending",
-    );
-    if (isAlreadyPending) {
-      setPendingModalVisible(true);
-      return;
-    }
-
-    if (!symptoms.trim())
-      return toast.error("Please describe the symptoms or condition.");
-
-    const validation = validateRequestTime(preferredDate, !!config?.isHoliday);
-    if (!validation.isValid) {
-      return toast.error(validation.message || "Invalid request time.", {
-        duration: 5000,
-      });
-    }
-
-    if (!skipFarmPinWarning && !hasFarmPin) {
-      setFarmPinModalVisible(true);
-      return;
-    }
-
-    await submitRequest();
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
-    if (selectedDate) {
-      const newDate = new Date(preferredDate);
+    if (event.type === "set" && selectedDate) {
+      const newDate = new Date(preferredDate || new Date());
       newDate.setFullYear(
         selectedDate.getFullYear(),
         selectedDate.getMonth(),
@@ -328,7 +366,7 @@ export default function ReportSickness() {
     if (modifier === "PM" && hours < 12) hours += 12;
     if (modifier === "AM" && hours === 12) hours = 0;
 
-    const newDate = new Date(preferredDate);
+    const newDate = new Date(preferredDate || new Date());
     newDate.setHours(hours, minutes, 0, 0);
     setPreferredDate(newDate);
   };
@@ -614,30 +652,31 @@ export default function ReportSickness() {
 
           {/* Animal Picker */}
           <Text
-            className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1"
+            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
             style={{ color: colors.textMuted }}
           >
             Affected Animal *
           </Text>
           <TouchableOpacity
             onPress={() => setAnimalModalVisible(true)}
-            className="border rounded-[22px] px-5 py-5 flex-row items-center justify-between mb-6 shadow-sm"
+            className="border rounded-2xl px-4 py-4 flex-row items-center justify-between mb-5"
             style={{
               backgroundColor: colors.card,
               borderColor: selectedAnimal ? primaryColor : colors.border,
+              elevation: 1,
             }}
           >
             {selectedAnimal ? (
               <View>
                 <Text
-                  className="text-[16px] font-outfit-black"
+                  className="text-base font-bold"
                   style={{ color: colors.textPrimary }}
                 >
                   {selectedAnimal.animalId}
                   {selectedAnimal.earTag ? ` · ${selectedAnimal.earTag}` : ""}
                 </Text>
                 <Text
-                  className="text-[13px] font-outfit-medium"
+                  className="text-sm font-medium"
                   style={{ color: colors.textSecondary }}
                 >
                   {selectedAnimal.species} — {selectedAnimal.breed}
@@ -645,7 +684,7 @@ export default function ReportSickness() {
               </View>
             ) : (
               <Text
-                className="font-outfit-medium text-[15px]"
+                className="font-medium text-sm"
                 style={{ color: colors.textMuted }}
               >
                 Tap to choose an animal
@@ -659,18 +698,22 @@ export default function ReportSickness() {
 
           {/* Request Type */}
           <Text
-            className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1"
+            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
             style={{ color: colors.textMuted }}
           >
             Request Type
           </Text>
           <TouchableOpacity
             onPress={() => setTypeModalVisible(true)}
-            className="border rounded-[22px] px-5 py-5 flex-row items-center justify-between mb-6 shadow-sm"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="border rounded-2xl px-4 py-4 flex-row items-center justify-between mb-5"
+            style={{
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              elevation: 1,
+            }}
           >
             <Text
-              className="text-[16px] font-outfit-bold"
+              className="text-sm font-bold"
               style={{ color: colors.textPrimary }}
             >
               {selectedType?.label || "Select type"}
@@ -680,20 +723,20 @@ export default function ReportSickness() {
 
           {/* Urgency Selector */}
           <Text
-            className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1"
+            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
             style={{ color: colors.textMuted }}
           >
             Urgency Level
           </Text>
-          <View className="flex-row gap-3 mb-6">
+          <View className="flex-row gap-3 mb-5">
             {URGENCY_OPTIONS.map((opt) => (
               <TouchableOpacity
                 key={opt.value}
                 onPress={() => setUrgency(opt.value)}
-                className={`flex-1 rounded-[22px] py-4 px-2 items-center border-2 shadow-sm ${urgency === opt.value ? "shadow-md" : ""}`}
+                className="flex-1 rounded-2xl py-3 px-2 items-center border"
                 style={{
                   borderColor:
-                    urgency === opt.value ? opt.color : "transparent",
+                    urgency === opt.value ? opt.color : colors.border,
                   backgroundColor:
                     urgency === opt.value
                       ? isDark
@@ -703,7 +746,7 @@ export default function ReportSickness() {
                 }}
               >
                 <Text
-                  className="text-[12px] font-outfit-black uppercase tracking-tighter"
+                  className="text-xs font-bold"
                   style={{
                     color: urgency === opt.value ? opt.color : colors.textMuted,
                   }}
@@ -711,7 +754,7 @@ export default function ReportSickness() {
                   {opt.label}
                 </Text>
                 <Text
-                  className="text-[9px] text-center mt-1 font-outfit-medium"
+                  className="text-[10px] text-center mt-1 font-medium"
                   style={{
                     color: urgency === opt.value ? opt.color : colors.textMuted,
                   }}
@@ -724,18 +767,19 @@ export default function ReportSickness() {
 
           {/* Preferred Date/Time Picker */}
           <Text
-            className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1"
+            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
             style={{ color: colors.textMuted }}
           >
             Preferred Visit Date/Time *
           </Text>
-          <View className="flex-row gap-3 mb-6">
+          <View className="flex-row gap-3 mb-5">
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
-              className="flex-1 border rounded-[22px] px-5 py-5 flex-row items-center justify-between shadow-sm"
+              className="flex-1 border rounded-2xl px-4 py-4 flex-row items-center justify-between"
               style={{
                 backgroundColor: colors.card,
                 borderColor: colors.border,
+                elevation: 1,
               }}
             >
               <View>
@@ -746,10 +790,10 @@ export default function ReportSickness() {
                   Date
                 </Text>
                 <Text
-                  className="text-[15px] font-outfit-bold"
-                  style={{ color: colors.textPrimary }}
+                  className="text-sm font-bold"
+                  style={{ color: preferredDate ? colors.textPrimary : colors.textMuted }}
                 >
-                  {preferredDate.toLocaleDateString()}
+                  {preferredDate ? preferredDate.toLocaleDateString() : "— — — — —"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -757,10 +801,11 @@ export default function ReportSickness() {
 
             <TouchableOpacity
               onPress={() => setTimeModalVisible(true)}
-              className="flex-1 border rounded-[22px] px-5 py-5 flex-row items-center justify-between shadow-sm"
+              className="flex-1 border rounded-2xl px-4 py-4 flex-row items-center justify-between"
               style={{
                 backgroundColor: colors.card,
                 borderColor: colors.border,
+                elevation: 1,
               }}
             >
               <View>
@@ -771,13 +816,15 @@ export default function ReportSickness() {
                   Time Slot
                 </Text>
                 <Text
-                  className="text-[15px] font-outfit-bold"
-                  style={{ color: colors.textPrimary }}
+                  className="text-sm font-bold"
+                  style={{ color: preferredDate ? colors.textPrimary : colors.textMuted }}
                 >
-                  {preferredDate.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {preferredDate
+                    ? preferredDate.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "— — — — —"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -786,7 +833,7 @@ export default function ReportSickness() {
 
           {showDatePicker && (
             <DateTimePicker
-              value={preferredDate}
+              value={preferredDate || new Date()}
               mode="date"
               display="default"
               onChange={onDateChange}
@@ -796,20 +843,20 @@ export default function ReportSickness() {
 
           {/* Photo */}
           <Text
-            className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1"
+            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
             style={{ color: colors.textMuted }}
           >
             Attach Photo (Optional)
           </Text>
           {imageUri ? (
-            <View className="mb-6 relative shadow-lg">
+            <View className="mb-5 relative">
               <TouchableOpacity
                 onPress={() => setPhotoModalVisible(true)}
                 activeOpacity={0.9}
               >
                 <Image
                   source={{ uri: imageUri }}
-                  className="w-full h-52 rounded-[28px]"
+                  className="w-full h-44 rounded-2xl"
                   resizeMode="cover"
                 />
               </TouchableOpacity>
@@ -826,7 +873,7 @@ export default function ReportSickness() {
           ) : (
             <TouchableOpacity
               onPress={() => setPhotoModalVisible(true)}
-              className="w-full h-36 border-2 border-dashed rounded-[28px] items-center justify-center mb-6 gap-2 shadow-sm"
+              className="w-full h-36 border-2 border-dashed rounded-2xl items-center justify-center mb-5 gap-2"
               style={{
                 backgroundColor: colors.card,
                 borderColor: colors.border,
@@ -834,13 +881,13 @@ export default function ReportSickness() {
             >
               <Camera size={32} color={colors.textMuted} />
               <Text
-                className="text-[14px] font-outfit-bold"
+                className="text-sm font-medium"
                 style={{ color: colors.textSecondary }}
               >
                 Tap to attach a photo
               </Text>
               <Text
-                className="text-[11px] font-outfit-medium"
+                className="text-xs"
                 style={{ color: colors.textMuted }}
               >
                 of the wound, swelling, or symptom
@@ -850,16 +897,17 @@ export default function ReportSickness() {
 
           {/* Symptoms / Description */}
           <Text
-            className="text-[11px] font-outfit-black uppercase tracking-widest mb-2 ml-1"
+            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
             style={{ color: colors.textMuted }}
           >
             Symptoms / Description *
           </Text>
           <TextInput
-            className="border rounded-[28px] px-5 py-5 text-[14px] mb-8 shadow-sm font-outfit-medium"
+            className="border rounded-2xl px-4 py-4 text-sm mb-6"
             style={{
-              minHeight: 140,
+              minHeight: 120,
               textAlignVertical: "top",
+              elevation: 1,
               backgroundColor: colors.card,
               borderColor: colors.border,
               color: colors.textPrimary,
@@ -886,7 +934,7 @@ export default function ReportSickness() {
             accessibilityRole="button"
             accessibilityLabel="Submit health request"
             activeOpacity={0.85}
-            className="rounded-full py-5 items-center flex-row justify-center gap-2 shadow-xl"
+            className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
             style={{
               backgroundColor: submitting ? "#f87171" : primaryColor,
               shadowColor: primaryColor,
@@ -896,8 +944,8 @@ export default function ReportSickness() {
               <ActivityIndicator color="white" size="small" />
             ) : (
               <>
-                <HeartPulse size={22} color="white" />
-                <Text className="text-white font-outfit-black text-lg uppercase tracking-wider">
+                <HeartPulse size={20} color="white" />
+                <Text className="text-white font-bold text-lg">
                   Submit Health Request
                 </Text>
               </>
@@ -1158,11 +1206,12 @@ export default function ReportSickness() {
 
             <View className="flex-row flex-wrap gap-3 justify-between">
               {TIME_SLOTS.map((slot) => {
-                const isSelected =
-                  preferredDate.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }) === slot.replace(/^0/, "");
+                const isSelected = preferredDate
+                  ? preferredDate.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }) === slot.replace(/^0/, "")
+                  : false;
                 return (
                   <TouchableOpacity
                     key={slot}

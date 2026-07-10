@@ -3,17 +3,6 @@ import { Buffer } from 'buffer';
 // @ts-ignore
 import { decode, encode } from 'base-64';
 
-// Polyfills for crypto and auth libraries
-if (typeof global.Buffer === 'undefined') {
-  global.Buffer = Buffer;
-}
-if (typeof global.btoa === 'undefined') {
-  global.btoa = encode;
-}
-if (typeof global.atob === 'undefined') {
-  global.atob = decode;
-}
-
 import { 
   useFonts,
   Outfit_400Regular,
@@ -34,7 +23,7 @@ import { Toaster, toast } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColorScheme as useNativeWindColorScheme } from "nativewind";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets , SafeAreaProvider } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NetInfo from "@react-native-community/netinfo";
 import { processOfflineQueue } from "../lib/offlineQueue";
@@ -44,6 +33,18 @@ import Constants from "expo-constants";
 import * as Notifications from 'expo-notifications';
 import { useTheme } from "@/lib/theme";
 import { TranslationProvider } from "../contexts/TranslationContext";
+
+
+// Polyfills for crypto and auth libraries
+if (typeof global.Buffer === 'undefined') {
+  global.Buffer = Buffer;
+}
+if (typeof global.btoa === 'undefined') {
+  global.btoa = encode;
+}
+if (typeof global.atob === 'undefined') {
+  global.atob = decode;
+}
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -673,8 +674,6 @@ function InitialLayout() {
     />
   );
 }
-
-import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // Only set handler if not in Expo Go to avoid SDK 53+ warnings
 if (Constants.executionEnvironment !== 'storeClient') {

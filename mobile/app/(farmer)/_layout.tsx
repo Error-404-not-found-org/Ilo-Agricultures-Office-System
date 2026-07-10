@@ -16,6 +16,7 @@ export default function FarmerLayout() {
     >
       <Stack.Screen name="(tabs)" />
       <Stack.Screen name="animal-details" />
+      <Stack.Screen name="register-animal" />
       <Stack.Screen name="my-requests" />
       <Stack.Screen name="heat-map" />
       <Stack.Screen name="ask-moowie" />
@@ -25,6 +26,8 @@ export default function FarmerLayout() {
       <Stack.Screen name="health-request-detail" />
       <Stack.Screen name="ai-request-detail" />
       <Stack.Screen name="health-report-preview" />
+      <Stack.Screen name="animal-record-detail" />
+      <Stack.Screen name="ai-report-preview" />
       <Stack.Screen name="sync-center" />
       <Stack.Screen name="breeding-calendar" />
       <Stack.Screen name="report-breeding-observation/index" />

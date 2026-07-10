@@ -25,8 +25,8 @@ import { SearchBar } from "@/components/shared";
 import { RecordList } from "../components/RecordList";
 import { DateRangeSelector } from "../components/DateRangeSelector";
 import { LedgerDetailModal } from "../components/LedgerDetailModal";
-import { Alert } from "react-native";
 import { toast } from "sonner-native";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 const PRIMARY = "#00643B";
 
@@ -118,33 +118,25 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
   // Detail Modal states inside Generate Report
   const [selectedRow, setSelectedRow] = React.useState<any | null>(null);
   const [detailModalOpen, setDetailModalOpen] = React.useState(false);
+  const [deleteTarget, setDeleteTarget] = React.useState<any | null>(null);
 
   const handleDelete = (item: any) => {
-    Alert.alert(
-      "Delete Record",
-      "Are you sure you want to delete this record permanently?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteRecordMutation.mutateAsync({
-                id: item.id || item._id,
-                type: item.type,
-              });
-              toast.success("Record deleted successfully");
-              setDetailsVisible(false);
-            } catch (err: any) {
-              toast.error(
-                err.response?.data?.message || "Failed to delete record"
-              );
-            }
-          },
-        },
-      ]
-    );
+    setDeleteTarget(item);
+  };
+
+  const confirmDeleteRecord = async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteRecordMutation.mutateAsync({
+        id: deleteTarget.id || deleteTarget._id,
+        type: deleteTarget.type,
+      });
+      toast.success("Record deleted successfully");
+      setDetailsVisible(false);
+      setDeleteTarget(null);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to delete record");
+    }
   };
 
   return (
@@ -945,6 +937,17 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
         onDelete={handleDelete}
         isDeleting={deleteRecordMutation.isPending}
         router={router}
+      />
+
+      <ConfirmationModal
+        visible={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteRecord}
+        title="Delete Record?"
+        message="Are you sure you want to delete this record permanently? This action cannot be undone."
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        isDestructive
       />
 
       {/* Date Range Selector Calendar Modal */}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -22,13 +22,20 @@ import {
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { CATTLE_BREEDS, CATTLE_SPECIES, OTON_BARANGAYS } from "@/lib/constants";
+import { CATTLE_BREEDS, CATTLE_SPECIES } from "@/lib/constants";
 import { getSireCodeByBreed } from "@/lib/sireRegistry";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
 import { useWalkInInseminationMutation } from "@/features/technician/hooks/useTechnicianFieldRecords";
 import { getAnimalsByFarmer } from "@/features/technician/services/animalManagement.service";
+import {
+  formatBarangayWithDistrict,
+  getIloiloBarangayOptions,
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from "@/constants/address";
 
 export default function RecordAIScreen() {
   const router = useRouter();
@@ -100,7 +107,8 @@ export default function RecordAIScreen() {
     phone: "",
     email: "",
     barangay: "",
-    city: "Oton",
+    city: "",
+    district: "",
   });
   const [newAnimal, setNewAnimal] = useState({
     animalId: "",
@@ -110,11 +118,28 @@ export default function RecordAIScreen() {
     color: "",
   });
 
-  const [showBrgyModal, setShowBrgyModal] = useState(false);
-  const [searchBrgy, setSearchBrgy] = useState("");
+  const [addressPicker, setAddressPicker] = useState<null | "city" | "district" | "barangay">(null);
+  const [searchAddress, setSearchAddress] = useState("");
 
-  const filteredBarangays = OTON_BARANGAYS.filter((b) =>
-    b.toLowerCase().includes(searchBrgy.toLowerCase()),
+  const barangayOptions = useMemo(
+    () => getIloiloBarangayOptions(newFarmer.city, newFarmer.district),
+    [newFarmer.city, newFarmer.district],
+  );
+
+  const addressPickerTitle = addressPicker === "city"
+    ? "Select Municipality / City"
+    : addressPicker === "district"
+      ? "Select Iloilo City District"
+      : "Select Barangay";
+
+  const addressPickerData = addressPicker === "city"
+    ? ILOILO_MUNICIPALITY_OPTIONS
+    : addressPicker === "district"
+      ? ILOILO_CITY_DISTRICT_OPTIONS
+      : barangayOptions;
+
+  const filteredAddressOptions = addressPickerData.filter((item) =>
+    item.toLowerCase().includes(searchAddress.toLowerCase()),
   );
 
   const handleFarmerSelect = async (farmer: any) => {
@@ -143,6 +168,7 @@ export default function RecordAIScreen() {
         !newFarmer.firstName ||
         !newFarmer.lastName ||
         !newFarmer.phone ||
+        !newFarmer.city ||
         !newFarmer.barangay ||
         (!newAnimal.animalId && !newAnimal.earTag) ||
         !newAnimal.breed
@@ -152,6 +178,10 @@ export default function RecordAIScreen() {
       }
       if (!/^09\d{9}$/.test(newFarmer.phone)) {
         toast.error("Phone number must start with 09 and be exactly 11 digits.");
+        return;
+      }
+      if (newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district) {
+        toast.error("Please select the Iloilo City district.");
         return;
       }
     } else {
@@ -173,8 +203,9 @@ export default function RecordAIScreen() {
             phoneNumber: newFarmer.phone,
             email: newFarmer.email || undefined,
             address: {
-              barangay: newFarmer.barangay,
+              barangay: formatBarangayWithDistrict(newFarmer.barangay, newFarmer.city, newFarmer.district),
               city: newFarmer.city,
+              district: newFarmer.city === ILOILO_CITY_NAME ? newFarmer.district : "",
             },
             animalDetails: newAnimal,
             inseminationDetails: {
@@ -205,8 +236,10 @@ export default function RecordAIScreen() {
             },
           };
 
-      await walkInInseminationMutation.mutateAsync(payload);
-      toast.success("AI Record saved successfully");
+      const result = await walkInInseminationMutation.mutateAsync(payload);
+      if (result.status === "synced") {
+        toast.success("AI Record saved successfully");
+      }
       router.back();
     } catch (err: any) {
       console.error(err);
@@ -361,19 +394,39 @@ export default function RecordAIScreen() {
                   />
                 </View>
               </View>
-              <View className="flex-row gap-3">
-                <View className="flex-1">
+              <View>
+                <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
+                  Municipality / City
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setAddressPicker("city")}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
+                >
+                  <Text
+                    className={`font-outfit-medium ${newFarmer.city ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
+                  >
+                    {newFarmer.city || "Select municipality or city"}
+                  </Text>
+                  <ChevronDown
+                    size={14}
+                    color={isDark ? "#6b7280" : "#94a3b8"}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {newFarmer.city === ILOILO_CITY_NAME && (
+                <View>
                   <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Barangay
+                    District
                   </Text>
                   <TouchableOpacity
-                    onPress={() => setShowBrgyModal(true)}
+                    onPress={() => setAddressPicker("district")}
                     className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                   >
                     <Text
-                      className={`font-outfit-medium ${newFarmer.barangay ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
+                      className={`font-outfit-medium ${newFarmer.district ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
                     >
-                      {newFarmer.barangay || "Select..."}
+                      {newFarmer.district || "Select district"}
                     </Text>
                     <ChevronDown
                       size={14}
@@ -381,16 +434,30 @@ export default function RecordAIScreen() {
                     />
                   </TouchableOpacity>
                 </View>
-                <View className="flex-1">
+              )}
+
+              <View>
                   <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Municipality
+                    Barangay
                   </Text>
-                  <TextInput
-                    className="bg-slate-100 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-400 dark:text-slate-500 font-outfit-medium"
-                    value="OTON"
-                    editable={false}
-                  />
-                </View>
+                  <TouchableOpacity
+                    onPress={() => setAddressPicker("barangay")}
+                    disabled={!newFarmer.city || (newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district)}
+                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
+                    style={{
+                      opacity: !newFarmer.city || (newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district) ? 0.6 : 1,
+                    }}
+                  >
+                    <Text
+                      className={`font-outfit-medium ${newFarmer.barangay ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
+                    >
+                      {newFarmer.barangay || (!newFarmer.city ? "Select city first" : newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district ? "Select district first" : "Select barangay")}
+                    </Text>
+                    <ChevronDown
+                      size={14}
+                      color={isDark ? "#6b7280" : "#94a3b8"}
+                    />
+                  </TouchableOpacity>
               </View>
             </View>
 
@@ -986,12 +1053,12 @@ export default function RecordAIScreen() {
         </View>
       </Modal>
 
-      {/* BARANGAY SELECTION MODAL */}
+      {/* ADDRESS SELECTION MODAL */}
       <Modal
         animationType="slide"
         transparent={true}
-        visible={showBrgyModal}
-        onRequestClose={() => setShowBrgyModal(false)}
+        visible={!!addressPicker}
+        onRequestClose={() => setAddressPicker(null)}
       >
         <View className="flex-1 bg-slate-900/40 justify-end">
           <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
@@ -1000,12 +1067,12 @@ export default function RecordAIScreen() {
                 style={{ fontFamily: "Outfit_900Black" }}
                 className="text-2xl text-slate-800 dark:text-white"
               >
-                Select Barangay
+                {addressPickerTitle}
               </Text>
               <TouchableOpacity
                 onPress={() => {
-                  setShowBrgyModal(false);
-                  setSearchBrgy("");
+                  setAddressPicker(null);
+                  setSearchAddress("");
                 }}
                 className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full"
               >
@@ -1015,22 +1082,28 @@ export default function RecordAIScreen() {
 
             <TextInput
               className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium mb-4"
-              placeholder="Search barangay..."
+              placeholder="Search..."
               placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-              value={searchBrgy}
-              onChangeText={setSearchBrgy}
+              value={searchAddress}
+              onChangeText={setSearchAddress}
             />
 
             <FlatList
-              data={filteredBarangays}
+              data={filteredAddressOptions}
               keyExtractor={(item) => item}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
-                    setNewFarmer({ ...newFarmer, barangay: item });
-                    setShowBrgyModal(false);
-                    setSearchBrgy("");
+                    if (addressPicker === "city") {
+                      setNewFarmer({ ...newFarmer, city: item, district: "", barangay: "" });
+                    } else if (addressPicker === "district") {
+                      setNewFarmer({ ...newFarmer, district: item, barangay: "" });
+                    } else {
+                      setNewFarmer({ ...newFarmer, barangay: item });
+                    }
+                    setAddressPicker(null);
+                    setSearchAddress("");
                   }}
                   className="py-4 border-b border-slate-50 dark:border-slate-800"
                 >

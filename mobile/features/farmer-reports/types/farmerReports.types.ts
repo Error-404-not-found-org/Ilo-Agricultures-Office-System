@@ -27,7 +27,7 @@ export interface ActivityFeedItem {
   title: string;
   description: string;
   date: string;
-  type: "ai" | "health" | "calving";
+  type: "ai" | "health" | "pregnancy" | "calving";
   animalId?: {
     _id: string;
     earTag?: string;
@@ -52,6 +52,7 @@ export interface ActivityFeedItem {
     diagnosis?: string;
     treatment?: string;
     advice?: string;
+    targetCalvingDate?: string;
 
     calvingEase?: string;
     numberOfCalves?: number;

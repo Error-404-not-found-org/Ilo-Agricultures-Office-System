@@ -11,6 +11,7 @@ interface AccountDetailsCardProps {
   onEditPhone: () => void;
   onUseCurrentContactAddress: () => void;
   isSavingLocation: boolean;
+  isLocationBusy: boolean;
 }
 
 const Divider = () => {
@@ -29,6 +30,7 @@ const AccountDetailsCard = ({
   onEditPhone,
   onUseCurrentContactAddress,
   isSavingLocation,
+  isLocationBusy,
 }: AccountDetailsCardProps) => {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
@@ -73,23 +75,16 @@ const AccountDetailsCard = ({
           className="px-5 pb-5"
           style={{ backgroundColor: colors.card }}
         >
-          {dbUser?.address?.detectedAddress ? (
-            <Text
-              className="font-outfit-medium text-xs leading-5 mb-3"
-              style={{ color: colors.textMuted, marginLeft: 52 }}
-            >
-              Detected near {dbUser.address.detectedAddress}
-            </Text>
-          ) : null}
           <TouchableOpacity
             onPress={onUseCurrentContactAddress}
-            disabled={isSavingLocation}
+            disabled={isLocationBusy}
             className="rounded-2xl py-3 flex-row items-center justify-center border"
             style={{
               backgroundColor: isSavingLocation
                 ? colors.card
                 : isDark ? "rgba(16, 185, 129, 0.08)" : "#f0fdf4",
               borderColor: isSavingLocation ? colors.border : (isDark ? "rgba(16, 185, 129, 0.3)" : "#bbf7d0"),
+              opacity: isLocationBusy && !isSavingLocation ? 0.6 : 1,
             }}
           >
             {isSavingLocation ? (

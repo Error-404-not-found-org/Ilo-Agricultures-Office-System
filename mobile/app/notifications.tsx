@@ -27,6 +27,7 @@ interface NotificationItem {
   title: string;
   message: string;
   type: "ai-request" | "health-request" | "system";
+  relatedId?: string;
   isRead: boolean;
   createdAt: string;
 }
@@ -153,6 +154,40 @@ export default function NotificationsScreen() {
     );
   };
 
+  const openNotification = (item: NotificationItem) => {
+    if (item.type === "ai-request" || item.type === "health-request") {
+      const requestId = item.relatedId || item._id;
+
+      if (role === "technician" || role === "veterinarian") {
+        router.push({
+          pathname: "/(technician)/request-details",
+          params: {
+            id: requestId,
+            notificationId: item._id,
+            type: item.type === "health-request" ? "health" : "ai",
+          },
+        } as any);
+        return;
+      }
+
+      if (role === "farmer") {
+        router.push({
+          pathname:
+            item.type === "health-request"
+              ? "/(farmer)/health-request-detail"
+              : "/(farmer)/ai-request-detail",
+          params: { id: requestId, notificationId: item._id },
+        } as any);
+        return;
+      }
+    }
+
+    router.push({
+      pathname: "/notification-details",
+      params: { id: item._id },
+    });
+  };
+
   const renderItem = ({ item }: { item: NotificationItem }) => (
     <TouchableOpacity
       activeOpacity={0.7}
@@ -165,10 +200,7 @@ export default function NotificationsScreen() {
           );
           queryClient.invalidateQueries({ queryKey: ["notifications"] });
         }
-        router.push({
-          pathname: "/notification-details",
-          params: { id: item._id },
-        });
+        openNotification(item);
       }}
     >
       {getIcon(item.type, item.isRead)}

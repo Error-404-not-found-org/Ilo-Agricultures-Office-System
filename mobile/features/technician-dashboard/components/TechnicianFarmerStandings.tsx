@@ -117,7 +117,10 @@ export function TechnicianFarmerStandings({
                 location={
                   typeof farmer.address === "string"
                     ? farmer.address
-                    : farmer.address?.barangay || "Oton, Iloilo"
+                    : [
+                        farmer.address?.barangay,
+                        farmer.address?.city,
+                      ].filter(Boolean).join(", ") || "Location not set"
                 }
                 phone={farmer.phone}
                 imageUrl={farmer.imageUrl}

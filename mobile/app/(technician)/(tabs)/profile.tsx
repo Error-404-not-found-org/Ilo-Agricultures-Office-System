@@ -42,7 +42,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 import { useApi } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { OTON_BARANGAYS } from "@/lib/constants";
+import {
+  getIloiloBarangayOptions,
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from "@/constants/address";
 
 const TechnicianProfile = () => {
   const { signOut } = useClerk();
@@ -71,6 +76,8 @@ const TechnicianProfile = () => {
     phoneNumber: "",
     street: "",
     barangay: "",
+    city: "",
+    district: "",
   });
 
   const [selectModal, setSelectModal] = React.useState({
@@ -86,9 +93,16 @@ const TechnicianProfile = () => {
         phoneNumber: dbUser.phoneNumber || "",
         street: dbUser.address?.street || "",
         barangay: dbUser.address?.barangay || "",
+        city: dbUser.address?.city || "",
+        district: dbUser.address?.district || "",
       });
     }
   }, [dbUser]);
+
+  const barangayOptions = React.useMemo(
+    () => getIloiloBarangayOptions(formData.city, formData.district),
+    [formData.city, formData.district],
+  );
 
   const mutation = useMutation({
     mutationFn: async (updatedData: any) => {
@@ -116,6 +130,12 @@ const TechnicianProfile = () => {
         phoneNumber: formData.phoneNumber,
       });
     } else if (editMode === "address") {
+      if (!formData.city) {
+        return toast.error("Municipality or city is required.");
+      }
+      if (formData.city === ILOILO_CITY_NAME && !formData.district) {
+        return toast.error("District is required for Iloilo City.");
+      }
       if (!formData.barangay) {
         return toast.error("Barangay is required.");
       }
@@ -123,9 +143,10 @@ const TechnicianProfile = () => {
         address: {
           street: formData.street,
           barangay: formData.barangay,
-          city: "Oton",
+          city: formData.city,
+          district: formData.city === ILOILO_CITY_NAME ? formData.district : "",
           province: "Iloilo",
-          zipCode: "5020",
+          zipCode: "",
           region: "Region VI",
         },
       });
@@ -298,7 +319,7 @@ const TechnicianProfile = () => {
               label="Service Barangay"
               value={
                 dbUser?.address?.barangay
-                  ? `${dbUser.address.street ? dbUser.address.street + ", " : ""}${dbUser.address.barangay}, Oton`
+                  ? `${dbUser.address.street ? dbUser.address.street + ", " : ""}${dbUser.address.barangay}, ${dbUser.address.city || "Iloilo"}`
                   : null
               }
               onPress={() => setEditMode("address")}
@@ -466,13 +487,12 @@ const TechnicianProfile = () => {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={{ flex: 1 }}
         >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={() => setEditMode(null)}
+          <View
             style={{
               flex: 1,
               backgroundColor: "rgba(0,0,0,0.5)",
-              justifyContent: "flex-end",
+              justifyContent: "center",
+              paddingHorizontal: 22,
             }}
           >
             <TouchableOpacity
@@ -480,10 +500,13 @@ const TechnicianProfile = () => {
               onPress={(e) => e.stopPropagation()}
               style={{
                 backgroundColor: colors.card,
-                borderTopLeftRadius: 32,
-                borderTopRightRadius: 32,
+                borderRadius: 28,
                 padding: 24,
-                paddingBottom: Math.max(insets.bottom, 40),
+                paddingBottom: Math.max(insets.bottom, 24),
+                shadowColor: "#000",
+                shadowOpacity: 0.18,
+                shadowRadius: 20,
+                elevation: 10,
               }}
             >
               <View
@@ -512,45 +535,109 @@ const TechnicianProfile = () => {
 
               <View style={{ gap: 0 }}>
                 {editMode === "phone" && (
-                  <View className="flex-row gap-3">
-                    <ProfileInputField
-                      label="Phone Number"
-                      value={formData.phoneNumber}
-                      onChangeText={(t: string) =>
-                        setFormData({ ...formData, phoneNumber: t })
-                      }
-                      placeholder="09XXXXXXXXX"
-                      keyboardType="phone-pad"
-                      maxLength={11}
-                    />
+                  <View>
+                    <Text
+                      className="font-outfit-medium text-sm leading-5 mb-5"
+                      style={{ color: colors.textMuted }}
+                    >
+                      Add or update the phone number farmers can use to contact
+                      you for AI, health assistance, and scheduled visits.
+                    </Text>
+                    <View className="flex-row">
+                      <ProfileInputField
+                        label="Phone Number"
+                        value={formData.phoneNumber}
+                        onChangeText={(t: string) =>
+                          setFormData({
+                            ...formData,
+                            phoneNumber: t.replace(/\D/g, "").slice(0, 11),
+                          })
+                        }
+                        placeholder="09XXXXXXXXX"
+                        keyboardType="phone-pad"
+                        maxLength={11}
+                        large
+                      />
+                    </View>
                   </View>
                 )}
 
                 {editMode === "address" && (
-                  <View className="flex-row gap-3">
-                    <ProfileInputField
-                      label="Purok / Street (Optional)"
-                      value={formData.street}
-                      onChangeText={(t: string) =>
-                        setFormData({ ...formData, street: t })
-                      }
-                      placeholder="Purok / Street"
-                      maxLength={50}
-                    />
+                  <View>
+                    <View className="flex-row">
+                      <ProfileInputField
+                        label="Purok / Street (Optional)"
+                        value={formData.street}
+                        onChangeText={(t: string) =>
+                          setFormData({ ...formData, street: t })
+                        }
+                        placeholder="Purok / Street"
+                        maxLength={80}
+                      />
+                    </View>
 
-                    <SelectField
-                      label="Barangay"
-                      value={formData.barangay}
-                      onPress={() =>
-                        setSelectModal({
-                          visible: true,
-                          title: "Select Barangay",
-                          options: OTON_BARANGAYS,
-                          onSelect: (val) =>
-                            setFormData({ ...formData, barangay: val }),
-                        })
-                      }
-                    />
+                    <View className="flex-row">
+                      <SelectField
+                        label="Municipality / City"
+                        value={formData.city}
+                        onPress={() =>
+                          setSelectModal({
+                            visible: true,
+                            title: "Select Municipality / City",
+                            options: ILOILO_MUNICIPALITY_OPTIONS,
+                            onSelect: (val) =>
+                              setFormData({
+                                ...formData,
+                                city: val,
+                                district: "",
+                                barangay: "",
+                              }),
+                          })
+                        }
+                      />
+                    </View>
+
+                    {formData.city === ILOILO_CITY_NAME && (
+                      <View className="flex-row">
+                        <SelectField
+                          label="District"
+                          value={formData.district}
+                          onPress={() =>
+                            setSelectModal({
+                              visible: true,
+                              title: "Select Iloilo City District",
+                              options: ILOILO_CITY_DISTRICT_OPTIONS,
+                              onSelect: (val) =>
+                                setFormData({
+                                  ...formData,
+                                  district: val,
+                                  barangay: "",
+                                }),
+                            })
+                          }
+                        />
+                      </View>
+                    )}
+
+                    <View className="flex-row">
+                      <SelectField
+                        label="Barangay"
+                        value={formData.barangay}
+                        onPress={() =>
+                          setSelectModal({
+                            visible: true,
+                            title: !formData.city
+                              ? "Select Municipality / City First"
+                              : formData.city === ILOILO_CITY_NAME && !formData.district
+                                ? "Select Iloilo City District First"
+                                : "Select Barangay",
+                            options: barangayOptions,
+                            onSelect: (val) =>
+                              setFormData({ ...formData, barangay: val }),
+                          })
+                        }
+                      />
+                    </View>
                   </View>
                 )}
 
@@ -585,7 +672,7 @@ const TechnicianProfile = () => {
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
-          </TouchableOpacity>
+          </View>
         </KeyboardAvoidingView>
       </Modal>
 
@@ -799,6 +886,7 @@ const ProfileInputField = ({
   keyboardType = "default",
   maxLength,
   secureTextEntry = false,
+  large = false,
 }: any) => {
   const { colors } = useTheme();
   return (
@@ -817,11 +905,15 @@ const ProfileInputField = ({
           keyboardType={keyboardType}
           maxLength={maxLength}
           secureTextEntry={secureTextEntry}
-          className="border rounded-2xl pl-4 pr-12 py-3 font-outfit-medium text-sm"
+          className="border rounded-2xl pl-4 pr-12 font-outfit-medium"
           style={{
             backgroundColor: colors.card,
             borderColor: colors.border,
             color: colors.textPrimary,
+            minHeight: large ? 58 : 48,
+            paddingTop: large ? 16 : 12,
+            paddingBottom: large ? 16 : 12,
+            fontSize: large ? 15 : 13,
           }}
           placeholderTextColor={colors.textMuted}
         />

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from "react";
-import { Alert, Text, TouchableOpacity, View, StatusBar } from "react-native";
+import { Text, TouchableOpacity, View, StatusBar } from "react-native";
 import { ArrowLeft, RefreshCw, Trash2, WifiOff } from "lucide-react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -18,6 +18,7 @@ import {
   StatusBadge,
 } from "@/features/farmer-ui/components";
 import { safeBack } from "@/utils/navigation";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 export default function FarmerSyncCenter() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function FarmerSyncCenter() {
   const [queue, setQueue] = useState<QueuedMutation[]>([]);
   const [history, setHistory] = useState<QueuedMutation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [discardTarget, setDiscardTarget] = useState<QueuedMutation | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -49,18 +51,14 @@ export default function FarmerSyncCenter() {
     }, [load])
   );
 
-  const discard = (item: QueuedMutation) =>
-    Alert.alert("Discard pending change?", item.description, [
-      { text: "Keep", style: "cancel" },
-      {
-        text: "Discard",
-        style: "destructive",
-        onPress: async () => {
-          await discardQueueItem(item.id);
-          load();
-        },
-      },
-    ]);
+  const discard = (item: QueuedMutation) => setDiscardTarget(item);
+
+  const confirmDiscard = async () => {
+    if (!discardTarget) return;
+    await discardQueueItem(discardTarget.id);
+    setDiscardTarget(null);
+    load();
+  };
 
   return (
     <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
@@ -201,7 +199,16 @@ export default function FarmerSyncCenter() {
           ) : null}
         </View>
       )}
+      <ConfirmationModal
+        visible={!!discardTarget}
+        onClose={() => setDiscardTarget(null)}
+        onConfirm={confirmDiscard}
+        title="Discard Pending Change?"
+        message={discardTarget?.description || "This queued change will be removed and will not sync later."}
+        confirmText="Discard"
+        cancelText="Keep"
+        isDestructive
+      />
     </FarmerScreen>
   );
 }
-

@@ -3,6 +3,7 @@ import { useApi } from "@/lib/api";
 import {
   getAnimalDetails,
   getAnimalMedicalRecords,
+  updateAnimalBasicInfo,
   updateReproductiveStatus,
   recordAiOutcomeForAnimal,
   deleteAnimal,
@@ -24,6 +25,20 @@ export function useAnimalMedicalRecordsQuery(id: string) {
     queryKey: animalKeys.medical(id),
     queryFn: () => getAnimalMedicalRecords(api, id),
     enabled: Boolean(id),
+  });
+}
+
+export function useUpdateAnimalBasicInfoMutation() {
+  const api = useApi();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) =>
+      updateAnimalBasicInfo(api, id, payload),
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: animalKeys.detail(variables.id) });
+      queryClient.invalidateQueries({ queryKey: animalKeys.mine() });
+    },
   });
 }
 

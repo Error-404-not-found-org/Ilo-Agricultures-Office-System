@@ -19,6 +19,7 @@ import { useTheme } from "@/lib/theme";
 import { safeBack } from "@/utils/navigation";
 import { generatePregnancyTimeline } from "@/lib/cattleCore";
 import { usePregnancyTrackerQuery } from "../hooks/usePregnancyTracker";
+import { Skeleton } from "@/components/ui/Skeleton";
 import {
   BreedingObservationType,
   BreedingObservationPayload,
@@ -40,12 +41,14 @@ const reportOptions: Array<{
   {
     value: "possible_pregnancy",
     title: "Possible pregnancy",
-    description: "The animal did not return to heat or shows possible pregnancy signs.",
+    description:
+      "The animal did not return to heat or shows possible pregnancy signs.",
   },
   {
     value: "return_to_heat",
     title: "Returned to heat",
-    description: "The animal shows heat signs after AI and may need another service.",
+    description:
+      "The animal shows heat signs after AI and may need another service.",
   },
   {
     value: "unsure",
@@ -75,6 +78,125 @@ const signsByReport: Record<BreedingObservationType, string[]> = {
   ],
 };
 
+function BreedingObservationSkeleton() {
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <FarmerScreen scroll={false}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Header matching real screen green banner */}
+      <View
+        style={{
+          paddingTop: insets.top + 16,
+          paddingHorizontal: 24,
+          paddingBottom: 24,
+          backgroundColor: "#00643B",
+          borderBottomLeftRadius: 30,
+          borderBottomRightRadius: 30,
+          flexDirection: "row",
+          alignItems: "center",
+        }}
+      >
+        <TouchableOpacity
+          disabled
+          className="w-10 h-10 rounded-full items-center justify-center"
+          style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
+        >
+          <ArrowLeft size={20} color="white" />
+        </TouchableOpacity>
+        <View className="ml-4 flex-1 gap-2">
+          <Skeleton
+            width="60%"
+            height={20}
+            radius={4}
+            style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
+          />
+          <Skeleton
+            width="40%"
+            height={10}
+            radius={3}
+            style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
+          />
+        </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          padding: 24,
+          paddingBottom: insets.bottom + 40,
+        }}
+      >
+        {/* Animal Info Card Skeleton */}
+        <View
+          className="rounded-3xl p-4 border mb-4 gap-3"
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+        >
+          <Skeleton width="30%" height={18} radius={4} />
+          <View className="gap-2">
+            <Skeleton width="95%" height={10} radius={2} />
+            <Skeleton width="70%" height={10} radius={2} />
+          </View>
+        </View>
+
+        {/* AI Milestones Card Skeleton */}
+        <View
+          className="rounded-3xl p-4 border mb-4 gap-3"
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+        >
+          <Skeleton width="35%" height={16} radius={4} />
+          <Skeleton width="20%" height={12} radius={3} />
+          <View className="gap-4 mt-2">
+            {[1, 2, 3, 4].map((idx) => (
+              <View key={idx} className="flex-row justify-between items-center">
+                <Skeleton width="40%" height={12} radius={3} />
+                <Skeleton width="30%" height={12} radius={3} />
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Observation Selector Title Skeleton */}
+        <Skeleton
+          width="50%"
+          height={20}
+          radius={4}
+          style={{ marginBottom: 12 }}
+        />
+
+        {/* Observation Cards Skeletons */}
+        <View className="gap-3 mb-5">
+          {[1, 2, 3].map((idx) => (
+            <View
+              key={idx}
+              className="rounded-2xl p-4 border flex-row items-center gap-3"
+              style={{
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              }}
+            >
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  backgroundColor: colors.border,
+                }}
+              />
+              <View className="flex-1 gap-2">
+                <Skeleton width="50%" height={14} radius={3} />
+                <Skeleton width="85%" height={10} radius={2} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </FarmerScreen>
+  );
+}
+
 export function BreedingObservationScreen({
   animalId,
   requestId,
@@ -87,16 +209,21 @@ export function BreedingObservationScreen({
   const animalQuery = usePregnancyTrackerQuery(animalId);
   const submitMutation = useSubmitBreedingObservation();
 
-  const [reportType, setReportType] = useState<BreedingObservationType>(defaultReport);
+  const [reportType, setReportType] =
+    useState<BreedingObservationType>(defaultReport);
   const [selectedSigns, setSelectedSigns] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
-  const [verificationRequested, setVerificationRequested] = useState(requestVerification);
+  const [verificationRequested, setVerificationRequested] =
+    useState(requestVerification);
 
   const animal = animalQuery.data;
   const latestInsemination = useMemo(() => {
     if (!animal?.inseminations?.length) return null;
     if (requestId) {
-      return animal.inseminations.find((item: any) => item._id === requestId) || animal.inseminations[0];
+      return (
+        animal.inseminations.find((item: any) => item._id === requestId) ||
+        animal.inseminations[0]
+      );
     }
     return animal.inseminations[0];
   }, [animal?.inseminations, requestId]);
@@ -107,10 +234,18 @@ export function BreedingObservationScreen({
     latestInsemination?.createdAt ||
     animal?.lastInseminationDate;
   const aiDate = aiDateValue ? new Date(aiDateValue) : null;
-  const timeline = aiDate && animal
-    ? generatePregnancyTimeline(aiDate, animal.species || "Cattle", undefined, animal.breed)
+  const timeline =
+    aiDate && animal
+      ? generatePregnancyTimeline(
+          aiDate,
+          animal.species || "Cattle",
+          undefined,
+          animal.breed,
+        )
+      : null;
+  const dayAfterAi = aiDate
+    ? Math.max(0, differenceInCalendarDays(new Date(), aiDate))
     : null;
-  const dayAfterAi = aiDate ? Math.max(0, differenceInCalendarDays(new Date(), aiDate)) : null;
   const verificationMinimumDay = reportType === "return_to_heat" ? 18 : 35;
   const verificationBlocked =
     dayAfterAi !== null && dayAfterAi < verificationMinimumDay;
@@ -160,20 +295,20 @@ export function BreedingObservationScreen({
       if (code === "VERIFICATION_TOO_EARLY") {
         const days = error?.response?.data?.daysSinceAI ?? 0;
         const minimumDays = error?.response?.data?.minimumDays ?? 35;
-        toast.error(`Verification is available after Day ${minimumDays}. Currently Day ${days}.`);
+        toast.error(
+          `Verification is available after Day ${minimumDays}. Currently Day ${days}.`,
+        );
         setVerificationRequested(false);
       } else {
-        toast.error(error?.response?.data?.message || "Failed to submit observation.");
+        toast.error(
+          error?.response?.data?.message || "Failed to submit observation.",
+        );
       }
     }
   };
 
   if (animalQuery.isLoading) {
-    return (
-      <FarmerScreen style={{ alignItems: "center", justifyContent: "center" }}>
-        <AsyncState state="loading" />
-      </FarmerScreen>
-    );
+    return <BreedingObservationSkeleton />;
   }
 
   if (animalQuery.isError || !animal) {
@@ -211,10 +346,22 @@ export function BreedingObservationScreen({
           <ArrowLeft size={20} color="white" />
         </TouchableOpacity>
         <View className="ml-4 flex-1">
-          <Text style={{ color: "white", fontFamily: "Outfit_900Black", fontSize: 22 }}>
+          <Text
+            style={{
+              color: "white",
+              fontFamily: "Outfit_900Black",
+              fontSize: 22,
+            }}
+          >
             Breeding Observation
           </Text>
-          <Text style={{ color: "rgba(255,255,255,0.75)", fontFamily: "Outfit_500Medium", fontSize: 12 }}>
+          <Text
+            style={{
+              color: "rgba(255,255,255,0.75)",
+              fontFamily: "Outfit_500Medium",
+              fontSize: 12,
+            }}
+          >
             Tell the technician what you observed
           </Text>
         </View>
@@ -222,42 +369,94 @@ export function BreedingObservationScreen({
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 24, paddingBottom: insets.bottom + 40 }}
+        contentContainerStyle={{
+          padding: 24,
+          paddingBottom: insets.bottom + 40,
+        }}
       >
         <View
           className="rounded-3xl p-4 border mb-4"
           style={{ backgroundColor: colors.card, borderColor: colors.border }}
         >
-          <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_800ExtraBold", fontSize: 16 }}>
+          <Text
+            style={{
+              color: colors.textPrimary,
+              fontFamily: "Outfit_800ExtraBold",
+              fontSize: 16,
+            }}
+          >
             {animal.earTag || animal.animalId}
           </Text>
-          <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 12, marginTop: 4 }}>
-            This report records your observation only. A technician pregnancy check is still required to confirm pregnancy.
+          <Text
+            style={{
+              color: colors.textSecondary,
+              fontFamily: "Outfit_500Medium",
+              fontSize: 12,
+              marginTop: 4,
+            }}
+          >
+            This report records your observation only. A technician pregnancy
+            check is still required to confirm pregnancy.
           </Text>
         </View>
 
         {timeline ? (
           <View
             className="rounded-3xl p-4 border mb-4"
-            style={{ backgroundColor: isDark ? colors.card : "#ecfdf5", borderColor: colors.border }}
+            style={{
+              backgroundColor: isDark ? colors.card : "#ecfdf5",
+              borderColor: colors.border,
+            }}
           >
-            <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_800ExtraBold", fontSize: 15 }}>
+            <Text
+              style={{
+                color: colors.textPrimary,
+                fontFamily: "Outfit_800ExtraBold",
+                fontSize: 15,
+              }}
+            >
               AI Milestones
             </Text>
-            <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 12, marginTop: 4 }}>
-              {dayAfterAi === null ? "AI date unavailable" : `Day ${dayAfterAi} after AI`}
+            <Text
+              style={{
+                color: colors.textSecondary,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 12,
+                marginTop: 4,
+              }}
+            >
+              {dayAfterAi === null
+                ? "AI date unavailable"
+                : `Day ${dayAfterAi} after AI`}
             </Text>
-            {([
-              ["Heat return check", timeline.heatReturnCheckDate],
-              ["Ultrasound window", timeline.ultrasoundCheckDate],
-              ["Pregnancy check", timeline.palpationCheckDate],
-              ["Expected calving", timeline.expectedCalvingDate],
-            ] as Array<[string, Date]>).map(([label, value]) => (
-              <View key={String(label)} className="flex-row justify-between mt-3">
-                <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_600SemiBold", fontSize: 12 }}>
+            {(
+              [
+                ["Heat return check", timeline.heatReturnCheckDate],
+                ["Ultrasound window", timeline.ultrasoundCheckDate],
+                ["Pregnancy check", timeline.palpationCheckDate],
+                ["Expected calving", timeline.expectedCalvingDate],
+              ] as Array<[string, Date]>
+            ).map(([label, value]) => (
+              <View
+                key={String(label)}
+                className="flex-row justify-between mt-3"
+              >
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 12,
+                  }}
+                >
                   {label}
                 </Text>
-                <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_800ExtraBold", fontSize: 12 }}>
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_800ExtraBold",
+                    fontSize: 12,
+                  }}
+                >
                   {format(value as Date, "MMM d, yyyy")}
                 </Text>
               </View>
@@ -265,7 +464,14 @@ export function BreedingObservationScreen({
           </View>
         ) : null}
 
-        <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_900Black", fontSize: 18, marginBottom: 12 }}>
+        <Text
+          style={{
+            color: colors.textPrimary,
+            fontFamily: "Outfit_900Black",
+            fontSize: 18,
+            marginBottom: 12,
+          }}
+        >
           What did you observe?
         </Text>
         <View className="gap-3 mb-5">
@@ -280,16 +486,38 @@ export function BreedingObservationScreen({
                 }}
                 className="rounded-2xl p-4 border flex-row"
                 style={{
-                  backgroundColor: active ? (isDark ? "rgba(16,185,129,0.16)" : "#ecfdf5") : colors.card,
+                  backgroundColor: active
+                    ? isDark
+                      ? "rgba(16,185,129,0.16)"
+                      : "#ecfdf5"
+                    : colors.card,
                   borderColor: active ? colors.primary : colors.border,
                 }}
               >
-                {active ? <CheckCircle2 size={20} color={colors.primary} /> : <Circle size={20} color={colors.textMuted} />}
+                {active ? (
+                  <CheckCircle2 size={20} color={colors.primary} />
+                ) : (
+                  <Circle size={20} color={colors.textMuted} />
+                )}
                 <View className="ml-3 flex-1">
-                  <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_800ExtraBold", fontSize: 14 }}>
+                  <Text
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_800ExtraBold",
+                      fontSize: 14,
+                    }}
+                  >
                     {option.title}
                   </Text>
-                  <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 12, marginTop: 3, lineHeight: 17 }}>
+                  <Text
+                    style={{
+                      color: colors.textSecondary,
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 12,
+                      marginTop: 3,
+                      lineHeight: 17,
+                    }}
+                  >
                     {option.description}
                   </Text>
                 </View>
@@ -298,7 +526,14 @@ export function BreedingObservationScreen({
           })}
         </View>
 
-        <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_900Black", fontSize: 18, marginBottom: 12 }}>
+        <Text
+          style={{
+            color: colors.textPrimary,
+            fontFamily: "Outfit_900Black",
+            fontSize: 18,
+            marginBottom: 12,
+          }}
+        >
           Signs observed
         </Text>
         <View className="flex-row flex-wrap gap-2 mb-5">
@@ -348,19 +583,43 @@ export function BreedingObservationScreen({
           className="rounded-2xl p-4 border flex-row items-center justify-between mb-6"
           style={{
             backgroundColor: colors.card,
-            borderColor: verificationBlocked ? (isDark ? "rgba(234, 179, 8, 0.3)" : "#fef3c7") : colors.border,
+            borderColor: verificationBlocked
+              ? isDark
+                ? "rgba(234, 179, 8, 0.3)"
+                : "#fef3c7"
+              : colors.border,
           }}
         >
           <View className="flex-1 pr-4">
-            <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_800ExtraBold", fontSize: 14 }}>
+            <Text
+              style={{
+                color: colors.textPrimary,
+                fontFamily: "Outfit_800ExtraBold",
+                fontSize: 14,
+              }}
+            >
               Request technician verification
             </Text>
             {verificationBlocked ? (
-              <Text style={{ color: isDark ? "#fbbf24" : "#b45309", fontFamily: "Outfit_500Medium", fontSize: 11, marginTop: 3 }}>
+              <Text
+                style={{
+                  color: isDark ? "#fbbf24" : "#b45309",
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 11,
+                  marginTop: 3,
+                }}
+              >
                 {verificationNotice} Currently Day {dayAfterAi}.
               </Text>
             ) : (
-              <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 12, marginTop: 3 }}>
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                  marginTop: 3,
+                }}
+              >
                 Adds this to the technician pregnancy check queue.
               </Text>
             )}
@@ -377,14 +636,24 @@ export function BreedingObservationScreen({
           onPress={submit}
           disabled={submitMutation.isPending}
           className="rounded-2xl py-4 items-center justify-center flex-row"
-          style={{ backgroundColor: colors.primary, opacity: submitMutation.isPending ? 0.7 : 1 }}
+          style={{
+            backgroundColor: colors.primary,
+            opacity: submitMutation.isPending ? 0.7 : 1,
+          }}
         >
           {submitMutation.isPending ? (
             <ActivityIndicator color="white" />
           ) : (
             <>
               <Send size={18} color="white" />
-              <Text style={{ color: "white", fontFamily: "Outfit_900Black", fontSize: 14, marginLeft: 8 }}>
+              <Text
+                style={{
+                  color: "white",
+                  fontFamily: "Outfit_900Black",
+                  fontSize: 14,
+                  marginLeft: 8,
+                }}
+              >
                 Submit Observation
               </Text>
             </>

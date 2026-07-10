@@ -8,6 +8,7 @@ import {
   Modal,
   FlatList,
   Alert,
+  Image,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -93,6 +94,15 @@ export default function UserDetailScreen() {
   };
 
   const isSuspended = user.status === "suspended";
+  const formattedAddress = user.address
+    ? [
+        user.address.street,
+        user.address.barangay,
+        user.address.district,
+        user.address.city,
+        user.address.province,
+      ].filter((part: string | undefined) => part && part !== "N/A").join(", ")
+    : "";
 
   return (
     <ScreenLayout>
@@ -128,31 +138,39 @@ export default function UserDetailScreen() {
       >
         {/* Profile Card */}
         <View className="bg-white dark:bg-slate-800 rounded-[32px] p-6 shadow-sm border border-slate-100 dark:border-slate-700 mb-6 items-center">
-          <View
-            className="w-20 h-20 rounded-full items-center justify-center mb-4"
-            style={{
-              backgroundColor:
-                user.role === "admin"
-                  ? "#FEF3C7"
-                  : user.role === "technician"
-                  ? "#DBEAFE"
-                  : "#D1FAE5",
-            }}
-          >
-            <Text
-              className="text-3xl font-outfit-black"
+          {user.imageUrl ? (
+            <Image
+              source={{ uri: user.imageUrl }}
+              className="w-20 h-20 rounded-full mb-4"
+              style={{ borderWidth: 2, borderColor: colors.border }}
+            />
+          ) : (
+            <View
+              className="w-20 h-20 rounded-full items-center justify-center mb-4"
               style={{
-                color:
+                backgroundColor:
                   user.role === "admin"
-                    ? "#92400e"
+                    ? "#FEF3C7"
                     : user.role === "technician"
-                    ? "#1d4ed8"
-                    : "#065f46",
+                    ? "#DBEAFE"
+                    : "#D1FAE5",
               }}
             >
-              {user.name?.charAt(0)?.toUpperCase() || "?"}
-            </Text>
-          </View>
+              <Text
+                className="text-3xl font-outfit-black"
+                style={{
+                  color:
+                    user.role === "admin"
+                      ? "#92400e"
+                      : user.role === "technician"
+                      ? "#1d4ed8"
+                      : "#065f46",
+                }}
+              >
+                {user.name?.charAt(0)?.toUpperCase() || "?"}
+              </Text>
+            </View>
+          )}
 
           <Text className="text-xl font-outfit-bold text-center mb-1" style={{ color: colors.textPrimary }}>
             {user.name || "No Name"}
@@ -234,11 +252,7 @@ export default function UserDetailScreen() {
               <View className="flex-1">
                 <Text className="text-slate-400 text-xs font-outfit-medium">Home Address</Text>
                 <Text className="text-[14px] font-outfit-semibold" style={{ color: colors.textPrimary }}>
-                  {user.address
-                    ? `${user.address.barangay || ""}, ${user.address.city || ""}, ${
-                        user.address.province || ""
-                      }`
-                    : "No address registered"}
+                  {formattedAddress || "No address registered"}
                 </Text>
               </View>
             </View>

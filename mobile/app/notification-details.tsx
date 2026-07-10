@@ -79,7 +79,6 @@ export default function NotificationDetailsScreen() {
   const isFarmer = role === 'farmer';
   const [data, setData] = useState<NotificationDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -100,35 +99,6 @@ export default function NotificationDetailsScreen() {
     };
     fetchDetails();
   }, [id, api]);
-
-  const handleAction = async () => {
-    if (!data || isUpdating || !data.relatedData) return;
-    setIsUpdating(true);
-    try {
-      const { notification, relatedData } = data;
-      const endpoint = notification.type === 'ai-request' 
-        ? `/ai-request/${relatedData._id}/status` 
-        : `/health-request/${relatedData._id}/status`;
-      
-      const nextStatus = notification.type === 'ai-request' ? 'approved' : 'in-progress';
-      
-      await api.patch(endpoint, { 
-        status: nextStatus,
-        technicianNote: "Handled via notification." 
-      });
-
-      toast.success(`Request marked as ${nextStatus}!`);
-      
-      // Refresh local data
-      const res = await api.get(`/notifications/${id}`);
-      setData(res.data);
-    } catch (error: any) {
-      console.error("Failed to update status:", error);
-      toast.error(error.response?.data?.message || "Failed to update request status.");
-    } finally {
-      setIsUpdating(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -151,6 +121,34 @@ export default function NotificationDetailsScreen() {
 
   const { notification, relatedData } = data;
   const isAI = notification.type === 'ai-request';
+  const isComplete = ["done", "resolved", "completed", "cancelled", "rejected"].includes(
+    String(relatedData?.status || "").toLowerCase(),
+  );
+
+  const openLinkedRequest = () => {
+    if (!relatedData?._id) return;
+
+    if (role === "technician" || role === "veterinarian") {
+      router.push({
+        pathname: "/(technician)/request-details",
+        params: {
+          id: relatedData._id,
+          type: notification.type === "health-request" ? "health" : "ai",
+        },
+      } as any);
+      return;
+    }
+
+    if (role === "farmer") {
+      router.push({
+        pathname:
+          notification.type === "health-request"
+            ? "/(farmer)/health-request-detail"
+            : "/(farmer)/ai-request-detail",
+        params: { id: relatedData._id },
+      } as any);
+    }
+  };
 
   return (
     <View className="flex-1 bg-[#F9FAFB]">
@@ -404,28 +402,27 @@ export default function NotificationDetailsScreen() {
 
           const buttonText = isLocked
             ? `Locked by ${reqTechName}`
-            : relatedData.status === 'pending'
-              ? 'Approve & Handle Request'
-              : `Status: ${relatedData.status}`;
+            : isComplete
+              ? "Open Completed Service"
+              : "Open Request Details";
 
           return (
             <View className="px-6 mt-4">
                 <TouchableOpacity 
-                    disabled={isUpdating || relatedData.status !== 'pending' || isLocked}
-                    className={`py-5 rounded-[22px] items-center justify-center flex-row shadow-sm ${relatedData.status !== 'pending' || isLocked ? 'bg-slate-350 dark:bg-slate-800' : isAI ? 'bg-[#00643B]' : 'bg-amber-600'}`}
-                    onPress={handleAction}
+                    disabled={isLocked}
+                    className={`py-5 rounded-[22px] items-center justify-center flex-row shadow-sm ${isLocked ? 'bg-slate-350 dark:bg-slate-800' : isAI ? 'bg-[#00643B]' : 'bg-amber-600'}`}
+                    onPress={openLinkedRequest}
                 >
-                    {isUpdating ? (
-                        <ActivityIndicator color="white" />
-                    ) : (
-                        <>
-                            <CheckCircle2 size={24} color="white" />
-                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white font-black text-lg ml-2">
-                                {buttonText}
-                            </Text>
-                        </>
-                    )}
+                    <CheckCircle2 size={24} color="white" />
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white font-black text-lg ml-2">
+                        {buttonText}
+                    </Text>
                 </TouchableOpacity>
+                {!isLocked && (
+                  <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-slate-400 text-xs text-center mt-3">
+                    Use the full technician screen to schedule, record, or review this service.
+                  </Text>
+                )}
             </View>
           );
         })()}

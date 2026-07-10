@@ -9,6 +9,14 @@ export interface Client {
   name: string;
   email?: string;
   phoneNumber?: string;
+  clerkId?: string;
+  registeredByTechnician?: boolean;
+  profileClaimStatus?: "none" | "unclaimed" | "claimed" | "blocked";
+  profileClaimedAt?: string | Date | null;
+  phoneVerification?: {
+    isVerified?: boolean;
+    verifiedAt?: string | Date | null;
+  };
   isVerified?: boolean;
   imageUrl?: string;
   address?: string | ClientAddress;

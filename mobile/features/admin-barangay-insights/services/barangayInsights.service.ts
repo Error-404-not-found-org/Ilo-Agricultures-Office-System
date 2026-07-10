@@ -2,6 +2,9 @@ import { AxiosInstance } from "axios";
 
 export interface BarangayInsightItem {
   barangay: string;
+  municipality?: string;
+  city?: string;
+  district?: string;
   farmersCount: number;
   animalsCount: number;
   activePregnancies: number;

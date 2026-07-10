@@ -1,10 +1,10 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { Alert, Share } from "react-native";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/clerk-expo";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
-import { listUsers, deleteUser, suspendUser, reactivateUser, verifyUser } from "../services/adminUsers.service";
+import { listUsers, deleteUser, suspendUser, reactivateUser, verifyUser, getArchivedUsers, restoreUser } from "../services/adminUsers.service";
 import { UserItem } from "../types/adminUsers.types";
 
 const ITEMS_PER_PAGE = 20;
@@ -16,6 +16,7 @@ export interface UserStats {
   admins: number;
   suspended: number;
   pendingVerification: number;
+  archived: number;
 }
 
 export const useAdminUsers = (initialSearch: string = "") => {
@@ -24,15 +25,30 @@ export const useAdminUsers = (initialSearch: string = "") => {
   const { isSignedIn, isLoaded } = useAuth();
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "suspended" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "suspended" | "pending" | "deleted">("all");
   const [page, setPage] = useState(1);
 
-  const { data: users = [], isLoading, isError, refetch, isRefetching } = useQuery<UserItem[]>({
+  const { data: users = [], isLoading: isUsersLoading, isError: isUsersError, refetch: refetchActive, isRefetching: isRefetchingActive } = useQuery<UserItem[]>({
     queryKey: ["admin-users"],
     enabled: isLoaded && isSignedIn,
     queryFn: () => listUsers(api),
     staleTime: 1000 * 60 * 2,
   });
+
+  const { data: archivedUsers = [], isLoading: isArchivedLoading, isError: isArchivedError, refetch: refetchArchived, isRefetching: isRefetchingArchived } = useQuery<UserItem[]>({
+    queryKey: ["admin-archived-users"],
+    enabled: isLoaded && isSignedIn,
+    queryFn: () => getArchivedUsers(api),
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const isLoading = isUsersLoading || isArchivedLoading;
+  const isError = isUsersError || isArchivedError;
+  const isRefetching = isRefetchingActive || isRefetchingArchived;
+
+  const refetch = async () => {
+    await Promise.all([refetchActive(), refetchArchived()]);
+  };
 
   const { data: allAnimals = [] } = useQuery({
     queryKey: ["admin-all-animals", "counts-preview", 1, 50],
@@ -53,8 +69,9 @@ export const useAdminUsers = (initialSearch: string = "") => {
       admins: users.filter((u) => u.role === "admin").length,
       suspended: users.filter((u) => u.status === "suspended").length,
       pendingVerification: users.filter((u) => !u.isVerified).length,
+      archived: archivedUsers.length,
     };
-  }, [users]);
+  }, [users, archivedUsers]);
 
   // ── Animal & Technician Computed Maps ────────────────────────
   const animalCountMap = useMemo(() => {
@@ -89,7 +106,7 @@ export const useAdminUsers = (initialSearch: string = "") => {
 
   // ── Enhanced Filtering (role + status + search) ──────────────
   const filteredUsers = useMemo(() => {
-    let result = users;
+    let result = statusFilter === "deleted" ? archivedUsers : users;
 
     // Role filter
     if (roleFilter !== "all") {
@@ -116,7 +133,7 @@ export const useAdminUsers = (initialSearch: string = "") => {
     }
 
     return result;
-  }, [users, searchQuery, roleFilter, statusFilter]);
+  }, [users, archivedUsers, searchQuery, roleFilter, statusFilter]);
 
   // ── Pagination ───────────────────────────────────────────────
   const totalPages = Math.max(1, Math.ceil(filteredUsers.length / ITEMS_PER_PAGE));
@@ -209,6 +226,17 @@ export const useAdminUsers = (initialSearch: string = "") => {
     }
   }, [api, queryClient]);
 
+  const handleRestoreUser = useCallback(async (userItem: UserItem) => {
+    try {
+      await restoreUser(api, userItem._id);
+      toast.success(`${userItem.name || "User"} successfully restored.`);
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-archived-users"] });
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Failed to restore user.");
+    }
+  }, [api, queryClient]);
+
   return {
     searchQuery,
     setSearchQuery,
@@ -229,6 +257,7 @@ export const useAdminUsers = (initialSearch: string = "") => {
     handleUserPress,
     handleSuspendUser,
     handleVerifyUser,
+    handleRestoreUser,
     animalCountMap,
     techAssignedFarmersMap,
   };

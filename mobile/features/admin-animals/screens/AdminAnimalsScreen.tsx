@@ -181,7 +181,7 @@ export default function AdminAnimalsScreen() {
                 item={item}
                 isIncomplete={isIncomplete}
                 onPress={() => {
-                  setNoticeVisible(true);
+                  router.push({ pathname: "/(admin)/animal-details" as any, params: { id: item._id } });
                 }}
                 onLongPress={() => {
                   setActiveAnimalForDialog(item);

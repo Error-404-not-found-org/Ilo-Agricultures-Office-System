@@ -43,9 +43,10 @@ export function SelectDropdown({
   };
 
   const filteredOptions = searchable
-    ? options.filter((opt) =>
-        opt.label.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+    ? options.filter((opt) => {
+        const labelStr = typeof opt?.label === "string" ? opt.label : String(opt?.label || "");
+        return labelStr.toLowerCase().includes(searchQuery.toLowerCase());
+      })
     : options;
 
   const isSelected = value !== "all" && value !== "All";

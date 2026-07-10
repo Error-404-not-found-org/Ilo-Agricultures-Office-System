@@ -42,6 +42,16 @@ export const useAdminDashboard = () => {
     refetchInterval: 1000 * 30, // telemetry updates every 30s
   });
 
+  const barangaysQuery = useQuery({
+    queryKey: ["admin-barangays-insights"],
+    enabled: isLoaded && isSignedIn,
+    queryFn: async () => {
+      const res = await api.get("/admin/barangays/insights");
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
   const backupMutation = useMutation({
     mutationFn: () => triggerDatabaseBackup(api),
     onSuccess: () => {
@@ -60,6 +70,11 @@ export const useAdminDashboard = () => {
     monitoring: monitoringQuery.data,
     isMonitoringLoading: monitoringQuery.isLoading,
     refetchMonitoring: monitoringQuery.refetch,
+
+    barangays: barangaysQuery.data || [],
+    isBarangaysLoading: barangaysQuery.isLoading,
+    refetchBarangays: barangaysQuery.refetch,
+
     triggerBackup: backupMutation.mutateAsync,
     isBackingUp: backupMutation.isPending,
   };

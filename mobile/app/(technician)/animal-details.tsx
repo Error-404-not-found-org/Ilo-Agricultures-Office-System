@@ -1504,7 +1504,7 @@ export default function AnimalDetails() {
             <View className="px-6">
               {loadingTimeline && timelineEvents.length === 0 ? (
                 <TimelineSkeleton />
-              ) : timelineEvents.length > 0 ? (
+              ) : (
                 <View className="mb-5">
                   <Text
                     className="mb-3"
@@ -1523,7 +1523,18 @@ export default function AnimalDetails() {
                       setTimelineFilter(newF);
                     }}
                   />
-                  {hasNextTimelinePage && (
+                  {timelineEvents.length === 0 ? (
+                    <View className="rounded-[32px] p-8 items-center mt-4 border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                      <History size={32} color={colors.textMuted} />
+                      <Text style={{ fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }} className="text-lg mt-2 mb-1">
+                        No Timeline Events
+                      </Text>
+                      <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textSecondary }} className="text-center text-xs leading-5">
+                        This animal does not have any timeline events matching the filter.
+                      </Text>
+                    </View>
+                  ) : null}
+                  {hasNextTimelinePage && timelineEvents.length > 0 && (
                     <TouchableOpacity
                       onPress={() => fetchNextTimelinePage()}
                       disabled={isFetchingNextTimelinePage}
@@ -1535,16 +1546,6 @@ export default function AnimalDetails() {
                       </Text>
                     </TouchableOpacity>
                   )}
-                </View>
-              ) : (
-                <View className="rounded-[32px] p-8 items-center mt-4 border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-                  <History size={32} color={colors.textMuted} />
-                  <Text style={{ fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }} className="text-lg mt-2 mb-1">
-                    No Timeline Events
-                  </Text>
-                  <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textSecondary }} className="text-center text-xs leading-5">
-                    This animal does not have any timeline events matching the filter.
-                  </Text>
                 </View>
               )}
             </View>

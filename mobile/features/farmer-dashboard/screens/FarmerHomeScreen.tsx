@@ -79,6 +79,9 @@ export function FarmerHomeScreen() {
     animalName: string;
   } | null>(null);
 
+  const [showWelcomeModal, setShowWelcomeModal] = React.useState(false);
+  const [hasPromptedWelcome, setHasPromptedWelcome] = React.useState(false);
+
   const { data: profile, isLoading } = profileQuery;
   const { data: unreadCountData } = unreadCountQuery;
 
@@ -92,6 +95,46 @@ export function FarmerHomeScreen() {
   const hasFarmPin = Boolean(
     profile?.farmLocation?.latitude && profile?.farmLocation?.longitude,
   );
+  const hasPhone = Boolean(profile?.phoneNumber);
+
+  React.useEffect(() => {
+    if (
+      !isLoading &&
+      profile &&
+      (!hasFarmPin || !hasPhone) &&
+      !hasPromptedWelcome
+    ) {
+      setShowWelcomeModal(true);
+      setHasPromptedWelcome(true);
+    }
+  }, [isLoading, profile, hasFarmPin, hasPhone, hasPromptedWelcome]);
+
+  const getWelcomeModalContent = () => {
+    if (!hasFarmPin && !hasPhone) {
+      return {
+        title: "Welcome to BreedSmart! 👋",
+        description:
+          "We're excited to have you! To help our technicians find your farm easily and contact you for visits, please take a quick moment to set your farm location and phone number.",
+        buttonText: "Complete Profile",
+      };
+    } else if (!hasFarmPin) {
+      return {
+        title: "Set Farm Location 📍",
+        description:
+          "To help our technicians find your farm easily and assist your cattle faster during visits, please take a quick moment to pin your location.",
+        buttonText: "Set Farm Location",
+      };
+    } else {
+      return {
+        title: "Add Phone Number 📞",
+        description:
+          "To help our technicians get in touch with you and coordinate visits, please take a quick moment to add your phone number.",
+        buttonText: "Add Phone Number",
+      };
+    }
+  };
+
+  const modalContent = getWelcomeModalContent();
   const currentDate = format(new Date(), "EEEE, d MMM yyyy");
 
   const { data: upcomingVisits } = upcomingVisitsQuery;
@@ -328,46 +371,6 @@ export function FarmerHomeScreen() {
           </View>
         </View>
 
-        {!isLoading && !hasFarmPin ? (
-          <View className="px-6 mb-8">
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => router.push("/(farmer)/(tabs)/profile")}
-              className="rounded-2xl border p-4 flex-row items-start"
-              style={{
-                backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#fffbeb",
-                borderColor: isDark ? "rgba(245,158,11,0.28)" : "#fde68a",
-              }}
-            >
-              <View
-                className="w-10 h-10 rounded-xl items-center justify-center mr-3"
-                style={{
-                  backgroundColor: isDark
-                    ? "rgba(245,158,11,0.16)"
-                    : "#fef3c7",
-                }}
-              >
-                <MapPin size={20} color="#d97706" />
-              </View>
-              <View className="flex-1">
-                <Text
-                  className="font-outfit-black text-sm"
-                  style={{ color: isDark ? "#fbbf24" : "#92400e" }}
-                >
-                  Farm location missing
-                </Text>
-                <Text
-                  className="font-outfit-medium text-xs leading-5 mt-1"
-                  style={{ color: isDark ? "#fde68a" : "#92400e" }}
-                >
-                  Save your exact farm pin so technicians can find your cattle
-                  faster during visits.
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-
         {/* --- QUICK ACTIONS --- */}
         <View className="px-6 mb-8">
           <View
@@ -404,7 +407,7 @@ export function FarmerHomeScreen() {
                 title={t("addCow")}
                 icon={<Plus size={24} color={isDark ? "#fbbf24" : "#713F12"} />}
                 iconBg={isDark ? "rgba(251,191,36,0.15)" : "#FEF9C3"}
-                onPress={() => router.push("/(farmer)/(tabs)/add-animal")}
+                onPress={() => router.push("/(farmer)/register-animal" as any)}
               />
               <QuickActionItem
                 title={t("askMoowie")}
@@ -488,127 +491,6 @@ export function FarmerHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* --- PENDING OUTCOME CARD (Dynamic) --- */}
-        {pendingOutcomes && pendingOutcomes.length > 0 && (
-          <View className="px-6 mb-8">
-            <View
-              className="border rounded-3xl p-5"
-              style={{
-                backgroundColor: isDark ? "#102A20" : "#EAF7EE",
-                borderColor: isDark ? "#24563A" : "#B7DFC4",
-              }}
-            >
-              <View className="flex-row justify-between items-center mb-3">
-                <View className="flex-row items-center">
-                  <MaterialCommunityIcons
-                    name="baby-face-outline"
-                    size={20}
-                    color={isDark ? colors.primary : PRIMARY}
-                  />
-                  <Text className="text-slate-800 dark:text-white font-outfit-bold ml-2 text-base">
-                    AI Outcome Check
-                  </Text>
-                </View>
-                {pendingOutcomes.length > 1 && (
-                  <TouchableOpacity
-                    onPress={() => setShowAllOutcomes(!showAllOutcomes)}
-                  >
-                    <Text className="text-emerald-700 dark:text-emerald-400 font-outfit-bold text-[12px]">
-                      {showAllOutcomes
-                        ? "Show Less"
-                        : `+${pendingOutcomes.length - 1} more`}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              {(showAllOutcomes
-                ? pendingOutcomes
-                : pendingOutcomes.slice(0, 1)
-              ).map((req: any, idx: number) => (
-                <View
-                  key={req._id}
-                  className={`bg-white/60 dark:bg-slate-900/60 p-4 rounded-3xl ${idx > 0 ? "mt-3" : ""}`}
-                >
-                  <View className="flex-row items-center">
-                    <Image
-                      source={getAnimalImageSource(req.animalId || {})}
-                      className="w-14 h-14 rounded-md"
-                      resizeMode="cover"
-                    />
-                    <View className="flex-1 ml-3">
-                      <Text className="font-outfit-bold text-slate-800 dark:text-white text-[14px]">
-                        Did {req.animalId?.earTag || req.animalId?.animalId}{" "}
-                        conceive?
-                      </Text>
-                      <Text className="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5 font-outfit-medium">
-                        Inseminated{" "}
-                        {format(
-                          new Date(req.inseminationDate || req.createdAt),
-                          "MMM d, yyyy",
-                        )}
-                      </Text>
-                      <Text className="text-emerald-700 dark:text-emerald-400 text-[10px] mt-1 font-outfit-bold">
-                        Outcome confirmation needed
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className="flex-row gap-2 mt-3">
-                    <TouchableOpacity
-                      onPress={() =>
-                        handleOutcome(
-                          req._id,
-                          true,
-                          req.animalId?.earTag || req.animalId?.animalId,
-                          req.animalId?._id,
-                          req,
-                        )
-                      }
-                      disabled={outcomeMutation.isPending}
-                      className="bg-[#00643B] dark:bg-emerald-600 flex-1 h-10 rounded-lg items-center justify-center flex-row gap-1.5"
-                      style={{ opacity: outcomeMutation.isPending ? 0.7 : 1 }}
-                    >
-                      {outcomeMutation.isPending ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <Text className="text-white font-outfit-bold text-xs">
-                          Yes, Pregnant!
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() =>
-                        handleOutcome(
-                          req._id,
-                          false,
-                          req.animalId?.earTag || req.animalId?.animalId,
-                          req.animalId?._id,
-                          req,
-                        )
-                      }
-                      disabled={outcomeMutation.isPending}
-                      className="bg-white dark:bg-slate-800 flex-1 h-10 rounded-lg items-center border border-red-100 dark:border-slate-700 justify-center flex-row gap-1.5"
-                      style={{
-                        borderColor: isDark ? colors.border : "#fee2e2",
-                        opacity: outcomeMutation.isPending ? 0.7 : 1,
-                      }}
-                    >
-                      {outcomeMutation.isPending ? (
-                        <ActivityIndicator size="small" color="#dc2626" />
-                      ) : (
-                        <Text className="text-red-600 dark:text-red-400 font-outfit-bold text-xs">
-                          No, Re-heat
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
         {/* --- UPCOMING VISITS --- */}
         <View className="px-6 mb-8">
           <View className="flex-row justify-between items-center mb-4 px-1">
@@ -668,7 +550,9 @@ export function FarmerHomeScreen() {
                           : "#F0FDF4"
                     }
                     onCancel={
-                      ["pending", "approved"].includes(visit.status?.toLowerCase())
+                      ["pending", "approved"].includes(
+                        visit.status?.toLowerCase(),
+                      )
                         ? () =>
                             handleCancelRequest(
                               visit._id,
@@ -679,9 +563,10 @@ export function FarmerHomeScreen() {
                     }
                     onPress={() => {
                       router.push({
-                        pathname: visit.serviceType === "health"
-                          ? "/(farmer)/health-request-detail"
-                          : "/(farmer)/ai-request-detail",
+                        pathname:
+                          visit.serviceType === "health"
+                            ? "/(farmer)/health-request-detail"
+                            : "/(farmer)/ai-request-detail",
                         params: { id: visit._id },
                       });
                     }}
@@ -975,7 +860,7 @@ export function FarmerHomeScreen() {
                 color="#ECFDF5"
                 onPress={() => {
                   setShowRequestHub(false);
-                  router.push("/(farmer)/(tabs)/add-animal");
+                  router.push("/(farmer)/register-animal");
                 }}
               />
               <HubOption
@@ -1746,6 +1631,78 @@ export function FarmerHomeScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Missing Profile Details Welcome Modal */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={showWelcomeModal}
+        onRequestClose={() => setShowWelcomeModal(false)}
+      >
+        <View className="flex-1 bg-black/60 justify-center items-center p-6">
+          <View
+            className="rounded-[30px] w-full p-6 items-center border shadow-2xl relative overflow-hidden"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            {/* Ambient Background Glow decoration */}
+            <View className="absolute -top-12 -right-12 w-28 h-28 bg-amber-500/5 dark:bg-amber-500/10 rounded-full" />
+
+            {/* Warning Icon Container */}
+            <View className="w-20 h-20 rounded-full bg-amber-50 dark:bg-amber-950/30 items-center justify-center mb-4 border border-amber-100 dark:border-amber-900/30">
+              <View className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/40 items-center justify-center">
+                <MapPin size={30} color="#d97706" />
+              </View>
+            </View>
+
+            <Text
+              className="text-xl font-outfit-black text-center"
+              style={{ color: colors.textPrimary }}
+            >
+              {modalContent.title}
+            </Text>
+
+            <Text
+              className="text-sm font-outfit-medium text-center mt-3 leading-5"
+              style={{ color: colors.textSecondary }}
+            >
+              {modalContent.description}
+            </Text>
+
+            {/* Action Buttons */}
+            <View className="w-full gap-y-3 mt-6">
+              <TouchableOpacity
+                onPress={() => {
+                  setShowWelcomeModal(false);
+                  router.push("/(farmer)/(tabs)/profile");
+                }}
+                className="w-full py-4 rounded-2xl items-center"
+                style={{ backgroundColor: isDark ? colors.primary : PRIMARY }}
+              >
+                <Text className="text-white font-outfit-bold text-sm">
+                  {modalContent.buttonText}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => setShowWelcomeModal(false)}
+                className="w-full py-4 rounded-2xl items-center"
+                style={{
+                  backgroundColor: isDark
+                    ? "rgba(255,255,255,0.05)"
+                    : "#f1f5f9",
+                }}
+              >
+                <Text
+                  className="font-outfit-bold text-sm"
+                  style={{ color: colors.textSecondary }}
+                >
+                  Explore First
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1870,7 +1827,12 @@ const VisitItem = ({
 }: any) => {
   const { colors, isDark } = useTheme();
   return (
-    <TouchableOpacity onPress={onPress} disabled={!onPress} activeOpacity={0.7} className="flex-row items-center p-2">
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={!onPress}
+      activeOpacity={0.7}
+      className="flex-row items-center p-2"
+    >
       <View
         className="w-12 h-12 rounded-full items-center justify-center"
         style={{ backgroundColor: iconBg }}
@@ -1916,14 +1878,13 @@ const VisitItem = ({
             {status}
           </Text>
         </View>
-        {onCancel &&
-          ["PENDING", "APPROVED", "SCHEDULED"].includes(status) && (
-            <TouchableOpacity onPress={onCancel}>
-              <Text className="text-red-500 font-outfit-bold text-[10px]">
-                Cancel
-              </Text>
-            </TouchableOpacity>
-          )}
+        {onCancel && ["PENDING", "APPROVED", "SCHEDULED"].includes(status) && (
+          <TouchableOpacity onPress={onCancel}>
+            <Text className="text-red-500 font-outfit-bold text-[10px]">
+              Cancel
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
     </TouchableOpacity>
   );

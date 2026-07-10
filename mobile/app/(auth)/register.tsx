@@ -13,7 +13,6 @@ const RegisterScreen = () => {
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [username, setUsername] = useState("");
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,15 +30,14 @@ const RegisterScreen = () => {
     if (!isLoaded) return;
     setLoading(true);
 
-    const cleanUsername = username.trim();
     const cleanEmail = emailAddress.trim().toLowerCase();
     const cleanFirstName = firstName.trim();
     const cleanLastName = lastName.trim();
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!cleanFirstName || !cleanLastName || !cleanUsername || !cleanEmail || !password) {
-      toast.error("Required Fields", { description: "Please enter your first name, last name, username, email, and password." });
+    if (!cleanFirstName || !cleanLastName || !cleanEmail || !password) {
+      toast.error("Required Fields", { description: "Please enter your first name, last name, email, and password." });
       setLoading(false);
       return;
     }
@@ -59,7 +57,6 @@ const RegisterScreen = () => {
     try {
       // Create user via Clerk
       const signUpAttempt = await signUp.create({
-        username: cleanUsername,
         firstName: cleanFirstName,
         lastName: cleanLastName,
         emailAddress: cleanEmail,
@@ -152,19 +149,6 @@ const RegisterScreen = () => {
                 </View>
               </View>
 
-              <View>
-                <View className="flex-row justify-between mb-1.5 px-0.5">
-                  <Text className="text-[13px] font-bold text-slate-800">Username *</Text>
-                </View>
-                <TextInput
-                  className="w-full border border-slate-200 rounded-xl p-3.5 bg-white text-slate-800 focus:border-slate-400"
-                  placeholder=""
-                  placeholderTextColor="#94a3b8"
-                  autoCapitalize="none"
-                  value={username}
-                  onChangeText={setUsername}
-                />
-              </View>
 
               <View>
                 <View className="flex-row justify-between mb-1.5 px-0.5">

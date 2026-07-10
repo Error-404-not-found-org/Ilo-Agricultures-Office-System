@@ -1,5 +1,18 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Image, Text, TouchableOpacity, View, Alert, Modal, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import {
+  ActivityIndicator,
+  Image,
+  Text,
+  TouchableOpacity,
+  View,
+  Alert,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StatusBar,
+} from "react-native";
 import {
   ArrowLeft,
   CalendarClock,
@@ -18,6 +31,7 @@ import { format } from "date-fns";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { recordAiOutcome } from "@/features/farmer-dashboard/services/farmerDashboard.service";
+import { Skeleton } from "@/components/ui/Skeleton";
 import {
   FarmerScreen,
   AsyncState,
@@ -72,6 +86,196 @@ const heatSignMap: Record<string, string> = {
   metestrus_bleeding: "Metestrus Bleeding 🩸",
 };
 
+function AiRequestDetailSkeleton() {
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+
+  return (
+    <FarmerScreen scroll={false}>
+      <StatusBar barStyle="light-content" />
+
+      {/* Header matching real screen banner */}
+      <View
+        className="px-5 pb-5"
+        style={{ backgroundColor: "#00643B", paddingTop: insets.top + 16 }}
+      >
+        <View className="flex-row items-center">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
+          >
+            <ArrowLeft size={20} color="white" />
+          </TouchableOpacity>
+
+          <View className="flex-1 ml-3 gap-2">
+            <Skeleton
+              width="40%"
+              height={18}
+              radius={4}
+              style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
+            />
+            <Skeleton
+              width="20%"
+              height={10}
+              radius={3}
+              style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
+            />
+          </View>
+
+          <Skeleton
+            width={80}
+            height={26}
+            radius={13}
+            style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
+          />
+        </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}
+      >
+        {/* Concern Card Skeleton */}
+        <View
+          className="mx-5 mt-5 p-4 border"
+          style={{
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            gap: 12,
+          }}
+        >
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 gap-2">
+              <Skeleton width="70%" height={16} radius={4} />
+              <Skeleton width="30%" height={12} radius={3} />
+            </View>
+            <Skeleton width={80} height={20} radius={10} />
+          </View>
+
+          {/* Breeding Details Skeleton */}
+          <View className="pt-3 border-t border-slate-100 dark:border-slate-800/50">
+            <View className="flex-row flex-wrap gap-6">
+              <View className="gap-1.5">
+                <Skeleton width={60} height={8} radius={2} />
+                <Skeleton width={80} height={12} radius={3} />
+              </View>
+              <View className="gap-1.5">
+                <Skeleton width={60} height={8} radius={2} />
+                <Skeleton width={100} height={12} radius={3} />
+              </View>
+            </View>
+          </View>
+
+          {/* Observed Heat Signs Skeleton */}
+          <View className="gap-2">
+            <Skeleton
+              width="40%"
+              height={10}
+              radius={2}
+              style={{ marginBottom: 8 }}
+            />
+            <View className="flex-row flex-wrap gap-2">
+              <Skeleton width={90} height={22} radius={11} />
+              <Skeleton width={110} height={22} radius={11} />
+              <Skeleton width={70} height={22} radius={11} />
+            </View>
+          </View>
+        </View>
+
+        {/* Progress Card Skeleton */}
+        <View
+          className="mx-5 mt-5 p-4 border"
+          style={{
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            gap: 12,
+          }}
+        >
+          <Skeleton width="50%" height={16} radius={4} />
+          {/* Progress workflow stepper bar mock */}
+          <View className="flex-row justify-between items-center py-4 px-2">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <View key={s} className="items-center gap-1.5">
+                <View
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 9,
+                    backgroundColor: colors.border,
+                  }}
+                />
+                <Skeleton width={45} height={8} radius={2} />
+              </View>
+            ))}
+          </View>
+
+          <View className="pt-3 border-t border-slate-100 dark:border-slate-800/50 flex-row items-start gap-2.5">
+            <View
+              style={{
+                width: 16,
+                height: 16,
+                borderRadius: 8,
+                backgroundColor: colors.border,
+                marginTop: 2,
+              }}
+            />
+            <View className="flex-1 gap-2">
+              <Skeleton width="90%" height={12} radius={3} />
+              <Skeleton width="60%" height={12} radius={3} />
+            </View>
+          </View>
+        </View>
+
+        {/* Response Card Skeleton */}
+        <View
+          className="mx-5 mt-5 p-4 border"
+          style={{
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            gap: 12,
+          }}
+        >
+          <Skeleton
+            width="65%"
+            height={16}
+            radius={4}
+            style={{ marginBottom: 4 }}
+          />
+
+          <View className="gap-4">
+            <View className="flex-row items-center gap-2.5">
+              <View
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  backgroundColor: colors.border,
+                }}
+              />
+              <Skeleton width="50%" height={14} radius={3} />
+            </View>
+            <View className="flex-row items-center gap-2.5">
+              <View
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  backgroundColor: colors.border,
+                }}
+              />
+              <Skeleton width="70%" height={14} radius={3} />
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+    </FarmerScreen>
+  );
+}
+
 export default function AiRequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -83,7 +287,6 @@ export default function AiRequestDetailScreen() {
   const [reasonModalVisible, setReasonModalVisible] = useState(false);
   const [cancellationReason, setCancellationReason] = useState("");
   const [isSubmittingCancel, setIsSubmittingCancel] = useState(false);
-
 
   const query = useQuery({
     queryKey: ["ai-request", id],
@@ -106,16 +309,15 @@ export default function AiRequestDetailScreen() {
       Alert.alert("Success", "Pregnancy outcome recorded successfully!");
     },
     onError: (err: any) => {
-      Alert.alert("Error", err.response?.data?.message || "Failed to record outcome.");
+      Alert.alert(
+        "Error",
+        err.response?.data?.message || "Failed to record outcome.",
+      );
     },
   });
 
   if (query.isLoading) {
-    return (
-      <FarmerScreen style={{ justifyContent: "center", alignItems: "center" }}>
-        <AsyncState state="loading" />
-      </FarmerScreen>
-    );
+    return <AiRequestDetailSkeleton />;
   }
 
   if (query.isError || !query.data) {
@@ -221,20 +423,71 @@ export default function AiRequestDetailScreen() {
             <View className="flex-row flex-wrap gap-4">
               {request.estrus ? (
                 <View>
-                  <Text style={{ color: colors.textMuted, fontFamily: "Outfit_700Bold", fontSize: 9 }}>ESTRUS TYPE</Text>
-                  <Text className="mt-0.5" style={{ color: colors.textPrimary, fontFamily: "Outfit_500Medium", fontSize: 12 }}>{request.estrus}</Text>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontFamily: "Outfit_700Bold",
+                      fontSize: 9,
+                    }}
+                  >
+                    ESTRUS TYPE
+                  </Text>
+                  <Text
+                    className="mt-0.5"
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 12,
+                    }}
+                  >
+                    {request.estrus}
+                  </Text>
                 </View>
               ) : null}
               {request.sireBreed ? (
                 <View>
-                  <Text style={{ color: colors.textMuted, fontFamily: "Outfit_700Bold", fontSize: 9 }}>SIRE BREED</Text>
-                  <Text className="mt-0.5" style={{ color: colors.textPrimary, fontFamily: "Outfit_500Medium", fontSize: 12 }}>{request.sireBreed}</Text>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontFamily: "Outfit_700Bold",
+                      fontSize: 9,
+                    }}
+                  >
+                    SIRE BREED
+                  </Text>
+                  <Text
+                    className="mt-0.5"
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 12,
+                    }}
+                  >
+                    {request.sireBreed}
+                  </Text>
                 </View>
               ) : null}
               {request.sireCode ? (
                 <View>
-                  <Text style={{ color: colors.textMuted, fontFamily: "Outfit_700Bold", fontSize: 9 }}>SIRE CODE</Text>
-                  <Text className="mt-0.5" style={{ color: colors.textPrimary, fontFamily: "Outfit_500Medium", fontSize: 12 }}>{request.sireCode}</Text>
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontFamily: "Outfit_700Bold",
+                      fontSize: 9,
+                    }}
+                  >
+                    SIRE CODE
+                  </Text>
+                  <Text
+                    className="mt-0.5"
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 12,
+                    }}
+                  >
+                    {request.sireCode}
+                  </Text>
                 </View>
               ) : null}
             </View>
@@ -258,7 +511,9 @@ export default function AiRequestDetailScreen() {
 
                 let badgeBg = isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5";
                 let badgeText = isDark ? "#34d399" : "#065F46";
-                let badgeBorder = isDark ? "rgba(16, 185, 129, 0.2)" : "#d1fae5";
+                let badgeBorder = isDark
+                  ? "rgba(16, 185, 129, 0.2)"
+                  : "#d1fae5";
 
                 if (isPrimary) {
                   badgeBg = isDark ? "rgba(245, 158, 11, 0.15)" : "#FEF3C7";
@@ -334,7 +589,11 @@ export default function AiRequestDetailScreen() {
           />
         </View>
         <View className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/50 flex-row items-start gap-2.5">
-          <Info size={16} color={colors.textSecondary} style={{ marginTop: 2 }} />
+          <Info
+            size={16}
+            color={colors.textSecondary}
+            style={{ marginTop: 2 }}
+          />
           <Text
             className="flex-1 leading-5 text-[12px]"
             style={{
@@ -344,17 +603,25 @@ export default function AiRequestDetailScreen() {
           >
             {(() => {
               const s = request.status?.toLowerCase() || "pending";
-              if (s === "pending") return "Your request has been submitted. A technician will review and assign your request shortly.";
-              if (s === "approved" || s === "assigned" || s === "triaged") return "Your request has been approved. A technician will schedule your insemination visit soon.";
+              if (s === "pending")
+                return "Your request has been submitted. A technician will review and assign your request shortly.";
+              if (s === "approved" || s === "assigned" || s === "triaged")
+                return "Your request has been approved. A technician will schedule your insemination visit soon.";
               if (s === "scheduled") {
-                const dateStr = request.scheduledDate 
-                  ? format(new Date(request.scheduledDate), "MMM d, yyyy 'at' h:mm a")
+                const dateStr = request.scheduledDate
+                  ? format(
+                      new Date(request.scheduledDate),
+                      "MMM d, yyyy 'at' h:mm a",
+                    )
                   : "a rescheduled date";
                 return `Your insemination visit has been scheduled for ${dateStr}. Please ensure the animal is secured.`;
               }
-              if (s === "in-progress" || s === "in_progress") return "The technician is currently on-site or performing the insemination service.";
-              if (s === "done" || s === "resolved" || s === "completed") return "The insemination service has been completed successfully!";
-              if (s === "rejected") return "This request was rejected. Please review notes or submit a new request.";
+              if (s === "in-progress" || s === "in_progress")
+                return "The technician is currently on-site or performing the insemination service.";
+              if (s === "done" || s === "resolved" || s === "completed")
+                return "The insemination service has been completed successfully!";
+              if (s === "rejected")
+                return "This request was rejected. Please review notes or submit a new request.";
               if (s === "cancelled") return "This request has been cancelled.";
               return "";
             })()}
@@ -530,7 +797,8 @@ export default function AiRequestDetailScreen() {
                 className="text-[11px] mt-0.5"
                 style={{ color: isDark ? "#6ee7b7" : "#166534" }}
               >
-                Please confirm if the insemination was successful (pregnancy confirmed) or if it failed.
+                Please confirm if the insemination was successful (pregnancy
+                confirmed) or if it failed.
               </Text>
             </View>
           </View>
@@ -556,7 +824,9 @@ export default function AiRequestDetailScreen() {
               {outcomeMutation.isPending ? (
                 <ActivityIndicator size="small" color="#ef4444" />
               ) : (
-                <Text className="text-red-600 text-xs font-bold">Failed / Re-heat</Text>
+                <Text className="text-red-600 text-xs font-bold">
+                  Failed / Re-heat
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -586,7 +856,8 @@ export default function AiRequestDetailScreen() {
                 className="text-[11px] mt-1"
                 style={{ color: isDark ? "#fde68a" : "#b45309" }}
               >
-                You requested to cancel this scheduled visit. This is currently pending technician review.
+                You requested to cancel this scheduled visit. This is currently
+                pending technician review.
               </Text>
               {request.cancellationReason ? (
                 <Text
@@ -622,7 +893,9 @@ export default function AiRequestDetailScreen() {
               className="text-[13px] font-black uppercase tracking-widest"
               style={{ color: colors.error }}
             >
-              {request.status === "scheduled" ? "Request Cancellation" : "Cancel Request"}
+              {request.status === "scheduled"
+                ? "Request Cancellation"
+                : "Cancel Request"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -660,48 +933,63 @@ export default function AiRequestDetailScreen() {
                   className="text-[16px] font-black"
                   style={{ color: colors.textPrimary }}
                 >
-                  {request.status === "scheduled" ? "Request Cancellation" : "Cancel Request"}
+                  {request.status === "scheduled"
+                    ? "Request Cancellation"
+                    : "Cancel Request"}
                 </Text>
                 <TouchableOpacity onPress={() => setReasonModalVisible(false)}>
                   <XCircle size={22} color={colors.textMuted} />
                 </TouchableOpacity>
               </View>
 
-              {request.status === "scheduled" ? (
-                (() => {
-                  const today = new Date();
-                  today.setHours(0, 0, 0, 0);
-                  const scheduledDay = request.scheduledDate ? new Date(request.scheduledDate) : null;
-                  if (scheduledDay) scheduledDay.setHours(0, 0, 0, 0);
-                  const isReadyToday = scheduledDay && scheduledDay.getTime() === today.getTime();
+              {request.status === "scheduled"
+                ? (() => {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const scheduledDay = request.scheduledDate
+                      ? new Date(request.scheduledDate)
+                      : null;
+                    if (scheduledDay) scheduledDay.setHours(0, 0, 0, 0);
+                    const isReadyToday =
+                      scheduledDay &&
+                      scheduledDay.getTime() === today.getTime();
 
-                  return (
-                    <View
-                      className="flex-row items-start gap-2 p-3 rounded-xl border mb-4"
-                      style={{
-                        backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#FFFBEB",
-                        borderColor: isDark ? "rgba(245, 158, 11, 0.3)" : "#FEF3C7",
-                      }}
-                    >
-                      <AlertCircle size={14} color={isDark ? "#fbbf24" : "#d97706"} style={{ marginTop: 2 }} />
-                      <Text
-                        className="text-[11px] font-bold flex-1"
-                        style={{ color: isDark ? "#fde68a" : "#92400E" }}
+                    return (
+                      <View
+                        className="flex-row items-start gap-2 p-3 rounded-xl border mb-4"
+                        style={{
+                          backgroundColor: isDark
+                            ? "rgba(245, 158, 11, 0.1)"
+                            : "#FFFBEB",
+                          borderColor: isDark
+                            ? "rgba(245, 158, 11, 0.3)"
+                            : "#FEF3C7",
+                        }}
                       >
-                        {isReadyToday
-                          ? "This visit is scheduled for today. Please contact your assigned technician or the Municipal Agriculture Office."
-                          : "This visit is already scheduled. Your request will be sent to your assigned technician for review."}
-                      </Text>
-                    </View>
-                  );
-                })()
-              ) : null}
+                        <AlertCircle
+                          size={14}
+                          color={isDark ? "#fbbf24" : "#d97706"}
+                          style={{ marginTop: 2 }}
+                        />
+                        <Text
+                          className="text-[11px] font-bold flex-1"
+                          style={{ color: isDark ? "#fde68a" : "#92400E" }}
+                        >
+                          {isReadyToday
+                            ? "This visit is scheduled for today. Please contact your assigned technician or the Municipal Agriculture Office."
+                            : "This visit is already scheduled. Your request will be sent to your assigned technician for review."}
+                        </Text>
+                      </View>
+                    );
+                  })()
+                : null}
 
               <Text
                 className="text-[11px] font-black uppercase tracking-widest mb-2"
                 style={{ color: colors.textMuted }}
               >
-                Reason for Cancellation {request.status === "scheduled" ? "*" : "(Optional)"}
+                Reason for Cancellation{" "}
+                {request.status === "scheduled" ? "*" : "(Optional)"}
               </Text>
               <TextInput
                 value={cancellationReason}
@@ -726,7 +1014,10 @@ export default function AiRequestDetailScreen() {
 
               <TouchableOpacity
                 onPress={async () => {
-                  if (request.status === "scheduled" && !cancellationReason.trim()) {
+                  if (
+                    request.status === "scheduled" &&
+                    !cancellationReason.trim()
+                  ) {
                     toast.error("Please provide a reason for cancellation.");
                     return;
                   }
@@ -738,22 +1029,33 @@ export default function AiRequestDetailScreen() {
                     toast.success(
                       request.status === "scheduled"
                         ? "Cancellation request submitted"
-                        : "Request cancelled successfully"
+                        : "Request cancelled successfully",
                     );
                     setReasonModalVisible(false);
-                    queryClient.invalidateQueries({ queryKey: ["ai-request", id] });
-                    queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
+                    queryClient.invalidateQueries({
+                      queryKey: ["ai-request", id],
+                    });
+                    queryClient.invalidateQueries({
+                      queryKey: ["farmer", "ai-requests"],
+                    });
                   } catch (err: any) {
-                    toast.error(err.response?.data?.message || "Failed to cancel request");
+                    toast.error(
+                      err.response?.data?.message || "Failed to cancel request",
+                    );
                   } finally {
                     setIsSubmittingCancel(false);
                   }
                 }}
-                disabled={isSubmittingCancel || (request.status === "scheduled" && !cancellationReason.trim())}
+                disabled={
+                  isSubmittingCancel ||
+                  (request.status === "scheduled" && !cancellationReason.trim())
+                }
                 className="mt-4 py-4 rounded-2xl items-center"
                 style={{
                   backgroundColor:
-                    isSubmittingCancel || (request.status === "scheduled" && !cancellationReason.trim())
+                    isSubmittingCancel ||
+                    (request.status === "scheduled" &&
+                      !cancellationReason.trim())
                       ? colors.border
                       : colors.error,
                 }}
@@ -762,8 +1064,8 @@ export default function AiRequestDetailScreen() {
                   {isSubmittingCancel
                     ? "Processing..."
                     : request.status === "scheduled"
-                    ? "Submit Cancellation Request"
-                    : "Cancel Request"}
+                      ? "Submit Cancellation Request"
+                      : "Cancel Request"}
                 </Text>
               </TouchableOpacity>
             </View>

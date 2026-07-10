@@ -10,7 +10,10 @@ interface FarmLocationCardProps {
     farmDirectionsNote: string;
   };
   setFormData: (data: any) => void;
-  isSaving: boolean;
+  isBusy: boolean;
+  isSavingCurrentLocation: boolean;
+  isSavingContactAddress: boolean;
+  isSavingNotes: boolean;
   onUseCurrentLocation: () => void;
   onUseContactAddress: () => void;
   onSaveNotes: () => void;
@@ -20,7 +23,10 @@ const FarmLocationCard = ({
   dbUser,
   formData,
   setFormData,
-  isSaving,
+  isBusy,
+  isSavingCurrentLocation,
+  isSavingContactAddress,
+  isSavingNotes,
   onUseCurrentLocation,
   onUseContactAddress,
   onSaveNotes,
@@ -114,34 +120,41 @@ const FarmLocationCard = ({
           <View className="mt-5 flex-row gap-3">
             <TouchableOpacity
               onPress={onUseContactAddress}
-              disabled={isSaving}
+              disabled={isBusy}
               className="flex-1 rounded-2xl py-3 flex-row items-center justify-center border"
               style={{
                 borderColor: colors.primary,
                 backgroundColor: isDark ? "rgba(16, 185, 129, 0.04)" : "transparent",
-                opacity: isSaving ? 0.6 : 1,
+                opacity: isBusy && !isSavingContactAddress ? 0.6 : 1,
               }}
             >
-              <MapPin size={14} color={colors.primary} />
-              <Text
-                className="font-outfit-bold ml-1.5 text-xs"
-                style={{ color: colors.primary }}
-              >
-                Same as Home
-              </Text>
+              {isSavingContactAddress ? (
+                <ActivityIndicator color={colors.primary} size="small" />
+              ) : (
+                <>
+                  <MapPin size={14} color={colors.primary} />
+                  <Text
+                    className="font-outfit-bold ml-1.5 text-xs"
+                    style={{ color: colors.primary }}
+                  >
+                    Same as Home
+                  </Text>
+                </>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity
               onPress={onUseCurrentLocation}
-              disabled={isSaving}
+              disabled={isBusy}
               className="flex-1 rounded-2xl py-3 flex-row items-center justify-center"
               style={{
-                backgroundColor: isSaving
+                backgroundColor: isSavingCurrentLocation
                   ? colors.textMuted
                   : colors.primary,
+                opacity: isBusy && !isSavingCurrentLocation ? 0.6 : 1,
               }}
             >
-              {isSaving ? (
+              {isSavingCurrentLocation ? (
                 <ActivityIndicator color="#fff" size="small" />
               ) : (
                 <>
@@ -232,15 +245,15 @@ const FarmLocationCard = ({
           {/* Save Landmark & Directions Button */}
           <TouchableOpacity
             onPress={onSaveNotes}
-            disabled={isSaving || !hasPin}
+            disabled={isBusy || !hasPin}
             className="rounded-2xl py-3.5 flex-row items-center justify-center border"
             style={{
-              backgroundColor: hasPin && !isSaving ? (isDark ? "rgba(16,185,129,0.08)" : "#f0fdf4") : "transparent",
-              borderColor: hasPin && !isSaving ? colors.primary : colors.border,
-              opacity: hasPin ? 1 : 0.5,
+              backgroundColor: hasPin && !isSavingNotes ? (isDark ? "rgba(16,185,129,0.08)" : "#f0fdf4") : "transparent",
+              borderColor: hasPin && !isSavingNotes ? colors.primary : colors.border,
+              opacity: !hasPin || (isBusy && !isSavingNotes) ? 0.5 : 1,
             }}
           >
-            {isSaving ? (
+            {isSavingNotes ? (
               <ActivityIndicator color={colors.primary} size="small" />
             ) : (
               <>

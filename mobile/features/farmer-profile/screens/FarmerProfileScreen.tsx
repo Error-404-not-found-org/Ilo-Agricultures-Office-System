@@ -2,7 +2,6 @@ import React from "react";
 import { View, ScrollView, StatusBar, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AlertTriangle } from "lucide-react-native";
-import { OTON_BARANGAYS } from "@/lib/constants";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useFarmerProfile } from "../hooks/useFarmerProfile";
 import ProfileHeader from "../components/ProfileHeader";
@@ -11,7 +10,6 @@ import AccountDetailsCard from "../components/AccountDetailsCard";
 import FarmLocationCard from "../components/FarmLocationCard";
 import SystemSupportCard from "../components/SystemSupportCard";
 import EditProfileModal from "../components/EditProfileModal";
-import BarangaySelectModal from "../components/BarangaySelectModal";
 import PhotoSelectionModal from "../components/PhotoSelectionModal";
 
 export const FarmerProfileScreen = () => {
@@ -26,12 +24,20 @@ export const FarmerProfileScreen = () => {
     setPhotoModalVisible,
     editMode,
     setEditMode,
-    selectModal,
-    setSelectModal,
     passwordForm,
     setPasswordForm,
     passwordUpdating,
     isSavingFarmLocation,
+    isSavingContactAddressLocation,
+    isSavingFarmGpsPin,
+    isSavingFarmLocationNotes,
+    isCopyingContactAddressToFarm,
+    phoneOtpSent,
+    phoneOtpCode,
+    setPhoneOtpCode,
+    phoneOtpCooldown,
+    isPhoneOtpSending,
+    isPhoneOtpVerifying,
     formData,
     setFormData,
     mutation,
@@ -45,6 +51,8 @@ export const FarmerProfileScreen = () => {
     handleSaveCurrentFarmLocation,
     handleSaveFarmLocationNotes,
     handleUseContactAddressForFarmLocation,
+    handleResendOtp,
+    handleChangePhoneNumber,
     colors,
     isDark,
     t,
@@ -74,14 +82,18 @@ export const FarmerProfileScreen = () => {
           dbUser={dbUser}
           onEditPhone={() => setEditMode("phone")}
           onUseCurrentContactAddress={handleUseCurrentContactAddress}
-          isSavingLocation={mutation.isPending || isSavingFarmLocation}
+          isSavingLocation={isSavingContactAddressLocation}
+          isLocationBusy={mutation.isPending || isSavingFarmLocation}
         />
 
         <FarmLocationCard
           dbUser={dbUser}
           formData={formData}
           setFormData={setFormData}
-          isSaving={mutation.isPending || isSavingFarmLocation}
+          isBusy={mutation.isPending || isSavingFarmLocation}
+          isSavingCurrentLocation={isSavingFarmGpsPin}
+          isSavingContactAddress={isCopyingContactAddressToFarm}
+          isSavingNotes={isSavingFarmLocationNotes}
           onUseCurrentLocation={() => setFarmLocationConfirmVisible(true)}
           onUseContactAddress={handleUseContactAddressForFarmLocation}
           onSaveNotes={handleSaveFarmLocationNotes}
@@ -117,24 +129,15 @@ export const FarmerProfileScreen = () => {
         setPasswordForm={setPasswordForm}
         onSave={handleUpdate}
         isSaving={mutation.isPending || passwordUpdating}
-        onOpenSelectBarangay={() =>
-          setSelectModal({
-            visible: true,
-            title: t("selectBarangay"),
-            options: OTON_BARANGAYS,
-            onSelect: (val) => setFormData({ ...formData, barangay: val }),
-          })
-        }
+        phoneOtpSent={phoneOtpSent}
+        phoneOtpCode={phoneOtpCode}
+        setPhoneOtpCode={setPhoneOtpCode}
+        phoneOtpCooldown={phoneOtpCooldown}
+        isPhoneOtpSending={isPhoneOtpSending}
+        isPhoneOtpVerifying={isPhoneOtpVerifying}
+        onResendOtp={handleResendOtp}
+        onChangePhoneNumber={handleChangePhoneNumber}
         insets={insets}
-      />
-
-      {/* Barangay Options Selection Modal */}
-      <BarangaySelectModal
-        visible={selectModal.visible}
-        title={selectModal.title}
-        options={selectModal.options}
-        onSelect={selectModal.onSelect}
-        onClose={() => setSelectModal({ ...selectModal, visible: false })}
       />
 
       {/* Photo Selection Bottom Sheet */}

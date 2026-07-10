@@ -13,3 +13,23 @@ export const updateFarmerProfile = async (
   const response = await api.put(`/user/${userId}`, updatedData);
   return response.data;
 };
+
+export const sendPhoneOtp = async (
+  api: AxiosInstance,
+  phoneNumber: string
+) => {
+  const response = await api.post("/user/otp/send", { phoneNumber });
+  return response.data;
+};
+
+export const verifyPhoneOtp = async (
+  api: AxiosInstance,
+  phoneNumber: string,
+  otpCode: string
+) => {
+  const response = await api.post("/user/otp/verify", {
+    phoneNumber,
+    otpCode,
+  });
+  return response.data;
+};

@@ -6,7 +6,15 @@ import { useTheme } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-export function TechnicianQuickActions() {
+interface TechnicianQuickActionsProps {
+  pendingRequestCount?: number;
+  todayVisitCount?: number;
+}
+
+export function TechnicianQuickActions({
+  pendingRequestCount = 0,
+  todayVisitCount = 0,
+}: TechnicianQuickActionsProps) {
   const router = useRouter();
   const { colors, isDark } = useTheme();
 
@@ -54,35 +62,50 @@ export function TechnicianQuickActions() {
           icon="account-plus-outline"
           color={isDark ? "#60a5fa" : "#3b82f6"}
           bg={isDark ? "#1e3a8a" : "#eff6ff"}
-          onPress={() => router.navigate("/(technician)/register-client" as any)}
+          onPress={() =>
+            router.navigate("/(technician)/register-client" as any)
+          }
         />
         <ActionCard
           label="Register Animal"
           icon="cow"
           color={isDark ? "#a78bfa" : "#8b5cf6"}
           bg={isDark ? "#4c1d95" : "#f5f3ff"}
-          onPress={() => router.navigate("/(technician)/register-animal" as any)}
+          onPress={() =>
+            router.navigate("/(technician)/register-animal" as any)
+          }
         />
         <ActionCard
           label="Pregnancy Check"
           icon="heart-pulse"
           color={isDark ? "#f472b6" : "#ec4899"}
           bg={isDark ? "#831843" : "#fdf2f8"}
-          onPress={() => router.navigate("/(technician)/pregnancy-check" as any)}
+          onPress={() =>
+            router.navigate("/(technician)/pregnancy-check" as any)
+          }
         />
         <ActionCard
           label="Record Calving"
           icon="baby-carriage"
           color={isDark ? "#22d3ee" : "#06b6d4"}
           bg={isDark ? "#164e63" : "#ecfeff"}
-          onPress={() => router.navigate("/(technician)/record-calf-drop" as any)}
+          onPress={() =>
+            router.navigate("/(technician)/record-calf-drop" as any)
+          }
         />
       </View>
     </Card>
   );
 }
 
-const ActionCard = ({ label, icon, color, bg, onPress }: any) => {
+const ActionCard = ({
+  label,
+  icon,
+  color,
+  bg,
+  onPress,
+  badgeCount = 0,
+}: any) => {
   const { isDark } = useTheme();
   return (
     <TouchableOpacity
@@ -106,6 +129,28 @@ const ActionCard = ({ label, icon, color, bg, onPress }: any) => {
         }}
       >
         <MaterialCommunityIcons name={icon as any} size={28} color={color} />
+        {badgeCount > 0 && (
+          <View
+            style={{
+              position: "absolute",
+              top: -3,
+              right: -3,
+              minWidth: 20,
+              height: 20,
+              borderRadius: 10,
+              backgroundColor: "#ef4444",
+              alignItems: "center",
+              justifyContent: "center",
+              paddingHorizontal: 5,
+              borderWidth: 2,
+              borderColor: isDark ? "#0f172a" : "#fff",
+            }}
+          >
+            <Text variant="black" size={8} style={{ color: "#fff" }}>
+              {badgeCount > 9 ? "9+" : badgeCount}
+            </Text>
+          </View>
+        )}
       </View>
       <Text
         variant="bold"

@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -13,6 +12,7 @@ import { ArrowLeft, Download, Map as MapIcon, Trash2, ShieldCheck, WifiOff } fro
 import { downloadOtonTiles, clearTileCache } from "@/lib/mapCache";
 import * as FileSystem from "expo-file-system/legacy";
 import { toast } from "sonner-native";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 export default function OfflineMapsScreen() {
   const router = useRouter();
@@ -20,6 +20,7 @@ export default function OfflineMapsScreen() {
   const [progress, setProgress] = useState(0);
   const [total, setTotal] = useState(0);
   const [cacheSize, setCacheSize] = useState("0 MB");
+  const [clearConfirmVisible, setClearConfirmVisible] = useState(false);
 
   useEffect(() => {
     calculateCacheSize();
@@ -54,22 +55,14 @@ export default function OfflineMapsScreen() {
   };
 
   const handleClear = () => {
-    Alert.alert(
-      "Clear Cache?",
-      "This will remove all offline map tiles. You won't be able to see the map without internet.",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Clear", 
-          style: "destructive", 
-          onPress: async () => {
-            await clearTileCache();
-            calculateCacheSize();
-            toast.info("Map cache cleared");
-          } 
-        },
-      ]
-    );
+    setClearConfirmVisible(true);
+  };
+
+  const confirmClearCache = async () => {
+    await clearTileCache();
+    calculateCacheSize();
+    toast.info("Map cache cleared");
+    setClearConfirmVisible(false);
   };
 
   return (
@@ -158,6 +151,16 @@ export default function OfflineMapsScreen() {
             </Text>
         </View>
       </ScrollView>
+      <ConfirmationModal
+        visible={clearConfirmVisible}
+        onClose={() => setClearConfirmVisible(false)}
+        onConfirm={confirmClearCache}
+        title="Clear Cache?"
+        message="This will remove all offline map tiles. You won't be able to see the map without internet."
+        confirmText="Clear"
+        cancelText="Cancel"
+        isDestructive
+      />
     </SafeAreaView>
   );
 }

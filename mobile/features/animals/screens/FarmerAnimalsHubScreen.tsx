@@ -61,17 +61,19 @@ export function FarmerAnimalsHubScreen() {
   const params = useLocalSearchParams();
   const openForm = params?.openForm;
 
+  useEffect(() => {
+    if (openForm === "true") {
+      router.push("/(farmer)/register-animal");
+      router.setParams({ openForm: "" });
+    }
+  }, [openForm]);
+
   useFocusEffect(
     useCallback(() => {
-      if (openForm === "true") {
-        setShowAddForm(true);
-        router.setParams({ openForm: "" });
-      }
-
       return () => {
         setShowAddForm(false);
       };
-    }, [openForm]),
+    }, []),
   );
 
   // --- List State ---
@@ -376,7 +378,7 @@ export function FarmerAnimalsHubScreen() {
         </View>
         {!showAddForm && (
           <TouchableOpacity
-            onPress={() => setShowAddForm(true)}
+            onPress={() => router.push("/(farmer)/register-animal")}
             className="flex-row items-center gap-1.5 px-4 py-2 rounded-full shadow-sm"
             style={{ backgroundColor: "rgba(236,253,245,0.9)" }}
           >
@@ -753,7 +755,7 @@ export function FarmerAnimalsHubScreen() {
               </Text>
               {(!animals || animals.length === 0) && (
                 <TouchableOpacity
-                  onPress={() => setShowAddForm(true)}
+                  onPress={() => router.push("/(farmer)/register-animal")}
                   className="mt-6 px-6 py-3 rounded-full flex-row items-center gap-2 shadow-md"
                   style={{
                     backgroundColor: isDark ? colors.primary : "#00643B",

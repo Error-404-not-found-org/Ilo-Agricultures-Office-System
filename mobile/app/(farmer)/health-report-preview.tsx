@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View, StatusBar } from "react-native";
 import { ArrowLeft, Share2 } from "lucide-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import * as Sharing from "expo-sharing";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { getHealthRequestDetail } from "@/features/health-requests/services/healthRequests.service";
 import {
   FarmerScreen,
@@ -21,6 +22,87 @@ const clean = (value: unknown) =>
       char
     ] || char,
   );
+
+function HealthReportPreviewSkeleton() {
+  const router = useRouter();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
+      <StatusBar barStyle="light-content" />
+
+      <View
+        className="px-5 pb-5 flex-row items-center"
+        style={{
+          backgroundColor: colors.primary,
+          paddingTop: insets.top + 12,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => router.back()}
+          className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
+        >
+          <ArrowLeft size={20} color="white" />
+        </TouchableOpacity>
+
+        <View className="flex-1 ml-3">
+          <Skeleton
+            width="48%"
+            height={18}
+            radius={4}
+            style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
+          />
+        </View>
+
+        <Skeleton
+          width={40}
+          height={40}
+          radius={20}
+          style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
+        />
+      </View>
+
+      <View
+        className="m-5 p-5 border"
+        style={{
+          borderRadius: 8,
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+        }}
+      >
+        <Skeleton width="38%" height={22} radius={4} />
+        <Skeleton width="54%" height={11} radius={3} style={{ marginTop: 8 }} />
+
+        <View className="mt-5 flex-row justify-between items-center">
+          <Skeleton width="36%" height={16} radius={4} />
+          <Skeleton width={82} height={24} radius={12} />
+        </View>
+
+        {[1, 2, 3, 4, 5, 6, 7].map((row) => (
+          <View
+            key={row}
+            className="py-3 border-b"
+            style={{ borderBottomColor: colors.border }}
+          >
+            <Skeleton width={row % 2 === 0 ? "24%" : "32%"} height={9} radius={2} />
+            <Skeleton width="92%" height={12} radius={3} style={{ marginTop: 8 }} />
+            {row === 3 || row === 6 ? (
+              <Skeleton width="64%" height={12} radius={3} style={{ marginTop: 6 }} />
+            ) : null}
+          </View>
+        ))}
+      </View>
+
+      <Skeleton
+        width="90%"
+        height={46}
+        radius={8}
+        style={{ alignSelf: "center" }}
+      />
+    </FarmerScreen>
+  );
+}
 
 export default function HealthReportPreviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,11 +118,7 @@ export default function HealthReportPreviewScreen() {
   });
 
   if (query.isLoading) {
-    return (
-      <FarmerScreen style={{ justifyContent: "center", alignItems: "center" }}>
-        <AsyncState state="loading" />
-      </FarmerScreen>
-    );
+    return <HealthReportPreviewSkeleton />;
   }
 
   if (query.isError || !query.data) {
@@ -71,7 +149,7 @@ export default function HealthReportPreviewScreen() {
       ["Resolution", request.resolutionNotes],
     ];
 
-    const html = `<html><body style="font-family:Arial;padding:32px;color:#17201a"><h1 style="color:#00643B">BreedSmart Health Report</h1><p>Oton Municipal Livestock Record</p>${rows
+    const html = `<html><body style="font-family:Arial;padding:32px;color:#17201a"><h1 style="color:#00643B">BreedSmart Health Report</h1><p>Iloilo Livestock Health Record</p>${rows
       .map(
         ([label, value]) =>
           `<div style="border-bottom:1px solid #ddd;padding:10px 0"><b>${clean(label)}</b><br/>${clean(value)}</div>`,

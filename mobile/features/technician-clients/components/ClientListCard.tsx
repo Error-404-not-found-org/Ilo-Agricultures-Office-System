@@ -21,6 +21,27 @@ export function ClientListCard({ item }: ClientListCardProps) {
     typeof item.address === "string"
       ? item.address
       : item.address?.barangay || "Location unmapped";
+  const hasRealClerkId =
+    Boolean(item.clerkId) && !String(item.clerkId).startsWith("manual_");
+  const isClaimed = item.profileClaimStatus === "claimed" || hasRealClerkId;
+  const isClaimable =
+    item.profileClaimStatus === "unclaimed" ||
+    (item.registeredByTechnician && !item.email && !hasRealClerkId);
+  const claimLabel = isClaimed
+    ? "Connected"
+    : isClaimable
+      ? "No App Account"
+      : "Profile Only";
+  const claimColor = isClaimed
+    ? "#059669"
+    : isClaimable
+      ? "#f59e0b"
+      : colors.textMuted;
+  const claimBg = isClaimed
+    ? isDark ? "rgba(16,185,129,0.16)" : "#ecfdf5"
+    : isClaimable
+      ? isDark ? "rgba(245,158,11,0.16)" : "#fffbeb"
+      : isDark ? "rgba(148,163,184,0.12)" : "#f8fafc";
 
   const formatVisitDate = (dateVal?: string | Date | null) => {
     if (!dateVal) return "None";
@@ -140,16 +161,26 @@ export function ClientListCard({ item }: ClientListCardProps) {
           </View>
         </View>
 
-        {/* Verified Badge */}
-        {item.isVerified && (
-          <View style={{ marginLeft: 8 }}>
-            <MaterialCommunityIcons
-              name="check-decagram"
-              size={18}
-              color={isDark ? "#34d399" : "#00643B"}
-            />
-          </View>
-        )}
+        <View
+          style={{
+            marginLeft: 8,
+            backgroundColor: claimBg,
+            borderRadius: 999,
+            paddingHorizontal: 9,
+            paddingVertical: 5,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "Outfit_800ExtraBold",
+              fontSize: 9,
+              color: claimColor,
+              textTransform: "uppercase",
+            }}
+          >
+            {claimLabel}
+          </Text>
+        </View>
       </View>
 
       {/* Middle section: Divider metrics columns (ANIMALS, ACTIVE, VISIT) */}

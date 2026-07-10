@@ -45,6 +45,15 @@ export async function getAnimalDetails(api: AxiosInstance, id: string): Promise<
   return res.data;
 }
 
+export async function updateAnimalBasicInfo(
+  api: AxiosInstance,
+  id: string,
+  payload: any,
+): Promise<any> {
+  const res = await api.put(`/animals/wizard/${id}`, payload);
+  return res.data;
+}
+
 export async function getAnimalMedicalRecords(api: AxiosInstance, id: string): Promise<any[]> {
   const res = await api.get(`/medical/${id}`);
   return Array.isArray(res.data) ? res.data : res.data?.data || [];

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, FlatList, Image, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, FlatList, Image } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Save, Plus, Trash2, Calendar, Info, User, ChevronDown, Search, X, ShieldAlert, Camera, Image as ImageIcon } from 'lucide-react-native';
@@ -10,6 +10,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import EarTagGenerator from '@/components/EarTagGenerator';
 import * as ImagePicker from 'expo-image-picker';
+import { useOfflineMutation } from '@/hooks/useOfflineMutation';
+import { ConfirmationModal } from '@/components/ConfirmationModal';
 
 interface CalfEntry {
     sex: string;
@@ -66,6 +68,29 @@ export default function RecordCalfDropScreen() {
     ]);
     const [note, setNote] = useState('');
     const [saving, setSaving] = useState(false);
+    const [confirmSubmitVisible, setConfirmSubmitVisible] = useState(false);
+    const calvingMutation = useOfflineMutation(
+        {
+            url: '/technician/record-calving',
+            method: 'POST',
+            description: `Technician calving record for ${motherTag || 'mother animal'}`,
+        },
+        {
+            onSuccess: (result) => {
+                if (result.status === 'synced') {
+                    toast.success("Calving recorded successfully!");
+                }
+                queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+                queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
+                queryClient.invalidateQueries({ queryKey: ["animals"] });
+                router.back();
+            },
+            onError: (err: any) => {
+                console.error(err);
+                toast.error(err.response?.data?.message || "Failed to record calving event");
+            },
+        },
+    );
 
     const [farmerName, setFarmerName] = useState('');
     const [farmerAnimalCount, setFarmerAnimalCount] = useState(0);
@@ -296,13 +321,9 @@ export default function RecordCalfDropScreen() {
                 technicianNote: note
             };
 
-            await api.post('/technician/record-calving', payload);
-            toast.success("Calving recorded successfully!");
-            queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
-            router.back();
+            await calvingMutation.mutateAsync(payload);
         } catch (err: any) {
-            console.error(err);
-            toast.error(err.response?.data?.message || "Failed to record calving event");
+            // Handled by mutation callbacks.
         } finally {
             setSaving(false);
         }
@@ -311,18 +332,7 @@ export default function RecordCalfDropScreen() {
     const handleSave = () => {
         if (saving || !validateCalvingForm()) return;
 
-        Alert.alert(
-            "Submit Calving Registry?",
-            `This will create ${numCalves} offspring record${numCalves > 1 ? "s" : ""} for ${motherTag || "the selected mother"} and update the animal history. Please confirm the details are correct.`,
-            [
-                { text: "Review", style: "cancel" },
-                {
-                    text: "Submit",
-                    style: "default",
-                    onPress: submitCalvingRecord,
-                },
-            ],
-        );
+        setConfirmSubmitVisible(true);
     };
 
     const filteredFarmers = farmers.filter(f => 
@@ -721,6 +731,17 @@ export default function RecordCalfDropScreen() {
                  </View>
               </View>
             </Modal>
+
+            <ConfirmationModal
+              visible={confirmSubmitVisible}
+              onClose={() => setConfirmSubmitVisible(false)}
+              onConfirm={submitCalvingRecord}
+              title="Submit Calving Registry?"
+              message={`This will create ${numCalves} offspring record${numCalves > 1 ? "s" : ""} for ${motherTag || "the selected mother"} and update the animal history. Please confirm the details are correct.`}
+              confirmText="Submit"
+              cancelText="Review"
+              isDestructive={false}
+            />
         </SafeAreaView>
     );
 }

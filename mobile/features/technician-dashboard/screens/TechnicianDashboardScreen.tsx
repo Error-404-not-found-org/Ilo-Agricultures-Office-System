@@ -70,7 +70,6 @@ export default function TechnicianDashboardScreen() {
     getAdditionalNotesOnly,
     handleAction,
     confirmAction,
-    handleRejectRequest,
     isUpdating,
   } = useTechnicianDashboardScreen();
 
@@ -108,7 +107,12 @@ export default function TechnicianDashboardScreen() {
         <View style={{ paddingHorizontal: 24, marginTop: -40 }}>
           <TechnicianStatsCard stats={stats} analytics={analytics} agendaItems={agendaItems} />
 
-          <TechnicianQuickActions />
+          <TechnicianQuickActions
+            pendingRequestCount={
+              pendingRequests.filter((request: any) => request.status === "pending").length
+            }
+            todayVisitCount={agendaItems.length}
+          />
 
           <TechnicianRouteSection
             loading={loading}
@@ -123,17 +127,16 @@ export default function TechnicianDashboardScreen() {
             dbUser={dbUser}
             isUpdating={isUpdating}
             handleAction={handleAction}
-            handleRejectRequest={handleRejectRequest}
           />
 
-          <TechnicianPerformanceCard stats={stats} />
+          {/* <TechnicianPerformanceCard stats={stats} /> */}
 
-          <TechnicianFarmerStandings
+          {/* <TechnicianFarmerStandings
             loadingClients={loadingClients}
             clientsData={clientsData}
             farmerSearch={farmerSearch}
             setFarmerSearch={setFarmerSearch}
-          />
+          /> */}
 
           <TechnicianMoowieHelpCard />
         </View>

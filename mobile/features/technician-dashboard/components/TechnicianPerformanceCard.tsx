@@ -158,7 +158,7 @@ export function TechnicianPerformanceCard({ stats }: TechnicianPerformanceCardPr
               marginTop: 4,
             }}
           >
-            8 Oton Barangays
+            Iloilo service areas
           </Text>
         </View>
       </View>

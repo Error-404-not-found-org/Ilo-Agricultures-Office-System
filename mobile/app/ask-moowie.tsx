@@ -10,17 +10,13 @@ import {
   Platform,
 } from "react-native";
 import { ChevronLeft, Send, Sparkles, Trash2 } from "lucide-react-native";
-import { useRouter } from "expo-router";
 import { safeBack } from "../utils/navigation";
 import { StatusBar } from "expo-status-bar";
 import { useUser } from "@clerk/clerk-expo";
 import { useApi } from "../lib/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const PRIMARY = "#00643B";
-
 export default function AskMoowie() {
-  const router = useRouter();
   const { user } = useUser();
   const api = useApi();
 
@@ -170,6 +166,8 @@ export default function AskMoowie() {
       <View className="pt-14 pb-6 px-6 bg-[#00643B] rounded-b-[32px] flex-row items-center justify-between shadow-lg">
         <TouchableOpacity
           onPress={() => safeBack(role === "technician" ? "/(technician)/(tabs)" : "/(farmer)/(tabs)")}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
           className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
         >
           <ChevronLeft size={24} color="white" />
@@ -199,6 +197,8 @@ export default function AskMoowie() {
 
         <TouchableOpacity
           onPress={handleClearHistory}
+          accessibilityRole="button"
+          accessibilityLabel="Clear Moowie chat history"
           className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
         >
           <Trash2 size={20} color="white" />
@@ -232,7 +232,7 @@ export default function AskMoowie() {
             >
               {/* AI Avatar */}
               {item.role === "ai" && (
-                <View className="w-10 h-10 rounded-full bg-emerald-50 items-center justify-center mr-2 mt-1 border border-emerald-100 overflow-hidden shadow-sm">
+                <View className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/50 items-center justify-center mr-2 mt-1 border border-emerald-100 dark:border-emerald-800/50 overflow-hidden shadow-sm">
                   <Image
                     source={{
                       uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
@@ -268,7 +268,7 @@ export default function AskMoowie() {
           {/* Typing */}
           {loading && (
             <View className="mb-6 flex-row justify-start">
-              <View className="w-10 h-10 rounded-full bg-emerald-50 items-center justify-center mr-2 mt-1 border border-emerald-100 overflow-hidden shadow-sm">
+              <View className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/50 items-center justify-center mr-2 mt-1 border border-emerald-100 dark:border-emerald-800/50 overflow-hidden shadow-sm">
                 <Image
                   source={{
                     uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
@@ -307,6 +307,8 @@ export default function AskMoowie() {
             <TouchableOpacity
               onPress={handleSend}
               disabled={!message.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Send message to Moowie"
               className={`w-10 h-10 rounded-full items-center justify-center ml-2 shadow-sm ${
                 message.trim()
                   ? "bg-[#00643B]"

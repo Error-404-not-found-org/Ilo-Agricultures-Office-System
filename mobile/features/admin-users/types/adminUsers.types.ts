@@ -16,6 +16,8 @@ export interface UserItem {
     street?: string;
     barangay?: string;
     city?: string;
+    district?: string;
     province?: string;
   };
+  deletedAt?: string;
 }

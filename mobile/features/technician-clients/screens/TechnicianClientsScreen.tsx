@@ -107,7 +107,7 @@ export default function TechnicianClientsScreen() {
               <ArrowLeft size={20} color="#fff" />
             </TouchableOpacity>
             <Text variant="black" size={24} style={{ color: "#fff" }}>
-              Client Hub
+              Farmers
             </Text>
           </View>
           <TouchableOpacity

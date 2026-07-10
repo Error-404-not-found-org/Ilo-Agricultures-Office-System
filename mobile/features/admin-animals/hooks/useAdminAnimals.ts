@@ -96,7 +96,9 @@ export const useAdminAnimals = (initialSearch: string = "") => {
   const availableBreeds = useMemo(() => {
     const breedsSet = new Set<string>();
     rawAnimals.forEach((a) => {
-      if (a.breed) breedsSet.add(a.breed);
+      if (a.breed && typeof a.breed === "string") {
+        breedsSet.add(a.breed);
+      }
     });
     return ["All", ...Array.from(breedsSet)];
   }, [rawAnimals]);
@@ -104,8 +106,17 @@ export const useAdminAnimals = (initialSearch: string = "") => {
   const availableBarangays = useMemo(() => {
     const barangaysSet = new Set<string>();
     rawAnimals.forEach((a: any) => {
-      const bgy = a.farmerId?.barangay || a.farmerId?.address || a.barangay;
-      if (bgy) barangaysSet.add(bgy);
+      let bgy = a.farmerId?.barangay || a.barangay;
+      if (!bgy && a.farmerId?.address) {
+        if (typeof a.farmerId.address === "string") {
+          bgy = a.farmerId.address;
+        } else if (typeof a.farmerId.address === "object") {
+          bgy = a.farmerId.address.barangay;
+        }
+      }
+      if (bgy && typeof bgy === "string") {
+        barangaysSet.add(bgy);
+      }
     });
     return ["All", ...Array.from(barangaysSet)];
   }, [rawAnimals]);
@@ -126,13 +137,17 @@ export const useAdminAnimals = (initialSearch: string = "") => {
 
       // 3. Barangay Filter
       if (barangayFilter !== "All") {
-        const itemBgy = (
-          item.farmerId?.barangay ||
-          item.farmerId?.address ||
-          item.barangay ||
-          ""
-        ).toLowerCase();
-        if (!itemBgy.includes(barangayFilter.toLowerCase())) return false;
+        let itemBgy = item.farmerId?.barangay || item.barangay || "";
+        if (!itemBgy && item.farmerId?.address) {
+          if (typeof item.farmerId.address === "string") {
+            itemBgy = item.farmerId.address;
+          } else if (typeof item.farmerId.address === "object") {
+            itemBgy = item.farmerId.address.barangay || "";
+          }
+        }
+        if (!String(itemBgy).toLowerCase().includes(barangayFilter.toLowerCase())) {
+          return false;
+        }
       }
 
       return true;

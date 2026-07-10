@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Image, Text, TouchableOpacity, View, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from "react-native";
+import { Image, Text, TouchableOpacity, View, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, StatusBar } from "react-native";
 import {
   ArrowLeft,
   CalendarClock,
@@ -17,6 +17,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { getHealthRequestDetail } from "@/features/health-requests/services/healthRequests.service";
 import {
   FarmerScreen,
@@ -46,6 +47,146 @@ const stageIndex = (status?: string) =>
     resolved: 4,
   })[status || "pending"] ?? 0;
 
+function HealthRequestDetailSkeleton() {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const router = useRouter();
+
+  return (
+    <FarmerScreen scroll={false}>
+      <StatusBar barStyle="light-content" />
+
+      <View
+        className="px-5 pb-5"
+        style={{ backgroundColor: colors.primary, paddingTop: insets.top + 16 }}
+      >
+        <View className="flex-row items-center">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
+          >
+            <ArrowLeft size={20} color="white" />
+          </TouchableOpacity>
+
+          <View className="flex-1 ml-3 gap-2">
+            <Skeleton
+              width="48%"
+              height={18}
+              radius={4}
+              style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
+            />
+            <Skeleton
+              width="28%"
+              height={10}
+              radius={3}
+              style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
+            />
+          </View>
+
+          <Skeleton
+            width={82}
+            height={26}
+            radius={13}
+            style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
+          />
+        </View>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}
+      >
+        <View
+          className="mx-5 mt-5 p-4 border"
+          style={{
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            gap: 12,
+          }}
+        >
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 gap-2">
+              <Skeleton width="72%" height={16} radius={4} />
+              <Skeleton width="38%" height={12} radius={3} />
+            </View>
+            <Skeleton width={78} height={20} radius={10} />
+          </View>
+
+          <View className="gap-2">
+            <Skeleton width="96%" height={12} radius={3} />
+            <Skeleton width="88%" height={12} radius={3} />
+            <Skeleton width="54%" height={12} radius={3} />
+          </View>
+
+          <View className="flex-row gap-2 mt-1">
+            {[1, 2, 3].map((item) => (
+              <Skeleton key={item} width={64} height={64} radius={10} />
+            ))}
+          </View>
+        </View>
+
+        <View
+          className="mx-5 mt-5 p-4 border"
+          style={{
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            gap: 12,
+          }}
+        >
+          <Skeleton width="44%" height={16} radius={4} />
+          <View className="flex-row justify-between items-center py-4 px-2">
+            {[1, 2, 3, 4, 5].map((step) => (
+              <View key={step} className="items-center gap-1.5">
+                <Skeleton shape="circle" height={18} />
+                <Skeleton width={42} height={8} radius={2} />
+              </View>
+            ))}
+          </View>
+          <View className="pt-3 border-t border-slate-100 dark:border-slate-800/50 flex-row items-start gap-2.5">
+            <Skeleton shape="circle" height={16} style={{ marginTop: 2 }} />
+            <View className="flex-1 gap-2">
+              <Skeleton width="92%" height={12} radius={3} />
+              <Skeleton width="68%" height={12} radius={3} />
+            </View>
+          </View>
+        </View>
+
+        <View
+          className="mx-5 mt-5 p-4 border"
+          style={{
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            gap: 14,
+          }}
+        >
+          <Skeleton width="36%" height={16} radius={4} />
+          {[1, 2].map((row) => (
+            <View key={row} className="flex-row items-center gap-2.5">
+              <Skeleton shape="circle" height={18} />
+              <Skeleton width={row === 1 ? "58%" : "74%"} height={14} radius={3} />
+            </View>
+          ))}
+          <View className="gap-2 mt-1">
+            <Skeleton width="28%" height={10} radius={2} />
+            <Skeleton width="96%" height={12} radius={3} />
+            <Skeleton width="72%" height={12} radius={3} />
+          </View>
+        </View>
+
+        <Skeleton
+          width="90%"
+          height={46}
+          radius={12}
+          style={{ alignSelf: "center", marginTop: 20 }}
+        />
+      </ScrollView>
+    </FarmerScreen>
+  );
+}
+
 export default function HealthRequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -65,11 +206,7 @@ export default function HealthRequestDetailScreen() {
   });
 
   if (query.isLoading) {
-    return (
-      <FarmerScreen style={{ justifyContent: "center", alignItems: "center" }}>
-        <AsyncState state="loading" />
-      </FarmerScreen>
-    );
+    return <HealthRequestDetailSkeleton />;
   }
 
   if (query.isError || !query.data) {

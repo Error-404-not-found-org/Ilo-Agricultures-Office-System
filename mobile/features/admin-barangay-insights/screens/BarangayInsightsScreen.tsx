@@ -12,7 +12,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import Header from '@/components/Header';
-import { SearchBar, AsyncState, FilterChips, StatusBadge } from '@/components/shared';
+import { SearchBar, AsyncState, FilterChips, StatusBadge, SelectDropdown } from '@/components/shared';
 import { ScreenLayout } from '@/components/ScreenLayout';
 import { useTheme } from '@/lib/theme';
 import { useBarangayInsights } from '../hooks/useBarangayInsights';
@@ -32,11 +32,29 @@ export default function BarangayInsightsScreen() {
     setSearchQuery,
     activeFilter,
     setActiveFilter,
+    municipalityFilter,
+    setMunicipalityFilter,
+    municipalityOptions,
+    districtFilter,
+    setDistrictFilter,
+    districtOptions,
+    showDistrictFilter,
+    selectedLocationLabel,
     isLoading,
     isError,
     isRefetching,
     handleRefresh,
   } = useBarangayInsights();
+
+  const municipalityDropdownOptions = React.useMemo(
+    () => municipalityOptions.map((option) => ({ label: option, value: option })),
+    [municipalityOptions],
+  );
+
+  const districtDropdownOptions = React.useMemo(
+    () => districtOptions.map((option) => ({ label: option, value: option })),
+    [districtOptions],
+  );
 
   const handleBarangayPress = (barangayName: string) => {
     router.push({
@@ -118,7 +136,7 @@ export default function BarangayInsightsScreen() {
           >
             {priorityBarangays.map((item) => (
               <PriorityBarangayCard
-                key={item.barangay}
+                key={[item.municipality || item.city, item.district, item.barangay].filter(Boolean).join("-")}
                 item={item}
                 onPress={() => handleBarangayPress(item.barangay)}
               />
@@ -131,7 +149,7 @@ export default function BarangayInsightsScreen() {
       <SearchBar
         value={searchQuery}
         onChangeText={setSearchQuery}
-        placeholder="Search barangay name..."
+        placeholder="Search barangay, city, or district..."
       />
 
       <FilterChips
@@ -141,10 +159,35 @@ export default function BarangayInsightsScreen() {
         containerStyle={{ paddingHorizontal: 0, marginBottom: 16 }}
       />
 
+      <View style={{ marginBottom: 12 }}>
+        <SelectDropdown
+          label="Municipality / City"
+          options={municipalityDropdownOptions}
+          value={municipalityFilter}
+          onChange={(value) => {
+            setMunicipalityFilter(value);
+            setDistrictFilter("All");
+          }}
+          searchable
+        />
+      </View>
+
+      {showDistrictFilter && (
+        <View style={{ marginBottom: 16 }}>
+          <SelectDropdown
+            label="District / Area"
+            options={districtDropdownOptions}
+            value={districtFilter}
+            onChange={setDistrictFilter}
+            searchable
+          />
+        </View>
+      )}
+
       {/* Result Count */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <Text style={{ fontSize: 12, fontFamily: 'Outfit_600SemiBold', color: colors.textSecondary }}>
-          Showing {filteredBarangays.length} barangays
+          Showing {filteredBarangays.length} areas in {selectedLocationLabel}
         </Text>
       </View>
     </View>
@@ -173,7 +216,7 @@ export default function BarangayInsightsScreen() {
       >
         <FlatList
           data={isLoading ? [] : filteredBarangays}
-          keyExtractor={(item) => item.barangay}
+          keyExtractor={(item) => [item.municipality || item.city, item.district, item.barangay].filter(Boolean).join("-")}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 120 }}
           refreshControl={
@@ -276,10 +319,10 @@ const PriorityBarangayCard = React.memo(function PriorityBarangayCard({ item, on
         elevation: 2,
       }}
     >
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 }}>
         <Text
           numberOfLines={1}
-          style={{ fontSize: 15, fontFamily: 'Outfit_700Bold', color: colors.textPrimary, flex: 1 }}
+          style={{ fontSize: 15, fontFamily: 'Outfit_700Bold', color: colors.textPrimary, flex: 1, paddingRight: 8 }}
         >
           {item.barangay}
         </Text>
@@ -289,13 +332,26 @@ const PriorityBarangayCard = React.memo(function PriorityBarangayCard({ item, on
             paddingHorizontal: 8,
             paddingVertical: 3,
             borderRadius: 10,
+            maxWidth: 76,
           }}
         >
-          <Text style={{ fontSize: 8, fontFamily: 'Outfit_800ExtraBold', color: alertColor, textTransform: 'uppercase' }}>
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={{ fontSize: 8, fontFamily: 'Outfit_800ExtraBold', color: alertColor, textTransform: 'uppercase' }}
+          >
             {item.status}
           </Text>
         </View>
       </View>
+      {(item.municipality || item.city || item.district) && (
+        <Text
+          numberOfLines={1}
+          style={{ fontSize: 10, fontFamily: 'Outfit_600SemiBold', color: colors.textMuted, marginTop: -4, marginBottom: 8 }}
+        >
+          {[item.district, item.municipality || item.city].filter(Boolean).join(", ")}
+        </Text>
+      )}
 
       <View style={{ gap: 6, marginBottom: 8 }}>
         {item.pendingHealthRequests > 0 && (
@@ -369,8 +425,8 @@ const BarangayCard = React.memo(function BarangayCard({ item, onPress }: Baranga
       }}
     >
       {/* Header Row */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
+        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0, paddingRight: 10 }}>
           <View
             style={{
               width: 36,
@@ -383,15 +439,25 @@ const BarangayCard = React.memo(function BarangayCard({ item, onPress }: Baranga
           >
             <MaterialCommunityIcons name="map-marker-outline" size={18} color={PRIMARY} />
           </View>
-          <Text style={{ fontSize: 17, fontFamily: 'Outfit_700Bold', color: colors.textPrimary }}>
-            {item.barangay}
-          </Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 17, fontFamily: 'Outfit_700Bold', color: colors.textPrimary }}>
+              {item.barangay}
+            </Text>
+            {(item.municipality || item.city || item.district) && (
+              <Text numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: 11, fontFamily: 'Outfit_600SemiBold', color: colors.textMuted, marginTop: 2 }}>
+                {[item.district, item.municipality || item.city].filter(Boolean).join(", ")}
+              </Text>
+            )}
+          </View>
         </View>
 
-        <StatusBadge
-          label={item.status}
-          variant={item.status === 'healthy' ? 'success' : item.status === 'attention' ? 'warning' : 'danger'}
-        />
+        <View style={{ flexShrink: 0, maxWidth: 92 }}>
+          <StatusBadge
+            label={item.status}
+            variant={item.status === 'healthy' ? 'success' : item.status === 'attention' ? 'warning' : 'danger'}
+            size={9}
+          />
+        </View>
       </View>
 
       {/* Stats Grid */}

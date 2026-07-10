@@ -13,26 +13,34 @@ export const useCreateUser = () => {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [role, setRole] = useState<Role>('farmer');
+  const [street, setStreet] = useState('');
+  const [city, setCity] = useState('');
+  const [district, setDistrict] = useState('');
+  const [barangay, setBarangay] = useState('');
   const [showRolePicker, setShowRolePicker] = useState(false);
   const [loading, setLoading] = useState(false);
 
   // Success state
-  const [createdCredentials, setCreatedCredentials] = useState<{ email: string; password: string } | null>(null);
+  const [createdAccount, setCreatedAccount] = useState<{
+    email?: string;
+    phoneNumber?: string;
+    role: Role;
+    invitationSent: boolean;
+  } | null>(null);
 
   const handleCreate = async () => {
     if (!firstName.trim() || !lastName.trim()) {
       toast.error('First and last name are required.');
       return;
     }
-    if (!email.trim() || !password.trim()) {
-      toast.error('Email and password are required.');
+    if ((role === 'technician' || role === 'admin') && !email.trim()) {
+      toast.error('Email is required for staff accounts.');
       return;
     }
-    if (password.length < 8) {
-      toast.error('Password must be at least 8 characters.');
+    if (role === 'farmer' && !email.trim() && !phoneNumber.trim()) {
+      toast.error('Add an email or phone number for the farmer profile.');
       return;
     }
 
@@ -42,11 +50,23 @@ export const useCreateUser = () => {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim().toLowerCase(),
-        password,
         role,
+        phoneNumber: phoneNumber.trim(),
+        address: {
+          street: street.trim(),
+          barangay,
+          city,
+          district,
+          province: 'Iloilo',
+        },
       });
       toast.success(`${role.charAt(0).toUpperCase() + role.slice(1)} created successfully!`);
-      setCreatedCredentials(res.credentials || { email: email.trim().toLowerCase(), password });
+      setCreatedAccount({
+        email: email.trim().toLowerCase(),
+        phoneNumber: phoneNumber.trim(),
+        role,
+        invitationSent: Boolean(email.trim()),
+      });
     } catch (err: any) {
       const msg = err.response?.data?.message || 'Failed to create user.';
       toast.error(msg);
@@ -56,11 +76,13 @@ export const useCreateUser = () => {
   };
 
   const shareCredentials = async () => {
-    if (!createdCredentials) return;
+    if (!createdAccount) return;
     try {
       await Share.share({
-        message: `Login Credentials:\nEmail: ${createdCredentials.email}\nPassword: ${createdCredentials.password}\nRole: ${role}`,
-        title: 'New User Credentials',
+        message: createdAccount.invitationSent
+          ? `BreedSmart invitation sent.\nEmail: ${createdAccount.email}\nRole: ${createdAccount.role}\n\nThe user should open the invitation and set their own password.`
+          : `BreedSmart farmer profile created.\nPhone: ${createdAccount.phoneNumber || 'N/A'}\n\nThe farmer can claim this profile later using their verified phone number.`,
+        title: 'BreedSmart Account Setup',
       });
     } catch (e) {
       toast.error('Failed to share credentials.');
@@ -68,12 +90,16 @@ export const useCreateUser = () => {
   };
 
   const handleCreateAnother = () => {
-    setCreatedCredentials(null);
+    setCreatedAccount(null);
     setFirstName('');
     setLastName('');
     setEmail('');
-    setPassword('');
+    setPhoneNumber('');
     setRole('farmer');
+    setStreet('');
+    setCity('');
+    setDistrict('');
+    setBarangay('');
   };
 
   return {
@@ -83,16 +109,22 @@ export const useCreateUser = () => {
     setLastName,
     email,
     setEmail,
-    password,
-    setPassword,
-    showPassword,
-    setShowPassword,
+    phoneNumber,
+    setPhoneNumber,
     role,
     setRole,
+    street,
+    setStreet,
+    city,
+    setCity,
+    district,
+    setDistrict,
+    barangay,
+    setBarangay,
     showRolePicker,
     setShowRolePicker,
     loading,
-    createdCredentials,
+    createdAccount,
     handleCreate,
     shareCredentials,
     handleCreateAnother,

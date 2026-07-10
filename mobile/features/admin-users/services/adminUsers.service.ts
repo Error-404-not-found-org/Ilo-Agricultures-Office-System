@@ -16,8 +16,15 @@ export const createUser = async (
     firstName: string;
     lastName: string;
     email: string;
-    password: string;
     role: string;
+    phoneNumber?: string;
+    address?: {
+      street?: string;
+      barangay?: string;
+      city?: string;
+      district?: string;
+      province?: string;
+    };
   }
 ) => {
   const res = await api.post("/admin/create-user", userData);
@@ -46,5 +53,15 @@ export const resetPassword = async (api: AxiosInstance, id: string) => {
 
 export const updateRole = async (api: AxiosInstance, id: string, role: string) => {
   const res = await api.post("/admin/update-role", { id, role });
+  return res.data;
+};
+
+export const getArchivedUsers = async (api: AxiosInstance) => {
+  const res = await api.get("/user/archived");
+  return Array.isArray(res.data?.data) ? res.data.data : [];
+};
+
+export const restoreUser = async (api: AxiosInstance, id: string) => {
+  const res = await api.post(`/user/${id}/restore`);
   return res.data;
 };

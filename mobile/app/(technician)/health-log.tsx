@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -30,34 +30,66 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { CATTLE_BREEDS, CATTLE_SPECIES, OTON_BARANGAYS, CATTLE_COLORS, COLOR_OPTIONS_BY_SPECIES } from "@/lib/constants";
+import {
+  CATTLE_BREEDS,
+  CATTLE_SPECIES,
+  CATTLE_COLORS,
+  COLOR_OPTIONS_BY_SPECIES,
+} from "@/lib/constants";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useAnimalContext } from "@/hooks/useAnimalContext";
 import AnimalContextHeader from "@/components/AnimalContextHeader";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
 import { completeTask } from "@/features/technician/services/tasks.service";
+import {
+  formatBarangayWithDistrict,
+  getIloiloBarangayOptions,
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from "@/constants/address";
 
 const getReproductiveStatusStyle = (status?: string) => {
   switch (status) {
     case "Pregnant":
-      return { bg: "bg-pink-50 dark:bg-pink-950/30", text: "text-pink-600 dark:text-pink-400" };
+      return {
+        bg: "bg-pink-50 dark:bg-pink-950/30",
+        text: "text-pink-600 dark:text-pink-400",
+      };
     case "Inseminated":
-      return { bg: "bg-blue-50 dark:bg-blue-950/30", text: "text-blue-600 dark:text-blue-400" };
+      return {
+        bg: "bg-blue-50 dark:bg-blue-950/30",
+        text: "text-blue-600 dark:text-blue-400",
+      };
     case "Normal":
     default:
-      return { bg: "bg-slate-100 dark:bg-slate-800", text: "text-slate-600 dark:text-slate-400" };
+      return {
+        bg: "bg-slate-100 dark:bg-slate-800",
+        text: "text-slate-600 dark:text-slate-400",
+      };
   }
 };
 
-const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default', maxLength, secureTextEntry = false, editable = true }: any) => (
+const InputField = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = "default",
+  maxLength,
+  secureTextEntry = false,
+  editable = true,
+}: any) => (
   <View className="mb-4">
-    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1.5 ml-1 uppercase">{label}</Text>
-    <TextInput 
-      style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 14 }}
-      className={`bg-white border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-semibold ${!editable ? 'bg-slate-100 text-slate-400' : ''}`}
-      value={value} 
-      onChangeText={onChangeText} 
-      placeholder={placeholder?.toLowerCase()} 
+    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1.5 ml-1 uppercase">
+      {label}
+    </Text>
+    <TextInput
+      style={{ fontFamily: "Outfit_600SemiBold", fontSize: 14 }}
+      className={`bg-white border border-slate-100 rounded-xl p-3 text-slate-800 font-outfit-semibold ${!editable ? "bg-slate-100 text-slate-400" : ""}`}
+      value={value}
+      onChangeText={onChangeText}
+      placeholder={placeholder?.toLowerCase()}
       placeholderTextColor="#cbd5e1"
       keyboardType={keyboardType}
       maxLength={maxLength}
@@ -67,15 +99,27 @@ const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'd
   </View>
 );
 
-const SelectorField = ({ label, value, onPress, placeholder }: any) => (
+const SelectorField = ({
+  label,
+  value,
+  onPress,
+  placeholder,
+  disabled = false,
+}: any) => (
   <View className="mb-4">
-    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1.5 ml-1 uppercase">{label}</Text>
-    <TouchableOpacity 
+    <Text className="text-slate-500 text-[10px] font-outfit-bold mb-1.5 ml-1 uppercase">
+      {label}
+    </Text>
+    <TouchableOpacity
       onPress={onPress}
+      disabled={disabled}
       style={{ minHeight: 46 }}
-      className="bg-white border border-slate-100 rounded-xl p-3 flex-row justify-between items-center"
+      className={`bg-white border border-slate-100 rounded-xl p-3 flex-row justify-between items-center ${disabled ? "opacity-60" : ""}`}
     >
-      <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 14 }} className={value ? 'text-slate-800' : 'text-slate-300'}>
+      <Text
+        style={{ fontFamily: "Outfit_600SemiBold", fontSize: 14 }}
+        className={value ? "text-slate-800" : "text-slate-300"}
+      >
         {value || placeholder?.toLowerCase()}
       </Text>
       <ChevronDown size={16} color="#cbd5e1" />
@@ -127,7 +171,8 @@ export default function HealthLogScreen() {
     phoneNumber: "",
     email: "",
     barangay: "",
-    city: "Oton",
+    city: "",
+    district: "",
   });
 
   const [newAnimal, setNewAnimal] = useState({
@@ -141,15 +186,38 @@ export default function HealthLogScreen() {
   });
 
   const [animalImageUri, setAnimalImageUri] = useState<string | null>(null);
-  const [animalImageBase64, setAnimalImageBase64] = useState<string | null>(null);
+  const [animalImageBase64, setAnimalImageBase64] = useState<string | null>(
+    null,
+  );
 
-  const [showBrgyModal, setShowBrgyModal] = useState(false);
+  const [addressPicker, setAddressPicker] = useState<
+    null | "city" | "district" | "barangay"
+  >(null);
   const [showGenderModal, setShowGenderModal] = useState(false);
   const [showAnimalDobPicker, setShowAnimalDobPicker] = useState(false);
-  const [searchBrgy, setSearchBrgy] = useState('');
+  const [searchAddress, setSearchAddress] = useState("");
 
-  const filteredBarangays = OTON_BARANGAYS.filter(b => 
-    b.toLowerCase().includes(searchBrgy.toLowerCase())
+  const barangayOptions = useMemo(
+    () => getIloiloBarangayOptions(newFarmer.city, newFarmer.district),
+    [newFarmer.city, newFarmer.district],
+  );
+
+  const addressPickerTitle =
+    addressPicker === "city"
+      ? "Select Municipality / City"
+      : addressPicker === "district"
+        ? "Select Iloilo City District"
+        : "Select Barangay";
+
+  const addressPickerData =
+    addressPicker === "city"
+      ? ILOILO_MUNICIPALITY_OPTIONS
+      : addressPicker === "district"
+        ? ILOILO_CITY_DISTRICT_OPTIONS
+        : barangayOptions;
+
+  const filteredAddressOptions = addressPickerData.filter((item) =>
+    item.toLowerCase().includes(searchAddress.toLowerCase()),
   );
 
   // Health log parameters
@@ -163,7 +231,7 @@ export default function HealthLogScreen() {
   const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
   const [showFollowUpPicker, setShowFollowUpPicker] = useState(false);
   const [withdrawalPeriodDays, setWithdrawalPeriodDays] = useState("");
-  
+
   // Date/Time
   const [preferredDate, setPreferredDate] = useState(new Date());
   const [preferredTime, setPreferredTime] = useState(() => {
@@ -171,7 +239,7 @@ export default function HealthLogScreen() {
     t.setHours(8, 0, 0, 0); // Static 8:00 AM baseline
     return t;
   });
-  
+
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showTypeModal, setShowTypeModal] = useState(false);
@@ -193,16 +261,25 @@ export default function HealthLogScreen() {
       });
     } catch (err) {
       console.error("Failed to complete linked health task", err);
-      toast.error("Health record saved, but the linked task was not completed.");
+      toast.error(
+        "Health record saved, but the linked task was not completed.",
+      );
     }
   };
 
   const handleSuccess = async (result: any) => {
     if (result.status === "synced") {
-      toast.success(status === "resolved" ? "Health record saved!" : "Visit scheduled successfully!");
+      toast.success(
+        status === "resolved"
+          ? "Health record saved!"
+          : "Visit scheduled successfully!",
+      );
     }
     await completeLinkedTask(result);
-    if ((source === "animal-profile" || source === "task") && selectedAnimal?._id) {
+    if (
+      (source === "animal-profile" || source === "task") &&
+      selectedAnimal?._id
+    ) {
       router.replace({
         pathname: "/(technician)/animal-details",
         params: { id: selectedAnimal._id },
@@ -214,7 +291,7 @@ export default function HealthLogScreen() {
 
   const handlePickAnimalImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
@@ -228,30 +305,42 @@ export default function HealthLogScreen() {
   };
 
   // Mutation 1: Walk-in
-  const walkInMutation = useOfflineMutation({
-    url: "/health-request/walk-in",
-    method: "POST",
-    description: `Health Assistance: ${diagnosis || "Walk-in service"}`
-  }, {
-    onSuccess: handleSuccess,
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Failed to save health record.");
-    }
-  });
+  const walkInMutation = useOfflineMutation(
+    {
+      url: "/health-request/walk-in",
+      method: "POST",
+      description: `Health Assistance: ${diagnosis || "Walk-in service"}`,
+    },
+    {
+      onSuccess: handleSuccess,
+      onError: (err: any) => {
+        toast.error(
+          err.response?.data?.message || "Failed to save health record.",
+        );
+      },
+    },
+  );
 
   // Mutation 2: Transition Request
-  const requestMutation = useOfflineMutation({
-    url: `/health-request/${requestId || "placeholder"}/status`,
-    method: "PATCH",
-    description: `Resolve Health Request: ${diagnosis || "Routine checkup"}`
-  }, {
-    onSuccess: handleSuccess,
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Failed to resolve request.");
-    }
-  });
+  const requestMutation = useOfflineMutation(
+    {
+      url: `/health-request/${requestId || "placeholder"}/status`,
+      method: "PATCH",
+      description: `Resolve Health Request: ${diagnosis || "Routine checkup"}`,
+    },
+    {
+      onSuccess: handleSuccess,
+      onError: (err: any) => {
+        toast.error(
+          err.response?.data?.message || "Failed to resolve request.",
+        );
+      },
+    },
+  );
 
-  const isMutationPending = requestId ? requestMutation.isPending : walkInMutation.isPending;
+  const isMutationPending = requestId
+    ? requestMutation.isPending
+    : walkInMutation.isPending;
 
   const handleFarmerSelect = (farmer: any) => {
     setSelectedFarmer(farmer);
@@ -263,16 +352,30 @@ export default function HealthLogScreen() {
     toast.dismiss();
     if (isNewFarmer) {
       // Validate Manual Farmer
-      if (!newFarmer.firstName || !newFarmer.lastName || !newFarmer.phoneNumber) {
+      if (
+        !newFarmer.firstName ||
+        !newFarmer.lastName ||
+        !newFarmer.phoneNumber
+      ) {
         toast.error("Please fill in owner name and phone number.");
         return;
       }
       if (!/^09\d{9}$/.test(newFarmer.phoneNumber)) {
-        toast.error("Phone number must start with 09 and be exactly 11 digits.");
+        toast.error(
+          "Phone number must start with 09 and be exactly 11 digits.",
+        );
         return;
       }
       if (!newFarmer.barangay) {
         toast.error("Please select a Barangay.");
+        return;
+      }
+      if (!newFarmer.city) {
+        toast.error("Please select a municipality or city.");
+        return;
+      }
+      if (newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district) {
+        toast.error("Please select the Iloilo City district.");
         return;
       }
 
@@ -317,12 +420,12 @@ export default function HealthLogScreen() {
     } else {
       // Structure dates
       const yyyy = preferredDate.getFullYear();
-      const mm = String(preferredDate.getMonth() + 1).padStart(2, '0');
-      const dd = String(preferredDate.getDate()).padStart(2, '0');
+      const mm = String(preferredDate.getMonth() + 1).padStart(2, "0");
+      const dd = String(preferredDate.getDate()).padStart(2, "0");
       const dateStr = `${yyyy}-${mm}-${dd}`;
 
-      const hh = String(preferredTime.getHours()).padStart(2, '0');
-      const min = String(preferredTime.getMinutes()).padStart(2, '0');
+      const hh = String(preferredTime.getHours()).padStart(2, "0");
+      const min = String(preferredTime.getMinutes()).padStart(2, "0");
       const timeStr = `${hh}:${min}`;
 
       let payload: any = {
@@ -334,7 +437,11 @@ export default function HealthLogScreen() {
         preferredTime: timeStr,
         treatment: treatment || "",
         advice: medicine || "",
-        technicianNote: notes || (status === "resolved" ? "Walk-in service recorded by technician." : "Visit scheduled by technician."),
+        technicianNote:
+          notes ||
+          (status === "resolved"
+            ? "Walk-in service recorded by technician."
+            : "Visit scheduled by technician."),
       };
 
       if (status === "resolved" && followUpDate) {
@@ -353,8 +460,14 @@ export default function HealthLogScreen() {
         payload.phoneNumber = newFarmer.phoneNumber;
         payload.email = newFarmer.email || "";
         payload.address = {
-          barangay: newFarmer.barangay,
+          barangay: formatBarangayWithDistrict(
+            newFarmer.barangay,
+            newFarmer.city,
+            newFarmer.district,
+          ),
           city: newFarmer.city,
+          district:
+            newFarmer.city === ILOILO_CITY_NAME ? newFarmer.district : "",
         };
         payload.animalDetails = {
           earTag: newAnimal.earTag,
@@ -388,7 +501,12 @@ export default function HealthLogScreen() {
           accessibilityRole="button"
           accessibilityLabel="Go back"
           className="mr-4 p-2 bg-slate-50 rounded-full"
-          style={{ minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }}
+          style={{
+            minWidth: 44,
+            minHeight: 44,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
         >
           <ArrowLeft size={20} color="#1e2937" />
         </TouchableOpacity>
@@ -420,15 +538,25 @@ export default function HealthLogScreen() {
             <View className="flex-row p-1 rounded-2xl bg-slate-100 border border-slate-200 mb-6">
               <TouchableOpacity
                 onPress={() => setIsNewFarmer(false)}
-                className={`flex-1 py-2.5 rounded-xl items-center ${!isNewFarmer ? 'bg-amber-600' : ''}`}
+                className={`flex-1 py-2.5 rounded-xl items-center ${!isNewFarmer ? "bg-amber-600" : ""}`}
               >
-                <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[12px] ${!isNewFarmer ? 'text-white' : 'text-slate-500'}`}>Existing Record</Text>
+                <Text
+                  style={{ fontFamily: "Outfit_700Bold" }}
+                  className={`text-[12px] ${!isNewFarmer ? "text-white" : "text-slate-500"}`}
+                >
+                  Existing Record
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setIsNewFarmer(true)}
-                className={`flex-1 py-2.5 rounded-xl items-center ${isNewFarmer ? 'bg-amber-600' : ''}`}
+                className={`flex-1 py-2.5 rounded-xl items-center ${isNewFarmer ? "bg-amber-600" : ""}`}
               >
-                <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[12px] ${isNewFarmer ? 'text-white' : 'text-slate-500'}`}>Manual Entry</Text>
+                <Text
+                  style={{ fontFamily: "Outfit_700Bold" }}
+                  className={`text-[12px] ${isNewFarmer ? "text-white" : "text-slate-500"}`}
+                >
+                  Manual Entry
+                </Text>
               </TouchableOpacity>
             </View>
 
@@ -451,7 +579,9 @@ export default function HealthLogScreen() {
                         style={{ fontFamily: "Outfit_700Bold" }}
                         className={`text-base ${selectedFarmer ? "text-slate-800" : "text-slate-300"}`}
                       >
-                        {selectedFarmer ? selectedFarmer.name : "Select Farmer..."}
+                        {selectedFarmer
+                          ? selectedFarmer.name
+                          : "Select Farmer..."}
                       </Text>
                     </View>
                   </View>
@@ -481,17 +611,24 @@ export default function HealthLogScreen() {
                             className={`text-base ${selectedAnimal ? "text-slate-800" : "text-slate-300"}`}
                           >
                             {selectedAnimal
-                              ? (selectedAnimal.earTag || selectedAnimal.animalId || "Animal Selected")
+                              ? selectedAnimal.earTag ||
+                                selectedAnimal.animalId ||
+                                "Animal Selected"
                               : "Choose Animal..."}
                           </Text>
                           {selectedAnimal && (
                             <View className="flex-row items-center flex-wrap gap-2 mt-1">
                               <Text className="text-slate-400 text-xs">
-                                {selectedAnimal.breed || "Crossbreed"} · {selectedAnimal.species || "Cattle"}
+                                {selectedAnimal.breed || "Crossbreed"} ·{" "}
+                                {selectedAnimal.species || "Cattle"}
                               </Text>
                               {selectedAnimal.reproductiveStatus && (
-                                <View className={`px-2 py-0.5 rounded-full ${getReproductiveStatusStyle(selectedAnimal.reproductiveStatus).bg}`}>
-                                  <Text className={`text-[10px] font-outfit-bold ${getReproductiveStatusStyle(selectedAnimal.reproductiveStatus).text}`}>
+                                <View
+                                  className={`px-2 py-0.5 rounded-full ${getReproductiveStatusStyle(selectedAnimal.reproductiveStatus).bg}`}
+                                >
+                                  <Text
+                                    className={`text-[10px] font-outfit-bold ${getReproductiveStatusStyle(selectedAnimal.reproductiveStatus).text}`}
+                                  >
                                     {selectedAnimal.reproductiveStatus}
                                   </Text>
                                 </View>
@@ -501,39 +638,43 @@ export default function HealthLogScreen() {
                         </View>
                       </View>
                       {loadingAnimals ? (
-                        <ActivityIndicator
-                          size="small"
-                          color="#D97706"
-                        />
+                        <ActivityIndicator size="small" color="#D97706" />
                       ) : (
-                        <ChevronDown
-                          size={20}
-                          color="#94a3b8"
-                        />
+                        <ChevronDown size={20} color="#94a3b8" />
                       )}
                     </TouchableOpacity>
                   </View>
                 )}
               </>
-            ) : (              <>
+            ) : (
+              <>
                 {/* MANUAL OWNER REGISTRATION */}
                 <View className="bg-slate-50 border border-slate-100 rounded-[32px] p-6 mb-6">
-                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-amber-900 text-sm mb-4">Quick Farmer Registration</Text>
+                  <Text
+                    style={{ fontFamily: "Outfit_800ExtraBold" }}
+                    className="text-amber-900 text-sm mb-4"
+                  >
+                    Quick Farmer Registration
+                  </Text>
                   <View>
                     <View className="flex-row gap-3">
                       <View className="flex-1">
-                        <InputField 
+                        <InputField
                           label="First Name *"
                           value={newFarmer.firstName}
-                          onChangeText={(v: string) => setNewFarmer({...newFarmer, firstName: v})}
+                          onChangeText={(v: string) =>
+                            setNewFarmer({ ...newFarmer, firstName: v })
+                          }
                           placeholder="juan"
                         />
                       </View>
                       <View className="flex-1">
-                        <InputField 
+                        <InputField
                           label="Last Name *"
                           value={newFarmer.lastName}
-                          onChangeText={(v: string) => setNewFarmer({...newFarmer, lastName: v})}
+                          onChangeText={(v: string) =>
+                            setNewFarmer({ ...newFarmer, lastName: v })
+                          }
                           placeholder="santos"
                         />
                       </View>
@@ -541,50 +682,79 @@ export default function HealthLogScreen() {
 
                     <View className="flex-row gap-3">
                       <View className="flex-1">
-                        <InputField 
+                        <InputField
                           label="Phone Number *"
                           value={newFarmer.phoneNumber}
-                          onChangeText={(v: string) => setNewFarmer({...newFarmer, phoneNumber: v.replace(/\D/g, '')})}
+                          onChangeText={(v: string) =>
+                            setNewFarmer({
+                              ...newFarmer,
+                              phoneNumber: v.replace(/\D/g, ""),
+                            })
+                          }
                           placeholder="0912 345 6789"
                           keyboardType="phone-pad"
                           maxLength={11}
                         />
                       </View>
                       <View className="flex-grow flex-1">
-                        <InputField 
+                        <InputField
                           label="Email Address"
                           value={newFarmer.email}
-                          onChangeText={(v: string) => setNewFarmer({...newFarmer, email: v})}
+                          onChangeText={(v: string) =>
+                            setNewFarmer({ ...newFarmer, email: v })
+                          }
                           placeholder="farmer@example.com"
                           keyboardType="email-address"
                         />
                       </View>
                     </View>
 
-                    <View className="flex-row gap-3">
-                      <View className="flex-1">
-                        <SelectorField 
-                          label="Barangay *"
-                          value={newFarmer.barangay}
-                          onPress={() => setShowBrgyModal(true)}
-                          placeholder="select..."
-                        />
-                      </View>
-                      <View className="flex-grow flex-1">
-                        <InputField 
-                          label="Municipality"
-                          value="OTON"
-                          editable={false}
-                        />
-                      </View>
-                    </View>
+                    <SelectorField
+                      label="Municipality / City *"
+                      value={newFarmer.city}
+                      onPress={() => setAddressPicker("city")}
+                      placeholder="select municipality or city"
+                    />
+
+                    {newFarmer.city === ILOILO_CITY_NAME && (
+                      <SelectorField
+                        label="District *"
+                        value={newFarmer.district}
+                        onPress={() => setAddressPicker("district")}
+                        placeholder="select Iloilo City district"
+                      />
+                    )}
+
+                    <SelectorField
+                      label="Barangay *"
+                      value={newFarmer.barangay}
+                      onPress={() => setAddressPicker("barangay")}
+                      placeholder={
+                        !newFarmer.city
+                          ? "select city first"
+                          : newFarmer.city === ILOILO_CITY_NAME &&
+                              !newFarmer.district
+                            ? "select district first"
+                            : "select barangay"
+                      }
+                      disabled={
+                        !newFarmer.city ||
+                        (newFarmer.city === ILOILO_CITY_NAME &&
+                          !newFarmer.district)
+                      }
+                    />
                   </View>
                 </View>
 
                 {/* MANUAL ANIMAL REGISTRATION */}
                 <View className="bg-slate-50 border border-slate-100 rounded-[32px] p-6 mb-8">
-                  <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-amber-900 text-sm mb-4">Quick Animal Registration</Text>
-                  
+                  <Text
+                    style={{ fontFamily: "Outfit_800ExtraBold" }}
+                    className="text-amber-900 text-sm mb-4"
+                  >
+                    Quick Animal Registration
+                  </Text>
+
                   {/* Photo upload */}
                   <View className="items-center mb-4">
                     <TouchableOpacity
@@ -611,18 +781,22 @@ export default function HealthLogScreen() {
                   <View>
                     <View className="flex-row gap-3">
                       <View className="flex-1">
-                        <InputField 
+                        <InputField
                           label="Animal ID *"
                           value={newAnimal.animalId}
-                          onChangeText={(v: string) => setNewAnimal({...newAnimal, animalId: v})}
+                          onChangeText={(v: string) =>
+                            setNewAnimal({ ...newAnimal, animalId: v })
+                          }
                           placeholder="e.g. anm-001"
                         />
                       </View>
                       <View className="flex-1">
-                        <InputField 
+                        <InputField
                           label="Ear Tag *"
                           value={newAnimal.earTag}
-                          onChangeText={(v: string) => setNewAnimal({...newAnimal, earTag: v})}
+                          onChangeText={(v: string) =>
+                            setNewAnimal({ ...newAnimal, earTag: v })
+                          }
                           placeholder="104"
                         />
                       </View>
@@ -630,16 +804,21 @@ export default function HealthLogScreen() {
 
                     <View className="mb-4">
                       <EarTagGenerator
-                        farmerName={`${newFarmer.firstName} ${newFarmer.lastName}`.trim() || "Walk-in Farmer"}
+                        farmerName={
+                          `${newFarmer.firstName} ${newFarmer.lastName}`.trim() ||
+                          "Walk-in Farmer"
+                        }
                         animalCount={0}
-                        onGenerate={(tag) => setNewAnimal({ ...newAnimal, earTag: tag })}
+                        onGenerate={(tag) =>
+                          setNewAnimal({ ...newAnimal, earTag: tag })
+                        }
                         isDark={false}
                       />
                     </View>
 
                     <View className="flex-row gap-3">
                       <View className="flex-1">
-                        <SelectorField 
+                        <SelectorField
                           label="Species *"
                           value={newAnimal.species}
                           onPress={() => setShowSpeciesModal(true)}
@@ -647,7 +826,7 @@ export default function HealthLogScreen() {
                         />
                       </View>
                       <View className="flex-grow flex-1">
-                        <SelectorField 
+                        <SelectorField
                           label="Breed *"
                           value={newAnimal.breed}
                           onPress={() => setShowBreedModal(true)}
@@ -658,7 +837,7 @@ export default function HealthLogScreen() {
 
                     <View className="flex-row gap-3">
                       <View className="flex-1">
-                        <SelectorField 
+                        <SelectorField
                           label="Gender *"
                           value={newAnimal.gender}
                           onPress={() => setShowGenderModal(true)}
@@ -666,7 +845,7 @@ export default function HealthLogScreen() {
                         />
                       </View>
                       <View className="flex-grow flex-1">
-                        <SelectorField 
+                        <SelectorField
                           label="Color *"
                           value={newAnimal.color}
                           onPress={() => setShowColorModal(true)}
@@ -675,7 +854,7 @@ export default function HealthLogScreen() {
                       </View>
                     </View>
 
-                    <SelectorField 
+                    <SelectorField
                       label="Date of Birth *"
                       value={newAnimal.dob}
                       onPress={() => setShowAnimalDobPicker(true)}
@@ -703,61 +882,115 @@ export default function HealthLogScreen() {
           <View className="gap-y-5">
             {/* SERVICE MODE (Complete vs Schedule) */}
             <View>
-              <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Service Mode</Text>
+              <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
+                Service Mode
+              </Text>
               <View className="flex-row gap-3">
                 <TouchableOpacity
-                  onPress={() => setStatus('resolved')}
-                  className={`flex-1 py-3.5 rounded-2xl border items-center ${status === 'resolved' ? 'bg-amber-600 border-amber-600' : 'bg-white border-amber-100'}`}
-                  style={status === 'resolved' ? { shadowColor: '#d97706', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 } : {}}
+                  onPress={() => setStatus("resolved")}
+                  className={`flex-1 py-3.5 rounded-2xl border items-center ${status === "resolved" ? "bg-amber-600 border-amber-600" : "bg-white border-amber-100"}`}
+                  style={
+                    status === "resolved"
+                      ? {
+                          shadowColor: "#d97706",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.15,
+                          shadowRadius: 3,
+                          elevation: 2,
+                        }
+                      : {}
+                  }
                 >
-                  <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[12px] ${status === 'resolved' ? 'text-white' : 'text-amber-700'}`}>Complete</Text>
+                  <Text
+                    style={{ fontFamily: "Outfit_700Bold" }}
+                    className={`text-[12px] ${status === "resolved" ? "text-white" : "text-amber-700"}`}
+                  >
+                    Complete
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => setStatus('in-progress')}
-                  className={`flex-1 py-3.5 rounded-2xl border items-center ${status === 'in-progress' ? 'bg-blue-600 border-blue-600' : 'bg-white border-amber-100'}`}
-                  style={status === 'in-progress' ? { shadowColor: '#2563eb', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 3, elevation: 2 } : {}}
+                  onPress={() => setStatus("in-progress")}
+                  className={`flex-1 py-3.5 rounded-2xl border items-center ${status === "in-progress" ? "bg-blue-600 border-blue-600" : "bg-white border-amber-100"}`}
+                  style={
+                    status === "in-progress"
+                      ? {
+                          shadowColor: "#2563eb",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.15,
+                          shadowRadius: 3,
+                          elevation: 2,
+                        }
+                      : {}
+                  }
                 >
-                  <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[12px] ${status === 'in-progress' ? 'text-white' : 'text-blue-700'}`}>Schedule</Text>
+                  <Text
+                    style={{ fontFamily: "Outfit_700Bold" }}
+                    className={`text-[12px] ${status === "in-progress" ? "text-white" : "text-blue-700"}`}
+                  >
+                    Schedule
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
 
             {/* SERVICE TYPE (Disease Control, Supplies, Routine check, etc.) */}
             <View>
-              <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Service Type</Text>
-              <TouchableOpacity 
-                  onPress={() => setShowTypeModal(true)}
-                  className="bg-white border border-amber-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
+              <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
+                Service Type
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowTypeModal(true)}
+                className="bg-white border border-amber-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
               >
-                  <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800">
-                      {SERVICE_TYPES.find(t => t.value === requestType)?.label}
-                  </Text>
-                  <ChevronDown size={18} color="#94a3b8" />
+                <Text
+                  style={{ fontFamily: "Outfit_700Bold" }}
+                  className="text-slate-800"
+                >
+                  {SERVICE_TYPES.find((t) => t.value === requestType)?.label}
+                </Text>
+                <ChevronDown size={18} color="#94a3b8" />
               </TouchableOpacity>
             </View>
 
             {/* Date & Expected Time Selectors */}
             <View className="flex-row gap-3">
               <View className="flex-1">
-                <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Mission Date</Text>
+                <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
+                  Mission Date
+                </Text>
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
                   className="bg-white border border-amber-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
                 >
-                  <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-xs">
-                    {preferredDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  <Text
+                    style={{ fontFamily: "Outfit_700Bold" }}
+                    className="text-slate-800 text-xs"
+                  >
+                    {preferredDate.toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
                   </Text>
                   <Calendar size={16} color="#94a3b8" />
                 </TouchableOpacity>
               </View>
               <View className="flex-1">
-                <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Expected T-Time</Text>
+                <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
+                  Expected T-Time
+                </Text>
                 <TouchableOpacity
                   onPress={() => setShowTimePicker(true)}
                   className="bg-white border border-amber-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
                 >
-                  <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-xs">
-                    {preferredTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  <Text
+                    style={{ fontFamily: "Outfit_700Bold" }}
+                    className="text-slate-800 text-xs"
+                  >
+                    {preferredTime.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </Text>
                   <Clock size={16} color="#94a3b8" />
                 </TouchableOpacity>
@@ -766,24 +999,44 @@ export default function HealthLogScreen() {
 
             {/* PRIORITY PROTOCOL URGENCY */}
             <View>
-              <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Priority Protocol</Text>
+              <Text className="text-amber-700 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
+                Priority Protocol
+              </Text>
               <View className="flex-row gap-2">
-                {['low', 'medium', 'high'].map(u => {
+                {["low", "medium", "high"].map((u) => {
                   const isSel = urgency === u;
-                  const activeBg = 
-                    u === 'emergency' ? 'bg-red-600 border-red-600' :
-                    u === 'high' ? 'bg-rose-500 border-rose-500' :
-                    u === 'medium' ? 'bg-amber-600 border-amber-600' :
-                    'bg-emerald-600 border-emerald-600';
-                  
+                  const activeBg =
+                    u === "emergency"
+                      ? "bg-red-600 border-red-600"
+                      : u === "high"
+                        ? "bg-rose-500 border-rose-500"
+                        : u === "medium"
+                          ? "bg-amber-600 border-amber-600"
+                          : "bg-emerald-600 border-emerald-600";
+
                   return (
                     <TouchableOpacity
                       key={u}
                       onPress={() => setUrgency(u)}
-                      className={`flex-1 py-3.5 rounded-xl border items-center ${isSel ? activeBg : 'bg-white border-amber-100'}`}
-                      style={isSel ? { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, elevation: 1 } : {}}
+                      className={`flex-1 py-3.5 rounded-xl border items-center ${isSel ? activeBg : "bg-white border-amber-100"}`}
+                      style={
+                        isSel
+                          ? {
+                              shadowColor: "#000",
+                              shadowOffset: { width: 0, height: 2 },
+                              shadowOpacity: 0.1,
+                              shadowRadius: 3,
+                              elevation: 1,
+                            }
+                          : {}
+                      }
                     >
-                      <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[10px] uppercase tracking-wider ${isSel ? 'text-white' : 'text-amber-700'}`}>{u}</Text>
+                      <Text
+                        style={{ fontFamily: "Outfit_700Bold" }}
+                        className={`text-[10px] uppercase tracking-wider ${isSel ? "text-white" : "text-amber-700"}`}
+                      >
+                        {u}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}
@@ -797,7 +1050,11 @@ export default function HealthLogScreen() {
               </Text>
               <TextInput
                 className="bg-white border border-amber-100 rounded-2xl p-4 text-slate-800 font-outfit-medium shadow-sm"
-                placeholder={status === 'resolved' ? "Describe clinical findings/diagnosis..." : "Describe symptoms or reason for scheduled visit..."}
+                placeholder={
+                  status === "resolved"
+                    ? "Describe clinical findings/diagnosis..."
+                    : "Describe symptoms or reason for scheduled visit..."
+                }
                 value={diagnosis}
                 onChangeText={setDiagnosis}
               />
@@ -841,11 +1098,17 @@ export default function HealthLogScreen() {
                       onPress={() => setShowFollowUpPicker(true)}
                       className="flex-1 bg-white border border-amber-100 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
                     >
-                      <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 text-xs">
-                        {followUpDate 
-                          ? followUpDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                          : "Set Follow-up Date..."
-                        }
+                      <Text
+                        style={{ fontFamily: "Outfit_700Bold" }}
+                        className="text-slate-800 text-xs"
+                      >
+                        {followUpDate
+                          ? followUpDate.toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })
+                          : "Set Follow-up Date..."}
                       </Text>
                       <Calendar size={16} color="#94a3b8" />
                     </TouchableOpacity>
@@ -870,7 +1133,9 @@ export default function HealthLogScreen() {
                     placeholder="e.g. 7"
                     keyboardType="numeric"
                     value={withdrawalPeriodDays}
-                    onChangeText={(v) => setWithdrawalPeriodDays(v.replace(/\D/g, ''))}
+                    onChangeText={(v) =>
+                      setWithdrawalPeriodDays(v.replace(/\D/g, ""))
+                    }
                   />
                 </View>
               </>
@@ -895,21 +1160,37 @@ export default function HealthLogScreen() {
         {/* SAVE BUTTON */}
         <TouchableOpacity
           className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-20 ${
-            isMutationPending 
-              ? "bg-slate-400" 
-              : status === "resolved" 
-                ? "bg-amber-600" 
+            isMutationPending
+              ? "bg-slate-400"
+              : status === "resolved"
+                ? "bg-amber-600"
                 : "bg-blue-600"
           }`}
           onPress={handleSave}
           disabled={isMutationPending}
           accessibilityRole="button"
-          accessibilityLabel={status === "resolved" ? "Save health assistance record" : "Schedule health visit"}
+          accessibilityLabel={
+            status === "resolved"
+              ? "Save health assistance record"
+              : "Schedule health visit"
+          }
           style={
             !isMutationPending
-              ? status === 'resolved'
-                ? { shadowColor: '#d97706', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 4 }
-                : { shadowColor: '#3b82f6', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 6, elevation: 4 }
+              ? status === "resolved"
+                ? {
+                    shadowColor: "#d97706",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 6,
+                    elevation: 4,
+                  }
+                : {
+                    shadowColor: "#3b82f6",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.25,
+                    shadowRadius: 6,
+                    elevation: 4,
+                  }
               : {}
           }
         >
@@ -922,7 +1203,9 @@ export default function HealthLogScreen() {
                 style={{ fontFamily: "Outfit_800ExtraBold" }}
                 className="text-white text-base"
               >
-                {status === "resolved" ? "Save Health Assistance Record" : "Schedule Health Visit"}
+                {status === "resolved"
+                  ? "Save Health Assistance Record"
+                  : "Schedule Health Visit"}
               </Text>
             </>
           )}
@@ -1041,8 +1324,12 @@ export default function HealthLogScreen() {
                             {item.breed || "Crossbreed"} · {item.species}
                           </Text>
                           {item.reproductiveStatus && (
-                            <View className={`px-1.5 py-0.5 rounded-full ${getReproductiveStatusStyle(item.reproductiveStatus).bg}`}>
-                              <Text className={`text-[8px] font-outfit-bold ${getReproductiveStatusStyle(item.reproductiveStatus).text}`}>
+                            <View
+                              className={`px-1.5 py-0.5 rounded-full ${getReproductiveStatusStyle(item.reproductiveStatus).bg}`}
+                            >
+                              <Text
+                                className={`text-[8px] font-outfit-bold ${getReproductiveStatusStyle(item.reproductiveStatus).text}`}
+                              >
                                 {item.reproductiveStatus}
                               </Text>
                             </View>
@@ -1130,12 +1417,12 @@ export default function HealthLogScreen() {
         </View>
       </Modal>
 
-      {/* BARANGAY SELECTION MODAL */}
+      {/* ADDRESS SELECTION MODAL */}
       <Modal
         animationType="slide"
         transparent={true}
-        visible={showBrgyModal}
-        onRequestClose={() => setShowBrgyModal(false)}
+        visible={!!addressPicker}
+        onRequestClose={() => setAddressPicker(null)}
       >
         <View className="flex-1 bg-slate-900/40 justify-end">
           <View className="bg-white rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
@@ -1144,10 +1431,13 @@ export default function HealthLogScreen() {
                 style={{ fontFamily: "Outfit_900Black" }}
                 className="text-2xl text-slate-800"
               >
-                Select Barangay
+                {addressPickerTitle}
               </Text>
               <TouchableOpacity
-                onPress={() => { setShowBrgyModal(false); setSearchBrgy(""); }}
+                onPress={() => {
+                  setAddressPicker(null);
+                  setSearchAddress("");
+                }}
                 className="bg-slate-100 p-2.5 rounded-full"
               >
                 <X size={22} color="#64748b" />
@@ -1156,25 +1446,42 @@ export default function HealthLogScreen() {
 
             <TextInput
               className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 text-slate-800 font-outfit-medium mb-4"
-              placeholder="Search barangay..."
-              value={searchBrgy}
-              onChangeText={setSearchBrgy}
+              placeholder="Search..."
+              value={searchAddress}
+              onChangeText={setSearchAddress}
             />
 
             <FlatList
-              data={filteredBarangays}
+              data={filteredAddressOptions}
               keyExtractor={(item) => item}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
-                    setNewFarmer({...newFarmer, barangay: item});
-                    setShowBrgyModal(false);
-                    setSearchBrgy("");
+                    if (addressPicker === "city") {
+                      setNewFarmer({
+                        ...newFarmer,
+                        city: item,
+                        district: "",
+                        barangay: "",
+                      });
+                    } else if (addressPicker === "district") {
+                      setNewFarmer({
+                        ...newFarmer,
+                        district: item,
+                        barangay: "",
+                      });
+                    } else {
+                      setNewFarmer({ ...newFarmer, barangay: item });
+                    }
+                    setAddressPicker(null);
+                    setSearchAddress("");
                   }}
                   className="py-4 border-b border-slate-50"
                 >
-                  <Text className="font-outfit-bold text-slate-700 text-base">{item}</Text>
+                  <Text className="font-outfit-bold text-slate-700 text-base">
+                    {item}
+                  </Text>
                 </TouchableOpacity>
               )}
             />
@@ -1206,19 +1513,21 @@ export default function HealthLogScreen() {
               </TouchableOpacity>
             </View>
 
-            <FlatList 
+            <FlatList
               data={SERVICE_TYPES}
               keyExtractor={(item) => item.value}
               renderItem={({ item }) => (
-                  <TouchableOpacity 
-                     onPress={() => {
-                        setRequestType(item.value);
-                        setShowTypeModal(false);
-                     }}
-                     className="py-4 border-b border-slate-50"
-                  >
-                     <Text className="font-outfit-bold text-slate-700 text-base">{item.label}</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setRequestType(item.value);
+                    setShowTypeModal(false);
+                  }}
+                  className="py-4 border-b border-slate-50"
+                >
+                  <Text className="font-outfit-bold text-slate-700 text-base">
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
               )}
             />
           </View>
@@ -1249,19 +1558,21 @@ export default function HealthLogScreen() {
               </TouchableOpacity>
             </View>
 
-            <FlatList 
+            <FlatList
               data={CATTLE_SPECIES}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
-                  <TouchableOpacity 
-                     onPress={() => {
-                        setNewAnimal({...newAnimal, species: item});
-                        setShowSpeciesModal(false);
-                     }}
-                     className="py-4 border-b border-slate-50"
-                  >
-                     <Text className="font-outfit-bold text-slate-700 text-base">{item}</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setNewAnimal({ ...newAnimal, species: item });
+                    setShowSpeciesModal(false);
+                  }}
+                  className="py-4 border-b border-slate-50"
+                >
+                  <Text className="font-outfit-bold text-slate-700 text-base">
+                    {item}
+                  </Text>
+                </TouchableOpacity>
               )}
             />
           </View>
@@ -1292,20 +1603,22 @@ export default function HealthLogScreen() {
               </TouchableOpacity>
             </View>
 
-            <FlatList 
+            <FlatList
               data={CATTLE_BREEDS}
               keyExtractor={(item) => item}
               showsVerticalScrollIndicator={false}
               renderItem={({ item }) => (
-                  <TouchableOpacity 
-                     onPress={() => {
-                        setNewAnimal({...newAnimal, breed: item});
-                        setShowBreedModal(false);
-                     }}
-                     className="py-4 border-b border-slate-50"
-                  >
-                     <Text className="font-outfit-bold text-slate-700 text-base">{item}</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setNewAnimal({ ...newAnimal, breed: item });
+                    setShowBreedModal(false);
+                  }}
+                  className="py-4 border-b border-slate-50"
+                >
+                  <Text className="font-outfit-bold text-slate-700 text-base">
+                    {item}
+                  </Text>
+                </TouchableOpacity>
               )}
             />
           </View>
@@ -1335,19 +1648,21 @@ export default function HealthLogScreen() {
               </TouchableOpacity>
             </View>
 
-            <FlatList 
+            <FlatList
               data={["Female", "Male"]}
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
-                  <TouchableOpacity 
-                     onPress={() => {
-                        setNewAnimal({...newAnimal, gender: item});
-                        setShowGenderModal(false);
-                     }}
-                     className="py-4 border-b border-slate-50"
-                  >
-                     <Text className="font-outfit-bold text-slate-700 text-base">{item}</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setNewAnimal({ ...newAnimal, gender: item });
+                    setShowGenderModal(false);
+                  }}
+                  className="py-4 border-b border-slate-50"
+                >
+                  <Text className="font-outfit-bold text-slate-700 text-base">
+                    {item}
+                  </Text>
+                </TouchableOpacity>
               )}
             />
           </View>
@@ -1378,19 +1693,25 @@ export default function HealthLogScreen() {
               </TouchableOpacity>
             </View>
 
-            <FlatList 
-              data={newAnimal.species ? (COLOR_OPTIONS_BY_SPECIES[newAnimal.species] || []) : CATTLE_COLORS}
+            <FlatList
+              data={
+                newAnimal.species
+                  ? COLOR_OPTIONS_BY_SPECIES[newAnimal.species] || []
+                  : CATTLE_COLORS
+              }
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
-                  <TouchableOpacity 
-                     onPress={() => {
-                        setNewAnimal({...newAnimal, color: item});
-                        setShowColorModal(false);
-                     }}
-                     className="py-4 border-b border-slate-50"
-                  >
-                     <Text className="font-outfit-bold text-slate-700 text-base">{item}</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    setNewAnimal({ ...newAnimal, color: item });
+                    setShowColorModal(false);
+                  }}
+                  className="py-4 border-b border-slate-50"
+                >
+                  <Text className="font-outfit-bold text-slate-700 text-base">
+                    {item}
+                  </Text>
+                </TouchableOpacity>
               )}
             />
           </View>

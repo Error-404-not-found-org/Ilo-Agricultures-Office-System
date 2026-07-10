@@ -9,6 +9,9 @@ import {
   Image,
   Modal,
   Animated,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { safeBack } from "@/utils/navigation";
@@ -27,6 +30,7 @@ import {
   Scale,
   X,
   Sparkles,
+  Pencil,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useEffect, useRef } from "react";
@@ -47,13 +51,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useAnimalDetailsQuery,
   useAnimalMedicalRecordsQuery,
+  useUpdateAnimalBasicInfoMutation,
   useUpdateReproductiveStatusMutation,
   useRecordAiOutcomeForAnimalMutation,
   useDeleteAnimalMutation,
 } from "../hooks/useAnimalDetails";
 import {
   useAnimalTimeline,
-  useAnimalHealthHistory,
+  useAnimalRecords,
 } from "@/features/animal-records/hooks/useAnimalTimeline";
 import { AnimalProfileSkeleton } from "../components/skeletons/AnimalProfileSkeleton";
 import { TimelineSkeleton } from "../components/skeletons/TimelineSkeleton";
@@ -84,6 +89,14 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   const [congratsModalVisible, setCongratsModalVisible] = useState(false);
   const [reheatModalVisible, setReheatModalVisible] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [isEditingBasicInfo, setIsEditingBasicInfo] = useState(false);
+  const [basicInfoForm, setBasicInfoForm] = useState({
+    animalId: "",
+    earTag: "",
+    breed: "",
+    color: "",
+    gender: "",
+  });
 
   // Queries
   const {
@@ -94,6 +107,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   } = useAnimalDetailsQuery(id);
   const { data: medicalRecords = [], isLoading: loadingMedical } =
     useAnimalMedicalRecordsQuery(id);
+  const updateBasicInfoMutation = useUpdateAnimalBasicInfoMutation();
 
   const {
     data: timelineData,
@@ -104,12 +118,12 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   } = useAnimalTimeline({ animalId: id, type: timelineFilter });
 
   const {
-    data: healthHistoryData,
-    isLoading: loadingHealthHistory,
-    fetchNextPage: fetchNextHealthPage,
-    hasNextPage: hasNextHealthPage,
-    isFetchingNextPage: isFetchingNextHealthPage,
-  } = useAnimalHealthHistory({ animalId: id, type: medicalFilter });
+    data: animalRecordsData,
+    isLoading: loadingAnimalRecords,
+    fetchNextPage: fetchNextRecordsPage,
+    hasNextPage: hasNextRecordsPage,
+    isFetchingNextPage: isFetchingNextRecordsPage,
+  } = useAnimalRecords({ animalId: id, type: medicalFilter });
   const displayRecord = selectedRecord
     ? {
         type:
@@ -158,6 +172,17 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
           selectedRecord.followUpDate || selectedRecord.followUpCheckupDate,
       }
     : null;
+
+  useEffect(() => {
+    if (!animal || !isEditingBasicInfo) return;
+    setBasicInfoForm({
+      animalId: animal.animalId || "",
+      earTag: animal.earTag || "",
+      breed: animal.breed || "",
+      color: animal.color || "",
+      gender: animal.gender || animal.sex || "",
+    });
+  }, [animal, isEditingBasicInfo]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -360,12 +385,46 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   const farmerName = animal.farmerId?.name || "Unassigned";
   const addr = animal.farmerId?.address;
   const farmerPhone =
-    addr?.phoneNumber || animal.farmerId?.phone || "No phone attached";
+    animal.farmerId?.phoneNumber ||
+    animal.farmerId?.contact ||
+    animal.farmerId?.phone ||
+    addr?.phoneNumber ||
+    "No phone attached";
   const farmerAddress = addr
     ? [addr.street, addr.barangay, addr.city, addr.province]
         .filter(Boolean)
         .join(", ")
     : "Location Unregistered";
+  const animalSex = String(animal.sex || animal.gender || "").toLowerCase();
+  const isMaleAnimal = ["male", "bull", "m"].includes(animalSex);
+  const isFemaleAnimal = ["female", "cow", "heifer", "f"].includes(animalSex);
+  const handleSaveBasicInfo = async () => {
+    if (!animal?._id || updateBasicInfoMutation.isPending) return;
+
+    const payload = {
+      animalId: basicInfoForm.animalId.trim(),
+      earTag: basicInfoForm.earTag.trim(),
+      breed: basicInfoForm.breed.trim(),
+      color: basicInfoForm.color.trim(),
+      gender: basicInfoForm.gender,
+      sex: basicInfoForm.gender,
+    };
+
+    if (!payload.animalId) {
+      toast.error("Animal ID is required.");
+      return;
+    }
+
+    try {
+      await updateBasicInfoMutation.mutateAsync({ id: animal._id, payload });
+      toast.success("Basic information updated.");
+      setIsEditingBasicInfo(false);
+    } catch (err: any) {
+      toast.error(
+        err.response?.data?.message || "Failed to update animal information.",
+      );
+    }
+  };
 
   // Compute dynamic age based on birthDate subtraction
   let ageDisplay = "Unknown";
@@ -404,7 +463,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
       : 0;
 
   const timelineEvents = timelineData?.events || [];
-  const healthRecords = healthHistoryData?.records || [];
+  const healthRecords = animalRecordsData?.records || [];
 
   // Check for active medicine withdrawal period
   const activeWithdrawalRecord = (medicalRecords || []).find((record: any) => {
@@ -414,7 +473,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   });
 
   const getNextAction = () => {
-    if (animal.gender !== "Female") return null;
+    if (!isFemaleAnimal) return null;
 
     if (animal.reproductiveStatus === "Pregnant") {
       const latest = animal.inseminations?.[0];
@@ -891,154 +950,195 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
               </View>
             </View>
 
-            {/* Info Chips Row */}
-            <View className="flex-row flex-wrap gap-2 mb-5">
+            {/* Basic Info Grid */}
+            <View className="mb-6">
+              <View className="mb-3 flex-row items-center justify-between">
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_800ExtraBold",
+                    fontSize: 16,
+                  }}
+                >
+                  Basic Info
+                </Text>
+                {!isEditingBasicInfo && (
+                  <TouchableOpacity
+                    onPress={() => setIsEditingBasicInfo(true)}
+                    className="flex-row items-center px-3 py-2 rounded-full border"
+                    style={{
+                      backgroundColor: isDark
+                        ? "rgba(16, 185, 129, 0.12)"
+                        : "#f0fdf4",
+                      borderColor: isDark
+                        ? "rgba(16, 185, 129, 0.25)"
+                        : "#bbf7d0",
+                    }}
+                  >
+                    <Pencil size={13} color={primaryColor} />
+                    <Text
+                      className="ml-1.5"
+                      style={{
+                        color: primaryColor,
+                        fontFamily: "Outfit_800ExtraBold",
+                        fontSize: 11,
+                      }}
+                    >
+                      Edit
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
               <View
-                className="flex-row items-center px-3 py-1.5 rounded-full border"
+                className="p-4 rounded-2xl border"
                 style={{
                   backgroundColor: colors.card,
                   borderColor: colors.border,
                 }}
               >
-                <Text style={{ fontSize: 12, marginRight: 4 }}>🐾</Text>
-                <Text
-                  style={{
-                    fontFamily: "Outfit_600SemiBold",
-                    color: colors.textSecondary,
-                    fontSize: 12,
-                  }}
-                >
-                  {ageDisplay}
-                </Text>
-              </View>
-
-              <View
-                className="flex-row items-center px-3 py-1.5 rounded-full border"
-                style={{
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                }}
-              >
-                <Text style={{ fontSize: 12, marginRight: 4 }}>
-                  {animal.gender === "Male" ? "♂" : "♀"}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: "Outfit_600SemiBold",
-                    color: colors.textSecondary,
-                    fontSize: 12,
-                  }}
-                >
-                  {animal.gender || "Female"}
-                </Text>
-              </View>
-
-              <View
-                className="flex-row items-center px-3 py-1.5 rounded-full border"
-                style={{
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                }}
-              >
-                <Text style={{ fontSize: 12, marginRight: 4 }}>📅</Text>
-                <Text
-                  style={{
-                    fontFamily: "Outfit_600SemiBold",
-                    color: colors.textSecondary,
-                    fontSize: 12,
-                  }}
-                >
-                  {animal.birthDate
-                    ? new Date(animal.birthDate).toLocaleDateString("en-US", {
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : "Unknown"}
-                </Text>
-              </View>
-            </View>
-
-            {/* 3-Column Info Grid without dividers */}
-            <View
-              className="flex-row justify-between p-4 rounded-2xl border mb-6"
-              style={{
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              }}
-            >
-              <View style={{ flex: 1, paddingLeft: 4 }}>
-                <Text
-                  style={{
-                    fontFamily: "Outfit_500Medium",
-                    color: colors.textMuted,
-                    fontSize: 10,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  Breed
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    fontFamily: "Outfit_700Bold",
-                    color: colors.textPrimary,
-                    fontSize: 13,
-                    marginTop: 4,
-                  }}
-                >
-                  {animal.breed || "Unspecified"}
-                </Text>
-              </View>
-
-              <View style={{ flex: 1.2, paddingHorizontal: 4 }}>
-                <Text
-                  style={{
-                    fontFamily: "Outfit_500Medium",
-                    color: colors.textMuted,
-                    fontSize: 10,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  Owner
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    fontFamily: "Outfit_700Bold",
-                    color: colors.textPrimary,
-                    fontSize: 13,
-                    marginTop: 4,
-                  }}
-                >
-                  {farmerName}
-                </Text>
-              </View>
-
-              <View style={{ flex: 1, paddingRight: 4 }}>
-                <Text
-                  style={{
-                    fontFamily: "Outfit_500Medium",
-                    color: colors.textMuted,
-                    fontSize: 10,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  Location
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={{
-                    fontFamily: "Outfit_700Bold",
-                    color: colors.textPrimary,
-                    fontSize: 13,
-                    marginTop: 4,
-                  }}
-                >
-                  {animal.farmerId?.address?.barangay || "Unregistered"}
-                </Text>
+                {isEditingBasicInfo ? (
+                  <View className="gap-3">
+                    <View className="flex-row">
+                      <BasicInfoInput
+                        label="Animal ID"
+                        value={basicInfoForm.animalId}
+                        onChangeText={(value) =>
+                          setBasicInfoForm({ ...basicInfoForm, animalId: value })
+                        }
+                        placeholder="Animal ID"
+                      />
+                    </View>
+                    <View className="flex-row">
+                      <BasicInfoInput
+                        label="Ear Tag"
+                        value={basicInfoForm.earTag}
+                        onChangeText={(value) =>
+                          setBasicInfoForm({ ...basicInfoForm, earTag: value })
+                        }
+                        placeholder="Ear tag"
+                      />
+                    </View>
+                    <View className="flex-row gap-3">
+                      <BasicInfoInput
+                        label="Breed"
+                        value={basicInfoForm.breed}
+                        onChangeText={(value) =>
+                          setBasicInfoForm({ ...basicInfoForm, breed: value })
+                        }
+                        placeholder="Breed"
+                      />
+                      <BasicInfoInput
+                        label="Color"
+                        value={basicInfoForm.color}
+                        onChangeText={(value) =>
+                          setBasicInfoForm({ ...basicInfoForm, color: value })
+                        }
+                        placeholder="Color"
+                      />
+                    </View>
+                    <View>
+                      <Text
+                        className="mb-1.5 ml-1"
+                        style={{
+                          color: colors.textMuted,
+                          fontFamily: "Outfit_800ExtraBold",
+                          fontSize: 10,
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Sex
+                      </Text>
+                      <SelectDropdown
+                        label="Sex"
+                        value={basicInfoForm.gender || "Female"}
+                        onChange={(value) =>
+                          setBasicInfoForm({ ...basicInfoForm, gender: value })
+                        }
+                        options={[
+                          { label: "Female", value: "Female" },
+                          { label: "Male", value: "Male" },
+                        ]}
+                      />
+                    </View>
+                    <View className="flex-row gap-3 mt-4">
+                      <TouchableOpacity
+                        onPress={() => setIsEditingBasicInfo(false)}
+                        disabled={updateBasicInfoMutation.isPending}
+                        className="flex-1 py-3 rounded-2xl border items-center"
+                        style={{
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            fontFamily: "Outfit_800ExtraBold",
+                            fontSize: 12,
+                          }}
+                        >
+                          Cancel
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleSaveBasicInfo}
+                        disabled={updateBasicInfoMutation.isPending}
+                        className="flex-1 py-3 rounded-2xl items-center justify-center"
+                        style={{
+                          backgroundColor: updateBasicInfoMutation.isPending
+                            ? colors.border
+                            : primaryColor,
+                        }}
+                      >
+                        {updateBasicInfoMutation.isPending ? (
+                          <ActivityIndicator color="#fff" size="small" />
+                        ) : (
+                          <Text
+                            style={{
+                              color: "#fff",
+                              fontFamily: "Outfit_800ExtraBold",
+                              fontSize: 12,
+                            }}
+                          >
+                            Save
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View className="flex-row flex-wrap">
+                    <BasicInfoCell label="Age" value={ageDisplay} />
+                    <BasicInfoCell
+                      label="Sex"
+                      value={animal.gender || animal.sex || "Unspecified"}
+                    />
+                    <BasicInfoCell
+                      label="Birth Date"
+                      value={
+                        animal.birthDate
+                          ? new Date(animal.birthDate).toLocaleDateString(
+                              "en-US",
+                              {
+                                month: "short",
+                                year: "numeric",
+                              },
+                            )
+                          : "Unknown"
+                      }
+                    />
+                    <BasicInfoCell
+                      label="Breed"
+                      value={animal.breed || "Unspecified"}
+                    />
+                    <BasicInfoCell label="Owner" value={farmerName} />
+                    <BasicInfoCell
+                      label="Color"
+                      value={animal.color || "Unspecified"}
+                    />
+                  </View>
+                )}
               </View>
             </View>
 
@@ -1227,9 +1327,22 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 <View className="flex-row gap-3">
                   <ActionCard
                     title="Request A.I."
-                    subtitle="Request breeding service"
+                    subtitle={
+                      isMaleAnimal
+                        ? "Unavailable for male animals"
+                        : "Request breeding service"
+                    }
+                    disabled={isMaleAnimal}
                     icon={<Syringe size={20} color={primaryColor} />}
                     onPress={() => {
+                      if (isMaleAnimal) {
+                        setValidationTitle("Request Blocked");
+                        setValidationMessage(
+                          "Artificial insemination requests are only available for female cattle.",
+                        );
+                        setValidationModalVisible(true);
+                        return;
+                      }
                       if (animal.reproductiveStatus === "Pregnant") {
                         setValidationTitle("Request Blocked");
                         setValidationMessage(
@@ -1524,7 +1637,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                   }}
                   className="text-[13px]"
                 >
-                  Medical
+                  Records
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1839,7 +1952,14 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       const brandPurple = isDark ? "#c084fc" : "#7e22ce";
 
                       return (
-                        <View
+                        <TouchableOpacity
+                          activeOpacity={0.9}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/(farmer)/pregnancy-tracker",
+                              params: { id: id },
+                            })
+                          }
                           className="p-5 rounded-3xl border mb-4"
                           style={{
                             backgroundColor: cardBg,
@@ -1919,30 +2039,24 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                           >
                             {progress.toFixed(0)}% of Gestation Period Completed
                           </Text>
-                          <TouchableOpacity
-                            onPress={() =>
-                              router.push({
-                                pathname: "/(farmer)/pregnancy-tracker",
-                                params: { id: id },
-                              })
-                            }
-                            className="mt-4 py-3 items-center border"
-                            style={{
-                              borderRadius: 8,
-                              borderColor: brandPurple,
-                            }}
-                          >
+                          {/* Simplified Tracker Link */}
+                          <View className="mt-4 flex-row items-center justify-center gap-1">
                             <Text
                               style={{
                                 fontFamily: "Outfit_800ExtraBold",
                                 color: brandPurple,
                               }}
-                              className="text-[11px] uppercase"
+                              className="text-[10px] uppercase tracking-wider"
                             >
-                              Open Pregnancy Tracker
+                              View Tracker Milestones
                             </Text>
-                          </TouchableOpacity>
-                        </View>
+                            <MaterialCommunityIcons
+                              name="chevron-right"
+                              size={12}
+                              color={brandPurple}
+                            />
+                          </View>
+                        </TouchableOpacity>
                       );
                     })()}
                 </View>
@@ -2106,176 +2220,6 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                   )}
                 </View>
               )}
-
-              {/* Quick Details Grid */}
-              <View className="flex-row flex-wrap justify-between gap-y-3 mb-2">
-                <View
-                  className="w-[48%] p-4 rounded-3xl border flex-col justify-between shadow-sm"
-                  style={{
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View className="flex-row justify-between items-center mb-3">
-                    <Text
-                      style={{
-                        fontFamily: "Outfit_900Black",
-                        color: colors.textMuted,
-                      }}
-                      className="text-[9px] uppercase tracking-widest"
-                    >
-                      Current Age
-                    </Text>
-                    <Calendar size={14} color={primaryColor} />
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_900Black",
-                      color: colors.textPrimary,
-                    }}
-                    className="text-sm"
-                    numberOfLines={1}
-                  >
-                    {ageDisplay}
-                  </Text>
-                </View>
-
-                <View
-                  className="w-[48%] p-4 rounded-3xl border flex-col justify-between shadow-sm"
-                  style={{
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View className="flex-row justify-between items-center mb-3">
-                    <Text
-                      style={{
-                        fontFamily: "Outfit_900Black",
-                        color: colors.textMuted,
-                      }}
-                      className="text-[9px] uppercase tracking-widest"
-                    >
-                      Gender
-                    </Text>
-                    <User size={14} color={primaryColor} />
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_900Black",
-                      color: colors.textPrimary,
-                    }}
-                    className="text-sm"
-                    numberOfLines={1}
-                  >
-                    {animal.gender || "Female"}
-                  </Text>
-                </View>
-
-                <View
-                  className="w-[48%] p-4 rounded-3xl border flex-col justify-between shadow-sm"
-                  style={{
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View className="flex-row justify-between items-center mb-3">
-                    <Text
-                      style={{
-                        fontFamily: "Outfit_900Black",
-                        color: colors.textMuted,
-                      }}
-                      className="text-[9px] uppercase tracking-widest"
-                    >
-                      Species
-                    </Text>
-                    <Activity size={14} color={primaryColor} />
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_900Black",
-                      color: colors.textPrimary,
-                    }}
-                    className="text-sm"
-                    numberOfLines={1}
-                  >
-                    {animal.species || "Cattle"}
-                  </Text>
-                </View>
-
-                <View
-                  className="w-[48%] p-4 rounded-3xl border flex-col justify-between shadow-sm"
-                  style={{
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View className="flex-row justify-between items-center mb-3">
-                    <Text
-                      style={{
-                        fontFamily: "Outfit_900Black",
-                        color: colors.textMuted,
-                      }}
-                      className="text-[9px] uppercase tracking-widest"
-                    >
-                      Breed Type
-                    </Text>
-                    <MaterialCommunityIcons
-                      name="tag-outline"
-                      size={14}
-                      color={primaryColor}
-                    />
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_900Black",
-                      color: colors.textPrimary,
-                    }}
-                    className="text-sm"
-                    numberOfLines={1}
-                  >
-                    {animal.breed || "Unspecified"}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Registry Identifiers */}
-              <View
-                className="p-5 rounded-3xl border mb-2 shadow-sm"
-                style={{
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                }}
-              >
-                <View className="flex-row items-center mb-5 gap-2">
-                  <ClipboardList size={20} color={primaryColor} />
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_800ExtraBold",
-                      color: colors.textPrimary,
-                    }}
-                    className="text-lg"
-                  >
-                    Registry Identifiers
-                  </Text>
-                </View>
-
-                <View className="gap-y-4">
-                  <InfoRow
-                    label="System ID"
-                    value={animal.animalId || "Missing"}
-                  />
-                  <Divider />
-                  <InfoRow
-                    label="Color / Markings"
-                    value={animal.color || "Unregistered"}
-                  />
-                  <Divider />
-                  <InfoRow
-                    label="Brand Mark"
-                    value={animal.brand || "Unbranded"}
-                  />
-                </View>
-              </View>
 
               {/* Family Lineage */}
               {(animal.motherId ||
@@ -2633,7 +2577,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
             <View className="px-6">
               {loadingTimeline && timelineEvents.length === 0 ? (
                 <TimelineSkeleton />
-              ) : timelineEvents.length > 0 ? (
+              ) : (
                 <View className="mb-5">
                   <Text
                     className="mb-3"
@@ -2652,7 +2596,37 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       setTimelineFilter(newF);
                     }}
                   />
-                  {hasNextTimelinePage && (
+                  {timelineEvents.length === 0 ? (
+                    <View
+                      className="rounded-[32px] p-8 items-center mt-4 border"
+                      style={{
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <History size={32} color={colors.textMuted} />
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_800ExtraBold",
+                          color: colors.textPrimary,
+                        }}
+                        className="text-lg mt-2 mb-1"
+                      >
+                        No Timeline Events
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_500Medium",
+                          color: colors.textSecondary,
+                        }}
+                        className="text-center text-xs leading-5"
+                      >
+                        This animal does not have any timeline events matching the
+                        filter.
+                      </Text>
+                    </View>
+                  ) : null}
+                  {hasNextTimelinePage && timelineEvents.length > 0 && (
                     <TouchableOpacity
                       onPress={() => fetchNextTimelinePage()}
                       disabled={isFetchingNextTimelinePage}
@@ -2676,40 +2650,11 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     </TouchableOpacity>
                   )}
                 </View>
-              ) : (
-                <View
-                  className="rounded-[32px] p-8 items-center mt-4 border"
-                  style={{
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <History size={32} color={colors.textMuted} />
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_800ExtraBold",
-                      color: colors.textPrimary,
-                    }}
-                    className="text-lg mt-2 mb-1"
-                  >
-                    No Timeline Events
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_500Medium",
-                      color: colors.textSecondary,
-                    }}
-                    className="text-center text-xs leading-5"
-                  >
-                    This animal does not have any timeline events matching the
-                    filter.
-                  </Text>
-                </View>
               )}
             </View>
           ) : (
             <View className="px-6">
-              {/* Medical Filters selector */}
+              {/* Records Filters selector */}
               <View className="mb-4 flex-row items-center justify-between gap-4">
                 <Text
                   style={{
@@ -2724,11 +2669,11 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                   label="All Records"
                   options={[
                     { label: "All Records", value: "All" },
-                    { label: "Treatments", value: "Treatment" },
-                    { label: "Vaccinations", value: "Vaccination" },
-                    { label: "Deworming", value: "Deworming" },
-                    { label: "Check-ups", value: "Check-up" },
-                    { label: "Weight Logs", value: "Weight" },
+                    { label: "AI / Breeding", value: "Breeding" },
+                    { label: "Pregnancy", value: "Pregnancy" },
+                    { label: "Calving", value: "Calving" },
+                    { label: "Health", value: "Health" },
+                    { label: "Medical", value: "medical_record" },
                   ]}
                   value={medicalFilter}
                   onChange={(val) => setMedicalFilter(val)}
@@ -2736,24 +2681,34 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 />
               </View>
 
-              {loadingHealthHistory && healthRecords.length === 0 ? (
+              {loadingAnimalRecords && healthRecords.length === 0 ? (
                 <MedicalHistorySkeleton />
               ) : healthRecords.length > 0 ? (
                 <View className="mt-2 text-primary">
                   {healthRecords.map((record: any, idx: number) => {
-                    const isRequest = record.recordKind === "health_request";
-                    const recType = isRequest
-                      ? record.requestType === "vaccination"
-                        ? "Vaccination"
-                        : record.requestType === "deworming"
-                          ? "Deworming"
-                          : record.requestType === "medicine"
-                            ? "Treatment"
-                            : "Check-up"
-                      : record.type || "Medical Record";
-                    const title = isRequest
-                      ? `Health Visit (${record.status || "Pending"})`
-                      : record.type;
+                    const recordKind = record.recordKind || record.type;
+                    const isAi = recordKind === "insemination";
+                    const isPregnancy = recordKind === "pregnancy";
+                    const isCalving = recordKind === "calving";
+                    const isRequest = recordKind === "health_request";
+                    const recType = isAi
+                      ? "AI"
+                      : isPregnancy
+                        ? "Pregnancy"
+                        : isCalving
+                          ? "Calving"
+                          : isRequest
+                            ? "Health"
+                            : record.type || "Medical";
+                    const title = record.title || (isAi
+                      ? "A.I. Insemination"
+                      : isPregnancy
+                        ? "Pregnancy Check"
+                        : isCalving
+                          ? "Calving / Offspring"
+                          : isRequest
+                            ? `Health Visit (${record.status || "Pending"})`
+                            : record.type || "Medical Record");
                     const dateVal =
                       record.recordDate || record.date || record.createdAt;
                     const medicineVal =
@@ -2763,16 +2718,55 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       record.note ||
                       record.technicianNote ||
                       record.notes ||
+                      record.summary ||
+                      record.comment ||
                       "";
                     const recordedByVal =
-                      record.technicianId?.name || record.handledBy?.name || "";
+                      record.technicianId?.name ||
+                      record.handledBy?.name ||
+                      record.approvedBy?.name ||
+                      "";
+                    const badgeLabel = isAi
+                      ? "AI"
+                      : isPregnancy
+                        ? "Pregnancy"
+                        : isCalving
+                          ? "Calving"
+                          : isRequest
+                            ? "Health"
+                            : "Medical";
+                    const iconBg = isAi
+                      ? isDark
+                        ? "rgba(59, 130, 246, 0.15)"
+                        : "#eff6ff"
+                      : isPregnancy
+                        ? isDark
+                          ? "rgba(236, 72, 153, 0.15)"
+                          : "#fdf2f8"
+                        : isCalving
+                          ? isDark
+                            ? "rgba(132, 204, 22, 0.15)"
+                            : "#f7fee7"
+                          : recType === "Health" || recType === "Treatment"
+                            ? isDark
+                              ? "rgba(245, 158, 11, 0.15)"
+                              : "#fff7ed"
+                            : isDark
+                              ? "rgba(100, 116, 139, 0.15)"
+                              : "#f8fafc";
 
                     return (
                       <TouchableOpacity
                         key={record._id || idx}
                         onPress={() => {
-                          setSelectedRecord(record);
-                          setRecordModalVisible(true);
+                          router.push({
+                            pathname: "/(farmer)/animal-record-detail",
+                            params: {
+                              animalId: id,
+                              recordId: record._id || record.id,
+                              recordType: record.recordKind || record.type || "",
+                            },
+                          });
                         }}
                         activeOpacity={0.7}
                         className="p-5 rounded-[24px] mb-4 flex-row border"
@@ -2788,43 +2782,42 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         <View
                           className="w-12 h-12 rounded-full items-center justify-center mr-4"
                           style={{
-                            backgroundColor:
-                              recType === "Vaccination"
-                                ? isDark
-                                  ? "rgba(16, 185, 129, 0.15)"
-                                  : "#ecfdf5"
-                                : recType === "Weight Log" ||
-                                    recType === "Weight"
-                                  ? isDark
-                                    ? "rgba(99, 102, 241, 0.15)"
-                                    : "#eef2ff"
-                                  : recType === "Treatment"
-                                    ? isDark
-                                      ? "rgba(245, 158, 11, 0.15)"
-                                      : "#fff7ed"
-                                    : isDark
-                                      ? "rgba(100, 116, 139, 0.15)"
-                                      : "#f8fafc",
+                            backgroundColor: iconBg,
                           }}
                         >
-                          {recType === "Vaccination" && (
+                          {isAi && <Syringe size={22} color="#2563EB" />}
+                          {isPregnancy && (
+                            <MaterialCommunityIcons
+                              name="calendar-check"
+                              size={22}
+                              color="#DB2777"
+                            />
+                          )}
+                          {isCalving && (
+                            <MaterialCommunityIcons
+                              name="cow"
+                              size={24}
+                              color="#65A30D"
+                            />
+                          )}
+                          {!isAi && !isPregnancy && !isCalving && recType === "Vaccination" && (
                             <Syringe size={22} color="#10B981" />
                           )}
-                          {recType === "Deworming" && (
+                          {!isAi && !isPregnancy && !isCalving && recType === "Deworming" && (
                             <MaterialCommunityIcons
                               name="pill"
                               size={22}
                               color="#3B82F6"
                             />
                           )}
-                          {recType === "Treatment" && (
+                          {!isAi && !isPregnancy && !isCalving && (recType === "Treatment" || recType === "Health") && (
                             <Stethoscope size={22} color="#F59E0B" />
                           )}
-                          {(recType === "Weight Log" ||
+                          {!isAi && !isPregnancy && !isCalving && (recType === "Weight Log" ||
                             recType === "Weight") && (
                             <Scale size={22} color="#6366F1" />
                           )}
-                          {recType === "Check-up" && (
+                          {!isAi && !isPregnancy && !isCalving && (recType === "Check-up" || recType === "Medical") && (
                             <ClipboardList size={22} color="#64748B" />
                           )}
                         </View>
@@ -2851,7 +2844,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                 }}
                                 className="text-[9px] uppercase tracking-wider"
                               >
-                                Medical
+                                {badgeLabel}
                               </Text>
                             </View>
                           </View>
@@ -2937,10 +2930,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     );
                   })}
 
-                  {hasNextHealthPage && (
+                  {hasNextRecordsPage && (
                     <TouchableOpacity
-                      onPress={() => fetchNextHealthPage()}
-                      disabled={isFetchingNextHealthPage}
+                      onPress={() => fetchNextRecordsPage()}
+                      disabled={isFetchingNextRecordsPage}
                       className="py-3.5 px-4 rounded-2xl items-center justify-center border mt-4"
                       style={{
                         borderColor: colors.border,
@@ -2954,7 +2947,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         }}
                         className="text-xs"
                       >
-                        {isFetchingNextHealthPage
+                        {isFetchingNextRecordsPage
                           ? "Loading more..."
                           : "Load More Records"}
                       </Text>
@@ -2986,7 +2979,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     }}
                     className="text-lg mb-1"
                   >
-                    No Medical Records
+                    No Records Yet
                   </Text>
                   <Text
                     style={{
@@ -2995,8 +2988,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     }}
                     className="text-center text-sm px-4 leading-5"
                   >
-                    This animal does not have any recorded medical history
-                    matching the filter.
+                    This animal does not have any AI, pregnancy, calving, or
+                    health records matching the filter.
                   </Text>
                 </View>
               )}
@@ -3999,6 +3992,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
         isDestructive={false}
       />
 
+
+
       {/* Congrats Pregnancy Modal */}
       <Modal
         animationType="fade"
@@ -4293,6 +4288,80 @@ const InfoRow = ({ label, value }: { label: string; value: string }) => {
       >
         {value}
       </Text>
+    </View>
+  );
+};
+
+const BasicInfoCell = ({ label, value }: { label: string; value: string }) => {
+  const { colors } = useTheme();
+  return (
+    <View style={{ width: "50%", paddingVertical: 8, paddingRight: 10 }}>
+      <Text
+        numberOfLines={1}
+        style={{
+          fontFamily: "Outfit_600SemiBold",
+          color: colors.textMuted,
+          fontSize: 10,
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        numberOfLines={1}
+        style={{
+          fontFamily: "Outfit_800ExtraBold",
+          color: colors.textPrimary,
+          fontSize: 13,
+          marginTop: 4,
+        }}
+      >
+        {value || "Unspecified"}
+      </Text>
+    </View>
+  );
+};
+
+const BasicInfoInput = ({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+}) => {
+  const { colors, isDark } = useTheme();
+  return (
+    <View className="flex-1">
+      <Text
+        className="mb-1.5 ml-1"
+        style={{
+          color: colors.textMuted,
+          fontFamily: "Outfit_800ExtraBold",
+          fontSize: 10,
+          textTransform: "uppercase",
+        }}
+      >
+        {label}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textMuted}
+        className="rounded-2xl border px-4 py-3"
+        style={{
+          backgroundColor: isDark ? colors.background : "#f8fafc",
+          borderColor: colors.border,
+          color: colors.textPrimary,
+          fontFamily: "Outfit_600SemiBold",
+          fontSize: 13,
+        }}
+      />
     </View>
   );
 };

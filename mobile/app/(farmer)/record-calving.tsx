@@ -28,11 +28,11 @@ import {
 } from "lucide-react-native";
 import React, { useState, useEffect } from "react";
 import * as ImagePicker from "expo-image-picker";
-import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useTheme } from "@/lib/theme";
+import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 
 interface CalfEntry {
   sex: "M" | "F";
@@ -45,7 +45,6 @@ interface CalfEntry {
 export default function RecordCalving() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const api = useApi();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { colors, isDark } = useTheme();
@@ -63,6 +62,26 @@ export default function RecordCalving() {
     { sex: "F", earTag: "", color: "" },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const calvingMutation = useOfflineMutation(
+    {
+      url: "/animals/record-calving",
+      method: "POST",
+      description: `Farmer calving record for ${earTag || "animal"}`,
+    },
+    {
+      onSuccess: (result) => {
+        if (result.status === "synced") {
+          toast.success("Calving recorded! New animals added to registry.");
+        }
+        queryClient.invalidateQueries({ queryKey: ["animals", "my"] });
+        queryClient.invalidateQueries({ queryKey: ["breeding-milestones"] });
+        router.back();
+      },
+      onError: (error: any) => {
+        toast.error(error.response?.data?.message || "Failed to record calving");
+      },
+    },
+  );
 
   const addCalf = () => {
     if (calves.length >= 5) {
@@ -143,7 +162,7 @@ export default function RecordCalving() {
 
     setIsSubmitting(true);
     try {
-      await api.post("/animals/record-calving", {
+      await calvingMutation.mutateAsync({
         pregnancyId,
         animalId,
         date,
@@ -157,13 +176,8 @@ export default function RecordCalving() {
         })),
         technicianNote,
       });
-
-      toast.success("Calving recorded! New animals added to registry.");
-      queryClient.invalidateQueries({ queryKey: ["animals", "my"] });
-      queryClient.invalidateQueries({ queryKey: ["breeding-milestones"] });
-      router.back();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to record calving");
+      // Handled by mutation callbacks.
     } finally {
       setIsSubmitting(false);
     }

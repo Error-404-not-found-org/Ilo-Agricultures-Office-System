@@ -56,6 +56,25 @@ export const getAnimalHealthHistory = async (
   return response.data;
 };
 
+export const getAnimalRecords = async (
+  api: AxiosInstance,
+  animalId: string,
+  params: TimelineParams = {},
+) => {
+  const response = await api.get<PaginatedResponse<any>>(
+    `/animals/${animalId}/records`,
+    {
+      params: {
+        page: params.page ?? 1,
+        limit: params.limit ?? 10,
+        type: params.type && params.type !== "All" ? params.type : undefined,
+        search: params.search || undefined,
+      },
+    },
+  );
+  return response.data;
+};
+
 export const getReproductionEligibility = async (api: AxiosInstance, animalId: string) => {
   const response = await api.get<{ data: ReproductionEligibility }>(`/animals/${animalId}/reproduction-eligibility`);
   return response.data.data;

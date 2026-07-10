@@ -119,11 +119,7 @@ const FarmerBottomNavigator = ({
                   <ModalAction
                     icon={<Plus size={24} color={colors.primary} />}
                     label="Add Animal"
-                    onPress={() =>
-                      handleModalAction(
-                        "/(farmer)/(tabs)/add-animal?openForm=true",
-                      )
-                    }
+                    onPress={() => handleModalAction("/(farmer)/register-animal")}
                     colors={colors}
                     isDark={isDark}
                   />

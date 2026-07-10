@@ -67,7 +67,7 @@ export default function TechnicianAnimalsScreen() {
             </TouchableOpacity>
 
             <Text variant="black" size={24} style={{ color: "#fff" }}>
-              Animal Hub
+              Animal Registry
             </Text>
           </View>
           <TouchableOpacity

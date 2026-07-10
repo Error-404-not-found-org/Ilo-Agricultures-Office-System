@@ -1,28 +1,48 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
-import { useRouter } from 'expo-router';
-import { ArrowLeft, CheckCircle2, Clock, Cloud, History, Info } from 'lucide-react-native';
-import { getOfflineQueue, getSyncHistory, QueuedMutation } from '@/lib/offlineQueue';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { ArrowLeft, CheckCircle2, Clock, Cloud, History, Info, RefreshCw, Trash2 } from 'lucide-react-native';
+import {
+  discardQueueItem,
+  getOfflineQueue,
+  getSyncHistory,
+  QueuedMutation,
+  retryQueueItem,
+} from '@/lib/offlineQueue';
 import SafeScreen from '@/components/safeScreen';
 import { format } from 'date-fns';
-
-const PRIMARY = '#00643B';
+import { ConfirmationModal } from '@/components/ConfirmationModal';
 
 export default function SyncHistoryScreen() {
   const router = useRouter();
   const [pending, setPending] = useState<QueuedMutation[]>([]);
   const [history, setHistory] = useState<QueuedMutation[]>([]);
   const [activeTab, setActiveTab] = useState<'pending' | 'synced'>('pending');
+  const [discardTarget, setDiscardTarget] = useState<QueuedMutation | null>(null);
 
-  useEffect(() => {
-    const loadData = async () => {
-      const q = await getOfflineQueue();
-      const h = await getSyncHistory();
-      setPending(q);
-      setHistory(h);
-    };
-    loadData();
+  const loadData = useCallback(async () => {
+    const q = await getOfflineQueue();
+    const h = await getSyncHistory();
+    setPending(q);
+    setHistory(h);
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData]),
+  );
+
+  const discard = (item: QueuedMutation) => {
+    setDiscardTarget(item);
+  };
+
+  const confirmDiscard = async () => {
+    if (!discardTarget) return;
+    await discardQueueItem(discardTarget.id);
+    setDiscardTarget(null);
+    loadData();
+  };
 
   return (
     <SafeScreen>
@@ -68,7 +88,18 @@ export default function SyncHistoryScreen() {
             pending.length === 0 ? (
               <EmptyState icon={<CheckCircle2 size={48} color="#10b981" />} title="All Synced" subtitle="Your offline queue is empty. All activities are safely on the server." />
             ) : (
-              pending.map((item) => <SyncItem key={item.id} item={item} status="pending" />)
+              pending.map((item) => (
+                <SyncItem
+                  key={item.id}
+                  item={item}
+                  status="pending"
+                  onRetry={async () => {
+                    await retryQueueItem(item.id);
+                    loadData();
+                  }}
+                  onDiscard={() => discard(item)}
+                />
+              ))
             )
           ) : (
             history.length === 0 ? (
@@ -78,19 +109,39 @@ export default function SyncHistoryScreen() {
             )
           )}
         </ScrollView>
+        <ConfirmationModal
+          visible={!!discardTarget}
+          onClose={() => setDiscardTarget(null)}
+          onConfirm={confirmDiscard}
+          title="Discard Pending Change?"
+          message={discardTarget?.description || "This queued change will be removed and will not sync later."}
+          confirmText="Discard"
+          cancelText="Keep"
+          isDestructive
+        />
       </View>
     </SafeScreen>
   );
 }
 
-const SyncItem = ({ item, status }: { item: QueuedMutation, status: 'pending' | 'synced' }) => (
+const SyncItem = ({
+  item,
+  status,
+  onRetry,
+  onDiscard,
+}: {
+  item: QueuedMutation,
+  status: 'pending' | 'synced',
+  onRetry?: () => void,
+  onDiscard?: () => void,
+}) => (
   <View className="bg-white dark:bg-slate-900 rounded-3xl p-5 mb-4 border border-slate-100 dark:border-slate-800 shadow-sm">
     <View className="flex-row justify-between items-start mb-3">
       <View className="flex-1">
         <View className="flex-row items-center gap-2 mb-1">
-          <View className={`px-2 py-0.5 rounded-md ${status === 'pending' ? 'bg-amber-100' : 'bg-emerald-100'}`}>
-            <Text className={`text-[9px] font-black uppercase ${status === 'pending' ? 'text-amber-700' : 'text-emerald-700'}`}>
-              {status === 'pending' ? 'In Queue' : 'Uploaded'}
+          <View className={`px-2 py-0.5 rounded-md ${status === 'pending' ? item.status === 'failed' ? 'bg-red-100' : 'bg-amber-100' : 'bg-emerald-100'}`}>
+            <Text className={`text-[9px] font-black uppercase ${status === 'pending' ? item.status === 'failed' ? 'text-red-700' : 'text-amber-700' : 'text-emerald-700'}`}>
+              {status === 'pending' ? item.status === 'failed' ? 'Failed' : 'In Queue' : 'Uploaded'}
             </Text>
           </View>
           <Text className="text-[10px] font-bold text-slate-400">
@@ -98,9 +149,14 @@ const SyncItem = ({ item, status }: { item: QueuedMutation, status: 'pending' | 
           </Text>
         </View>
         <Text className="text-base font-bold text-slate-800 dark:text-white">{item.description}</Text>
+        {item.lastError ? (
+          <Text className="text-[11px] font-medium text-red-500 mt-1 leading-4">
+            {item.lastError}
+          </Text>
+        ) : null}
       </View>
       <View className="p-2 bg-slate-50 dark:bg-slate-800 rounded-2xl">
-        {status === 'pending' ? <Clock size={20} color="#f59e0b" /> : <CheckCircle2 size={20} color="#10b981" />}
+        {status === 'pending' ? <Clock size={20} color={item.status === 'failed' ? '#ef4444' : '#f59e0b'} /> : <CheckCircle2 size={20} color="#10b981" />}
       </View>
     </View>
     
@@ -113,6 +169,27 @@ const SyncItem = ({ item, status }: { item: QueuedMutation, status: 'pending' | 
         <Text className="text-[11px] font-medium text-slate-400 uppercase tracking-tighter">Method: {item.method}</Text>
       </View>
     </View>
+    {status === 'pending' ? (
+      <View className="flex-row justify-end gap-3 mt-4">
+        <TouchableOpacity
+          onPress={onDiscard}
+          accessibilityRole="button"
+          accessibilityLabel={`Discard ${item.description}`}
+          className="h-11 w-11 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700"
+        >
+          <Trash2 size={16} color="#ef4444" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onRetry}
+          accessibilityRole="button"
+          accessibilityLabel={`Retry ${item.description}`}
+          className="h-11 px-4 flex-row items-center justify-center rounded-xl bg-[#00643B]"
+        >
+          <RefreshCw size={14} color="white" />
+          <Text className="text-white ml-2 text-[11px] font-black uppercase">Retry</Text>
+        </TouchableOpacity>
+      </View>
+    ) : null}
   </View>
 );
 

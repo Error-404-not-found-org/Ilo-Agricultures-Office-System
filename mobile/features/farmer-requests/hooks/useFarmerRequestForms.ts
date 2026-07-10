@@ -1,12 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
+import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import {
   getFarmerAnimalsForPicker,
   getFarmerSelfProfile,
   getMyHealthRequests,
   getSystemConfig,
   getTechnicianDirectory,
-  submitHealthRequest,
 } from "../services/farmerRequests.service";
 
 export const farmerRequestFormKeys = {
@@ -67,14 +67,19 @@ export const useTechnicianDirectoryQuery = () => {
 };
 
 export const useSubmitHealthRequestMutation = () => {
-  const api = useApi();
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: (payload: any) => submitHealthRequest(api, payload),
+  return useOfflineMutation(
+    {
+      url: "/health-request",
+      method: "POST",
+      description: "Animal health request",
+    },
+    {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["farmer", "requests"] });
       queryClient.invalidateQueries({ queryKey: farmerRequestFormKeys.myHealthRequests });
     },
-  });
+    },
+  );
 };

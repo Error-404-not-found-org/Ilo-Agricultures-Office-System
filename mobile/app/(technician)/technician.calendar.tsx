@@ -589,7 +589,7 @@ export default function TechnicianCalendar() {
                       color: colors.textSecondary,
                     }}
                   >
-                    {item.location || "Oton, Iloilo"}
+                    {item.location || "Location not set"}
                   </Text>
                 </View>
 

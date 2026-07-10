@@ -26,6 +26,8 @@ export default function AdminDashboardScreen() {
     isLoading,
     monitoring,
     isMonitoringLoading,
+    barangays,
+    isBarangaysLoading,
     triggerBackup,
     isBackingUp,
   } = useAdminDashboard();
@@ -59,35 +61,138 @@ export default function AdminDashboardScreen() {
               shadowOpacity: isDark ? 0 : 0.02,
               shadowRadius: 8,
               elevation: isDark ? 0 : 2,
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center"
+              gap: 16,
             }}
           >
-            <ActionCategory
-              title="All Users"
-              icon={<Users size={24} color="#2563EB" />}
-              iconBg="rgba(37,99,235,0.1)"
-              onPress={() => router.push("/(admin)/(tabs)/admin.users" as any)}
-            />
-            <ActionCategory
-              title="All Animals"
-              icon={<MaterialCommunityIcons name="cow" size={24} color="#7c3aed" />}
-              iconBg="rgba(124,58,237,0.1)"
-              onPress={() => router.push("/(admin)/(tabs)/admin.animals" as any)}
-            />
-            <ActionCategory
-              title="Create User"
-              icon={<UserPlus size={24} color="#dc2626" />}
-              iconBg="rgba(220,38,38,0.1)"
-              onPress={() => router.push("/(admin)/create-user" as any)}
-            />
-            <ActionCategory
-              title="Records"
-              icon={<Syringe size={24} color="#0891b2" />}
-              iconBg="rgba(8,145,178,0.1)"
-              onPress={() => router.push("/(admin)/(tabs)/admin.records" as any)}
-            />
+            {/* Row 1 */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <ActionCategory
+                title="All Users"
+                icon={<Users size={22} color="#2563EB" />}
+                iconBg="rgba(37,99,235,0.1)"
+                onPress={() => router.push("/(admin)/(tabs)/admin.users" as any)}
+              />
+              <ActionCategory
+                title="All Animals"
+                icon={<MaterialCommunityIcons name="cow" size={22} color="#7c3aed" />}
+                iconBg="rgba(124,58,237,0.1)"
+                onPress={() => router.push("/(admin)/(tabs)/admin.animals" as any)}
+              />
+              <ActionCategory
+                title="Create User"
+                icon={<UserPlus size={22} color="#dc2626" />}
+                iconBg="rgba(220,38,38,0.1)"
+                onPress={() => router.push("/(admin)/create-user" as any)}
+              />
+              <ActionCategory
+                title="Records"
+                icon={<Syringe size={22} color="#0891b2" />}
+                iconBg="rgba(8,145,178,0.1)"
+                onPress={() => router.push("/(admin)/(tabs)/admin.records" as any)}
+              />
+            </View>
+
+            {/* Row 2 */}
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <ActionCategory
+                title="Claims"
+                icon={<MaterialCommunityIcons name="clipboard-check-outline" size={22} color="#16a34a" />}
+                iconBg="rgba(22,163,74,0.1)"
+                onPress={() => router.push("/(admin)/claim-monitoring" as any)}
+              />
+              <ActionCategory
+                title="Requests"
+                icon={<MaterialCommunityIcons name="bell-ring-outline" size={22} color="#ea580c" />}
+                iconBg="rgba(234,88,12,0.1)"
+                onPress={() => router.push("/(admin)/request-monitoring" as any)}
+              />
+              <ActionCategory
+                title="Workload"
+                icon={<MaterialCommunityIcons name="briefcase-account-outline" size={22} color="#4f46e5" />}
+                iconBg="rgba(79,70,229,0.1)"
+                onPress={() => router.push("/(admin)/technician-workload" as any)}
+              />
+              <ActionCategory
+                title="Reports"
+                icon={<MaterialCommunityIcons name="file-chart-outline" size={22} color="#0d9488" />}
+                iconBg="rgba(13,148,136,0.1)"
+                onPress={() => router.push("/(admin)/reports" as any)}
+              />
+            </View>
+          </View>
+        </View>
+
+        {/* System Administration Operations Row */}
+        <View style={{ paddingHorizontal: 24, marginBottom: 20 }}>
+          <Text style={{ fontSize: 15, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginBottom: 12 }}>
+            System Administration
+          </Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            {/* Support Tickets Button */}
+            <TouchableOpacity
+              onPress={() => router.push("/(admin)/support-tickets" as any)}
+              style={{
+                flex: 1,
+                backgroundColor: colors.card,
+                borderRadius: 20,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: "center",
+                flexDirection: "row",
+                gap: 8,
+              }}
+            >
+              <MaterialCommunityIcons name="face-agent" size={18} color="#3b82f6" />
+              <View>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>Support</Text>
+                <Text style={{ fontSize: 9, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>Tickets</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Audit Logs Button */}
+            <TouchableOpacity
+              onPress={() => router.push("/(admin)/audit-logs" as any)}
+              style={{
+                flex: 1,
+                backgroundColor: colors.card,
+                borderRadius: 20,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: "center",
+                flexDirection: "row",
+                gap: 8,
+              }}
+            >
+              <MaterialCommunityIcons name="history" size={18} color="#16a34a" />
+              <View>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>Audit Logs</Text>
+                <Text style={{ fontSize: 9, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>History Feed</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* System Settings Button */}
+            <TouchableOpacity
+              onPress={() => router.push("/(admin)/system-settings" as any)}
+              style={{
+                flex: 1,
+                backgroundColor: colors.card,
+                borderRadius: 20,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: colors.border,
+                alignItems: "center",
+                flexDirection: "row",
+                gap: 8,
+              }}
+            >
+              <MaterialCommunityIcons name="cog-outline" size={18} color="#7c3aed" />
+              <View>
+                <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>Settings</Text>
+                <Text style={{ fontSize: 9, fontFamily: "Outfit_500Medium", color: colors.textSecondary }}>App Config</Text>
+              </View>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -98,6 +203,9 @@ export default function AdminDashboardScreen() {
         ) : (
           <AnalyticsGrid stats={stats} />
         )}
+
+        {/* 4.5 Municipality/Barangay Overview */}
+        <MunicipalityOverview barangays={barangays} isLoading={isBarangaysLoading} />
 
         {/* Alerts and Monitoring Loading Check */}
         {isMonitoringLoading && !monitoring ? (

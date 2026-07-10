@@ -13,7 +13,6 @@ interface TechnicianRequestsSectionProps {
   dbUser: any;
   isUpdating: boolean;
   handleAction: (item: any) => void;
-  handleRejectRequest: (item: any) => void;
 }
 
 export function TechnicianRequestsSection({
@@ -22,13 +21,12 @@ export function TechnicianRequestsSection({
   dbUser,
   isUpdating,
   handleAction,
-  handleRejectRequest,
 }: TechnicianRequestsSectionProps) {
   const { colors, isDark } = useTheme();
   const router = useRouter();
 
   const newRequestsCount = pendingRequests.filter(
-    (r: any) => r.status === "pending"
+    (r: any) => r.status === "pending",
   ).length;
 
   return (
@@ -82,7 +80,12 @@ export function TechnicianRequestsSection({
           >
             View all
           </Text>
-          <Feather name="chevron-right" size={14} color={colors.primary} style={{ marginLeft: 2 }} />
+          <Feather
+            name="chevron-right"
+            size={14}
+            color={colors.primary}
+            style={{ marginLeft: 2 }}
+          />
         </TouchableOpacity>
       </View>
 
@@ -138,9 +141,6 @@ export function TechnicianRequestsSection({
                 isLocked={isAssignedToOther}
                 lockedByName={reqTechName}
                 isUpdating={isUpdating}
-                onAccept={() => handleAction(req)}
-                onSchedule={() => handleAction(req)}
-                onDecline={() => handleRejectRequest(req)}
                 onPress={() => handleAction(req)}
               />
             );
@@ -152,8 +152,6 @@ export function TechnicianRequestsSection({
 
 const RequestCard = ({
   item,
-  onAccept,
-  onDecline,
   onPress,
   isLocked,
   lockedByName,
@@ -163,10 +161,18 @@ const RequestCard = ({
 
   const isHealth = item.type === "health";
   const isBreedingVerification = item.type === "breeding_verification";
-  const serviceTypeLabel = String(item.serviceType || item.requestType || item.raw?.requestType || (isHealth ? "Health Assistance" : "Artificial Insemination"))
+  const serviceTypeLabel = String(
+    item.serviceType ||
+      item.requestType ||
+      item.raw?.requestType ||
+      (isHealth ? "Health Assistance" : "Artificial Insemination"),
+  )
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
-  const locationLabel = item.locationLabel || item.location || [item.barangay, item.municipality].filter(Boolean).join(", ");
+  const locationLabel =
+    item.locationLabel ||
+    item.location ||
+    [item.barangay, item.municipality].filter(Boolean).join(", ");
   const sentAt = item.createdAt
     ? new Date(item.createdAt).toLocaleString("en-US", {
         month: "short",
@@ -180,23 +186,23 @@ const RequestCard = ({
       ? "rgba(139, 92, 246, 0.12)"
       : "#f5f3ff"
     : isHealth
-    ? isDark
-      ? "#78350f"
-      : "#fffbeb"
-    : isDark
-      ? "#064e3b"
-      : "#f0fdf4";
+      ? isDark
+        ? "#78350f"
+        : "#fffbeb"
+      : isDark
+        ? "#064e3b"
+        : "#f0fdf4";
   const iconColor = isBreedingVerification
     ? isDark
       ? "#c4b5fd"
       : "#7c3aed"
     : isHealth
-    ? isDark
-      ? "#fbbf24"
-      : "#d97706"
-    : isDark
-      ? "#34d399"
-      : colors.primary;
+      ? isDark
+        ? "#fbbf24"
+        : "#d97706"
+      : isDark
+        ? "#34d399"
+        : colors.primary;
 
   return (
     <Card
@@ -224,11 +230,7 @@ const RequestCard = ({
             style={{ width: 52, height: 52, borderRadius: 26 }}
           />
         ) : (
-          <MaterialCommunityIcons
-            name="account"
-            size={24}
-            color={iconColor}
-          />
+          <MaterialCommunityIcons name="account" size={24} color={iconColor} />
         )}
         <View
           style={{
@@ -246,7 +248,13 @@ const RequestCard = ({
           }}
         >
           <MaterialCommunityIcons
-            name={isBreedingVerification ? "clipboard-pulse-outline" : isHealth ? "stethoscope" : "needle"}
+            name={
+              isBreedingVerification
+                ? "clipboard-pulse-outline"
+                : isHealth
+                  ? "stethoscope"
+                  : "needle"
+            }
             size={12}
             color={iconColor}
           />
@@ -292,16 +300,20 @@ const RequestCard = ({
         )}
       </View>
 
-      {!(["done", "resolved", "completed", "rejected", "cancelled", "declined"].includes(item.status?.toLowerCase())) && (
+      {![
+        "done",
+        "resolved",
+        "completed",
+        "rejected",
+        "cancelled",
+        "declined",
+      ].includes(item.status?.toLowerCase()) && (
         <View style={{ gap: 8, alignItems: "flex-end" }}>
           <TouchableOpacity
-            onPress={onAccept}
+            onPress={onPress}
             disabled={isLocked || isUpdating}
             accessibilityRole="button"
-            accessibilityLabel={`${item.status?.toLowerCase() === "pending" ? "Claim" :
-               ["approved", "assigned", "triaged"].includes(item.status?.toLowerCase()) ? "Schedule" :
-               item.status?.toLowerCase() === "scheduled" ? "Start" :
-               item.type === "health" ? "Resolve" : "Complete"} ${serviceTypeLabel} request from ${item.farmer}`}
+            accessibilityLabel={`View ${serviceTypeLabel} request from ${item.farmer}`}
             style={{
               backgroundColor:
                 isLocked || isUpdating ? colors.textMuted : colors.primary,
@@ -323,43 +335,9 @@ const RequestCard = ({
                 textTransform: "uppercase",
               }}
             >
-              {item.status?.toLowerCase() === "pending" ? "Claim" :
-               ["approved", "assigned", "triaged"].includes(item.status?.toLowerCase()) ? "Schedule" :
-               item.status?.toLowerCase() === "scheduled" ? "Start" :
-               item.type === "health" ? "Resolve" : "Complete"}
+              View
             </Text>
           </TouchableOpacity>
-
-          {!isBreedingVerification && ["pending", "approved", "assigned", "triaged"].includes(item.status?.toLowerCase()) && (
-            <TouchableOpacity
-              onPress={onDecline}
-              disabled={isLocked || isUpdating}
-              accessibilityRole="button"
-              accessibilityLabel={`Decline ${serviceTypeLabel} request from ${item.farmer}`}
-              style={{
-                backgroundColor: isDark ? "#450a0a" : "#fef2f2",
-                paddingHorizontal: 16,
-                paddingVertical: 6,
-                borderRadius: 10,
-                minHeight: 44,
-                minWidth: 80,
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: isLocked || isUpdating ? 0.5 : 1,
-              }}
-            >
-              <Text
-                variant="black"
-                size={9}
-                style={{
-                  color: isDark ? "#f87171" : "#ef4444",
-                  textTransform: "uppercase",
-                }}
-              >
-                Decline
-              </Text>
-            </TouchableOpacity>
-          )}
         </View>
       )}
     </Card>

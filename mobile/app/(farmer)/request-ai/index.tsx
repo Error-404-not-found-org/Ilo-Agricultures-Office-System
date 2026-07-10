@@ -164,6 +164,7 @@ export default function RequestAI() {
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const submitLockRef = useRef(false);
   const { colors, isDark } = useTheme();
 
   const primaryColor = isDark ? colors.primary : "#00643B";
@@ -178,7 +179,7 @@ export default function RequestAI() {
   const [comment, setComment] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [preferredDate, setPreferredDate] = useState(new Date());
+  const [preferredDate, setPreferredDate] = useState<Date | null>(null);
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [farmPinModalVisible, setFarmPinModalVisible] = useState(false);
@@ -213,11 +214,13 @@ export default function RequestAI() {
       description: `AI Service Request for ${selectedAnimal?.earTag || "Livestock"}`,
     },
     {
-      onSuccess: () => {
-        toast.success(
-          "AI request submitted! A technician will contact you soon.",
-          { duration: 4000, position: "top-center" },
-        );
+      onSuccess: (result) => {
+        if (result.status === "synced") {
+          toast.success(
+            "AI request submitted! A technician will contact you soon.",
+            { duration: 4000, position: "top-center" },
+          );
+        }
         // Reset Form
         setSelectedAnimal(null);
         setComment("");
@@ -243,6 +246,14 @@ export default function RequestAI() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitting = mutation.isPending || isSubmitting;
 
+  const showSubmitError = (
+    message: string,
+    options?: Parameters<typeof toast.error>[1],
+  ) => {
+    toast.dismiss();
+    toast.error(message, options);
+  };
+
   // UI states
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -261,7 +272,8 @@ export default function RequestAI() {
     "05:00 PM",
   ];
 
-  const { data: profile, isLoading: loadingProfile } = useFarmerSelfProfileQuery();
+  const { data: profile, isLoading: loadingProfile } =
+    useFarmerSelfProfileQuery();
 
   useEffect(() => {
     if (profile) {
@@ -269,7 +281,8 @@ export default function RequestAI() {
     }
   }, [profile]);
 
-  const { data: animalsData, isLoading: isLoadingAnimals } = useFarmerAnimalsForAiQuery();
+  const { data: animalsData, isLoading: isLoadingAnimals } =
+    useFarmerAnimalsForAiQuery();
 
   useEffect(() => {
     if (animalsData) {
@@ -331,7 +344,7 @@ export default function RequestAI() {
   };
 
   const submitRequest = async () => {
-    if (!selectedAnimal) return;
+    if (!selectedAnimal || !preferredDate) return;
 
     const selectedLabels = HEAT_SIGNS.filter((s) =>
       selectedSigns.includes(s.id),
@@ -360,65 +373,88 @@ export default function RequestAI() {
   };
 
   const handleSubmit = async (skipFarmPinWarning = false) => {
-    if (isSubmitting || mutation.isPending) return;
+    if (submitLockRef.current || isSubmitting || mutation.isPending) return;
 
-    const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
-    const hasAddress = farmer?.address?.barangay || profile?.address?.barangay;
-    const farmLocation = farmer?.farmLocation || profile?.farmLocation;
-    const hasFarmPin = Boolean(farmLocation?.latitude && farmLocation?.longitude);
+    submitLockRef.current = true;
+    toast.dismiss();
 
-    if (!hasPhone || !hasAddress) {
-      setProfileModalVisible(true);
-      return;
-    }
-
-    if (!selectedAnimal)
-      return toast.error("Please select an animal for this request.");
-
-    if (selectedAnimal.reproductiveStatus === "Pregnant") {
-      setPregnantSubmitModalVisible(true);
-      return;
-    }
-
-    const ageCheck = checkInseminationAgeEligibility(
-      selectedAnimal.birthDate,
-      selectedAnimal.species,
-    );
-    if (!ageCheck.isEligible) {
-      setAgeCheckReason(
-        ageCheck.reason || "Animal is too young for insemination.",
+    try {
+      const hasPhone = farmer?.phoneNumber || profile?.phoneNumber;
+      const hasAddress =
+        farmer?.address?.barangay || profile?.address?.barangay;
+      const farmLocation = farmer?.farmLocation || profile?.farmLocation;
+      const hasFarmPin = Boolean(
+        farmLocation?.latitude && farmLocation?.longitude,
       );
-      setAgeModalVisible(true);
-      return;
-    }
 
-    if (selectedSigns.length === 0) {
-      return toast.error("Please select at least 1 observed heat sign.");
-    }
+      if (!hasPhone || !hasAddress) {
+        setProfileModalVisible(true);
+        return;
+      }
 
-    if (selectedSigns.length > 5) {
-      return toast.error("You can select a maximum of 5 heat signs.");
-    }
+      if (!selectedAnimal) {
+        showSubmitError("Please select an animal for this request.");
+        return;
+      }
 
-    const validation = validateRequestTime(preferredDate, !!config?.isHoliday);
-    if (!validation.isValid) {
-      return toast.error(validation.message || "Invalid request time.", {
-        duration: 5000,
-      });
-    }
+      if (selectedAnimal.reproductiveStatus === "Pregnant") {
+        setPregnantSubmitModalVisible(true);
+        return;
+      }
 
-    if (!skipFarmPinWarning && !hasFarmPin) {
-      setFarmPinModalVisible(true);
-      return;
-    }
+      const ageCheck = checkInseminationAgeEligibility(
+        selectedAnimal.birthDate,
+        selectedAnimal.species,
+      );
+      if (!ageCheck.isEligible) {
+        setAgeCheckReason(
+          ageCheck.reason || "Animal is too young for insemination.",
+        );
+        setAgeModalVisible(true);
+        return;
+      }
 
-    await submitRequest();
+      if (selectedSigns.length === 0) {
+        showSubmitError("Please select at least 1 observed heat sign.");
+        return;
+      }
+
+      if (selectedSigns.length > 5) {
+        showSubmitError("You can select a maximum of 5 heat signs.");
+        return;
+      }
+
+      if (!preferredDate) {
+        showSubmitError("Please select a preferred date and time slot.");
+        return;
+      }
+
+      const validation = validateRequestTime(
+        preferredDate,
+        !!config?.isHoliday,
+      );
+      if (!validation.isValid) {
+        showSubmitError(validation.message || "Invalid request time.", {
+          duration: 5000,
+        });
+        return;
+      }
+
+      if (!skipFarmPinWarning && !hasFarmPin) {
+        setFarmPinModalVisible(true);
+        return;
+      }
+
+      await submitRequest();
+    } finally {
+      submitLockRef.current = false;
+    }
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
-    if (selectedDate) {
-      const newDate = new Date(preferredDate);
+    if (event.type === "set" && selectedDate) {
+      const newDate = new Date(preferredDate || new Date());
       newDate.setFullYear(
         selectedDate.getFullYear(),
         selectedDate.getMonth(),
@@ -436,7 +472,7 @@ export default function RequestAI() {
     if (modifier === "PM" && hours < 12) hours += 12;
     if (modifier === "AM" && hours === 12) hours = 0;
 
-    const newDate = new Date(preferredDate);
+    const newDate = new Date(preferredDate || new Date());
     newDate.setHours(hours, minutes, 0, 0);
     setPreferredDate(newDate);
   };
@@ -640,9 +676,9 @@ export default function RequestAI() {
                 </Text>
                 <Text
                   className="text-[15px] font-bold"
-                  style={{ color: colors.textPrimary }}
+                  style={{ color: preferredDate ? colors.textPrimary : colors.textMuted }}
                 >
-                  {preferredDate.toLocaleDateString()}
+                  {preferredDate ? preferredDate.toLocaleDateString() : "— — — — —"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -666,12 +702,14 @@ export default function RequestAI() {
                 </Text>
                 <Text
                   className="text-[15px] font-bold"
-                  style={{ color: colors.textPrimary }}
+                  style={{ color: preferredDate ? colors.textPrimary : colors.textMuted }}
                 >
-                  {preferredDate.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {preferredDate
+                    ? preferredDate.toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })
+                    : "— — — — —"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -680,7 +718,7 @@ export default function RequestAI() {
 
           {showDatePicker && (
             <DateTimePicker
-              value={preferredDate}
+              value={preferredDate || new Date()}
               mode="date"
               display="default"
               onChange={onDateChange}
@@ -1100,11 +1138,12 @@ export default function RequestAI() {
 
             <View className="flex-row flex-wrap gap-3 justify-between">
               {TIME_SLOTS.map((slot) => {
-                const isSelected =
-                  preferredDate.toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  }) === slot.replace(/^0/, "");
+                const isSelected = preferredDate
+                  ? preferredDate.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }) === slot.replace(/^0/, "")
+                  : false;
                 return (
                   <TouchableOpacity
                     key={slot}

@@ -1,7 +1,16 @@
 import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
-import { Moon, Sun, Settings, RefreshCw, Lock, Shield, HelpCircle, LogOut } from "lucide-react-native";
+import {
+  Moon,
+  Sun,
+  Settings,
+  RefreshCw,
+  Lock,
+  Shield,
+  HelpCircle,
+  LogOut,
+} from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
 import { useTranslation } from "../../../contexts/TranslationContext";
 import ActionItem from "./ActionItem";
@@ -34,7 +43,7 @@ const SystemSupportCard = ({
   const router = useRouter();
 
   return (
-    <View className="px-6">
+    <View className="px-6 mt-2">
       {/* Quick Actions */}
       <Text
         className="font-outfit-black text-[10px] uppercase tracking-widest mb-3 ml-1"
@@ -57,9 +66,7 @@ const SystemSupportCard = ({
             backgroundColor: colors.card,
           }}
         >
-          <View
-            style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
-          >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
             <View
               style={{
                 width: 36,

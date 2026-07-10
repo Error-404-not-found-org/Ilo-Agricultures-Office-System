@@ -1,10 +1,10 @@
 import React from "react";
-import { View, TouchableOpacity, Linking } from "react-native";
+import { View, TouchableOpacity } from "react-native";
+import { useRouter } from "expo-router";
 import { Text } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
 import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons, Feather } from "@expo/vector-icons";
-import { toast } from "sonner-native";
 import { TechnicianRouteSkeleton } from "./skeletons/TechnicianDashboardSkeletons";
 
 interface TechnicianRouteSectionProps {
@@ -21,45 +21,7 @@ export function TechnicianRouteSection({
   handleAction,
 }: TechnicianRouteSectionProps) {
   const { colors, isDark } = useTheme();
-
-  const handleMapPress = () => {
-    if (agendaItems.length === 0) {
-      return toast.info("No stops scheduled today");
-    }
-
-    // Construct a Google Maps route with waypoints, prioritizing coordinates
-    const destinations = agendaItems
-      .map((item: any) => {
-        const farmer = item.raw?.farmerId || {};
-        const farmLoc = farmer.farmLocation || {};
-        if (farmLoc.latitude && farmLoc.longitude) {
-          return `${farmLoc.latitude},${farmLoc.longitude}`;
-        }
-        return item.navigationTarget || item.location;
-      })
-      .filter((loc: string) => loc && loc !== "Unknown Location");
-
-    if (destinations.length === 0) {
-      return toast.info("No valid locations to map");
-    }
-
-    const origin = "My+Location";
-    const destination = encodeURIComponent(
-      destinations[destinations.length - 1]
-    );
-    const waypoints = destinations
-      .slice(0, -1)
-      .map(encodeURIComponent)
-      .join("|");
-
-    const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${
-      waypoints ? `&waypoints=${waypoints}` : ""
-    }&travelmode=driving`;
-
-    Linking.openURL(url).catch((err) =>
-      console.error("Failed to open maps", err)
-    );
-  };
+  const router = useRouter();
 
   return (
     <View style={{ marginBottom: 24 }}>
@@ -75,16 +37,16 @@ export function TechnicianRouteSection({
           Today&apos;s Visits
         </Text>
         <TouchableOpacity
-          onPress={handleMapPress}
+          onPress={() => router.push("/(technician)/technician.calendar" as any)}
           style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
         >
           <MaterialCommunityIcons
-            name="near-me"
+            name="calendar-month-outline"
             size={16}
             color={colors.primary}
           />
           <Text variant="bold" color="brand" size={13}>
-            Map
+            Open Calendar
           </Text>
         </TouchableOpacity>
       </View>

@@ -148,7 +148,13 @@ const AdminProfile = () => {
               padding: 8,
             }}
           >
-            <Text style={{ color: "#fff", fontFamily: "Outfit_700Bold", fontSize: 14 }}>
+            <Text
+              style={{
+                color: "#fff",
+                fontFamily: "Outfit_700Bold",
+                fontSize: 14,
+              }}
+            >
               Edit
             </Text>
           </TouchableOpacity>
@@ -270,7 +276,13 @@ const AdminProfile = () => {
             />
             <Divider />
             <MenuItem
-              icon={colorScheme === "dark" ? <Sun size={18} color="#f59e0b" /> : <Moon size={18} color="#94a3b8" />}
+              icon={
+                colorScheme === "dark" ? (
+                  <Sun size={18} color="#f59e0b" />
+                ) : (
+                  <Moon size={18} color="#94a3b8" />
+                )
+              }
               label="Theme Mode"
               value={colorScheme === "dark" ? "Dark Mode" : "Light Mode"}
               onPress={handleToggleTheme}
@@ -316,7 +328,13 @@ const AdminProfile = () => {
             />
             <Divider />
             <MenuItem
-              icon={<MaterialCommunityIcons name="information-outline" size={18} color={colors.textSecondary} />}
+              icon={
+                <MaterialCommunityIcons
+                  name="information-outline"
+                  size={18}
+                  color={colors.textSecondary}
+                />
+              }
               label="About App"
               onPress={showAboutApp}
             />
@@ -341,7 +359,13 @@ const AdminProfile = () => {
             }}
           >
             <LogOut size={18} color="#ef4444" />
-            <Text style={{ color: "#ef4444", fontFamily: "Outfit_700Bold", fontSize: 15 }}>
+            <Text
+              style={{
+                color: "#ef4444",
+                fontFamily: "Outfit_700Bold",
+                fontSize: 15,
+              }}
+            >
               Sign Out
             </Text>
           </TouchableOpacity>
@@ -460,17 +484,31 @@ const AdminProfile = () => {
                 placeholderTextColor={colors.textMuted}
               />
 
-              <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 12 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "flex-end",
+                  gap: 12,
+                }}
+              >
                 <TouchableOpacity
                   onPress={() => setIsEditing(false)}
                   style={{
                     paddingHorizontal: 20,
                     paddingVertical: 12,
                     borderRadius: 14,
-                    backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#f1f5f9",
+                    backgroundColor: isDark
+                      ? "rgba(255,255,255,0.05)"
+                      : "#f1f5f9",
                   }}
                 >
-                  <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_700Bold", fontSize: 14 }}>
+                  <Text
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_700Bold",
+                      fontSize: 14,
+                    }}
+                  >
                     Cancel
                   </Text>
                 </TouchableOpacity>
@@ -492,7 +530,13 @@ const AdminProfile = () => {
                   {savingName ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <Text style={{ color: "white", fontFamily: "Outfit_700Bold", fontSize: 14 }}>
+                    <Text
+                      style={{
+                        color: "white",
+                        fontFamily: "Outfit_700Bold",
+                        fontSize: 14,
+                      }}
+                    >
                       Save
                     </Text>
                   )}
@@ -527,8 +571,8 @@ const AdminProfile = () => {
           {
             text: "Close",
             variant: "cancel",
-            onPress: () => setPersonalVisible(false)
-          }
+            onPress: () => setPersonalVisible(false),
+          },
         ]}
       />
 
@@ -559,13 +603,13 @@ const AdminProfile = () => {
             onPress: () => {
               setPreferencesVisible(false);
               handleToggleTheme();
-            }
+            },
           },
           {
             text: "Close",
             variant: "cancel",
-            onPress: () => setPreferencesVisible(false)
-          }
+            onPress: () => setPreferencesVisible(false),
+          },
         ]}
       />
 
@@ -593,8 +637,8 @@ const AdminProfile = () => {
           {
             text: "Close",
             variant: "cancel",
-            onPress: () => setAboutVisible(false)
-          }
+            onPress: () => setAboutVisible(false),
+          },
         ]}
       />
     </SafeScreen>
@@ -629,7 +673,9 @@ const MenuItem = ({
         backgroundColor: colors.card,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 14, flex: 1 }}>
+      <View
+        style={{ flexDirection: "row", alignItems: "center", gap: 14, flex: 1 }}
+      >
         <View
           style={{
             width: 36,
@@ -652,7 +698,9 @@ const MenuItem = ({
           <Text
             style={{
               fontSize: 14,
-              fontFamily: isDestructive ? "Outfit_700Bold" : "Outfit_600SemiBold",
+              fontFamily: isDestructive
+                ? "Outfit_700Bold"
+                : "Outfit_600SemiBold",
               color: isDestructive ? colors.error : colors.textPrimary,
             }}
           >

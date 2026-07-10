@@ -265,6 +265,10 @@ export default function PregnancyCheckScreen() {
     selectedInsemination?.preferredDate ||
     selectedInsemination?.createdAt;
 
+  const daysSinceAI = selectedInseminationDate
+    ? Math.max(0, Math.floor((new Date().getTime() - new Date(selectedInseminationDate).getTime()) / (1000 * 60 * 60 * 24)))
+    : 0;
+
   const estCalvingDate = selectedInseminationDate
     ? calculateTargetCalvingDate(
         selectedInseminationDate,
@@ -434,6 +438,82 @@ export default function PregnancyCheckScreen() {
                 </View>
               )}
             </>
+          )}
+
+          {/* LINKED AI ATTEMPT CARD */}
+          {selectedInsemination && (
+            <View
+              className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/45 p-5 rounded-3xl mb-6"
+            >
+              <Text
+                style={{
+                  fontFamily: "Outfit_800ExtraBold",
+                  color: isDark ? "#60a5fa" : "#1e40af",
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginBottom: 8,
+                }}
+              >
+                🔗 Linked AI Attempt Details
+              </Text>
+              <View className="gap-y-1.5 mb-3">
+                <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textPrimary }}>
+                  Attempt Number: <Text style={{ fontFamily: "Outfit_800ExtraBold" }}>#{selectedInsemination.attemptNumber || 1}</Text>
+                </Text>
+                <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textPrimary }}>
+                  AI Date: <Text style={{ fontFamily: "Outfit_700Bold" }}>{formatDate(selectedInseminationDate)}</Text>
+                </Text>
+                <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textPrimary }}>
+                  Days Since AI: <Text style={{ fontFamily: "Outfit_800ExtraBold", color: daysSinceAI < 35 ? "#e11d48" : "#059669" }}>{daysSinceAI} days</Text>
+                </Text>
+                <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textPrimary }}>
+                  Sire Code: <Text style={{ fontFamily: "Outfit_700Bold" }}>{selectedInsemination.sireCode || "N/A"}</Text>
+                </Text>
+                <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textPrimary }}>
+                  Sire Breed: <Text style={{ fontFamily: "Outfit_700Bold" }}>{selectedInsemination.sireBreed || "N/A"}</Text>
+                </Text>
+                {selectedInsemination.technicianId?.name && (
+                  <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textPrimary }}>
+                    AI Technician: <Text style={{ fontFamily: "Outfit_700Bold" }}>{selectedInsemination.technicianId.name}</Text>
+                  </Text>
+                )}
+                <Text style={{ fontFamily: "Outfit_600SemiBold", fontSize: 13, color: colors.textPrimary }}>
+                  Current Outcome: <Text style={{ fontFamily: "Outfit_800ExtraBold", color: "#d97706" }}>Pending</Text>
+                </Text>
+              </View>
+
+              <Text
+                style={{
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  lineHeight: 16,
+                  fontStyle: "italic"
+                }}
+              >
+                This diagnosis will update AI Attempt #{selectedInsemination.attemptNumber || 1} from {formatDate(selectedInseminationDate)}. The result will be permanently linked to this AI service record.
+              </Text>
+
+              {daysSinceAI < 35 && (
+                <View
+                  className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 p-3 rounded-2xl mt-4 flex-row items-center gap-2"
+                >
+                  <AlertCircle size={18} color="#d97706" />
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_600SemiBold",
+                      fontSize: 11,
+                      color: "#b45309",
+                      flex: 1,
+                      lineHeight: 15,
+                    }}
+                  >
+                    Only {daysSinceAI} days since AI. Pregnancy diagnosis may be too early. Recommended check is 35+ days for ultrasound or 60+ days for palpation.
+                  </Text>
+                </View>
+              )}
+            </View>
           )}
 
           {/* DIAGNOSIS RESULT */}

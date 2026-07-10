@@ -1,68 +1,133 @@
 import React from "react";
-import { View, Text, ScrollView } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator } from "react-native";
 import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
-export function MunicipalityOverview() {
+interface BarangayData {
+  barangay: string;
+  farmersCount: number;
+  animalsCount: number;
+  activePregnancies: number;
+  pendingAIRequests: number;
+  pendingHealthRequests: number;
+  incompleteRecordsCount: number;
+  aiSuccessRate: number | null;
+  healthAlertsCount: number;
+  activityScore: number;
+  status: "critical" | "attention" | "healthy";
+}
+
+interface MunicipalityOverviewProps {
+  barangays: BarangayData[];
+  isLoading: boolean;
+}
+
+export function MunicipalityOverview({ barangays = [], isLoading }: MunicipalityOverviewProps) {
   const { colors, isDark } = useTheme();
 
-  const mockBarangays = [
-    { name: "Trapiche", farmers: 45, animals: 120, pregRate: "78%", aiSuccess: "82%" },
-    { name: "Santa Rita", farmers: 32, animals: 84, pregRate: "74%", aiSuccess: "79%" },
-    { name: "Poblacion", farmers: 28, animals: 65, pregRate: "82%", aiSuccess: "85%" },
-    { name: "Tagbak", farmers: 38, animals: 98, pregRate: "71%", aiSuccess: "75%" },
-    { name: "Bita Norte", farmers: 24, animals: 52, pregRate: "76%", aiSuccess: "80%" },
-  ];
+  if (isLoading) {
+    return (
+      <View style={{ paddingHorizontal: 24, marginBottom: 24 }}>
+        <Text style={{ fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginBottom: 12 }}>
+          Municipality / City Overview
+        </Text>
+        <View style={{ height: 110, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
+  if (barangays.length === 0) return null;
 
   return (
     <View style={{ paddingHorizontal: 24, marginBottom: 24 }}>
       <Text style={{ fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginBottom: 12 }}>
-        Municipality Overview (Oton)
+        Municipality / City Overview
       </Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
-        {mockBarangays.map((item) => (
-          <View
-            key={item.name}
-            style={{
-              backgroundColor: colors.card,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 20,
-              padding: 16,
-              width: 200,
-              shadowColor: "#000",
-              shadowOpacity: isDark ? 0 : 0.02,
-              shadowRadius: 8,
-              elevation: isDark ? 0 : 2,
-            }}
-          >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <Text style={{ fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
-                Brgy. {item.name}
-              </Text>
-              <MaterialCommunityIcons name="map-marker-radius" size={18} color="#1e3a5f" />
-            </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 4 }}>
+        {barangays.map((item) => {
+          const statusColor = item.status === "critical"
+            ? "#ef4444"
+            : item.status === "attention"
+              ? "#d97706"
+              : "#10b981";
 
-            <View style={{ gap: 6 }}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Farmers:</Text>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>{item.farmers}</Text>
+          const statusBg = isDark
+            ? (item.status === "critical"
+                ? "rgba(239, 68, 68, 0.15)"
+                : item.status === "attention"
+                  ? "rgba(217, 119, 6, 0.15)"
+                  : "rgba(16, 185, 129, 0.15)")
+            : (item.status === "critical"
+                ? "#fee2e2"
+                : item.status === "attention"
+                  ? "#fef3c7"
+                  : "#d1fae5");
+
+          return (
+            <View
+              key={item.barangay}
+              style={{
+                backgroundColor: colors.card,
+                borderWidth: 1.5,
+                borderColor: isDark
+                  ? (item.status === "critical"
+                      ? "rgba(239, 68, 68, 0.3)"
+                      : item.status === "attention"
+                        ? "rgba(217, 119, 6, 0.3)"
+                        : colors.border)
+                  : (item.status === "critical"
+                      ? "#fee2e2"
+                      : item.status === "attention"
+                        ? "#fef3c7"
+                        : colors.border),
+                borderRadius: 20,
+                padding: 16,
+                width: 200,
+                shadowColor: "#000",
+                shadowOpacity: isDark ? 0 : 0.02,
+                shadowRadius: 8,
+                elevation: isDark ? 0 : 2,
+              }}
+            >
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, marginRight: 8 }}>
+                  Brgy. {item.barangay}
+                </Text>
+                <View
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: statusColor,
+                  }}
+                />
               </View>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Animals:</Text>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>{item.animals}</Text>
-              </View>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Pregnancy Rate:</Text>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#16a34a" }}>{item.pregRate}</Text>
-              </View>
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>AI Success Rate:</Text>
-                <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#2563EB" }}>{item.aiSuccess}</Text>
+
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Farmers:</Text>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>{item.farmersCount}</Text>
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Animals:</Text>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>{item.animalsCount}</Text>
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>Active Pregnancies:</Text>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#10b981" }}>{item.activePregnancies}</Text>
+                </View>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_600SemiBold", color: colors.textSecondary }}>AI Success Rate:</Text>
+                  <Text style={{ fontSize: 11, fontFamily: "Outfit_700Bold", color: "#2563EB" }}>
+                    {item.aiSuccessRate !== null ? `${item.aiSuccessRate}%` : "—"}
+                  </Text>
+                </View>
               </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
     </View>
   );

@@ -8,6 +8,8 @@ import {
   claimTask,
   CreateTaskPayload,
 } from "../services/tasks.service";
+import NetInfo from "@react-native-community/netinfo";
+import { addToOfflineQueue } from "@/lib/offlineQueue";
 
 export const tasksQueryKeys = {
   all: ["technician", "tasks"] as const,
@@ -38,7 +40,19 @@ export const useTechnicianTasks = (id?: string, filters?: { scope?: string }) =>
   });
 
   const completeTaskMutation = useMutation({
-    mutationFn: (taskId: string) => completeTask(api, taskId),
+    mutationFn: async (taskId: string) => {
+      const net = await NetInfo.fetch();
+      if (!net.isConnected) {
+        await addToOfflineQueue({
+          url: `/tasks/${taskId}/complete`,
+          method: "PUT",
+          data: {},
+          description: "Complete farm visit task",
+        });
+        return { status: "queued" };
+      }
+      return completeTask(api, taskId);
+    },
     onSuccess: (_, taskId) => {
       queryClient.invalidateQueries({ queryKey: tasksQueryKeys.all });
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });

@@ -10,9 +10,18 @@ import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { useApi } from "@/lib/api";
 import { useTranslation } from "../../../contexts/TranslationContext";
-import { getFarmerProfile, updateFarmerProfile } from "../services/farmerProfile.service";
-import { OTON_BARANGAYS } from "@/lib/constants";
-import type { EditMode, ProfileFormData, PasswordForm, SelectModalState } from "../types/farmerProfile.types";
+import {
+  getFarmerProfile,
+  sendPhoneOtp,
+  updateFarmerProfile,
+  verifyPhoneOtp,
+} from "../services/farmerProfile.service";
+import type { EditMode, ProfileFormData, PasswordForm } from "../types/farmerProfile.types";
+import {
+  formatBarangayWithDistrict,
+  ILOILO_CITY_BARANGAYS_BY_DISTRICT,
+  ILOILO_CITY_NAME,
+} from "@/constants/address";
 
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
 export const useFarmerProfile = () => {
@@ -29,12 +38,7 @@ export const useFarmerProfile = () => {
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [editMode, setEditMode] = useState<EditMode>(null);
 
-  const [selectModal, setSelectModal] = useState<SelectModalState>({
-    visible: false,
-    title: "",
-    options: [],
-    onSelect: () => {},
-  });
+
 
   const [passwordForm, setPasswordForm] = useState<Required<PasswordForm>>({
     currentPassword: "",
@@ -43,7 +47,12 @@ export const useFarmerProfile = () => {
   });
 
   const [passwordUpdating, setPasswordUpdating] = useState(false);
-  const [isSavingFarmLocation, setIsSavingFarmLocation] = useState(false);
+  const [locationAction, setLocationAction] = useState<
+    "contact-gps" | "farm-gps" | "farm-notes" | "same-as-home" | null
+  >(null);
+  const [phoneOtpSent, setPhoneOtpSent] = useState(false);
+  const [phoneOtpCode, setPhoneOtpCode] = useState("");
+  const [phoneOtpCooldown, setPhoneOtpCooldown] = useState(0);
   const [sameAsHomeClicks, setSameAsHomeClicks] = useState(0);
   const [sameAsHomeCooldownEnd, setSameAsHomeCooldownEnd] = useState<number | null>(null);
   const lastClickRef = useRef(0);
@@ -58,6 +67,22 @@ export const useFarmerProfile = () => {
     }
   }, [editMode]);
 
+  useEffect(() => {
+    if (editMode !== "phone") {
+      setPhoneOtpSent(false);
+      setPhoneOtpCode("");
+      setPhoneOtpCooldown(0);
+    }
+  }, [editMode]);
+
+  useEffect(() => {
+    if (phoneOtpCooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setPhoneOtpCooldown((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [phoneOtpCooldown]);
+
   const { data: dbUser, isLoading } = useQuery({
     queryKey: ["user", "me"],
     queryFn: () => getFarmerProfile(api),
@@ -68,6 +93,7 @@ export const useFarmerProfile = () => {
     street: "",
     barangay: "",
     city: "",
+    district: "",
     province: "",
     farmLandmark: "",
     farmDirectionsNote: "",
@@ -118,6 +144,55 @@ export const useFarmerProfile = () => {
     return `${label} was just updated. Please wait ${timeString} before updating again.`;
   };
 
+  const getApiErrorMessage = (error: any, fallback: string) =>
+    error?.response?.data?.message || error?.message || fallback;
+
+  const normalizeIloiloCityAddressForForm = (address: any = {}) => {
+    const city = address.city || "";
+    const rawBarangay = address.barangay || "";
+    let district = address.district || "";
+    let barangay = rawBarangay;
+
+    if (city !== ILOILO_CITY_NAME) {
+      return { barangay, district };
+    }
+
+    const suffixMatch = rawBarangay.match(/^(.+?)\s*\((.+?)\)$/);
+    if (suffixMatch) {
+      barangay = suffixMatch[1].trim();
+      district = district || suffixMatch[2].trim();
+    }
+
+    const knownDistricts = Object.keys(ILOILO_CITY_BARANGAYS_BY_DISTRICT);
+    if (knownDistricts.includes(rawBarangay)) {
+      district = rawBarangay;
+      barangay = "";
+    }
+
+    if (district && barangay && !ILOILO_CITY_BARANGAYS_BY_DISTRICT[district]?.includes(barangay)) {
+      const normalizeAddressPart = (value = "") =>
+        value
+          .toLowerCase()
+          .replace(/\b(street|st|road|rd|avenue|ave|barangay|brgy)\b/g, "")
+          .replace(/[^a-z0-9]/g, "");
+      const normalizedBarangay = normalizeAddressPart(barangay);
+      const matchedBarangay = ILOILO_CITY_BARANGAYS_BY_DISTRICT[district]?.find(
+        (option) => {
+          const normalizedOption = normalizeAddressPart(option);
+          return (
+            normalizedBarangay &&
+            normalizedOption &&
+            (normalizedBarangay.includes(normalizedOption) ||
+              normalizedOption.includes(normalizedBarangay))
+          );
+        },
+      );
+      barangay = matchedBarangay || "";
+    }
+
+    return { barangay, district };
+  };
+
   const getAddressSuggestion = async (coords: {
     latitude: number;
     longitude: number;
@@ -145,11 +220,50 @@ export const useFarmerProfile = () => {
         .filter((part, index, list) => list.indexOf(part) === index)
         .join(", ");
 
+      let resolvedCity = address.city || address.subregion || "";
+      let resolvedBarangay = "";
+      let resolvedDistrict = "";
+
+      // SPECIAL PARSER FOR Highly Urbanized Cities (Iloilo City)
+      if (resolvedCity.toLowerCase() === "iloilo city" || resolvedCity.toLowerCase() === "jaro") {
+        resolvedCity = ILOILO_CITY_NAME;
+        const district = address.district || "Jaro";
+        resolvedDistrict = district;
+        const normalizeAddressPart = (value = "") =>
+          value
+            .toLowerCase()
+            .replace(/\b(street|st|road|rd|avenue|ave|barangay|brgy)\b/g, "")
+            .replace(/[^a-z0-9]/g, "");
+
+        const candidates = [
+          address.name,
+          address.street,
+          address.district,
+        ].filter(Boolean) as string[];
+        const districtBarangays =
+          ILOILO_CITY_BARANGAYS_BY_DISTRICT[district] || [];
+        const normalizedCandidates = candidates.map(normalizeAddressPart);
+
+        const matchedBarangay = districtBarangays.find((barangay) => {
+          const normalizedBarangay = normalizeAddressPart(barangay);
+          return normalizedCandidates.some(
+            (candidate) =>
+              candidate &&
+              normalizedBarangay &&
+              (candidate.includes(normalizedBarangay) ||
+                normalizedBarangay.includes(candidate)),
+          );
+        });
+
+        resolvedBarangay = matchedBarangay || "";
+      }
+
       return {
         detectedAddress,
         street: address.street || address.name || "",
-        barangay: address.district || "",
-        city: address.city || "Oton",
+        barangay: resolvedBarangay,
+        city: resolvedCity,
+        district: resolvedDistrict,
         province: address.region || "Iloilo",
         zipCode: address.postalCode || "5020",
       };
@@ -164,19 +278,44 @@ export const useFarmerProfile = () => {
     }
   };
 
+  const buildProfileFormData = (user: any): ProfileFormData => {
+    if (!user) {
+      return {
+        phoneNumber: "",
+        street: "",
+        barangay: "",
+        city: "",
+        district: "",
+        province: "",
+        farmLandmark: "",
+        farmDirectionsNote: "",
+      };
+    }
+
+    const normalizedAddress = normalizeIloiloCityAddressForForm(user.address);
+    return {
+      phoneNumber: user.phoneNumber || "",
+      street: user.address?.street || "",
+      barangay: normalizedAddress.barangay,
+      city: user.address?.city || "",
+      district: normalizedAddress.district,
+      province: user.address?.province || "Iloilo",
+      farmLandmark: user.farmLocation?.landmark || "",
+      farmDirectionsNote: user.farmLocation?.directionsNote || "",
+    };
+  };
+
   useEffect(() => {
     if (dbUser) {
-      setFormData({
-        phoneNumber: dbUser.phoneNumber || "",
-        street: dbUser.address?.street || "",
-        barangay: dbUser.address?.barangay || "",
-        city: dbUser.address?.city || "Oton",
-        province: dbUser.address?.province || "Iloilo",
-        farmLandmark: dbUser.farmLocation?.landmark || "",
-        farmDirectionsNote: dbUser.farmLocation?.directionsNote || "",
-      });
+      setFormData(buildProfileFormData(dbUser));
     }
   }, [dbUser]);
+
+  useEffect(() => {
+    if (editMode === null && dbUser) {
+      setFormData(buildProfileFormData(dbUser));
+    }
+  }, [editMode, dbUser]);
 
   const mutation = useMutation({
     mutationFn: (updatedData: any) => {
@@ -189,8 +328,56 @@ export const useFarmerProfile = () => {
       queryClient.invalidateQueries({ queryKey: ["user", "me"] });
       setEditMode(null);
     },
-    onError: () => toast.error(t("updateFailed") || "Update failed."),
+    onError: (error: any) => {
+      toast.error(t("updateFailed") || "Update failed.", {
+        description: getApiErrorMessage(error, "Please try again."),
+      });
+    },
   });
+
+  const sendPhoneOtpMutation = useMutation({
+    mutationFn: (phoneNumber: string) => sendPhoneOtp(api, phoneNumber),
+    onSuccess: (result) => {
+      setPhoneOtpSent(true);
+      setPhoneOtpCooldown(60);
+      toast.success(result?.message || "OTP sent successfully.", {
+        description: result?.data?.phoneNumber
+          ? `Sent to ${result.data.phoneNumber}`
+          : undefined,
+      });
+    },
+    onError: (error: any) => {
+      const retryAfter = error.response?.data?.retryAfterSeconds;
+      if (retryAfter) setPhoneOtpCooldown(Number(retryAfter));
+      toast.error(error.response?.data?.message || "Failed to send OTP.");
+    },
+  });
+
+  const verifyPhoneOtpMutation = useMutation({
+    mutationFn: (payload: { phoneNumber: string; otpCode: string }) =>
+      verifyPhoneOtp(api, payload.phoneNumber, payload.otpCode),
+    onSuccess: (result) => {
+      toast.success(result?.message || "Phone number verified.");
+      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+      setPhoneOtpSent(false);
+      setPhoneOtpCode("");
+      setEditMode(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || "Invalid or expired OTP.");
+    },
+  });
+
+  const handleResendOtp = () => {
+    if (phoneOtpCooldown > 0 || sendPhoneOtpMutation.isPending) return;
+    sendPhoneOtpMutation.mutate(formData.phoneNumber);
+  };
+
+  const handleChangePhoneNumber = () => {
+    setPhoneOtpSent(false);
+    setPhoneOtpCode("");
+    setPhoneOtpCooldown(0);
+  };
 
   const handleSignOut = async () => {
     try {
@@ -279,7 +466,12 @@ export const useFarmerProfile = () => {
   };
 
   const handleUpdate = async () => {
-    if (mutation.isPending || passwordUpdating) return;
+    if (
+      mutation.isPending ||
+      passwordUpdating ||
+      sendPhoneOtpMutation.isPending ||
+      verifyPhoneOtpMutation.isPending
+    ) return;
 
     toast.dismiss();
 
@@ -287,23 +479,18 @@ export const useFarmerProfile = () => {
       if (!/^09\d{9}$/.test(formData.phoneNumber)) {
         return toast.error(t("invalidPhoneFormat"));
       }
-      mutation.mutate({
-        phoneNumber: formData.phoneNumber,
-      });
-    } else if (editMode === "address") {
-      if (!formData.barangay) {
-        return toast.error(t("requiredBarangay"));
+      if (!phoneOtpSent) {
+        sendPhoneOtpMutation.mutate(formData.phoneNumber);
+        return;
       }
-      mutation.mutate({
-        address: {
-          street: formData.street,
-          barangay: formData.barangay,
-          city: "Oton",
-          province: "Iloilo",
-          zipCode: "5020",
-          region: "Region VI",
-        },
+      if (!/^\d{4,8}$/.test(phoneOtpCode.trim())) {
+        return toast.error("Please enter the OTP code sent to your phone.");
+      }
+      verifyPhoneOtpMutation.mutate({
+        phoneNumber: formData.phoneNumber,
+        otpCode: phoneOtpCode.trim(),
       });
+
     } else if (editMode === "password") {
       const { currentPassword, newPassword, confirmPassword } = passwordForm;
       if (!currentPassword || !newPassword || !confirmPassword) {
@@ -338,7 +525,7 @@ export const useFarmerProfile = () => {
   };
 
   const handleUseCurrentContactAddress = async () => {
-    if (mutation.isPending || isSavingFarmLocation || !dbUser?._id) return;
+    if (mutation.isPending || locationAction || !dbUser?._id) return;
 
     const cooldownMessage = getLocationCooldownMessage(
       dbUser.address?.locationCapturedAt,
@@ -362,7 +549,7 @@ export const useFarmerProfile = () => {
 
     let locationToastId: string | number | undefined;
     try {
-      setIsSavingFarmLocation(true);
+      setLocationAction("contact-gps");
       locationToastId = toast.info("Detecting contact address...");
       const current = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -378,9 +565,10 @@ export const useFarmerProfile = () => {
         address: {
           street: suggestion.street || formData.street,
           barangay: nextBarangay,
-          city: suggestion.city || "Oton",
+          city: suggestion.city || formData.city || "",
+          district: suggestion.district || formData.district || "",
           province: suggestion.province || "Iloilo",
-          zipCode: suggestion.zipCode || "5020",
+          zipCode: suggestion.zipCode || "",
           region: "Region VI",
           detectedAddress: suggestion.detectedAddress,
           coordinates: {
@@ -392,17 +580,20 @@ export const useFarmerProfile = () => {
       });
     } catch (err: any) {
       if (locationToastId !== undefined) toast.dismiss(locationToastId);
-      toast.error("Could not detect contact address", {
-        description:
-          err.message || "Please try again outdoors or enter it manually.",
+      const status = err?.response?.status;
+      toast.error(status === 429 ? "Please wait before updating" : "Could not detect contact address", {
+        description: getApiErrorMessage(
+          err,
+          "Please try again outdoors or enter it manually.",
+        ),
       });
     } finally {
-      setIsSavingFarmLocation(false);
+      setLocationAction(null);
     }
   };
 
   const handleSaveCurrentFarmLocation = async () => {
-    if (mutation.isPending || isSavingFarmLocation || !dbUser?._id) return;
+    if (mutation.isPending || locationAction || !dbUser?._id) return;
 
     const cooldownMessage = getLocationCooldownMessage(
       dbUser.farmLocation?.capturedAt,
@@ -426,7 +617,7 @@ export const useFarmerProfile = () => {
 
     let locationToastId: string | number | undefined;
     try {
-      setIsSavingFarmLocation(true);
+      setLocationAction("farm-gps");
       locationToastId = toast.info("Getting current location...");
       const landmark = cleanFarmLocationText(
         formData.farmLandmark,
@@ -462,17 +653,21 @@ export const useFarmerProfile = () => {
       });
     } catch (err: any) {
       if (locationToastId !== undefined) toast.dismiss(locationToastId);
-      toast.error("Could not get current location", {
-        description: err.message || "Please try again while you are at the farm.",
+      const status = err?.response?.status;
+      toast.error(status === 429 ? "Please wait before updating" : "Could not get current location", {
+        description: getApiErrorMessage(
+          err,
+          "Please try again while you are at the farm.",
+        ),
       });
     } finally {
-      setIsSavingFarmLocation(false);
+      setLocationAction(null);
     }
   };
 
   const handleSaveFarmLocationNotes = async () => {
     toast.dismiss();
-    if (mutation.isPending || isSavingFarmLocation || !dbUser?._id) return;
+    if (mutation.isPending || locationAction || !dbUser?._id) return;
     const existingLocation = dbUser.farmLocation;
     if (!existingLocation?.latitude || !existingLocation?.longitude) {
       toast.error("Save farm pin first", {
@@ -482,7 +677,7 @@ export const useFarmerProfile = () => {
     }
 
     try {
-      setIsSavingFarmLocation(true);
+      setLocationAction("farm-notes");
       const landmark = cleanFarmLocationText(
         formData.farmLandmark,
         "Farm landmark",
@@ -511,7 +706,7 @@ export const useFarmerProfile = () => {
         description: err.message || "Please review the landmark and directions.",
       });
     } finally {
-      setIsSavingFarmLocation(false);
+      setLocationAction(null);
     }
   };
 
@@ -521,7 +716,7 @@ export const useFarmerProfile = () => {
     lastClickRef.current = now;
 
     toast.dismiss();
-    if (mutation.isPending || isSavingFarmLocation || !dbUser?._id) return;
+    if (mutation.isPending || locationAction || !dbUser?._id) return;
 
     if (sameAsHomeCooldownEnd) {
       const remainingMs = sameAsHomeCooldownEnd - Date.now();
@@ -560,7 +755,7 @@ export const useFarmerProfile = () => {
     }
 
     try {
-      setIsSavingFarmLocation(true);
+      setLocationAction("same-as-home");
       const landmark = cleanFarmLocationText(
         formData.farmLandmark,
         "Farm landmark",
@@ -599,7 +794,7 @@ export const useFarmerProfile = () => {
           err.message || "Please review your contact address and try again.",
       });
     } finally {
-      setIsSavingFarmLocation(false);
+      setLocationAction(null);
     }
   };
 
@@ -612,12 +807,20 @@ export const useFarmerProfile = () => {
     setPhotoModalVisible,
     editMode,
     setEditMode,
-    selectModal,
-    setSelectModal,
     passwordForm,
     setPasswordForm,
     passwordUpdating,
-    isSavingFarmLocation,
+    isSavingFarmLocation: Boolean(locationAction),
+    isSavingContactAddressLocation: locationAction === "contact-gps",
+    isSavingFarmGpsPin: locationAction === "farm-gps",
+    isSavingFarmLocationNotes: locationAction === "farm-notes",
+    isCopyingContactAddressToFarm: locationAction === "same-as-home",
+    phoneOtpSent,
+    phoneOtpCode,
+    setPhoneOtpCode,
+    phoneOtpCooldown,
+    isPhoneOtpSending: sendPhoneOtpMutation.isPending,
+    isPhoneOtpVerifying: verifyPhoneOtpMutation.isPending,
     formData,
     setFormData,
     mutation,
@@ -631,6 +834,8 @@ export const useFarmerProfile = () => {
     handleSaveCurrentFarmLocation,
     handleSaveFarmLocationNotes,
     handleUseContactAddressForFarmLocation,
+    handleResendOtp,
+    handleChangePhoneNumber,
     colors,
     isDark,
     t,

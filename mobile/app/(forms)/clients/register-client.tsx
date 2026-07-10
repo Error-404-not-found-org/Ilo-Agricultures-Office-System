@@ -1,17 +1,21 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, Image, ActivityIndicator, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, Image, ActivityIndicator, StatusBar , Modal, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Check, User, Square, CheckSquare } from 'lucide-react-native';
+import { ArrowLeft, Check, User , ChevronDown, X } from 'lucide-react-native';
 import { toast } from 'sonner-native';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApi } from '@/lib/api';
 import * as ImagePicker from 'expo-image-picker';
 import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { OTON_BARANGAYS } from '@/lib/constants';
-import { ChevronDown, X } from 'lucide-react-native';
-import { Modal, FlatList } from 'react-native';
+import {
+  formatBarangayWithDistrict,
+  getIloiloBarangayOptions,
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from '@/constants/address';
 
 const PRIMARY = '#00643B';
 
@@ -32,13 +36,31 @@ export default function RegisterClient() {
     address: '',
     barangay: '',
     city: '',
+    district: '',
     province: 'Iloilo',
     region: 'Region VI',
     zipCode: '',
     password: '',
   });
 
-  const [barangayModalVisible, setBarangayModalVisible] = useState(false);
+  const [pickerState, setPickerState] = useState<null | 'city' | 'district' | 'barangay'>(null);
+
+  const barangayOptions = useMemo(
+    () => getIloiloBarangayOptions(formData.city, formData.district),
+    [formData.city, formData.district]
+  );
+
+  const pickerTitle = pickerState === 'city'
+    ? 'Select Municipality / City'
+    : pickerState === 'district'
+      ? 'Select Iloilo City District'
+      : 'Select Barangay';
+
+  const pickerData = pickerState === 'city'
+    ? ILOILO_MUNICIPALITY_OPTIONS
+    : pickerState === 'district'
+      ? ILOILO_CITY_DISTRICT_OPTIONS
+      : barangayOptions;
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
@@ -62,6 +84,8 @@ export default function RegisterClient() {
   const api = useApi();
   const queryClient = useQueryClient();
 
+  const isSubmittingRef = React.useRef(false);
+
   const mutation = useOfflineMutation({
     url: '/user/create-invited-user',
     method: 'POST',
@@ -73,6 +97,7 @@ export default function RegisterClient() {
       router.back();
     },
     onError: (error: any) => {
+      isSubmittingRef.current = false;
       if (error.message !== 'OFFLINE_SAVED') {
         toast.error(error.response?.data?.message || "An error occurred while creating the client.");
       } else {
@@ -91,9 +116,28 @@ export default function RegisterClient() {
   };
 
   const handleSave = async () => {
+    if (isSubmittingRef.current || mutation.isPending) return;
+    isSubmittingRef.current = true;
+
     toast.dismiss();
     if (!formData.firstName || !formData.lastName || !formData.phone) {
       toast.error("Please fill in all required fields (First Name, Last Name, Phone Number).");
+      isSubmittingRef.current = false;
+      return;
+    }
+    if (!formData.city) {
+      toast.error("Please select the municipality or city.");
+      isSubmittingRef.current = false;
+      return;
+    }
+    if (formData.city === ILOILO_CITY_NAME && !formData.district) {
+      toast.error("Please select the Iloilo City district.");
+      isSubmittingRef.current = false;
+      return;
+    }
+    if (!formData.barangay) {
+      toast.error("Please select the barangay.");
+      isSubmittingRef.current = false;
       return;
     }
 
@@ -109,8 +153,9 @@ export default function RegisterClient() {
       address: {
         houseNumber: formData.houseNumber,
         street: formData.address || 'N/A',
-        barangay: formData.barangay || 'N/A',
+        barangay: formatBarangayWithDistrict(formData.barangay, formData.city, formData.district) || 'N/A',
         city: formData.city || 'N/A',
+        district: formData.city === ILOILO_CITY_NAME ? formData.district : '',
         zipCode: formData.zipCode || '0000',
         province: formData.province || 'Iloilo',
         region: formData.region || 'Region VI',
@@ -251,28 +296,35 @@ export default function RegisterClient() {
             </View>
           </View>
 
-          <View style={{ flexDirection: 'row', gap: 16 }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#64748b', fontFamily: 'Outfit_700Bold', fontSize: 12, marginBottom: 8, marginLeft: 4, textTransform: 'uppercase' }}>Barangay</Text>
-              <TouchableOpacity 
-                onPress={() => setBarangayModalVisible(true)}
-                style={{ backgroundColor: '#fff', borderRadius: 16, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' }}
-              >
-                <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 15, color: formData.barangay ? '#1e293b' : '#cbd5e1' }}>
-                  {formData.barangay || 'Select'}
-                </Text>
-                <ChevronDown size={18} color="#94a3b8" />
-              </TouchableOpacity>
-            </View>
-            <View style={{ flex: 1 }}>
-              <InputField 
-                label="City" 
-                value={formData.city || 'Oton'} 
-                onChangeText={(t: string) => setFormData({...formData, city: t})} 
-                placeholder="Oton" 
-              />
-            </View>
-          </View>
+          <SelectField
+            label="Municipality / City"
+            value={formData.city}
+            placeholder="Select municipality or city"
+            onPress={() => setPickerState('city')}
+          />
+
+          {formData.city === ILOILO_CITY_NAME && (
+            <SelectField
+              label="Iloilo City District"
+              value={formData.district}
+              placeholder="Select district"
+              onPress={() => setPickerState('district')}
+            />
+          )}
+
+          <SelectField
+            label="Barangay"
+            value={formData.barangay}
+            placeholder={
+              formData.city === ILOILO_CITY_NAME && !formData.district
+                ? 'Select district first'
+                : formData.city
+                  ? 'Select barangay'
+                  : 'Select city first'
+            }
+            disabled={!formData.city || (formData.city === ILOILO_CITY_NAME && !formData.district)}
+            onPress={() => setPickerState('barangay')}
+          />
 
           <View style={{ flexDirection: 'row', gap: 16 }}>
             <View style={{ flex: 2 }}>
@@ -326,24 +378,37 @@ export default function RegisterClient() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Barangay Modal */}
-      <Modal visible={barangayModalVisible} transparent animationType="slide">
+      {/* Address Picker Modal */}
+      <Modal visible={!!pickerState} transparent animationType="slide">
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
           <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, paddingBottom: 40, maxHeight: '80%' }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 18, fontFamily: 'Outfit_800ExtraBold', color: '#1e293b' }}>Select Barangay</Text>
-              <TouchableOpacity onPress={() => setBarangayModalVisible(false)}>
+              <Text style={{ fontSize: 18, fontFamily: 'Outfit_800ExtraBold', color: '#1e293b' }}>{pickerTitle}</Text>
+              <TouchableOpacity onPress={() => setPickerState(null)}>
                 <X size={24} color="#94a3b8" />
               </TouchableOpacity>
             </View>
             <FlatList 
-              data={OTON_BARANGAYS}
+              data={pickerData}
               keyExtractor={item => item}
+              ListEmptyComponent={() => (
+                <View style={{ paddingVertical: 24 }}>
+                  <Text style={{ textAlign: 'center', color: '#94a3b8', fontFamily: 'Outfit_600SemiBold' }}>
+                    Select the required field first.
+                  </Text>
+                </View>
+              )}
               renderItem={({ item }) => (
                 <TouchableOpacity 
                   onPress={() => {
-                    setFormData({...formData, barangay: item});
-                    setBarangayModalVisible(false);
+                    if (pickerState === 'city') {
+                      setFormData({...formData, city: item, district: '', barangay: ''});
+                    } else if (pickerState === 'district') {
+                      setFormData({...formData, district: item, barangay: ''});
+                    } else if (pickerState === 'barangay') {
+                      setFormData({...formData, barangay: item});
+                    }
+                    setPickerState(null);
                   }}
                   style={{ paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' }}
                 >
@@ -377,5 +442,21 @@ const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'd
       keyboardType={keyboardType}
       secureTextEntry={secureTextEntry}
     />
+  </View>
+);
+
+const SelectField = ({ label, value, placeholder, onPress, disabled = false }: any) => (
+  <View style={{ marginBottom: 20 }}>
+    <Text style={{ color: disabled ? '#cbd5e1' : '#64748b', fontFamily: 'Outfit_700Bold', fontSize: 12, marginBottom: 8, marginLeft: 4, textTransform: 'uppercase' }}>{label}</Text>
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled}
+      style={{ backgroundColor: disabled ? '#f1f5f9' : '#fff', borderRadius: 16, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0', opacity: disabled ? 0.75 : 1 }}
+    >
+      <Text style={{ flex: 1, fontFamily: 'Outfit_600SemiBold', fontSize: 15, color: value ? '#1e293b' : '#cbd5e1' }} numberOfLines={1}>
+        {value || placeholder}
+      </Text>
+      <ChevronDown size={18} color="#94a3b8" />
+    </TouchableOpacity>
   </View>
 );
