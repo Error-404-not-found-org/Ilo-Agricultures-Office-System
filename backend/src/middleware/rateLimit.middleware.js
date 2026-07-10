@@ -26,3 +26,14 @@ export const voiceflowLimiter = rateLimit({
   legacyHeaders: false,
   message: { message: "Too many connections from this client. Access restricted." }
 });
+
+// OTP limiter: protects paid SMS credits and reduces brute-force attempts
+export const otpLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: {
+    message: "Too many OTP attempts. Please wait before trying again.",
+  },
+});

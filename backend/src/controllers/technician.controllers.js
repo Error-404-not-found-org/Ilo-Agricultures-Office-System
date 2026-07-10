@@ -1258,6 +1258,12 @@ export const recordPregnancyCheck = async (req, res) => {
       });
     }
 
+    if (insemination.outcome && insemination.outcome !== "Pending") {
+      return res.status(400).json({
+        message: "Pregnancy outcome already determined for this insemination attempt.",
+      });
+    }
+
     // PROTECTION 1: Don't allow diagnosing a cow that's already pregnant
     if (animal.reproductiveStatus === "Pregnant") {
       return res.status(400).json({
@@ -1327,8 +1333,8 @@ export const recordPregnancyCheck = async (req, res) => {
         await Notification.create({
           recipientId: animal.farmerId,
           senderId: req.user._id,
-          type: "system",
-          relatedId: pregnancy._id,
+          type: "ai-request",
+          relatedId: inseminationId,
           title,
           message,
         });

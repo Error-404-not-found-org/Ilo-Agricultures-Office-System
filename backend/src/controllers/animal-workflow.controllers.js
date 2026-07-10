@@ -3,6 +3,7 @@ import { HealthRequest } from "../models/health-request.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
+import { Calving } from "../models/calving.model.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
 import { getReproductionEligibility } from "../domain/reproduction-lifecycle.js";
 import { getAnimalTimeline as buildAnimalTimeline, createTimelineEvent } from "../services/animal-timeline.service.js";
@@ -78,6 +79,110 @@ export const getAnimalHealthHistory = async (req, res) => {
     sendDetail(res, { healthRequests, medicalRecords });
   } catch (error) {
     res.status(error.status || 500).json({ message: error.message, code: error.code || "HEALTH_HISTORY_FETCH_FAILED" });
+  }
+};
+
+export const getAnimalRecords = async (req, res) => {
+  try {
+    await getAccessibleAnimal(req.params.id, req.user);
+    const pageInfo = getPagination(req.query);
+    const type = req.query.type;
+    const search = String(req.query.search || "").trim().toLowerCase();
+    const fromDate = req.query.fromDate ? new Date(req.query.fromDate) : null;
+    const toDate = req.query.toDate ? new Date(req.query.toDate) : null;
+
+    const dateFilter = {};
+    if (fromDate && !Number.isNaN(fromDate.getTime())) dateFilter.$gte = fromDate;
+    if (toDate && !Number.isNaN(toDate.getTime())) dateFilter.$lte = toDate;
+
+    const animalQuery = { animalId: req.params.id, deletedAt: null };
+    const medicalQuery = { animalId: req.params.id };
+    const healthQuery = { animalId: req.params.id, deletedAt: null };
+    if (Object.keys(dateFilter).length) {
+      animalQuery.createdAt = dateFilter;
+      healthQuery.createdAt = dateFilter;
+      medicalQuery.date = dateFilter;
+    }
+
+    const [inseminations, pregnancies, calvings, healthRequests, medicalRecords] = await Promise.all([
+      Insemination.find(animalQuery).sort({ createdAt: -1 }).populate("technicianId approvedBy", "name role").lean(),
+      Pregnancy.find(animalQuery).sort({ createdAt: -1 }).populate("inseminationId").lean(),
+      Calving.find({ ...animalQuery, ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}) }).sort({ date: -1 }).populate("technicianId", "name role").lean(),
+      HealthRequest.find(healthQuery).sort({ createdAt: -1 }).populate("handledBy assignedVeterinarianId", "name role").lean(),
+      MedicalRecord.find(medicalQuery).sort({ date: -1 }).populate("technicianId", "name role").lean(),
+    ]);
+
+    const records = [
+      ...inseminations.map((item) => ({
+        ...item,
+        recordKind: "insemination",
+        recordDate: item.inseminationDate || item.scheduledDate || item.createdAt,
+        title: "A.I. Insemination",
+        summary: item.outcome || item.status || "AI service record",
+      })),
+      ...pregnancies.map((item) => ({
+        ...item,
+        recordKind: "pregnancy",
+        recordDate: item.pregnancyDiagnosis?.date || item.createdAt,
+        title: "Pregnancy Check",
+        summary: item.pregnancyDiagnosis?.result || "Pregnancy check record",
+      })),
+      ...calvings.map((item) => ({
+        ...item,
+        recordKind: "calving",
+        recordDate: item.date || item.createdAt,
+        title: "Calving / Offspring",
+        summary: `${item.numberOfCalves || item.calves?.length || 0} offspring recorded`,
+      })),
+      ...healthRequests.map((item) => ({
+        ...item,
+        recordKind: "health_request",
+        recordDate: item.createdAt,
+        title: "Health Request",
+        summary: item.symptoms || item.requestType || "Health assistance request",
+      })),
+      ...medicalRecords.map((item) => ({
+        ...item,
+        recordKind: "medical_record",
+        recordDate: item.date || item.createdAt,
+        title: item.type || "Medical Record",
+        summary: item.details?.diagnosis || item.note || "Medical record",
+      })),
+    ];
+
+    const filtered = records
+      .filter((item) => {
+        if (!type || type === "All") return true;
+        const normalized = String(type).toLowerCase();
+        const recordKind = String(item.recordKind || "").toLowerCase();
+        const requestType = String(item.requestType || "").toLowerCase();
+        const itemType = String(item.type || "").toLowerCase();
+        if (normalized === "breeding") return recordKind === "insemination";
+        if (normalized === "pregnancy") return recordKind === "pregnancy";
+        if (normalized === "calving") return recordKind === "calving";
+        if (normalized === "health") return recordKind === "health_request" || recordKind === "medical_record";
+        return recordKind.includes(normalized) || requestType.includes(normalized) || itemType.includes(normalized);
+      })
+      .filter((item) => {
+        if (!search) return true;
+        return [
+          item.title,
+          item.summary,
+          item.status,
+          item.outcome,
+          item.requestType,
+          item.symptoms,
+          item.sireBreed,
+          item.sireCode,
+          item.technicianNote,
+          item.note,
+        ].filter(Boolean).some((value) => String(value).toLowerCase().includes(search));
+      })
+      .sort((a, b) => new Date(b.recordDate || b.createdAt) - new Date(a.recordDate || a.createdAt));
+
+    sendList(res, paginateArray(filtered, pageInfo));
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.message, code: error.code || "ANIMAL_RECORDS_FETCH_FAILED" });
   }
 };
 

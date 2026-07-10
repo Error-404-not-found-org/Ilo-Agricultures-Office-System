@@ -17,6 +17,7 @@ import {
 import {
   getAnimalAttachments,
   getAnimalHealthHistory,
+  getAnimalRecords,
   getAnimalReproductionEligibility,
   getAnimalTimeline,
   createFarmerAnimalUpdate,
@@ -32,6 +33,7 @@ router.get("/my", protectedRoute, getMyAnimals);
 router.get("/archived", protectedRoute, getArchivedAnimals);
 router.get("/:id/timeline", protectedRoute, getAnimalTimeline);
 router.get("/:id/history", protectedRoute, getAnimalTimeline);
+router.get("/:id/records", protectedRoute, getAnimalRecords);
 router.get("/:id/health-history", protectedRoute, getAnimalHealthHistory);
 router.get("/:id/reproduction-eligibility", protectedRoute, getAnimalReproductionEligibility);
 router.get("/:id/attachments", protectedRoute, getAnimalAttachments);

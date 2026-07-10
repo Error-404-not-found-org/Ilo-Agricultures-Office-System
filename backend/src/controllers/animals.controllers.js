@@ -84,12 +84,18 @@ export const registerAnimal = async (req, res) => {
 
 export const getAllAnimals = async (req, res) => {
   try {
-    const { page, limit, search, barangay } = req.query;
+    const { page, limit, search, barangay, species, status, reproductiveStatus, breed, sortBy = "createdAt", sortOrder = "desc" } = req.query;
     let query = { deletedAt: null };
     
     // Construct filter based on owner's location if barangay is provided
     if (barangay) {
       query.barangay = barangay;
+    }
+
+    if (species) query.species = species;
+    if (breed) query.breed = { $regex: breed, $options: "i" };
+    if (status || reproductiveStatus) {
+      query.reproductiveStatus = status || reproductiveStatus;
     }
  
     if (search) {
@@ -115,9 +121,14 @@ export const getAllAnimals = async (req, res) => {
     if (page && limit) {
       const { page: pageNum, limit: limitNum, skip } = getPagination(req.query);
  
+      const sortDirection = sortOrder === "asc" ? 1 : -1;
+      const safeSortBy = ["createdAt", "updatedAt", "animalId", "earTag", "species", "breed", "reproductiveStatus"].includes(sortBy)
+        ? sortBy
+        : "createdAt";
+
       const animals = await Animal.find(query)
-        .populate("farmerId", "name")
-        .sort({ createdAt: -1 })
+        .populate("farmerId", "name address")
+        .sort({ [safeSortBy]: sortDirection })
         .skip(skip)
         .limit(limitNum)
         .lean();
@@ -125,14 +136,17 @@ export const getAllAnimals = async (req, res) => {
       const total = await Animal.countDocuments(query);
  
       res.status(200).json({
+        data: animals,
         animals,
         total,
         page: pageNum,
-        pages: Math.ceil(total / limitNum)
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+        totalPages: Math.ceil(total / limitNum)
       });
     } else {
       const animals = await Animal.find(query)
-        .populate("farmerId", "name")
+        .populate("farmerId", "name address")
         .sort({ createdAt: -1 })
         .limit(100) 
         .lean();

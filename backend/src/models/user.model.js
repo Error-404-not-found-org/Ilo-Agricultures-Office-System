@@ -75,6 +75,36 @@ const userSchema = new mongoose.Schema(
     phoneNumber: {
       type: String,
     },
+    normalizedPhoneNumber: {
+      type: String,
+      default: "",
+      index: true,
+    },
+    registeredByTechnician: {
+      type: Boolean,
+      default: false,
+    },
+    profileClaimStatus: {
+      type: String,
+      enum: ["none", "unclaimed", "claimed", "blocked"],
+      default: "none",
+    },
+    profileClaimedAt: {
+      type: Date,
+      default: null,
+    },
+    profileClaimedByClerkId: {
+      type: String,
+      default: "",
+    },
+    phoneVerification: {
+      pendingPhoneNumber: { type: String, default: "" },
+      pendingNormalizedPhoneNumber: { type: String, default: "" },
+      isVerified: { type: Boolean, default: false },
+      verifiedAt: { type: Date, default: null },
+      lastOtpSentAt: { type: Date, default: null },
+      failedAttempts: { type: Number, default: 0 },
+    },
     address: {
       type: AddressSchema,
       required: false,

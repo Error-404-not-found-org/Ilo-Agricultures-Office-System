@@ -143,10 +143,40 @@ export const getMyHealthRequests = async (req, res) => {
 // GET /api/health-request  — all requests (technician/admin)
 export const getAllHealthRequests = async (req, res) => {
   try {
-    const { status, urgency, page, limit } = req.query;
+    const { status, urgency, page, limit, search, fromDate, toDate } = req.query;
     const query = { deletedAt: null };
     if (status) query.status = status;
     if (urgency) query.urgency = urgency;
+    if (fromDate || toDate) {
+      query.createdAt = {};
+      if (fromDate) query.createdAt.$gte = new Date(fromDate);
+      if (toDate) query.createdAt.$lte = new Date(toDate);
+    }
+
+    if (search) {
+      const searchRegex = { $regex: search, $options: "i" };
+      const [matchedFarmers, matchedAnimals] = await Promise.all([
+        User.find({ name: searchRegex, role: "farmer" }).select("_id").lean(),
+        Animal.find({
+          $or: [
+            { animalId: searchRegex },
+            { earTag: searchRegex },
+            { breed: searchRegex },
+            { species: searchRegex },
+          ],
+        }).select("_id").lean(),
+      ]);
+
+      query.$or = [
+        { symptoms: searchRegex },
+        { requestType: searchRegex },
+        { farmerNotes: searchRegex },
+        { diagnosis: searchRegex },
+        { treatment: searchRegex },
+        { farmerId: { $in: matchedFarmers.map((farmer) => farmer._id) } },
+        { animalId: { $in: matchedAnimals.map((animal) => animal._id) } },
+      ];
+    }
 
     if (page || limit) {
       const pageNum = Math.max(parseInt(page, 10) || 1, 1);
@@ -773,6 +803,15 @@ export const cancelHealthRequest = async (req, res) => {
         });
 
         try {
+          if (assignedTech?._id) {
+            await Notification.create({
+              userId: assignedTech._id,
+              title: "Health Cancellation Request",
+              message: `${farmer?.name} requested cancellation of health checkup for ${animalTag}${isReadyToday ? " (TODAY)" : ""}. Reason: ${reason.trim()}`,
+              type: "cancellation_request",
+              relatedId: request._id,
+            });
+          }
           if (assignedTech?.pushToken) {
             await sendPushNotification(
               assignedTech.pushToken,

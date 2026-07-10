@@ -18,4 +18,7 @@ export const ENV = {
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
   VOICEFLOW_API_KEY: process.env.VOICEFLOW_API_KEY,
+  IPROG_SMS_ENABLED: process.env.IPROG_SMS_ENABLED,
+  IPROG_SMS_API_TOKEN: process.env.IPROG_SMS_API_TOKEN,
+  IPROG_SMS_BASE_URL: process.env.IPROG_SMS_BASE_URL,
 };

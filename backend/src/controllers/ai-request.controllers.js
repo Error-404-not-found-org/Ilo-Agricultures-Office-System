@@ -1145,6 +1145,15 @@ export const cancelAIRequest = async (req, res) => {
 
         // Notify assigned tech
         try {
+          if (assignedTech?._id) {
+            await Notification.create({
+              userId: assignedTech._id,
+              title: "AI Cancellation Request",
+              message: `${farmer?.name} requested cancellation of AI insemination visit for ${animalTag}${isReadyToday ? " (TODAY)" : ""}. Reason: ${reason.trim()}`,
+              type: "cancellation_request",
+              relatedId: request._id,
+            });
+          }
           if (assignedTech?.pushToken) {
             await sendPushNotification(
               assignedTech.pushToken,

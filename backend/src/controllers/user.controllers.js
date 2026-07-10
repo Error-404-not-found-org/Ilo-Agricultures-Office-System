@@ -15,6 +15,11 @@ import {
   assertTechnicianOrAdmin,
 } from "../policies/user.policy.js";
 import { createAuditLog } from "../services/audit.service.js";
+import { sendOtpSms, verifyOtpSms } from "../services/sms.service.js";
+import {
+  maskPhoneNumber,
+  normalizePhilippineMobileNumber,
+} from "../utils/phone.js";
 
 // Structured Console Log Helper for Audit Trail
 const logAdminAction = (action, admin, target, details = {}) => {
@@ -45,6 +50,22 @@ const logAdminAction = (action, admin, target, details = {}) => {
 const FARM_LANDMARK_MAX_LENGTH = 80;
 const FARM_DIRECTIONS_MAX_LENGTH = 250;
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
+const OTP_SEND_COOLDOWN_MS = 60 * 1000;
+const OTP_MAX_FAILED_ATTEMPTS = 5;
+
+const countFarmerOwnedRecords = async (farmerId) => {
+  const [animals, aiRequests, healthRequests, pregnancies, calvings, tasks] =
+    await Promise.all([
+      Animal.countDocuments({ farmerId }),
+      Insemination.countDocuments({ farmerId }),
+      HealthRequest.countDocuments({ farmerId }),
+      Pregnancy.countDocuments({ farmerId }),
+      Calving.countDocuments({ farmerId }),
+      Task.countDocuments({ farmerId }),
+    ]);
+
+  return animals + aiRequests + healthRequests + pregnancies + calvings + tasks;
+};
 
 const normalizeFarmLocationText = (value, fieldName, maxLength) => {
   if (value === undefined) return undefined;
@@ -480,7 +501,7 @@ const enrichFarmerData = async (farmer) => {
 
 export const getUsers = async (req, res) => {
   try {
-    const { role, page, limit, search } = req.query;
+    const { role, page, limit, search, barangay, status } = req.query;
 
     const query = { deletedAt: null };
 
@@ -507,8 +528,12 @@ export const getUsers = async (req, res) => {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
+        { phoneNumber: { $regex: search, $options: "i" } },
       ];
     }
+    if (barangay) query["address.barangay"] = barangay;
+    if (status === "active") query.isVerified = true;
+    if (status === "inactive") query.isVerified = { $ne: true };
 
     let selectFields = "-password";
     if (req.user.role === "farmer") {
@@ -539,6 +564,7 @@ export const getUsers = async (req, res) => {
         data: responseData,
         total,
         page: pageNum,
+        limit: limitNum,
         totalPages: Math.ceil(total / limitNum),
       });
     }
@@ -1446,6 +1472,242 @@ export const restoreUser = async (req, res) => {
     res
       .status(500)
       .json({ message: "Failed to restore user", error: error.message });
+  }
+};
+
+export const sendPhoneOtp = async (req, res) => {
+  try {
+    const { phoneNumber } = req.body;
+    const phone = normalizePhilippineMobileNumber(
+      phoneNumber || req.user?.phoneNumber,
+    );
+
+    const currentVerification = req.user.phoneVerification || {};
+    const lastSentAt = currentVerification.lastOtpSentAt
+      ? new Date(currentVerification.lastOtpSentAt).getTime()
+      : 0;
+    const elapsedMs = Date.now() - lastSentAt;
+
+    if (lastSentAt && elapsedMs < OTP_SEND_COOLDOWN_MS) {
+      const waitSeconds = Math.ceil((OTP_SEND_COOLDOWN_MS - elapsedMs) / 1000);
+      return res.status(429).json({
+        message: `Please wait ${waitSeconds} second(s) before requesting another OTP.`,
+        code: "OTP_COOLDOWN",
+        retryAfterSeconds: waitSeconds,
+      });
+    }
+
+    await sendOtpSms(phone.local);
+
+    req.user.phoneVerification = {
+      ...(req.user.phoneVerification?.toObject?.() ||
+        req.user.phoneVerification ||
+        {}),
+      pendingPhoneNumber: phone.local,
+      pendingNormalizedPhoneNumber: phone.normalized,
+      lastOtpSentAt: new Date(),
+      failedAttempts: 0,
+    };
+    await req.user.save();
+
+    res.status(200).json({
+      message: "OTP sent successfully.",
+      data: {
+        phoneNumber: maskPhoneNumber(phone.local),
+        expiresInMinutes: 5,
+      },
+    });
+  } catch (error) {
+    console.error("[sendPhoneOtp ERROR]", error.message);
+    res.status(error.statusCode || 500).json({
+      message: error.message || "Failed to send OTP.",
+      code: error.statusCode === 503 ? "SMS_NOT_AVAILABLE" : "OTP_SEND_FAILED",
+    });
+  }
+};
+
+export const verifyPhoneOtp = async (req, res) => {
+  try {
+    const { phoneNumber, otpCode } = req.body;
+    const phone = normalizePhilippineMobileNumber(
+      phoneNumber || req.user?.phoneVerification?.pendingPhoneNumber,
+    );
+    const currentVerification = req.user.phoneVerification || {};
+
+    if (
+      currentVerification.pendingNormalizedPhoneNumber &&
+      currentVerification.pendingNormalizedPhoneNumber !== phone.normalized
+    ) {
+      return res.status(400).json({
+        message: "This OTP was requested for a different phone number.",
+        code: "OTP_PHONE_MISMATCH",
+      });
+    }
+
+    if ((currentVerification.failedAttempts || 0) >= OTP_MAX_FAILED_ATTEMPTS) {
+      return res.status(429).json({
+        message: "Too many failed OTP attempts. Please request a new code.",
+        code: "OTP_TOO_MANY_ATTEMPTS",
+      });
+    }
+
+    try {
+      await verifyOtpSms(phone.local, otpCode);
+    } catch (error) {
+      req.user.phoneVerification = {
+        ...(req.user.phoneVerification?.toObject?.() ||
+          req.user.phoneVerification ||
+          {}),
+        failedAttempts: (currentVerification.failedAttempts || 0) + 1,
+      };
+      await req.user.save();
+      throw error;
+    }
+
+    const matchingPhoneUsers = await User.find({
+      _id: { $ne: req.user._id },
+      role: "farmer",
+      deletedAt: null,
+      $or: [
+        { phoneNumber: phone.local },
+        { normalizedPhoneNumber: phone.normalized },
+      ],
+    });
+
+    const unclaimedProfiles = matchingPhoneUsers.filter((user) => {
+      const hasRealClerkId =
+        user.clerkId && !String(user.clerkId).startsWith("manual_");
+      const isLegacyManualProfile =
+        user.clerkId &&
+        String(user.clerkId).startsWith("manual_") &&
+        !user.email;
+      return (
+        (user.registeredByTechnician || isLegacyManualProfile) &&
+        (user.profileClaimStatus === "unclaimed" ||
+          (isLegacyManualProfile && user.profileClaimStatus !== "claimed")) &&
+        !hasRealClerkId
+      );
+    });
+
+    const alreadyLinkedProfiles = matchingPhoneUsers.filter(
+      (user) => !unclaimedProfiles.some((profile) => profile._id.equals(user._id)),
+    );
+
+    if (alreadyLinkedProfiles.length > 0) {
+      return res.status(409).json({
+        message:
+          "This phone number is already linked to another account. Please contact your technician or the office.",
+        code: "PHONE_ALREADY_LINKED",
+      });
+    }
+
+    if (unclaimedProfiles.length > 1) {
+      return res.status(409).json({
+        message:
+          "This phone number matches multiple farmer profiles. Please contact your technician or the office for verification.",
+        code: "PHONE_MULTIPLE_PROFILES",
+      });
+    }
+
+    if (unclaimedProfiles.length === 1 && req.user.role === "farmer") {
+      const existingProfile = unclaimedProfiles[0];
+      const currentUserRecordCount = await countFarmerOwnedRecords(req.user._id);
+
+      if (currentUserRecordCount > 0) {
+        return res.status(409).json({
+          message:
+            "This account already has records. Please contact the office before linking another farmer profile.",
+          code: "CURRENT_ACCOUNT_HAS_RECORDS",
+        });
+      }
+
+      const currentUser = req.user;
+      const clerkId = currentUser.clerkId;
+      const email = currentUser.email;
+      const imageUrl = currentUser.imageUrl;
+
+      currentUser.clerkId = undefined;
+      currentUser.deletedAt = new Date();
+      currentUser.deactivatedBy = currentUser._id;
+      await currentUser.save();
+
+      existingProfile.clerkId = clerkId;
+      if (email && !existingProfile.email) existingProfile.email = email;
+      existingProfile.imageUrl = imageUrl || existingProfile.imageUrl;
+      existingProfile.phoneNumber = phone.local;
+      existingProfile.normalizedPhoneNumber = phone.normalized;
+      if (existingProfile.address) existingProfile.address.phoneNumber = phone.local;
+      existingProfile.isVerified = true;
+      existingProfile.status = "active";
+      existingProfile.profileClaimStatus = "claimed";
+      existingProfile.profileClaimedAt = new Date();
+      existingProfile.profileClaimedByClerkId = clerkId || "";
+      existingProfile.phoneVerification = {
+        ...(existingProfile.phoneVerification?.toObject?.() ||
+          existingProfile.phoneVerification ||
+          {}),
+        pendingPhoneNumber: "",
+        pendingNormalizedPhoneNumber: "",
+        isVerified: true,
+        verifiedAt: new Date(),
+        failedAttempts: 0,
+      };
+      await existingProfile.save();
+
+      await createAuditLog({
+        entityType: "User",
+        entityId: existingProfile._id,
+        action: "claim_profile",
+        actorId: existingProfile._id,
+        before: {
+          profileClaimStatus: "unclaimed",
+          placeholderUserId: currentUser._id,
+        },
+        after: {
+          profileClaimStatus: "claimed",
+          linkedClerkId: clerkId,
+          phoneNumber: phone.local,
+        },
+      });
+
+      return res.status(200).json({
+        message: "Phone verified and existing farmer profile linked.",
+        data: {
+          phoneNumber: maskPhoneNumber(phone.local),
+          isVerified: true,
+          linkedExistingProfile: true,
+          user: existingProfile,
+        },
+      });
+    }
+
+    req.user.phoneNumber = phone.local;
+    req.user.normalizedPhoneNumber = phone.normalized;
+    if (req.user.address) req.user.address.phoneNumber = phone.local;
+    req.user.phoneVerification = {
+      ...(req.user.phoneVerification?.toObject?.() || req.user.phoneVerification || {}),
+      pendingPhoneNumber: "",
+      pendingNormalizedPhoneNumber: "",
+      isVerified: true,
+      verifiedAt: new Date(),
+      failedAttempts: 0,
+    };
+    await req.user.save();
+
+    res.status(200).json({
+      message: "Phone number verified successfully.",
+      data: {
+        phoneNumber: maskPhoneNumber(phone.local),
+        isVerified: true,
+        linkedExistingProfile: false,
+      },
+    });
+  } catch (error) {
+    console.error("[verifyPhoneOtp ERROR]", error.message);
+    res.status(error.statusCode || 400).json({
+      message: error.message || "Invalid or expired OTP code.",
+      code: "OTP_VERIFY_FAILED",
+    });
   }
 };
 
