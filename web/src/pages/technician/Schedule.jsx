@@ -51,7 +51,7 @@ export default function DeploymentSchedule() {
     queryKey: ["technician", "schedule"],
     queryFn: async () => {
       const res = await axiosInstance.get(
-        "/technician/dashboard-data?fullAgenda=true"
+        "/technician/dashboard-data?fullAgenda=true",
       );
       return res.data.agendaItems || [];
     },
@@ -83,7 +83,8 @@ export default function DeploymentSchedule() {
   // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const taskCountsByDate = useMemo(() => {
     return (rawAgenda || []).reduce((acc, item) => {
-      const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
+      const itemDateVal =
+        item.scheduledDate || item.preferredDate || item.displayDate;
       if (!itemDateVal) return acc;
 
       const itemDate = new Date(itemDateVal);
@@ -96,14 +97,15 @@ export default function DeploymentSchedule() {
       }
       return acc;
     }, {});
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [rawAgenda, currentMonth, currentYear]);
 
   // ---- DYNAMIC MATRIX FILTERING PIPELINE ----
   const filteredTasks = useMemo(() => {
     return (
       rawAgenda?.filter((item) => {
-        const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
+        const itemDateVal =
+          item.scheduledDate || item.preferredDate || item.displayDate;
         if (!itemDateVal) return false;
 
         const itemDate = new Date(itemDateVal);
@@ -136,7 +138,7 @@ export default function DeploymentSchedule() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       {/* Topbar Layout */}
       <Topbar
         title="Deployment Schedule"
@@ -145,7 +147,7 @@ export default function DeploymentSchedule() {
         <div className="relative">
           <button
             onClick={() => setIsAppointmentMenuOpen(!isAppointmentMenuOpen)}
-            className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4"
+            className="btn btn-primary btn-sm text-white font-bold gap-1.5 rounded-xl px-4"
           >
             <Plus size={13} /> Add Appointment
           </button>
@@ -156,26 +158,26 @@ export default function DeploymentSchedule() {
                 className="fixed inset-0 z-40"
                 onClick={() => setIsAppointmentMenuOpen(false)}
               />
-              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden py-1">
+              <div className="absolute right-0 mt-2 w-48 bg-base-100 border border-base-300 rounded-xl shadow-xl z-50 overflow-hidden py-1">
                 <button
                   onClick={() => {
                     setIsAIModalOpen(true);
                     setIsAppointmentMenuOpen(false);
                   }}
-                  className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-slate-700 dark:text-slate-300 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-base-200 text-base-content flex items-center gap-2"
                 >
                   <Syringe size={14} className="text-blue-500" />
-                  <span>Artificial Insemination</span>
+                  <span>AI visit</span>
                 </button>
                 <button
                   onClick={() => {
                     setIsHealthModalOpen(true);
                     setIsAppointmentMenuOpen(false);
                   }}
-                  className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-slate-700 dark:text-slate-300 flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-base-200 text-base-content flex items-center gap-2"
                 >
                   <HeartPulse size={14} className="text-rose-500" />
-                  <span>Clinical Health Check</span>
+                  <span>Health visit</span>
                 </button>
               </div>
             </>
@@ -185,30 +187,14 @@ export default function DeploymentSchedule() {
 
       {/* Main Timeline Workspace Content */}
       <main className="p-6 space-y-5">
-        {/* Header Banner Block - Gradient Brand Alignment */}
-        <div className="relative bg-linear-to-r from-[#074033] to-[#065f46] text-white p-6 rounded-2xl shadow-xs space-y-2 overflow-hidden">
-          <div className="relative z-10 flex items-center gap-2 text-[#a7f3d0] font-extrabold text-[10px] tracking-widest uppercase">
-            <CalendarIcon size={14} />
-            <span>Operational Timeline</span>
-          </div>
-          <h2 className="relative z-10 text-2xl font-black tracking-tight">
-            Deployment Schedule
-          </h2>
-          <p className="relative z-10 text-xs text-emerald-100/80 max-w-xl font-medium leading-relaxed">
-            View confirmed visits, sync breeding cycles, and coordinate travel
-            routes across Supa, Pulo, and Oton sectors efficiently.
-          </p>
-          <div className="absolute top-[-20%] right-[-10%] w-[300px] h-[300px] bg-emerald-500/10 rounded-full blur-[100px]" />
-        </div>
-
         {/* Dashboard Operational Split Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5 items-start">
           {/* Left Panel Sidebar Wrapper */}
           <div className="space-y-4">
             {/* Interactive Monthly Calendar Matrix */}
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-xs">
+            <div className="card bg-base-100 border border-base-300 p-5 rounded-2xl shadow-xs">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-400">
+                <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/40">
                   {viewDate.toLocaleString("default", {
                     month: "long",
                     year: "numeric",
@@ -217,13 +203,13 @@ export default function DeploymentSchedule() {
                 <div className="flex gap-1">
                   <button
                     onClick={prevMonth}
-                    className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1"
+                    className="btn btn-xs btn-outline border-base-300 px-1"
                   >
                     <ChevronLeft size={12} />
                   </button>
                   <button
                     onClick={nextMonth}
-                    className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1"
+                    className="btn btn-xs btn-outline border-base-300 px-1"
                   >
                     <ChevronRight size={12} />
                   </button>
@@ -231,7 +217,7 @@ export default function DeploymentSchedule() {
               </div>
 
               {/* Day Header Labels */}
-              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 mb-2 select-none">
+              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-base-content/40 mb-2 select-none">
                 {["S", "M", "T", "W", "T", "F", "S"].map((day, i) => (
                   <span key={i}>{day}</span>
                 ))}
@@ -257,17 +243,17 @@ export default function DeploymentSchedule() {
                       onClick={() => setSelectedDate(date)}
                       className={`h-9 relative rounded-xl font-bold text-xs flex flex-col items-center justify-center border transition-all ${
                         isSelected
-                          ? "bg-[#00643b] border-[#00643b] text-white shadow-xs"
+                          ? "bg-primary border-primary text-white shadow-xs"
                           : isToday
-                            ? "border-[#00643b] text-[#00643b] dark:border-emerald-600 dark:text-emerald-400 font-black"
-                            : "border-transparent bg-slate-50/50 dark:bg-slate-900/50 hover:border-[#00643b] dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                            ? "border-primary text-primary font-black"
+                            : "border-transparent bg-base-200 hover:border-primary text-base-content"
                       }`}
                     >
                       <span>{day}</span>
                       {hasTasks > 0 && (
                         <span
                           className={`w-1 h-1 rounded-full absolute bottom-1.5 ${
-                            isSelected ? "bg-[#a7f3d0]" : "bg-[#00643b] dark:bg-emerald-500"
+                            isSelected ? "bg-white/85" : "bg-primary"
                           }`}
                         />
                       )}
@@ -278,43 +264,42 @@ export default function DeploymentSchedule() {
             </div>
 
             {/* Category Routing Filters Box */}
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-xs">
-              <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-3">
-                Categories
+            <div className="card bg-base-100 border border-base-300 p-5 rounded-2xl shadow-xs">
+              <h4 className="text-[10px] font-black uppercase tracking-wider text-base-content/40 mb-3">
+                Show visits
               </h4>
               <div className="flex flex-col gap-1.5">
                 {[
                   {
                     id: "all",
-                    label: "All Tasks",
+                    label: "All visits",
                     icon: <CalendarIcon size={13} />,
-                    style: "hover:border-[#00643b]",
-                    activeStyle: "bg-[#00643b] text-white border-[#00643b]",
+                    style:
+                      "bg-base-100 border-base-300 text-base-content/70 hover:bg-base-200 hover:border-primary hover:text-primary",
+                    activeStyle: "bg-primary text-white border-primary",
                   },
                   {
                     id: "insemination",
-                    label: "Inseminations",
+                    label: "AI visits",
                     icon: <Syringe size={13} />,
                     style:
-                      "border-blue-100 text-blue-700 dark:border-blue-900/40 dark:text-blue-400 hover:bg-blue-50/30",
+                      "bg-base-100 border-blue-200 text-blue-650 dark:border-blue-900/40 dark:text-blue-400 hover:bg-blue-500/5 dark:hover:bg-blue-500/10",
                     activeStyle: "bg-blue-600 border-blue-600 text-white",
                   },
                   {
                     id: "health",
-                    label: "Health Checks",
+                    label: "Health visits",
                     icon: <HeartPulse size={13} />,
                     style:
-                      "border-rose-100 text-rose-700 dark:border-rose-900/40 dark:text-rose-400 hover:bg-rose-50/30",
+                      "bg-base-100 border-rose-200 text-rose-650 dark:border-rose-900/40 dark:text-rose-400 hover:bg-rose-500/5 dark:hover:bg-rose-500/10",
                     activeStyle: "bg-rose-600 border-rose-600 text-white",
                   },
                 ].map((cat) => (
                   <button
                     key={cat.id}
                     onClick={() => setSelectedCategory(cat.id)}
-                    className={`w-full px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-2 transition-all ${
-                      selectedCategory === cat.id
-                        ? cat.activeStyle
-                        : `bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 ${cat.style}`
+                    className={`w-full px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-2 transition-all cursor-pointer ${
+                      selectedCategory === cat.id ? cat.activeStyle : cat.style
                     }`}
                   >
                     {cat.icon}
@@ -328,7 +313,7 @@ export default function DeploymentSchedule() {
           {/* Right Panel Timeline List Wrapper */}
           <div className="space-y-3">
             {/* Context Heading Header Status Summary Bar */}
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-xs flex flex-row items-center justify-between flex-wrap gap-3">
+            <div className="card bg-base-100 border border-base-300 p-5 rounded-2xl shadow-xs flex flex-row items-center justify-between flex-wrap gap-3">
               <div>
                 <h3 className="text-base font-black tracking-tight">
                   {selectedDate.toLocaleDateString(undefined, {
@@ -338,7 +323,7 @@ export default function DeploymentSchedule() {
                     year: "numeric",
                   })}
                 </h3>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
+                <p className="text-xs text-base-content/40 font-medium mt-0.5">
                   You have {filteredTasks.length} scheduled task
                   {filteredTasks.length !== 1 ? "s" : ""} for this cycle.
                 </p>
@@ -347,7 +332,7 @@ export default function DeploymentSchedule() {
                 {/* Local Search Input */}
                 <div className="relative w-full sm:w-60">
                   <Search
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/40"
                     size={13}
                   />
                   <input
@@ -355,13 +340,13 @@ export default function DeploymentSchedule() {
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search ear tag or farmer..."
-                    className="w-full h-9 pl-10 pr-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold focus:border-emerald-500 focus:outline-none transition-all placeholder:text-slate-400"
+                    className="w-full h-9 pl-10 pr-4 bg-base-200 border border-base-300 rounded-xl text-xs font-bold focus:border-primary focus:outline-none transition-all placeholder:text-base-content/40 text-base-content"
                   />
                 </div>
 
                 <button
                   onClick={handleOpenRouteGuide}
-                  className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 text-xs font-bold gap-1.5 rounded-xl px-4 h-9 min-h-0"
+                  className="btn btn-sm btn-outline border-base-300 text-xs font-bold gap-1.5 rounded-xl px-4 h-9 min-h-0 text-base-content/70"
                 >
                   <Map size={13} /> Map Route Guide
                 </button>
@@ -374,20 +359,24 @@ export default function DeploymentSchedule() {
                 Array.from({ length: 3 }).map((_, i) => (
                   <div
                     key={i}
-                    className="h-24 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl animate-pulse"
+                    className="h-24 bg-base-100 border border-base-300 rounded-2xl animate-pulse"
                   />
                 ))
               ) : filteredTasks.length === 0 ? (
-                <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-12 text-center text-slate-400 dark:text-slate-500 font-medium rounded-2xl">
+                <div className="card bg-base-100 border border-base-300 p-12 text-center text-base-content/40 font-medium rounded-2xl">
                   No operational field deployments scheduled for this selection.
                 </div>
               ) : (
                 filteredTasks.map((task) => {
                   const isTaskConfirmed =
                     task.status &&
-                    ["done", "resolved", "completed", "approved", "in-progress"].includes(
-                      task.status.toLowerCase()
-                    );
+                    [
+                      "done",
+                      "resolved",
+                      "completed",
+                      "approved",
+                      "in-progress",
+                    ].includes(task.status.toLowerCase());
 
                   const reqTechId =
                     task.raw?.approvedBy?._id ||
@@ -413,17 +402,17 @@ export default function DeploymentSchedule() {
                         setSelectedTask(task);
                         setIsTaskModalOpen(true);
                       }}
-                      className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-xl flex flex-row items-center justify-between gap-4 shadow-2xs hover:shadow-md hover:border-[#00643b] transition-all cursor-pointer"
+                      className="card bg-base-100 border border-base-300 p-4 rounded-xl flex flex-row items-center justify-between gap-4 shadow-2xs hover:shadow-md hover:border-primary transition-all cursor-pointer"
                     >
                       <div className="flex items-center gap-4 min-w-0">
                         {/* Left Time Alignment Metric Block */}
-                        <div className="border-r border-slate-100 dark:border-slate-800/80 pr-4 text-center min-w-[95px] shrink-0">
+                        <div className="border-r border-base-300 pr-4 text-center min-w-[95px] shrink-0">
                           <span
                             className={`text-[8px] font-black tracking-wider uppercase flex items-center justify-center gap-0.5 ${
                               isAssignedToOther
                                 ? "text-amber-500"
                                 : isTaskConfirmed
-                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  ? "text-primary"
                                   : "text-amber-500"
                             }`}
                           >
@@ -434,10 +423,14 @@ export default function DeploymentSchedule() {
                             ) : (
                               <AlertCircle size={8} />
                             )}
-                            {isAssignedToOther ? "LOCKED" : isTaskConfirmed ? "ACTIVE" : "PENDING"}
+                            {isAssignedToOther
+                              ? "LOCKED"
+                              : isTaskConfirmed
+                                ? "ACTIVE"
+                                : "PENDING"}
                           </span>
-                          <div className="text-xs font-black text-slate-800 dark:text-slate-200 mt-1.5 flex items-center justify-center gap-1">
-                            <Clock size={11} className="text-slate-400" />
+                          <div className="text-xs font-black text-base-content mt-1.5 flex items-center justify-center gap-1">
+                            <Clock size={11} className="text-base-content/40" />
                             <span>{task.time || "Preferred"}</span>
                           </div>
                         </div>
@@ -447,8 +440,8 @@ export default function DeploymentSchedule() {
                           <span
                             className={`inline-block text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide mb-1.5 ${
                               task.type === "ai" || task.type === "insemination"
-                                ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30"
-                                : "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30"
+                                ? "bg-blue-500/10 text-blue-600 border border-blue-200/50"
+                                : "bg-rose-500/10 text-rose-600 border border-rose-200/50"
                             }`}
                           >
                             {task.type === "ai" || task.type === "insemination"
@@ -456,14 +449,17 @@ export default function DeploymentSchedule() {
                               : "Clinical Checkup"}
                           </span>
                           {isAssignedToOther && (
-                            <span className="inline-block text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide mb-1.5 ml-1.5 bg-amber-500/10 text-amber-600 border border-amber-500/20" title={`Assigned to ${reqTechName}`}>
+                            <span
+                              className="inline-block text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide mb-1.5 ml-1.5 bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                              title={`Assigned to ${reqTechName}`}
+                            >
                               Locked
                             </span>
                           )}
-                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate mb-1">
+                          <h4 className="text-sm font-bold text-base-content truncate mb-1">
                             {task.task}
                           </h4>
-                          <div className="flex gap-3 text-[11px] text-slate-400 font-semibold truncate">
+                          <div className="flex gap-3 text-[11px] text-base-content/40 font-semibold truncate">
                             <span className="flex items-center gap-0.5">
                               <User size={10} /> {task.farmer}
                             </span>
@@ -481,7 +477,7 @@ export default function DeploymentSchedule() {
                           setSelectedTask(task);
                           setIsTaskModalOpen(true);
                         }}
-                        className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 hover:border-[#00643b] text-[11px] font-bold rounded-lg px-3 py-1 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 transition-colors shrink-0"
+                        className="btn btn-xs btn-outline border-base-300 hover:border-primary text-[11px] font-bold rounded-lg px-3 py-1 bg-base-100 text-base-content/60 transition-colors shrink-0"
                       >
                         {isAssignedToOther ? "View" : "Manage"}
                       </button>
@@ -500,7 +496,9 @@ export default function DeploymentSchedule() {
         onClose={() => setIsTaskModalOpen(false)}
         task={selectedTask}
         onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["technician", "schedule"] });
+          queryClient.invalidateQueries({
+            queryKey: ["technician", "schedule"],
+          });
         }}
       />
 
@@ -509,7 +507,9 @@ export default function DeploymentSchedule() {
         isOpen={isAIModalOpen}
         onClose={() => {
           setIsAIModalOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["technician", "schedule"] });
+          queryClient.invalidateQueries({
+            queryKey: ["technician", "schedule"],
+          });
         }}
       />
 
@@ -518,7 +518,9 @@ export default function DeploymentSchedule() {
         isOpen={isHealthModalOpen}
         onClose={() => {
           setIsHealthModalOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["technician", "schedule"] });
+          queryClient.invalidateQueries({
+            queryKey: ["technician", "schedule"],
+          });
         }}
       />
     </div>

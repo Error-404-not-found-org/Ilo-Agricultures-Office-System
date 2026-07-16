@@ -63,6 +63,32 @@ export const listSupportTickets = async (req, res) => {
   }
 };
 
+// GET /api/support-tickets/mine
+export const listMySupportTickets = async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 50);
+    const skip = (page - 1) * limit;
+    const query = { userId: req.user._id };
+
+    const [tickets, total] = await Promise.all([
+      SupportTicket.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      SupportTicket.countDocuments(query),
+    ]);
+
+    res.status(200).json({
+      data: tickets,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    });
+  } catch (error) {
+    console.error("[listMySupportTickets ERROR]", error.message);
+    res.status(500).json({ message: "Failed to fetch your support tickets." });
+  }
+};
+
 export const updateSupportTicketStatus = async (req, res) => {
   try {
     const { status } = req.body;

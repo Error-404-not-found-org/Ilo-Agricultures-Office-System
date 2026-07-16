@@ -29,9 +29,9 @@ export default function TechnicianAnalytics() {
 
   if (isLoading) {
     return (
-      <div className="grow flex flex-col items-center justify-center min-h-[60vh] gap-4 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100">
-        <span className="loading loading-infinity loading-lg text-[#00643b] scale-150"></span>
-        <p className="text-[#00643b] dark:text-emerald-400 font-bold tracking-widest animate-pulse uppercase text-[10px]">
+      <div className="grow flex flex-col items-center justify-center min-h-[60vh] gap-4 bg-base-200 text-base-content">
+        <span className="loading loading-infinity loading-lg text-primary scale-150"></span>
+        <p className="text-primary font-bold tracking-widest animate-pulse uppercase text-[10px]">
           Computing Analytics Matrix...
         </p>
       </div>
@@ -152,7 +152,7 @@ export default function TechnicianAnalytics() {
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300 font-sans">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300 font-sans">
       <Topbar
         title="Analytics Portal"
         subtitle="Technician performance metrics, conception trends, and diagnostic audit logs"
@@ -161,7 +161,7 @@ export default function TechnicianAnalytics() {
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
-            className="select select-sm select-bordered rounded-xl text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+            className="select select-sm select-bordered rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none transition-all duration-200"
           >
             <option value="6-months">Last 6 Months</option>
             <option value="12-months">Last 12 Months</option>
@@ -171,7 +171,7 @@ export default function TechnicianAnalytics() {
           <select
             value={barangay}
             onChange={(e) => setBarangay(e.target.value)}
-            className="select select-sm select-bordered rounded-xl text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+            className="select select-sm select-bordered rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none transition-all duration-200"
           >
             <option value="all">All Barangays</option>
             <option value="sm">San Miguel</option>
@@ -187,14 +187,14 @@ export default function TechnicianAnalytics() {
           {stats.map((stat, i) => (
             <div
               key={i}
-              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-all duration-200"
+              className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-all duration-200"
             >
               <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
                 {stat.icon}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-xl font-black tracking-tight">{stat.val}</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5 leading-none">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-base-content/40 mt-0.5 leading-none">
                   {stat.label}
                 </div>
                 <span className={`text-[9px] font-extrabold block mt-1 leading-none ${stat.trendColor}`}>
@@ -208,9 +208,9 @@ export default function TechnicianAnalytics() {
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Conception Rate Line Chart */}
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
-              <TrendingUp size={13} className="text-[#00643b]" /> Artificial Insemination Conception Trend
+          <div className="bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+            <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
+              <TrendingUp size={13} className="text-primary" /> Artificial Insemination Conception Trend
             </h3>
             <div className="h-64 flex items-center justify-center">
               <DashboardChart
@@ -223,8 +223,8 @@ export default function TechnicianAnalytics() {
           </div>
 
           {/* Incidents and resolutions bar chart */}
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
+          <div className="bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+            <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
               <BarChart3 size={13} className="text-rose-500" /> Epidemic &amp; Health Incident Audits
             </h3>
             <div className="h-64 flex items-center justify-center">
@@ -241,9 +241,9 @@ export default function TechnicianAnalytics() {
         {/* Breakdown detail panels */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
           {/* Left panel: Species distribution */}
-          <div className="lg:col-span-5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
+          <div className="lg:col-span-5 bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
             <div>
-              <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
+              <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
                 <Layers size={13} /> Species Composition
               </h3>
 
@@ -251,13 +251,13 @@ export default function TechnicianAnalytics() {
                 {speciesData.map((spec, idx) => (
                   <div key={idx} className="space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
-                      <span className="font-extrabold text-slate-800 dark:text-slate-200">{spec.name}</span>
-                      <span className="font-bold text-slate-500 font-mono">
+                      <span className="font-extrabold text-base-content">{spec.name}</span>
+                      <span className="font-bold text-base-content/60 font-mono">
                         {spec.count} head ({spec.percentage}%)
                       </span>
                     </div>
                     {/* Visual Progress bar */}
-                    <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-900 rounded-full overflow-hidden">
+                    <div className="w-full h-2.5 bg-base-200 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${spec.color}`}
                         style={{ width: `${spec.percentage}%` }}
@@ -268,20 +268,20 @@ export default function TechnicianAnalytics() {
               </div>
             </div>
 
-            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 font-bold uppercase text-center">
+            <div className="mt-4 pt-4 border-t border-base-300 text-[10px] text-base-content/40 font-bold uppercase text-center">
               Livestock Census verified: {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
             </div>
           </div>
 
           {/* Right panel: top performing sectors */}
-          <div className="lg:col-span-7 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs flex flex-col">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
+          <div className="lg:col-span-7 bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs flex flex-col">
+            <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
               <Calendar size={13} /> Regional Sector Performance
             </h3>
 
             <div className="flex-1 overflow-x-auto">
-              <table className="table table-xs w-full divide-y divide-slate-100 dark:divide-slate-800">
-                <thead className="text-slate-400 uppercase font-black tracking-wider text-[9.5px]">
+              <table className="table table-xs w-full divide-y divide-base-300">
+                <thead className="text-base-content/40 uppercase font-black tracking-wider text-[9.5px]">
                   <tr>
                     <th className="py-2.5 text-left">Sector Area Name</th>
                     <th className="py-2.5 text-center">Total Services</th>
@@ -289,17 +289,17 @@ export default function TechnicianAnalytics() {
                     <th className="py-2.5 text-right">Containment Grade</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                <tbody className="divide-y divide-base-300 text-base-content font-medium">
                   {sectorPerformance.map((sec, i) => (
-                    <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
-                      <td className="py-2.5 font-bold text-slate-800 dark:text-slate-200">{sec.name}</td>
+                    <tr key={i} className="hover:bg-base-200/50 transition-colors">
+                      <td className="py-2.5 font-bold text-base-content">{sec.name}</td>
                       <td className="py-2.5 text-center font-mono">{sec.totalServices}</td>
                       <td className="py-2.5 text-center font-bold text-emerald-500 font-mono">{sec.successRate}</td>
                       <td className="py-2.5 text-right">
                         <span className={`text-[8.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border ${
                           sec.efficiency === "Excellent" || sec.efficiency === "Very High"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400"
-                            : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400"
+                            ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20 dark:text-emerald-400"
+                            : "bg-blue-500/10 text-blue-600 border-blue-500/20 dark:text-blue-400"
                         }`}>
                           {sec.efficiency}
                         </span>

@@ -75,7 +75,14 @@ export function RequestListCard({
         label: "Pending",
       };
     }
-    if (s === "approved" || s === "scheduled") {
+    if (s === "approved") {
+      return {
+        bg: isDark ? "rgba(16, 185, 129, 0.1)" : "#ecfdf5",
+        text: isDark ? "#34d399" : "#047857",
+        label: "Claimed",
+      };
+    }
+    if (s === "scheduled") {
       return {
         bg: isDark ? "rgba(59, 130, 246, 0.1)" : "#eff6ff",
         text: isDark ? "#60a5fa" : "#2563eb",
@@ -115,6 +122,11 @@ export function RequestListCard({
   };
 
   const serviceTypeLabel = formatServiceType(item.serviceType || item.requestType || item.raw?.requestType);
+  const previousAttempt = item.raw?.previousAttemptId;
+  const isReInsemination = item.type === "ai" && Boolean(previousAttempt);
+  const attemptNumber = Number(item.raw?.attemptNumber || 1);
+  const previousTechnician =
+    previousAttempt?.technicianId?.name || previousAttempt?.approvedBy?.name;
 
   const formatDate = (dateStr: string) => {
     try {
@@ -133,256 +145,355 @@ export function RequestListCard({
 
   const displayDate =
     item.scheduledDate || item.preferredDate || item.createdAt;
+  const verificationSourceLabel = isBreedingVerification
+    ? item.raw?.sourceType === "farmer_requested_verification"
+      ? "Farmer requested"
+      : item.raw?.sourceType === "automatic_pd_followup"
+        ? "Scheduled follow-up"
+        : "Pregnancy check"
+    : null;
+  const primaryActionLabel = isBreedingVerification
+    ? "Open task"
+    : item.status.toLowerCase() === "pending"
+      ? "Claim"
+      : ["approved", "assigned", "triaged"].includes(
+            item.status.toLowerCase(),
+          )
+        ? "Schedule"
+        : item.status.toLowerCase() === "scheduled"
+          ? "Start"
+          : item.type === "health"
+            ? "Resolve"
+            : "Complete";
 
   return (
     <Card
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${serviceTypeLabel} request from ${item.farmer}`}
       style={{
-        padding: 16,
+        padding: 14,
         marginBottom: 12,
-        borderRadius: 24,
+        borderRadius: 20,
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.card,
         elevation: 1,
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: isDark ? 0 : 0.02,
-        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: isDark ? 0 : 0.04,
+        shadowRadius: 10,
       }}
     >
-      {/* Top Row: Type Indicator, Info, Status Badge */}
+      {/* Identity */}
       <View
         style={{
           flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
+          alignItems: "flex-start",
           marginBottom: 12,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+        <View
+          style={{
+            width: 46,
+            height: 46,
+            borderRadius: 15,
+            backgroundColor: item.farmerImageUrl ? colors.border : typeBg,
+            alignItems: "center",
+            justifyContent: "center",
+            position: "relative",
+          }}
+        >
+          {item.farmerImageUrl ? (
+            <Image
+              source={{ uri: item.farmerImageUrl }}
+              style={{ width: 46, height: 46, borderRadius: 15 }}
+            />
+          ) : (
+            <MaterialCommunityIcons name="account" size={23} color={typeColor} />
+          )}
           <View
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: item.farmerImageUrl ? colors.border : typeBg,
+              position: "absolute",
+              right: -3,
+              bottom: -3,
+              width: 19,
+              height: 19,
+              borderRadius: 10,
+              backgroundColor: typeBg,
+              borderWidth: 2,
+              borderColor: colors.card,
               alignItems: "center",
               justifyContent: "center",
-              position: "relative",
             }}
           >
-            {item.farmerImageUrl ? (
-              <Image
-                source={{ uri: item.farmerImageUrl }}
-                style={{ width: 44, height: 44, borderRadius: 22 }}
-              />
-            ) : (
-              <MaterialCommunityIcons
-                name="account"
-                size={22}
-                color={typeColor}
-              />
-            )}
-            <View
-              style={{
-                position: "absolute",
-                right: -2,
-                bottom: -2,
-                width: 18,
-                height: 18,
-                borderRadius: 9,
-                backgroundColor: typeBg,
-                borderWidth: 1,
-                borderColor: colors.card,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <MaterialCommunityIcons
-                name={typeIcon as any}
-                size={11}
-                color={typeColor}
-              />
-            </View>
-          </View>
-
-          <View style={{ marginLeft: 12, flex: 1 }}>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-            >
-              <TouchableOpacity
-                onPress={() =>
-                  router.push(
-                    `/(technician)/client.profile?id=${item.farmerId}` as any,
-                  )
-                }
-                accessibilityRole="button"
-                accessibilityLabel={`Open ${item.farmer} profile`}
-              >
-                <Text
-                  style={{
-                    fontFamily: "Outfit_800ExtraBold",
-                    color: colors.textPrimary,
-                    textDecorationLine: "underline",
-                  }}
-                  className="text-base"
-                >
-                  {item.farmer}
-                </Text>
-              </TouchableOpacity>
-              {isUrgent && (
-                <View
-                  style={{
-                    backgroundColor: "#fecaca",
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 4,
-                  }}
-                >
-                  <Text
-                    style={{ fontFamily: "Outfit_700Bold", color: "#dc2626" }}
-                    className="text-[9px] uppercase"
-                  >
-                    Urgent
-                  </Text>
-                </View>
-              )}
-              {isBreedingVerification && (
-                <View
-                  style={{
-                    backgroundColor: isDark
-                      ? item.raw?.sourceType === "farmer_requested_verification"
-                        ? "rgba(139, 92, 246, 0.18)"
-                        : "rgba(16, 185, 129, 0.15)"
-                      : item.raw?.sourceType === "farmer_requested_verification"
-                        ? "#ede9fe"
-                        : "#ecfdf5",
-                    paddingHorizontal: 6,
-                    paddingVertical: 2,
-                    borderRadius: 4,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_700Bold",
-                      color:
-                        item.raw?.sourceType === "farmer_requested_verification"
-                          ? typeColor
-                          : item.raw?.sourceType === "automatic_pd_followup"
-                            ? isDark
-                              ? "#34d399"
-                              : "#047857"
-                            : typeColor,
-                    }}
-                    className="text-[9px] uppercase"
-                  >
-                    {item.raw?.sourceType === "farmer_requested_verification"
-                      ? "Farmer Requested"
-                      : item.raw?.sourceType === "automatic_pd_followup"
-                        ? "Scheduled Follow-up"
-                        : "Pregnancy Check"}
-                  </Text>
-                </View>
-              )}
-            </View>
-            <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-              <Text
-                style={{
-                  fontFamily: "Outfit_500Medium",
-                  color: colors.textSecondary,
-                  fontSize: 12,
-                }}
-              >
-                {item.locationLabel || item.location}
-              </Text>
-              <Text
-                style={{
-                  fontFamily: "Outfit_600SemiBold",
-                  color: colors.textMuted,
-                  fontSize: 11,
-                }}
-              >
-                Sent {formatDate(item.createdAt)}
-              </Text>
-              
-              {/* Distance badge */}
-              {item.distanceKm !== undefined && item.distanceKm !== null ? (
-                <View style={{ backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#ecfdf5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ fontFamily: "Outfit_700Bold", color: isDark ? "#34d399" : "#047857", fontSize: 9 }}>
-                    {item.distanceKm} km away
-                  </Text>
-                </View>
-              ) : (
-                <View style={{ backgroundColor: isDark ? "rgba(100,116,139,0.12)" : "#f1f5f9", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textMuted, fontSize: 9 }}>
-                    Distance unavailable
-                  </Text>
-                </View>
-              )}
-
-              {/* Farm Pin status badge */}
-              {item.hasFarmPin ? (
-                <View style={{ backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#ecfdf5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ fontFamily: "Outfit_700Bold", color: isDark ? "#34d399" : "#047857", fontSize: 9 }}>
-                    Farm Pin Available
-                  </Text>
-                </View>
-              ) : (
-                <View style={{ backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#fffbeb", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                  <Text style={{ fontFamily: "Outfit_700Bold", color: isDark ? "#fbbf24" : "#d97706", fontSize: 9 }}>
-                    Farm pin missing
-                  </Text>
-                </View>
-              )}
-            </View>
+            <MaterialCommunityIcons
+              name={typeIcon as any}
+              size={11}
+              color={typeColor}
+            />
           </View>
         </View>
 
-        {/* Status Badge */}
+        <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
+          <TouchableOpacity
+            onPress={() =>
+              router.push(
+                `/(technician)/client.profile?id=${item.farmerId}` as any,
+              )
+            }
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${item.farmer} profile`}
+            style={{ flexDirection: "row", alignItems: "center" }}
+          >
+            <Text
+              numberOfLines={1}
+              style={{
+                flexShrink: 1,
+                fontFamily: "Outfit_800ExtraBold",
+                color: colors.textPrimary,
+                fontSize: 14,
+                lineHeight: 18,
+              }}
+            >
+              {item.farmer}
+            </Text>
+            <Feather
+              name="arrow-up-right"
+              size={13}
+              color={colors.textMuted}
+              style={{ marginLeft: 3 }}
+            />
+          </TouchableOpacity>
+
+          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 4 }}>
+            <Feather name="map-pin" size={11} color={colors.textMuted} />
+            <Text
+              numberOfLines={1}
+              style={{
+                flex: 1,
+                marginLeft: 4,
+                fontFamily: "Outfit_500Medium",
+                color: colors.textSecondary,
+                fontSize: 11,
+              }}
+            >
+              {item.locationLabel || item.location}
+            </Text>
+          </View>
+          <Text
+            style={{
+              marginTop: 3,
+              fontFamily: "Outfit_500Medium",
+              color: colors.textMuted,
+              fontSize: 10,
+            }}
+          >
+            Sent {formatDate(item.createdAt)}
+          </Text>
+        </View>
+
+        {isReInsemination && (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              alignSelf: "flex-start",
+              marginTop: 10,
+              paddingHorizontal: 9,
+              paddingVertical: 5,
+              borderRadius: 999,
+              backgroundColor: isDark
+                ? "rgba(59, 130, 246, 0.12)"
+                : "#eff6ff",
+            }}
+          >
+            <MaterialCommunityIcons
+              name="link-variant"
+              size={13}
+              color={isDark ? "#60a5fa" : "#2563eb"}
+            />
+            <Text
+              style={{
+                marginLeft: 5,
+                fontFamily: "Outfit_700Bold",
+                fontSize: 10,
+                color: isDark ? "#60a5fa" : "#2563eb",
+              }}
+            >
+              Re-insemination · Attempt {attemptNumber}
+              {previousTechnician ? ` · Previous: ${previousTechnician}` : ""}
+            </Text>
+          </View>
+        )}
+
         <View
           style={{
             backgroundColor: statusStyle.bg,
-            paddingHorizontal: 10,
-            paddingVertical: 4,
-            borderRadius: 8,
+            paddingHorizontal: 9,
+            paddingVertical: 5,
+            borderRadius: 999,
+            marginLeft: 8,
           }}
         >
           <Text
-            style={{ fontFamily: "Outfit_700Bold", color: statusStyle.text }}
-            className="text-[10px] uppercase tracking-wider"
+            style={{
+              fontFamily: "Outfit_700Bold",
+              color: statusStyle.text,
+              fontSize: 10,
+            }}
           >
             {statusStyle.label}
           </Text>
         </View>
       </View>
 
-      {/* Middle Row: Animal & Date Details */}
+      {/* Supporting metadata */}
       <View
         style={{
-          backgroundColor: isDark ? "rgba(255,255,255,0.02)" : "#f9fafb",
-          borderRadius: 16,
-          padding: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 6,
           marginBottom: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
         }}
       >
+        {verificationSourceLabel && (
+          <View
+            style={{
+              backgroundColor: typeBg,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 999,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "Outfit_700Bold",
+                color: typeColor,
+                fontSize: 10,
+              }}
+            >
+              {verificationSourceLabel}
+            </Text>
+          </View>
+        )}
+
+        {isUrgent && (
+          <View
+            style={{
+              backgroundColor: isDark ? "rgba(248,113,113,0.14)" : "#fef2f2",
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 999,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "Outfit_700Bold",
+                color: colors.error,
+                fontSize: 10,
+              }}
+            >
+              Urgent
+            </Text>
+          </View>
+        )}
+
         <View
           style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
+            backgroundColor:
+              item.distanceKm !== undefined && item.distanceKm !== null
+                ? isDark
+                  ? "rgba(16,185,129,0.12)"
+                  : "#ecfdf5"
+                : isDark
+                  ? "rgba(148,163,184,0.08)"
+                  : "#f1f5f9",
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 999,
           }}
         >
           <Text
             style={{
               fontFamily: "Outfit_600SemiBold",
-              color: colors.textMuted,
+              color:
+                item.distanceKm !== undefined && item.distanceKm !== null
+                  ? isDark
+                    ? "#34d399"
+                    : "#047857"
+                  : colors.textMuted,
+              fontSize: 10,
             }}
-            className="text-xs"
           >
-            Animal Context:
+            {item.distanceKm !== undefined && item.distanceKm !== null
+              ? `${item.distanceKm} km away`
+              : "Distance unavailable"}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: item.hasFarmPin
+              ? isDark
+                ? "rgba(16,185,129,0.12)"
+                : "#ecfdf5"
+              : isDark
+                ? "rgba(245,158,11,0.12)"
+                : "#fffbeb",
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 999,
+          }}
+        >
+          <Text
+            style={{
+              fontFamily: "Outfit_600SemiBold",
+              color: item.hasFarmPin
+                ? isDark
+                  ? "#34d399"
+                  : "#047857"
+                : isDark
+                  ? "#fbbf24"
+                  : "#b45309",
+              fontSize: 10,
+            }}
+          >
+            {item.hasFarmPin
+              ? "Farm location available"
+              : "Farm location not set"}
+          </Text>
+        </View>
+      </View>
+
+      {/* Request details */}
+      <View
+        style={{
+          backgroundColor: isDark ? "rgba(255,255,255,0.025)" : "#f8fafc",
+          borderRadius: 16,
+          padding: 14,
+          marginBottom: 12,
+          borderWidth: 1,
+          borderColor: isDark ? "rgba(255,255,255,0.06)" : "#eef2f7",
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+          }}
+        >
+          <Text
+            style={{
+              width: 96,
+              fontFamily: "Outfit_500Medium",
+              color: colors.textMuted,
+              fontSize: 11,
+              lineHeight: 16,
+            }}
+          >
+            Animal context
           </Text>
           <TouchableOpacity
             onPress={() =>
@@ -393,23 +504,24 @@ export function RequestListCard({
             accessibilityRole="button"
             accessibilityLabel={`Open animal details for ${item.earTag || item.animal}`}
             style={{
+              flex: 1,
               flexDirection: "row",
-              alignItems: "center",
-              minHeight: 44,
+              alignItems: "flex-start",
               justifyContent: "flex-end",
-              flexShrink: 1,
+              marginLeft: 12,
             }}
           >
             <Text
-              numberOfLines={1}
+              numberOfLines={2}
               ellipsizeMode="tail"
               style={{
                 fontFamily: "Outfit_700Bold",
                 color: colors.primary,
-                textDecorationLine: "underline",
                 flexShrink: 1,
+                textAlign: "right",
+                fontSize: 12,
+                lineHeight: 16,
               }}
-              className="text-xs"
             >
               {item.breed} ({item.earTag || item.animal})
             </Text>
@@ -417,7 +529,7 @@ export function RequestListCard({
               name="arrow-up-right"
               size={12}
               color={colors.primary}
-              style={{ marginLeft: 2 }}
+              style={{ marginLeft: 3, marginTop: 2 }}
             />
           </TouchableOpacity>
         </View>
@@ -428,31 +540,37 @@ export function RequestListCard({
               style={{
                 height: 1,
                 backgroundColor: colors.border,
-                marginVertical: 8,
+                marginVertical: 10,
               }}
             />
             <View
               style={{
                 flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
+                alignItems: "flex-start",
               }}
             >
               <Text
                 style={{
-                  fontFamily: "Outfit_600SemiBold",
+                  width: 96,
+                  fontFamily: "Outfit_500Medium",
                   color: colors.textMuted,
+                  fontSize: 11,
+                  lineHeight: 16,
                 }}
-                className="text-xs"
               >
-                Service Type:
+                Service type
               </Text>
               <Text
+                numberOfLines={2}
                 style={{
+                  flex: 1,
+                  marginLeft: 12,
                   fontFamily: "Outfit_700Bold",
                   color: colors.textPrimary,
+                  fontSize: 12,
+                  lineHeight: 16,
+                  textAlign: "right",
                 }}
-                className="text-xs"
               >
                 {serviceTypeLabel}
               </Text>
@@ -464,33 +582,44 @@ export function RequestListCard({
           style={{
             height: 1,
             backgroundColor: colors.border,
-            marginVertical: 8,
+            marginVertical: 10,
           }}
         />
 
         <View
           style={{
             flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
+            alignItems: "flex-start",
           }}
         >
           <Text
             style={{
-              fontFamily: "Outfit_600SemiBold",
+              width: 96,
+              fontFamily: "Outfit_500Medium",
               color: colors.textMuted,
+              fontSize: 11,
+              lineHeight: 16,
             }}
-            className="text-xs"
           >
             {isBreedingVerification
-              ? "Task Date:"
-              : item.status.toLowerCase() === "pending"
-                ? "Preferred Visit:"
-                : "Scheduled Visit:"}
+              ? "Task date"
+              : ["pending", "approved", "assigned", "triaged"].includes(
+                    item.status.toLowerCase(),
+                  )
+                ? "Preferred visit"
+                : "Scheduled visit"}
           </Text>
           <Text
-            style={{ fontFamily: "Outfit_700Bold", color: colors.textPrimary }}
-            className="text-xs"
+            numberOfLines={2}
+            style={{
+              flex: 1,
+              marginLeft: 12,
+              fontFamily: "Outfit_700Bold",
+              color: colors.textPrimary,
+              fontSize: 12,
+              lineHeight: 16,
+              textAlign: "right",
+            }}
           >
             {formatDate(displayDate)}
           </Text>
@@ -509,8 +638,7 @@ export function RequestListCard({
         <View
           style={{
             flexDirection: "row",
-            justifyContent: "flex-end",
-            gap: 8,
+            gap: 10,
             borderTopWidth: 1,
             borderColor: colors.border,
             paddingTop: 12,
@@ -527,16 +655,21 @@ export function RequestListCard({
                 backgroundColor: isDark ? "rgba(239, 68, 68, 0.15)" : "#fef2f2",
                 borderWidth: 1,
                 borderColor: isDark ? "rgba(239, 68, 68, 0.3)" : "#fecaca",
-                paddingVertical: 10,
-                minHeight: 44,
-                borderRadius: 12,
+                paddingHorizontal: 14,
+                minHeight: 48,
+                borderRadius: 14,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
               <Text
-                style={{ fontFamily: "Outfit_800ExtraBold", color: "#dc2626" }}
-                className="text-xs uppercase"
+                style={{
+                  fontFamily: "Outfit_700Bold",
+                  color: isDark ? "#f87171" : "#dc2626",
+                  fontSize: 13,
+                  lineHeight: 18,
+                  textAlign: "center",
+                }}
               >
                 Review Cancellation Request
               </Text>
@@ -553,14 +686,17 @@ export function RequestListCard({
                     accessibilityRole="button"
                     accessibilityLabel={`Decline ${serviceTypeLabel} request from ${item.farmer}`}
                     style={{
+                      flex: 1,
                       backgroundColor: isDark
                         ? "rgba(239, 68, 68, 0.1)"
                         : "#fef2f2",
-                      paddingHorizontal: 16,
-                      paddingVertical: 8,
-                      borderRadius: 12,
-                      minHeight: 44,
-                      minWidth: 80,
+                      borderWidth: 1,
+                      borderColor: isDark
+                        ? "rgba(248,113,113,0.24)"
+                        : "#fee2e2",
+                      paddingHorizontal: 14,
+                      borderRadius: 14,
+                      minHeight: 48,
                       alignItems: "center",
                       justifyContent: "center",
                       opacity: isUpdating ? 0.5 : 1,
@@ -570,8 +706,9 @@ export function RequestListCard({
                       style={{
                         fontFamily: "Outfit_700Bold",
                         color: isDark ? "#f87171" : "#ef4444",
+                        fontSize: 13,
+                        lineHeight: 18,
                       }}
-                      className="text-xs uppercase"
                     >
                       Decline
                     </Text>
@@ -582,26 +719,13 @@ export function RequestListCard({
                 onPress={onAccept}
                 disabled={isUpdating}
                 accessibilityRole="button"
-                accessibilityLabel={`${isBreedingVerification
-                    ? "Open task"
-                    : item.status.toLowerCase() === "pending"
-                      ? "Claim"
-                      : ["approved", "assigned", "triaged"].includes(
-                            item.status.toLowerCase(),
-                          )
-                        ? "Schedule"
-                        : item.status.toLowerCase() === "scheduled"
-                          ? "Start"
-                          : item.type === "health"
-                            ? "Resolve"
-                            : "Complete"} ${serviceTypeLabel} request from ${item.farmer}`}
+                accessibilityLabel={`${primaryActionLabel} ${serviceTypeLabel} request from ${item.farmer}`}
                 style={{
+                  flex: 1,
                   backgroundColor: colors.primary,
-                  paddingHorizontal: 16,
-                  paddingVertical: 8,
-                  borderRadius: 12,
-                  minHeight: 44,
-                  minWidth: 80,
+                  paddingHorizontal: 14,
+                  borderRadius: 14,
+                  minHeight: 48,
                   alignItems: "center",
                   justifyContent: "center",
                   opacity: isUpdating ? 0.5 : 1,
@@ -611,22 +735,11 @@ export function RequestListCard({
                   style={{
                     fontFamily: "Outfit_700Bold",
                     color: "#fff",
+                    fontSize: 13,
+                    lineHeight: 18,
                   }}
-                  className="text-xs uppercase"
                 >
-                  {isBreedingVerification
-                    ? "Open Task"
-                    : item.status.toLowerCase() === "pending"
-                      ? "Claim"
-                      : ["approved", "assigned", "triaged"].includes(
-                            item.status.toLowerCase(),
-                          )
-                        ? "Schedule"
-                        : item.status.toLowerCase() === "scheduled"
-                          ? "Start"
-                          : item.type === "health"
-                            ? "Resolve"
-                            : "Complete"}
+                  {primaryActionLabel}
                 </Text>
               </TouchableOpacity>
             </>

@@ -22,6 +22,13 @@ export const getMyHealthRequests = async (api: AxiosInstance) => {
   return response.data;
 };
 
+export const getMyAIRequests = async (api: AxiosInstance) => {
+  const response = await api.get("/ai-request/my", {
+    params: { page: 1, limit: 100 },
+  });
+  return response.data;
+};
+
 export const getTechnicianDirectory = async (api: AxiosInstance) => {
   const response = await api.get("/user", { params: { role: "technician" } });
   return Array.isArray(response.data) ? response.data : response.data?.data || [];

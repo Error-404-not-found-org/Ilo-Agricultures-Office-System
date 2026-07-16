@@ -3,9 +3,23 @@ import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
-import { MedicalRecord } from "../models/medical-record.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import cloudinary from "../config/cloudinary.js";
+import { assertStatusTransition } from "../domain/livestock-workflow.js";
+import {
+  createResolvedWalkInHealth,
+  resolveHealthRequest,
+} from "../services/livestock-transaction.service.js";
+import {
+  HEALTH_STATUS,
+  isActiveHealthRequestStatus,
+  normalizeHealthStatus,
+} from "../domain/status-vocabulary.js";
+import {
+  activeHealthCaseKey,
+  createHealthRequestWithGuard,
+  findActiveHealthCase,
+} from "../services/health-request-creation.service.js";
 
 
 // POST /api/health-request
@@ -13,6 +27,10 @@ export const createHealthRequest = async (req, res) => {
   try {
     const farmerId = req.user._id;
     const { animalId, requestType, symptoms, urgency, imageUrl } = req.body;
+    const normalizedUrgency = urgency === "critical" ? "emergency" : (urgency || "medium");
+    if (!["low", "medium", "high", "emergency"].includes(normalizedUrgency)) {
+      return res.status(400).json({ message: "Invalid health urgency value." });
+    }
 
     if (!animalId) {
       return res.status(400).json({ message: "Please select an animal." });
@@ -27,25 +45,28 @@ export const createHealthRequest = async (req, res) => {
       return res.status(404).json({ message: "Animal not found or does not belong to you." });
     }
 
-    // --- DOUBLE REQUEST CONFIRMATION / DUPLICATE CHECK ---
-    const existingActiveRequest = await HealthRequest.findOne({
+    const normalizedRequestType = requestType || "disease";
+    const existingActiveRequest = await findActiveHealthCase(
       animalId,
-      status: { $in: ["pending", "approved", "in-progress"] },
-      deletedAt: null
-    });
+      normalizedRequestType,
+    );
 
     if (existingActiveRequest) {
-      return res.status(400).json({
-        message: `There is already an active health checkup request (${existingActiveRequest.status}) for ${animal.earTag || animal.animalId}. Please wait for the current request to be resolved.`,
+      return res.status(409).json({
+        code: "ACTIVE_HEALTH_CASE_EXISTS",
+        message: `An active ${normalizedRequestType.replaceAll("_", " ")} health case already exists for ${animal.earTag || animal.animalId}. View or update the existing case before submitting another one.`,
+        existingRequestId: existingActiveRequest._id,
+        existingRequestStatus: existingActiveRequest.status,
+        existingRequestType: existingActiveRequest.requestType,
       });
     }
 
-    const request = await HealthRequest.create({
+    const request = await createHealthRequestWithGuard({
       farmerId,
       animalId,
-      requestType: requestType || "disease",
+      requestType: normalizedRequestType,
       symptoms: symptoms.trim(),
-      urgency: urgency || "medium",
+      urgency: normalizedUrgency,
       imageUrl: imageUrl || "",
       preferredDate: req.body.preferredDate || new Date(),
     });
@@ -56,6 +77,15 @@ export const createHealthRequest = async (req, res) => {
     try {
       const technicians = await User.find({ role: "technician" });
       const admins = await User.find({ role: "admin" });
+      const farmerBarangay = req.user.address?.barangay;
+      const farmerMunicipality =
+        req.user.address?.municipality || req.user.address?.city || "Iloilo";
+      const generalLocation = farmerBarangay
+        ? `Brgy. ${farmerBarangay}, ${farmerMunicipality}`
+        : farmerMunicipality;
+      const requestLabel = ["high", "emergency"].includes(normalizedUrgency)
+        ? "Urgent health request"
+        : "New health request";
 
       const techNotifs = technicians.map(t =>
         Notification.create({
@@ -63,8 +93,8 @@ export const createHealthRequest = async (req, res) => {
           senderId: farmerId,
           type: "health-request",
           relatedId: request._id,
-          title: urgency === "high" ? `🚨 Emergency: Tag #${animal.earTag || animal.animalId}` : `📋 Health Request: Tag #${animal.earTag || animal.animalId}`,
-          message: `Farmer ${req.user.name} reported ${urgency} urgency symptoms for ${animal.species} (${animal.breed}): ${symptoms}`,
+          title: ["high", "emergency"].includes(normalizedUrgency) ? `🚨 Emergency: Tag #${animal.earTag || animal.animalId}` : `📋 Health Request: Tag #${animal.earTag || animal.animalId}`,
+          message: `${requestLabel} for Tag #${animal.earTag || animal.animalId} in ${generalLocation}. Claim the request to view the farmer's contact details, reported symptoms, and exact farm location.`,
         })
       );
 
@@ -74,8 +104,8 @@ export const createHealthRequest = async (req, res) => {
           senderId: farmerId,
           type: "health-request",
           relatedId: request._id,
-          title: urgency === "high" ? "[Summary] 🚨 Urgent Animal Issue" : "[Summary] Health Request Submitted",
-          message: `Farmer ${req.user.name} reported a ${urgency} urgency health issue for animal ${animal.earTag || animal.animalId}.`,
+          title: ["high", "emergency"].includes(normalizedUrgency) ? "[Summary] 🚨 Urgent Animal Issue" : "[Summary] Health Request Submitted",
+          message: `Farmer ${req.user.name} reported a ${normalizedUrgency} urgency health issue for animal ${animal.earTag || animal.animalId}.`,
         })
       );
 
@@ -84,8 +114,8 @@ export const createHealthRequest = async (req, res) => {
       // --- MOBILE PUSH NOTIFICATIONS TO TECHNICIANS ---
       for (const t of technicians) {
         if (t.pushToken) {
-          const title = urgency === "high" ? `🚨 Emergency: Tag #${animal.earTag || animal.animalId}` : `📋 Health Request: Tag #${animal.earTag || animal.animalId}`;
-          const body = `${req.user.name} reported ${urgency} urgency symptoms: ${symptoms.substring(0, 100)}`;
+          const title = ["high", "emergency"].includes(normalizedUrgency) ? `🚨 Emergency: Tag #${animal.earTag || animal.animalId}` : `📋 Health Request: Tag #${animal.earTag || animal.animalId}`;
+          const body = `${requestLabel} for Tag #${animal.earTag || animal.animalId} in ${generalLocation}. Claim the request to view the farmer's contact details, reported symptoms, and exact farm location.`;
           await sendPushNotification(t.pushToken, title, body);
         }
       }
@@ -97,13 +127,17 @@ export const createHealthRequest = async (req, res) => {
     req.app.get("io").emit("dashboardUpdate", { 
       type: "HEALTH_REQUEST_CREATED", 
       message: "New health request submitted",
-      urgency 
+      urgency: normalizedUrgency
     });
 
     res.status(201).json({ message: "Health request submitted.", request });
   } catch (error) {
     console.error("[createHealthRequest ERROR]", error.message);
-    res.status(500).json({ message: error.message || "Failed to submit request." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to submit request.",
+      code: error.code,
+      ...(error.details || {}),
+    });
   }
 };
 
@@ -183,7 +217,7 @@ export const getAllHealthRequests = async (req, res) => {
       const limitNum = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
       const skip = (pageNum - 1) * limitNum;
 
-      const [requests, total] = await Promise.all([
+      const [requests, total, summaryRows] = await Promise.all([
         HealthRequest.find(query)
           .populate("farmerId", "name address imageUrl")
           .populate("animalId", "animalId earTag species breed imageUrl")
@@ -193,7 +227,37 @@ export const getAllHealthRequests = async (req, res) => {
           .limit(limitNum)
           .lean(),
         HealthRequest.countDocuments(query),
+        HealthRequest.aggregate([
+          { $match: query },
+          {
+            $group: {
+              _id: null,
+              highUrgency: {
+                $sum: { $cond: [{ $in: ["$urgency", ["high", "emergency"]] }, 1, 0] },
+              },
+              resolved: {
+                $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] },
+              },
+              active: {
+                $sum: {
+                  $cond: [
+                    {
+                      $in: [
+                        "$status",
+                        ["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress"],
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ]),
       ]);
+
+      const summary = summaryRows[0] || { highUrgency: 0, resolved: 0, active: 0 };
 
       return res.status(200).json({
         data: requests,
@@ -201,6 +265,12 @@ export const getAllHealthRequests = async (req, res) => {
         limit: limitNum,
         total,
         totalPages: Math.ceil(total / limitNum),
+        summary: {
+          total,
+          highUrgency: summary.highUrgency,
+          resolved: summary.resolved,
+          active: summary.active,
+        },
       });
     }
 
@@ -225,9 +295,12 @@ import { createAuditLog } from "../services/audit.service.js";
 export const updateHealthRequestStatus = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, technicianNote } = req.body;
+    const { status: requestedStatus, technicianNote } = req.body;
+    const status = normalizeHealthStatus(requestedStatus);
 
-    const VALID = ["pending", "approved", "scheduled", "in-progress", "resolved", "cancelled", "rejected"];
+    const VALID = Object.values(HEALTH_STATUS).filter(
+      (value) => value !== HEALTH_STATUS.IN_PROGRESS_LEGACY,
+    );
     if (!VALID.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
     }
@@ -236,6 +309,22 @@ export const updateHealthRequestStatus = async (req, res) => {
     if (!existing) {
       return res.status(404).json({ message: "Request not found." });
     }
+
+    if (status === "scheduled" && !req.body.scheduledDate) {
+      return res.status(400).json({
+        message: "A visit date and time are required before scheduling.",
+        code: "SCHEDULE_DATE_REQUIRED",
+      });
+    }
+
+    if (status === "in-progress" && !existing.scheduledDate) {
+      return res.status(400).json({
+        message: "Schedule this visit before starting the service.",
+        code: "VISIT_NOT_SCHEDULED",
+      });
+    }
+
+    assertStatusTransition("health", existing.status, status, { isAdmin: req.user.role === "admin" });
 
     // Concurrency guard: check if already assigned to another technician
     if (
@@ -288,65 +377,75 @@ export const updateHealthRequestStatus = async (req, res) => {
       status,
       handledBy: targetTechId,
     };
+    if (isActiveHealthRequestStatus(status)) {
+      updateFields.activeCaseKey = activeHealthCaseKey(
+        existing.animalId,
+        existing.requestType,
+      );
+    }
 
     if (technicianNote !== undefined) updateFields.technicianNote = technicianNote;
     if (req.body.diagnosis !== undefined) updateFields.diagnosis = req.body.diagnosis;
     if (req.body.treatment !== undefined) updateFields.treatment = req.body.treatment;
     if (req.body.advice !== undefined) updateFields.advice = req.body.advice;
-    if (req.body.scheduledDate !== undefined) {
+    if (status === "scheduled" && req.body.scheduledDate !== undefined) {
       updateFields.scheduledDate = req.body.scheduledDate ? new Date(req.body.scheduledDate) : undefined;
     }
     if (req.body.followUpDate !== undefined) {
       updateFields.followUpDate = req.body.followUpDate ? new Date(req.body.followUpDate) : undefined;
     }
 
-    const request = await HealthRequest.findByIdAndUpdate(
-      id,
-      { $set: updateFields },
-      { returnDocument: 'after' }
-    )
-      .populate("farmerId", "name pushToken")
-      .populate("animalId", "animalId earTag species");
+    let request;
+    if (status === "resolved") {
+      const recordTypes = { medicine: "Treatment", disease: "Check-up", checkup: "Check-up", injury: "Treatment", vaccination: "Vaccination", deworming: "Deworming" };
+      const withdrawalDays = req.body.withdrawalPeriodDays;
+      const withdrawalEndDate = withdrawalDays && !isNaN(withdrawalDays)
+        ? new Date(Date.now() + Number(withdrawalDays) * 24 * 60 * 60 * 1000)
+        : undefined;
+      request = await resolveHealthRequest({
+        id,
+        updateFields,
+        technicianId: req.user._id,
+        medicalRecord: {
+          animalId: existing.animalId,
+          farmerId: existing.farmerId,
+          type: recordTypes[existing.requestType] || "Check-up",
+          date: new Date(),
+          details: {
+            medicineName: updateFields.treatment || existing.treatment || "None",
+            diagnosis: updateFields.diagnosis || existing.diagnosis || "No specific diagnosis logged.",
+            treatment: updateFields.treatment || existing.treatment || "No treatment logged.",
+            withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
+            withdrawalEndDate,
+          },
+          note: updateFields.technicianNote || existing.technicianNote || "Resolved through health request queue.",
+          followUpDate: updateFields.followUpDate,
+        },
+      });
+      await request.populate("farmerId", "name pushToken");
+      await request.populate("animalId", "animalId earTag species");
+    } else {
+      const statusUpdate = isActiveHealthRequestStatus(status)
+        ? { $set: updateFields }
+        : { $set: updateFields, $unset: { activeCaseKey: 1 } };
+      request = await HealthRequest.findByIdAndUpdate(id, statusUpdate, { returnDocument: 'after' })
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "animalId earTag species");
+    }
 
     if (!request) return res.status(404).json({ message: "Request not found." });
 
-    // --- CREATE MEDICAL RECORD CASCADE IF RESOLVED ---
+    // The transaction service is the sole medical-record writer. This block
+    // only performs the post-commit withdrawal notification side effect.
     if (status === "resolved") {
       try {
-        let recordType = "Check-up";
-        if (request.requestType === "medicine") recordType = "Treatment";
-        else if (request.requestType === "disease") recordType = "Check-up";
-        else if (request.requestType === "checkup") recordType = "Check-up";
-        else if (request.requestType === "injury") recordType = "Treatment";
-        else if (request.requestType === "vaccination") recordType = "Vaccination";
-        else if (request.requestType === "deworming") recordType = "Deworming";
-
         const animalId = request.animalId._id || request.animalId;
         const farmerId = request.farmerId._id || request.farmerId;
-
         const withdrawalDays = req.body.withdrawalPeriodDays;
         let withdrawalEndDate = null;
         if (withdrawalDays && !isNaN(withdrawalDays)) {
           withdrawalEndDate = new Date(Date.now() + Number(withdrawalDays) * 24 * 60 * 60 * 1000);
         }
-
-        await MedicalRecord.create({
-          animalId,
-          farmerId,
-          technicianId: req.user._id,
-          type: recordType,
-          date: new Date(),
-          details: {
-            medicineName: request.treatment || "None",
-            diagnosis: request.diagnosis || "No specific diagnosis logged.",
-            treatment: request.treatment || "No treatment logged.",
-            withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
-            withdrawalEndDate: withdrawalEndDate || undefined,
-          },
-          note: request.technicianNote || "Resolved through health request queue.",
-          followUpDate: req.body.followUpDate ? new Date(req.body.followUpDate) : undefined,
-        });
-        console.log(`[Medical Record Cascade] Created successfully for Animal: ${animalId}`);
 
         // Send a withdrawal period alert if active
         if (withdrawalDays && Number(withdrawalDays) > 0 && withdrawalEndDate) {
@@ -371,8 +470,8 @@ export const updateHealthRequestStatus = async (req, res) => {
             await sendPushNotification(request.farmerId.pushToken, warningTitle, warningBody);
           }
         }
-      } catch (medErr) {
-        console.error("[Medical Record Cascade Error]", medErr.message);
+      } catch (withdrawalNotifyErr) {
+        console.error("[Withdrawal Notification Error]", withdrawalNotifyErr.message);
       }
     }
 
@@ -384,9 +483,13 @@ export const updateHealthRequestStatus = async (req, res) => {
 
         if (status === "resolved") {
           message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} was successfully resolved by technician ${req.user.name}. Diagnosis: ${request.diagnosis || "N/A"}. Treatment: ${request.treatment || "N/A"}.`;
-        } else if (status === "approved" || status === "in-progress") {
-          const schedDateStr = request.scheduledDate ? new Date(request.scheduledDate).toLocaleDateString() : "today";
-          message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} has been approved and scheduled for ${schedDateStr}. Technician: ${req.user.name}.`;
+        } else if (status === "approved") {
+          message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} was accepted by technician ${req.user.name} and is awaiting a visit schedule.`;
+        } else if (status === "scheduled" || status === "in-progress") {
+          const schedDateStr = request.scheduledDate
+            ? new Date(request.scheduledDate).toLocaleDateString()
+            : "the assigned time";
+          message = `Your health visit for animal ${request.animalId.earTag || request.animalId.animalId} is scheduled for ${schedDateStr}. Technician: ${req.user.name}.`;
         } else if (status === "rejected") {
           message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} was not approved. Note: ${technicianNote || "No details provided"}.`;
         }
@@ -426,7 +529,11 @@ export const updateHealthRequestStatus = async (req, res) => {
     res.status(200).json({ message: "Status updated.", request });
   } catch (error) {
     console.error("[updateHealthRequestStatus ERROR]", error.message);
-    res.status(500).json({ message: "Failed to update status." });
+    const transactionUnavailable = /Transaction numbers are only allowed|replica set|mongos/i.test(error.message);
+    res.status(transactionUnavailable ? 503 : error.status || 500).json({
+      message: transactionUnavailable ? "This operation requires a transaction-capable database." : error.message || "Failed to update status.",
+      code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
+    });
   }
 };
 
@@ -546,45 +653,45 @@ export const walkInHealthRequest = async (req, res) => {
     const pTimeString = preferredTime || "08:00";
     const pDate = new Date(`${pDateString}T${pTimeString}:00+08:00`);
 
-    const request = await HealthRequest.create({
+    const requestedStatus = status || "resolved";
+    const normalizedRequestType = requestType || "disease";
+    const requestData = {
       farmerId: farmer._id,
       animalId: animal._id,
-      requestType: requestType || "disease",
+      requestType: normalizedRequestType,
       symptoms: diagnosis,
       urgency: urgency || "low",
-      status: status || "resolved",
+      status: requestedStatus,
       handledBy: req.user._id,
-      technicianNote: technicianNote || (status === "resolved" ? "Walk-in service recorded by technician." : "Visit scheduled by technician."),
+      technicianNote: technicianNote || (requestedStatus === "resolved" ? "Walk-in service recorded by technician." : "Visit scheduled by technician."),
       diagnosis: diagnosis || "",
       treatment: treatment || "",
       advice: advice || "",
       preferredDate: pDate,
       scheduledDate: pDate,
-    });
+    };
 
-    // --- CREATE MEDICAL RECORD CASCADE IF RESOLVED ---
-    if (request.status === "resolved") {
-      try {
-        let recordType = "Check-up";
-        if (request.requestType === "medicine") recordType = "Treatment";
-        else if (request.requestType === "disease") recordType = "Check-up";
-        else if (request.requestType === "checkup") recordType = "Check-up";
-        else if (request.requestType === "injury") recordType = "Treatment";
-        else if (request.requestType === "vaccination") recordType = "Vaccination";
-        else if (request.requestType === "deworming") recordType = "Deworming";
+    let recordType = "Check-up";
+    if (normalizedRequestType === "medicine") recordType = "Treatment";
+    else if (normalizedRequestType === "injury") recordType = "Treatment";
+    else if (normalizedRequestType === "vaccination") recordType = "Vaccination";
+    else if (normalizedRequestType === "deworming") recordType = "Deworming";
 
-        const withdrawalDays = req.body.withdrawalPeriodDays;
-        let withdrawalEndDate = null;
-        if (withdrawalDays && !isNaN(withdrawalDays)) {
-          withdrawalEndDate = new Date(Date.now() + Number(withdrawalDays) * 24 * 60 * 60 * 1000);
-        }
+    const withdrawalDays = req.body.withdrawalPeriodDays;
+    const withdrawalEndDate = withdrawalDays && !isNaN(withdrawalDays)
+      ? new Date(Date.now() + Number(withdrawalDays) * 24 * 60 * 60 * 1000)
+      : null;
 
-        await MedicalRecord.create({
+    let request;
+    if (requestedStatus === "resolved") {
+      const created = await createResolvedWalkInHealth({
+        requestData,
+        medicalRecord: {
           animalId: animal._id,
           farmerId: farmer._id,
           technicianId: req.user._id,
           type: recordType,
-          date: pDate || new Date(),
+          date: pDate,
           details: {
             medicineName: treatment || "None",
             diagnosis: diagnosis || "No specific diagnosis logged.",
@@ -594,8 +701,17 @@ export const walkInHealthRequest = async (req, res) => {
           },
           note: technicianNote || "Recorded via walk-in service.",
           followUpDate: req.body.followUpDate ? new Date(req.body.followUpDate) : undefined,
-        });
-        console.log(`[Medical Record Cascade] Created successfully for Walk-in Animal: ${animal._id}`);
+        },
+      });
+      request = created.request;
+    } else {
+      request = await createHealthRequestWithGuard(requestData);
+    }
+
+    // --- CREATE MEDICAL RECORD CASCADE IF RESOLVED ---
+    if (request.status === "resolved") {
+      try {
+        console.log(`[Medical Record Transaction] Created successfully for Walk-in Animal: ${animal._id}`);
 
         // Send a withdrawal period alert if active
         if (withdrawalDays && Number(withdrawalDays) > 0 && withdrawalEndDate) {
@@ -625,8 +741,8 @@ export const walkInHealthRequest = async (req, res) => {
       }
     }
 
-    const title = status === "resolved" ? "Health Service Recorded" : "Health Visit Scheduled";
-    const message = status === "resolved" 
+    const title = requestedStatus === "resolved" ? "Health Service Recorded" : "Health Visit Scheduled";
+    const message = requestedStatus === "resolved" 
       ? `A walk-in health service for your animal (${animal.earTag}) has been recorded by technician ${req.user.name}.`
       : `A health visit for your animal (${animal.earTag}) has been scheduled for ${pDate.toLocaleDateString()} at ${pDate.toLocaleTimeString()}.`;
 
@@ -652,16 +768,20 @@ export const walkInHealthRequest = async (req, res) => {
 
     // Trigger Socket
     req.app.get("io").emit("dashboardUpdate", { 
-      type: status === "resolved" ? "WALKIN_HEALTH_RECORDED" : "HEALTH_REQUEST_CREATED" 
+      type: requestedStatus === "resolved" ? "WALKIN_HEALTH_RECORDED" : "HEALTH_REQUEST_CREATED" 
     });
 
     res.status(201).json({ 
-      message: status === "resolved" ? "Walk-in health service recorded." : "Health visit scheduled.", 
+      message: requestedStatus === "resolved" ? "Walk-in health service recorded." : "Health visit scheduled.", 
       request 
     });
   } catch (error) {
     console.error("[walkInHealthRequest ERROR]", error.message);
-    res.status(500).json({ message: "Failed to process health service.", error: error.message });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to process health service.",
+      code: error.code,
+      ...(error.details || {}),
+    });
   }
 };
 
@@ -708,7 +828,10 @@ export const deleteHealthRequest = async (req, res) => {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
 
-    await HealthRequest.findByIdAndUpdate(id, { $set: { deletedAt: new Date() } });
+    await HealthRequest.findByIdAndUpdate(id, {
+      $set: { deletedAt: new Date() },
+      $unset: { activeCaseKey: 1 },
+    });
 
     // Socket update
     req.app.get("io").emit("dashboardUpdate", {
@@ -786,6 +909,8 @@ export const cancelHealthRequest = async (req, res) => {
         }
         request.cancellationStatus = "requested";
         request.cancellationReason = reason.trim();
+        request.cancellationResponseReason = "";
+        request.cancellationRespondedAt = undefined;
         request.cancelledBy = actor._id;
         request.cancellationRequestedAt = now;
         request.statusHistory = request.statusHistory || [];
@@ -839,6 +964,13 @@ export const cancelHealthRequest = async (req, res) => {
 
       if (!["pending", "approved"].includes(status)) {
         return res.status(400).json({ message: `Farmers cannot directly cancel a request with status: ${status}.` });
+      }
+
+      if (status === "approved" && !reason?.trim()) {
+        return res.status(400).json({
+          message: "A cancellation reason is required after a technician has accepted the request.",
+          code: "CANCELLATION_REASON_REQUIRED",
+        });
       }
     }
 
@@ -949,6 +1081,8 @@ export const respondHealthCancellation = async (req, res) => {
     if (approved) {
       request.status = "cancelled";
       request.cancellationStatus = "approved";
+      request.cancellationResponseReason = reason?.trim() || "";
+      request.cancellationRespondedAt = new Date();
       request.statusHistory = request.statusHistory || [];
       request.statusHistory.push({
         status: "cancelled",
@@ -987,6 +1121,8 @@ export const respondHealthCancellation = async (req, res) => {
       return res.status(200).json({ message: "Cancellation approved." });
     } else {
       request.cancellationStatus = "rejected";
+      request.cancellationResponseReason = reason?.trim() || "";
+      request.cancellationRespondedAt = new Date();
       request.statusHistory = request.statusHistory || [];
       request.statusHistory.push({
         status: "cancellation_rejected",
@@ -1014,11 +1150,12 @@ export const respondHealthCancellation = async (req, res) => {
         );
       }
 
-      setTimeout(async () => {
-        await HealthRequest.findByIdAndUpdate(id, { cancellationStatus: "none" });
-      }, 5000);
-
-      return res.status(200).json({ message: "Cancellation rejected. Farmer has been notified." });
+      return res.status(200).json({
+        message: "Cancellation rejected. Farmer has been notified.",
+        cancellationStatus: "rejected",
+        cancellationResponseReason: request.cancellationResponseReason,
+        cancellationRespondedAt: request.cancellationRespondedAt,
+      });
     }
   } catch (error) {
     console.error("[respondHealthCancellation ERROR]", error.message);

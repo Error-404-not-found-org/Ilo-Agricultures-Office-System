@@ -27,7 +27,7 @@ export interface RequestItem {
 
 export interface RequestFilters {
   type: "all" | "ai" | "health" | "breeding_verification";
-  status: "all" | "pending" | "scheduled" | "in_progress" | "completed" | "declined";
+  status: "all" | "pending" | "approved" | "scheduled" | "in_progress" | "completed" | "declined";
   urgency: "all" | "urgent";
   assignment: "all" | "mine" | "unassigned";
   search: string;

@@ -4,6 +4,7 @@ import { Mail, Phone, MapPin, Navigation } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
 import { useTranslation } from "../../../contexts/TranslationContext";
 import DetailRow from "./DetailRow";
+import { isAddressPlaceholder } from "@/constants/address";
 
 interface AccountDetailsCardProps {
   clerkUser: any;
@@ -34,6 +35,17 @@ const AccountDetailsCard = ({
 }: AccountDetailsCardProps) => {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
+  const addressParts = [
+    dbUser?.address?.street,
+    dbUser?.address?.barangay,
+    dbUser?.address?.district,
+    dbUser?.address?.city,
+    dbUser?.address?.province,
+  ].filter((part, index, parts): part is string =>
+    Boolean(part) &&
+    !isAddressPlaceholder(part) &&
+    parts.indexOf(part) === index,
+  );
 
   return (
     <View className="px-6 mt-8">
@@ -65,11 +77,7 @@ const AccountDetailsCard = ({
         <DetailRow
           icon={<MapPin size={18} color={colors.textMuted} />}
           label="Home / Contact Address"
-          value={
-            dbUser?.address?.barangay
-              ? `${dbUser.address.street ? dbUser.address.street + ", " : ""}${dbUser.address.barangay}, ${dbUser.address.city}, ${dbUser.address.province}`
-              : t("notSet")
-          }
+          value={addressParts.length ? addressParts.join(", ") : t("notSet")}
         />
         <View
           className="px-5 pb-5"

@@ -2,14 +2,11 @@ import {
   View,
   TouchableOpacity,
   ScrollView,
-  StatusBar,
-  ActivityIndicator,
   Image,
   Linking,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import {
-  ArrowLeft,
   MapPin,
   Info as InfoIcon,
   Edit2,
@@ -28,58 +25,22 @@ import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { AppPageHeader } from "@/components/AppPageHeader";
+import { formatAddressLabel } from "@/constants/address";
 
 function ClientProfileSkeleton() {
-  const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Top Banner Skeleton */}
-      <View
-        style={{
-          paddingTop: insets.top + 16,
-          backgroundColor: isDark ? "#064e3e" : "#00643B",
-          paddingBottom: 40,
-          paddingHorizontal: 24,
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: "rgba(255,255,255,0.15)",
-          }}
-        />
-        <Skeleton
-          width={100}
-          height={18}
-          radius={6}
-          style={{ backgroundColor: "rgba(255,255,255,0.2)" }}
-        />
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: "rgba(255,255,255,0.15)",
-          }}
-        />
-      </View>
+      <AppPageHeader title="Farmer Profile" />
 
       {/* Profile Card Skeleton */}
       <View
         style={{
           marginHorizontal: 24,
-          marginTop: -20,
+          marginTop: 16,
           padding: 16,
           borderRadius: 24,
           backgroundColor: colors.card,
@@ -136,14 +97,6 @@ function ClientProfileSkeleton() {
         showsVerticalScrollIndicator={false}
       >
         <View style={{ gap: 16 }}>
-          {/* Moowie Card Skeleton */}
-          <View
-            style={{ flexDirection: "row", gap: 12, alignItems: "flex-end" }}
-          >
-            <Skeleton shape="circle" height={48} />
-            <Skeleton height={64} radius={20} style={{ flex: 1 }} />
-          </View>
-
           {/* Action Grid Skeletons */}
           <View style={{ gap: 12 }}>
             <View style={{ flexDirection: "row", gap: 12 }}>
@@ -187,7 +140,6 @@ export default function ClientProfileScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
 
   const [activeTab, setActiveTab] = useState<"Info" | "Animals">("Info");
 
@@ -240,13 +192,14 @@ export default function ClientProfileScreen() {
 
   const clientName = client.name || "Unknown Client";
   const addr = client.address;
-  const clientPhone =
-    addr?.phoneNumber || client.phoneNumber || "No phone attached";
-  const clientAddress = addr
-    ? [addr.street, addr.barangay, addr.city, addr.province]
-        .filter(Boolean)
-        .join(", ")
-    : "Location Unregistered";
+  const clientPhone = client.phoneNumber || addr?.phoneNumber || "";
+  const hasClientPhone = Boolean(clientPhone);
+  const clientAddress = formatAddressLabel(
+    addr,
+    client.farmLocation,
+    "Location not provided",
+  );
+  const hasClientAddress = clientAddress !== "Location not provided";
   const hasRealClerkId =
     Boolean(client.clerkId) && !String(client.clerkId).startsWith("manual_");
   const isClaimed = client.profileClaimStatus === "claimed" || hasRealClerkId;
@@ -294,7 +247,7 @@ export default function ClientProfileScreen() {
         h.status === "done" ||
         h.status === "approved",
     );
-    if (completedHistory.length === 0) return "N/A";
+    if (completedHistory.length === 0) return "No visits";
     const lastDate = new Date(
       completedHistory[0].createdAt ||
         completedHistory[0].date ||
@@ -327,7 +280,7 @@ export default function ClientProfileScreen() {
   ).length;
 
   const handleCall = () => {
-    if (clientPhone && clientPhone !== "No phone attached") {
+    if (hasClientPhone) {
       Linking.openURL(`tel:${clientPhone}`).catch(() => {
         toast.error("Could not initiate phone call.");
       });
@@ -351,7 +304,7 @@ export default function ClientProfileScreen() {
       ? `${farmLocation.latitude},${farmLocation.longitude}`
       : clientAddress;
 
-    if (query && query !== "Location Unregistered") {
+    if (query && hasClientAddress) {
       Linking.openURL(
         `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`,
       ).catch(() => {
@@ -362,57 +315,40 @@ export default function ClientProfileScreen() {
 
   return (
     <View style={[{ flex: 1, backgroundColor: colors.background }]}>
-      <StatusBar barStyle="light-content" />
-
-      {/* Curved Green Top Background Banner */}
-      <View
-        style={{
-          paddingTop: insets.top + 16,
-          backgroundColor: isDark ? "#064e3e" : "#00643B",
-          paddingBottom: 40,
-          paddingHorizontal: 24,
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          activeOpacity={0.8}
-          className="w-10 h-10 bg-white/15 rounded-full items-center justify-center border border-white/10"
-        >
-          <ArrowLeft size={22} color="white" />
-        </TouchableOpacity>
-        <Text
-          style={{
-            fontFamily: "Outfit_900Black",
-            color: "white",
-            fontSize: 18,
-          }}
-          className="tracking-wide"
-        >
-          Client Profile
-        </Text>
-        <TouchableOpacity
-          onPress={() =>
-            router.push(
-              `/(technician)/updateclient.profile?id=${client._id}` as any,
-            )
-          }
-          activeOpacity={0.8}
-          className="w-10 h-10 bg-white/15 rounded-full items-center justify-center border border-white/10 active:opacity-75"
-        >
-          <Edit2 size={18} color="white" />
-        </TouchableOpacity>
-      </View>
+      <AppPageHeader
+        title="Farmer Profile"
+        subtitle="Contact details, animals, and service history"
+        rightAction={
+          <TouchableOpacity
+            onPress={() =>
+              router.push(
+                `/(technician)/updateclient.profile?id=${client._id}` as any,
+              )
+            }
+            accessibilityRole="button"
+            accessibilityLabel="Edit farmer profile"
+            activeOpacity={0.8}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: isDark ? colors.background : "#f8fafc",
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Edit2 size={17} color={colors.textPrimary} />
+          </TouchableOpacity>
+        }
+      />
 
       {/* Overlapping Client Profile Card */}
       <View
         style={{
           marginHorizontal: 24,
-          marginTop: -20,
+          marginTop: 16,
           padding: 16,
           borderRadius: 24,
           backgroundColor: colors.card,
@@ -474,8 +410,7 @@ export default function ClientProfileScreen() {
                   fontSize: 12,
                 }}
               >
-                {client.address?.barangay || "Oton"},{" "}
-                {client.address?.city || "Iloilo"}
+                {clientAddress}
               </Text>
             </View>
           </View>
@@ -550,7 +485,14 @@ export default function ClientProfileScreen() {
             borderTopColor: colors.border,
           }}
         >
-          <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
             <MaterialCommunityIcons
               name={accountStatusIcon as any}
               size={16}
@@ -821,53 +763,6 @@ export default function ClientProfileScreen() {
         >
           {activeTab === "Info" ? (
             <View className="gap-y-6">
-              {/* --- MOOWIE GREETING SECTION --- */}
-              <View>
-                <View className="flex-row items-end">
-                  {/* Mascot Container */}
-                  <View className="w-16 h-16 -mb-1 z-10">
-                    <Image
-                      source={{
-                        uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
-                      }}
-                      className="w-full h-full"
-                      resizeMode="contain"
-                    />
-                  </View>
-
-                  {/* Speech Bubble */}
-                  <View className="flex-1 bg-[#F0FDF4] dark:bg-emerald-900/10 rounded-[20px] rounded-bl-none p-4 ml-[-8px] border border-emerald-100 dark:border-emerald-900/20 shadow-sm">
-                    <View className="flex-row justify-between items-center mb-1">
-                      <Text
-                        style={{ fontFamily: "Outfit_900Black" }}
-                        className="text-emerald-700 dark:text-emerald-400 text-[11px]"
-                      >
-                        Moowie Insight
-                      </Text>
-                      <View className="bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded-full">
-                        <Text
-                          style={{
-                            fontFamily: "Outfit_900Black",
-                            fontSize: 7,
-                            color: isDark ? "#34d399" : "#00643B",
-                          }}
-                        >
-                          AI
-                        </Text>
-                      </View>
-                    </View>
-                    <Text
-                      style={{ fontFamily: "Outfit_500Medium" }}
-                      className="text-slate-600 dark:text-slate-300 text-[11px] leading-[15px]"
-                    >
-                      {compliance >= 80
-                        ? `${clientName} has a high visit compliance rate of ${compliance}%! Keep it up! Consider scheduling pregnancy checks for upcoming AI services.`
-                        : `${clientName}'s compliance rate is currently at ${compliance}%. Make sure to schedule follow-up visits to ensure livestock safety.`}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
               {/* Quick Actions Grid */}
               <View>
                 <Text
@@ -1357,11 +1252,11 @@ export default function ClientProfileScreen() {
                             marginTop: 1,
                           }}
                         >
-                          {clientPhone}
+                          {clientPhone || "Phone not provided"}
                         </Text>
                       </View>
                     </View>
-                    {clientPhone !== "No phone attached" && (
+                    {hasClientPhone && (
                       <MaterialCommunityIcons
                         name="phone-outgoing"
                         size={18}
@@ -1454,7 +1349,7 @@ export default function ClientProfileScreen() {
                         </Text>
                       </View>
                     </View>
-                    {clientAddress !== "Location Unregistered" && (
+                    {hasClientAddress && (
                       <MaterialCommunityIcons
                         name="map-marker-outline"
                         size={18}

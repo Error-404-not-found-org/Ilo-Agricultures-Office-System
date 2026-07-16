@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { PREGNANCY_RESULT } from "../domain/status-vocabulary.js";
 
 const PregnancySchema = new mongoose.Schema(
   {
@@ -25,7 +26,7 @@ const PregnancySchema = new mongoose.Schema(
       date: Date,
       result: {
         type: String,
-        enum: ["Pregnant", "Empty"],
+        enum: Object.values(PREGNANCY_RESULT),
       },
     },
 

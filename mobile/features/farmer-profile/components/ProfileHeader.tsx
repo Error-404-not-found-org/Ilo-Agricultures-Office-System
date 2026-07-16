@@ -1,5 +1,11 @@
 import React from "react";
-import { View, Text, TouchableOpacity, Image, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+} from "react-native";
 import { Camera, ShieldCheck, User } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
 import { useTranslation } from "../../../contexts/TranslationContext";
@@ -8,20 +14,27 @@ interface ProfileHeaderProps {
   clerkUser: any;
   uploadingImage: boolean;
   onChangeProfileImage: () => void;
+  onHeightChange?: (height: number) => void;
 }
 
 const ProfileHeader = ({
   clerkUser,
   uploadingImage,
   onChangeProfileImage,
+  onHeightChange,
 }: ProfileHeaderProps) => {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
 
   return (
     <View
-      className="pt-14 pb-20 px-6 rounded-b-[40px] items-center relative shadow-lg"
-      style={{ backgroundColor: "#00643B" }}
+      className="pt-16 pb-28 px-6 items-center relative shadow-md z-0"
+      onLayout={(event) => onHeightChange?.(event.nativeEvent.layout.height)}
+      style={{
+        backgroundColor: "#00643B",
+        borderBottomLeftRadius: 30,
+        borderBottomRightRadius: 30,
+      }}
     >
       {/* Profile Picture & Info */}
       <View className="relative mt-4">

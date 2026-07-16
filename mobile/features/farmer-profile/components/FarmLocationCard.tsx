@@ -79,7 +79,9 @@ const FarmLocationCard = ({
                 className="font-outfit-black text-base"
                 style={{ color: colors.textPrimary }}
               >
-                {hasPin ? "Exact farm pin saved" : "Exact farm pin missing"}
+                {hasPin
+                  ? "Exact farm location saved"
+                  : "Exact farm location not set"}
               </Text>
               <Text
                 className="font-outfit-medium text-xs leading-5 mt-1"
@@ -112,7 +114,7 @@ const FarmLocationCard = ({
                 className="flex-1 ml-2 font-outfit-semibold text-xs leading-5"
                 style={{ color: isDark ? "#fbbf24" : "#92400e" }}
               >
-                Technicians will only see your barangay until an exact farm pin is saved.
+                Technicians will only see your barangay until an exact farm location is saved.
               </Text>
             </View>
           ) : null}

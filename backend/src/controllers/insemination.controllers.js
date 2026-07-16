@@ -1,9 +1,16 @@
+import mongoose from "mongoose";
 import { User } from "../models/user.model.js";
 import { Animal } from "../models/animal.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { checkInseminationAgeEligibility } from "../utils/cattleCore.js";
+import {
+  activeRequestKeyForAnimal,
+  createAIRequestWithGuard,
+} from "../services/ai-request-creation.service.js";
+import { isActiveAIRequestStatus } from "../domain/status-vocabulary.js";
+import { createAuditLog } from "../services/audit.service.js";
 
 export const createInsemination = async (req, res) => {
   try {
@@ -16,10 +23,19 @@ export const createInsemination = async (req, res) => {
       estrus,
     } = req.body;
 
+    if (!req.user || !["technician", "admin"].includes(req.user.role)) {
+      return res.status(403).json({
+        message: "Use the AI service request form to request this service.",
+      });
+    }
+
     // 1. Validate animal exists
     const animal = await Animal.findById(animalId);
     if (!animal) {
       return res.status(404).json({ message: "Animal not found" });
+    }
+    if (String(animal.farmerId) !== String(farmerId)) {
+      return res.status(400).json({ message: "Animal does not belong to the selected farmer." });
     }
 
     // Gender check
@@ -33,24 +49,16 @@ export const createInsemination = async (req, res) => {
         return res.status(400).json({ message: ageCheck.reason });
     }
 
-    // 2. Get last insemination attempt
-    const lastAttempt = await Insemination.findOne({ animalId }).sort({
-      attemptNumber: -1,
-    });
-
-    const attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
-
     // 3. Create insemination
-    const insemination = await Insemination.create({
+    const insemination = await createAIRequestWithGuard({
       farmerId,
       animalId,
       inseminationDate,
       sireBreed,
       sireCode,
       estrus,
-      attemptNumber,
-      status: attemptNumber === 1 ? "approved" : "pending",
-      approvedBy: attemptNumber === 1 ? req.user._id : null,
+      status: "approved",
+      approvedBy: req.user._id,
     });
 
     res.status(201).json({
@@ -59,7 +67,11 @@ export const createInsemination = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Failed to create insemination" });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to create insemination",
+      code: error.code,
+      ...(error.details || {}),
+    });
   }
 };
 
@@ -68,9 +80,28 @@ export const updateInsemination = async (req, res) => {
     const { id } = req.params;
     const { inseminationDate, sireBreed, sireCode, estrus, status } = req.body;
 
+    const existingRecord = await Insemination.findById(id);
+    if (!existingRecord) {
+      return res.status(404).json({ message: "Insemination record not found" });
+    }
+
+    const nextStatus = status || existingRecord.status;
+    const activeStatus = isActiveAIRequestStatus(nextStatus);
     const insemination = await Insemination.findByIdAndUpdate(
       id,
-      { $set: { inseminationDate, sireBreed, sireCode, estrus, status } },
+      {
+        $set: {
+          inseminationDate,
+          sireBreed,
+          sireCode,
+          estrus,
+          status: nextStatus,
+          ...(activeStatus
+            ? { activeRequestKey: activeRequestKeyForAnimal(existingRecord.animalId) }
+            : {}),
+        },
+        ...(!activeStatus ? { $unset: { activeRequestKey: 1 } } : {}),
+      },
       { new: true, runValidators: true }
     );
 
@@ -79,7 +110,7 @@ export const updateInsemination = async (req, res) => {
     }
 
     // Sync Animal Status if marked as 'done'
-    if (status === "done") {
+    if (nextStatus === "done") {
       await Animal.findByIdAndUpdate(insemination.animalId, {
         reproductiveStatus: "Inseminated"
       });
@@ -152,31 +183,76 @@ export const getMyInseminations = async (req, res) => {
 
 // DELETE /api/insemination/:id
 export const deleteInsemination = async (req, res) => {
+  const session = await mongoose.startSession();
   try {
     const { id } = req.params;
+    const reason = String(req.body?.reason || "Administrative record correction").trim();
     const deleteTime = new Date();
 
-    // 1. Find and Cascade Delete Children
-    const pregnancies = await Pregnancy.find({ inseminationId: id, deletedAt: null });
-    const pregIds = pregnancies.map(p => p._id);
+    let record;
+    await session.withTransaction(async () => {
+      record = await Insemination.findOne({ _id: id, deletedAt: null }).session(
+        session,
+      );
+      if (!record) {
+        const notFound = new Error("Insemination record not found.");
+        notFound.status = 404;
+        throw notFound;
+      }
 
-    // Soft delete linked pregnancies and any calvings resulting from them
-    await Promise.all([
-      Pregnancy.updateMany({ inseminationId: id }, { $set: { deletedAt: deleteTime } }),
-      Calving.updateMany({ pregnancyId: { $in: pregIds } }, { $set: { deletedAt: deleteTime } })
-    ]);
+      const pregnancies = await Pregnancy.find({
+        inseminationId: id,
+        deletedAt: null,
+      }).session(session);
+      const pregIds = pregnancies.map((pregnancy) => pregnancy._id);
 
-    // 2. Soft delete the Insemination itself
-    const record = await Insemination.findByIdAndUpdate(id, { $set: { deletedAt: deleteTime } }, { new: true });
+      await Promise.all([
+        Pregnancy.updateMany(
+          { inseminationId: id, deletedAt: null },
+          { $set: { deletedAt: deleteTime } },
+          { session },
+        ),
+        Calving.updateMany(
+          { pregnancyId: { $in: pregIds }, deletedAt: null },
+          { $set: { deletedAt: deleteTime } },
+          { session },
+        ),
+        Insemination.updateOne(
+          { _id: id, deletedAt: null },
+          {
+            $set: { deletedAt: deleteTime },
+            $unset: { activeRequestKey: 1 },
+          },
+          { session },
+        ),
+      ]);
 
-    if (!record) {
-      return res.status(404).json({ message: "Insemination record not found." });
-    }
+      await createAuditLog(
+        {
+          entityType: "Insemination",
+          entityId: record._id,
+          action: "soft_delete_with_breeding_cascade",
+          actorId: req.user._id,
+          before: {
+            status: record.status,
+            deletedAt: record.deletedAt,
+            pregnancyCount: pregnancies.length,
+          },
+          after: { deletedAt: deleteTime },
+          metadata: { reason, role: req.user.role },
+        },
+        { session },
+      );
+    });
 
     console.log(`[Insemination & Cascade Soft-Deleted] ${id}`);
     res.status(200).json({ message: "Insemination and all linked breeding data soft-deleted successfully." });
   } catch (error) {
     console.error("[deleteInsemination ERROR]", error.message);
-    res.status(500).json({ message: "Failed to delete insemination record.", error: error.message });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to delete insemination record.",
+    });
+  } finally {
+    await session.endSession();
   }
 };

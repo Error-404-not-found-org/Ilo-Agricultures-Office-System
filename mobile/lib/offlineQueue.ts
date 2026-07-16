@@ -1,10 +1,27 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { queryClient } from "./queryClient";
 import * as FileSystem from "expo-file-system/legacy";
+import { getApiErrorDetails } from "./api";
 
 const QUEUE_STORAGE_KEY = "OFFLINE_MUTATION_QUEUE";
 const HISTORY_STORAGE_KEY = "OFFLINE_SYNC_HISTORY";
+const ID_MAP_STORAGE_KEY = "OFFLINE_ENTITY_ID_MAP";
 const OFFLINE_UPLOADS_DIR = FileSystem.documentDirectory + "offline_uploads/";
+let queueWriteChain: Promise<void> = Promise.resolve();
+
+const mutateStoredQueue = async <T,>(work: (queue: QueuedMutation[]) => Promise<{ queue: QueuedMutation[]; result: T }> | { queue: QueuedMutation[]; result: T }): Promise<T> => {
+  let result!: T;
+  const operation = queueWriteChain.then(async () => {
+    const stored = await AsyncStorage.getItem(QUEUE_STORAGE_KEY);
+    const current: QueuedMutation[] = stored ? JSON.parse(stored) : [];
+    const outcome = await work(current);
+    result = outcome.result;
+    await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(outcome.queue));
+  });
+  queueWriteChain = operation.catch(() => undefined);
+  await operation;
+  return result;
+};
 
 export interface QueuedMutation {
   id: string;
@@ -20,9 +37,67 @@ export interface QueuedMutation {
   lastError?: string;
   updatedAt: number;
   filePaths?: string[]; // Track local cached file paths
+  tempId?: string;
+  entityType?: string;
+  dependsOn?: string[];
+  resultServerId?: string;
 }
 
 export const createStableId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+export const createTemporaryId = (entityType = "entity") => `local:${entityType}:${createStableId()}`;
+
+const readIdMap = async (): Promise<Record<string, string>> => {
+  const value = await AsyncStorage.getItem(ID_MAP_STORAGE_KEY);
+  return value ? JSON.parse(value) : {};
+};
+
+const saveIdMapping = async (temporaryId: string, serverId: string) => {
+  const mapping = await readIdMap();
+  mapping[temporaryId] = serverId;
+  await AsyncStorage.setItem(ID_MAP_STORAGE_KEY, JSON.stringify(mapping));
+};
+
+export const resolveTemporaryReferences = <T,>(value: T, mapping: Record<string, string>): T => {
+  if (typeof value === "string") {
+    let resolved: string = value;
+    for (const [temporaryId, serverId] of Object.entries(mapping)) {
+      resolved = resolved.split(temporaryId).join(serverId);
+    }
+    return resolved as T;
+  }
+  if (Array.isArray(value)) return value.map((item) => resolveTemporaryReferences(item, mapping)) as T;
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, resolveTemporaryReferences(item, mapping)]),
+    ) as T;
+  }
+  return value;
+};
+
+const findTemporaryReferences = (value: unknown): string[] => {
+  const matches = JSON.stringify(value).match(/local:[a-zA-Z0-9_-]+:[a-zA-Z0-9-]+/g) || [];
+  return [...new Set(matches)];
+};
+
+const extractServerId = (responseData: any): string | undefined => {
+  const candidates = [responseData, responseData?.data, responseData?.animal, responseData?.user,
+    responseData?.task, responseData?.request, responseData?.insemination,
+    responseData?.healthRequest, responseData?.pregnancy, responseData?.calving];
+  for (const candidate of candidates) {
+    const id = candidate?._id || candidate?.id;
+    if (typeof id === "string") return id;
+  }
+  return undefined;
+};
+
+export const classifySyncError = (error: any) => {
+  const apiError = getApiErrorDetails(error);
+  const isRestorationError = String(error?.message || "").includes("Unreadable or missing attachment");
+  const retryableCodes = new Set(["IDEMPOTENCY_IN_PROGRESS", "RATE_LIMITED", "TRANSACTION_UNAVAILABLE"]);
+  const retryableStatus = apiError.status === undefined || apiError.status === 408 || apiError.status === 425 || apiError.status === 429 || apiError.status >= 500;
+  const retryable = !isRestorationError && (retryableCodes.has(apiError.code || "") || retryableStatus || apiError.status === 401);
+  return { retryable, message: apiError.message || error?.message || "Sync failed", apiError };
+};
 
 const ensureDirExists = async () => {
   const dirInfo = await FileSystem.getInfoAsync(OFFLINE_UPLOADS_DIR);
@@ -160,30 +235,30 @@ export const restoreImagesInPayload = async (data: any): Promise<any> => {
   return await traverseAndRestore(data);
 };
 
-export const addToOfflineQueue = async (mutation: Omit<QueuedMutation, "id" | "timestamp" | "idempotencyKey" | "payloadVersion" | "status" | "retryCount" | "updatedAt">) => {
+export const addToOfflineQueue = async (
+  mutation: Omit<QueuedMutation, "id" | "timestamp" | "idempotencyKey" | "payloadVersion" | "status" | "retryCount" | "updatedAt"> & {
+    idempotencyKey?: string;
+  },
+) => {
   try {
-    const existingQueueStr = await AsyncStorage.getItem(QUEUE_STORAGE_KEY);
-    const queue: QueuedMutation[] = existingQueueStr ? JSON.parse(existingQueueStr) : [];
-    
     // Process payload to extract base64 images to local files
     const { data: cleanData, filePaths } = await cacheImagesInPayload(mutation.data);
-    
-    const newMutation: QueuedMutation = {
-      ...mutation,
-      data: cleanData,
-      filePaths: filePaths.length > 0 ? filePaths : undefined,
-      id: createStableId(),
-      idempotencyKey: createStableId(),
-      payloadVersion: 1,
-      timestamp: Date.now(),
-      status: "pending",
-      retryCount: 0,
-      updatedAt: Date.now(),
-    };
-    
-    queue.push(newMutation);
-    await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(queue));
-    return newMutation;
+    return await mutateStoredQueue((queue) => {
+      const referencedTempIds = findTemporaryReferences({ url: mutation.url, data: cleanData });
+      const inferredDependencies = queue
+        .filter((item) => item.tempId && referencedTempIds.includes(item.tempId))
+        .map((item) => item.id);
+      const newMutation: QueuedMutation = {
+        ...mutation, data: cleanData,
+        filePaths: filePaths.length > 0 ? filePaths : undefined,
+        id: createStableId(),
+        idempotencyKey: mutation.idempotencyKey || createStableId(),
+        payloadVersion: 2,
+        timestamp: Date.now(), status: "pending", retryCount: 0, updatedAt: Date.now(),
+        dependsOn: [...new Set([...(mutation.dependsOn || []), ...inferredDependencies])],
+      };
+      return { queue: [...queue, newMutation], result: newMutation };
+    });
   } catch (error) {
     console.error("[OfflineQueue] Failed to add mutation", error);
     throw error;
@@ -202,30 +277,40 @@ export const getOfflineQueue = async (): Promise<QueuedMutation[]> => {
 
 export const clearQueueItem = async (id: string) => {
   try {
-    const queue = await getOfflineQueue();
-    const item = queue.find((entry) => entry.id === id);
+    const item = await mutateStoredQueue((queue) => ({
+      queue: queue.filter((entry) => entry.id !== id),
+      result: queue.find((entry) => entry.id === id),
+    }));
     if (item?.filePaths) {
       for (const path of item.filePaths) {
         await deleteLocalFile(path);
       }
     }
-    const updatedQueue = queue.filter((item) => item.id !== id);
-    await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(updatedQueue));
   } catch (error) {
     console.error("[OfflineQueue] Failed to clear item", error);
   }
 };
 
-export const updateQueueItem = async (id: string, patch: Partial<QueuedMutation>) => {
+export const discardQueueItem = async (id: string) => {
   const queue = await getOfflineQueue();
-  const updatedQueue = queue.map((item) => item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item);
-  await AsyncStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(updatedQueue));
-  return updatedQueue.find((item) => item.id === id);
+  const dependents = queue.filter((item) => item.dependsOn?.includes(id));
+  await clearQueueItem(id);
+  for (const dependent of dependents) {
+    await updateQueueItem(dependent.id, {
+      status: "failed",
+      lastError: "Dependency was discarded before it could sync.",
+    });
+  }
+};
+
+export const updateQueueItem = async (id: string, patch: Partial<QueuedMutation>) => {
+  return mutateStoredQueue((queue) => {
+    const updatedQueue = queue.map((item) => item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item);
+    return { queue: updatedQueue, result: updatedQueue.find((item) => item.id === id) };
+  });
 };
 
 export const retryQueueItem = async (id: string) => updateQueueItem(id, { status: "pending", lastError: undefined });
-
-export const discardQueueItem = clearQueueItem;
 
 export const getSyncHistory = async (): Promise<QueuedMutation[]> => {
   try {
@@ -277,6 +362,14 @@ export const processOfflineQueue = async (api: any) => {
     for (const item of activeQueue) {
       if (item.status === "failed" || item.status === "synced") continue;
 
+      const currentQueue = await getOfflineQueue();
+      const dependencies = (item.dependsOn || []).map((id) => currentQueue.find((entry) => entry.id === id));
+      if (dependencies.some((dependency) => dependency?.status === "failed")) {
+        await updateQueueItem(item.id, { status: "failed", lastError: "A required earlier change failed to sync." });
+        continue;
+      }
+      if (dependencies.some((dependency) => dependency && dependency.status !== "synced")) continue;
+
       // 2. Exponential backoff checking
       if (item.status === "pending" && item.retryCount > 0) {
         const backoffDelay = Math.min(30000, 1000 * Math.pow(2, item.retryCount));
@@ -291,28 +384,42 @@ export const processOfflineQueue = async (api: any) => {
         
         // Restore local file URIs back to base64 data for API payload
         // If file is missing or unreadable, this will throw an error
-        const payloadData = await restoreImagesInPayload(item.data);
+        const idMap = await readIdMap();
+        const payloadData = resolveTemporaryReferences(await restoreImagesInPayload(item.data), idMap);
+        const resolvedUrl = resolveTemporaryReferences(item.url, idMap);
         
-        await api({
+        const response = await api({
           method: item.method,
-          url: item.url,
+          url: resolvedUrl,
           data: payloadData,
           headers: { "Idempotency-Key": item.idempotencyKey },
         });
+        const serverId = item.tempId ? extractServerId(response?.data) : undefined;
+        if (item.tempId && !serverId) {
+          throw new Error("The server did not return an ID for this offline-created record.");
+        }
+        if (item.tempId && serverId) await saveIdMapping(item.tempId, serverId);
         
         console.log(`[OfflineQueue] Successfully synced: ${item.description}`);
-        await addToHistory({ ...item, status: "synced", updatedAt: Date.now() });
+        await addToHistory({ ...item, status: "synced", resultServerId: serverId, updatedAt: Date.now() });
         await clearQueueItem(item.id);
       } catch (error: any) {
-        const isRestorationError = error.message && error.message.includes("Unreadable or missing attachment");
-        const isConflict = error.response?.status === 409; // Idempotency conflict/in-progress
-        
-        const message = error.response?.data?.message || error.message || "Sync failed";
-        const isPermanent = (error.response?.status >= 400 && error.response?.status < 500 && !isConflict) || isRestorationError;
+        const { retryable, message, apiError } = classifySyncError(error);
+
+        // Authentication can recover after Clerk refreshes the session. Do not
+        // consume the retry budget or permanently fail user data while signed out.
+        if (apiError.status === 401) {
+          await updateQueueItem(item.id, {
+            status: "pending",
+            lastError: "Sign in again to continue syncing this change.",
+          });
+          break;
+        }
+
         const newRetryCount = item.retryCount + 1;
         const maxRetriesReached = newRetryCount >= 5;
 
-        const willFail = isPermanent || maxRetriesReached;
+        const willFail = !retryable || maxRetriesReached;
 
         await updateQueueItem(item.id, {
           status: willFail ? "failed" : "pending",
@@ -323,7 +430,7 @@ export const processOfflineQueue = async (api: any) => {
         console.error(`[OfflineQueue] Sync failed for ${item.description}: ${message}. Status set to: ${willFail ? "failed" : "pending"}`);
         
         // If it's a transient server error, stop processing subsequent queue items to preserve order
-        if (!isPermanent) break;
+        if (retryable) break;
       }
     }
 

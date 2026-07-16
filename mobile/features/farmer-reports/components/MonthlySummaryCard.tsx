@@ -1,18 +1,14 @@
 import React from "react";
 import { View, Text } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme";
 
 interface MonthlySummaryCardProps {
-  pendingCount: number;
   totalCount: number;
 }
 
-const MonthlySummaryCard = ({ pendingCount, totalCount }: MonthlySummaryCardProps) => {
+const MonthlySummaryCard = ({ totalCount }: MonthlySummaryCardProps) => {
   const { colors, isDark } = useTheme();
-
-  const completedCount = Math.max(0, totalCount - pendingCount);
-  const percentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
   return (
     <View
@@ -37,47 +33,17 @@ const MonthlySummaryCard = ({ pendingCount, totalCount }: MonthlySummaryCardProp
         style={{
           width: 64,
           height: 64,
-          position: "relative",
-          justifyContent: "center",
-          alignItems: "center",
-        }}
-      >
-        <Svg
-          width={64}
-          height={64}
-          style={{ transform: [{ rotate: "-90deg" }] }}
-        >
-          <Circle
-            cx="32"
-            cy="32"
-            r="26"
-            fill="transparent"
-            stroke={isDark ? colors.border : "#e2e8f0"}
-            strokeWidth="5"
-          />
-          <Circle
-            cx="32"
-            cy="32"
-            r="26"
-            fill="transparent"
-            stroke={isDark ? colors.primary : "#00643B"}
-            strokeWidth="5"
-            strokeDasharray={2 * Math.PI * 26}
-            strokeDashoffset={2 * Math.PI * 26 * (1 - percentage / 100)}
-            strokeLinecap="round"
-          />
-        </Svg>
-        <View style={{ position: "absolute" }}>
-          <Text
-            style={{
-              fontSize: 10,
-              fontFamily: "Outfit_800ExtraBold",
-              color: isDark ? colors.primary : "#00643B",
-            }}
-          >
-            {percentage}%
-          </Text>
-        </View>
+        justifyContent: "center",
+        alignItems: "center",
+        borderRadius: 18,
+        backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#ecfdf5",
+      }}
+    >
+        <MaterialCommunityIcons
+          name="file-document-check-outline"
+          size={28}
+          color={isDark ? colors.primary : "#00643B"}
+        />
       </View>
       <View style={{ flex: 1 }}>
         <Text
@@ -87,7 +53,7 @@ const MonthlySummaryCard = ({ pendingCount, totalCount }: MonthlySummaryCardProp
             color: colors.textPrimary,
           }}
         >
-          Monthly Summary
+          Official Animal History
         </Text>
         <Text
           style={{
@@ -97,7 +63,9 @@ const MonthlySummaryCard = ({ pendingCount, totalCount }: MonthlySummaryCardProp
             marginTop: 2,
           }}
         >
-          {pendingCount} records pending review. Keep up the good work!
+          {totalCount === 0
+            ? "Completed service records will appear here."
+            : `${totalCount} completed ${totalCount === 1 ? "record" : "records"} available across your animals.`}
         </Text>
       </View>
     </View>

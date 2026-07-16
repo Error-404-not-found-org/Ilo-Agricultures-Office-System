@@ -22,7 +22,9 @@ export function useTechnicianClients() {
       "clients",
       filters.page,
       filters.debouncedSearch,
+      filters.selectedMunicipality,
       filters.selectedBarangay,
+      filters.selectedAccountStatus,
     ],
     queryFn: () =>
       getTechnicianClients(api, {
@@ -30,7 +32,9 @@ export function useTechnicianClients() {
         page: filters.page,
         limit: 10,
         search: filters.debouncedSearch,
+        city: filters.selectedMunicipality,
         barangay: filters.selectedBarangay,
+        accountStatus: filters.selectedAccountStatus,
       }),
     enabled: isEnabled,
     refetchInterval: 10000, // 10 second polling interval

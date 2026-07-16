@@ -13,7 +13,8 @@ interface NotificationDetails {
     _id: string;
     title: string;
     message: string;
-    type: 'ai-request' | 'health-request';
+    type: 'ai-request' | 'health-request' | 'system';
+    linkType?: 'request' | 'animal' | 'record';
     createdAt: string;
     senderId: {
       _id: string;
@@ -75,7 +76,8 @@ export default function NotificationDetailsScreen() {
     }
   });
 
-  const role = profile?.role || (user?.publicMetadata?.role as string) || 'technician';
+  const role =
+    profile?.role || (user?.publicMetadata?.role as string | undefined);
   const isFarmer = role === 'farmer';
   const [data, setData] = useState<NotificationDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,7 +100,7 @@ export default function NotificationDetailsScreen() {
       }
     };
     fetchDetails();
-  }, [id, api]);
+  }, [id, api, queryClient]);
 
   if (loading) {
     return (
@@ -127,6 +129,14 @@ export default function NotificationDetailsScreen() {
 
   const openLinkedRequest = () => {
     if (!relatedData?._id) return;
+
+    if (role === "farmer" && notification.type === "system" && notification.linkType === "animal") {
+      router.push({
+        pathname: "/(farmer)/animal-details",
+        params: { id: relatedData._id },
+      } as any);
+      return;
+    }
 
     if (role === "technician" || role === "veterinarian") {
       router.push({

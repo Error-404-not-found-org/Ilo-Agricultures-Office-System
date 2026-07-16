@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { TableRowSkeleton } from "../../components/Skeleton";
 import {
   Search,
   Download,
@@ -144,7 +143,7 @@ export default function HealthLog() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Health & Diagnostics Ledger"
         subtitle="Triage dashboard tracking livestock symptoms, medication regimes, and clinical response dispatches"
@@ -153,39 +152,39 @@ export default function HealthLog() {
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
         {/* Metric Grid Display */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-amber-600 bg-amber-50 dark:bg-amber-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+            <div className="p-2.5 rounded-xl shrink-0 text-amber-600 bg-amber-500/10">
               <Stethoscope size={16} />
             </div>
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : metrics.total}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Total Diagnostic Incidents
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-rose-600 bg-rose-50 dark:bg-rose-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+            <div className="p-2.5 rounded-xl shrink-0 text-rose-600 bg-rose-500/10">
               <AlertTriangle size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {isLoading ? "..." : metrics.highUrgency}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Active High-Priority Dispatches
               </div>
             </div>
           </div>
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+            <div className="p-2.5 rounded-xl shrink-0 text-primary bg-primary/10">
               <ShieldCheck size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {isLoading ? "..." : metrics.closed}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Cases Evaluated and Closed
               </div>
             </div>
@@ -193,17 +192,17 @@ export default function HealthLog() {
         </div>
 
         {/* Filters and Datatable */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Top Actions Row */}
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <div className="relative w-72">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none flex items-center justify-center">
                 <Search size={14} />
               </span>
               <input
                 type="text"
                 placeholder="Search tag, diagnostic notes, farmer..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content placeholder-base-content/40 focus:ring-1 focus:ring-primary outline-none transition-all duration-200"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -216,30 +215,30 @@ export default function HealthLog() {
               <button
                 onClick={handleExportCSV}
                 disabled={filteredCases.length === 0}
-                className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
+                className="btn btn-sm btn-primary text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
               >
                 <Download size={13} /> Export CSV
               </button>
               <button
                 onClick={() => window.print()}
-                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 text-xs font-bold gap-1.5 rounded-xl px-4 text-slate-500 dark:text-slate-355 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="btn btn-sm btn-outline border-base-300 text-xs font-bold gap-1.5 rounded-xl px-4 text-base-content/60 hover:bg-base-200 transition-colors cursor-pointer"
               >
                 <Printer size={13} /> Print
               </button>
-              <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2.5 whitespace-nowrap">
+              <span className="text-xs text-base-content/40 font-semibold border-l border-base-300 pl-2.5 whitespace-nowrap">
                 {isLoading ? "Fetching data..." : `${totalItems} incident${totalItems !== 1 ? "s" : ""} matched`}
               </span>
             </div>
           </div>
 
           {/* Filter Ribbon */}
-          <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
+          <div className="flex items-center gap-2 flex-wrap mb-4 bg-base-200 border border-base-300 p-2.5 rounded-xl">
+            <div className="flex items-center gap-1.5 text-xs text-base-content/40 font-bold uppercase tracking-wide px-1">
               <SlidersHorizontal size={13} />
               <span>Filters:</span>
             </div>
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+              className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
               value={urgencyFilter}
               onChange={(e) => {
                 setUrgencyFilter(e.target.value);
@@ -255,7 +254,7 @@ export default function HealthLog() {
             </select>
 
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+              className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
@@ -282,7 +281,7 @@ export default function HealthLog() {
           <div className="overflow-x-auto flex-1 overflow-y-auto">
             <table className="table w-full border-collapse">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                   <th className="p-3.5 pl-5">Case #</th>
                   <th className="p-3.5">Logged Date</th>
                   <th className="p-3.5">Animal Tag</th>
@@ -294,14 +293,30 @@ export default function HealthLog() {
                   <th className="p-3.5 pr-5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+              <tbody className="divide-y divide-base-300 text-xs">
                 {isLoading ? (
-                  [...Array(6)].map((_, idx) => <TableRowSkeleton key={idx} />)
+                  [...Array(6)].map((_, idx) => (
+                    <tr key={idx}>
+                      <td colSpan={9}>
+                        <div className="grid grid-cols-[.8fr_1fr_.8fr_1.2fr_1.5fr_1.5fr_.8fr_.8fr_.8fr] gap-5 py-1">
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
                 ) : paginatedCases.length === 0 ? (
                   <tr>
                     <td
                       colSpan={12}
-                      className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium"
+                      className="text-center p-12 text-base-content/40 font-medium"
                     >
                       No matching historical diagnostic records found.
                     </td>
@@ -310,33 +325,33 @@ export default function HealthLog() {
                   paginatedCases.map((c) => (
                     <tr
                       key={c.id}
-                      className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors cursor-pointer"
+                      className="hover:bg-base-200 transition-colors cursor-pointer"
                       onClick={() => setSelectedCase(c)}
                     >
-                      <td className="p-3.5 pl-5 font-bold text-slate-400 truncate max-w-[80px]">
+                      <td className="p-3.5 pl-5 font-bold text-base-content/40 truncate max-w-[80px]">
                         #{c.id.slice(-6)}
                       </td>
                       <td className="p-3.5 font-medium whitespace-nowrap">
                         {c.date}
                       </td>
-                      <td className="p-3.5 font-extrabold text-[#00643b] dark:text-[#10b981]">
+                      <td className="p-3.5 font-extrabold text-primary">
                         {c.tag}
                       </td>
                       <td className="p-3.5 font-bold">{c.farmer}</td>
-                      <td className="p-3.5 max-w-[180px] truncate font-medium text-slate-500">
+                      <td className="p-3.5 max-w-[180px] truncate font-medium text-base-content/70">
                         {c.symptoms}
                       </td>
-                      <td className="p-3.5 font-bold text-slate-700 dark:text-slate-300 truncate max-w-[150px]">
+                      <td className="p-3.5 font-bold text-base-content/85 truncate max-w-[150px]">
                         {c.diagnosis}
                       </td>
                       <td className="p-3.5 text-center">
                         <span
                           className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border ${
                             c.urgency === "high"
-                              ? "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/20 dark:text-red-400"
+                              ? "bg-red-500/10 text-rose-600 border-red-200/50"
                               : c.urgency === "medium"
-                                ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400"
-                                : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400"
+                                ? "bg-amber-500/10 text-amber-600 border-amber-200/50"
+                                : "bg-blue-500/10 text-blue-600 border-blue-200/50"
                           }`}
                         >
                           {c.urgency}
@@ -346,10 +361,10 @@ export default function HealthLog() {
                         <span
                           className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border ${
                             c.status === "resolved" || c.status === "done"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400"
+                              ? "bg-primary/10 text-primary border-primary/20"
                               : c.status === "in-progress"
-                                ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400"
-                                : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400"
+                                ? "bg-blue-500/10 text-blue-600 border-blue-200/50"
+                                : "bg-amber-500/10 text-amber-600 border-amber-200/50"
                           }`}
                         >
                           {c.status}
@@ -362,13 +377,13 @@ export default function HealthLog() {
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => setSelectedCase(c)}
-                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-800 hover:text-[#00643b] dark:hover:border-emerald-600 flex items-center gap-1 transition-all bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 cursor-pointer"
+                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-base-300 hover:border-primary hover:text-primary flex items-center gap-1 transition-all bg-base-100 text-base-content/70 cursor-pointer"
                           >
                             <Eye size={12} /> Inspect
                           </button>
                           <button
                             onClick={() => handleDeleteCase(c)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 cursor-pointer"
+                            className="p-1.5 text-base-content/40 hover:text-rose-600 transition-colors rounded-lg hover:bg-base-200 cursor-pointer"
                             title="Delete Incident"
                           >
                             <Trash2 size={13} />
@@ -383,8 +398,8 @@ export default function HealthLog() {
           </div>
 
           {/* Pagination */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between mt-3">
-            <span className="text-[11px] font-medium text-slate-400">
+          <div className="pt-4 border-t border-base-300 flex items-center justify-between mt-3">
+            <span className="text-[11px] font-medium text-base-content/40">
               Showing {totalItems === 0 ? 0 : startIndex + 1}–
               {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
               health dispatches
@@ -393,7 +408,7 @@ export default function HealthLog() {
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1 || isLoading}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
               >
                 <ChevronLeft size={12} />
               </button>
@@ -405,8 +420,8 @@ export default function HealthLog() {
                     onClick={() => setCurrentPage(pageNumber)}
                     className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
                       currentPage === pageNumber
-                        ? "bg-[#00643b] text-white shadow-xs"
-                        : "border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                        ? "bg-primary text-white shadow-xs"
+                        : "border border-base-300 text-base-content/60 hover:bg-base-200"
                     }`}
                   >
                     {pageNumber}
@@ -418,7 +433,7 @@ export default function HealthLog() {
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }
                 disabled={currentPage === totalPages || isLoading}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
               >
                 <ChevronRight size={12} />
               </button>
@@ -434,35 +449,35 @@ export default function HealthLog() {
           onClick={() => setSelectedCase(null)}
         >
           <div
-            className="card w-full max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
+            className="card w-full max-w-md bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-3">
-              <h3 className="text-xs font-black uppercase text-slate-400">
+            <div className="flex items-center justify-between border-b border-base-300 pb-3">
+              <h3 className="text-xs font-black uppercase text-base-content/40">
                 Clinical Incident profile
               </h3>
               <button
                 onClick={() => setSelectedCase(null)}
-                className="btn btn-xs btn-ghost btn-circle text-slate-400 hover:text-rose-500"
+                className="btn btn-xs btn-ghost btn-circle text-base-content/40 hover:text-rose-500"
               >
                 <X size={16} />
               </button>
             </div>
             
-            <div className="divide-y divide-slate-100 dark:divide-slate-900 text-xs">
+            <div className="divide-y divide-base-300 text-xs">
               {[
                 { k: "Incident Case #", v: selectedCase.id },
                 { k: "Dispatch Date", v: selectedCase.date },
                 {
                   k: "Animal Unit Tag",
                   v: selectedCase.tag,
-                  s: "text-[#00643b] font-black",
+                  s: "text-primary font-black",
                 },
                 { k: "Livestock Owner", v: selectedCase.farmer },
                 {
                   k: "Symptom Presentation",
                   v: selectedCase.symptoms,
-                  s: "text-slate-500 font-medium",
+                  s: "text-base-content/70 font-medium",
                 },
                 {
                   k: "Primary Medical Verdict",
@@ -472,7 +487,7 @@ export default function HealthLog() {
                 {
                   k: "Treatment Regimen Plan",
                   v: selectedCase.treatment,
-                  s: "text-[#00643b] dark:text-emerald-400 font-bold",
+                  s: "text-primary font-bold",
                 },
                 {
                   k: "Urgency Classification",
@@ -487,15 +502,15 @@ export default function HealthLog() {
                 {
                   k: "Technician Field Remarks",
                   v: selectedCase.technicianNote || "None",
-                  s: "italic text-slate-500",
+                  s: "italic text-base-content/60",
                 },
               ].map((row, index) => (
                 <div key={index} className="flex justify-between py-2.5 gap-4">
-                  <span className="text-slate-400 font-semibold shrink-0">
+                  <span className="text-base-content/40 font-semibold shrink-0">
                     {row.k}
                   </span>
                   <span
-                    className={`text-right text-slate-800 dark:text-slate-200 ${row.s || ""}`}
+                    className={`text-right text-base-content ${row.s || ""}`}
                   >
                     {row.v}
                   </span>
@@ -503,16 +518,16 @@ export default function HealthLog() {
               ))}
             </div>
 
-            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800/80">
-              <Info size={14} className="text-[#00643b] shrink-0" />
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <div className="flex items-center gap-2 bg-base-200 p-3 rounded-xl border border-base-300">
+              <Info size={14} className="text-primary shrink-0" />
+              <p className="text-[10px] text-base-content/40 font-bold uppercase tracking-wider">
                 Clinical records managed under safety guidelines.
               </p>
             </div>
 
             <button
               onClick={() => setSelectedCase(null)}
-              className="btn btn-sm w-full border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold mt-2"
+              className="btn btn-sm w-full btn-primary border-none text-white rounded-xl text-xs font-bold mt-2"
             >
               Dismiss Diagnosis Panel
             </button>
@@ -523,17 +538,17 @@ export default function HealthLog() {
       {/* ===== CUSTOM MODERN CONFIRMATION DIALOG ===== */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/45 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in animate-duration-200">
-          <div className="card w-full max-w-sm bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
-            <div className="flex items-center gap-2 text-slate-400 font-extrabold text-[10px] tracking-widest uppercase">
+          <div className="card w-full max-w-sm bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4">
+            <div className="flex items-center gap-2 text-base-content/40 font-extrabold text-[10px] tracking-widest uppercase">
               <span>{confirmModal.title || "Confirm Deletion"}</span>
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 font-bold leading-relaxed pr-2">
+            <p className="text-xs text-base-content/70 font-bold leading-relaxed pr-2">
               {confirmModal.message}
             </p>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
+            <div className="flex justify-end gap-2 pt-2 border-t border-base-300">
               <button
                 onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
-                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer text-slate-500 dark:text-slate-400"
+                className="btn btn-sm btn-outline border-base-300 rounded-xl px-4 text-xs font-bold cursor-pointer text-base-content/60"
               >
                 Cancel
               </button>

@@ -1,5 +1,15 @@
 import type { AxiosInstance } from "axios";
 
+export const getOfficialRecords = async (
+  api: AxiosInstance,
+  params: { page?: number; limit?: number; type?: string; search?: string } = {},
+) => {
+  const response = await api.get("/animals/records", {
+    params: { page: 1, limit: 25, ...params },
+  });
+  return response.data;
+};
+
 export const getInseminations = async (api: AxiosInstance) => {
   const response = await api.get("/technician/inseminations?page=1&limit=25");
   return response.data;

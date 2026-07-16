@@ -8,13 +8,16 @@ import {
   getSyncHistory,
   QueuedMutation,
   retryQueueItem,
+  processOfflineQueue,
 } from '@/lib/offlineQueue';
 import SafeScreen from '@/components/safeScreen';
 import { format } from 'date-fns';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
+import { useApi } from '@/lib/api';
 
 export default function SyncHistoryScreen() {
   const router = useRouter();
+  const api = useApi();
   const [pending, setPending] = useState<QueuedMutation[]>([]);
   const [history, setHistory] = useState<QueuedMutation[]>([]);
   const [activeTab, setActiveTab] = useState<'pending' | 'synced'>('pending');
@@ -95,7 +98,8 @@ export default function SyncHistoryScreen() {
                   status="pending"
                   onRetry={async () => {
                     await retryQueueItem(item.id);
-                    loadData();
+                    await processOfflineQueue(api);
+                    await loadData();
                   }}
                   onDiscard={() => discard(item)}
                 />

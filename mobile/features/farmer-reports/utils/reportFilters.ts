@@ -4,7 +4,6 @@ interface FilterParams {
   records: ActivityFeedItem[];
   recordSearch: string;
   recordType: "all" | ActivityFeedItem["type"];
-  recordStatus: "all" | "open" | "completed" | "closed";
   recordPeriod: "all" | "30" | "90";
 }
 
@@ -12,7 +11,6 @@ export const filterActivityRecords = ({
   records,
   recordSearch,
   recordType,
-  recordStatus,
   recordPeriod,
 }: FilterParams): ActivityFeedItem[] => {
   const query = recordSearch.trim().toLowerCase();
@@ -27,28 +25,6 @@ export const filterActivityRecords = ({
       )
         return false;
     }
-    const status = String(record.details?.status || "").toLowerCase();
-    if (
-      recordStatus === "open" &&
-      ![
-        "pending",
-        "approved",
-        "scheduled",
-        "in_progress",
-        "assigned",
-      ].includes(status)
-    )
-      return false;
-    if (
-      recordStatus === "completed" &&
-      !["done", "resolved", "completed"].includes(status)
-    )
-      return false;
-    if (
-      recordStatus === "closed" &&
-      !["cancelled", "rejected"].includes(status)
-    )
-      return false;
     if (!query) return true;
     return [
       record.title,

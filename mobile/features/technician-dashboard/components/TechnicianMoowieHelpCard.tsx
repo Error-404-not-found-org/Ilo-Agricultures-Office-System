@@ -14,23 +14,32 @@ export function TechnicianMoowieHelpCard() {
     <Card
       onPress={() => router.push("/ask-moowie" as any)}
       style={{
-        backgroundColor: isDark ? "#1f2937" : "#FAF7F2",
-        borderRadius: 28,
-        padding: 20,
+        backgroundColor: colors.card,
+        borderRadius: 20,
+        padding: 16,
         marginTop: 12,
         flexDirection: "row",
         alignItems: "center",
         gap: 16,
         borderWidth: 1,
-        borderColor: isDark ? "#374151" : "#f3f0e9",
+        borderColor: colors.border,
       }}
     >
-      <View style={{ width: 60, height: 60 }}>
+      <View
+        style={{
+          width: 52,
+          height: 52,
+          borderRadius: 14,
+          backgroundColor: isDark ? "rgba(16,185,129,0.1)" : "#f0fdf4",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <Image
           source={{
             uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
           }}
-          style={{ width: "100%", height: "100%" }}
+          style={{ width: 46, height: 46 }}
           resizeMode="contain"
         />
       </View>
@@ -54,13 +63,15 @@ export function TechnicianMoowieHelpCard() {
         style={{
           width: 44,
           height: 44,
-          borderRadius: 22,
-          backgroundColor: colors.primary,
+          borderRadius: 12,
+          backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#f0fdf4",
+          borderWidth: 1,
+          borderColor: isDark ? "rgba(16,185,129,0.22)" : "#dcfce7",
           alignItems: "center",
           justifyContent: "center",
         }}
       >
-        <ChevronRight size={24} color="#fff" />
+        <ChevronRight size={22} color={colors.primary} />
       </View>
     </Card>
   );

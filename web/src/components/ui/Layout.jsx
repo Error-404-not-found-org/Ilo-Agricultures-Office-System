@@ -36,17 +36,28 @@ export default function Layout() {
   }, [signOut]);
 
   return (
-    <div className="flex h-screen overflow-hidden font-sans antialiased bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200">
-      {/* Backdrop overlay for mobile */}
-      {isOpen && (
-        <div 
-          onClick={close}
-          className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-30 lg:hidden transition-opacity duration-300"
-        />
-      )}
-      <Sidebar />
-      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+    <div className="drawer lg:drawer-open h-screen bg-base-200 text-base-content font-sans antialiased">
+      <input
+        id="app-navigation-drawer"
+        type="checkbox"
+        className="drawer-toggle"
+        checked={isOpen}
+        onChange={(event) => {
+          if (!event.target.checked) close();
+        }}
+        aria-label="Open application navigation"
+      />
+      <div className="drawer-content flex min-w-0 flex-col h-screen overflow-hidden">
           <Outlet />
+      </div>
+      <div className="drawer-side z-40">
+        <label
+          htmlFor="app-navigation-drawer"
+          aria-label="Close application navigation"
+          className="drawer-overlay"
+          onClick={close}
+        />
+        <Sidebar />
       </div>
     </div>
   );

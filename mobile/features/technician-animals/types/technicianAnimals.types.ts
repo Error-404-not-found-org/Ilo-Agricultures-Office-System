@@ -19,6 +19,9 @@ export interface AnimalsFetchParams {
   page: number;
   limit: number;
   search: string;
+  city?: string;
+  barangay?: string;
+  reproductiveStatus?: string;
 }
 
 export interface AnimalsResponse {

@@ -6,14 +6,11 @@ import {
   TextInput,
   Modal,
   FlatList,
-  StatusBar,
   ActivityIndicator,
   Image,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  ArrowLeft,
   Syringe,
   User,
   MapPin,
@@ -28,7 +25,7 @@ import React, { useState, useEffect, useRef } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { toast } from "sonner-native";
 import { validateRequestTime } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useTheme } from "@/lib/theme";
@@ -36,11 +33,21 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
 import { safeBack } from "@/utils/navigation";
+import { useApi } from "@/lib/api";
 import {
   useFarmerAnimalsForAiQuery,
   useFarmerSelfProfileQuery,
+  useMyAIRequestsQuery,
   useSystemConfigQuery,
 } from "@/features/farmer-requests/hooks/useFarmerRequestForms";
+import {
+  findActiveAIRequestForAnimal,
+  AI_REQUEST_INVALIDATION_KEYS,
+  getAIRequestSubmitErrorMessage,
+  getAIRequestSubmitState,
+} from "@/features/farmer-requests/utils/aiRequestState";
+import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
+import { requestFormStyles } from "@/features/farmer-requests/components/requestFormStyles";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -162,7 +169,10 @@ const HEAT_SIGNS: HeatSign[] = [
 export default function RequestAI() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const insets = useSafeAreaInsets();
+  const previousAttemptId = Array.isArray(params.requestId)
+    ? params.requestId[0]
+    : params.requestId;
+  const isReInsemination = params.mode === "re-inseminate" && Boolean(previousAttemptId);
   const scrollRef = useRef<ScrollView>(null);
   const submitLockRef = useRef(false);
   const { colors, isDark } = useTheme();
@@ -204,12 +214,26 @@ export default function RequestAI() {
   };
 
   const queryClient = useQueryClient();
+  const api = useApi();
+  const [serverConflictRequest, setServerConflictRequest] = useState<any>(null);
+
+  const { data: previousAttemptData, isLoading: loadingPreviousAttempt } = useQuery({
+    queryKey: ["ai-request", previousAttemptId, "re-insemination-context"],
+    queryFn: async () => {
+      const response = await api.get(`/ai-request/${previousAttemptId}`);
+      return response.data?.data || response.data;
+    },
+    enabled: isReInsemination,
+  });
+  const previousAttempt = previousAttemptData;
 
   const { data: config } = useSystemConfigQuery();
 
   const mutation = useOfflineMutation(
     {
-      url: "/ai-request",
+      url: isReInsemination
+        ? `/ai-request/${previousAttemptId}/re-insemination`
+        : "/ai-request",
       method: "POST",
       description: `AI Service Request for ${selectedAnimal?.earTag || "Livestock"}`,
     },
@@ -227,15 +251,28 @@ export default function RequestAI() {
         setImageUri(null);
         setImageBase64(null);
 
-        queryClient.invalidateQueries({ queryKey: ["farmer", "requests"] });
+        for (const queryKey of AI_REQUEST_INVALIDATION_KEYS) {
+          queryClient.invalidateQueries({ queryKey: [...queryKey] });
+        }
         safeBack();
       },
       onError: (error: any) => {
-        if (error.message !== "OFFLINE_SAVED") {
-          toast.error(
-            error.response?.data?.message ||
-              "Failed to submit request. Please try again.",
+        if (error?.response?.data?.code === "ACTIVE_AI_REQUEST_EXISTS") {
+          const conflict = error.response.data;
+          setServerConflictRequest({
+            _id: conflict.existingRequestId,
+            animalId: selectedAnimal?._id,
+            status: conflict.existingRequestStatus || "pending",
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["farmer", "ai-requests", "active-check"],
+          });
+          setTimeout(
+            () => scrollRef.current?.scrollTo({ y: 500, animated: true }),
+            100,
           );
+        } else if (error.message !== "OFFLINE_SAVED") {
+          toast.error(getAIRequestSubmitErrorMessage(error));
         } else {
           safeBack();
         }
@@ -283,6 +320,20 @@ export default function RequestAI() {
 
   const { data: animalsData, isLoading: isLoadingAnimals } =
     useFarmerAnimalsForAiQuery();
+  const { data: aiRequestsData } = useMyAIRequestsQuery();
+  const aiRequests = Array.isArray(aiRequestsData)
+    ? aiRequestsData
+    : aiRequestsData?.data || [];
+  const activeRequest = findActiveAIRequestForAnimal(
+    serverConflictRequest
+      ? [...aiRequests, serverConflictRequest]
+      : aiRequests,
+    selectedAnimal?._id,
+  );
+  const submitState = getAIRequestSubmitState({
+    hasActiveRequest: Boolean(activeRequest),
+    isSubmitting: submitting,
+  });
 
   useEffect(() => {
     if (animalsData) {
@@ -397,6 +448,11 @@ export default function RequestAI() {
         return;
       }
 
+      if (activeRequest) {
+        scrollRef.current?.scrollTo({ y: 500, animated: true });
+        return;
+      }
+
       if (selectedAnimal.reproductiveStatus === "Pregnant") {
         setPregnantSubmitModalVisible(true);
         return;
@@ -479,44 +535,17 @@ export default function RequestAI() {
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
-      <View
-        className="absolute top-0 left-0 right-0 h-[230px]"
-        style={{ backgroundColor: "#00643B" }}
+      <FarmerRequestHeader
+        title={isReInsemination ? "Request Re-insemination" : "Request AI Service"}
+        onBack={safeBack}
       />
-
-      {/* Header */}
-      <View
-        style={{ paddingTop: insets.top + 16 }}
-        className="px-6 pb-6 flex-row items-center gap-4 z-10"
-      >
-        <TouchableOpacity
-          onPress={() => safeBack()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          className="w-11 h-11 bg-white/20 rounded-full items-center justify-center border border-white/20"
-          activeOpacity={0.7}
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View>
-          <Text className="text-[20px] font-bold text-white leading-tight">
-            AI Service Request
-          </Text>
-          <Text className="text-[12px] text-emerald-100 font-medium">
-            Artificial Insemination Request
-          </Text>
-        </View>
-      </View>
 
       {/* Content card */}
       <View
-        className="flex-1 rounded-t-[32px] px-6 pt-6 mt-2"
+        className="flex-1"
         style={{
-          shadowColor: "#000",
-          shadowOpacity: 0.08,
-          shadowRadius: 15,
-          elevation: 8,
+          paddingHorizontal: 20,
+          paddingTop: 16,
           backgroundColor: colors.background,
         }}
       >
@@ -526,6 +555,41 @@ export default function RequestAI() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 160 }}
         >
+          <View
+            className="rounded-2xl p-4 mb-5 border flex-row items-start"
+            style={{
+              backgroundColor: isDark
+                ? "rgba(16, 185, 129, 0.08)"
+                : "#f0fdf4",
+              borderColor: isDark
+                ? "rgba(16, 185, 129, 0.2)"
+                : "#bbf7d0",
+            }}
+          >
+            <View
+              className="w-9 h-9 rounded-xl items-center justify-center"
+              style={{ backgroundColor: isDark ? colors.tint : "#dcfce7" }}
+            >
+              <Syringe size={18} color={primaryColor} />
+            </View>
+            <View className="flex-1 ml-3">
+              <Text
+                className="text-sm font-bold"
+                style={{ color: colors.textPrimary }}
+              >
+                Prepare your AI request
+              </Text>
+              <Text
+                className="text-xs mt-1 leading-5"
+                style={{ color: colors.textSecondary }}
+              >
+                Select an eligible female animal, record observed heat signs,
+                and choose your preferred visit time. A technician will confirm
+                the final schedule.
+              </Text>
+            </View>
+          </View>
+
           {/* ── Farmer Info Card ─────────────────────────────────────────── */}
           <View
             className="rounded-3xl p-5 mb-5 border"
@@ -607,15 +671,61 @@ export default function RequestAI() {
             )}
           </View>
 
+          {isReInsemination && (
+            <View
+              className="rounded-3xl p-5 mb-5 border"
+              style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            >
+              <Text
+                className="text-xs font-bold uppercase tracking-widest mb-3"
+                style={{ color: colors.textMuted }}
+              >
+                Previous AI attempt
+              </Text>
+              {loadingPreviousAttempt ? (
+                <ActivityIndicator color={primaryColor} />
+              ) : previousAttempt ? (
+                <View className="gap-2">
+                  <Text className="text-base font-bold" style={{ color: colors.textPrimary }}>
+                    Attempt #{previousAttempt.attemptNumber || 1}
+                  </Text>
+                  <Text className="text-sm" style={{ color: colors.textSecondary }}>
+                    Service date: {previousAttempt.inseminationDate
+                      ? new Date(previousAttempt.inseminationDate).toLocaleDateString()
+                      : "Not recorded"}
+                  </Text>
+                  <Text className="text-sm" style={{ color: colors.textSecondary }}>
+                    Outcome: {previousAttempt.outcome || "Pending"}
+                  </Text>
+                  <Text className="text-sm" style={{ color: colors.textSecondary }}>
+                    Confirmed by: {previousAttempt.outcomeConfirmationSource
+                      ? previousAttempt.outcomeConfirmationSource.replaceAll("_", " ")
+                      : "Not recorded"}
+                  </Text>
+                  <Text className="text-xs mt-1" style={{ color: colors.textMuted }}>
+                    The new request will be linked as Attempt #{(previousAttempt.attemptNumber || 1) + 1}.
+                  </Text>
+                </View>
+              ) : (
+                <Text className="text-sm" style={{ color: colors.error }}>
+                  Previous attempt details could not be loaded.
+                </Text>
+              )}
+            </View>
+          )}
+
           {/* ── Animal Picker ─────────────────────────────────────────────── */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Select Animal *
           </Text>
           <TouchableOpacity
-            onPress={() => setAnimalModalVisible(true)}
+            onPress={() => {
+              if (!isReInsemination) setAnimalModalVisible(true);
+            }}
+            disabled={isReInsemination}
             className="border rounded-2xl px-4 py-4 flex-row items-center justify-between mb-5"
             style={{
               elevation: 1,
@@ -627,20 +737,23 @@ export default function RequestAI() {
               <View>
                 <Text
                   className="text-[15px] font-bold"
-                  style={{ color: colors.textPrimary }}
+                  style={[requestFormStyles.fieldValue, { color: colors.textPrimary }]}
                 >
                   {selectedAnimal.animalId}
                   {selectedAnimal.earTag ? ` · ${selectedAnimal.earTag}` : ""}
                 </Text>
                 <Text
                   className="text-sm"
-                  style={{ color: colors.textSecondary }}
+                  style={[requestFormStyles.fieldPlaceholder, { color: colors.textSecondary }]}
                 >
-                  {selectedAnimal.species} — {selectedAnimal.breed}
+                  {selectedAnimal.species}, {selectedAnimal.breed}
                 </Text>
               </View>
             ) : (
-              <Text className="text-sm" style={{ color: colors.textMuted }}>
+              <Text
+                className="text-sm"
+                style={[requestFormStyles.fieldPlaceholder, { color: colors.textMuted }]}
+              >
                 Tap to choose an animal
               </Text>
             )}
@@ -650,10 +763,59 @@ export default function RequestAI() {
             />
           </TouchableOpacity>
 
+          {activeRequest && (
+            <View
+              className="p-4 rounded-2xl mb-5 flex-row gap-3 border"
+              style={{
+                backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#fffbeb",
+                borderColor: isDark ? "rgba(245, 158, 11, 0.25)" : "#fde68a",
+              }}
+            >
+              <AlertCircle size={20} color="#d97706" />
+              <View className="flex-1">
+                <Text className="font-bold text-sm" style={{ color: colors.textPrimary }}>
+                  Active AI request
+                </Text>
+                <Text className="text-xs mt-1" style={{ color: colors.textSecondary }}>
+                  Artificial Insemination · {String(activeRequest.status || "pending")
+                    .replace(/[-_]/g, " ")
+                    .replace(/\b\w/g, (character) => character.toUpperCase())}
+                  {"\n"}Complete or cancel this request before creating another one.
+                </Text>
+                {activeRequest._id && (
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(farmer)/ai-request-detail",
+                        params: { id: String(activeRequest._id) },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="View active AI request"
+                    className="flex-row items-center self-start mt-3 py-1"
+                  >
+                    <Text
+                      className="text-xs font-bold"
+                      style={{ color: "#d97706" }}
+                    >
+                      View existing request
+                    </Text>
+                    <MaterialCommunityIcons
+                      name="arrow-right"
+                      size={15}
+                      color="#d97706"
+                      style={{ marginLeft: 4 }}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* ── Preferred Date/Time Picker ───────────────────────────────── */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Preferred Visit Date/Time *
           </Text>
@@ -670,15 +832,18 @@ export default function RequestAI() {
               <View>
                 <Text
                   className="text-[11px] font-medium uppercase tracking-widest"
-                  style={{ color: colors.textMuted }}
+                  style={[requestFormStyles.compactLabel, { color: colors.textMuted }]}
                 >
                   Date
                 </Text>
                 <Text
                   className="text-[15px] font-bold"
-                  style={{ color: preferredDate ? colors.textPrimary : colors.textMuted }}
+                  style={[
+                    requestFormStyles.fieldValue,
+                    { color: preferredDate ? colors.textPrimary : colors.textMuted },
+                  ]}
                 >
-                  {preferredDate ? preferredDate.toLocaleDateString() : "— — — — —"}
+                  {preferredDate ? preferredDate.toLocaleDateString() : "Select date"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -696,20 +861,23 @@ export default function RequestAI() {
               <View>
                 <Text
                   className="text-[11px] font-medium uppercase tracking-widest"
-                  style={{ color: colors.textMuted }}
+                  style={[requestFormStyles.compactLabel, { color: colors.textMuted }]}
                 >
                   Time Slot
                 </Text>
                 <Text
                   className="text-[15px] font-bold"
-                  style={{ color: preferredDate ? colors.textPrimary : colors.textMuted }}
+                  style={[
+                    requestFormStyles.fieldValue,
+                    { color: preferredDate ? colors.textPrimary : colors.textMuted },
+                  ]}
                 >
                   {preferredDate
                     ? preferredDate.toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })
-                    : "— — — — —"}
+                    : "Select time"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -729,7 +897,7 @@ export default function RequestAI() {
           {/* ── Observed Heat Signs Checklists ───────────────────────────── */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Observed Heat Signs * (Select up to 5)
           </Text>
@@ -830,7 +998,7 @@ export default function RequestAI() {
           {/* ── Photo Attachment ─────────────────────────────────────────── */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Attach Photo (Optional)
           </Text>
@@ -878,20 +1046,23 @@ export default function RequestAI() {
           {/* ── Comment Box ──────────────────────────────────────────────── */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Additional Comments / Notes (Optional)
           </Text>
           <TextInput
             className="border rounded-2xl px-4 py-4 text-sm mb-6"
-            style={{
+            style={[
+              requestFormStyles.textInput,
+              {
               minHeight: 120,
               textAlignVertical: "top",
               elevation: 1,
               backgroundColor: colors.card,
               borderColor: colors.border,
               color: colors.textPrimary,
-            }}
+              },
+            ]}
             value={comment}
             onChangeText={setComment}
             onFocus={() => {
@@ -910,18 +1081,23 @@ export default function RequestAI() {
           {/* ── Submit Button ─────────────────────────────────────────────── */}
           <TouchableOpacity
             onPress={() => handleSubmit()}
-            disabled={submitting}
+            disabled={submitState.disabled}
             accessibilityRole="button"
             accessibilityLabel="Submit AI service request"
             activeOpacity={0.85}
             className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
             style={{
-              backgroundColor: submitting ? "#34d399" : primaryColor,
+              backgroundColor:
+                submitState.disabled ? colors.textMuted : primaryColor,
               shadowColor: primaryColor,
             }}
           >
             {submitting ? (
               <ActivityIndicator color="white" size="small" />
+            ) : activeRequest ? (
+              <Text className="text-white font-bold text-base">
+                {submitState.label}
+              </Text>
             ) : (
               <>
                 <Syringe size={20} color="white" />
@@ -949,7 +1125,7 @@ export default function RequestAI() {
             <View className="flex-row justify-between items-center mb-4">
               <Text
                 className="text-lg font-bold"
-                style={{ color: colors.textPrimary }}
+                style={[requestFormStyles.modalTitle, { color: colors.textPrimary }]}
               >
                 Select Animal
               </Text>
@@ -1034,7 +1210,7 @@ export default function RequestAI() {
                       <View className="flex-1">
                         <Text
                           className="text-[15px] font-bold"
-                          style={{ color: colors.textPrimary }}
+                          style={[requestFormStyles.modalItemTitle, { color: colors.textPrimary }]}
                         >
                           {item.animalId}
                           {item.earTag ? ` · ${item.earTag}` : ""}
@@ -1042,7 +1218,7 @@ export default function RequestAI() {
                         <View className="flex-row items-center gap-2 mt-1">
                           <Text
                             className="text-xs"
-                            style={{ color: colors.textMuted }}
+                            style={[requestFormStyles.modalItemMeta, { color: colors.textMuted }]}
                           >
                             {item.species} · {item.breed}
                           </Text>

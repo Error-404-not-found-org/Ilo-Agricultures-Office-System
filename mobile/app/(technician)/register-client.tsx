@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, FlatList } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, FlatList, Image, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, UserPlus, X, ChevronDown } from 'lucide-react-native';
+import { ArrowLeft, UserPlus, X, ChevronDown, User, Camera } from 'lucide-react-native';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { useTheme } from '@/lib/theme';
+import * as ImagePicker from 'expo-image-picker';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 import {
   formatBarangayWithDistrict,
@@ -37,6 +39,45 @@ export default function RegisterClientScreen() {
   const [searchPicker, setSearchPicker] = useState('');
   const [errors, setErrors] = useState<any>({});
   const [isSubmitCoolingDown, setIsSubmitCoolingDown] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+
+  const pickImage = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setImageUri(result.assets[0].uri);
+      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    }
+  };
+
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      toast.error('Permission to access camera was denied');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.5,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setImageUri(result.assets[0].uri);
+      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+    }
+  };
 
   const barangayOptions = useMemo(
     () => getIloiloBarangayOptions(formData.city, formData.district),
@@ -105,6 +146,32 @@ export default function RegisterClientScreen() {
           duration: 5000,
         });
       }
+      if (result.status === "queued" && result.data?._id) {
+        const temporaryFarmerId = String(result.data._id);
+        const farmerName = `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim();
+        Alert.alert(
+          "Farmer saved on this device",
+          "Would you like to register an animal for this farmer now? Both changes will sync in order.",
+          [
+            { text: "Not now", style: "cancel", onPress: () => router.back() },
+            {
+              text: "Register Animal",
+              onPress: () => router.replace({
+                pathname: "/(technician)/register-animal" as any,
+                params: {
+                  farmerId: temporaryFarmerId,
+                  farmerName,
+                  phoneNumber: formData.phoneNumber.trim(),
+                  barangay: formatBarangayWithDistrict(formData.barangay, formData.city, formData.district),
+                  municipality: formData.city,
+                  source: "offline-farmer",
+                },
+              }),
+            },
+          ],
+        );
+        return;
+      }
       router.back();
     },
     onError: (err: any) => {
@@ -149,8 +216,9 @@ export default function RegisterClientScreen() {
       lastName: formData.lastName.trim(),
       phoneNumber: formData.phoneNumber.trim(),
       email: formData.email.trim() || undefined,
+      imageUrl: imageBase64 || undefined,
       address: {
-        barangay: formatBarangayWithDistrict(formData.barangay, formData.city, formData.district),
+        barangay: formData.barangay,
         city: formData.city,
         district: formData.city === ILOILO_CITY_NAME ? formData.district : "",
         province: "Iloilo",
@@ -184,6 +252,26 @@ export default function RegisterClientScreen() {
              <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-emerald-800 dark:text-emerald-300 text-xs flex-1">
                Register a farmer for immediate service. If no email is added, they can later claim this profile by verifying the same phone number in the app.
              </Text>
+          </View>
+
+          {/* Profile Photo Picker */}
+          <View className="items-center mb-8">
+            <TouchableOpacity 
+              onPress={() => setPhotoModalVisible(true)} 
+              className="w-[100px] h-[100px] rounded-full bg-white dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800 items-center justify-center overflow-hidden shadow-sm"
+              style={{ elevation: 1 }}
+            >
+              {imageUri ? (
+                <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              ) : (
+                <View className="items-center justify-center p-2">
+                  <Camera size={26} color={isDark ? '#4b5563' : '#94a3b8'} />
+                </View>
+              )}
+            </TouchableOpacity>
+            <Text className="mt-2 text-[12px] font-outfit-bold text-slate-500 text-center">
+              {imageUri ? "Change Photo" : "Add Photo"}
+            </Text>
           </View>
 
           {/* PERSONAL DETAILS */}
@@ -325,49 +413,113 @@ export default function RegisterClientScreen() {
       </KeyboardAvoidingView>
 
       {/* ADDRESS SELECTION MODAL */}
-      <Modal animationType="slide" transparent={true} visible={!!pickerState} onRequestClose={() => setPickerState(null)}>
-         <View className="flex-1 bg-slate-900/40 justify-end">
-            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
-               <View className="flex-row justify-between items-center mb-6">
-                   <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white">{pickerTitle}</Text>
-                   <TouchableOpacity onPress={() => { setPickerState(null); setSearchPicker(''); }} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
-                       <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
-                   </TouchableOpacity>
-               </View>
+      <Modal animationType="fade" transparent={true} visible={!!pickerState} onRequestClose={() => setPickerState(null)}>
+         <KeyboardAvoidingView
+           behavior={Platform.OS === "ios" ? "padding" : "height"}
+           className="flex-1"
+         >
+           <View className="flex-1 bg-black/50 justify-center p-5">
+              <View className="bg-white dark:bg-slate-900 rounded-[28px] p-6 min-h-[60%] max-h-[80%] shadow-2xl border border-slate-100 dark:border-slate-800">
+                 <View className="flex-row justify-between items-center mb-6">
+                     <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-2xl text-slate-800 dark:text-white">{pickerTitle}</Text>
+                     <TouchableOpacity onPress={() => { setPickerState(null); setSearchPicker(''); }} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
+                         <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
+                     </TouchableOpacity>
+                 </View>
 
-               <TextInput
-                 className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium mb-4"
-                 placeholder="Search barangay..."
-                 placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                 value={searchPicker}
-                 onChangeText={setSearchPicker}
-               />
+                 <TextInput
+                   className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium mb-4"
+                   placeholder={`Search ${pickerState === 'city' ? 'municipality/city' : pickerState === 'district' ? 'district' : 'barangay'}...`}
+                   placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                   value={searchPicker}
+                   onChangeText={setSearchPicker}
+                 />
 
-               <FlatList 
-                  data={filteredPickerData}
-                  keyExtractor={(item) => item}
-                  showsVerticalScrollIndicator={false}
-                  renderItem={({ item }) => (
-                      <TouchableOpacity 
-                         onPress={() => {
-                            if (pickerState === 'city') {
-                              setFormData({...formData, city: item, district: '', barangay: ''});
-                            } else if (pickerState === 'district') {
-                              setFormData({...formData, district: item, barangay: ''});
-                            } else if (pickerState === 'barangay') {
-                              setFormData({...formData, barangay: item});
-                            }
-                            setPickerState(null);
-                            setSearchPicker('');
-                         }}
-                         className="py-4 border-b border-slate-50 dark:border-slate-800"
-                      >
-                         <Text className="font-outfit-bold text-slate-700 dark:text-slate-200 text-base">{item}</Text>
-                      </TouchableOpacity>
-                  )}
-               />
+                 <FlatList 
+                    data={filteredPickerData}
+                    keyExtractor={(item) => item}
+                    showsVerticalScrollIndicator={false}
+                    renderItem={({ item }) => (
+                        <TouchableOpacity 
+                           onPress={() => {
+                              if (pickerState === 'city') {
+                                setFormData({...formData, city: item, district: '', barangay: ''});
+                              } else if (pickerState === 'district') {
+                                setFormData({...formData, district: item, barangay: ''});
+                              } else if (pickerState === 'barangay') {
+                                setFormData({...formData, barangay: item});
+                              }
+                              setPickerState(null);
+                              setSearchPicker('');
+                           }}
+                           className="py-4 border-b border-slate-50 dark:border-slate-800"
+                        >
+                           <Text className="font-outfit-bold text-slate-700 dark:text-slate-200 text-base">{item}</Text>
+                        </TouchableOpacity>
+                    )}
+                 />
+              </View>
+           </View>
+         </KeyboardAvoidingView>
+       </Modal>
+      {/* PHOTO SELECTION MODAL */}
+      <Modal visible={photoModalVisible} transparent={true} animationType="slide" onRequestClose={() => setPhotoModalVisible(false)}>
+        <View className="flex-1 bg-slate-900/40 justify-end">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-6 pb-12 shadow-2xl">
+            <View className="flex-row justify-between items-center mb-6">
+              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-xl text-slate-800 dark:text-white">
+                Select Photo Source
+              </Text>
+              <TouchableOpacity onPress={() => setPhotoModalVisible(false)} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
+                <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
+              </TouchableOpacity>
             </View>
-         </View>
+
+            <View className="flex-row justify-between">
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  takePhoto();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
+              >
+                <Camera size={24} color="#059669" style={{ marginBottom: 8 }} />
+                <Text className="font-outfit-bold text-xs text-slate-700 dark:text-slate-200">
+                  Camera
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  pickImage();
+                }}
+                className="w-[48%] py-5 rounded-2xl items-center justify-center border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
+              >
+                <MaterialCommunityIcons name="image-multiple" size={24} color="#059669" style={{ marginBottom: 8 }} />
+                <Text className="font-outfit-bold text-xs text-slate-700 dark:text-slate-200">
+                  Albums / Gallery
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {imageUri && (
+              <TouchableOpacity
+                onPress={() => {
+                  setPhotoModalVisible(false);
+                  setImageUri(null);
+                  setImageBase64(null);
+                }}
+                className="mt-4 py-4 rounded-2xl items-center justify-center border border-red-100 dark:border-red-950/20 bg-red-50/50 dark:bg-red-950/10 flex-row gap-2"
+              >
+                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ef4444" />
+                <Text className="font-outfit-bold text-sm text-red-500">
+                  Remove Photo
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );

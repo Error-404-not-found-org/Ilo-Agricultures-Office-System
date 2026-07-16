@@ -42,9 +42,22 @@ export interface ActivityFeedItem {
     status?: string;
     outcome?: string;
     technician?: string;
+    technicianPhone?: string;
     technicianNote?: string;
+    outcomeVerificationStatus?: string;
+    outcomeConfirmationSource?: string;
+    outcomeConfirmedAt?: string;
+    previousAttemptNumber?: number;
+    previousAttemptDate?: string;
     inseminationDate?: string;
     scheduledDate?: string;
+    preferredDate?: string;
+    requestedAt?: string;
+    serviceDate?: string;
+    entryDate?: string;
+    isHistoricalEntry?: boolean;
+    performedByName?: string;
+    lateEntryReason?: string;
 
     requestType?: string;
     symptoms?: string;
@@ -56,18 +69,18 @@ export interface ActivityFeedItem {
 
     calvingEase?: string;
     numberOfCalves?: number;
-    calves?: Array<{
+    calves?: {
       sex: string;
       earTag?: string;
       weight?: number;
       imageUrl?: string;
-    }>;
+    }[];
   };
 }
 
 export interface RecordStats {
   total: number;
-  approved: number;
-  pending: number;
-  rejected: number;
+  ai: number;
+  health: number;
+  calving: number;
 }

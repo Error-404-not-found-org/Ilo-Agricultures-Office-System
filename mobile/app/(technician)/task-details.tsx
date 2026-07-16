@@ -280,7 +280,7 @@ export default function TaskDetailsScreen() {
                 <Navigation size={14} color={isDark ? '#34d399' : '#00643B'} />
                 <Text style={[styles.navigateBtnText, { color: isDark ? '#34d399' : '#00643B' }]}>
                   {typeof farmLocation?.latitude === "number"
-                    ? "Navigate to Farm Pin"
+                    ? "Get directions to farm"
                     : (task.farmerId?.address?.coordinates?.lat
                       ? "Navigate to Address Coordinates"
                       : "Navigate to Barangay Area")}

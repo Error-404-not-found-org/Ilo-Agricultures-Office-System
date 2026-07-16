@@ -3,15 +3,16 @@ import {
   getMyInseminations, getMyProfile, getMyReInseminations, 
   getMyPregnancyChecks, getMyCalvings, getMyNotifications, 
   walkInInsemination, getTechnicianDashboardData, 
-  updateInseminationStatus, getAnimalHistory, registerFarmer, recordPregnancyCheck,
+  getAnimalHistory, registerFarmer, recordPregnancyCheck,
   recordCalving, getDashboardStats, getDashboardFeed, getDashboardRegistry, walkInLivestock,
   toggleFarmerVerification, getTechnicianAnalytics, deleteAnimal,
-  deletePregnancyCheck, deleteCalving, getFieldNotes,
+  deletePregnancyCheck, deleteCalving, correctPregnancyCheck, correctCalving, getFieldNotes,
   createFieldNote, getTechnicianFieldNotes, deleteFieldNote, deleteFieldNoteRecord,
   markCalvingAsSeen, getTechnicianRequests, declineTechnicianRequest, claimRequest
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import { getCleanupSurvey, executeCleanup } from "../controllers/maintenance.controllers.js";
+import { updateRequestStatus as updateCanonicalAIRequestStatus } from "../controllers/ai-request.controllers.js";
 
 const router = Router();
 
@@ -40,15 +41,18 @@ router.get("/profile", getMyProfile);
 
 router.post("/walk-in-insemination", walkInInsemination);
 router.post("/walk-in-livestock", walkInLivestock);
-router.patch("/inseminations/:id/status", updateInseminationStatus);
+// Compatibility alias for installed clients and queued offline mutations.
+router.patch("/inseminations/:id/status", updateCanonicalAIRequestStatus);
 router.get("/animal-history/:id", getAnimalHistory);
 router.post("/register-farmer", registerFarmer);
 router.post("/pregnancy-check", recordPregnancyCheck);
 router.post("/record-calving", recordCalving);
 router.patch("/farmers/:id/verify", toggleFarmerVerification);
 router.delete("/animals/:id", deleteAnimal);
-router.delete("/pregnancy-checks/:id", deletePregnancyCheck);
-router.delete("/calvings/:id", deleteCalving);
+router.delete("/pregnancy-checks/:id", requireRole(["admin"]), deletePregnancyCheck);
+router.delete("/calvings/:id", requireRole(["admin"]), deleteCalving);
+router.patch("/pregnancy-checks/:id/correct", requireRole(["admin"]), correctPregnancyCheck);
+router.patch("/calvings/:id/correct", requireRole(["admin"]), correctCalving);
 router.patch("/calvings/:id/seen", markCalvingAsSeen);
 
 // Technician Photo Notes

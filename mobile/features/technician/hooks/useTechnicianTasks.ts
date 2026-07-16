@@ -8,8 +8,7 @@ import {
   claimTask,
   CreateTaskPayload,
 } from "../services/tasks.service";
-import NetInfo from "@react-native-community/netinfo";
-import { addToOfflineQueue } from "@/lib/offlineQueue";
+import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
 
 export const tasksQueryKeys = {
   all: ["technician", "tasks"] as const,
@@ -33,7 +32,18 @@ export const useTechnicianTasks = (id?: string, filters?: { scope?: string }) =>
   });
 
   const createTaskMutation = useMutation({
-    mutationFn: (payload: CreateTaskPayload) => createTask(api, payload),
+    mutationFn: async (payload: CreateTaskPayload) => {
+      return executeOfflineMutation(
+        api,
+        {
+          url: "/tasks",
+          method: "POST",
+          description: "Create technician task",
+          entityType: "task",
+        },
+        payload
+      );
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: tasksQueryKeys.all });
     },
@@ -41,17 +51,15 @@ export const useTechnicianTasks = (id?: string, filters?: { scope?: string }) =>
 
   const completeTaskMutation = useMutation({
     mutationFn: async (taskId: string) => {
-      const net = await NetInfo.fetch();
-      if (!net.isConnected) {
-        await addToOfflineQueue({
+      return executeOfflineMutation(
+        api,
+        {
           url: `/tasks/${taskId}/complete`,
           method: "PUT",
-          data: {},
           description: "Complete farm visit task",
-        });
-        return { status: "queued" };
-      }
-      return completeTask(api, taskId);
+        },
+        {}
+      );
     },
     onSuccess: (_, taskId) => {
       queryClient.invalidateQueries({ queryKey: tasksQueryKeys.all });
@@ -61,7 +69,17 @@ export const useTechnicianTasks = (id?: string, filters?: { scope?: string }) =>
   });
 
   const claimTaskMutation = useMutation({
-    mutationFn: (taskId: string) => claimTask(api, taskId),
+    mutationFn: async (taskId: string) => {
+      return executeOfflineMutation(
+        api,
+        {
+          url: `/tasks/${taskId}/claim`,
+          method: "PUT",
+          description: "Claim farm visit task",
+        },
+        {}
+      );
+    },
     onSuccess: (_, taskId) => {
       queryClient.invalidateQueries({ queryKey: tasksQueryKeys.all });
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });

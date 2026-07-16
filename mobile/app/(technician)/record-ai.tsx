@@ -22,20 +22,36 @@ import {
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { CATTLE_BREEDS, CATTLE_SPECIES } from "@/lib/constants";
+import { CATTLE_BREEDS } from "@/lib/constants";
 import { getSireCodeByBreed } from "@/lib/sireRegistry";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
 import { useWalkInInseminationMutation } from "@/features/technician/hooks/useTechnicianFieldRecords";
 import { getAnimalsByFarmer } from "@/features/technician/services/animalManagement.service";
-import {
-  formatBarangayWithDistrict,
-  getIloiloBarangayOptions,
-  ILOILO_CITY_DISTRICT_OPTIONS,
-  ILOILO_CITY_NAME,
-  ILOILO_MUNICIPALITY_OPTIONS,
-} from "@/constants/address";
+import { ILOILO_MUNICIPALITY_OPTIONS } from "@/constants/address";
+import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "@/lib/cattleCore";
+
+const getReproductiveStatusStyle = (status?: string) => {
+  switch (status) {
+    case "Pregnant":
+      return {
+        bg: "bg-pink-50 dark:bg-pink-950/30",
+        text: "text-pink-600 dark:text-pink-400",
+      };
+    case "Inseminated":
+      return {
+        bg: "bg-blue-50 dark:bg-blue-950/30",
+        text: "text-blue-600 dark:text-blue-400",
+      };
+    case "Normal":
+    default:
+      return {
+        bg: "bg-slate-100 dark:bg-slate-800",
+        text: "text-slate-600 dark:text-slate-400",
+      };
+  }
+};
 
 export default function RecordAIScreen() {
   const router = useRouter();
@@ -48,22 +64,84 @@ export default function RecordAIScreen() {
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [showFarmerModal, setShowFarmerModal] = useState(false);
 
+  const [searchFarmer, setSearchFarmer] = useState("");
+  const [selectedMunicipality, setSelectedMunicipality] = useState<string | null>(null);
+  const [showMunicipalityDropdown, setShowMunicipalityDropdown] = useState(false);
+  const [searchMunicipality, setSearchMunicipality] = useState("");
+
+  const filteredMunicipalities = useMemo(() => {
+    const list = ["All Municipalities", ...ILOILO_MUNICIPALITY_OPTIONS];
+    if (!searchMunicipality) return list;
+    return list.filter((m) => m.toLowerCase().includes(searchMunicipality.toLowerCase()));
+  }, [searchMunicipality]);
+
+  const filteredFarmers = useMemo(() => {
+    return farmers.filter((farmer: any) => {
+      if (selectedMunicipality) {
+        const farmerCity = farmer.address?.city;
+        if (!farmerCity || farmerCity.toLowerCase() !== selectedMunicipality.toLowerCase()) {
+          return false;
+        }
+      }
+      if (searchFarmer) {
+        const nameMatch = farmer.name?.toLowerCase().includes(searchFarmer.toLowerCase());
+        const phoneMatch = farmer.phoneNumber?.includes(searchFarmer);
+        return nameMatch || phoneMatch;
+      }
+      return true;
+    });
+  }, [farmers, searchFarmer, selectedMunicipality]);
+
   const [animals, setAnimals] = useState<any[]>([]);
   const [selectedAnimal, setSelectedAnimal] = useState<any>(null);
   const [loadingAnimals, setLoadingAnimals] = useState(false);
+
+  const animalWarning = useMemo(() => {
+    if (!selectedAnimal) return null;
+
+    if (selectedAnimal.gender === "Male" || (selectedAnimal.gender && selectedAnimal.gender.toLowerCase() === "male")) {
+      return "Artificial insemination is only available for female cattle.";
+    }
+
+    const ageCheck = checkInseminationAgeEligibility(selectedAnimal.dob, selectedAnimal.species || "Cattle");
+    if (!ageCheck.isEligible) {
+      return ageCheck.reason || "Animal is too young for breeding.";
+    }
+
+    if (selectedAnimal.reproductiveStatus === "Pregnant") {
+      return "There is already an active pregnancy registered for this animal.";
+    }
+
+    if (["Inseminated", "Likely Pregnant"].includes(selectedAnimal.reproductiveStatus || "")) {
+      return "This animal is currently under reproductive monitoring.";
+    }
+
+    if (selectedAnimal.lastCalvingDate) {
+      const recovery = verifyPostpartumWindow(
+        selectedAnimal.lastCalvingDate,
+        new Date(),
+        selectedAnimal.species || "Cattle",
+        selectedAnimal.breed
+      );
+      if (!recovery.isSafe) {
+        return `Animal is in the postpartum recovery lockout window. Voluntary waiting period is ${recovery.requiredDays} days (${recovery.daysPassed} days passed).`;
+      }
+    }
+
+    return null;
+  }, [selectedAnimal]);
 
   const [sireBreed, setSireBreed] = useState("");
   const [sireCode, setSireCode] = useState(
     `SIRE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
   );
+  const [semenBatch, setSemenBatch] = useState("");
   const [estrus, setEstrus] = useState("Natural");
   const [notes, setNotes] = useState("");
   const saving = walkInInseminationMutation.isPending;
   const [status, setStatus] = useState<"done" | "in-progress">("done");
   const [showBreedModal, setShowBreedModal] = useState(false);
   const [showAnimalModal, setShowAnimalModal] = useState(false);
-  const [showSpeciesModal, setShowSpeciesModal] = useState(false);
-  const [showQuickBreedModal, setShowQuickBreedModal] = useState(false);
 
   // Mission Date & Time Picker States
   const [inseminationDate, setInseminationDate] = useState(new Date());
@@ -99,52 +177,10 @@ export default function RecordAIScreen() {
     }
   };
 
-  // Quick Registration State
-  const [isNewFarmer, setIsNewFarmer] = useState(false);
-  const [newFarmer, setNewFarmer] = useState({
-    firstName: "",
-    lastName: "",
-    phone: "",
-    email: "",
-    barangay: "",
-    city: "",
-    district: "",
-  });
-  const [newAnimal, setNewAnimal] = useState({
-    animalId: "",
-    earTag: "",
-    species: CATTLE_SPECIES[0],
-    breed: "",
-    color: "",
-  });
-
-  const [addressPicker, setAddressPicker] = useState<null | "city" | "district" | "barangay">(null);
-  const [searchAddress, setSearchAddress] = useState("");
-
-  const barangayOptions = useMemo(
-    () => getIloiloBarangayOptions(newFarmer.city, newFarmer.district),
-    [newFarmer.city, newFarmer.district],
-  );
-
-  const addressPickerTitle = addressPicker === "city"
-    ? "Select Municipality / City"
-    : addressPicker === "district"
-      ? "Select Iloilo City District"
-      : "Select Barangay";
-
-  const addressPickerData = addressPicker === "city"
-    ? ILOILO_MUNICIPALITY_OPTIONS
-    : addressPicker === "district"
-      ? ILOILO_CITY_DISTRICT_OPTIONS
-      : barangayOptions;
-
-  const filteredAddressOptions = addressPickerData.filter((item) =>
-    item.toLowerCase().includes(searchAddress.toLowerCase()),
-  );
+  // Quick Registration States removed
 
   const handleFarmerSelect = async (farmer: any) => {
     setSelectedFarmer(farmer);
-    setIsNewFarmer(false);
     setShowFarmerModal(false);
     setSelectedAnimal(null);
     setLoadingAnimals(true);
@@ -163,78 +199,34 @@ export default function RecordAIScreen() {
   const handleSave = async () => {
     toast.dismiss();
     // Validation
-    if (isNewFarmer) {
-      if (
-        !newFarmer.firstName ||
-        !newFarmer.lastName ||
-        !newFarmer.phone ||
-        !newFarmer.city ||
-        !newFarmer.barangay ||
-        (!newAnimal.animalId && !newAnimal.earTag) ||
-        !newAnimal.breed
-      ) {
-        toast.error("Please fill in both farmer and animal details.");
-        return;
-      }
-      if (!/^09\d{9}$/.test(newFarmer.phone)) {
-        toast.error("Phone number must start with 09 and be exactly 11 digits.");
-        return;
-      }
-      if (newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district) {
-        toast.error("Please select the Iloilo City district.");
-        return;
-      }
-    } else {
-      if (!selectedFarmer) {
-        toast.error("Please select a farmer.");
-        return;
-      }
-      if (!selectedAnimal && !newAnimal.animalId && !newAnimal.earTag) {
-        toast.error("Please select an animal or register a new one.");
-        return;
-      }
+    if (!selectedFarmer) {
+      toast.error("Please select a farmer.");
+      return;
+    }
+    if (!selectedAnimal) {
+      toast.error("Please select an animal.");
+      return;
+    }
+    if (animalWarning) {
+      toast.error(animalWarning);
+      return;
     }
 
     try {
-      const payload = isNewFarmer
-        ? {
-            firstName: newFarmer.firstName,
-            lastName: newFarmer.lastName,
-            phoneNumber: newFarmer.phone,
-            email: newFarmer.email || undefined,
-            address: {
-              barangay: formatBarangayWithDistrict(newFarmer.barangay, newFarmer.city, newFarmer.district),
-              city: newFarmer.city,
-              district: newFarmer.city === ILOILO_CITY_NAME ? newFarmer.district : "",
-            },
-            animalDetails: newAnimal,
-            inseminationDetails: {
-              sireBreed,
-              sireCode,
-              estrus,
-              notes,
-              status,
-              inseminationDate: getFormattedDate(inseminationDate),
-              time: getFormattedTime(inseminationTime),
-            },
-          }
-        : {
-            farmerId: selectedFarmer._id,
-            animalId: selectedAnimal?._id,
-            animalDetails:
-              !selectedAnimal && (newAnimal.animalId || newAnimal.earTag)
-                ? newAnimal
-                : null,
-            inseminationDetails: {
-              sireBreed,
-              sireCode,
-              estrus,
-              notes,
-              status,
-              inseminationDate: getFormattedDate(inseminationDate),
-              time: getFormattedTime(inseminationTime),
-            },
-          };
+      const payload = {
+        farmerId: selectedFarmer._id,
+        animalId: selectedAnimal?._id,
+        animalDetails: null,
+        inseminationDetails: {
+          sireBreed,
+          sireCode,
+          estrus,
+          notes: semenBatch.trim() ? `[Semen Batch: ${semenBatch.trim()}]\n${notes}` : notes,
+          status,
+          inseminationDate: getFormattedDate(inseminationDate),
+          time: getFormattedTime(inseminationTime),
+        },
+      };
 
       const result = await walkInInseminationMutation.mutateAsync(payload);
       if (result.status === "synced") {
@@ -284,409 +276,78 @@ export default function RecordAIScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* FARMER SELECTION / REGISTRATION */}
+        {/* FARMER SELECTION */}
         <View className="flex-row justify-between items-center mb-3 ml-1">
           <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest">
             Farmer Selection
           </Text>
-          <TouchableOpacity
-            onPress={() => {
-              setIsNewFarmer(!isNewFarmer);
-              if (!isNewFarmer) setSelectedFarmer(null);
-            }}
-          >
-            <Text className="text-[#00643B] dark:text-emerald-400 font-outfit-bold text-[10px] uppercase tracking-wider">
-              {isNewFarmer ? "← Back to List" : "+ Register New"}
-            </Text>
-          </TouchableOpacity>
         </View>
 
-        {!isNewFarmer ? (
-          <TouchableOpacity
-            onPress={() => setShowFarmerModal(true)}
-            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
-          >
-            <View className="flex-row items-center flex-1">
-              <View className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
-                <User size={20} color={isDark ? "#34d399" : "#00643B"} />
-              </View>
-              <View className="flex-1">
-                <Text
-                  style={{ fontFamily: "Outfit_700Bold" }}
-                  className={`text-base ${selectedFarmer ? "text-slate-800 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}
-                >
-                  {selectedFarmer ? selectedFarmer.name : "Select Farmer..."}
-                </Text>
-              </View>
+        <TouchableOpacity
+          onPress={() => setShowFarmerModal(true)}
+          className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
+        >
+          <View className="flex-row items-center flex-1">
+            <View className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
+              <User size={20} color={isDark ? "#34d399" : "#00643B"} />
             </View>
-            <ChevronDown size={20} color={isDark ? "#6b7280" : "#94a3b8"} />
-          </TouchableOpacity>
-        ) : (
-          <View className="bg-white dark:bg-slate-900 border border-emerald-100 dark:border-slate-800 rounded-[32px] p-6 mb-8 shadow-sm">
-            <Text
-              style={{ fontFamily: "Outfit_800ExtraBold" }}
-              className="text-emerald-900 dark:text-emerald-400 text-sm mb-4"
-            >
-              Quick Farmer Registration
-            </Text>
-            <View className="gap-y-4">
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    First Name
-                  </Text>
-                  <TextInput
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                    placeholder="Juan"
-                    placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                    value={newFarmer.firstName}
-                    onChangeText={(v) =>
-                      setNewFarmer({ ...newFarmer, firstName: v })
-                    }
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Last Name
-                  </Text>
-                  <TextInput
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                    placeholder="Dela Cruz"
-                    placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                    value={newFarmer.lastName}
-                    onChangeText={(v) =>
-                      setNewFarmer({ ...newFarmer, lastName: v })
-                    }
-                  />
-                </View>
-              </View>
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Email (Optional)
-                  </Text>
-                  <TextInput
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                    placeholder="juan@example.com"
-                    placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    value={newFarmer.email}
-                    onChangeText={(v) =>
-                      setNewFarmer({ ...newFarmer, email: v })
-                    }
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Contact Number
-                  </Text>
-                  <TextInput
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                    placeholder="09XXXXXXXXX"
-                    placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                    keyboardType="phone-pad"
-                    maxLength={11}
-                    value={newFarmer.phone}
-                    onChangeText={(v) =>
-                      setNewFarmer({ ...newFarmer, phone: v.replace(/\D/g, "") })
-                    }
-                  />
-                </View>
-              </View>
-              <View>
-                <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                  Municipality / City
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setAddressPicker("city")}
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
-                >
-                  <Text
-                    className={`font-outfit-medium ${newFarmer.city ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
-                  >
-                    {newFarmer.city || "Select municipality or city"}
-                  </Text>
-                  <ChevronDown
-                    size={14}
-                    color={isDark ? "#6b7280" : "#94a3b8"}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              {newFarmer.city === ILOILO_CITY_NAME && (
-                <View>
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    District
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setAddressPicker("district")}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
-                  >
-                    <Text
-                      className={`font-outfit-medium ${newFarmer.district ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
-                    >
-                      {newFarmer.district || "Select district"}
-                    </Text>
-                    <ChevronDown
-                      size={14}
-                      color={isDark ? "#6b7280" : "#94a3b8"}
-                    />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              <View>
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Barangay
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setAddressPicker("barangay")}
-                    disabled={!newFarmer.city || (newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district)}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
-                    style={{
-                      opacity: !newFarmer.city || (newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district) ? 0.6 : 1,
-                    }}
-                  >
-                    <Text
-                      className={`font-outfit-medium ${newFarmer.barangay ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
-                    >
-                      {newFarmer.barangay || (!newFarmer.city ? "Select city first" : newFarmer.city === ILOILO_CITY_NAME && !newFarmer.district ? "Select district first" : "Select barangay")}
-                    </Text>
-                    <ChevronDown
-                      size={14}
-                      color={isDark ? "#6b7280" : "#94a3b8"}
-                    />
-                  </TouchableOpacity>
-              </View>
-            </View>
-
-            <View
-              style={{
-                height: 1,
-                backgroundColor: isDark ? "#1f2937" : "#f1f5f9",
-                marginVertical: 20,
-              }}
-            />
-
-            <Text
-              style={{ fontFamily: "Outfit_800ExtraBold" }}
-              className="text-emerald-900 dark:text-emerald-400 text-sm mb-4"
-            >
-              Quick Animal Registration
-            </Text>
-            <View className="gap-y-4">
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Animal ID
-                  </Text>
-                  <TextInput
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                    placeholder="e.g. ANM-001"
-                    placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                    value={newAnimal.animalId}
-                    onChangeText={(v) =>
-                      setNewAnimal({ ...newAnimal, animalId: v })
-                    }
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Ear Tag
-                  </Text>
-                  <TextInput
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                    placeholder="104"
-                    placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                    value={newAnimal.earTag}
-                    onChangeText={(v) =>
-                      setNewAnimal({ ...newAnimal, earTag: v })
-                    }
-                  />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Species
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setShowSpeciesModal(true)}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
-                  >
-                    <Text className="text-slate-800 dark:text-white font-outfit-medium">
-                      {newAnimal.species}
-                    </Text>
-                    <ChevronDown
-                      size={14}
-                      color={isDark ? "#6b7280" : "#94a3b8"}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <View className="flex-row gap-3">
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Breed
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => setShowQuickBreedModal(true)}
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
-                  >
-                    <Text
-                      className={`font-outfit-medium ${newAnimal.breed ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
-                    >
-                      {newAnimal.breed || "Select..."}
-                    </Text>
-                    <ChevronDown
-                      size={14}
-                      color={isDark ? "#6b7280" : "#94a3b8"}
-                    />
-                  </TouchableOpacity>
-                </View>
-                <View className="flex-1">
-                  <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                    Color
-                  </Text>
-                  <TextInput
-                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                    placeholder="White"
-                    placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                    value={newAnimal.color}
-                    onChangeText={(v) =>
-                      setNewAnimal({ ...newAnimal, color: v })
-                    }
-                  />
-                </View>
-              </View>
+            <View className="flex-1">
+              <Text
+                style={{ fontFamily: "Outfit_700Bold" }}
+                className={`text-base ${selectedFarmer ? "text-slate-800 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}
+              >
+                {selectedFarmer ? selectedFarmer.name : "Select Farmer..."}
+              </Text>
             </View>
           </View>
-        )}
+          <ChevronDown size={20} color={isDark ? "#6b7280" : "#94a3b8"} />
+        </TouchableOpacity>
 
-        {/* ANIMAL SELECTION OR ADD NEW */}
-        {!isNewFarmer && selectedFarmer && (
+        {/* ANIMAL SELECTION */}
+        {selectedFarmer && (
           <View className="mb-8">
-            <View className="flex-row justify-between items-center mb-3 ml-1">
-              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest">
-                Select Animal
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  if (newAnimal.animalId) {
-                    setNewAnimal({
-                      animalId: "",
-                      earTag: "",
-                      species: CATTLE_SPECIES[0],
-                      breed: "",
-                      color: "",
-                    });
-                    setSelectedAnimal(null);
-                  } else {
-                    setSelectedAnimal(null);
-                    // Clear and show registration fields below
-                  }
-                }}
-              >
-                <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[10px] uppercase tracking-wider">
-                  {newAnimal.animalId
-                    ? "← Back to Selection"
-                    : "+ Register New for this Farmer"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
+              Select Animal
+            </Text>
 
-            {newAnimal.animalId ||
-            (!selectedAnimal && !animals.length && !loadingAnimals) ? (
-              <View className="bg-emerald-50/30 dark:bg-emerald-900/10 border border-dashed border-emerald-200 dark:border-emerald-800 rounded-[32px] p-6">
+            {selectedFarmer && !loadingAnimals && animals.length === 0 ? (
+              <View className="bg-amber-50/50 dark:bg-amber-950/10 border border-dashed border-amber-200 dark:border-amber-900/50 rounded-[24px] p-5 items-center">
+                <MaterialCommunityIcons
+                  name="alert-circle-outline"
+                  size={28}
+                  color={isDark ? "#fbbf24" : "#d97706"}
+                />
                 <Text
-                  style={{ fontFamily: "Outfit_800ExtraBold" }}
-                  className="text-emerald-900 dark:text-emerald-400 text-sm mb-4"
+                  style={{ fontFamily: "Outfit_700Bold" }}
+                  className="text-amber-800 dark:text-amber-400 text-sm text-center mt-2"
                 >
-                  On-the-fly Animal Registration
+                  No Animals Registered
                 </Text>
-                <View className="gap-y-4">
-                  <View className="flex-row gap-3">
-                    <View className="flex-1">
-                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                        Animal ID
-                      </Text>
-                      <TextInput
-                        className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                        placeholder="e.g. ID-123"
-                        placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                        value={newAnimal.animalId}
-                        onChangeText={(v) =>
-                          setNewAnimal({ ...newAnimal, animalId: v })
-                        }
-                      />
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                        Ear Tag
-                      </Text>
-                      <TextInput
-                        className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                        placeholder="104"
-                        placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                        value={newAnimal.earTag}
-                        onChangeText={(v) =>
-                          setNewAnimal({ ...newAnimal, earTag: v })
-                        }
-                      />
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                        Species
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => setShowSpeciesModal(true)}
-                        className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
-                      >
-                        <Text className="text-slate-800 dark:text-white font-outfit-medium">
-                          {newAnimal.species}
-                        </Text>
-                        <ChevronDown
-                          size={14}
-                          color={isDark ? "#6b7280" : "#94a3b8"}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                  <View className="flex-row gap-3">
-                    <View className="flex-1">
-                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                        Breed
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => setShowQuickBreedModal(true)}
-                        className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
-                      >
-                        <Text
-                          className={`font-outfit-medium ${newAnimal.breed ? "text-slate-800 dark:text-white" : "text-slate-400 dark:text-slate-600"}`}
-                        >
-                          {newAnimal.breed || "Select..."}
-                        </Text>
-                        <ChevronDown
-                          size={14}
-                          color={isDark ? "#6b7280" : "#94a3b8"}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                    <View className="flex-1">
-                      <Text className="text-slate-500 dark:text-slate-400 text-[10px] font-outfit-bold mb-1 ml-1 uppercase">
-                        Color
-                      </Text>
-                      <TextInput
-                        className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                        placeholder="White"
-                        placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                        value={newAnimal.color}
-                        onChangeText={(v) =>
-                          setNewAnimal({ ...newAnimal, color: v })
-                        }
-                      />
-                    </View>
-                  </View>
-                </View>
+                <Text
+                  style={{ fontFamily: "Outfit_500Medium" }}
+                  className="text-slate-500 dark:text-slate-400 text-xs text-center mt-1 px-4"
+                >
+                  This farmer has no animals registered. Please register the animal first to record an AI procedure.
+                </Text>
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(technician)/register-animal",
+                      params: {
+                        farmerId: selectedFarmer._id,
+                        farmerName: selectedFarmer.name,
+                        phoneNumber: selectedFarmer.phoneNumber,
+                        barangay: selectedFarmer.address?.barangay,
+                        municipality: selectedFarmer.address?.city,
+                      },
+                    })
+                  }
+                  className="bg-emerald-600 px-5 py-2.5 rounded-xl mt-4 shadow-sm"
+                >
+                  <Text className="text-white font-outfit-bold text-xs">
+                    Register Animal
+                  </Text>
+                </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity
@@ -711,9 +372,22 @@ export default function RecordAIScreen() {
                         : "Choose Animal..."}
                     </Text>
                     {selectedAnimal && (
-                      <Text className="text-slate-400 dark:text-slate-500 text-xs">
-                        {selectedAnimal.breed} · {selectedAnimal.species}
-                      </Text>
+                      <View className="flex-row items-center flex-wrap gap-2 mt-0.5">
+                        <Text className="text-slate-400 dark:text-slate-500 text-xs">
+                          {selectedAnimal.breed || "Crossbreed"} · {selectedAnimal.species}
+                        </Text>
+                        {selectedAnimal.reproductiveStatus && (
+                          <View
+                            className={`px-1.5 py-0.5 rounded-full ${getReproductiveStatusStyle(selectedAnimal.reproductiveStatus).bg}`}
+                          >
+                            <Text
+                              className={`text-[8px] font-outfit-bold ${getReproductiveStatusStyle(selectedAnimal.reproductiveStatus).text}`}
+                            >
+                              {selectedAnimal.reproductiveStatus}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     )}
                   </View>
                 </View>
@@ -729,6 +403,22 @@ export default function RecordAIScreen() {
                   />
                 )}
               </TouchableOpacity>
+            )}
+            {selectedAnimal && animalWarning && (
+              <View className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/50 p-4 rounded-2xl flex-row items-center mt-3 shadow-sm">
+                <MaterialCommunityIcons
+                  name="alert-circle"
+                  size={20}
+                  color="#ef4444"
+                  style={{ marginRight: 8 }}
+                />
+                <Text
+                  style={{ fontFamily: "Outfit_500Medium" }}
+                  className="text-red-700 dark:text-red-400 text-xs flex-1"
+                >
+                  {animalWarning}
+                </Text>
+              </View>
             )}
           </View>
         )}
@@ -752,7 +442,7 @@ export default function RecordAIScreen() {
           <View className="gap-y-5">
             <View>
               <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
-                Service Mode
+                Record Status
               </Text>
               <View className="flex-row gap-3">
                 <TouchableOpacity
@@ -828,21 +518,34 @@ export default function RecordAIScreen() {
               <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
                 Sire Code / Bull ID
               </Text>
-              <View className="flex-row gap-2">
-                <TextInput
-                  className="bg-slate-100 dark:bg-slate-800 border border-emerald-50 dark:border-slate-700 rounded-2xl p-4 text-slate-500 dark:text-slate-400 font-outfit-medium shadow-sm flex-1"
-                  placeholder="Automatic Code"
-                  value={sireCode}
-                  editable={false}
-                />
-              </View>
+              <TextInput
+                className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/60 rounded-2xl p-4 text-slate-400 dark:text-slate-500 font-outfit-medium shadow-sm"
+                placeholder="Auto-filled from Sire Breed selection"
+                placeholderTextColor={isDark ? "#4b5563" : "#cbd5e1"}
+                value={sireCode}
+                editable={false}
+              />
             </View>
 
-            {/* Mission Date & Time Selectors */}
+            <View>
+              <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
+                Semen Batch / Lot (Optional)
+              </Text>
+              <TextInput
+                className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-medium shadow-sm"
+                placeholder="e.g. LOT-2026-A"
+                placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                value={semenBatch}
+                onChangeText={setSemenBatch}
+                editable={!saving}
+              />
+            </View>
+
+            {/* Dynamic Date & Time Selectors */}
             <View className="flex-row gap-3">
               <View className="flex-1">
                 <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
-                  Mission Date
+                  {status === "done" ? "Insemination Date" : "Scheduled Date"}
                 </Text>
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
@@ -867,7 +570,7 @@ export default function RecordAIScreen() {
               </View>
               <View className="flex-1">
                 <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
-                  T-Time
+                  {status === "done" ? "Insemination Time" : "Scheduled Time"}
                 </Text>
                 <TouchableOpacity
                   onPress={() => setShowTimePicker(true)}
@@ -942,18 +645,18 @@ export default function RecordAIScreen() {
         {/* SAVE BUTTON */}
         <TouchableOpacity
           className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-20 ${
-            saving
-              ? "bg-slate-400"
+            saving || animalWarning
+              ? "bg-slate-300 dark:bg-slate-800"
               : status === "done"
                 ? "bg-emerald-600"
                 : "bg-blue-600"
           }`}
           onPress={handleSave}
-          disabled={saving}
+          disabled={saving || !!animalWarning}
           accessibilityRole="button"
           accessibilityLabel={status === "done" ? "Save AI record" : "Schedule AI visit"}
           style={
-            !saving
+            !(saving || animalWarning)
               ? status === "done"
                 ? {
                     shadowColor: "#10b981",
@@ -996,14 +699,20 @@ export default function RecordAIScreen() {
         onRequestClose={() => setShowFarmerModal(false)}
       >
         <View className="flex-1 bg-slate-900/40 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
-            <View className="flex-row justify-between items-center mb-6">
-              <Text
-                style={{ fontFamily: "Outfit_900Black" }}
-                className="text-2xl text-slate-800 dark:text-white"
-              >
-                Select Farmer
-              </Text>
+          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-6 pb-12 max-h-[90%] min-h-[60%] shadow-2xl">
+            {/* Header */}
+            <View className="flex-row justify-between items-center mb-5">
+              <View>
+                <Text
+                  style={{ fontFamily: "Outfit_900Black" }}
+                  className="text-2xl text-slate-800 dark:text-white"
+                >
+                  Select Farmer
+                </Text>
+                <Text className="text-xs text-slate-400 dark:text-slate-500 font-outfit-medium mt-0.5">
+                  Choose a client to record the insemination
+                </Text>
+              </View>
               <TouchableOpacity
                 onPress={() => setShowFarmerModal(false)}
                 className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full"
@@ -1012,110 +721,196 @@ export default function RecordAIScreen() {
               </TouchableOpacity>
             </View>
 
+            {/* Search Input Box */}
+            <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 mb-4 shadow-inner">
+              <MaterialCommunityIcons
+                name="magnify"
+                size={20}
+                color={isDark ? "#94a3b8" : "#64748b"}
+                style={{ marginRight: 8 }}
+              />
+              <TextInput
+                className="flex-1 text-slate-800 dark:text-white font-outfit-medium text-sm p-0"
+                placeholder="Search by name or phone..."
+                placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                value={searchFarmer}
+                onChangeText={setSearchFarmer}
+              />
+              {searchFarmer !== "" && (
+                <TouchableOpacity onPress={() => setSearchFarmer("")}>
+                  <MaterialCommunityIcons
+                    name="close-circle"
+                    size={18}
+                    color={isDark ? "#6b7280" : "#94a3b8"}
+                  />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* Municipality Dropdown Filter Trigger */}
+            <View className="mb-4">
+              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[9px] tracking-wider mb-2 ml-1">
+                Filter by Municipality
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchMunicipality("");
+                  setShowMunicipalityDropdown(!showMunicipalityDropdown);
+                }}
+                className={`bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl p-4 flex-row justify-between items-center shadow-sm ${
+                  showMunicipalityDropdown ? "border-emerald-500 dark:border-emerald-500 rounded-b-none" : ""
+                }`}
+              >
+                <Text
+                  style={{ fontFamily: "Outfit_700Bold" }}
+                  className="text-slate-700 dark:text-slate-200 text-sm"
+                >
+                  {selectedMunicipality || "All Municipalities"}
+                </Text>
+                <ChevronDown size={18} color={isDark ? "#94a3b8" : "#64748b"} style={{ transform: [{ rotate: showMunicipalityDropdown ? "180deg" : "0deg" }] }} />
+              </TouchableOpacity>
+
+              {/* COLLAPSIBLE DROPDOWN DRAWER */}
+              {showMunicipalityDropdown && (
+                <View className="bg-white dark:bg-slate-900 border-x border-b border-emerald-500 dark:border-emerald-500 rounded-b-2xl p-4 shadow-lg z-50">
+                  {/* Dropdown Search Box */}
+                  <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-3 py-2 mb-3 shadow-inner">
+                    <MaterialCommunityIcons
+                      name="magnify"
+                      size={18}
+                      color={isDark ? "#94a3b8" : "#64748b"}
+                      style={{ marginRight: 6 }}
+                    />
+                    <TextInput
+                      className="flex-1 text-slate-800 dark:text-white font-outfit-medium text-xs p-0"
+                      placeholder="Type to filter..."
+                      placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                      value={searchMunicipality}
+                      onChangeText={setSearchMunicipality}
+                    />
+                    {searchMunicipality !== "" && (
+                      <TouchableOpacity onPress={() => setSearchMunicipality("")}>
+                        <MaterialCommunityIcons
+                          name="close-circle"
+                          size={16}
+                          color={isDark ? "#6b7280" : "#94a3b8"}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Dropdown List */}
+                  <View className="max-h-48">
+                    <FlatList
+                      data={filteredMunicipalities}
+                      keyExtractor={(item) => item}
+                      nestedScrollEnabled={true}
+                      showsVerticalScrollIndicator={true}
+                      renderItem={({ item }) => {
+                        const isAll = item === "All Municipalities";
+                        const isSelected = isAll ? selectedMunicipality === null : selectedMunicipality === item;
+                        return (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setSelectedMunicipality(isAll ? null : item);
+                              setShowMunicipalityDropdown(false);
+                            }}
+                            className="py-2.5 border-b border-slate-50 dark:border-slate-800/50 flex-row justify-between items-center"
+                          >
+                            <Text
+                              style={{ fontFamily: isSelected ? "Outfit_700Bold" : "Outfit_500Medium" }}
+                              className={`text-sm ${
+                                isSelected
+                                  ? "text-emerald-600 dark:text-emerald-400 font-outfit-bold"
+                                  : "text-slate-600 dark:text-slate-300"
+                              }`}
+                            >
+                              {item}
+                            </Text>
+                            {isSelected && (
+                              <MaterialCommunityIcons
+                                name="check"
+                                size={16}
+                                color={isDark ? "#34d399" : "#059669"}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      }}
+                    />
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {/* List of Farmers */}
             {farmers.length === 0 ? (
               <ActivityIndicator
                 size="large"
                 color={isDark ? "#34d399" : "#00643B"}
                 className="mt-10"
               />
+            ) : filteredFarmers.length === 0 ? (
+              <View className="flex-1 items-center justify-center py-10">
+                <MaterialCommunityIcons
+                  name="account-search-outline"
+                  size={48}
+                  color={isDark ? "#4b5563" : "#cbd5e1"}
+                />
+                <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium mt-4 text-center">
+                  No farmers found matching filters.
+                </Text>
+              </View>
             ) : (
               <FlatList
-                data={farmers}
+                data={filteredFarmers}
                 keyExtractor={(item) => item._id}
                 showsVerticalScrollIndicator={false}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    onPress={() => handleFarmerSelect(item)}
-                    className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 p-5 rounded-[24px] mb-3"
-                  >
-                    <View className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-4">
-                      <User size={24} color={isDark ? "#34d399" : "#00643B"} />
-                    </View>
-                    <View className="flex-1">
-                      <Text
-                        style={{ fontFamily: "Outfit_700Bold" }}
-                        className="text-slate-800 dark:text-white text-base"
-                      >
-                        {item.name}
-                      </Text>
-                      <Text
-                        className="text-slate-500 dark:text-slate-400 text-xs mt-0.5"
-                        numberOfLines={1}
-                      >
-                        {getAddressStr(item.address)}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
+                renderItem={({ item }) => {
+                  const isSelected = selectedFarmer?._id === item._id;
+                  return (
+                    <TouchableOpacity
+                      onPress={() => handleFarmerSelect(item)}
+                      className={`flex-row items-center border p-5 rounded-[24px] mb-3 ${
+                        isSelected
+                          ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20"
+                          : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700"
+                      }`}
+                    >
+                      <View className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-4">
+                        <User size={24} color={isDark ? "#34d399" : "#00643B"} />
+                      </View>
+                      <View className="flex-1">
+                        <Text
+                          style={{ fontFamily: "Outfit_700Bold" }}
+                          className="text-slate-800 dark:text-white text-base"
+                        >
+                          {item.name}
+                        </Text>
+                        <Text
+                          className="text-slate-500 dark:text-slate-400 text-xs mt-0.5"
+                          numberOfLines={1}
+                        >
+                          {getAddressStr(item.address)} · {item.phoneNumber || "No contact"}
+                        </Text>
+                      </View>
+                      {isSelected && (
+                        <MaterialCommunityIcons
+                          name="check-circle"
+                          size={24}
+                          color={isDark ? "#34d399" : "#00643B"}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
               />
             )}
           </View>
         </View>
       </Modal>
 
-      {/* ADDRESS SELECTION MODAL */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={!!addressPicker}
-        onRequestClose={() => setAddressPicker(null)}
-      >
-        <View className="flex-1 bg-slate-900/40 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[85%] min-h-[50%] shadow-2xl">
-            <View className="flex-row justify-between items-center mb-6">
-              <Text
-                style={{ fontFamily: "Outfit_900Black" }}
-                className="text-2xl text-slate-800 dark:text-white"
-              >
-                {addressPickerTitle}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setAddressPicker(null);
-                  setSearchAddress("");
-                }}
-                className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full"
-              >
-                <X size={22} color={isDark ? "#94a3b8" : "#64748b"} />
-              </TouchableOpacity>
-            </View>
 
-            <TextInput
-              className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3.5 text-slate-800 dark:text-white font-outfit-medium mb-4"
-              placeholder="Search..."
-              placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-              value={searchAddress}
-              onChangeText={setSearchAddress}
-            />
-
-            <FlatList
-              data={filteredAddressOptions}
-              keyExtractor={(item) => item}
-              showsVerticalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    if (addressPicker === "city") {
-                      setNewFarmer({ ...newFarmer, city: item, district: "", barangay: "" });
-                    } else if (addressPicker === "district") {
-                      setNewFarmer({ ...newFarmer, district: item, barangay: "" });
-                    } else {
-                      setNewFarmer({ ...newFarmer, barangay: item });
-                    }
-                    setAddressPicker(null);
-                    setSearchAddress("");
-                  }}
-                  className="py-4 border-b border-slate-50 dark:border-slate-800"
-                >
-                  <Text className="font-outfit-bold text-slate-700 dark:text-slate-200 text-base">
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </View>
-      </Modal>
 
       {/* ANIMAL SELECTION MODAL */}
       <Modal
@@ -1179,9 +974,22 @@ export default function RecordAIScreen() {
                       >
                         {item.earTag || item.animalId}
                       </Text>
-                      <Text className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-                        {item.breed} · {item.species}
-                      </Text>
+                      <View className="flex-row items-center flex-wrap gap-2 mt-0.5">
+                        <Text className="text-slate-500 dark:text-slate-400 text-xs">
+                          {item.breed || "Crossbreed"} · {item.species}
+                        </Text>
+                        {item.reproductiveStatus && (
+                          <View
+                            className={`px-1.5 py-0.5 rounded-full ${getReproductiveStatusStyle(item.reproductiveStatus).bg}`}
+                          >
+                            <Text
+                              className={`text-[8px] font-outfit-bold ${getReproductiveStatusStyle(item.reproductiveStatus).text}`}
+                            >
+                              {item.reproductiveStatus}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
                     {selectedAnimal?._id === item._id && (
                       <MaterialCommunityIcons
@@ -1198,95 +1006,6 @@ export default function RecordAIScreen() {
         </View>
       </Modal>
 
-      {/* SPECIES SELECTION MODAL */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showSpeciesModal}
-        onRequestClose={() => setShowSpeciesModal(false)}
-      >
-        <View className="flex-1 bg-slate-900/40 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[50%] shadow-2xl">
-            <View className="flex-row justify-between items-center mb-6">
-              <Text
-                style={{ fontFamily: "Outfit_900Black" }}
-                className="text-2xl text-slate-800 dark:text-white"
-              >
-                Select Species
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowSpeciesModal(false)}
-                className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full"
-              >
-                <X size={22} color={isDark ? "#94a3b8" : "#64748b"} />
-              </TouchableOpacity>
-            </View>
-
-            <FlatList
-              data={CATTLE_SPECIES}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    setNewAnimal({ ...newAnimal, species: item });
-                    setShowSpeciesModal(false);
-                  }}
-                  className="py-4 border-b border-slate-50 dark:border-slate-800"
-                >
-                  <Text className="font-outfit-bold text-slate-700 dark:text-slate-200 text-base">
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </View>
-      </Modal>
-
-      {/* QUICK BREED SELECTION MODAL */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={showQuickBreedModal}
-        onRequestClose={() => setShowQuickBreedModal(false)}
-      >
-        <View className="flex-1 bg-slate-900/40 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-8 pb-12 max-h-[70%] shadow-2xl">
-            <View className="flex-row justify-between items-center mb-6">
-              <Text
-                style={{ fontFamily: "Outfit_900Black" }}
-                className="text-2xl text-slate-800 dark:text-white"
-              >
-                Select Breed
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowQuickBreedModal(false)}
-                className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full"
-              >
-                <X size={22} color={isDark ? "#94a3b8" : "#64748b"} />
-              </TouchableOpacity>
-            </View>
-
-            <FlatList
-              data={CATTLE_BREEDS}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => {
-                    setNewAnimal({ ...newAnimal, breed: item });
-                    setShowQuickBreedModal(false);
-                  }}
-                  className="py-4 border-b border-slate-50 dark:border-slate-800"
-                >
-                  <Text className="font-outfit-bold text-slate-700 dark:text-slate-200 text-base">
-                    {item}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </View>
-      </Modal>
 
       {/* BREED SELECTION MODAL (SIRE) */}
       <Modal
@@ -1355,6 +1074,8 @@ export default function RecordAIScreen() {
           mode="date"
           display="default"
           onChange={handleDateChange}
+          maximumDate={status === "done" ? new Date() : undefined}
+          minimumDate={status === "in-progress" ? new Date() : undefined}
         />
       )}
 
@@ -1367,6 +1088,8 @@ export default function RecordAIScreen() {
           onChange={handleTimeChange}
         />
       )}
+
+
     </SafeAreaView>
   );
 }

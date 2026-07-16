@@ -11,8 +11,7 @@ import {
   declineTechnicianRequest,
   UpdateStatusPayload,
 } from "../services/technician.service";
-import NetInfo from "@react-native-community/netinfo";
-import { addToOfflineQueue } from "../../../lib/offlineQueue";
+import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
 
 export const useTechnicianDashboardQuery = (enabled: boolean = true) => {
   const api = useApi();
@@ -122,21 +121,19 @@ export const useUpdateRequestStatusMutation = () => {
 
   return useMutation({
     mutationFn: async ({ type, requestId, payload, description }: UpdateRequestStatusArgs) => {
-      const net = await NetInfo.fetch();
-      if (!net.isConnected) {
-        const endpoint =
-          type === "health"
-            ? `/health-request/${requestId}/status`
-            : `/technician/inseminations/${requestId}/status`;
-        await addToOfflineQueue({
+      const endpoint =
+        type === "health"
+          ? `/health-request/${requestId}/status`
+          : `/ai-request/${requestId}/status`;
+      return executeOfflineMutation(
+        api,
+        {
           url: endpoint,
           method: "PATCH",
-          data: payload,
           description: description || "Technician Action",
-        });
-        throw new Error("OFFLINE_QUEUED");
-      }
-      return updateRequestStatus(api, type, requestId, payload);
+        },
+        payload
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: technicianKeys.dashboard() });
@@ -161,17 +158,15 @@ export const useDeclineTechnicianRequestMutation = () => {
       requestId,
       technicianNote,
     }: DeclineTechnicianRequestArgs) => {
-      const net = await NetInfo.fetch();
-      if (!net.isConnected) {
-        await addToOfflineQueue({
+      return executeOfflineMutation(
+        api,
+        {
           url: `/technician/requests/${type}/${requestId}/decline`,
           method: "PATCH",
-          data: { technicianNote: technicianNote || "Declined by technician." },
           description: "Decline request for this technician",
-        });
-        throw new Error("OFFLINE_QUEUED");
-      }
-      return declineTechnicianRequest(api, type, requestId, technicianNote);
+        },
+        { technicianNote: technicianNote || "Declined by technician." }
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: technicianKeys.dashboard() });

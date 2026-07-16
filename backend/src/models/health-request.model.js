@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+import { HEALTH_STATUS } from "../domain/livestock-workflow.js";
+import { isActiveHealthRequestStatus } from "../domain/status-vocabulary.js";
 
 const HealthRequestSchema = new mongoose.Schema(
   {
@@ -11,6 +13,10 @@ const HealthRequestSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Animal",
       required: true,
+    },
+    activeCaseKey: {
+      type: String,
+      default: undefined,
     },
     // What kind of request is this?
     requestType: {
@@ -51,8 +57,8 @@ const HealthRequestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress", "resolved", "cancelled", "rejected"],
-      default: "pending",
+      enum: Object.values(HEALTH_STATUS),
+      default: HEALTH_STATUS.PENDING,
     },
     handledBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -105,8 +111,10 @@ const HealthRequestSchema = new mongoose.Schema(
       default: "none",
     },
     cancellationReason: { type: String, default: "" },
+    cancellationResponseReason: { type: String, default: "" },
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     cancellationRequestedAt: { type: Date },
+    cancellationRespondedAt: { type: Date },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
@@ -122,5 +130,16 @@ HealthRequestSchema.index({ assignedTechnicianId: 1, status: 1 });
 HealthRequestSchema.index({ assignedVeterinarianId: 1, status: 1 });
 HealthRequestSchema.index({ deletedAt: 1 });
 HealthRequestSchema.index({ declinedByTechnicianIds: 1 });
+HealthRequestSchema.index(
+  { activeCaseKey: 1 },
+  { unique: true, sparse: true, name: "uniq_active_health_case_per_animal_type" },
+);
+
+HealthRequestSchema.pre("validate", function setActiveCaseKey() {
+  this.activeCaseKey =
+    !this.deletedAt && isActiveHealthRequestStatus(this.status)
+      ? `${this.animalId}:${this.requestType || "disease"}`
+      : undefined;
+});
 
 export const HealthRequest = mongoose.model("HealthRequest", HealthRequestSchema);

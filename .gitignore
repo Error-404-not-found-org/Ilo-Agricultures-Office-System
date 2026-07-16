@@ -36,6 +36,7 @@ fix2.mjs
 lint-output.txt
 clean_architecture_guide.txt
 delete_guide.txt
+study_notes.txt
 
 # Checklists & QA Checklists
 BreedSmart_QA_Checklist.txt
@@ -49,3 +50,7 @@ breedsmart-adcbb-firebase-adminsdk-fbsvc-1214b269c1.json
 
 # Retired Frontend Directory
 old_web/
+
+# Backend regression tests are source files and must be versioned.
+!backend/tests/
+!backend/tests/**

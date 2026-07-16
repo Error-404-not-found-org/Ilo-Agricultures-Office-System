@@ -1,6 +1,7 @@
 import { Notification } from "../models/notification.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { Animal } from "../models/animal.model.js";
 
 const syncOverdueNotifications = async (userId) => {
   const today = new Date();
@@ -85,7 +86,17 @@ export const markAsRead = async (req, res) => {
     const { notificationId } = req.body || {};
     
     if (notificationId) {
-      await Notification.findByIdAndUpdate(notificationId, { isRead: true });
+      const notification = await Notification.findOneAndUpdate(
+        { _id: notificationId, recipientId: req.user._id },
+        { $set: { isRead: true } },
+        { new: true },
+      );
+      if (!notification) {
+        return res.status(404).json({
+          message: "Notification not found.",
+          code: "NOTIFICATION_NOT_FOUND",
+        });
+      }
     } else {
       // Mark all as read for the current user
       await Notification.updateMany({ recipientId: req.user._id }, { isRead: true });
@@ -119,7 +130,10 @@ export const getUnreadCount = async (req, res) => {
 export const getNotificationDetails = async (req, res) => {
   try {
     const { id } = req.params;
-    const notification = await Notification.findById(id).populate("senderId", "name imageUrl role address");
+    const notification = await Notification.findOne({
+      _id: id,
+      recipientId: req.user._id,
+    }).populate("senderId", "name imageUrl role address");
     
     if (!notification) return res.status(404).json({ message: "Notification not found." });
 
@@ -132,6 +146,9 @@ export const getNotificationDetails = async (req, res) => {
       relatedData = await HealthRequest.findById(notification.relatedId)
         .populate("animalId", "animalId earTag species breed imageUrl")
         .populate("handledBy", "name imageUrl role address");
+    } else if (notification.type === "system" && notification.linkType === "animal") {
+      relatedData = await Animal.findById(notification.relatedId)
+        .select("animalId earTag species breed imageUrl farmerId");
     }
 
     res.status(200).json({ notification, relatedData });

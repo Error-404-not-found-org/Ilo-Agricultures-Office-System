@@ -10,6 +10,12 @@ export const getTechnicianAnimals = async (
       page: params.page,
       limit: params.limit,
       search: params.search || undefined,
+      city: params.city && params.city !== "All" ? params.city : undefined,
+      barangay: params.barangay && params.barangay !== "All" ? params.barangay : undefined,
+      reproductiveStatus:
+        params.reproductiveStatus && params.reproductiveStatus !== "All"
+          ? params.reproductiveStatus
+          : undefined,
     },
   });
   const body = response.data || {};

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { useUser } from "@clerk/clerk-expo";
 import NetInfo from "@react-native-community/netinfo";
 import { toast } from "sonner-native";
@@ -8,7 +8,10 @@ import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { generatePDF } from "@/lib/reportExporter";
-import { getFarmerMilestones, getFarmerActivity } from "../services/farmerReports.service";
+import {
+  getFarmerMilestones,
+  getFarmerOfficialRecords,
+} from "../services/farmerReports.service";
 import { filterActivityRecords } from "../utils/reportFilters";
 import { mapRecordsToReportRows } from "../utils/reportPdfMapper";
 import type { Milestone, ActivityFeedItem, RecordStats } from "../types/farmerReports.types";
@@ -26,7 +29,7 @@ export const useFarmerReports = () => {
 
   const [activeBento, setActiveBento] = useState<
     "all" | "history" | "breeding" | "pregnancy" | "calving"
-  >(tab === "records" ? "all" : "pregnancy");
+  >(tab === "cycles" || tab === "animals" ? "pregnancy" : "all");
 
   const activeTab = activeBento === "pregnancy" ? "cycles" : "records";
 
@@ -34,31 +37,53 @@ export const useFarmerReports = () => {
   const [records, setRecords] = useState<ActivityFeedItem[]>([]);
   const [recordStats, setRecordStats] = useState<RecordStats>({
     total: 0,
-    approved: 0,
-    pending: 0,
-    rejected: 0,
+    ai: 0,
+    health: 0,
+    calving: 0,
   });
 
   const [isLoadingMilestones, setIsLoadingMilestones] = useState(true);
   const [isLoadingRecords, setIsLoadingRecords] = useState(true);
+  const [isLoadingMoreRecords, setIsLoadingMoreRecords] = useState(false);
+  const [recordsPage, setRecordsPage] = useState(1);
+  const [recordsTotalPages, setRecordsTotalPages] = useState(1);
+  const [recordsTotal, setRecordsTotal] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [selectedActivity, setSelectedActivity] = useState<ActivityFeedItem | null>(null);
-  const [isModalVisible, setIsModalVisible] = useState(false);
   const [shownSelectIds, setShownSelectIds] = useState<string[]>([]);
   const [recordSearch, setRecordSearch] = useState("");
+  const [debouncedRecordSearch, setDebouncedRecordSearch] = useState("");
   const [recordType, setRecordType] = useState<"all" | ActivityFeedItem["type"]>("all");
-  const [recordStatus, setRecordStatus] = useState<"all" | "open" | "completed" | "closed">("all");
   const [recordPeriod, setRecordPeriod] = useState<"all" | "30" | "90">("all");
+
+  const resetFilters = useCallback(() => {
+    setActiveBento("all");
+    setRecordType("all");
+    setRecordSearch("");
+    setRecordPeriod("all");
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => resetFilters();
+    }, [resetFilters]),
+  );
+
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setDebouncedRecordSearch(recordSearch.trim()),
+      350,
+    );
+    return () => clearTimeout(timer);
+  }, [recordSearch]);
 
   const filteredRecords = useMemo(() => {
     return filterActivityRecords({
       records,
       recordSearch,
       recordType,
-      recordStatus,
       recordPeriod,
     });
-  }, [records, recordSearch, recordType, recordStatus, recordPeriod]);
+  }, [records, recordSearch, recordType, recordPeriod]);
 
   useEffect(() => {
     if (tab === "records") {
@@ -73,16 +98,22 @@ export const useFarmerReports = () => {
     if (selectId && records.length > 0 && !shownSelectIds.includes(selectId)) {
       const found = records.find((r) => r.id === selectId);
       if (found) {
-        setSelectedActivity(found);
-        setIsModalVisible(true);
         setShownSelectIds((prev) => [...prev, selectId]);
         router.setParams({ selectId: undefined });
+        router.push({
+          pathname: "/(farmer)/animal-record-detail",
+          params: {
+            animalId: found.animalId?._id || "",
+            recordId: found.id,
+            recordType: found.type,
+          },
+        });
       }
     }
   }, [selectId, records, router, shownSelectIds]);
 
   const fetchMilestones = useCallback(
-    async (isRefresh = false) => {
+    async (isRefresh = false, page = 1) => {
       const netState = await NetInfo.fetch();
       if (!netState.isConnected) {
         if (!isRefresh) setIsLoadingMilestones(false);
@@ -95,7 +126,7 @@ export const useFarmerReports = () => {
         const body = await getFarmerMilestones(api);
         setMilestones(Array.isArray(body) ? body : body?.data || []);
       } catch (e) {
-        toast.error("Milestones sync failed");
+        if (!isRefresh) toast.error("Milestones could not be loaded");
       } finally {
         setIsLoadingMilestones(false);
         if (isRefresh) setIsRefreshing(false);
@@ -105,7 +136,7 @@ export const useFarmerReports = () => {
   );
 
   const fetchRecords = useCallback(
-    async (isRefresh = false) => {
+    async (isRefresh = false, page = 1) => {
       const netState = await NetInfo.fetch();
       if (!netState.isConnected) {
         if (!isRefresh) setIsLoadingRecords(false);
@@ -113,49 +144,88 @@ export const useFarmerReports = () => {
         return;
       }
 
-      if (!isRefresh) setIsLoadingRecords(true);
+      if (!isRefresh && page === 1) setIsLoadingRecords(true);
       try {
-        const data = await getFarmerActivity(api) || [];
-        setRecords(data);
-
-        const total = data.length;
-        const aiCount = data.filter((r: any) => r.type === "ai").length;
-        const healthCount = data.filter((r: any) => r.type === "health").length;
-        const calvingCount = data.filter((r: any) => r.type === "calving").length;
-
-        setRecordStats({
-          total,
-          approved: aiCount,
-          pending: healthCount,
-          rejected: calvingCount,
+        const fromDate =
+          recordPeriod === "all"
+            ? undefined
+            : new Date(
+                Date.now() - Number(recordPeriod) * 86400000,
+              ).toISOString();
+        const response = await getFarmerOfficialRecords(api, page, 25, {
+          search: debouncedRecordSearch,
+          type: recordType,
+          fromDate,
         });
+        const data: ActivityFeedItem[] = response.data || [];
+        setRecords((current) => {
+          if (page === 1) return data;
+          const existingIds = new Set(current.map((record) => record.id));
+          return [...current, ...data.filter((record) => !existingIds.has(record.id))];
+        });
+        setRecordsPage(response.page);
+        setRecordsTotalPages(response.totalPages);
+        setRecordsTotal(response.total);
+
+        if (
+          !debouncedRecordSearch &&
+          recordType === "all" &&
+          recordPeriod === "all"
+        ) {
+          setRecordStats((current) => ({ ...current, total: response.total }));
+        }
       } catch (e) {
-        toast.error("Activity sync failed");
+        if (!isRefresh) toast.error("Records could not be loaded");
       } finally {
         setIsLoadingRecords(false);
         if (isRefresh) setIsRefreshing(false);
       }
     },
-    [api],
+    [api, debouncedRecordSearch, recordPeriod, recordType],
   );
+
+  const loadMoreRecords = useCallback(async () => {
+    if (isLoadingMoreRecords || recordsPage >= recordsTotalPages) return;
+    setIsLoadingMoreRecords(true);
+    try {
+      await fetchRecords(false, recordsPage + 1);
+    } finally {
+      setIsLoadingMoreRecords(false);
+    }
+  }, [fetchRecords, isLoadingMoreRecords, recordsPage, recordsTotalPages]);
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
     fetchMilestones(true);
-    fetchRecords(true);
+    fetchRecords(true, 1);
   }, [fetchMilestones, fetchRecords]);
 
   useEffect(() => {
     fetchMilestones();
+  }, [fetchMilestones]);
+
+  useEffect(() => {
     fetchRecords();
+  }, [fetchRecords]);
 
-    const interval = setInterval(() => {
-      fetchMilestones(true);
-      fetchRecords(true);
-    }, 10000); // Poll every 10 seconds silently
-
-    return () => clearInterval(interval);
-  }, [fetchMilestones, fetchRecords]);
+  useEffect(() => {
+    const ai = records.filter((record) => record.type === "ai").length;
+    const health = records.filter((record) => record.type === "health").length;
+    const calving = records.filter((record) => record.type === "calving").length;
+    if (
+      !debouncedRecordSearch &&
+      recordType === "all" &&
+      recordPeriod === "all"
+    ) {
+      setRecordStats({ total: recordsTotal, ai, health, calving });
+    }
+  }, [
+    records,
+    recordsTotal,
+    debouncedRecordSearch,
+    recordType,
+    recordPeriod,
+  ]);
 
   const handleExportPDF = async () => {
     if (records.length === 0) {
@@ -200,21 +270,20 @@ export const useFarmerReports = () => {
     recordStats,
     isLoadingMilestones,
     isLoadingRecords,
+    isLoadingMoreRecords,
+    hasMoreRecords: recordsPage < recordsTotalPages,
+    recordsTotal,
     isRefreshing,
-    selectedActivity,
-    setSelectedActivity,
-    isModalVisible,
-    setIsModalVisible,
     recordSearch,
     setRecordSearch,
     recordType,
     setRecordType,
-    recordStatus,
-    setRecordStatus,
     recordPeriod,
     setRecordPeriod,
+    resetFilters,
     filteredRecords,
     onRefresh,
+    loadMoreRecords,
     handleExportPDF,
   };
 };

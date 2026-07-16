@@ -7,7 +7,6 @@ import {
   Search,
   Download,
   Printer,
-  Syringe,
   Clock,
   CheckCircle,
   X,
@@ -18,7 +17,7 @@ import {
   Calendar,
   Layers,
   Sparkles,
-  Baby,
+  Plus,
 } from "lucide-react";
 import Topbar from "../../components/ui/Topbar";
 import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
@@ -27,6 +26,27 @@ import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
 import InseminationTab from "./tabs/InseminationTab";
 import PregnancyTab from "./tabs/PregnancyTab";
 import CalvingTab from "./tabs/CalvingTab";
+import PregnancyDiagnosisModal from "../../components/modals/PregnancyDiagnosisModal";
+
+const cleanRecordText = (value, fallback) => {
+  const text = String(value || "").trim();
+  return text &&
+    !["n/a", "na", "null", "undefined", "none"].includes(text.toLowerCase())
+    ? text
+    : fallback;
+};
+
+const getRecordLocation = (farmer) => {
+  const address = farmer?.address || {};
+  const parts = [
+    address.barangay,
+    address.municipality || address.city,
+    address.province,
+  ]
+    .map((value) => cleanRecordText(value, ""))
+    .filter(Boolean);
+  return [...new Set(parts)].join(", ") || "Location not recorded";
+};
 
 const getMonthDays = (year, month) => {
   const numDays = new Date(year, month + 1, 0).getDate();
@@ -66,7 +86,7 @@ export default function BreedingLedger() {
   const queryClient = useQueryClient();
 
   // ---- APPLICATION STATES ----
-  const [activeTab, setActiveTab] = useState("insemination"); // "insemination", "pregnancy", "calving"
+  const [activeTab, setActiveTab] = useState("pregnancy");
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFilter, setDateFilter] = useState({
@@ -89,6 +109,7 @@ export default function BreedingLedger() {
   const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPregnancyModalOpen, setIsPregnancyModalOpen] = useState(false);
 
   const [calfEdits, setCalfEdits] = useState({});
   const [savingCalfId, setSavingCalfId] = useState(null);
@@ -253,25 +274,14 @@ export default function BreedingLedger() {
 
   // ---- DYNAMIC STATS RESOLVERS ----
   const stats = useMemo(() => {
-    const totalInseminations = inseminations.length;
     const confirmedPregnancies = pregnancyChecks.filter(
       (p) => p.pregnancyDiagnosis?.result === "Pregnant",
     ).length;
-    const totalCalvings = calvings.length;
-    const pendingAI = inseminations.filter(
-      (i) => i.status === "pending" || i.status === "in-progress",
-    ).length;
-    const totalRecords =
-      totalInseminations + pregnancyChecks.length + totalCalvings;
 
     return {
-      totalRecords,
-      totalInseminations,
       confirmedPregnancies,
-      totalCalvings,
-      pendingAI,
     };
-  }, [inseminations, pregnancyChecks, calvings]);
+  }, [pregnancyChecks]);
 
   // ---- MEMOIZED DATA PROCESSING (Sorting & Filtering) ----
   const processedRecords = useMemo(() => {
@@ -279,7 +289,10 @@ export default function BreedingLedger() {
     if (activeTab === "insemination") {
       list = inseminations.map((ins) => {
         const visitDate =
-          ins.scheduledDate || ins.preferredDate || ins.createdAt;
+          ins.inseminationDate ||
+          ins.scheduledDate ||
+          ins.preferredDate ||
+          ins.createdAt;
         return {
           id: ins._id,
           date: new Date(visitDate).toLocaleDateString("en-US", {
@@ -288,9 +301,12 @@ export default function BreedingLedger() {
             year: "numeric",
           }),
           rawDate: visitDate,
-          farmer: ins.farmerId?.name || "N/A",
-          animal: ins.animalId?.earTag || "N/A",
-          barangay: ins.farmerId?.address?.barangay || "Oton",
+          farmer: cleanRecordText(ins.farmerId?.name, "Farmer not recorded"),
+          animal: cleanRecordText(
+            ins.animalId?.earTag || ins.animalId?.animalId,
+            "Tag not recorded",
+          ),
+          barangay: getRecordLocation(ins.farmerId),
           type: "AI",
           detail: ins.sireCode
             ? `Sire: ${ins.sireCode}`
@@ -304,6 +320,9 @@ export default function BreedingLedger() {
           sireBreed: ins.sireBreed || "",
           sireCode: ins.sireCode || "",
           estrus: ins.estrus || "Natural",
+          outcome: ins.outcome || "Pending",
+          outcomeVerificationStatus: ins.outcomeVerificationStatus || "pending",
+          previousAttempt: ins.previousAttemptId || null,
         };
       });
     } else if (activeTab === "pregnancy") {
@@ -317,9 +336,12 @@ export default function BreedingLedger() {
             year: "numeric",
           }),
           rawDate: checkDate,
-          farmer: preg.farmerId?.name || "N/A",
-          animal: preg.animalId?.earTag || "N/A",
-          barangay: preg.farmerId?.address?.barangay || "Oton",
+          farmer: cleanRecordText(preg.farmerId?.name, "Farmer not recorded"),
+          animal: cleanRecordText(
+            preg.animalId?.earTag || preg.animalId?.animalId,
+            "Tag not recorded",
+          ),
+          barangay: getRecordLocation(preg.farmerId),
           type: "Pregnancy Check",
           result: preg.pregnancyDiagnosis?.result || "Pending Result",
           targetCalvingDate: preg.targetCalvingDate
@@ -349,9 +371,12 @@ export default function BreedingLedger() {
             year: "numeric",
           }),
           rawDate: calvingDate,
-          farmer: calv.farmerId?.name || "N/A",
-          animal: calv.animalId?.earTag || "N/A",
-          barangay: calv.farmerId?.address?.barangay || "Oton",
+          farmer: cleanRecordText(calv.farmerId?.name, "Farmer not recorded"),
+          animal: cleanRecordText(
+            calv.animalId?.earTag || calv.animalId?.animalId,
+            "Tag not recorded",
+          ),
+          barangay: getRecordLocation(calv.farmerId),
           type: "Calving",
           numberOfCalves: calv.numberOfCalves || calv.calves?.length || 1,
           calvingEase: calv.calvingEase || "Natural",
@@ -928,57 +953,47 @@ export default function BreedingLedger() {
 
     const isToday = isSameDay(day, new Date());
     if (isToday) {
-      return `${baseClass} border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900`;
+      return `${baseClass} border border-base-300 text-base-content hover:bg-base-200`;
     }
 
-    return `${baseClass} text-slate-700 dark:text-slate-350 hover:bg-slate-100 dark:hover:bg-slate-900`;
+    return `${baseClass} text-base-content/85 hover:bg-base-200`;
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Breeding Ledger"
-        subtitle="Unified lifecycle logs tracking Insemination, Pregnancy, and Calving Drop progression"
+        title="Pregnancy Checks"
+        subtitle="Review pregnancy diagnoses and expected calving dates"
       />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
         {/* Dynamic Breeding Mini Grid Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
             {
-              label: "Breeding Actions",
-              val: stats.totalRecords,
-              color: "text-primary bg-emerald-50 dark:bg-emerald-950/20",
+              label: "Pregnancy Checks",
+              val: pregnancyChecks.length,
+              color: "text-primary bg-primary/10",
               icon: <Layers size={16} />,
             },
             {
-              label: "Inseminations Done",
-              val: stats.totalInseminations,
-              color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
-              icon: <Syringe size={16} />,
-            },
-            {
-              label: "Pregnant Confirmed",
+              label: "Confirmed Pregnant",
               val: stats.confirmedPregnancies,
-              color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
+              color: "text-purple-600 bg-purple-500/10",
               icon: <Sparkles size={16} />,
             },
             {
-              label: "Calvings Logged",
-              val: stats.totalCalvings,
-              color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
-              icon: <Baby size={16} />,
-            },
-            {
-              label: "Pending AI Tasks",
-              val: stats.pendingAI,
-              color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
+              label: "Not Pregnant",
+              val: pregnancyChecks.filter(
+                (record) => record.pregnancyDiagnosis?.result === "Empty",
+              ).length,
+              color: "text-amber-600 bg-amber-500/10",
               icon: <Clock size={16} />,
             },
           ].map((stat, i) => (
             <div
               key={i}
-              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
+              className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
             >
               <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
                 {stat.icon}
@@ -987,7 +1002,7 @@ export default function BreedingLedger() {
                 <div className="text-xl font-black tracking-tight">
                   {isLoading ? "..." : stat.val}
                 </div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-base-content/50 mt-0.5">
                   {stat.label}
                 </div>
               </div>
@@ -996,26 +1011,14 @@ export default function BreedingLedger() {
         </div>
 
         {/* Cohesive Reproduction Tab Swapping ribbon */}
-        <div className="flex border-b border-slate-200 dark:border-slate-800 justify-between items-center pr-2 flex-wrap gap-3">
+        <div className="flex border-b border-base-300 justify-between items-center pr-2 flex-wrap gap-3">
           <div className="flex">
             {[
               {
-                id: "insemination",
-                label: "Insemination (AI)",
-                count: stats.totalInseminations,
-                color: "border-blue-500 text-blue-600",
-              },
-              {
                 id: "pregnancy",
-                label: "Pregnancy Check (PD)",
+                label: "Pregnancy Checks",
                 count: pregnancyChecks.length,
                 color: "border-purple-500 text-purple-600",
-              },
-              {
-                id: "calving",
-                label: "Calving / Calf Drop (CD)",
-                count: stats.totalCalvings,
-                color: "border-emerald-500 text-emerald-600",
               },
             ].map((tab) => (
               <button
@@ -1027,16 +1030,16 @@ export default function BreedingLedger() {
                 }}
                 className={`py-3 px-6 text-xs font-black uppercase tracking-wider border-b-2 transition-all flex items-center gap-2 cursor-pointer ${
                   activeTab === tab.id
-                    ? `${tab.color} bg-white dark:bg-slate-950 font-extrabold rounded-t-xl`
-                    : "border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    ? `${tab.color} bg-base-100 font-extrabold rounded-t-xl`
+                    : "border-transparent text-base-content/50 hover:text-base-content"
                 }`}
               >
                 <span>{tab.label}</span>
                 <span
                   className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full ${
                     activeTab === tab.id
-                      ? "bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-350"
-                      : "bg-slate-100/60 dark:bg-slate-900/60 text-slate-400"
+                      ? "bg-base-200 text-base-content/85"
+                      : "bg-base-200 text-base-content/40"
                   }`}
                 >
                   {tab.count}
@@ -1047,14 +1050,24 @@ export default function BreedingLedger() {
 
           {/* Search Input & Export on the right side of the tabs */}
           <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setIsPregnancyModalOpen(true);
+              }}
+            >
+              <Plus size={13} />
+              Record pregnancy check
+            </button>
             <div className="relative w-64">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none flex items-center justify-center">
                 <Search size={14} />
               </span>
               <input
                 type="text"
                 placeholder={`Search within ${activeTab === "insemination" ? "AI records" : activeTab === "pregnancy" ? "pregnancy diagnostics" : "calving logs"}...`}
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-primary dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-primary dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content placeholder-base-content/40 focus:ring-1 focus:ring-primary outline-none transition-all duration-200"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -1065,7 +1078,7 @@ export default function BreedingLedger() {
             <button
               onClick={handleExportCSV}
               disabled={processedRecords.length === 0}
-              className="btn btn-sm bg-primary hover:bg-primary-focus border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
+              className="btn btn-sm btn-primary border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
             >
               <Download size={13} /> Export Tab CSV
             </button>
@@ -1073,17 +1086,17 @@ export default function BreedingLedger() {
         </div>
 
         {/* Filters and Datatable Platform wrapper */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Top Filter Ribbon */}
-          <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
+          <div className="flex items-center gap-2 flex-wrap mb-4 bg-base-200 border border-base-300 p-2.5 rounded-xl">
+            <div className="flex items-center gap-1.5 text-xs text-base-content/40 font-bold uppercase tracking-wide px-1">
               <SlidersHorizontal size={13} />
               <span>Filters:</span>
             </div>
 
             {activeTab === "insemination" && (
               <select
-                className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-primary dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+                className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
                 value={statusFilter}
                 onChange={(e) => {
                   setStatusFilter(e.target.value);
@@ -1100,7 +1113,7 @@ export default function BreedingLedger() {
 
             {activeTab === "pregnancy" && (
               <select
-                className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-primary dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+                className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
                 value={statusFilter}
                 onChange={(e) => {
                   setStatusFilter(e.target.value);
@@ -1114,16 +1127,16 @@ export default function BreedingLedger() {
             )}
 
             {/* Custom Premium Date Range Picker Dropdown */}
-            <div className="relative">
+            <div className="relative ">
               <button
                 type="button"
                 onClick={handleOpenDateDropdown}
                 className={`btn btn-sm rounded-xl text-xs font-bold gap-2 px-4 transition-all duration-200 cursor-pointer border ${
                   isDateDropdownOpen
-                    ? "border-blue-500! ring-2 ring-blue-500/30! bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                    ? "border-blue-500! ring-2 ring-blue-500/30! bg-base-200 text-base-content"
                     : dateFilter.preset !== "all"
-                      ? "bg-primary/10! text-primary border-primary/40! dark:text-emerald-400 dark:border-emerald-500/40!"
-                      : "border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-950"
+                      ? "bg-primary/10! text-primary border-primary/40!"
+                      : "border-base-300 text-base-content bg-base-100"
                 }`}
               >
                 <Calendar
@@ -1132,15 +1145,15 @@ export default function BreedingLedger() {
                     isDateDropdownOpen
                       ? "text-blue-500"
                       : dateFilter.preset !== "all"
-                        ? "text-primary dark:text-emerald-400"
-                        : "text-slate-400"
+                        ? "text-primary"
+                        : "text-base-content/40"
                   }
                 />
                 <span>{getDateFilterLabel()}</span>
                 {dateFilter.preset !== "all" && (
                   <span
                     onClick={handleClearDateFilter}
-                    className="hover:bg-slate-200 dark:hover:bg-slate-800 rounded-full p-0.5 ml-1 transition-colors"
+                    className="hover:bg-base-200 rounded-full p-0.5 ml-1 transition-colors"
                   >
                     <X size={10} />
                   </span>
@@ -1154,7 +1167,7 @@ export default function BreedingLedger() {
                     onClick={() => setIsDateDropdownOpen(false)}
                   />
                   <div
-                    className={`absolute top-12 left-0 z-50 card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-xl p-4 transition-all duration-200 animate-fade-in ${
+                    className={`absolute top-12 left-0 z-50 card bg-base-100 border border-base-300 rounded-2xl shadow-xl p-4 transition-all duration-200 animate-fade-in ${
                       pickerMode === "calendar" ? "w-full md:w-[570px]" : "w-60"
                     }`}
                   >
@@ -1189,7 +1202,7 @@ export default function BreedingLedger() {
                               dateFilter.preset === p.id &&
                               dateFilter.preset !== "custom"
                                 ? "bg-primary text-white"
-                                : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900"
+                                : "text-base-content/80 hover:bg-base-200"
                             }`}
                           >
                             <span>{p.label}</span>
@@ -1205,7 +1218,7 @@ export default function BreedingLedger() {
                         <div className="flex flex-col md:flex-row gap-5">
                           {/* Left Calendar (currentViewMonth) */}
                           <div className="w-60 flex-1">
-                            <div className="flex items-center justify-between border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 mb-3">
+                            <div className="flex items-center justify-between border border-base-300 rounded-xl px-3 py-1.5 bg-base-200 mb-3">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -1218,11 +1231,11 @@ export default function BreedingLedger() {
                                     };
                                   });
                                 }}
-                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                className="p-1 hover:bg-base-200 rounded-lg text-base-content/60 hover:text-base-content transition-colors cursor-pointer"
                               >
                                 <ChevronLeft size={14} />
                               </button>
-                              <span className="text-[11px] font-black text-slate-700 dark:text-slate-200">
+                              <span className="text-[11px] font-black text-base-content">
                                 {getMonthName(leftMonthYear.month)}{" "}
                                 {leftMonthYear.year}
                               </span>
@@ -1234,7 +1247,7 @@ export default function BreedingLedger() {
                                 (d) => (
                                   <span
                                     key={d}
-                                    className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider py-0.5"
+                                    className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider py-0.5"
                                   >
                                     {d}
                                   </span>
@@ -1265,10 +1278,10 @@ export default function BreedingLedger() {
                           </div>
 
                           {/* Right Calendar (currentViewMonth + 1) */}
-                          <div className="w-60 flex-1 border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800/80 pt-4 md:pt-0 md:pl-5">
-                            <div className="flex items-center justify-between border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 mb-3">
+                          <div className="w-60 flex-1 border-t md:border-t-0 md:border-l border-base-300 pt-4 md:pt-0 md:pl-5">
+                            <div className="flex items-center justify-between border border-base-300 rounded-xl px-3 py-1.5 bg-base-200 mb-3">
                               <div className="w-6" />
-                              <span className="text-[11px] font-black text-slate-700 dark:text-slate-200">
+                              <span className="text-[11px] font-black text-base-content">
                                 {getMonthName((leftMonthYear.month + 1) % 12)}{" "}
                                 {leftMonthYear.month === 11
                                   ? leftMonthYear.year + 1
@@ -1286,7 +1299,7 @@ export default function BreedingLedger() {
                                     };
                                   });
                                 }}
-                                className="p-1 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
+                                className="p-1 hover:bg-base-200 rounded-lg text-base-content/60 hover:text-base-content transition-colors cursor-pointer"
                               >
                                 <ChevronRight size={14} />
                               </button>
@@ -1297,7 +1310,7 @@ export default function BreedingLedger() {
                                 (d) => (
                                   <span
                                     key={d}
-                                    className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider py-0.5"
+                                    className="text-[10px] font-bold text-base-content/40 uppercase tracking-wider py-0.5"
                                   >
                                     {d}
                                   </span>
@@ -1331,7 +1344,7 @@ export default function BreedingLedger() {
                         </div>
 
                         {/* Actions footer */}
-                        <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80 pt-3 mt-1">
+                        <div className="flex items-center justify-between border-t border-base-300 pt-3 mt-1">
                           <button
                             type="button"
                             onClick={() => {
@@ -1340,7 +1353,7 @@ export default function BreedingLedger() {
                                 endDate: null,
                               });
                             }}
-                            className="btn btn-xs btn-ghost text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-[10px] font-bold rounded-lg px-2 cursor-pointer"
+                            className="btn btn-xs btn-ghost text-base-content/40 hover:text-base-content text-[10px] font-bold rounded-lg px-2 cursor-pointer"
                           >
                             Clear
                           </button>
@@ -1350,7 +1363,7 @@ export default function BreedingLedger() {
                               onClick={() => {
                                 setPickerMode("presets");
                               }}
-                              className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-bold rounded-lg px-3 cursor-pointer"
+                              className="btn btn-xs btn-outline border-base-300 text-base-content/60 text-[10px] font-bold rounded-lg px-3 cursor-pointer"
                             >
                               Cancel
                             </button>
@@ -1390,26 +1403,56 @@ export default function BreedingLedger() {
               </button>
               <button
                 onClick={() => window.print()}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-[11px] font-bold gap-1.5 rounded-xl px-3 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                className="btn btn-xs btn-outline border-base-300 text-[11px] font-bold gap-1.5 rounded-xl px-3 text-base-content/60 hover:bg-base-200 transition-colors cursor-pointer"
               >
                 <Printer size={11} /> Print Official Form
               </button>
-              <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2 whitespace-nowrap">
+              <span className="text-xs text-base-content/40 font-semibold border-l border-base-300 pl-2 whitespace-nowrap">
                 {isLoading
                   ? "Fetching records..."
-                  : `${totalItems} entry${totalItems !== 1 ? "s" : ""} matched`}
+                  : `${totalItems} ${totalItems === 1 ? "entry" : "entries"} matched`}
               </span>
             </div>
           </div>
 
-          {/* Core Service Database Grid */}
           <div className="overflow-x-auto flex-1 overflow-y-auto">
             {isLoading ? (
-              <div className="p-12 text-center text-slate-400">
-                <TableRowSkeleton />
+              <div className="overflow-hidden rounded-box border border-base-300">
+                <table className="table table-sm">
+                  <thead>
+                    <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider select-none">
+                      <th>#</th>
+                      <th>Diagnosis Date</th>
+                      <th>Farmer</th>
+                      <th>Animal</th>
+                      <th>Farmer location</th>
+                      <th>Outcome</th>
+                      <th>Est. Calving Date</th>
+                      <th className="text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...Array(6)].map((_, idx) => (
+                      <tr key={idx}>
+                        <td colSpan={8}>
+                          <div className="grid grid-cols-[.5fr_1fr_1.2fr_.8fr_1fr_.8fr_1fr_.8fr] gap-5 py-1">
+                            <span className="skeleton h-4" />
+                            <span className="skeleton h-4" />
+                            <span className="skeleton h-4" />
+                            <span className="skeleton h-4" />
+                            <span className="skeleton h-4" />
+                            <span className="skeleton h-4" />
+                            <span className="skeleton h-4" />
+                            <span className="skeleton h-4" />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : paginatedRecords.length === 0 ? (
-              <div className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium">
+              <div className="text-center p-12 text-base-content/40 font-medium">
                 No matching entries found.
               </div>
             ) : activeTab === "insemination" ? (
@@ -1440,8 +1483,8 @@ export default function BreedingLedger() {
           </div>
 
           {/* Pagination */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between mt-3">
-            <span className="text-[11px] font-medium text-slate-400">
+          <div className="pt-4 border-t border-base-300 flex items-center justify-between mt-3">
+            <span className="text-[11px] font-medium text-base-content/40">
               Showing {totalItems === 0 ? 0 : startIndex + 1}–
               {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
               ledger items
@@ -1450,7 +1493,7 @@ export default function BreedingLedger() {
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1 || isLoading}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
               >
                 <ChevronLeft size={12} />
               </button>
@@ -1463,7 +1506,7 @@ export default function BreedingLedger() {
                     className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
                       currentPage === pageNumber
                         ? "bg-primary text-white shadow-xs"
-                        : "border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                        : "border border-base-300 text-base-content/60 hover:bg-base-200"
                     }`}
                   >
                     {pageNumber}
@@ -1475,7 +1518,7 @@ export default function BreedingLedger() {
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }
                 disabled={currentPage === totalPages || isLoading}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
               >
                 <ChevronRight size={12} />
               </button>
@@ -1491,12 +1534,12 @@ export default function BreedingLedger() {
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="card w-full max-w-md bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
+            className="card w-full max-w-md bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-3">
+            <div className="flex items-center justify-between border-b border-base-300 pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-slate-400 uppercase">
+                <span className="text-xs font-black text-base-content/40 uppercase">
                   {activeTab === "insemination"
                     ? "AI Insemination"
                     : activeTab === "pregnancy"
@@ -1518,7 +1561,7 @@ export default function BreedingLedger() {
               </button>
             </div>
 
-            <div className="divide-y divide-slate-100 dark:divide-slate-900 text-xs">
+            <div className="divide-y divide-base-300 text-xs">
               {[
                 { key: "Date Registered", val: selectedRecord.date },
                 { key: "Farmer Client Name", val: selectedRecord.farmer },
@@ -1528,19 +1571,19 @@ export default function BreedingLedger() {
                   customStyle: "text-primary font-black",
                 },
                 {
-                  key: "Deployment Sector",
-                  val: `${selectedRecord.barangay}, Oton, Iloilo`,
+                  key: "Farmer location",
+                  val: selectedRecord.barangay,
                 },
               ].map((row, index) => (
                 <div
                   key={index}
                   className="flex justify-between items-center py-2.5"
                 >
-                  <span className="text-slate-400 font-semibold text-left">
+                  <span className="text-base-content/40 font-semibold text-left">
                     {row.key}
                   </span>
                   <span
-                    className={`font-bold text-slate-800 dark:text-slate-200 text-right ${row.customStyle || ""}`}
+                    className={`font-bold text-base-content/90 text-right ${row.customStyle || ""}`}
                   >
                     {row.val}
                   </span>
@@ -1553,16 +1596,36 @@ export default function BreedingLedger() {
                   {[
                     {
                       key: "Sire Breed",
-                      val: selectedRecord.sireBreed || "N/A",
+                      val: selectedRecord.sireBreed || "Not recorded",
                     },
                     {
                       key: "Sire Code Reference",
-                      val: selectedRecord.sireCode || "N/A",
+                      val: selectedRecord.sireCode || "Not recorded",
                     },
                     {
                       key: "Attempt Number",
                       val: `#${selectedRecord.attemptNumber}`,
                     },
+                    {
+                      key: "Outcome",
+                      val: `${selectedRecord.outcome} (${selectedRecord.outcomeVerificationStatus})`,
+                    },
+                    ...(selectedRecord.previousAttempt
+                      ? [
+                          {
+                            key: "Previous attempt",
+                            val: `Attempt #${selectedRecord.previousAttempt.attemptNumber || 1} · ${selectedRecord.previousAttempt.inseminationDate ? new Date(selectedRecord.previousAttempt.inseminationDate).toLocaleDateString() : "Date not recorded"} · ${selectedRecord.previousAttempt.outcome || "Pending"}`,
+                          },
+                        ]
+                      : selectedRecord.attemptNumber > 1
+                        ? [
+                            {
+                              key: "Previous attempt",
+                              val: "Legacy record is not linked to its earlier attempt",
+                              customStyle: "text-warning",
+                            },
+                          ]
+                        : []),
                     { key: "Estrus Detection", val: selectedRecord.estrus },
                     {
                       key: "Farmer Observations",
@@ -1844,6 +1907,18 @@ export default function BreedingLedger() {
           </div>
         </div>
       )}
+
+      <PregnancyDiagnosisModal
+        isOpen={isPregnancyModalOpen}
+        taskData={null}
+        onClose={() => setIsPregnancyModalOpen(false)}
+        onSuccess={() => {
+          setIsPregnancyModalOpen(false);
+          queryClient.invalidateQueries({
+            queryKey: ["technician", "pregnancy-checks-list"],
+          });
+        }}
+      />
 
       {/* ===== DEPARTMENT OF AGRICULTURE UNIFIED ACCOMPLISHMENT REPORT (PRINT TEMPLATE) ===== */}
       <div

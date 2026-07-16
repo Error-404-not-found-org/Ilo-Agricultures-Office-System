@@ -1,14 +1,23 @@
 import React from "react";
 import { View } from "react-native";
-import { Text } from "@/components/ui/Text";
-import { Card } from "@/components/ui/Card";
-import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+
+import { Card } from "@/components/ui/Card";
+import { Text } from "@/components/ui/Text";
+import { useTheme } from "@/lib/theme";
 
 interface TechnicianStatsCardProps {
   stats: any;
   analytics: any;
   agendaItems?: any[];
+}
+
+interface MetricItem {
+  label: string;
+  value: number;
+  icon: string;
+  color: string;
+  tint: string;
 }
 
 export function TechnicianStatsCard({
@@ -18,330 +27,266 @@ export function TechnicianStatsCard({
 }: TechnicianStatsCardProps) {
   const { colors, isDark } = useTheme();
 
-  // Section 1: Today's Work calculations
-  const todayVisits = stats.todayActivities || 0;
-  const readyToday = agendaItems.filter((item) => item.isReadyToday).length;
-  const completedToday = stats.completedToday || 0;
+  const todayMetrics: MetricItem[] = [
+    {
+      label: "Scheduled",
+      value: stats.todayActivities || 0,
+      icon: "calendar-check-outline",
+      color: isDark ? "#34d399" : "#00643B",
+      tint: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5",
+    },
+    {
+      label: "Ready",
+      value: agendaItems.filter((item) => item.isReadyToday).length,
+      icon: "play-circle-outline",
+      color: isDark ? colors.warning : "#b45309",
+      tint: isDark ? "rgba(245,158,11,0.14)" : "#fffbeb",
+    },
+    {
+      label: "Completed",
+      value: stats.completedToday || 0,
+      icon: "check-circle-outline",
+      color: isDark ? colors.success : "#047857",
+      tint: isDark ? "rgba(16,185,129,0.14)" : "#f0fdf4",
+    },
+  ];
 
-  // Section 2: Service Summary calculations
-  const aiServicesMonth = stats.totalInsemMonth || 0;
-  const healthCasesMonth = analytics.totalHealth_Month || 0;
+  const serviceMetrics: MetricItem[] = [
+    {
+      label: "AI services",
+      value: stats.totalInsemMonth || 0,
+      icon: "needle",
+      color: isDark ? "#67e8f9" : "#0e7490",
+      tint: isDark ? "rgba(6,182,212,0.12)" : "#ecfeff",
+    },
+    {
+      label: "Health cases",
+      value: analytics.totalHealth_Month || 0,
+      icon: "stethoscope",
+      color: isDark ? "#93c5fd" : "#1d4ed8",
+      tint: isDark ? "rgba(59,130,246,0.12)" : "#eff6ff",
+    },
+    {
+      label: "Pregnancy checks",
+      value: stats.totalPregnancyCheckupMonth || 0,
+      icon: "heart-pulse",
+      color: isDark ? "#f9a8d4" : "#be185d",
+      tint: isDark ? "rgba(236,72,153,0.12)" : "#fdf2f8",
+    },
+    {
+      label: "Calvings",
+      value: stats.totalCalvingMonth || 0,
+      icon: "cow",
+      color: isDark ? "#5eead4" : "#0f766e",
+      tint: isDark ? "rgba(20,184,166,0.12)" : "#f0fdfa",
+    },
+  ];
+
+  const cardStyle = {
+    padding: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  };
 
   return (
     <View style={{ gap: 16, marginBottom: 24 }}>
-      {/* SECTION 1: TODAY'S WORK */}
-      <Card
-        style={{
-          padding: 18,
-          borderWidth: 1,
-          borderColor: isDark
-            ? "rgba(16, 185, 129, 0.2)"
-            : "rgba(0, 100, 59, 0.15)",
-          backgroundColor: isDark ? "rgba(6, 78, 62, 0.15)" : "#f0fdf4",
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginBottom: 12,
-            gap: 6,
-          }}
-        >
-          <MaterialCommunityIcons
-            name="calendar-today"
-            size={16}
-            color={isDark ? colors.primary : "#00643B"}
-          />
-          <Text
-            style={{
-              fontFamily: "Outfit_800ExtraBold",
-              fontSize: 13,
-              color: isDark ? colors.primary : "#00643B",
-              letterSpacing: 0.5,
-            }}
-          >
-            TODAY'S WORK
-          </Text>
-        </View>
+      <Card style={cardStyle}>
+        <SectionHeader
+          icon="calendar-today-outline"
+          title="Today's work"
+          subtitle="Current field workload"
+        />
 
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <StatBox
-            label="Visits Today"
-            subLabel="Assigned"
-            value={todayVisits}
-            color={isDark ? colors.primary : "#00643B"}
-            icon="calendar-multiselect"
-          />
-          <View
-            style={{
-              width: 1,
-              height: "70%",
-              backgroundColor: isDark
-                ? "rgba(16, 185, 129, 0.2)"
-                : "rgba(0, 100, 59, 0.15)",
-              alignSelf: "center",
-            }}
-          />
-          <StatBox
-            label="Ready Today"
-            subLabel="Ready to Start"
-            value={readyToday}
-            color={readyToday > 0 ? "#eab308" : colors.textMuted}
-            icon="play-circle-outline"
-          />
-          <View
-            style={{
-              width: 1,
-              height: "70%",
-              backgroundColor: isDark
-                ? "rgba(16, 185, 129, 0.2)"
-                : "rgba(0, 100, 59, 0.15)",
-              alignSelf: "center",
-            }}
-          />
-          <StatBox
-            label="Completed Today"
-            subLabel="Finished"
-            value={completedToday}
-            color={completedToday > 0 ? "#10b981" : colors.textMuted}
-            icon="check-circle-outline"
-          />
+        <View style={{ flexDirection: "row", alignItems: "stretch" }}>
+          {todayMetrics.map((metric, index) => (
+            <React.Fragment key={metric.label}>
+              <TodayMetric metric={metric} />
+              {index < todayMetrics.length - 1 ? (
+                <View
+                  style={{
+                    width: 1,
+                    marginHorizontal: 10,
+                    backgroundColor: colors.border,
+                  }}
+                />
+              ) : null}
+            </React.Fragment>
+          ))}
         </View>
       </Card>
 
-      {/* SECTION 2: SERVICE SUMMARY */}
-      <Card
-        style={{
-          padding: 18,
-          borderWidth: 1,
-          borderColor: colors.border,
-          backgroundColor: colors.card,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            marginBottom: 14,
-            gap: 6,
-          }}
-        >
-          <MaterialCommunityIcons
-            name="chart-bar"
-            size={16}
-            color={colors.textSecondary}
-          />
-          <Text
-            style={{
-              fontFamily: "Outfit_800ExtraBold",
-              fontSize: 13,
-              color: colors.textSecondary,
-              letterSpacing: 0.5,
-            }}
-          >
-            SERVICE SUMMARY
-          </Text>
-        </View>
+      <Card style={cardStyle}>
+        <SectionHeader
+          icon="chart-box-outline"
+          title="Service summary"
+          subtitle="Recorded this month"
+        />
 
         <View
           style={{
             flexDirection: "row",
-            justifyContent: "space-between",
             flexWrap: "wrap",
-            rowGap: 16,
+            marginHorizontal: -5,
+            marginBottom: -10,
           }}
         >
-          <View style={{ width: "23%", alignItems: "center" }}>
-            <MaterialCommunityIcons name="needle" size={18} color="#0891b2" />
-            <Text
-              variant="black"
-              size={16}
-              style={{ marginTop: 4, color: colors.textPrimary }}
-            >
-              {aiServicesMonth}
-            </Text>
-            <Text
-              variant="bold"
-              color="primary"
-              size={9}
-              style={{ textAlign: "center", marginTop: 2 }}
-            >
-              AI Services
-            </Text>
-            <Text
-              color="muted"
-              size={8}
+          {serviceMetrics.map((metric) => (
+            <View
+              key={metric.label}
               style={{
-                textTransform: "uppercase",
-                fontSize: 7,
-                fontFamily: "Outfit_700Bold",
-                marginTop: 1,
+                width: "50%",
+                paddingHorizontal: 5,
+                marginBottom: 10,
               }}
             >
-              This Month
-            </Text>
-          </View>
-
-          <View
-            style={{
-              width: "1%",
-              height: 35,
-              backgroundColor: colors.border,
-              alignSelf: "center",
-            }}
-          />
-
-          <View style={{ width: "23%", alignItems: "center" }}>
-            <MaterialCommunityIcons
-              name="stethoscope"
-              size={18}
-              color="#2563eb"
-            />
-            <Text
-              variant="black"
-              size={16}
-              style={{ marginTop: 4, color: colors.textPrimary }}
-            >
-              {healthCasesMonth}
-            </Text>
-            <Text
-              variant="bold"
-              color="primary"
-              size={9}
-              style={{ textAlign: "center", marginTop: 2 }}
-            >
-              Health Cases
-            </Text>
-            <Text
-              color="muted"
-              size={8}
-              style={{
-                textTransform: "uppercase",
-                fontSize: 7,
-                fontFamily: "Outfit_700Bold",
-                marginTop: 1,
-              }}
-            >
-              This Month
-            </Text>
-          </View>
-
-          <View
-            style={{
-              width: "1%",
-              height: 35,
-              backgroundColor: colors.border,
-              alignSelf: "center",
-            }}
-          />
-
-          <View style={{ width: "23%", alignItems: "center" }}>
-            <MaterialCommunityIcons
-              name="baby-face-outline"
-              size={18}
-              color="#7c3aed"
-            />
-            <Text
-              variant="black"
-              size={16}
-              style={{ marginTop: 4, color: colors.textPrimary }}
-            >
-              {stats.totalPregnancyCheckupMonth || 0}
-            </Text>
-            <Text
-              variant="bold"
-              color="primary"
-              size={9}
-              style={{ textAlign: "center", marginTop: 2 }}
-            >
-              Pregnancy Chk
-            </Text>
-            <Text
-              color="muted"
-              size={8}
-              style={{
-                textTransform: "uppercase",
-                fontSize: 7,
-                fontFamily: "Outfit_700Bold",
-                marginTop: 1,
-              }}
-            >
-              This Month
-            </Text>
-          </View>
-
-          <View
-            style={{
-              width: "1%",
-              height: 35,
-              backgroundColor: colors.border,
-              alignSelf: "center",
-            }}
-          />
-
-          <View style={{ width: "23%", alignItems: "center" }}>
-            <MaterialCommunityIcons name="cow" size={18} color="#db2777" />
-            <Text
-              variant="black"
-              size={16}
-              style={{ marginTop: 4, color: colors.textPrimary }}
-            >
-              {stats.totalCalvingMonth || 0}
-            </Text>
-            <Text
-              variant="bold"
-              color="primary"
-              size={9}
-              style={{ textAlign: "center", marginTop: 2 }}
-            >
-              Calvings
-            </Text>
-            <Text
-              color="muted"
-              size={8}
-              style={{
-                textTransform: "uppercase",
-                fontSize: 7,
-                fontFamily: "Outfit_700Bold",
-                marginTop: 1,
-              }}
-            >
-              This Month
-            </Text>
-          </View>
+              <ServiceMetric metric={metric} />
+            </View>
+          ))}
         </View>
       </Card>
     </View>
   );
 }
 
-const StatBox = ({ label, value, icon, color, subLabel }: any) => {
-  const { colors } = useTheme();
+function SectionHeader({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: string;
+  title: string;
+  subtitle: string;
+}) {
+  const { colors, isDark } = useTheme();
+
   return (
-    <View style={{ flex: 1, alignItems: "center" }}>
-      <MaterialCommunityIcons name={icon} size={20} color={color} />
-      <Text
-        variant="black"
-        size={20}
-        style={{ marginTop: 4, color: colors.textPrimary }}
-      >
-        {value}
-      </Text>
-      <Text variant="bold" color="primary" size={10} style={{ marginTop: 2 }}>
-        {label}
-      </Text>
-      <Text
-        color="muted"
-        size={8}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        marginBottom: 16,
+      }}
+    >
+      <View
         style={{
-          textTransform: "uppercase",
-          fontSize: 7.5,
-          fontFamily: "Outfit_700Bold",
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#ecfdf5",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        {subLabel}
+        <MaterialCommunityIcons
+          name={icon as any}
+          size={19}
+          color={colors.primary}
+        />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text variant="extrabold" size={16}>
+          {title}
+        </Text>
+        <Text
+          variant="medium"
+          color="secondary"
+          size={11}
+          style={{ marginTop: 1 }}
+        >
+          {subtitle}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function TodayMetric({ metric }: { metric: MetricItem }) {
+  return (
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <View
+        style={{
+          width: 34,
+          height: 34,
+          borderRadius: 10,
+          backgroundColor: metric.tint,
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: 9,
+        }}
+      >
+        <MaterialCommunityIcons
+          name={metric.icon as any}
+          size={18}
+          color={metric.color}
+        />
+      </View>
+      <Text variant="black" size={22}>
+        {metric.value}
+      </Text>
+      <Text
+        variant="medium"
+        color="secondary"
+        size={11}
+        numberOfLines={2}
+        style={{ lineHeight: 14, marginTop: 2 }}
+      >
+        {metric.label}
       </Text>
     </View>
   );
-};
+}
+
+function ServiceMetric({ metric }: { metric: MetricItem }) {
+  const { colors, isDark } = useTheme();
+
+  return (
+    <View
+      style={{
+        minHeight: 76,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: isDark ? colors.background : "#f8fafc",
+        padding: 11,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+      }}
+    >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          backgroundColor: metric.tint,
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+        }}
+      >
+        <MaterialCommunityIcons
+          name={metric.icon as any}
+          size={18}
+          color={metric.color}
+        />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text variant="black" size={18}>
+          {metric.value}
+        </Text>
+        <Text
+          variant="medium"
+          color="secondary"
+          size={11}
+          numberOfLines={2}
+          style={{ lineHeight: 14, marginTop: 1 }}
+        >
+          {metric.label}
+        </Text>
+      </View>
+    </View>
+  );
+}

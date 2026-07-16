@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import {
-  Zap,
   Syringe,
   Stethoscope,
   UserPlus,
@@ -9,7 +8,6 @@ import {
   Baby,
   Search,
   ArrowRight,
-  TrendingUp,
   Clock,
   CalendarCheck,
   CheckCircle,
@@ -22,6 +20,8 @@ import DashboardChart from "../../components/data/DashboardChart";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/ui/Topbar";
 import { ui } from "../../components/ui/uiClasses";
+import { getStoredTheme, isDarkTheme } from "../../lib/theme";
+import { getTechnicianStatus } from "../../constants/technicianWorkflow";
 
 // Import dedicated quick action modals
 import WalkInAIModal from "../../components/modals/WalkInAIModal";
@@ -31,10 +31,39 @@ import RegisterLivestockModal from "../../components/modals/RegisterLivestockMod
 import PregnancyDiagnosisModal from "../../components/modals/PregnancyDiagnosisModal";
 import RecordCalvingModal from "../../components/modals/RecordCalvingModal";
 
+function OverviewMetric({ icon, label, value, helper, tone = "text-primary bg-primary/10" }) {
+  return (
+    <div className="rounded-box border border-base-300 bg-base-100 p-4">
+      <div className={`mb-3 flex size-9 items-center justify-center rounded-box ${tone}`}>
+        {icon}
+      </div>
+      <p className="text-2xl font-bold">{value}</p>
+      <p className="mt-1 text-sm font-semibold">{label}</p>
+      <p className="mt-0.5 text-xs text-base-content/50">{helper}</p>
+    </div>
+  );
+}
+
+function QuickAction({ icon, label, description, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-h-28 items-start gap-3 rounded-box border border-base-300 bg-base-100 p-4 text-left transition hover:border-primary/45 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-box bg-base-200 text-primary transition group-hover:bg-primary/10">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-bold">{label}</span>
+        <span className="mt-1 block text-xs leading-5 text-base-content/55">{description}</span>
+      </span>
+    </button>
+  );
+}
+
 export default function Dashboard() {
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("theme") || "emerald";
-  });
+  const [theme, setTheme] = useState(getStoredTheme);
 
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -76,8 +105,8 @@ export default function Dashboard() {
   const [isCalvingModalOpen, setIsCalvingModalOpen] = useState(false);
 
   // ---- FETCH INTEGRATED TELEMETRY DATA ----
-  const fetchDashboardMetrics = async () => {
-    setIsLoading(true);
+  const fetchDashboardMetrics = async (showInitialLoading = false) => {
+    if (showInitialLoading) setIsLoading(true);
     const [dashRes, analyticsRes] = await Promise.allSettled([
       axiosInstance.get("/technician/dashboard-data"),
       axiosInstance.get("/technician/analytics"),
@@ -112,24 +141,25 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    Promise.resolve().then(() => fetchDashboardMetrics());
+    Promise.resolve().then(() => fetchDashboardMetrics(true));
     // Automated 30-second synchronization sequence
-    const telemetryInterval = setInterval(fetchDashboardMetrics, 1000 * 30);
+    const telemetryInterval = setInterval(
+      () => fetchDashboardMetrics(false),
+      1000 * 30,
+    );
     return () => clearInterval(telemetryInterval);
   }, []);
 
   // Synchronize local theme state with global theme toggle attributes
   useEffect(() => {
     const syncTheme = () => {
-      setTheme(localStorage.getItem("theme") || "emerald");
+      setTheme(getStoredTheme());
     };
     window.addEventListener("theme-change", syncTheme);
     window.addEventListener("storage", syncTheme);
-    const interval = setInterval(syncTheme, 1000);
     return () => {
       window.removeEventListener("theme-change", syncTheme);
       window.removeEventListener("storage", syncTheme);
-      clearInterval(interval);
     };
   }, []);
 
@@ -153,30 +183,21 @@ export default function Dashboard() {
   );
 
   const activePendingCount = pendingRequests.filter(
-    (r) => r.status === "pending",
+    (r) => !["done", "resolved", "completed", "rejected", "cancelled"].includes(r.status),
   ).length;
   const inseminationPendingCount = pendingRequests.filter(
-    (r) => r.status === "pending" && r.type !== "health",
+    (r) => !["done", "resolved", "completed", "rejected", "cancelled"].includes(r.status) && r.type !== "health",
   ).length;
   const healthPendingCount = pendingRequests.filter(
-    (r) => r.status === "pending" && r.type === "health",
+    (r) => !["done", "resolved", "completed", "rejected", "cancelled"].includes(r.status) && r.type === "health",
   ).length;
+  const readyTodayCount = agendaItems.filter((item) => item.isReadyToday).length;
 
   // Render agenda lists using live backend deployments matrix
   const mappedVisits = React.useMemo(() => {
     if (!agendaItems || agendaItems.length === 0) return [];
     return agendaItems.map((item, index) => {
-      let variantStyles = "bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b]";
-      let statusStyles = "bg-emerald-100 dark:bg-emerald-950/40 text-[#00643b]";
-
-      if (index === 1) {
-        variantStyles = "bg-amber-50 dark:bg-amber-950/20 text-amber-600";
-        statusStyles = "bg-amber-100 dark:bg-amber-950/40 text-amber-600";
-      } else if (index > 1) {
-        variantStyles = "bg-blue-50 dark:bg-blue-950/20 text-blue-600";
-        statusStyles = "bg-blue-100 dark:bg-blue-950/40 text-blue-600";
-      }
-
+      const statusConfig = getTechnicianStatus(item.status);
       return {
         id: item.id || index,
         farmer: item.farmer || "Unknown Farmer",
@@ -188,11 +209,12 @@ export default function Dashboard() {
               .toUpperCase()
               .slice(0, 2)
           : "FI",
-        bg: variantStyles,
-        location: item.location || "Oton Region",
-        time: item.time || "00:00 AM",
-        status: item.status || "Confirmed",
-        statusClass: statusStyles,
+        location: item.farmLocationLabel || item.location || "Location not recorded",
+        time: item.time || "Time not set",
+        status: item.displayStatus || statusConfig.label,
+        statusClass: item.isReadyToday ? "badge-warning" : statusConfig.badgeClass,
+        serviceType: item.serviceType || item.taskType || "Field visit",
+        animalTag: item.animalTag || "Animal not specified",
       };
     });
   }, [agendaItems]);
@@ -216,8 +238,8 @@ export default function Dashboard() {
   return (
     <div className={ui.page}>
       <Topbar
-        title="Dashboard"
-        subtitle="Welcome back! Monitor operational timelines and livestock registries."
+        title="Overview"
+        subtitle="See today’s field work, active requests, and recorded services in one place"
       />
 
       <main className={ui.main}>
@@ -280,177 +302,112 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Metric Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Today's Missions */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-center text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Today's Missions
-              </span>
-              <span className="p-2 bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b] rounded-xl">
-                <CalendarCheck size={16} />
-              </span>
+        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.7fr)]">
+          <div className="card card-border bg-base-100 shadow-sm">
+            <div className="card-body p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="card-title">Today’s work</h2>
+                  <p className="mt-1 text-sm text-base-content/55">Current field workload in Philippine time</p>
+                </div>
+                <Link to="/technician/schedule" className="btn btn-ghost btn-sm">
+                  Open schedule <ArrowRight size={14} />
+                </Link>
+              </div>
+              <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                <OverviewMetric
+                  icon={<CalendarCheck size={18} />}
+                  label="Scheduled"
+                  value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.todayActivities ?? 0)}
+                  helper="AI and health visits today"
+                />
+                <OverviewMetric
+                  icon={<Clock size={18} />}
+                  label="Ready"
+                  value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", readyTodayCount)}
+                  helper="Approved or scheduled for today"
+                  tone="bg-warning/10 text-warning"
+                />
+                <OverviewMetric
+                  icon={<CheckCircle size={18} />}
+                  label="Completed"
+                  value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.completedToday ?? 0)}
+                  helper="Finished today"
+                  tone="bg-success/10 text-success"
+                />
+              </div>
             </div>
-            <div className="text-3xl font-black text-slate-800 dark:text-slate-100">
-              {isLoading ? (
-                <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-              ) : (
-                dashboardValue("dashboardData", stats?.todayActivities ?? 0)
-              )}
-            </div>
-            <span className="text-[10px] text-[#00643b] font-bold mt-2 flex items-center gap-1">
-              <TrendingUp size={11} /> {dashboardValue("dashboardData", stats?.completedToday ?? 0)} secured
-              clean logs
-            </span>
           </div>
 
-          {/* AI This Week */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-center text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                AI This Week
-              </span>
-              <span className="p-2 bg-amber-50 dark:bg-amber-950/20 text-amber-600 rounded-xl">
-                <Zap size={16} />
-              </span>
+          <div className="card card-border bg-base-100 shadow-sm">
+            <div className="card-body p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h2 className="card-title">Request queue</h2>
+                  <p className="mt-1 text-sm text-base-content/55">Cases still needing field action</p>
+                </div>
+                <span className="badge badge-warning badge-soft">{activePendingCount} active</span>
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-3">
+                <div className="rounded-box bg-base-200 p-3">
+                  <dt className="text-xs text-base-content/55">AI requests</dt>
+                  <dd className="mt-1 text-xl font-bold">{inseminationPendingCount}</dd>
+                </div>
+                <div className="rounded-box bg-base-200 p-3">
+                  <dt className="text-xs text-base-content/55">Health cases</dt>
+                  <dd className="mt-1 text-xl font-bold">{healthPendingCount}</dd>
+                </div>
+              </dl>
+              <Link to="/technician/requests" className="btn btn-primary btn-sm mt-2 w-full">
+                Review requests <ArrowRight size={14} />
+              </Link>
             </div>
-            <div className="text-3xl font-black text-slate-800 dark:text-slate-100">
-              {isLoading ? (
-                <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-              ) : (
-                dashboardValue("analytics", analytics?.totalAI_Week ?? 0)
-              )}
-            </div>
-            <span className="text-[10px] text-amber-600 font-bold mt-2 flex items-center gap-1">
-              <TrendingUp size={11} /> Current breeding block window
-            </span>
           </div>
+        </section>
 
-          {/* Pending Requests */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-center text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Pending Requests
-              </span>
-              <span className="p-2 bg-blue-50 dark:bg-blue-950/20 text-blue-600 rounded-xl">
-                <Clock size={16} />
-              </span>
+        <section className="card card-border bg-base-100 shadow-sm">
+          <div className="card-body p-5">
+            <div>
+              <h2 className="card-title">Service summary</h2>
+              <p className="mt-1 text-sm text-base-content/55">Records created during the current month</p>
             </div>
-            <div className="text-3xl font-black text-slate-800 dark:text-slate-100">
-              {isLoading ? (
-                <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-              ) : (
-                dashboardValue("dashboardData", activePendingCount)
-              )}
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <OverviewMetric icon={<Syringe size={18} />} label="AI services" value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.totalInsemMonth ?? 0)} helper="Artificial insemination records" />
+              <OverviewMetric icon={<Stethoscope size={18} />} label="Health cases" value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("analytics", analytics?.totalHealth_Month ?? 0)} helper="Health assistance records" tone="bg-info/10 text-info" />
+              <OverviewMetric icon={<HeartPulse size={18} />} label="Pregnancy checks" value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.totalPregnancyCheckupMonth ?? 0)} helper="Recorded diagnoses" tone="bg-secondary/10 text-secondary" />
+              <OverviewMetric icon={<Baby size={18} />} label="Calvings" value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.totalCalvingMonth ?? 0)} helper="Recorded birth events" tone="bg-accent/10 text-accent" />
             </div>
-            <span className="text-[10px] text-slate-400 font-bold mt-2">
-              {dashboardLoadState.dashboardData.ok === false
-                ? "Request queue unavailable"
-                : `${inseminationPendingCount} Insemination · ${healthPendingCount} Health`}
-            </span>
           </div>
+        </section>
 
-          {/* Monthly Clinical Ledger */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-center text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Monthly Clinicals
-              </span>
-              <span className="p-2 bg-purple-50 dark:bg-purple-950/20 text-purple-600 rounded-xl">
-                <HeartPulse size={16} />
-              </span>
+        <section className="card card-border bg-base-100 shadow-sm">
+          <div className="card-body p-5">
+            <div>
+              <h2 className="card-title">Quick actions</h2>
+              <p className="mt-1 text-sm text-base-content/55">Use the same six record workflows available in the Technician mobile app</p>
             </div>
-            <div className="text-3xl font-black text-slate-800 dark:text-slate-100">
-              {isLoading ? (
-                <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-              ) : (
-                dashboardValue("analytics", analytics?.totalHealth_Month ?? 0)
-              )}
+            <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <QuickAction icon={<Syringe size={18} />} label="Record AI Service" description="Save a completed or in-progress field insemination." onClick={handleRecordAI} />
+              <QuickAction icon={<Stethoscope size={18} />} label="Record Health Assistance" description="Document a health visit, treatment, medicine, and follow-up." onClick={handleHealthLog} />
+              <QuickAction icon={<UserPlus size={18} />} label="Register Farmer" description="Create a farmer profile with contact and Iloilo location." onClick={handleAddClient} />
+              <QuickAction icon={<Tractor size={18} />} label="Register Animal" description="Add an animal and connect it to the correct farmer." onClick={handleAddAnimal} />
+              <QuickAction icon={<HeartPulse size={18} />} label="Pregnancy Check" description="Record a diagnosis against an eligible AI attempt." onClick={handlePregnancyCheck} />
+              <QuickAction icon={<Baby size={18} />} label="Record Calving" description="Record birth details from a confirmed pregnancy." onClick={handleCalfDrop} />
             </div>
-            <span className="text-[10px] text-purple-600 font-bold mt-2 flex items-center gap-1">
-              <TrendingUp size={11} /> Total sessions:{" "}
-              {dashboardValue("analytics", analytics?.totalInsem ?? 0)}
-            </span>
           </div>
-        </div>
-
-        {/* Quick Action Console (Horizontal Ribbon) */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <Zap className="text-[#00643b]" size={16} />
-            <h3 className="text-xs font-black uppercase text-slate-400 tracking-wider">
-              Quick Action Console
-            </h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <button
-              onClick={handleRecordAI}
-              className="btn btn-outline border-slate-200 hover:border-[#00643b] hover:bg-emerald-50 dark:border-slate-800 dark:hover:bg-emerald-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b] flex items-center justify-center">
-                <Syringe size={18} />
-              </div>
-              <span className="text-xs font-bold">Record AI</span>
-            </button>
-            <button
-              onClick={handleHealthLog}
-              className="btn btn-outline border-slate-200 hover:border-amber-600 hover:bg-amber-50 dark:border-slate-800 dark:hover:bg-amber-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/20 text-amber-600 flex items-center justify-center">
-                <Stethoscope size={18} />
-              </div>
-              <span className="text-xs font-bold">Health Log</span>
-            </button>
-            <button
-              onClick={handleAddClient}
-              className="btn btn-outline border-slate-200 hover:border-blue-600 hover:bg-blue-50 dark:border-slate-800 dark:hover:bg-blue-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 flex items-center justify-center">
-                <UserPlus size={18} />
-              </div>
-              <span className="text-xs font-bold">Add Client</span>
-            </button>
-            <button
-              onClick={handleAddAnimal}
-              className="btn btn-outline border-slate-200 hover:border-purple-600 hover:bg-purple-50 dark:border-slate-800 dark:hover:bg-purple-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/20 text-purple-600 flex items-center justify-center">
-                <Tractor size={18} />
-              </div>
-              <span className="text-xs font-bold">Add Animal</span>
-            </button>
-            <button
-              onClick={handlePregnancyCheck}
-              className="btn btn-outline border-slate-200 hover:border-pink-600 hover:bg-pink-50 dark:border-slate-800 dark:hover:bg-pink-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-pink-50 dark:bg-pink-950/20 text-pink-600 flex items-center justify-center">
-                <HeartPulse size={18} />
-              </div>
-              <span className="text-xs font-bold">Pregnancy</span>
-            </button>
-            <button
-              onClick={handleCalfDrop}
-              className="btn btn-outline border-slate-200 hover:border-cyan-600 hover:bg-cyan-50 dark:border-slate-800 dark:hover:bg-cyan-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 flex items-center justify-center">
-                <Baby size={18} />
-              </div>
-              <span className="text-xs font-bold">Calf Drop</span>
-            </button>
-          </div>
-        </div>
+        </section>
 
         {/* Charts Row Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+          <div className="card card-border bg-base-100 shadow-sm">
+            <div className="card-body p-5">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-                  AI Performance
+                <h3 className="card-title text-base">
+                  AI activity
                 </h3>
-                <p className="text-[11px] text-slate-400 font-semibold">
-                  Monthly insemination trends
+                <p className="text-sm text-base-content/55">
+                  Recorded AI services by month
                 </p>
               </div>
             </div>
@@ -474,18 +431,20 @@ export default function Dashboard() {
                 },
               ]}
               height={220}
-              darkTheme={theme === "night"}
+              darkTheme={isDarkTheme(theme)}
             />
+            </div>
           </div>
 
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
+          <div className="card card-border bg-base-100 shadow-sm">
+            <div className="card-body p-5">
             <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-                  Procedure Overview
+                <h3 className="card-title text-base">
+                  Clinical activity
                 </h3>
-                <p className="text-[11px] text-slate-400 font-semibold">
-                  Breakdown of recorded appointments
+                <p className="text-sm text-base-content/55">
+                  Actual health, pregnancy, and calving records
                 </p>
               </div>
             </div>
@@ -494,100 +453,117 @@ export default function Dashboard() {
               labels={chartLabels}
               datasets={[
                 {
-                  label: "Completed Tasks",
-                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => Math.round(m.ai * 1.3)) : [0],
-                  borderColor: "#00643B",
-                  backgroundColor: "rgba(0, 100, 59, 0.8)",
+                  label: "Health",
+                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => m.health || 0) : [0],
+                  borderColor: "#2563eb",
+                  backgroundColor: "rgba(37, 99, 235, 0.72)",
+                  borderWidth: 0,
+                  fill: false,
+                },
+                {
+                  label: "Pregnancy checks",
+                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => m.pregnancy || 0) : [0],
+                  borderColor: "#db2777",
+                  backgroundColor: "rgba(219, 39, 119, 0.72)",
+                  borderWidth: 0,
+                  fill: false,
+                },
+                {
+                  label: "Calvings",
+                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => m.calving || 0) : [0],
+                  borderColor: "#0f766e",
+                  backgroundColor: "rgba(15, 118, 110, 0.72)",
                   borderWidth: 0,
                   fill: false,
                 },
               ]}
               height={220}
-              darkTheme={theme === "night"}
+              darkTheme={isDarkTheme(theme)}
             />
+            </div>
           </div>
         </div>
 
         {/* Bottom Panel Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           {/* Today's Field Visits List */}
-          <div className="card lg:col-span-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4 flex-wrap gap-2">
+          <div className="card card-border bg-base-100 shadow-sm lg:col-span-2">
+            <div className="card-body p-5">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-base-300 pb-4">
               <div>
-                <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-                  Today's Field Visits
+                <h3 className="card-title text-base">
+                  Today’s visits
                 </h3>
-                <p className="text-[11px] text-slate-400 font-semibold">
-                  Scheduled technician deployments
+                <p className="mt-1 text-sm text-base-content/55">
+                  Farmer, service, animal, location, and scheduled time
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <div className="relative w-48">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
-                    <Search size={12} />
-                  </span>
+                <label className="input input-sm w-full sm:w-52">
+                  <Search size={14} className="text-base-content/45" />
                   <input
-                    type="text"
+                    type="search"
                     placeholder="Search visits..."
-                    className="w-full pl-7 pr-2.5 py-1 text-[11px] rounded-lg border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                    className="grow text-sm"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
-                </div>
-                <button className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-xs gap-1">
-                  View All <ArrowRight size={10} />
-                </button>
+                </label>
+                <Link to="/technician/schedule" className="btn btn-ghost btn-sm">
+                  View all <ArrowRight size={12} />
+                </Link>
               </div>
             </div>
 
-            <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
+            <div className="divide-y divide-base-300">
               {isLoading ? (
                 [...Array(3)].map((_, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center justify-between py-3 animate-pulse"
+                    className="flex animate-pulse items-center justify-between py-3"
                   >
                     <div className="flex items-center gap-3 w-2/3">
-                      <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800" />
+                      <div className="skeleton size-9 rounded-full" />
                       <div className="space-y-2 flex-1">
-                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/3" />
-                        <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
+                        <div className="skeleton h-3 w-1/3" />
+                        <div className="skeleton h-2 w-1/2" />
                       </div>
                     </div>
-                    <div className="w-12 h-4 bg-slate-200 dark:bg-slate-800 rounded" />
+                    <div className="skeleton h-4 w-12" />
                   </div>
                 ))
               ) : filteredVisits.length === 0 ? (
-                <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500 italic">
-                  No deployments scheduled for today.
+                <div className="rounded-box border border-dashed border-base-300 py-8 text-center">
+                  <CalendarCheck className="mx-auto mb-2 text-base-content/35" size={24} />
+                  <p className="text-sm font-semibold">No visits scheduled for today</p>
+                  <p className="mt-1 text-xs text-base-content/50">Scheduled and ready visits will appear here.</p>
                 </div>
               ) : (
                 filteredVisits.map((v) => (
                   <div
                     key={v.id}
-                    className="flex items-center justify-between py-3"
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ${v.bg}`}
+                        className="flex size-9 items-center justify-center rounded-full bg-base-200 text-xs font-bold text-primary"
                       >
                         {v.initials}
                       </div>
                       <div>
-                        <h4 className="font-bold text-xs text-slate-800 dark:text-slate-100">
+                        <h4 className="text-sm font-bold">
                           {v.farmer}
                         </h4>
-                        <span className="text-[10px] text-slate-400 flex items-center gap-0.5 mt-0.5">
-                          <MapPin size={10} /> {v.location}
-                        </span>
+                        <p className="mt-0.5 text-xs text-base-content/55">{v.serviceType} · {v.animalTag}</p>
+                        <span className="mt-1 flex items-center gap-1 text-xs text-base-content/50"><MapPin size={11} /> {v.location}</span>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-xs font-black text-slate-800 dark:text-slate-200">
+                      <div className="text-sm font-bold">
                         {v.time}
                       </div>
                       <span
-                        className={`badge badge-xs border-none font-bold p-1 px-2 mt-1 ${v.statusClass}`}
+                        className={`badge badge-sm badge-soft mt-1 ${v.statusClass}`}
                       >
                         {v.status}
                       </span>
@@ -596,84 +572,83 @@ export default function Dashboard() {
                 ))
               )}
             </div>
+            </div>
           </div>
 
           {/* Alerts & Notifications Box */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm flex flex-col justify-between">
+          <div className="card card-border bg-base-100 shadow-sm">
+            <div className="card-body p-5">
             <div>
-              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
+              <div className="mb-4 flex items-start justify-between gap-3 border-b border-base-300 pb-4">
                 <div>
-                  <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-                    Telemetry Alerts
+                  <h3 className="card-title text-base">
+                    Needs attention
                   </h3>
-                  <p className="text-[11px] text-slate-400 font-semibold">
-                    Critical municipal notifications
+                  <p className="mt-1 text-sm text-base-content/55">
+                    Requests and follow-ups that need action
                   </p>
                 </div>
-                <span className="badge badge-error text-white text-[10px] font-bold">
-                  {activePendingCount} Active
+                <span className="badge badge-warning badge-soft">
+                  {activePendingCount} active
                 </span>
               </div>
 
               <div className="space-y-3">
                 {inseminationPendingCount > 0 && (
-                  <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/40 rounded-xl flex gap-2">
+                  <div className="alert alert-warning alert-soft text-sm">
                     <AlertTriangle
-                      className="text-amber-600 shrink-0"
+                      className="shrink-0"
                       size={14}
                     />
-                    <div className="text-xs text-amber-800 dark:text-amber-200 font-medium">
-                      {inseminationPendingCount} AI requests pending response
+                    <div>
+                      <p className="font-semibold">{inseminationPendingCount} active AI request{inseminationPendingCount === 1 ? "" : "s"}</p>
+                      <p className="text-xs opacity-70">Review assignment, schedule, or service progress.</p>
                     </div>
                   </div>
                 )}
 
                 {healthPendingCount > 0 && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200/40 rounded-xl flex gap-2">
-                    <Clock className="text-blue-600 shrink-0" size={14} />
-                    <div className="text-xs text-blue-800 dark:text-blue-200 font-medium">
-                      {healthPendingCount} unassigned field health protocols
+                  <div className="alert alert-info alert-soft text-sm">
+                    <Clock className="shrink-0" size={14} />
+                    <div>
+                      <p className="font-semibold">{healthPendingCount} active health case{healthPendingCount === 1 ? "" : "s"}</p>
+                      <p className="text-xs opacity-70">Check urgency, schedule, and follow-up needs.</p>
                     </div>
                   </div>
                 )}
 
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/40 rounded-xl flex gap-2">
-                  <CheckCircle
-                    className="text-emerald-600 shrink-0"
-                    size={14}
-                  />
-                  <div className="text-xs text-emerald-800 dark:text-emerald-200 font-medium">
-                    Core dashboard connection optimized
-                  </div>
-                </div>
+                {activePendingCount === 0 && (
+                  <div className="alert alert-success alert-soft text-sm"><CheckCircle size={16} /><span>No active requests need attention.</span></div>
+                )}
               </div>
             </div>
 
             {/* Monthly Target Progress Calculation */}
-            <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-900 space-y-3">
+            <div className="mt-6 space-y-3 border-t border-base-300 pt-4">
               <div>
-                <div className="flex justify-between text-[11px] font-bold text-slate-500 mb-1">
-                  <span>Monthly Insemination Target</span>
-                  <span className="text-[#00643b]">
-                    {analytics?.totalAI_Week
+                <div className="mb-1 flex justify-between text-xs font-semibold text-base-content/55">
+                  <span>Monthly AI target</span>
+                  <span className="text-primary">
+                    {stats?.totalInsemMonth
                       ? Math.min(
                           100,
-                          Math.round((analytics.totalAI_Week / 30) * 100),
+                          Math.round((stats.totalInsemMonth / 30) * 100),
                         )
                       : 0}
                     %
                   </span>
                 </div>
                 <progress
-                  className="progress progress-success w-full h-1.5"
+                  className="progress progress-primary h-1.5 w-full"
                   value={
-                    analytics?.totalAI_Week
-                      ? Math.min(30, analytics.totalAI_Week)
+                    stats?.totalInsemMonth
+                      ? Math.min(30, stats.totalInsemMonth)
                       : 0
                   }
                   max="30"
                 />
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -681,6 +656,7 @@ export default function Dashboard() {
 
       {/* Dedicated Quick Action Modals */}
       <WalkInAIModal
+        existingOnly
         isOpen={isAIModalOpen}
         onClose={() => {
           setIsAIModalOpen(false);
@@ -688,6 +664,7 @@ export default function Dashboard() {
         }}
       />
       <WalkInHealthModal
+        existingOnly
         isOpen={isHealthModalOpen}
         onClose={() => {
           setIsHealthModalOpen(false);

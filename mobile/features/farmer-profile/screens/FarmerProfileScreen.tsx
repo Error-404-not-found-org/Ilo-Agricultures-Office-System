@@ -14,6 +14,8 @@ import PhotoSelectionModal from "../components/PhotoSelectionModal";
 
 export const FarmerProfileScreen = () => {
   const insets = useSafeAreaInsets();
+  const [statusBarOnHeader, setStatusBarOnHeader] = React.useState(true);
+  const [profileHeaderHeight, setProfileHeaderHeight] = React.useState(300);
   const [farmLocationConfirmVisible, setFarmLocationConfirmVisible] =
     React.useState(false);
   const {
@@ -63,16 +65,41 @@ export const FarmerProfileScreen = () => {
       className="flex-1 bg-slate-50 dark:bg-slate-950"
       style={{ backgroundColor: colors.background }}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar
+        barStyle={statusBarOnHeader || isDark ? "light-content" : "dark-content"}
+        backgroundColor={statusBarOnHeader ? "#00643B" : colors.card}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
+          backgroundColor: statusBarOnHeader ? "#00643B" : colors.card,
+          zIndex: 999,
+          elevation: 999,
+        }}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        onScroll={(event) => {
+          const nextOnHeader =
+            event.nativeEvent.contentOffset.y < profileHeaderHeight - insets.top;
+          if (nextOnHeader !== statusBarOnHeader) {
+            setStatusBarOnHeader(nextOnHeader);
+          }
+        }}
+        scrollEventThrottle={32}
       >
         <ProfileHeader
           clerkUser={clerkUser}
           uploadingImage={uploadingImage}
           onChangeProfileImage={handleChangeProfileImage}
+          onHeightChange={setProfileHeaderHeight}
         />
 
         <ProfileStatsCard dbUser={dbUser} />
@@ -157,8 +184,8 @@ export const FarmerProfileScreen = () => {
           handleSaveCurrentFarmLocation();
         }}
         title="Are You at the Farm?"
-        message="Please continue only if you are currently at the cattle or farm location. This exact pin will be used by technicians during visits."
-        confirmText="Yes, Save Farm Pin"
+        message="Please continue only if you are currently at the cattle or farm location. This exact location will be used by technicians during visits."
+        confirmText="Yes"
         cancelText="Cancel"
         isDestructive={false}
         icon={<AlertTriangle size={26} color={colors.warning} />}

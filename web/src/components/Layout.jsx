@@ -62,7 +62,7 @@ const Layout = () => {
 
   const adminNavItems = [
     {
-      name: "Dashboard",
+      name: "Overview",
       path: "/dashboard",
       icon: <LayoutDashboard size={24} />,
     },
@@ -85,7 +85,7 @@ const Layout = () => {
       icon: <LayoutDashboard size={24} />,
     },
     {
-      name: "Service Ledger",
+      name: "Animal Records",
       path: "/technician/ledger",
       icon: <Database size={24} />,
     },
@@ -95,27 +95,27 @@ const Layout = () => {
     //   icon: <MapPin size={24} />,
     // },
     {
-      name: "Task Requests",
+      name: "Service Requests",
       path: "/technician/requests",
       icon: <ClipboardList size={24} />,
     },
     {
-      name: "Field Notes",
+      name: "Notes & Photos",
       path: "/technician/field-notes",
       icon: <Image size={24} />,
     },
     {
-      name: "Farmer Registry",
+      name: "Farmers",
       path: "/technician/farmers",
       icon: <Users size={24} />,
     },
     {
-      name: "Livestock Registry",
+      name: "Animals",
       path: "/technician/animals",
       icon: <Tractor size={24} />,
     },
     {
-      name: "Field Reports",
+      name: "Reports & Exports",
       path: "/technician/reports",
       icon: <FileText size={24} />,
     },

@@ -10,20 +10,20 @@ export default function Button({
   icon: Icon,
   ...props
 }) {
-  const baseStyle = "btn font-bold rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0";
+  const baseStyle = "btn font-bold shrink-0";
   
   const variants = {
-    primary: "btn-primary text-white shadow-sm hover:shadow-md",
-    secondary: "bg-base-200 hover:bg-base-300 text-base-content border-none",
-    outline: "btn-outline border-base-350 hover:bg-base-200 hover:text-base-content",
-    ghost: "btn-ghost hover:bg-base-200",
-    danger: "btn-error text-white shadow-sm hover:bg-red-650",
+    primary: "btn-primary",
+    secondary: "btn-neutral",
+    outline: "btn-outline",
+    ghost: "btn-ghost",
+    danger: "btn-error",
   }[variant] || "btn-primary";
 
   const sizes = {
-    sm: "btn-sm text-xs px-3 h-9",
-    md: "h-11 px-5 text-xs",
-    lg: "btn-lg text-sm px-6 h-12",
+    sm: "btn-sm",
+    md: "btn-md",
+    lg: "btn-lg",
   }[size] || "h-11";
 
   return (

@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Search,
   ClipboardList,
@@ -11,6 +12,7 @@ import {
   ChevronRight,
   ShieldAlert,
   Lock,
+  LocateFixed,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -18,7 +20,19 @@ import { useToast } from "../../contexts/ToastContext";
 import Topbar from "../../components/ui/Topbar";
 import { TableRowSkeleton } from "../../components/Skeleton";
 import TaskActionModal from "../../components/modals/TaskActionModal";
+import PregnancyDiagnosisModal from "../../components/modals/PregnancyDiagnosisModal";
+import RecordCalfDropModal from "../../components/modals/RecordCalvingModal";
+import BreedingVerificationModal from "../../components/modals/BreedingVerificationModal";
 import { ui } from "../../components/ui/uiClasses";
+import Modal from "../../components/ui/Modal";
+import RequestQueueCard from "../../components/technician/RequestQueueCard";
+import { getClaimType, getTechnicianStatus } from "../../constants/technicianWorkflow";
+import {
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+  getIloiloBarangayOptions,
+} from "../../utils/addressOptions";
 
 const getServiceMeta = (request = {}) => {
   const raw = request.raw || request;
@@ -33,14 +47,23 @@ const getServiceMeta = (request = {}) => {
   const hasHealthSignal =
     raw.symptoms || raw.issueDescription || raw.diagnosis || raw.treatment;
 
+  if (rawType === "breeding_verification") {
+    return {
+      workflow: "breeding_verification",
+      serviceType: "breeding_verification",
+      label: "Breeding Verification",
+      badge: "VERIFY",
+      badgeClass: "badge-secondary",
+    };
+  }
+
   if (["ai", "insemination", "artificial_insemination"].includes(rawType)) {
     return {
       workflow: "insemination",
       serviceType: "ai",
       label: "Artificial Insemination",
       badge: "AI",
-      badgeClass:
-        "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-800",
+      badgeClass: "badge-info",
     };
   }
 
@@ -50,8 +73,7 @@ const getServiceMeta = (request = {}) => {
       serviceType: "pregnancy_check",
       label: "Pregnancy Check",
       badge: "PD",
-      badgeClass:
-        "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200 dark:bg-fuchsia-950/20 dark:text-fuchsia-400 dark:border-fuchsia-900/60",
+      badgeClass: "badge-warning",
     };
   }
 
@@ -61,8 +83,7 @@ const getServiceMeta = (request = {}) => {
       serviceType: "calving",
       label: "Calving Assistance",
       badge: "CD",
-      badgeClass:
-        "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/20 dark:text-cyan-400 dark:border-cyan-900/60",
+      badgeClass: "badge-accent",
     };
   }
 
@@ -72,8 +93,7 @@ const getServiceMeta = (request = {}) => {
       serviceType: "follow_up",
       label: "Follow-up Visit",
       badge: "TASK",
-      badgeClass:
-        "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/60",
+      badgeClass: "badge-success",
     };
   }
 
@@ -83,8 +103,7 @@ const getServiceMeta = (request = {}) => {
       serviceType: "general_visit",
       label: "General Visit",
       badge: "TASK",
-      badgeClass:
-        "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700",
+      badgeClass: "badge-ghost",
     };
   }
 
@@ -99,8 +118,7 @@ const getServiceMeta = (request = {}) => {
       serviceType: raw.requestType || rawType || "health",
       label: "Health Assistance",
       badge: "HEALTH",
-      badgeClass:
-        "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-800",
+      badgeClass: "badge-error",
     };
   }
 
@@ -109,13 +127,15 @@ const getServiceMeta = (request = {}) => {
     serviceType: rawType || "service",
     label: "Service Request",
     badge: "SERVICE",
-    badgeClass:
-      "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700",
+    badgeClass: "badge-ghost",
   };
 };
 
 export default function OperationalInbox() {
   const isAdmin = window.location.pathname.startsWith("/admin");
+  const [searchParams] = useSearchParams();
+  const requestedId = searchParams.get("requestId");
+  const [dismissedDeepLink, setDismissedDeepLink] = useState(null);
   
   const { data: dbUser } = useQuery({
     queryKey: ["technician", "profile-me", "operational-inbox"],
@@ -126,7 +146,16 @@ export default function OperationalInbox() {
     enabled: !isAdmin,
   });
 
-  const [statusFilter, setStatusFilter] = useState("pending");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "pending");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [urgencyFilter, setUrgencyFilter] = useState("all");
+  const [assignmentFilter, setAssignmentFilter] = useState(isAdmin ? "all" : "unassigned");
+  const [sortBy, setSortBy] = useState("newest");
+  const [municipality, setMunicipality] = useState("");
+  const [district, setDistrict] = useState("");
+  const [barangay, setBarangay] = useState("");
+  const [nearCoords, setNearCoords] = useState(null);
+  const [isLocating, setIsLocating] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [confirmModal, setConfirmModal] = useState({
@@ -137,6 +166,9 @@ export default function OperationalInbox() {
   });
   const [selectedTask, setSelectedTask] = useState(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isPDModalOpen, setIsPDModalOpen] = useState(false);
+  const [isBreedingVerificationOpen, setIsBreedingVerificationOpen] = useState(false);
+  const [isCalvingModalOpen, setIsCalvingModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   
   const itemsPerPage = 10;
@@ -150,12 +182,37 @@ export default function OperationalInbox() {
     data: queueData,
     refetch: refetchQueue,
     isLoading: isLoadingQueue,
+    isFetching: isFetchingQueue,
+    isError: isQueueError,
+    error: queueError,
   } = useQuery({
-    queryKey: ["technician", "requests", statusParam, searchQuery, currentPage],
+    queryKey: [
+      "technician",
+      "requests",
+      statusParam,
+      typeFilter,
+      urgencyFilter,
+      assignmentFilter,
+      sortBy,
+      municipality,
+      barangay,
+      nearCoords?.latitude,
+      nearCoords?.longitude,
+      searchQuery,
+      currentPage,
+    ],
     queryFn: async () => {
       const res = await axiosInstance.get("/technician/requests", {
         params: {
           status: statusParam,
+          type: typeFilter,
+          urgency: urgencyFilter === "all" ? undefined : urgencyFilter,
+          assignment: assignmentFilter,
+          sortBy,
+          municipality: municipality || undefined,
+          barangay: barangay || undefined,
+          nearLat: nearCoords?.latitude,
+          nearLng: nearCoords?.longitude,
           search: searchQuery || undefined,
           page: currentPage,
           limit: itemsPerPage,
@@ -176,14 +233,28 @@ export default function OperationalInbox() {
       const animalTag = req.earTag || req.animal || "Unknown";
       const breed = req.breed || req.raw?.animalId?.breed || "Livestock";
       const healthDetail = req.raw?.symptoms || req.raw?.requestType || "No symptoms listed";
+      const previousAttempt = req.raw?.previousAttemptId;
+      const isReInsemination =
+        service.workflow === "insemination" && Boolean(previousAttempt);
+      const attemptNumber = Number(req.raw?.attemptNumber || 1);
+      const previousTechnician =
+        previousAttempt?.technicianId?.name || previousAttempt?.approvedBy?.name;
+      const normalizedStatus = String(req.status || "")
+        .trim()
+        .toLowerCase()
+        .replaceAll(" ", "-")
+        .replaceAll("_", "-");
 
       return {
         id: req.id,
         farmer: req.farmer || "Unknown Farmer",
         location: req.location || req.raw?.farmerId?.address?.barangay || "Location unavailable",
         type: service.workflow,
+        queueType: req.type,
         serviceType: service.serviceType,
-        serviceLabel: service.label,
+        serviceLabel: isReInsemination
+          ? `Re-insemination · Attempt ${attemptNumber}`
+          : service.label,
         serviceBadge: service.badge,
         badgeClass: service.badgeClass,
         task:
@@ -199,82 +270,76 @@ export default function OperationalInbox() {
           hour: "numeric",
           minute: "2-digit",
         }),
-        status: req.status === "resolved" ? "done" : req.status,
+        status: normalizedStatus === "resolved" ? "done" : normalizedStatus,
         createdAt: req.createdAt,
         visitDate: req.scheduledDate || req.preferredDate || null,
         urgency: req.urgency,
+        previousTechnician,
         raw: req.raw || req,
       };
     });
   }, [queueData]);
 
+  const deepLinkedTask = requestedId
+    ? requests.find((request) => String(request.id) === requestedId) || null
+    : null;
+  const activeTask = selectedTask || deepLinkedTask;
+  const isActiveTaskModalOpen =
+    isTaskModalOpen || Boolean(deepLinkedTask && dismissedDeepLink !== requestedId);
+
   // State Action Dispatchers using API requests
-  const handleUpdateStatus = async (id, type, newStatus) => {
+  const handleClaimRequest = async (request) => {
     if (isUpdating) return;
-    if (!["insemination", "health"].includes(type)) {
-      toast.error("Open this service from its official workflow detail screen.");
+    const claimType = getClaimType(request.queueType || request.type);
+    if (!claimType) {
+      toast.error("This request cannot be claimed from the service queue.");
       return;
     }
+
     setIsUpdating(true);
-    const triggerUpdate = async () => {
-      try {
-        const endpoint =
-          type === "insemination"
-            ? `/ai-request/${id}/status`
-            : newStatus === "in-progress"
-              ? `/health-request/${id}/triage`
-              : `/health-request/${id}/status`;
-        const statusValue =
-          newStatus === "done" && type === "health" ? "resolved" : newStatus;
+    try {
+      await axiosInstance.patch(
+        `/technician/requests/${claimType}/${request.id}/claim`,
+      );
+      toast.success("Request claimed. You can now schedule or open its details.");
+      await refetchQueue();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "The request could not be claimed.",
+      );
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
-        await axiosInstance.patch(
-          endpoint,
-          type === "health" && newStatus === "in-progress"
-            ? { technicianNote: "Health assistance accepted by technician." }
-            : { status: statusValue },
-        );
-        toast.success(`Request status updated to ${newStatus.toUpperCase()}`);
-        await refetchQueue();
-      } catch (error) {
-        toast.error(
-          "Failed to update status: " +
-            (error.response?.data?.message || error.message),
-        );
-      } finally {
-        setIsUpdating(false);
-      }
-    };
-
-    // Check if completing early before the visit date
-    const reqObj = requests.find(r => r.id === id);
-    if (newStatus === "done" && reqObj?.visitDate) {
-      const visitDate = new Date(reqObj.visitDate);
-      const today = new Date();
-      // Reset hours to compare dates
-      visitDate.setHours(0, 0, 0, 0);
-      today.setHours(0, 0, 0, 0);
-
-      if (visitDate > today) {
-        const dateStr = new Date(reqObj.visitDate).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        });
-        setConfirmModal({
-          isOpen: true,
-          title: "Early Completion Check",
-          message: `This service visit is scheduled for ${dateStr}. Are you sure you have completed this visit early today?`,
-          onConfirm: async () => {
-            await triggerUpdate();
-          }
-        });
-        setIsUpdating(false);
-        return;
-      }
+  const handleDeclineRequest = async (request) => {
+    if (isUpdating) return;
+    const claimType = getClaimType(request.queueType || request.type);
+    if (!claimType) {
+      toast.error("This request cannot be declined from the service queue.");
+      return;
+    }
+    if (claimType === "breeding_verification") {
+      setSelectedTask(request);
+      setIsBreedingVerificationOpen(true);
+      return;
     }
 
-    // Default immediate update if not early
-    await triggerUpdate();
+    setIsUpdating(true);
+    try {
+      await axiosInstance.patch(
+        `/technician/requests/${claimType}/${request.id}/decline`,
+        { reason: "Declined by technician from the web request queue." },
+      );
+      toast.success("Request removed from your available queue.");
+      await refetchQueue();
+    } catch (error) {
+      toast.error(
+        error.response?.data?.message || "The request could not be declined.",
+      );
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const handleDeleteRequest = async (id, type) => {
@@ -321,52 +386,106 @@ export default function OperationalInbox() {
     (r) => r.status === "pending",
   ).length;
 
+  const openRequest = (request) => {
+    setSelectedTask(request);
+    if (request.type === "breeding_verification") {
+      setIsBreedingVerificationOpen(true);
+    } else if (request.type === "pregnancy_check") {
+      setIsPDModalOpen(true);
+    } else if (request.type === "calving") {
+      setIsCalvingModalOpen(true);
+    } else {
+      setIsTaskModalOpen(true);
+    }
+  };
+
+  const barangayOptions = getIloiloBarangayOptions(municipality, district);
+
+  const toggleNearMe = () => {
+    if (nearCoords) {
+      setNearCoords(null);
+      setSortBy("newest");
+      setCurrentPage(1);
+      return;
+    }
+    if (!navigator.geolocation) {
+      toast.error("Location is not supported by this browser.");
+      return;
+    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setNearCoords({ latitude: coords.latitude, longitude: coords.longitude });
+        setSortBy("distance");
+        setCurrentPage(1);
+        setIsLocating(false);
+      },
+      (error) => {
+        toast.error(error.message || "Unable to access your location.");
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+
   return (
     <div className={ui.page}>
       <Topbar
-        title={isAdmin ? "Operational Queue Monitor" : "Operational Inbox"}
-        subtitle={isAdmin ? "Monitor and inspect field service queues and task assignments municipal-wide" : "Triage and accept field service missions from registered livestock owners"}
+        title={isAdmin ? "Request Monitoring" : "Request Board"}
+        subtitle={isAdmin ? "Review municipal service requests and technician assignments" : "Claim new farmer requests or manage visits already assigned to you"}
       />
 
       <main className={ui.main}>
-        {/* Header Banner */}
-        <div className="bg-linear-to-r from-[#074033] to-[#065f46] text-white p-6 rounded-2xl flex justify-between items-center flex-wrap gap-4 shadow-sm">
+        <div className="card bg-neutral text-neutral-content border border-neutral-content/10 shadow-sm">
+          <div className="card-body p-5 sm:p-6 flex-row justify-between items-center flex-wrap gap-4">
           <div className="space-y-1">
-            <div className="flex items-center gap-2 text-[#a7f3d0] font-extrabold text-[10px] tracking-widest uppercase">
+            <div className="flex items-center gap-2 text-neutral-content/65 font-semibold text-xs uppercase tracking-wider">
               <ClipboardList size={14} />
-              <span>{isAdmin ? "Operational Queue Monitor" : "Operational Inbox"}</span>
+              <span>{isAdmin ? "Request monitoring" : "New farmer requests"}</span>
             </div>
             <h2 className="text-xl font-black tracking-tight">
-              {isAdmin ? "Municipal Task Registry Queue" : "Farmer Task Requests"}
+              {isAdmin ? "All service requests" : "Available to claim"}
             </h2>
           </div>
-          <div className="bg-black/15 border border-white/5 px-5 py-2.5 rounded-xl text-center min-w-[100px]">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-white/50">
-              Active Queue
+          <div className="stat w-auto min-w-32 rounded-box bg-neutral-content/10 p-3 text-center">
+            <p className="stat-title text-xs text-neutral-content/60">
+              {isAdmin ? "Pending requests" : "Ready to claim"}
             </p>
-            <p className="text-2xl font-black mt-0.5">
+            <p className="stat-value text-2xl text-neutral-content mt-1">
               {isMasterLoading ? "..." : activeQueueCount}
             </p>
-          </div>
+          </div></div>
         </div>
 
         {/* Tab Filter Controls Row */}
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-1 rounded-xl flex gap-1 shadow-sm">
+          <div role="tablist" className="tabs tabs-box bg-base-100 border border-base-300 p-1 overflow-x-auto max-w-full">
             {["pending", "scheduled", "in-progress", "completed", "all"].map((status) => (
               <button
                 key={status}
                 onClick={() => {
                   setStatusFilter(status);
+                  if (!isAdmin) {
+                    setAssignmentFilter(status === "pending" ? "unassigned" : status === "all" ? "all" : "mine");
+                  }
                   setCurrentPage(1);
                 }}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide capitalize transition-all ${
+                role="tab"
+                className={`tab whitespace-nowrap text-sm ${
                   statusFilter === status
-                    ? "bg-[#00643b] text-white shadow-xs"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                    ? "tab-active bg-primary text-primary-content"
+                    : "text-base-content/65"
                 }`}
               >
-                {status === "in-progress" ? "In Progress" : status}
+                {status === "pending"
+                  ? "Available to claim"
+                  : status === "scheduled"
+                    ? "My scheduled visits"
+                    : status === "in-progress"
+                      ? "In progress"
+                      : status === "completed"
+                        ? "Completed"
+                        : "All requests"}
               </button>
             ))}
           </div>
@@ -389,24 +508,127 @@ export default function OperationalInbox() {
               />
             </div>
 
-            <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2.5 whitespace-nowrap">
+            <span className="text-sm text-base-content/55 font-medium whitespace-nowrap">
               {isMasterLoading
-                ? "Synchronizing ledger..."
+                ? "Loading requests..."
                 : `${totalItems} request${totalItems !== 1 ? "s" : ""} found`}
             </span>
           </div>
         </div>
 
+        <div className={ui.filterBar}>
+          <select className={ui.select} value={typeFilter} onChange={(event) => { setTypeFilter(event.target.value); setCurrentPage(1); }} aria-label="Filter by service type">
+            <option value="all">All services</option>
+            <option value="ai">AI services</option>
+            <option value="health">Health assistance</option>
+            <option value="breeding_verification">Breeding verification</option>
+          </select>
+          {isAdmin && (
+            <select className={ui.select} value={assignmentFilter} onChange={(event) => { setAssignmentFilter(event.target.value); setCurrentPage(1); }} aria-label="Filter by assignment">
+              <option value="all">All assignments</option>
+              <option value="mine">Assigned to a technician</option>
+              <option value="unassigned">Available to claim</option>
+            </select>
+          )}
+          <select className={ui.select} value={urgencyFilter} onChange={(event) => { setUrgencyFilter(event.target.value); setCurrentPage(1); }} aria-label="Filter by urgency">
+            <option value="all">All urgency</option>
+            <option value="urgent">Urgent first</option>
+          </select>
+          <select className={ui.select} value={sortBy} onChange={(event) => { setSortBy(event.target.value); setCurrentPage(1); }} aria-label="Sort requests">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="preferredDate">Visit date</option>
+            {nearCoords && <option value="distance">Nearest first</option>}
+          </select>
+          <select className={ui.select} value={municipality} onChange={(event) => { setMunicipality(event.target.value); setDistrict(""); setBarangay(""); setCurrentPage(1); }} aria-label="Filter by municipality">
+            <option value="">All municipalities</option>
+            {ILOILO_MUNICIPALITY_OPTIONS.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+          {municipality === ILOILO_CITY_NAME && (
+            <select className={ui.select} value={district} onChange={(event) => { setDistrict(event.target.value); setBarangay(""); setCurrentPage(1); }} aria-label="Filter by Iloilo City district">
+              <option value="">Select district</option>
+              {ILOILO_CITY_DISTRICT_OPTIONS.map((name) => <option key={name} value={name}>{name}</option>)}
+            </select>
+          )}
+          <select className={ui.select} value={barangay} disabled={!municipality || (municipality === ILOILO_CITY_NAME && !district)} onChange={(event) => { setBarangay(event.target.value); setCurrentPage(1); }} aria-label="Filter by barangay">
+            <option value="">All barangays</option>
+            {barangayOptions.map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+          <button type="button" className={`btn btn-sm ${nearCoords ? "btn-primary" : "btn-outline"}`} onClick={toggleNearMe} disabled={isLocating} aria-pressed={Boolean(nearCoords)}>
+            {isLocating ? <span className="loading loading-spinner loading-xs" /> : <LocateFixed size={14} />}
+            {nearCoords ? "Near me on" : "Near me"}
+          </button>
+        </div>
+
+        {isQueueError && (
+          <div className="alert alert-error" role="alert">
+            <ShieldAlert size={18} />
+            <div className="flex-1">
+              <h3 className="font-semibold">Request queue could not be loaded</h3>
+              <p className="text-sm opacity-80">
+                {queueError?.response?.data?.message || queueError?.message || "Check your connection and try again."}
+              </p>
+            </div>
+            <button className="btn btn-sm" onClick={() => refetchQueue()}>
+              Retry
+            </button>
+          </div>
+        )}
+
+        {isFetchingQueue && !isLoadingQueue && (
+          <div className="flex items-center gap-2 text-sm text-base-content/55" aria-live="polite">
+            <span className="loading loading-spinner loading-xs" />
+            Updating request list…
+          </div>
+        )}
+
         {/* Table View Component Card */}
         <div className={`${ui.panel} flex-1 flex flex-col min-h-0`}>
-          <div className="overflow-x-auto flex-1 overflow-y-auto">
+          <div className="grid gap-3 p-3 lg:hidden">
+            {isMasterLoading
+              ? [...Array(3)].map((_, index) => (
+                  <div key={index} className="card card-border bg-base-100">
+                    <div className="card-body p-4 gap-3">
+                      <div className="skeleton h-5 w-2/3" />
+                      <div className="skeleton h-4 w-full" />
+                      <div className="skeleton h-4 w-4/5" />
+                      <div className="flex justify-end gap-2">
+                        <div className="skeleton h-9 w-24" />
+                        <div className="skeleton h-9 w-20" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              : paginatedRequests.map((request) => (
+                  <RequestQueueCard
+                    key={request.id}
+                    request={request}
+                    currentUserId={dbUser?._id}
+                    isUpdating={isUpdating}
+                    onOpen={openRequest}
+                    onClaim={handleClaimRequest}
+                    onDecline={handleDeclineRequest}
+                  />
+                ))}
+            {!isMasterLoading && paginatedRequests.length === 0 && (
+              <div className={ui.empty}>
+                {searchQuery
+                  ? `No requests match “${searchQuery}”.`
+                  : statusFilter === "pending"
+                    ? "No new requests are waiting to be claimed. Check My scheduled visits for work you already accepted."
+                    : "No requests match the selected filters."}
+              </div>
+            )}
+          </div>
+
+          <div className="hidden overflow-x-auto flex-1 overflow-y-auto lg:block">
             <table className={`${ui.table} text-left`}>
               <thead>
                 <tr className={ui.tableHead}>
-                  <th className="p-4 pl-6">Identifier</th>
+                  <th className="p-4 pl-6">Request</th>
                   <th className="p-4">Farmer / Location</th>
-                  <th className="p-4">Service Scope</th>
-                  <th className="p-4 font-medium">Timeline</th>
+                  <th className="p-4">Service</th>
+                  <th className="p-4 font-medium">Requested visit</th>
                   <th className="p-4 text-center">Status</th>
                   {!isAdmin && <th className="p-4 pr-6 text-right">Actions</th>}
                 </tr>
@@ -424,7 +646,11 @@ export default function OperationalInbox() {
                       <div className={`${ui.empty} flex flex-col items-center justify-center gap-2`}>
                         <ShieldAlert size={24} className="text-slate-300" />
                         <span>
-                          No operational tasks matching this queue view
+                          {searchQuery
+                            ? `No requests match “${searchQuery}”.`
+                            : statusFilter === "pending"
+                              ? "No new requests are waiting to be claimed. Check My scheduled visits for work you already accepted."
+                              : "No requests match the selected filters."}
                         </span>
                       </div>
                     </td>
@@ -436,17 +662,24 @@ export default function OperationalInbox() {
                       req.raw?.approvedBy ||
                       req.raw?.handledBy?._id ||
                       req.raw?.handledBy ||
+                      req.raw?.technicianId?._id ||
+                      req.raw?.technicianId ||
                       null;
 
                     const reqTechName =
                       req.raw?.approvedBy?.name ||
                       req.raw?.handledBy?.name ||
+                      req.raw?.technicianId?.name ||
                       (reqTechId ? "another technician" : null);
 
                     const isAssignedToOther =
                       reqTechId &&
                       dbUser?._id &&
                       String(reqTechId) !== String(dbUser._id);
+                    const isAssignedToMe =
+                      reqTechId &&
+                      dbUser?._id &&
+                      String(reqTechId) === String(dbUser._id);
 
                     const visitDate = req.visitDate ? new Date(req.visitDate) : null;
                     const today = new Date();
@@ -456,10 +689,7 @@ export default function OperationalInbox() {
                     return (
                       <tr
                         key={req.id}
-                        onClick={() => {
-                          setSelectedTask(req);
-                          setIsTaskModalOpen(true);
-                        }}
+                        onClick={() => openRequest(req)}
                         className={`${ui.tableRow} cursor-pointer`}
                       >
                         <td className="p-4 pl-6 font-extrabold text-[#00643b] dark:text-[#10b981] relative">
@@ -482,7 +712,7 @@ export default function OperationalInbox() {
                         <td className="p-4">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span
-                              className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-wider border ${
+                              className={`badge badge-sm ${
                                 req.badgeClass
                               }`}
                             >
@@ -495,25 +725,18 @@ export default function OperationalInbox() {
                           <div className="text-[11px] text-slate-400 font-medium mt-1.5">
                             {req.task}
                           </div>
+                          {req.previousTechnician && (
+                            <div className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold mt-1">
+                              Previous attempt handled by {req.previousTechnician}
+                            </div>
+                          )}
                         </td>
                         <td className="p-4 text-slate-500 font-medium">
                           {req.date}
                         </td>
                         <td className="p-4 text-center">
-                          <span
-                            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${
-                              req.status === "pending"
-                                ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-400 dark:border-amber-900/50"
-                                : req.status === "in-progress"
-                                  ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/50"
-                                  : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/50"
-                            }`}
-                          >
-                            {req.status === "in-progress"
-                              ? "In Progress"
-                              : req.status === "done"
-                                ? "Completed"
-                                : req.status}
+                          <span className={`badge badge-sm ${getTechnicianStatus(req.status).badgeClass}`}>
+                            {getTechnicianStatus(req.status).label}
                           </span>
                           {isAssignedToOther && (
                             <div className="flex items-center justify-center gap-1 text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mt-1.5" title={`Assigned to ${reqTechName}`}>
@@ -534,59 +757,62 @@ export default function OperationalInbox() {
                             <div className="flex items-center justify-end gap-1.5">
                               {req.status === "pending" && (
                                 <>
-                                  <button
-                                    disabled={isAssignedToOther || isUpdating}
-                                    onClick={() =>
-                                      handleUpdateStatus(
-                                        req.id,
-                                        req.type,
-                                        "in-progress",
-                                      )
-                                    }
-                                    className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/50 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                    title={isAssignedToOther ? `Locked by ${reqTechName}` : "Accept Request"}
-                                  >
-                                    <Check size={12} /> Accept
-                                  </button>
-                                  <button
-                                    disabled={isAssignedToOther || isUpdating}
-                                    onClick={() =>
-                                      handleUpdateStatus(
-                                        req.id,
-                                        req.type,
-                                        "rejected",
-                                      )
-                                    }
-                                    className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-rose-200 text-rose-700 bg-rose-50/50 hover:bg-rose-600 hover:text-white dark:border-rose-900/50 dark:text-rose-400 dark:bg-rose-950/20 dark:hover:bg-rose-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                                    title={isAssignedToOther ? `Locked by ${reqTechName}` : "Decline Request"}
-                                  >
-                                    <X size={12} /> Decline
-                                  </button>
+                                  {req.type === "breeding_verification" && isAssignedToMe ? (
+                                    <button
+                                      disabled={isUpdating}
+                                      onClick={() => {
+                                        setSelectedTask(req);
+                                        setIsBreedingVerificationOpen(true);
+                                      }}
+                                      className="btn btn-primary btn-xs"
+                                    >
+                                      <CheckCircle size={12} /> Verify
+                                    </button>
+                                  ) : !reqTechId ? (
+                                    <>
+                                      <button
+                                        disabled={isUpdating}
+                                        onClick={() => handleClaimRequest(req)}
+                                        className="btn btn-primary btn-xs"
+                                        title="Claim request"
+                                      >
+                                        <Check size={12} /> Claim
+                                      </button>
+                                      <button
+                                        disabled={isUpdating}
+                                        onClick={() => handleDeclineRequest(req)}
+                                        className="btn btn-ghost btn-xs text-error"
+                                        title="Decline request for me"
+                                      >
+                                        <X size={12} /> Decline
+                                      </button>
+                                    </>
+                                  ) : null}
                                 </>
                               )}
                               {req.status === "in-progress" && (
                                 <button
                                   disabled={isAssignedToOther || isUpdating}
-                                  onClick={() => {
-                                    setSelectedTask(req);
-                                    setIsTaskModalOpen(true);
-                                  }}
+                                  onClick={() => openRequest(req)}
                                   className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-emerald-200 text-emerald-700 bg-emerald-50/50 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/50 dark:text-emerald-400 dark:bg-emerald-950/20 dark:hover:bg-emerald-600 dark:hover:text-white flex items-center gap-1 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                   title={isAssignedToOther ? `Locked by ${reqTechName}` : `Complete ${req.serviceLabel}`}
                                 >
                                   <CheckCircle size={12} /> Complete
                                 </button>
                               )}
-                              <button
-                                disabled={isAssignedToOther || isUpdating}
-                                onClick={() =>
-                                  handleDeleteRequest(req.id, req.type)
-                                }
-                                className="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-md transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                                title={isAssignedToOther ? `Locked by ${reqTechName}` : "Cancel Request"}
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                              {["insemination", "health"].includes(req.type) && (
+                                <button
+                                  disabled={isAssignedToOther || isUpdating}
+                                  onClick={() =>
+                                    handleDeleteRequest(req.id, req.type)
+                                  }
+                                  className="btn btn-ghost btn-xs btn-square text-error"
+                                  title={isAssignedToOther ? `Locked by ${reqTechName}` : "Cancel Request"}
+                                  aria-label="Cancel request"
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              )}
                             </div>
                           </td>
                         )}
@@ -599,17 +825,17 @@ export default function OperationalInbox() {
           </div>
 
           {/* Pagination Controls Toolbar */}
-          <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between bg-slate-50/50 dark:bg-slate-950/30">
+          <div className="p-4 border-t border-base-300 flex flex-wrap items-center justify-between gap-3 bg-base-200">
             <span className="text-[11px] font-medium text-slate-400">
               Showing {totalItems === 0 ? 0 : startIndex + 1}–
               {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
               entries
             </span>
-            <div className="flex items-center gap-1">
+            <div className="join">
               <button
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1 || isMasterLoading}
-                className={ui.iconButton}
+                className="join-item btn btn-sm btn-outline"
               >
                 <ChevronLeft size={12} />
               </button>
@@ -619,10 +845,10 @@ export default function OperationalInbox() {
                     key={pageNumber}
                     disabled={isMasterLoading}
                     onClick={() => setCurrentPage(pageNumber)}
-                    className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all ${
+                    className={`join-item btn btn-sm ${
                       currentPage === pageNumber
-                        ? "bg-[#00643b] text-white shadow-xs"
-                        : "border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-600 dark:text-slate-400 disabled:opacity-50"
+                        ? "btn-primary"
+                        : "btn-outline"
                     }`}
                   >
                     {pageNumber}
@@ -634,7 +860,7 @@ export default function OperationalInbox() {
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }
                 disabled={currentPage === totalPages || isMasterLoading}
-                className={ui.iconButton}
+                className="join-item btn btn-sm btn-outline"
               >
                 <ChevronRight size={12} />
               </button>
@@ -643,55 +869,87 @@ export default function OperationalInbox() {
         </div>
       </main>
 
-      {/* ===== CUSTOM MODERN CONFIRMATION MODAL ===== */}
-      {confirmModal.isOpen && (
-        <div className="fixed inset-0 bg-black/45 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className={`${ui.panelPadded} w-full max-w-sm space-y-4 shadow-xl`}>
-            <div className="flex items-center gap-2 text-slate-400 font-extrabold text-[10px] tracking-widest uppercase">
-              <span>{confirmModal.title || "Confirm Action"}</span>
-            </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 font-bold leading-relaxed pr-2">
-              {confirmModal.message}
-            </p>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
-              <button
-                onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
-                className={ui.ghostButton}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  if (confirmModal.onConfirm) confirmModal.onConfirm();
-                  setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
-                }}
-                className={`${ui.primaryButton} border-none`}
-                style={{
-                  backgroundColor:
-                    confirmModal.title.toLowerCase().includes("drop") ||
-                    confirmModal.title.toLowerCase().includes("delete") ||
-                    confirmModal.title.toLowerCase().includes("cancel") ||
-                    confirmModal.title.toLowerCase().includes("decline")
-                      ? "#e11d48"
-                      : "#00643b",
-                }}
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        isOpen={confirmModal.isOpen}
+        onClose={() =>
+          setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })
+        }
+        title={confirmModal.title || "Confirm action"}
+        type={confirmModal.title.toLowerCase().includes("cancel") ? "warning" : "info"}
+        size="sm"
+        actions={
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
+            >
+              Go back
+            </button>
+            <button
+              type="button"
+              className={`btn ${confirmModal.title.toLowerCase().includes("cancel") ? "btn-error" : "btn-primary"}`}
+              onClick={() => {
+                confirmModal.onConfirm?.();
+                setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null });
+              }}
+            >
+              Confirm
+            </button>
+          </>
+        }
+      >
+        <p>{confirmModal.message}</p>
+      </Modal>
 
       {/* ===== TASK ACTION DIALOG MODAL ===== */}
       <TaskActionModal
-        isOpen={isTaskModalOpen}
-        onClose={() => setIsTaskModalOpen(false)}
-        task={selectedTask}
+        isOpen={isActiveTaskModalOpen}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          if (requestedId) setDismissedDeepLink(requestedId);
+        }}
+        task={activeTask}
         onSuccess={() => {
           refetchQueue();
         }}
         isAdmin={isAdmin}
+      />
+
+      <PregnancyDiagnosisModal
+        isOpen={isPDModalOpen}
+        onClose={() => {
+          setIsPDModalOpen(false);
+          setSelectedTask(null);
+        }}
+        taskData={selectedTask}
+        onSuccess={() => {
+          refetchQueue();
+        }}
+      />
+
+      <BreedingVerificationModal
+        isOpen={isBreedingVerificationOpen}
+        onClose={() => {
+          setIsBreedingVerificationOpen(false);
+          setSelectedTask(null);
+        }}
+        taskData={selectedTask}
+        onSuccess={refetchQueue}
+      />
+
+      <RecordCalfDropModal
+        isOpen={isCalvingModalOpen}
+        onClose={() => {
+          setIsCalvingModalOpen(false);
+          setSelectedTask(null);
+        }}
+        preSelectedFarmer={selectedTask?.raw?.farmerId}
+        preSelectedAnimal={selectedTask?.raw?.animalIds?.[0] || selectedTask?.raw?.animalId}
+        taskId={selectedTask?.id}
+        onSuccess={() => {
+          refetchQueue();
+        }}
       />
     </div>
   );

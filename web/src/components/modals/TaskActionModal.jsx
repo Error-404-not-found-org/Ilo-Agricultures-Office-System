@@ -21,6 +21,7 @@ import axiosInstance from "../../lib/axios";
 import { toast } from "sonner";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { CATTLE_BREEDS } from "../../constants/breeds";
+import { getClaimType } from "../../constants/technicianWorkflow";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
@@ -60,6 +61,10 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
 
   const isPending = taskData?.status?.toLowerCase() === "pending";
   const isApproved = taskData?.status?.toLowerCase() === "approved";
+  const isScheduled = taskData?.status?.toLowerCase() === "scheduled";
+  const isInProgress = ["in-progress", "in_progress"].includes(
+    taskData?.status?.toLowerCase(),
+  );
 
   const isCompleted = ["done", "resolved", "completed"].includes(
     taskData?.status?.toLowerCase(),
@@ -105,7 +110,13 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
     String(assignedTechId) !== String(dbUser._id);
 
   const isUnsupportedService = !isAI && !isHealth;
-  const isReadOnly = isCompleted || isArchived || isAssignedToOther || !!isAdmin || isUnsupportedService;
+  const isReadOnly =
+    isCompleted ||
+    isArchived ||
+    isAssignedToOther ||
+    !!isAdmin ||
+    isUnsupportedService ||
+    isPending;
 
   useEffect(() => {
     if (taskData) {
@@ -185,15 +196,17 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
       toast.error("Open this service from its official workflow detail screen.");
       return;
     }
-    const endpoint =
-      isHealth
-        ? `/health-request/${taskData.id}/cancel`
-        : `/ai-request/${taskData.id}/cancel`;
+    const claimType = getClaimType(taskData.queueType || taskData.type);
+    if (!claimType) {
+      toast.error("This request cannot be declined from the service queue.");
+      return;
+    }
+    const endpoint = `/technician/requests/${claimType}/${taskData.id}/decline`;
 
     setIsSubmitting(true);
     toast.promise(
       axiosInstance.patch(endpoint, {
-        reason: note || "Declined by technician.",
+        reason: note || "Declined by technician from request details.",
       }),
       {
         loading: "Processing decline...",
@@ -203,7 +216,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
           });
           if (onSuccess) onSuccess();
           onClose();
-          return "Mission Cancelled";
+          return "Request removed from your queue";
         },
         error: (err) => {
           setIsSubmitting(false);
@@ -218,9 +231,40 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
       toast.error("Open this service from its official workflow detail screen.");
       return;
     }
-    const nextStatus = (isPending || isApproved)
-      ? "in-progress"
-      : (isHealth ? "resolved" : "done");
+    if (isPending) {
+      toast.error("Claim this request from the queue before scheduling it.");
+      return;
+    }
+    if (isApproved && (!scheduledDate || !scheduledTime)) {
+      toast.error("Choose a visit date and time before scheduling.");
+      return;
+    }
+    if (isInProgress && isHealth && (!diagnosis.trim() || !treatment.trim())) {
+      toast.error("Add both the diagnosis and treatment before resolving this request.");
+      return;
+    }
+    if (isInProgress && isAI && (!sireBreed || !sireCode.trim())) {
+      toast.error("Select the sire breed and enter the sire code before completing AI service.");
+      return;
+    }
+    if (isInProgress && combinedScheduledDate) {
+      const visitDay = new Date(combinedScheduledDate);
+      const today = new Date();
+      visitDay.setHours(0, 0, 0, 0);
+      today.setHours(0, 0, 0, 0);
+      if (visitDay > today) {
+        toast.error("This visit is scheduled for a future date. Reschedule it before recording completion.");
+        return;
+      }
+    }
+
+    const nextStatus = isApproved
+      ? "scheduled"
+      : isScheduled
+        ? "in-progress"
+        : isHealth
+          ? "resolved"
+          : "done";
 
     const endpoint =
       isHealth
@@ -231,15 +275,15 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
     toast.promise(
       axiosInstance.patch(endpoint, {
         status: nextStatus,
-        technicianNote:
-          note || `${isPending ? "Accepted" : "Updated"} by technician.`,
-        diagnosis,
-        treatment,
-        advice,
-        sireBreed,
-        sireCode,
-        estrus,
-        scheduledDate: combinedScheduledDate || new Date(),
+        technicianNote: note || `${nextStatus.replaceAll("-", " ")} by technician.`,
+        ...(isInProgress
+          ? isHealth
+            ? { diagnosis, treatment, advice }
+            : { sireBreed, sireCode, estrus }
+          : {}),
+        ...(isApproved
+          ? { scheduledDate: combinedScheduledDate }
+          : {}),
       }),
       {
         loading: "Updating mission status...",
@@ -249,7 +293,9 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
           });
           if (onSuccess) onSuccess();
           onClose();
-          return "Mission Synchronized!";
+          if (nextStatus === "scheduled") return "Visit scheduled";
+          if (nextStatus === "in-progress") return "Visit started";
+          return isHealth ? "Health request resolved" : "AI service completed";
         },
         error: (err) => {
           setIsSubmitting(false);
@@ -524,7 +570,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
               )}
 
               {/* SECTION 2: SERVICE METRICS & PARAMETERS */}
-              {!isPending && !isApproved && (
+              {(isInProgress || isCompleted) && (
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2 mb-1">
                     <ClipboardPen size={14} className="text-emerald-600" />
@@ -647,7 +693,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
                           />
                           <input
                             type="date"
-                            disabled={isReadOnly}
+                            disabled={isReadOnly || !isApproved}
                             value={scheduledDate}
                             onChange={(e) => setScheduledDate(e.target.value)}
                             className={`${inputClass} pl-10 cursor-pointer`}
@@ -664,7 +710,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
                           />
                           <input
                             type="time"
-                            disabled={isReadOnly}
+                            disabled={isReadOnly || !isApproved}
                             value={scheduledTime}
                             onChange={(e) => setScheduledTime(e.target.value)}
                             className={`${inputClass} pl-10 cursor-pointer`}
@@ -677,7 +723,7 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
                     <div className="space-y-1.5">
                       <label className={labelClass}>Observations</label>
                       <textarea
-                        disabled={isReadOnly}
+                        disabled={isReadOnly || isScheduled}
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         placeholder="Enter specific behavioral changes, physical observations or custom internal notes here..."
@@ -824,11 +870,15 @@ const TaskActionModal = ({ isOpen, onClose, task: taskData, onSuccess, isAdmin }
                       ) : (
                         <>
                           <BadgeCheck size={14} />
-                          {isPending || isApproved
-                            ? "Accept Request"
-                            : isHealth
-                              ? "Resolve & Complete"
-                              : "Complete Insemination"}
+                          {isPending
+                            ? "Claim from queue"
+                            : isApproved
+                              ? "Schedule visit"
+                              : isScheduled
+                                ? "Start visit"
+                                : isHealth
+                                  ? "Resolve health request"
+                                  : "Complete AI service"}
                         </>
                       )}
                     </button>

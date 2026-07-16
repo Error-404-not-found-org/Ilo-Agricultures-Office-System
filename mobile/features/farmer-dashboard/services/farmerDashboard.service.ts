@@ -90,8 +90,9 @@ export const cancelFarmerRequest = async (
   api: AxiosInstance,
   id: string,
   type: string,
+  reason: string,
 ) => {
   const endpoint = type === "ai" ? `/ai-request/${id}/cancel` : `/health-request/${id}/cancel`;
-  const response = await api.patch(endpoint, { reason: "Cancelled from dashboard home" });
+  const response = await api.patch(endpoint, { reason: reason.trim() });
   return response.data;
 };

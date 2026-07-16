@@ -1,12 +1,13 @@
 import { verifyPostpartumWindow } from "../utils/cattleCore.js";
+import { ANIMAL_REPRODUCTIVE_STATUS } from "./status-vocabulary.js";
 
 export const ACTIVE_REPRODUCTION_PHASES = new Set([
   "AI Requested", "Scheduled", "Inseminated", "Heat Return Monitoring", "Pregnancy Check Due",
-  "Pregnancy Monitoring", "Pregnant", "Calving Due", "Recovery Period",
+  "Pregnancy Monitoring", ANIMAL_REPRODUCTIVE_STATUS.PREGNANT, "Calving Due", "Recovery Period",
 ]);
 
 export const getReproductionEligibility = ({ animal, activeRequest, activePregnancy, now = new Date() }) => {
-  if (activePregnancy || animal.reproductiveStatus === "Pregnant") {
+  if (activePregnancy || animal.reproductiveStatus === ANIMAL_REPRODUCTIVE_STATUS.PREGNANT) {
     return {
       eligible: false,
       code: "ACTIVE_REPRODUCTIVE_WORKFLOW",

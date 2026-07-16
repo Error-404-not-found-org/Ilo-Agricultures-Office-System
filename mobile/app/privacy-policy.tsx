@@ -1,8 +1,6 @@
 import React from "react";
-import { View, TouchableOpacity, ScrollView, StatusBar } from "react-native";
-import { useRouter } from "expo-router";
+import { View, ScrollView } from "react-native";
 import {
-  ChevronLeft,
   Shield,
   Lock,
   Database,
@@ -14,71 +12,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
+import { AppPageHeader } from "@/components/AppPageHeader";
 
 export default function PrivacyPolicyScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
 
   const primaryColor = isDark ? colors.primary : "#00643B";
-  const headerBgColor = isDark ? "#064e3e" : "#00643B";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
-
-      {/* Header */}
-      <View
-        style={{
-          paddingTop: insets.top + 16,
-          paddingBottom: 24,
-          paddingHorizontal: 24,
-          backgroundColor: headerBgColor,
-          borderBottomLeftRadius: 32,
-          borderBottomRightRadius: 32,
-          flexDirection: "row",
-          alignItems: "center",
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.1,
-          shadowRadius: 12,
-          elevation: 4,
-          zIndex: 10,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          activeOpacity={0.7}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: "rgba(255, 255, 255, 0.15)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ChevronLeft size={22} color="#ffffff" />
-        </TouchableOpacity>
-
-        <View style={{ flex: 1, alignItems: "center", marginRight: 40 }}>
-          <Text variant="black" size={18} style={{ color: "#ffffff" }}>
-            Privacy Policy
-          </Text>
-          <Text
-            variant="bold"
-            size={9}
-            style={{
-              color: isDark ? "#a7f3d0" : "#d1fae5",
-              textTransform: "uppercase",
-              letterSpacing: 1.5,
-              marginTop: 2,
-            }}
-          >
-            Last Updated: June 2026
-          </Text>
-        </View>
-      </View>
+      <AppPageHeader title="Privacy Policy" subtitle="Last updated June 2026" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

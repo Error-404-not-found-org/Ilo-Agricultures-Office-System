@@ -6,15 +6,12 @@ import {
   TextInput,
   Modal,
   FlatList,
-  StatusBar,
   ActivityIndicator,
   Image,
   Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  ArrowLeft,
   HeartPulse,
   User,
   MapPin,
@@ -41,6 +38,12 @@ import {
   useSystemConfigQuery,
   useTechnicianDirectoryQuery,
 } from "@/features/farmer-requests/hooks/useFarmerRequestForms";
+import {
+  findActiveHealthCase,
+  getHealthRequestErrorMessage,
+} from "@/features/farmer-requests/utils/healthRequestState";
+import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
+import { requestFormStyles } from "@/features/farmer-requests/components/requestFormStyles";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Animal {
@@ -123,7 +126,6 @@ const URGENCY_OPTIONS = [
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ReportSickness() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
   const submitLockRef = useRef(false);
   const { colors, isDark } = useTheme();
@@ -163,8 +165,8 @@ export default function ReportSickness() {
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [farmPinModalVisible, setFarmPinModalVisible] = useState(false);
-  const [pendingModalVisible, setPendingModalVisible] = useState(false);
   const [noContactModalVisible, setNoContactModalVisible] = useState(false);
+  const [serverConflictCase, setServerConflictCase] = useState<any>(null);
 
   const TIME_SLOTS = [
     "08:00 AM",
@@ -191,7 +193,19 @@ export default function ReportSickness() {
   const { data: animalsData, isLoading: isLoadingAnimals } = useFarmerAnimalsForHealthQuery();
 
   // Fetch pending health requests to block duplicates
-  const { data: myHealthRequests } = useMyHealthRequestsQuery();
+  const {
+    data: myHealthRequests,
+    refetch: refetchHealthRequests,
+  } = useMyHealthRequestsQuery();
+
+  const requestsArray = Array.isArray(myHealthRequests)
+    ? myHealthRequests
+    : myHealthRequests?.data || [];
+  const activeCase = findActiveHealthCase(
+    serverConflictCase ? [...requestsArray, serverConflictCase] : requestsArray,
+    selectedAnimal?._id,
+    requestType,
+  );
 
   // Fetch technicians list for direct call emergency contacts
   const { data: technicians, isLoading: isLoadingTechs } = useTechnicianDirectoryQuery();
@@ -268,9 +282,22 @@ export default function ReportSickness() {
       setImageBase64(null);
       router.back();
     } catch (error: any) {
-      toast.error(
-        error.response?.data?.message || "Failed to submit. Please try again.",
-      );
+      if (error?.response?.data?.code === "ACTIVE_HEALTH_CASE_EXISTS") {
+        const conflict = error.response.data;
+        setServerConflictCase({
+          _id: conflict.existingRequestId,
+          animalId: selectedAnimal._id,
+          requestType,
+          status: conflict.existingRequestStatus || "pending",
+        });
+        await refetchHealthRequests();
+        setTimeout(
+          () => scrollRef.current?.scrollTo({ y: 500, animated: true }),
+          100,
+        );
+      } else {
+        toast.error(getHealthRequestErrorMessage(error));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -301,15 +328,8 @@ export default function ReportSickness() {
         return;
       }
 
-      const requestsArray = Array.isArray(myHealthRequests)
-        ? myHealthRequests
-        : myHealthRequests?.data || [];
-      const isAlreadyPending = requestsArray.some(
-        (r: any) =>
-          r.animalId?._id === selectedAnimal._id && r.status === "pending",
-      );
-      if (isAlreadyPending) {
-        setPendingModalVisible(true);
+      if (activeCase) {
+        scrollRef.current?.scrollTo({ y: 500, animated: true });
         return;
       }
 
@@ -375,40 +395,16 @@ export default function ReportSickness() {
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
-      <View
-        className="absolute top-0 left-0 right-0 h-[260px]"
-        style={{ backgroundColor: "#b91c1c" }}
-      />
-
-      {/* Header */}
-      <View
-        style={{ paddingTop: insets.top + 16 }}
-        className="px-6 pb-6 flex-row items-center gap-4 z-10"
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          className="w-11 h-11 bg-white/20 rounded-full items-center justify-center border border-white/20"
-          activeOpacity={0.7}
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View>
-          <Text className="text-[22px] font-outfit-black text-white leading-tight">
-            Report Animal Issue
-          </Text>
-          <Text className="text-[12px] text-red-100 font-outfit-medium opacity-90 tracking-wide">
-            Disease, Injury, or Medicine Request
-          </Text>
-        </View>
-      </View>
+      <FarmerRequestHeader title="Report Health Concern" />
 
       {/* Content card */}
       <View
-        className="flex-1 rounded-t-[32px] px-6 pt-6 mt-2 shadow-2xl"
-        style={{ elevation: 12, backgroundColor: colors.background }}
+        className="flex-1"
+        style={{
+          paddingHorizontal: 20,
+          paddingTop: 16,
+          backgroundColor: colors.background,
+        }}
       >
         <ScrollView
           ref={scrollRef}
@@ -416,45 +412,42 @@ export default function ReportSickness() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ paddingBottom: 160 }}
         >
-          {/* --- MOOWIE HEALTH INSIGHT --- */}
-          <View className="mb-8">
-            <View className="flex-row items-end">
-              {/* Mascot Container */}
-              <View className="w-24 h-24 -mb-2 z-10">
-                <Image
-                  source={{
-                    uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
-                  }}
-                  className="w-full h-full"
-                  resizeMode="contain"
-                />
-              </View>
-
-              {/* Speech Bubble */}
-              <View
-                className="flex-1 rounded-[28px] rounded-bl-none p-5 ml-[-15px] border shadow-sm"
-                style={{
-                  backgroundColor: isDark
-                    ? "rgba(239, 68, 68, 0.1)"
-                    : "#fef2f2",
-                  borderColor: isDark ? "transparent" : "#fecaca",
-                }}
+          <View
+            className="rounded-2xl p-4 mb-5 border flex-row items-start"
+            style={{
+              backgroundColor: isDark
+                ? "rgba(185, 28, 28, 0.1)"
+                : "#fef2f2",
+              borderColor: isDark
+                ? "rgba(248, 113, 113, 0.2)"
+                : "#fecaca",
+            }}
+          >
+            <View
+              className="w-9 h-9 rounded-xl items-center justify-center"
+              style={{
+                backgroundColor: isDark
+                  ? "rgba(248, 113, 113, 0.12)"
+                  : "#fee2e2",
+              }}
+            >
+              <HeartPulse size={18} color={primaryColor} />
+            </View>
+            <View className="flex-1 ml-3">
+              <Text
+                className="text-sm font-bold"
+                style={{ color: colors.textPrimary }}
               >
-                <Text
-                  className="font-outfit-black text-[13px] mb-1"
-                  style={{ color: isDark ? "#fca5a5" : "#b91c1c" }}
-                >
-                  Moowie Support
-                </Text>
-                <Text
-                  className="font-outfit-medium text-[12px] leading-[18px]"
-                  style={{ color: colors.textSecondary }}
-                >
-                  &quot;Oh no, is one of our friends not feeling well? 🐮
-                  Don&apos;t worry, fill out the details and I&apos;ll make sure
-                  a technician sees this immediately!&quot;
-                </Text>
-              </View>
+                Tell us what you observed
+              </Text>
+              <Text
+                className="text-xs mt-1 leading-5"
+                style={{ color: colors.textSecondary }}
+              >
+                Select the animal and concern type, describe the symptoms, and
+                choose a preferred visit. Use the emergency contacts below if
+                the animal needs immediate help.
+              </Text>
             </View>
           </View>
 
@@ -653,7 +646,7 @@ export default function ReportSickness() {
           {/* Animal Picker */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Affected Animal *
           </Text>
@@ -669,23 +662,23 @@ export default function ReportSickness() {
             {selectedAnimal ? (
               <View>
                 <Text
-                  className="text-base font-bold"
-                  style={{ color: colors.textPrimary }}
+                  className="text-[15px] font-bold"
+                  style={[requestFormStyles.fieldValue, { color: colors.textPrimary }]}
                 >
                   {selectedAnimal.animalId}
                   {selectedAnimal.earTag ? ` · ${selectedAnimal.earTag}` : ""}
                 </Text>
                 <Text
-                  className="text-sm font-medium"
-                  style={{ color: colors.textSecondary }}
+                  className="text-sm"
+                  style={[requestFormStyles.fieldPlaceholder, { color: colors.textSecondary }]}
                 >
-                  {selectedAnimal.species} — {selectedAnimal.breed}
+                  {selectedAnimal.species}, {selectedAnimal.breed}
                 </Text>
               </View>
             ) : (
               <Text
-                className="font-medium text-sm"
-                style={{ color: colors.textMuted }}
+                className="text-sm"
+                style={[requestFormStyles.fieldPlaceholder, { color: colors.textMuted }]}
               >
                 Tap to choose an animal
               </Text>
@@ -699,7 +692,7 @@ export default function ReportSickness() {
           {/* Request Type */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Request Type
           </Text>
@@ -714,17 +707,84 @@ export default function ReportSickness() {
           >
             <Text
               className="text-sm font-bold"
-              style={{ color: colors.textPrimary }}
+              style={[requestFormStyles.fieldValue, { color: colors.textPrimary }]}
             >
               {selectedType?.label || "Select type"}
             </Text>
             <ChevronDown size={20} color={colors.textMuted} />
           </TouchableOpacity>
 
+          {activeCase && (
+            <View
+              className="p-4 rounded-2xl mb-5 border"
+              style={{
+                backgroundColor: isDark
+                  ? "rgba(245, 158, 11, 0.1)"
+                  : "#fffbeb",
+                borderColor: isDark
+                  ? "rgba(245, 158, 11, 0.25)"
+                  : "#fde68a",
+              }}
+            >
+              <View className="flex-row gap-3">
+                <AlertCircle size={20} color="#d97706" />
+                <View className="flex-1">
+                  <Text
+                    className="font-bold text-sm"
+                    style={{ color: colors.textPrimary }}
+                  >
+                    Active health request
+                  </Text>
+                  <Text
+                    className="text-xs mt-1 leading-5"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    {selectedType?.label?.replace(/^\S+\s*/, "") ||
+                      "Health issue"}
+                    {" · "}
+                    {String(activeCase.status || "pending")
+                      .replace(/[-_]/g, " ")
+                      .replace(/\b\w/g, (character) =>
+                        character.toUpperCase(),
+                      )}
+                    {"\n"}Complete or cancel this request before creating
+                    another of the same type.
+                  </Text>
+                  {activeCase._id && (
+                    <TouchableOpacity
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(farmer)/health-request-detail",
+                          params: { id: String(activeCase._id) },
+                        })
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel="View active health request"
+                      className="flex-row items-center self-start mt-3 py-1"
+                    >
+                      <Text
+                        className="text-xs font-bold"
+                        style={{ color: "#d97706" }}
+                      >
+                        View existing request
+                      </Text>
+                      <MaterialCommunityIcons
+                        name="arrow-right"
+                        size={15}
+                        color="#d97706"
+                        style={{ marginLeft: 4 }}
+                      />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Urgency Selector */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Urgency Level
           </Text>
@@ -768,7 +828,7 @@ export default function ReportSickness() {
           {/* Preferred Date/Time Picker */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Preferred Visit Date/Time *
           </Text>
@@ -784,16 +844,19 @@ export default function ReportSickness() {
             >
               <View>
                 <Text
-                  className="text-[9px] font-outfit-black uppercase tracking-widest mb-0.5"
-                  style={{ color: colors.textMuted }}
+                  className="mb-0.5"
+                  style={[requestFormStyles.compactLabel, { color: colors.textMuted }]}
                 >
                   Date
                 </Text>
                 <Text
                   className="text-sm font-bold"
-                  style={{ color: preferredDate ? colors.textPrimary : colors.textMuted }}
+                  style={[
+                    requestFormStyles.fieldValue,
+                    { color: preferredDate ? colors.textPrimary : colors.textMuted },
+                  ]}
                 >
-                  {preferredDate ? preferredDate.toLocaleDateString() : "— — — — —"}
+                  {preferredDate ? preferredDate.toLocaleDateString() : "Select date"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -810,21 +873,24 @@ export default function ReportSickness() {
             >
               <View>
                 <Text
-                  className="text-[9px] font-outfit-black uppercase tracking-widest mb-0.5"
-                  style={{ color: colors.textMuted }}
+                  className="mb-0.5"
+                  style={[requestFormStyles.compactLabel, { color: colors.textMuted }]}
                 >
                   Time Slot
                 </Text>
                 <Text
                   className="text-sm font-bold"
-                  style={{ color: preferredDate ? colors.textPrimary : colors.textMuted }}
+                  style={[
+                    requestFormStyles.fieldValue,
+                    { color: preferredDate ? colors.textPrimary : colors.textMuted },
+                  ]}
                 >
                   {preferredDate
                     ? preferredDate.toLocaleTimeString([], {
                         hour: "2-digit",
                         minute: "2-digit",
                       })
-                    : "— — — — —"}
+                    : "Select time"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -844,7 +910,7 @@ export default function ReportSickness() {
           {/* Photo */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Attach Photo (Optional)
           </Text>
@@ -898,20 +964,23 @@ export default function ReportSickness() {
           {/* Symptoms / Description */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={{ color: colors.textMuted }}
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
             Symptoms / Description *
           </Text>
           <TextInput
             className="border rounded-2xl px-4 py-4 text-sm mb-6"
-            style={{
+            style={[
+              requestFormStyles.textInput,
+              {
               minHeight: 120,
               textAlignVertical: "top",
               elevation: 1,
               backgroundColor: colors.card,
               borderColor: colors.border,
               color: colors.textPrimary,
-            }}
+              },
+            ]}
             value={symptoms}
             onChangeText={setSymptoms}
             onFocus={() =>
@@ -930,18 +999,23 @@ export default function ReportSickness() {
           {/* Submit */}
           <TouchableOpacity
             onPress={() => handleSubmit()}
-            disabled={submitting}
+            disabled={submitting || Boolean(activeCase)}
             accessibilityRole="button"
             accessibilityLabel="Submit health request"
             activeOpacity={0.85}
             className="rounded-full py-4 items-center flex-row justify-center gap-2 shadow-lg"
             style={{
-              backgroundColor: submitting ? "#f87171" : primaryColor,
+              backgroundColor:
+                submitting || activeCase ? colors.textMuted : primaryColor,
               shadowColor: primaryColor,
             }}
           >
             {submitting ? (
               <ActivityIndicator color="white" size="small" />
+            ) : activeCase ? (
+              <Text className="text-white font-bold text-base">
+                Active request already exists
+              </Text>
             ) : (
               <>
                 <HeartPulse size={20} color="white" />
@@ -961,27 +1035,21 @@ export default function ReportSickness() {
         visible={animalModalVisible}
         onRequestClose={() => setAnimalModalVisible(false)}
       >
-        <View className="flex-1 bg-black/60 justify-end">
+        <View className="flex-1 bg-black/50 justify-end">
           <View
-            className="rounded-t-[40px] p-8 pb-12 max-h-[80%] shadow-2xl"
+            className="rounded-t-[32px] p-6 pb-12 max-h-[75%]"
             style={{ backgroundColor: colors.card }}
           >
-            <View
-              className="w-12 h-1.5 rounded-full self-center mb-6"
-              style={{
-                backgroundColor: isDark ? colors.background : "#e2e8f0",
-              }}
-            />
-            <View className="flex-row justify-between items-center mb-6">
+            <View className="flex-row justify-between items-center mb-4">
               <Text
-                className="text-[22px] font-outfit-black"
-                style={{ color: colors.textPrimary }}
+                className="text-lg font-bold"
+                style={[requestFormStyles.modalTitle, { color: colors.textPrimary }]}
               >
                 Select Animal
               </Text>
               <TouchableOpacity
                 onPress={() => setAnimalModalVisible(false)}
-                className="w-10 h-10 rounded-full items-center justify-center"
+                className="p-1 rounded-full"
                 style={{
                   backgroundColor: isDark ? colors.background : "#f8fafc",
                 }}
@@ -1002,12 +1070,18 @@ export default function ReportSickness() {
               </View>
             ) : animals.length === 0 ? (
               <View className="items-center py-10 gap-3">
-                <AlertCircle size={48} color={colors.textMuted} />
+                <AlertCircle size={36} color={colors.textMuted} />
                 <Text
-                  className="text-center font-outfit-bold text-lg"
+                  className="text-center font-medium"
                   style={{ color: colors.textSecondary }}
                 >
-                  No animals found.
+                  You have no registered animals yet.
+                </Text>
+                <Text
+                  className="text-xs text-center"
+                  style={{ color: colors.textMuted }}
+                >
+                  Register an animal before reporting a health concern.
                 </Text>
               </View>
             ) : (
@@ -1021,7 +1095,7 @@ export default function ReportSickness() {
                       setSelectedAnimal(item);
                       setAnimalModalVisible(false);
                     }}
-                    className={`py-5 px-4 border-b flex-row items-center justify-between`}
+                    className="py-4 px-3 border-b flex-row items-center justify-between"
                     style={{
                       borderBottomColor: colors.border,
                       backgroundColor:
@@ -1033,37 +1107,19 @@ export default function ReportSickness() {
                       borderRadius: selectedAnimal?._id === item._id ? 16 : 0,
                     }}
                   >
-                    <View className="flex-row items-center gap-4">
-                      <View
-                        className="w-10 h-10 rounded-full items-center justify-center"
-                        style={{
-                          backgroundColor: isDark
-                            ? colors.background
-                            : "#f8fafc",
-                        }}
-                      >
-                        <MaterialCommunityIcons
-                          name="cow"
-                          size={24}
-                          color={
-                            selectedAnimal?._id === item._id
-                              ? primaryColor
-                              : colors.textMuted
-                          }
-                        />
-                      </View>
+                    <View className="flex-row items-center gap-3 flex-1">
                       <View className="flex-1">
                         <Text
-                          className="text-[16px] font-outfit-black"
-                          style={{ color: colors.textPrimary }}
+                          className="text-[15px] font-bold"
+                          style={[requestFormStyles.modalItemTitle, { color: colors.textPrimary }]}
                         >
                           {item.animalId}
                           {item.earTag ? ` · ${item.earTag}` : ""}
                         </Text>
                         <View className="flex-row items-center gap-2 mt-1">
                           <Text
-                            className="text-[12px] font-outfit-medium"
-                            style={{ color: colors.textMuted }}
+                            className="text-xs"
+                            style={[requestFormStyles.modalItemMeta, { color: colors.textMuted }]}
                           >
                             {item.species} · {item.breed}
                           </Text>
@@ -1087,7 +1143,7 @@ export default function ReportSickness() {
                         </View>
                       </View>
                       {selectedAnimal?._id === item._id && (
-                        <Check size={20} color={primaryColor} />
+                        <Check size={18} color={primaryColor} />
                       )}
                     </View>
                   </TouchableOpacity>
@@ -1105,27 +1161,21 @@ export default function ReportSickness() {
         visible={typeModalVisible}
         onRequestClose={() => setTypeModalVisible(false)}
       >
-        <View className="flex-1 bg-black/60 justify-end">
+        <View className="flex-1 bg-black/50 justify-end">
           <View
-            className="rounded-t-[40px] p-8 pb-12 shadow-2xl"
+            className="rounded-t-[32px] p-6 pb-12"
             style={{ backgroundColor: colors.card }}
           >
-            <View
-              className="w-12 h-1.5 rounded-full self-center mb-6"
-              style={{
-                backgroundColor: isDark ? colors.background : "#e2e8f0",
-              }}
-            />
-            <View className="flex-row justify-between items-center mb-6">
+            <View className="flex-row justify-between items-center mb-4">
               <Text
-                className="text-[22px] font-outfit-black"
-                style={{ color: colors.textPrimary }}
+                className="text-lg font-bold"
+                style={[requestFormStyles.modalTitle, { color: colors.textPrimary }]}
               >
                 Request Type
               </Text>
               <TouchableOpacity
                 onPress={() => setTypeModalVisible(false)}
-                className="w-10 h-10 rounded-full items-center justify-center"
+                className="p-1 rounded-full"
                 style={{
                   backgroundColor: isDark ? colors.background : "#f8fafc",
                 }}
@@ -1140,7 +1190,7 @@ export default function ReportSickness() {
                   setRequestType(type.value);
                   setTypeModalVisible(false);
                 }}
-                className="py-5 px-4 border-b flex-row items-center justify-between"
+                className="py-4 px-3 border-b flex-row items-center justify-between"
                 style={{
                   borderBottomColor: colors.border,
                   backgroundColor:
@@ -1153,13 +1203,13 @@ export default function ReportSickness() {
                 }}
               >
                 <Text
-                  className="text-[16px] font-outfit-bold"
-                  style={{ color: colors.textPrimary }}
+                  className="text-[15px] font-bold"
+                  style={[requestFormStyles.modalItemTitle, { color: colors.textPrimary }]}
                 >
                   {type.label}
                 </Text>
                 {requestType === type.value && (
-                  <Check size={20} color={primaryColor} />
+                  <Check size={18} color={primaryColor} />
                 )}
               </TouchableOpacity>
             ))}
@@ -1175,20 +1225,20 @@ export default function ReportSickness() {
       >
         <View className="flex-1 bg-black/40 justify-center px-6">
           <View
-            className="rounded-[40px] p-8 shadow-2xl"
+            className="rounded-[32px] p-6 shadow-2xl"
             style={{ backgroundColor: colors.card }}
           >
             <View className="flex-row justify-between items-center mb-6">
               <View>
                 <Text
-                  className="text-[22px] font-outfit-black"
+                  className="text-xl font-bold"
                   style={{ color: colors.textPrimary }}
                 >
                   Select Time Slot
                 </Text>
                 <Text
-                  className="text-xs mt-1 font-outfit-medium"
-                  style={{ color: colors.textMuted }}
+                  className="text-xs mt-1"
+                  style={[requestFormStyles.modalHelper, { color: colors.textMuted }]}
                 >
                   Available service hours: 8 AM - 5 PM
                 </Text>
@@ -1216,7 +1266,7 @@ export default function ReportSickness() {
                   <TouchableOpacity
                     key={slot}
                     onPress={() => handleSelectTime(slot)}
-                    className="w-[30%] py-4 rounded-[22px] items-center border"
+                    className="w-[30%] py-3 rounded-2xl items-center border"
                     style={{
                       backgroundColor: isSelected
                         ? primaryColor
@@ -1227,7 +1277,7 @@ export default function ReportSickness() {
                     }}
                   >
                     <Text
-                      className="text-[12px] font-outfit-black"
+                      className="text-[12px] font-bold"
                       style={{
                         color: isSelected ? "#fff" : colors.textPrimary,
                       }}
@@ -1241,16 +1291,16 @@ export default function ReportSickness() {
 
             <TouchableOpacity
               onPress={() => setTimeModalVisible(false)}
-              className="mt-8 py-5 rounded-[22px] items-center"
+              className="mt-8 py-4 rounded-2xl items-center"
               style={{
                 backgroundColor: isDark ? colors.background : "#f1f5f9",
               }}
             >
               <Text
-                className="font-outfit-black"
+                className="font-bold"
                 style={{ color: colors.textSecondary }}
               >
-                CLOSE
+                Close
               </Text>
             </TouchableOpacity>
           </View>
@@ -1389,18 +1439,6 @@ export default function ReportSickness() {
         cancelText="Add Farm Pin"
         isDestructive={false}
         icon={<MapPin size={26} color={colors.warning} />}
-      />
-
-      <ConfirmationModal
-        visible={pendingModalVisible}
-        onClose={() => setPendingModalVisible(false)}
-        onConfirm={() => setPendingModalVisible(false)}
-        title="Request Already Pending"
-        message="This animal already has an active health request waiting for a technician. Please wait for an update or contact support if urgent."
-        confirmText="OK"
-        cancelText={null}
-        isDestructive={true}
-        icon={<AlertCircle size={26} color={colors.error} />}
       />
 
       <ConfirmationModal

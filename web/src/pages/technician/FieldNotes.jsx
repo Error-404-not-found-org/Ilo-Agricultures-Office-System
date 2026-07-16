@@ -165,7 +165,7 @@ export default function FieldNotesGallery() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Field Notes & Gallery"
         subtitle="Media Ledger — explore symptoms, photos, and specialized annotations from the field"
@@ -175,7 +175,7 @@ export default function FieldNotesGallery() {
       >
         <button
           onClick={() => setIsUploadModalOpen(true)}
-          className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4"
+          className="btn btn-primary btn-sm text-white font-bold gap-1.5 rounded-xl px-4"
         >
           <ImageIcon size={13} /> Upload Note
         </button>
@@ -188,31 +188,31 @@ export default function FieldNotesGallery() {
             {
               label: "Total Media",
               val: stats.total,
-              color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
+              color: "text-amber-600 bg-amber-500/10",
               icon: <ImageIcon size={16} />,
             },
             {
               label: "AI Requests",
               val: stats.ai,
-              color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
+              color: "text-blue-600 bg-blue-500/10",
               icon: <Syringe size={16} />,
             },
             {
               label: "Health Calls",
               val: stats.health,
-              color: "text-rose-600 bg-rose-50 dark:bg-rose-950/20",
+              color: "text-rose-600 bg-rose-500/10",
               icon: <HeartPulse size={16} />,
             },
             {
               label: "Tech Notes",
               val: stats.tech,
-              color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
+              color: "text-emerald-600 bg-emerald-500/10",
               icon: <FileText size={16} />,
             },
           ].map((stat, i) => (
             <div
               key={i}
-              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
+              className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
             >
               <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
                 {stat.icon}
@@ -221,7 +221,7 @@ export default function FieldNotesGallery() {
                 <div className="text-xl font-black tracking-tight">
                   {isLoading ? "..." : stat.val}
                 </div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-base-content/40 mt-0.5">
                   {stat.label}
                 </div>
               </div>
@@ -231,7 +231,7 @@ export default function FieldNotesGallery() {
 
         {/* Filters Interactive Tab Ribbon */}
         <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-1 rounded-xl flex gap-1 shadow-xs">
+          <div className="bg-base-100 border border-base-300 p-1 rounded-xl flex gap-1 shadow-xs">
             {[
               { id: "all", label: "All Media" },
               { id: "insemination", label: "AI Requests" },
@@ -244,15 +244,15 @@ export default function FieldNotesGallery() {
                 onClick={() => setActiveTab(tab.id)}
                 className={`px-4 py-1.5 rounded-lg text-xs font-bold tracking-wide transition-all ${
                   activeTab === tab.id
-                    ? "bg-[#00643b] text-white shadow-xs"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                    ? "bg-primary text-white shadow-xs"
+                    : "text-base-content/60 hover:bg-base-200"
                 }`}
               >
                 {tab.label}
               </button>
             ))}
           </div>
-          <span className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
+          <span className="text-xs text-base-content/40 font-semibold flex items-center gap-1.5">
             <Grid3X3 size={13} /> {filteredNotes.length} media items matching
           </span>
         </div>
@@ -264,19 +264,19 @@ export default function FieldNotesGallery() {
               {[...Array(4)].map((_, i) => (
                 <div
                   key={i}
-                  className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden animate-pulse h-72"
+                  className="card bg-base-100 border border-base-300 rounded-2xl shadow-xs overflow-hidden animate-pulse h-72"
                 >
-                  <div className="bg-slate-200 dark:bg-slate-900 h-44 w-full" />
+                  <div className="bg-base-300 h-44 w-full" />
                   <div className="p-4 space-y-2">
-                    <div className="h-4 bg-slate-200 dark:bg-slate-900 rounded w-1/2" />
-                    <div className="h-3 bg-slate-200 dark:bg-slate-900 rounded w-5/6" />
+                    <div className="h-4 bg-base-300 rounded w-1/2" />
+                    <div className="h-3 bg-base-300 rounded w-5/6" />
                   </div>
                 </div>
               ))}
             </div>
           ) : filteredNotes.length === 0 ? (
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-12 text-center text-slate-400 dark:text-slate-500 rounded-2xl flex flex-col items-center justify-center gap-2">
-              <AlertCircle size={24} className="text-slate-300" />
+            <div className="card bg-base-100 border border-base-300 p-12 text-center text-base-content/40 rounded-2xl flex flex-col items-center justify-center gap-2">
+              <AlertCircle size={24} className="text-base-content/30" />
               <span className="font-medium">
                 No diagnostic field notes or items located matching selection
                 metrics.
@@ -290,9 +290,9 @@ export default function FieldNotesGallery() {
                   <div
                     key={note.id}
                     onClick={() => setSelectedNote(note)}
-                    className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xs hover:shadow-md hover:border-[#00643b] dark:hover:border-emerald-600 transition-all duration-200 overflow-hidden cursor-pointer flex flex-col group"
+                    className="card bg-base-100 border border-base-300 rounded-2xl shadow-2xs hover:shadow-md hover:border-primary transition-all duration-200 overflow-hidden cursor-pointer flex flex-col group"
                   >
-                    <div className="w-full h-44 bg-slate-100 dark:bg-slate-900 relative overflow-hidden">
+                    <div className="w-full h-44 bg-base-200 relative overflow-hidden">
                       <img
                         src={note.imageUrl}
                         alt="Livestock case documentation"
@@ -312,20 +312,20 @@ export default function FieldNotesGallery() {
                           >
                             {badge.label}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 tracking-wide">
+                          <span className="text-[10px] font-bold text-base-content/40 tracking-wide">
                             {note.animalTag && note.animalTag !== "N/A"
                               ? `#${note.animalTag.substring(0, 7)}`
                               : "Tech File"}
                           </span>
                         </div>
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate">
+                        <h4 className="text-sm font-bold text-base-content truncate">
                           {note.farmer || "Unknown Case"}
                         </h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium line-clamp-2 leading-relaxed">
+                        <p className="text-xs text-base-content/75 font-medium line-clamp-2 leading-relaxed">
                           "{note.note || "No custom annotations provided."}"
                         </p>
                       </div>
-                      <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/60 flex justify-between items-center text-[10.5px] font-bold text-slate-400">
+                      <div className="pt-2.5 border-t border-base-300 flex justify-between items-center text-[10.5px] font-bold text-base-content/40">
                         <span className="flex items-center gap-0.5">
                           <Calendar size={11} />{" "}
                           {note.date
@@ -339,7 +339,7 @@ export default function FieldNotesGallery() {
                               )
                             : "N/A"}
                         </span>
-                        <span className="text-[#00643b] dark:text-emerald-400 uppercase tracking-wider">
+                        <span className="text-primary uppercase tracking-wider">
                           {note.status || "Completed"}
                         </span>
                       </div>
@@ -359,7 +359,7 @@ export default function FieldNotesGallery() {
           onClick={() => setSelectedNote(null)}
         >
           <div
-            className="w-full max-w-5xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] md:max-h-[85vh]"
+            className="w-full max-w-5xl bg-base-100 border border-base-300 rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row max-h-[90vh] md:max-h-[85vh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Left Frame Display Panel */}
@@ -383,7 +383,7 @@ export default function FieldNotesGallery() {
             </div>
 
             {/* Right Frame Details Processing Panel */}
-            <div className="flex-1 p-6 md:p-8 flex flex-col justify-between overflow-y-auto max-h-[55vh] md:max-h-[85vh] bg-white dark:bg-slate-950">
+            <div className="flex-1 p-6 md:p-8 flex flex-col justify-between overflow-y-auto max-h-[55vh] md:max-h-[85vh] bg-base-100">
               <div className="space-y-5">
                 {/* Status Badges */}
                 <div className="flex items-center justify-between">
@@ -397,7 +397,7 @@ export default function FieldNotesGallery() {
                           ? "HEALTH CALL"
                           : "TECHNICIAN NOTE"}
                     </span>
-                    <span className="bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-400 border border-slate-200 dark:border-slate-800 text-[10px] font-black px-2 py-0.5 rounded-md">
+                    <span className="bg-base-200 text-base-content border border-base-300 text-[10px] font-black px-2 py-0.5 rounded-md">
                       {selectedNote.id
                         ? `REF-${selectedNote.id.substring(0, 6).toUpperCase()}`
                         : "LOG-FILE"}
@@ -411,35 +411,35 @@ export default function FieldNotesGallery() {
 
                 {/* Primary Information */}
                 <div className="space-y-1">
-                  <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                  <div className="text-[9px] font-black text-base-content/40 uppercase tracking-widest">
                     Stakeholder Identity
                   </div>
-                  <h2 className="text-xl font-black tracking-tight text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                    <User size={18} className="text-slate-400" />{" "}
+                  <h2 className="text-xl font-black tracking-tight text-base-content flex items-center gap-2">
+                    <User size={18} className="text-base-content/40" />{" "}
                     {selectedNote.farmer || "Anonymous Entry"}
                   </h2>
-                  <p className="text-xs text-slate-400 font-medium flex items-center gap-1 pt-0.5">
-                    <Phone size={12} className="text-slate-400" /> Registry
+                  <p className="text-xs text-base-content/40 font-medium flex items-center gap-1 pt-0.5">
+                    <Phone size={12} className="text-base-content/40" /> Registry
                     Line:{" "}
-                    <span className="font-mono font-bold text-slate-600 dark:text-slate-300">
+                    <span className="font-mono font-bold text-base-content/70">
                       {selectedNote.phone || "N/A"}
                     </span>
                   </p>
                 </div>
 
-                <div className="divider my-0 opacity-40 dark:border-slate-800" />
+                <div className="divider my-0 opacity-40 border-base-300" />
 
                 {/* DETAILED LIVESTOCK PROFILE ATRIBUTES */}
                 <div className="space-y-2">
-                  <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-1">
+                  <div className="text-[9px] font-black text-base-content/40 uppercase tracking-widest flex items-center gap-1">
                     <Activity size={10} /> Livestock Resource Spec Sheets
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-3 rounded-xl">
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wide">
+                    <div className="bg-base-200 border border-base-300 p-3 rounded-xl">
+                      <div className="text-[9px] font-black text-base-content/40 uppercase tracking-wide">
                         System Ear Tag
                       </div>
-                      <p className="text-xs font-black text-emerald-700 dark:text-emerald-400 mt-0.5 flex items-center gap-1">
+                      <p className="text-xs font-black text-primary mt-0.5 flex items-center gap-1">
                         <Tag size={11} />{" "}
                         {selectedNote.animalTag &&
                         selectedNote.animalTag !== "N/A"
@@ -447,22 +447,22 @@ export default function FieldNotesGallery() {
                           : "Unassigned Tag"}
                       </p>
                     </div>
-                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-3 rounded-xl">
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wide">
+                    <div className="bg-base-200 border border-base-300 p-3 rounded-xl">
+                      <div className="text-[9px] font-black text-base-content/40 uppercase tracking-wide">
                         Breed Registry
                       </div>
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-0.5 truncate">
+                      <p className="text-xs font-bold text-base-content mt-0.5 truncate">
                         {selectedNote.animalBreed &&
                         selectedNote.animalBreed !== "N/A"
                           ? selectedNote.animalBreed
                           : "N/A"}
                       </p>
                     </div>
-                    <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-3 rounded-xl col-span-2">
-                      <div className="text-[9px] font-black text-slate-400 uppercase tracking-wide">
+                    <div className="bg-base-200 border border-base-300 p-3 rounded-xl col-span-2">
+                      <div className="text-[9px] font-black text-base-content/40 uppercase tracking-wide">
                         Biological Species
                       </div>
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-0.5">
+                      <p className="text-xs font-bold text-base-content mt-0.5">
                         {selectedNote.animalSpecies &&
                         selectedNote.animalSpecies !== "N/A"
                           ? selectedNote.animalSpecies
@@ -473,11 +473,11 @@ export default function FieldNotesGallery() {
                 </div>
 
                 {/* ANNOTATION BLOCK */}
-                <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/60 p-4 rounded-xl space-y-1">
-                  <span className="text-[9px] font-black tracking-wider uppercase text-slate-400 block">
+                <div className="bg-base-200 border border-base-300 p-4 rounded-xl space-y-1">
+                  <span className="text-[9px] font-black tracking-wider uppercase text-base-content/40 block">
                     Annotation Case Notes
                   </span>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 font-semibold italic leading-relaxed">
+                  <p className="text-xs text-base-content/75 font-semibold italic leading-relaxed">
                     "
                     {selectedNote.note ||
                       "No annotations captured for this record entry."}
@@ -487,10 +487,10 @@ export default function FieldNotesGallery() {
               </div>
 
               {/* Modal Footer actions summary layout */}
-              <div className="pt-4 mt-6 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
-                <div className="text-[11px] text-slate-400 font-medium">
+              <div className="pt-4 mt-6 border-t border-base-300 flex items-center justify-between gap-2">
+                <div className="text-[11px] text-base-content/40 font-medium">
                   Deployed Log:{" "}
-                  <span className="font-bold text-slate-600 dark:text-slate-300">
+                  <span className="font-bold text-base-content/70">
                     {selectedNote.date
                       ? new Date(selectedNote.date).toLocaleDateString(
                           undefined,
@@ -506,7 +506,7 @@ export default function FieldNotesGallery() {
                         e.stopPropagation();
                         handleRestoreNote(selectedNote.id, selectedNote.type);
                       }}
-                      className="btn btn-sm btn-outline border-emerald-200 text-emerald-600 hover:bg-emerald-600 hover:text-white dark:border-emerald-900/40 dark:text-emerald-400 dark:hover:bg-emerald-600 dark:hover:text-white rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center cursor-pointer"
+                      className="btn btn-sm btn-outline border-emerald-500/30 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center cursor-pointer"
                     >
                       Restore Note
                     </button>
@@ -525,7 +525,7 @@ export default function FieldNotesGallery() {
                     onClick={(e) =>
                       handleDeleteNote(selectedNote.id, selectedNote.type, e)
                     }
-                    className="btn btn-sm btn-outline border-rose-200 text-rose-600 hover:bg-rose-600 hover:text-white dark:border-rose-900/40 dark:text-rose-400 dark:hover:bg-rose-600 dark:hover:text-white rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center cursor-pointer"
+                    className="btn btn-sm btn-outline border-rose-500/30 text-rose-600 hover:bg-rose-600 hover:text-white rounded-xl text-xs font-bold gap-1 px-4 transition-all flex items-center cursor-pointer"
                   >
                     <Trash2 size={12} /> Delete Note
                   </button>
@@ -545,14 +545,14 @@ export default function FieldNotesGallery() {
       {/* Confirmation Dialog Overlay */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/45 backdrop-blur-xs z-100 flex items-center justify-center p-4 animate-fade-in">
-          <div className="card w-full max-w-sm bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-4">
-            <div className="flex items-center gap-2 text-slate-400 font-extrabold text-[10px] tracking-widest uppercase">
+          <div className="card w-full max-w-sm bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4">
+            <div className="flex items-center gap-2 text-base-content/40 font-extrabold text-[10px] tracking-widest uppercase">
               <span>{confirmModal.title || "Confirm Action"}</span>
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-300 font-bold leading-relaxed pr-2">
+            <p className="text-xs text-base-content/70 font-bold leading-relaxed pr-2">
               {confirmModal.message}
             </p>
-            <div className="flex flex-col gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
+            <div className="flex flex-col gap-2 pt-2 border-t border-base-300">
               <button
                 onClick={() => {
                   if (confirmModal.onConfirm) confirmModal.onConfirm(false);
@@ -573,7 +573,7 @@ export default function FieldNotesGallery() {
               </button>
               <button
                 onClick={() => setConfirmModal({ isOpen: false, title: "", message: "", onConfirm: null })}
-                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer text-slate-500 dark:text-slate-400 mt-1 w-full"
+                className="btn btn-sm btn-outline border-base-300 rounded-xl px-4 text-xs font-bold cursor-pointer text-base-content/60 mt-1 w-full"
               >
                 Cancel
               </button>

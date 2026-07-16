@@ -1,11 +1,10 @@
 import React from "react";
-import { Text, TouchableOpacity, View, StatusBar } from "react-native";
-import { ArrowLeft, Share2 } from "lucide-react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { Share2 } from "lucide-react-native";
+import { useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -16,46 +15,20 @@ import {
 } from "@/features/farmer-ui/components";
 import { generateSingleRecordPdfHtml } from "@/features/farmer-reports/utils/reportPdfGenerator";
 import type { ActivityFeedItem } from "@/features/farmer-reports/types/farmerReports.types";
+import { AppPageHeader } from "@/components/AppPageHeader";
 
 function AIReportPreviewSkeleton() {
-  const router = useRouter();
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
 
   return (
-    <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
-      <StatusBar barStyle="light-content" />
+    <FarmerScreen scroll={false}>
+      <AppPageHeader title="AI Service Report" subtitle="Loading service details and outcome" />
 
-      <View
-        className="px-5 pb-5 flex-row items-center"
-        style={{
-          backgroundColor: colors.primary,
-          paddingTop: insets.top + 12,
-        }}
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-
-        <View className="flex-1 ml-3">
-          <Skeleton
-            width="48%"
-            height={18}
-            radius={4}
-            style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
-          />
-        </View>
-
-        <Skeleton
-          width={40}
-          height={40}
-          radius={20}
-          style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-        />
-      </View>
 
       <View
         className="m-5 p-5 border"
@@ -84,16 +57,15 @@ function AIReportPreviewSkeleton() {
           </View>
         ))}
       </View>
+      </ScrollView>
     </FarmerScreen>
   );
 }
 
 export default function AIReportPreviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const api = useApi();
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
   const primaryColor = isDark ? colors.primary : "#00643B";
 
   const query = useQuery({
@@ -120,9 +92,20 @@ export default function AIReportPreviewScreen() {
         sireBreed: d.sireBreed,
         sireCode: d.sireCode,
         estrus: d.estrus || d.estrusType,
-        outcome: d.pregnancyStatus || d.outcome,
-        technician: d.technicianId?.name || d.handledBy?.name || "N/A",
+        outcome: d.pregnancyStatus || d.outcome || d.status,
+        status: d.status,
+        technician: d.technicianId?.name || d.approvedBy?.name || "",
+        technicianPhone: d.technicianId?.phoneNumber || d.approvedBy?.phoneNumber || "",
         technicianNote: d.technicianNote || d.notes || "",
+        serviceDate: d.inseminationDate,
+        scheduledDate: d.scheduledDate,
+        preferredDate: d.preferredDate,
+        requestedAt: d.createdAt,
+        outcomeVerificationStatus: d.outcomeVerificationStatus,
+        outcomeConfirmationSource: d.outcomeConfirmationSource,
+        outcomeConfirmedAt: d.outcomeConfirmedAt,
+        previousAttemptNumber: d.previousAttemptId?.attemptNumber,
+        previousAttemptDate: d.previousAttemptId?.inseminationDate,
       },
     };
   }, [query.data]);
@@ -133,8 +116,11 @@ export default function AIReportPreviewScreen() {
 
   if (query.isError || !record) {
     return (
-      <FarmerScreen style={{ justifyContent: "center", alignItems: "center" }}>
-        <AsyncState state="error" onAction={() => query.refetch()} />
+      <FarmerScreen>
+        <AppPageHeader title="AI Service Report" />
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <AsyncState state="error" onAction={() => query.refetch()} />
+        </View>
       </FarmerScreen>
     );
   }
@@ -155,36 +141,72 @@ export default function AIReportPreviewScreen() {
   };
 
   const animal: any = record.animalId || {};
+  const details: any = record.details || {};
+  const formatDateTime = (value?: string) =>
+    value
+      ? new Date(value).toLocaleString("en-PH", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : "Not recorded";
+  const reportRows: [string, string][] = [
+    ["Animal", animal.earTag || animal.animalId || "Not recorded"],
+    ["Breed / Species", [animal.breed, animal.species].filter(Boolean).join(" / ") || "Not recorded"],
+    ["Request status", details.status || "Not recorded"],
+    ["Requested", formatDateTime(details.requestedAt)],
+    ["Preferred visit", formatDateTime(details.preferredDate)],
+    ["Scheduled visit", formatDateTime(details.scheduledDate)],
+    ["AI performed", formatDateTime(details.serviceDate)],
+    ["Attempt number", details.attemptNumber ? `Attempt ${details.attemptNumber}` : "Not recorded"],
+    ["Sire breed", details.sireBreed || "Not recorded"],
+    ["Sire code", details.sireCode || "Not recorded"],
+    ["Estrus type", details.estrus || "Not recorded"],
+    ["Technician", details.technician || "Not assigned"],
+    ["Technician contact", details.technicianPhone || "Not provided"],
+    ["Outcome", details.outcome || "Pending"],
+    ["Outcome verification", details.outcomeVerificationStatus || "Pending"],
+    ["Outcome confirmed", formatDateTime(details.outcomeConfirmedAt)],
+    ["Notes / observations", details.technicianNote || "No notes recorded"],
+  ];
+  if (details.previousAttemptNumber) {
+    reportRows.splice(9, 0, [
+      "Previous attempt",
+      `Attempt ${details.previousAttemptNumber} on ${formatDateTime(details.previousAttemptDate)}`,
+    ]);
+  }
 
   return (
-    <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
-      {/* Header */}
-      <View
-        className="px-5 pb-5 flex-row items-center"
-        style={{
-          backgroundColor: primaryColor,
-          paddingTop: insets.top + 12,
-        }}
+    <FarmerScreen scroll={false}>
+      <AppPageHeader
+        title="AI Service Report"
+        subtitle="Breeding service, technician, and outcome details"
+        rightAction={
+          <TouchableOpacity
+            onPress={share}
+            accessibilityRole="button"
+            accessibilityLabel="Share AI report"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: isDark ? colors.background : "#f0fdf4",
+            }}
+          >
+            <Share2 size={18} color={primaryColor} />
+          </TouchableOpacity>
+        }
+      />
+
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <Text
-          className="flex-1 ml-3 text-white"
-          style={{ fontFamily: "Outfit_700Bold", fontSize: 20 }}
-        >
-          AI Service Report
-        </Text>
-        <TouchableOpacity
-          onPress={share}
-          className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-        >
-          <Share2 size={19} color="white" />
-        </TouchableOpacity>
-      </View>
 
       {/* Report Card */}
       <View
@@ -214,7 +236,7 @@ export default function AIReportPreviewScreen() {
           Iloilo Livestock Breeding Record
         </Text>
 
-        <View className="mt-5 flex-row justify-between">
+        <View className="mt-5 flex-row justify-between items-center">
           <Text
             style={{
               color: colors.textPrimary,
@@ -222,19 +244,12 @@ export default function AIReportPreviewScreen() {
               fontSize: 16,
             }}
           >
-            Animal: {animal.earTag || animal.animalId || "N/A"}
+            {animal.earTag || animal.animalId || "Animal record"}
           </Text>
           <StatusBadge label={record.details?.outcome || "Pending"} />
         </View>
 
-        {([
-          ["Sire Breed", record.details?.sireBreed],
-          ["Sire Code", record.details?.sireCode],
-          ["Attempt Number", record.details?.attemptNumber?.toString()],
-          ["Estrus Type", record.details?.estrus],
-          ["Technician", record.details?.technician],
-          ["Notes / Observations", record.details?.technicianNote],
-        ] as [string, string | undefined][]).map(([label, value]) => (
+        {reportRows.map(([label, value]) => (
           <View
             key={label}
             className="py-3 border-b"
@@ -258,7 +273,7 @@ export default function AIReportPreviewScreen() {
                 lineHeight: 18,
               }}
             >
-              {value || "N/A"}
+              {value}
             </Text>
           </View>
         ))}
@@ -278,6 +293,7 @@ export default function AIReportPreviewScreen() {
           Generate and share PDF
         </Text>
       </TouchableOpacity>
+      </ScrollView>
     </FarmerScreen>
   );
 }

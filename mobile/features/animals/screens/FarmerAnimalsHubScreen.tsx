@@ -45,6 +45,7 @@ import {
   useRegisterAnimalMutation,
 } from "../hooks/useMyAnimals";
 import { AnimalCardSkeletonList } from "../components/skeletons/AnimalCardSkeleton";
+import { AnimalRegistryCard } from "../components/AnimalRegistryCard";
 
 const SPECIES_OPTIONS = CATTLE_SPECIES;
 
@@ -102,121 +103,57 @@ export function FarmerAnimalsHubScreen() {
 
   const registerMutation = useRegisterAnimalMutation();
 
-  const renderStatusBadges = (animal: any) => {
-    const badges = [];
+  const getFarmerCardDetails = (animal: any) => {
+    const reproductiveStatus = animal.reproductiveStatus || "Normal";
+    const healthStatus = animal.status || "";
+    const hasHealthConcern =
+      healthStatus &&
+      !["active", "normal", "healthy"].includes(healthStatus.toLowerCase());
+    const statuses = [
+      reproductiveStatus,
+      ...(hasHealthConcern ? [healthStatus] : []),
+    ];
 
-    // 1. Reproductive Status Badge
-    const repro = animal.reproductiveStatus;
-    if (repro && repro !== "Normal") {
-      let bg = "";
-      let textCol = "";
-
-      if (repro === "Pregnant") {
-        bg = isDark ? "rgba(16, 185, 129, 0.15)" : "#d1fae5";
-        textCol = isDark ? "#34d399" : "#065f46";
-      } else if (repro === "Inseminated") {
-        bg = isDark ? "rgba(59, 130, 246, 0.15)" : "#dbeafe";
-        textCol = isDark ? "#60a5fa" : "#1e40af";
-      } else if (repro === "In Heat") {
-        bg = isDark ? "rgba(249, 115, 22, 0.15)" : "#ffedd5";
-        textCol = isDark ? "#fb923c" : "#9a3412";
-      } else if (repro === "Likely Pregnant") {
-        bg = isDark ? "rgba(168, 85, 247, 0.15)" : "#f3e8ff";
-        textCol = isDark ? "#c084fc" : "#6b21a8";
-      } else {
-        bg = isDark ? "rgba(148, 163, 184, 0.15)" : "#f1f5f9";
-        textCol = isDark ? "#94a3b8" : "#475569";
-      }
-
-      badges.push(
-        <View
-          key="repro"
-          className="px-2 py-0.5 rounded-full"
-          style={{ backgroundColor: bg }}
-        >
-          <Text
-            className="text-[9px] font-outfit-bold uppercase tracking-wider"
-            style={{ color: textCol }}
-          >
-            {repro}
-          </Text>
-        </View>
-      );
+    if (hasHealthConcern) {
+      return {
+        statuses,
+        actionEyebrow: "Health attention",
+        actionLabel: "Review health and service records",
+      };
     }
 
-    // 2. Expected Calving Date Badge (if Pregnant)
-    if (repro === "Pregnant" && animal.expectedCalvingDate) {
-      try {
-        const dateFormatted = format(
-          new Date(animal.expectedCalvingDate),
-          "MMM d, yyyy"
-        );
-        badges.push(
-          <View
-            key="calving"
-            className="px-2 py-0.5 rounded-full border"
-            style={{
-              backgroundColor: isDark
-                ? "rgba(16, 185, 129, 0.08)"
-                : "#ecfdf5",
-              borderColor: isDark ? "rgba(16, 185, 129, 0.2)" : "#d1fae5",
-            }}
-          >
-            <Text
-              className="text-[9px] font-outfit-bold"
-              style={{ color: isDark ? "#34d399" : "#047857" }}
-            >
-              Due: {dateFormatted}
-            </Text>
-          </View>
-        );
-      } catch (e) {
-        // Silently skip if invalid date
+    if (reproductiveStatus === "Pregnant" && animal.expectedCalvingDate) {
+      const expectedDate = new Date(animal.expectedCalvingDate);
+      if (!Number.isNaN(expectedDate.getTime())) {
+        return {
+          statuses,
+          actionEyebrow: "Expected calving",
+          actionLabel: format(expectedDate, "MMM d, yyyy"),
+        };
       }
     }
 
-    // 3. Health Status Badge
-    const health = animal.status;
-    if (health && health !== "Active" && health !== "Normal" && health !== "Healthy") {
-      let bg = "";
-      let textCol = "";
-      const lowerHealth = health.toLowerCase();
-
-      if (
-        lowerHealth === "sick" ||
-        lowerHealth === "illness" ||
-        lowerHealth.includes("sick")
-      ) {
-        bg = isDark ? "rgba(239, 68, 68, 0.15)" : "#fee2e2";
-        textCol = isDark ? "#f87171" : "#991b1b";
-      } else if (
-        lowerHealth.includes("treatment") ||
-        lowerHealth.includes("medic")
-      ) {
-        bg = isDark ? "rgba(245, 158, 11, 0.15)" : "#fef3c7";
-        textCol = isDark ? "#fbbf24" : "#92400e";
-      } else {
-        bg = isDark ? "rgba(148, 163, 184, 0.15)" : "#f1f5f9";
-        textCol = isDark ? "#94a3b8" : "#475569";
-      }
-
-      badges.push(
-        <View
-          key="health"
-          className="px-2 py-0.5 rounded-full"
-          style={{ backgroundColor: bg }}
-        >
-          <Text
-            className="text-[9px] font-outfit-bold uppercase tracking-wider"
-            style={{ color: textCol }}
-          >
-            {health}
-          </Text>
-        </View>
-      );
+    if (["Inseminated", "Likely Pregnant"].includes(reproductiveStatus)) {
+      return {
+        statuses,
+        actionEyebrow: "Next step",
+        actionLabel: "Track breeding and pregnancy checks",
+      };
     }
 
-    return badges;
+    if (reproductiveStatus === "In Heat") {
+      return {
+        statuses,
+        actionEyebrow: "Next step",
+        actionLabel: "Review AI service options",
+      };
+    }
+
+    return {
+      statuses,
+      actionEyebrow: "Animal record",
+      actionLabel: "View history and available services",
+    };
   };
 
   // --- Form State ---
@@ -344,34 +281,65 @@ export function FarmerAnimalsHubScreen() {
       className="flex-1 bg-[#F9FAFB] dark:bg-slate-950"
       style={{ backgroundColor: colors.background }}
     >
-      <StatusBar barStyle="light-content" />
-      <View
-        className="absolute top-0 left-0 right-0 h-[220px]"
-        style={{ backgroundColor: "#00643B" }}
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={isDark ? colors.card : "#fff"}
       />
 
       {/* --- HEADER --- */}
       <View
-        style={{ paddingTop: insets.top + 16 }}
-        className="px-6 pb-6 flex-row items-center justify-between z-10"
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 20,
+          paddingVertical: 14,
+          backgroundColor: isDark ? colors.card : "#fff",
+          borderBottomWidth: 1,
+          borderColor: colors.border,
+          paddingTop: insets.top + 14,
+          zIndex: 10,
+        }}
       >
-        <View className="flex-row items-center gap-4">
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 12,
+            flex: 1,
+            marginRight: 16,
+          }}
+        >
           <TouchableOpacity
             onPress={() => safeBack()}
-            className="w-10 h-10 rounded-full items-center justify-center border border-white/10"
             style={{
-              backgroundColor: isDark
-                ? "rgba(255,255,255,0.05)"
-                : "rgba(255,255,255,0.2)",
+              padding: 8,
+              backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+              borderRadius: 999,
             }}
           >
-            <ArrowLeft size={20} color="white" />
+            <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
           </TouchableOpacity>
-          <View>
-            <Text className="text-[22px] font-outfit-black text-white leading-tight">
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                color: colors.textPrimary,
+                fontFamily: "Outfit_900Black",
+                fontSize: 20,
+              }}
+              numberOfLines={1}
+            >
               My Animals
             </Text>
-            <Text className="text-[12px] text-emerald-100 font-outfit-medium opacity-90">
+            <Text
+              style={{
+                color: colors.textSecondary,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 11,
+                marginTop: 2,
+              }}
+              numberOfLines={1}
+            >
               Herd management & registry
             </Text>
           </View>
@@ -379,13 +347,23 @@ export function FarmerAnimalsHubScreen() {
         {!showAddForm && (
           <TouchableOpacity
             onPress={() => router.push("/(farmer)/register-animal")}
-            className="flex-row items-center gap-1.5 px-4 py-2 rounded-full shadow-sm"
-            style={{ backgroundColor: "rgba(236,253,245,0.9)" }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 20,
+              backgroundColor: colors.primary,
+            }}
           >
-            <Plus size={16} color={isDark ? colors.primary : "#00643B"} />
+            <Plus size={14} color="#fff" />
             <Text
-              className="text-[12px] font-outfit-bold"
-              style={{ color: isDark ? colors.primary : "#00643B" }}
+              style={{
+                fontFamily: "Outfit_700Bold",
+                fontSize: 11,
+                color: "#fff",
+              }}
             >
               Add Animal
             </Text>
@@ -394,66 +372,13 @@ export function FarmerAnimalsHubScreen() {
       </View>
 
       <View
-        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-6 mt-2 shadow-lg"
-        style={{ elevation: 8, backgroundColor: colors.background }}
+        className="flex-1"
+        style={{
+          paddingHorizontal: 20,
+          paddingTop: 16,
+          backgroundColor: colors.background,
+        }}
       >
-        {/* --- MOOWIE GREETING SECTION --- */}
-        <View className="mb-8">
-          <Text className="text-[10px] font-outfit-black text-slate-400 mb-1 ml-1 uppercase tracking-[2px]">
-            {format(new Date(), "EEEE, MMMM d").toUpperCase()}
-          </Text>
-          <Text className="text-[24px] font-outfit-black text-slate-800 dark:text-white mb-6 ml-1 leading-tight">
-            Good{" "}
-            {new Date().getHours() < 12
-              ? "morning"
-              : new Date().getHours() < 18
-                ? "afternoon"
-                : "evening"}
-            , {user?.firstName || user?.username || "Farmer"}!
-          </Text>
-
-          <View className="flex-row items-end">
-            {/* Mascot Container */}
-            <View className="w-28 h-28 -mb-2 z-10">
-              <Image
-                source={{
-                  uri: "https://res.cloudinary.com/donhulins/image/upload/v1778124094/moowie_hi_animals_section_xbocgj.png",
-                }}
-                className="w-full h-full"
-                resizeMode="contain"
-              />
-            </View>
-
-            <View
-              className="flex-1 ml-[-12px] p-5 border"
-              style={{
-                borderRadius: 24,
-                borderBottomLeftRadius: 8,
-                backgroundColor: isDark ? "#102A20" : "#EAF7EE",
-                borderColor: isDark ? "#24563A" : "#B7DFC4",
-              }}
-            >
-              <Text
-                className="text-[11px] uppercase tracking-[2px] font-outfit-black mb-1"
-                style={{ color: isDark ? "#DDF7E5" : "#123B24" }}
-              >
-                Moowie 👋
-              </Text>
-
-              <Text
-                className="font-outfit-medium text-[12px] leading-[18px]"
-                style={{ color: isDark ? "#A8CDB4" : "#4E6F59" }}
-              >
-                {loadingList
-                  ? "Reviewing livestock records..."
-                  : totalAnimals
-                    ? `${totalAnimals} animals are currently registered in your herd. Continue recording breeding and health events to keep your records accurate.`
-                    : "Your herd registry is empty. Add your first animal to start monitoring breeding cycles, pregnancies, and health requests."}
-              </Text>
-            </View>
-          </View>
-        </View>
-
         <Modal
           visible={showAddForm}
           animationType="slide"
@@ -773,60 +698,31 @@ export function FarmerAnimalsHubScreen() {
             <FlatList
               data={animals}
               keyExtractor={(item) => item._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() =>
-                    router.push(`/(farmer)/animal-details?id=${item._id}`)
-                  }
-                  className="bg-white dark:bg-slate-900 rounded-[24px] p-4 mb-3 border border-slate-50 dark:border-slate-800 flex-row items-center shadow-sm"
-                  style={{
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 items-center justify-center mr-4">
-                    {item.imageUrl ? (
-                      <Image
-                        source={{ uri: item.imageUrl }}
-                        className="w-full h-full rounded-xl"
-                      />
-                    ) : (
-                      <MaterialCommunityIcons
-                        name="cow"
-                        size={24}
-                        color={isDark ? colors.primary : "#00643B"}
-                      />
-                    )}
-                  </View>
-                  <View className="flex-1">
-                    <View className="flex-row items-center justify-between">
-                      <Text className="font-outfit-bold text-slate-800 dark:text-white text-[15px]">
-                        {item.earTag || item.animalId}
-                      </Text>
+              renderItem={({ item }) => {
+                const cardDetails = getFarmerCardDetails(item);
+                const subtitle = [
+                  item.species,
+                  item.gender || item.sex,
+                  item.color,
+                ]
+                  .filter(Boolean)
+                  .join(" / ");
 
-                      {(() => {
-                        const badges = renderStatusBadges(item);
-                        if (badges.length === 0) return null;
-
-                        return (
-                          <View className="flex-row flex-wrap justify-end gap-1">
-                            {badges}
-                          </View>
-                        );
-                      })()}
-                    </View>
-
-                    <Text className="font-outfit-medium text-slate-500 dark:text-slate-400 text-[11px] mt-1">
-                      {item.breed} • {item.species}
-                    </Text>
-                  </View>
-                  <MaterialCommunityIcons
-                    name="chevron-right"
-                    size={20}
-                    color={colors.textMuted}
+                return (
+                  <AnimalRegistryCard
+                    animalTag={item.earTag || item.animalId}
+                    imageUrl={item.imageUrl}
+                    title={item.breed || item.species || "Livestock"}
+                    subtitle={subtitle}
+                    statuses={cardDetails.statuses}
+                    actionEyebrow={cardDetails.actionEyebrow}
+                    actionLabel={cardDetails.actionLabel}
+                    onPress={() =>
+                      router.push(`/(farmer)/animal-details?id=${item._id}`)
+                    }
                   />
-                </TouchableOpacity>
-              )}
+                );
+              }}
               refreshControl={
                 <RefreshControl
                   refreshing={refreshing}
@@ -850,7 +746,8 @@ export function FarmerAnimalsHubScreen() {
                         className="text-[11px] font-outfit-bold"
                         style={{ color: colors.textMuted }}
                       >
-                        Showing {Math.min(loadedAnimals, totalAnimals)} of {totalAnimals}
+                        Showing {Math.min(loadedAnimals, totalAnimals)} of{" "}
+                        {totalAnimals}
                       </Text>
                       {hasNextPage ? (
                         <TouchableOpacity
@@ -863,7 +760,9 @@ export function FarmerAnimalsHubScreen() {
                         >
                           <Text
                             className="text-[12px] font-outfit-bold"
-                            style={{ color: isDark ? colors.primary : "#00643B" }}
+                            style={{
+                              color: isDark ? colors.primary : "#00643B",
+                            }}
                           >
                             Load more animals
                           </Text>

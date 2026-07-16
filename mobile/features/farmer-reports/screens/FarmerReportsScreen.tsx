@@ -3,19 +3,16 @@ import { View, FlatList, RefreshControl, ActivityIndicator, Text, TouchableOpaci
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFarmerReports } from "../hooks/useFarmerReports";
 import ReportsHeader from "../components/ReportsHeader";
-import MoowieAnalysisCard from "../components/MoowieAnalysisCard";
 import ReportsBentoGrid from "../components/ReportsBentoGrid";
 import MonthlySummaryCard from "../components/MonthlySummaryCard";
 import RecordFilters from "../components/RecordFilters";
 import MilestoneCard from "../components/MilestoneCard";
 import ActivityCard from "../components/ActivityCard";
-import RecordDetailModal from "../components/RecordDetailModal";
 
 export const FarmerReportsScreen = () => {
   const {
     colors,
     isDark,
-    insets,
     router,
     activeBento,
     setActiveBento,
@@ -24,33 +21,29 @@ export const FarmerReportsScreen = () => {
     recordStats,
     isLoadingMilestones,
     isLoadingRecords,
+    isLoadingMoreRecords,
+    hasMoreRecords,
+    recordsTotal,
     isRefreshing,
-    selectedActivity,
-    setSelectedActivity,
-    isModalVisible,
-    setIsModalVisible,
     recordSearch,
     setRecordSearch,
+    recordType,
     setRecordType,
-    recordStatus,
-    setRecordStatus,
     recordPeriod,
     setRecordPeriod,
+    resetFilters,
     filteredRecords,
     onRefresh,
+    loadMoreRecords,
     handleExportPDF,
   } = useFarmerReports();
 
   const renderHeader = () => {
     return (
       <View style={{ paddingTop: 0 }}>
-        <ReportsHeader insets={insets} onExport={handleExportPDF}>
-          <MoowieAnalysisCard
-            activeBento={activeBento}
-            milestonesCount={milestones.length}
-            totalRecordsCount={recordStats.total}
-          />
-        </ReportsHeader>
+        <ReportsHeader onExport={handleExportPDF} />
+
+        <MonthlySummaryCard totalCount={recordStats.total} />
 
         <ReportsBentoGrid
           activeBento={activeBento}
@@ -62,12 +55,38 @@ export const FarmerReportsScreen = () => {
           milestonesCount={milestones.length}
         />
 
-        <MonthlySummaryCard
-          pendingCount={records.filter((r) => r.details?.status === "pending").length}
-          totalCount={records.length}
-        />
+        <View style={{ marginBottom: 14 }}>
+          <Text
+            style={{
+              fontSize: 20,
+              fontFamily: "Outfit_800ExtraBold",
+              color: colors.textPrimary,
+            }}
+          >
+            Find a record
+          </Text>
+          <Text
+            style={{
+              fontSize: 13,
+              lineHeight: 18,
+              fontFamily: "Outfit_500Medium",
+              color: colors.textSecondary,
+              marginTop: 3,
+            }}
+          >
+            Search by animal or narrow the list by date.
+          </Text>
+        </View>
 
-        {/* Section Header */}
+        {activeBento !== "pregnancy" && (
+          <RecordFilters
+            recordSearch={recordSearch}
+            setRecordSearch={setRecordSearch}
+            recordPeriod={recordPeriod}
+            setRecordPeriod={setRecordPeriod}
+          />
+        )}
+
         <View
           style={{
             flexDirection: "row",
@@ -84,20 +103,24 @@ export const FarmerReportsScreen = () => {
             }}
           >
             {activeBento === "pregnancy"
-              ? "Breeding Cycles"
-              : "Recent Activity"}
+              ? "Breeding cycles"
+              : `${filteredRecords.length} ${filteredRecords.length === 1 ? "record" : "records"} found`}
           </Text>
-          {activeBento !== "all" && (
+          {(activeBento !== "all" ||
+            recordType !== "all" ||
+            recordPeriod !== "all" ||
+            recordSearch.trim()) && (
             <TouchableOpacity
-              onPress={() => {
-                setActiveBento("all");
-                setRecordType("all");
-              }}
+              onPress={resetFilters}
+              accessibilityRole="button"
+              accessibilityLabel="Reset all record filters"
               style={{
-                paddingVertical: 4,
-                paddingHorizontal: 10,
+                minHeight: 40,
+                paddingVertical: 9,
+                paddingHorizontal: 14,
                 backgroundColor: isDark ? "rgba(0,100,59,0.15)" : "#ecfdf5",
-                borderRadius: 8,
+                borderRadius: 12,
+                justifyContent: "center",
               }}
             >
               <Text
@@ -107,29 +130,18 @@ export const FarmerReportsScreen = () => {
                   color: isDark ? colors.primary : "#00643B",
                 }}
               >
-                Clear Filter
+                Reset filters
               </Text>
             </TouchableOpacity>
           )}
         </View>
-
-        {activeBento !== "pregnancy" && (
-          <RecordFilters
-            recordSearch={recordSearch}
-            setRecordSearch={setRecordSearch}
-            recordStatus={recordStatus}
-            setRecordStatus={setRecordStatus}
-            recordPeriod={recordPeriod}
-            setRecordPeriod={setRecordPeriod}
-          />
-        )}
       </View>
     );
   };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? colors.card : "#fff"} />
 
       <View style={{ flex: 1 }}>
         {activeBento === "pregnancy" ? (
@@ -219,8 +231,14 @@ export const FarmerReportsScreen = () => {
               <ActivityCard
                 item={item}
                 onPress={() => {
-                  setSelectedActivity(item);
-                  setIsModalVisible(true);
+                  router.push({
+                    pathname: "/(farmer)/animal-record-detail",
+                    params: {
+                      animalId: item.animalId?._id || "",
+                      recordId: item.id,
+                      recordType: item.type,
+                    },
+                  });
                 }}
               />
             )}
@@ -273,19 +291,45 @@ export const FarmerReportsScreen = () => {
                 </View>
               )
             }
+            ListFooterComponent={
+              records.length > 0 ? (
+                <View style={{ alignItems: "center", paddingTop: 14, paddingBottom: 10 }}>
+                  {hasMoreRecords ? (
+                    <TouchableOpacity
+                      onPress={loadMoreRecords}
+                      disabled={isLoadingMoreRecords}
+                      style={{
+                        minWidth: 150,
+                        minHeight: 44,
+                        borderRadius: 14,
+                        paddingHorizontal: 18,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5",
+                        borderWidth: 1,
+                        borderColor: isDark ? "rgba(52,211,153,0.3)" : "#a7f3d0",
+                      }}
+                    >
+                      {isLoadingMoreRecords ? (
+                        <ActivityIndicator size="small" color={isDark ? colors.primary : "#00643B"} />
+                      ) : (
+                        <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 13, color: isDark ? colors.primary : "#00643B" }}>
+                          Load more records
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 11, color: colors.textMuted }}>
+                      All {recordsTotal} records loaded
+                    </Text>
+                  )}
+                </View>
+              ) : null
+            }
           />
         )}
       </View>
 
-      <RecordDetailModal
-        visible={isModalVisible}
-        onClose={() => setIsModalVisible(false)}
-        selectedActivity={selectedActivity}
-        onViewAnimal={(animalId) => {
-          setIsModalVisible(false);
-          router.push(`/(farmer)/animal-details?id=${animalId}`);
-        }}
-      />
     </View>
   );
 };

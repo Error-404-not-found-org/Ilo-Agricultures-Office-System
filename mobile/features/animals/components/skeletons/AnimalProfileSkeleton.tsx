@@ -2,22 +2,23 @@ import React from "react";
 import { View, ScrollView } from "react-native";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useTheme } from "@/lib/theme";
+import { AppPageHeader } from "@/components/AppPageHeader";
 
 export function AnimalProfileSkeleton() {
   const { colors } = useTheme();
 
   return (
-    <ScrollView 
-      style={{ flex: 1, backgroundColor: colors.background }} 
-      contentContainerStyle={{ paddingBottom: 40 }}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Fake Header */}
-      <View className="flex-row items-center justify-between px-6 pt-12 pb-4">
-        <Skeleton width={40} height={40} radius={20} />
-        <Skeleton width={120} height={24} radius={6} />
-        <Skeleton width={40} height={40} radius={20} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <AppPageHeader
+        title="Animal Profile"
+        subtitle="Loading identity, lifecycle, health, and service history"
+        rightAction={<Skeleton width={36} height={36} radius={18} />}
+      />
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingTop: 16, paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
+      >
 
       {/* Main Avatar Card */}
       <View className="px-6 mb-6">
@@ -78,6 +79,7 @@ export function AnimalProfileSkeleton() {
         <Skeleton width="100%" height={100} radius={24} />
         <Skeleton width="100%" height={80} radius={24} />
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }

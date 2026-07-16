@@ -94,7 +94,7 @@ export default function Topbar({
   };
 
   return (
-    <header className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 px-4 md:px-6 py-4 shrink-0 flex items-center justify-between z-10 transition-colors duration-300 gap-3">
+    <header className="navbar min-h-18 bg-base-100 border-b border-base-300 px-4 md:px-6 shrink-0 z-20 gap-3">
       {/* Hamburger button for mobile */}
       <button
         onClick={toggle}
@@ -106,11 +106,11 @@ export default function Topbar({
 
       {/* Title & Subtitle */}
       <div className="flex-1 min-w-0 pr-4">
-        <h1 className="text-lg font-extrabold uppercase tracking-tight text-slate-800 dark:text-white leading-tight truncate">
+        <h1 className="text-lg font-bold text-base-content leading-tight truncate">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate mt-0.5">
+          <p className="text-xs text-base-content/55 font-medium truncate mt-1">
             {subtitle}
           </p>
         )}
@@ -121,7 +121,7 @@ export default function Topbar({
         {/* Optional Search */}
         {searchPlaceholder && onSearchChange && (
           <div className="relative hidden md:block w-64">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/45 pointer-events-none flex items-center justify-center">
               <Search size={14} />
             </span>
             <input
@@ -145,6 +145,8 @@ export default function Topbar({
           <button
             onClick={() => setShowNotifications(!showNotifications)}
             className={`${ui.iconButton} relative`}
+            aria-label="Open notifications"
+            aria-expanded={showNotifications}
           >
             <Bell size={16} />
             {unreadCount > 0 && (
@@ -159,15 +161,15 @@ export default function Topbar({
                 className="fixed inset-0 z-20 cursor-default"
                 onClick={() => setShowNotifications(false)}
               />
-              <div className="absolute right-0 mt-3 w-80 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-30 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+              <div className="dropdown-content absolute right-0 mt-3 w-[min(22rem,calc(100vw-2rem))] bg-base-100 border border-base-300 rounded-box shadow-xl z-30 overflow-hidden">
                 {/* Dropdown Header */}
-                <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
-                  <h3 className="font-bold text-xs uppercase tracking-wider text-slate-500">Notifications</h3>
+                <div className="flex items-center justify-between p-4 border-b border-base-300 bg-base-200">
+                  <h3 className="font-bold text-sm text-base-content">Notifications</h3>
                   <div className="flex gap-2">
                     {unreadCount > 0 && (
                       <button
                         onClick={markAllAsRead}
-                        className="text-[9px] text-emerald-600 hover:text-emerald-700 font-extrabold uppercase tracking-wider flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-md"
+                        className="btn btn-success btn-xs btn-outline"
                       >
                         <Check size={9} /> Read
                       </button>
@@ -175,7 +177,7 @@ export default function Topbar({
                     {notifications.length > 0 && (
                       <button
                         onClick={clearNotifications}
-                        className="text-[9px] text-rose-600 hover:text-rose-700 font-extrabold uppercase tracking-wider flex items-center gap-1 bg-rose-50 dark:bg-rose-950/30 px-2 py-0.5 rounded-md"
+                        className="btn btn-error btn-xs btn-outline"
                       >
                         <Trash2 size={9} /> Clear
                       </button>
@@ -186,24 +188,24 @@ export default function Topbar({
                 {/* Notification List */}
                 <div className="max-h-[60vh] overflow-y-auto">
                   {notifications.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-xs italic font-medium">
+                    <div className="p-8 text-center text-base-content/55 text-sm font-medium">
                       No notifications right now.
                     </div>
                   ) : (
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                    <div className="divide-y divide-base-300">
                       {notifications.map((notif) => (
                         <div
                           key={notif._id}
                           onClick={() => toggleRead(notif._id)}
-                          className={`p-3.5 flex gap-3 hover:bg-slate-50 dark:hover:bg-slate-900/60 cursor-pointer transition-colors ${
-                            !notif.isRead ? "bg-emerald-500/3" : ""
+                          className={`p-3.5 flex gap-3 hover:bg-base-200 cursor-pointer transition-colors ${
+                            !notif.isRead ? "bg-primary/5" : ""
                           }`}
                         >
                           <div
                             className={`p-2 rounded-xl shrink-0 h-min ${
                               !notif.isRead
-                                ? "bg-emerald-50 dark:bg-emerald-950/20"
-                                : "bg-slate-100 dark:bg-slate-900"
+                                ? "bg-primary/10"
+                                : "bg-base-200"
                             }`}
                           >
                             {getNotifIcon(notif.type)}
@@ -213,8 +215,8 @@ export default function Topbar({
                               <h4
                                 className={`text-xs truncate ${
                                   !notif.isRead
-                                    ? "font-extrabold text-slate-800 dark:text-slate-100"
-                                    : "font-semibold text-slate-500 dark:text-slate-400"
+                                    ? "font-bold text-base-content"
+                                    : "font-semibold text-base-content/60"
                                 }`}
                               >
                                 {notif.title}
@@ -223,10 +225,10 @@ export default function Topbar({
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0 mt-1" />
                               )}
                             </div>
-                            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed font-medium">
+                            <p className="text-xs text-base-content/60 mt-1 leading-relaxed font-medium">
                               {notif.message}
                             </p>
-                            <span className="text-[9px] font-bold text-slate-400 uppercase mt-1.5 block tracking-wider">
+                            <span className="text-xs font-medium text-base-content/45 mt-1.5 block">
                               {formatTimeAgo(notif.createdAt)}
                             </span>
                           </div>

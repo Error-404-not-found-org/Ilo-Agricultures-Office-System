@@ -4,7 +4,7 @@ import DashboardLayout from "@/app/components/layouts/DashboardLayout";
 
 export default function FarmerReportsRoute() {
   return (
-    <DashboardLayout statusBarColor="#00643B">
+    <DashboardLayout>
       <FarmerReportsScreen />
     </DashboardLayout>
   );

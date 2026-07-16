@@ -64,7 +64,7 @@ export const updateRequestStatus = async (
   const endpoint =
     type === "health"
       ? `/health-request/${requestId}/status`
-      : `/technician/inseminations/${requestId}/status`;
+      : `/ai-request/${requestId}/status`;
   const response = await api.patch(endpoint, payload);
   return response.data;
 };

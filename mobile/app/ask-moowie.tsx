@@ -15,10 +15,12 @@ import { StatusBar } from "expo-status-bar";
 import { useUser } from "@clerk/clerk-expo";
 import { useApi } from "../lib/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useTheme } from "../lib/theme";
 
 export default function AskMoowie() {
   const { user } = useUser();
   const api = useApi();
+  const { colors, isDark } = useTheme();
 
   const role = user?.publicMetadata?.role || "farmer";
 
@@ -160,37 +162,48 @@ export default function AskMoowie() {
 
   return (
     <View className="flex-1 bg-white dark:bg-slate-950">
-      <StatusBar style="light" />
+      <StatusBar style={isDark ? "light" : "dark"} />
 
       {/* Header */}
-      <View className="pt-14 pb-6 px-6 bg-[#00643B] rounded-b-[32px] flex-row items-center justify-between shadow-lg">
+      <View
+        className="flex-row items-center justify-between px-6 py-4 border-b z-10 w-full"
+        style={{
+          backgroundColor: isDark ? colors.card : "#fff",
+          borderColor: colors.border,
+          paddingTop: 56,
+        }}
+      >
         <TouchableOpacity
           onPress={() => safeBack(role === "technician" ? "/(technician)/(tabs)" : "/(farmer)/(tabs)")}
           accessibilityRole="button"
           accessibilityLabel="Go back"
-          className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
+          style={{
+            padding: 8,
+            backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+            borderRadius: 999,
+          }}
         >
-          <ChevronLeft size={24} color="white" />
+          <ChevronLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
         </TouchableOpacity>
 
         <View className="flex-1 items-center">
           <Text
-            style={{ fontFamily: "Outfit_800ExtraBold" }}
-            className="text-white text-[20px]"
+            style={{
+              fontFamily: "Outfit_900Black",
+              color: colors.textPrimary,
+              fontSize: 20,
+            }}
           >
             Ask Moowie
           </Text>
 
           <View className="flex-row items-center mt-0.5">
-            <View className="w-2 h-2 rounded-full bg-emerald-400 mr-1.5" />
-
+            <View className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5" />
             <Text
-              style={{ fontFamily: "Outfit_700Bold" }}
-              className="text-emerald-100 text-[10px] uppercase tracking-widest opacity-80"
+              style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary }}
+              className="text-[10px] uppercase tracking-widest opacity-80"
             >
-              {role === "technician"
-                ? "Field Support Mode"
-                : "Online Assistant"}
+              {role === "technician" ? "Field Support Mode" : "Online Assistant"}
             </Text>
           </View>
         </View>
@@ -199,9 +212,13 @@ export default function AskMoowie() {
           onPress={handleClearHistory}
           accessibilityRole="button"
           accessibilityLabel="Clear Moowie chat history"
-          className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
+          style={{
+            padding: 8,
+            backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+            borderRadius: 999,
+          }}
         >
-          <Trash2 size={20} color="white" />
+          <Trash2 size={20} color={isDark ? "#f85a5a" : "#ef4444"} />
         </TouchableOpacity>
       </View>
 

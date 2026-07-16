@@ -11,10 +11,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StatusBar,
 } from "react-native";
 import {
-  ArrowLeft,
   CalendarClock,
   CheckCircle2,
   AlertCircle,
@@ -24,8 +22,7 @@ import {
   Ban,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useLocalSearchParams } from "expo-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useApi } from "@/lib/api";
@@ -39,6 +36,7 @@ import {
   StatusBadge,
   WorkflowProgress,
 } from "@/features/farmer-ui/components";
+import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
 
 const stages = [
   { key: "pending", label: "Submitted" },
@@ -87,50 +85,11 @@ const heatSignMap: Record<string, string> = {
 };
 
 function AiRequestDetailSkeleton() {
-  const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
+  const { colors } = useTheme();
 
   return (
     <FarmerScreen scroll={false}>
-      <StatusBar barStyle="light-content" />
-
-      {/* Header matching real screen banner */}
-      <View
-        className="px-5 pb-5"
-        style={{ backgroundColor: "#00643B", paddingTop: insets.top + 16 }}
-      >
-        <View className="flex-row items-center">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-          >
-            <ArrowLeft size={20} color="white" />
-          </TouchableOpacity>
-
-          <View className="flex-1 ml-3 gap-2">
-            <Skeleton
-              width="40%"
-              height={18}
-              radius={4}
-              style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
-            />
-            <Skeleton
-              width="20%"
-              height={10}
-              radius={3}
-              style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-            />
-          </View>
-
-          <Skeleton
-            width={80}
-            height={26}
-            radius={13}
-            style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-          />
-        </View>
-      </View>
+      <FarmerRequestHeader title="AI Request Details" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -278,10 +237,8 @@ function AiRequestDetailSkeleton() {
 
 export default function AiRequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
   const api = useApi();
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   const [reasonModalVisible, setReasonModalVisible] = useState(false);
@@ -302,11 +259,16 @@ export default function AiRequestDetailScreen() {
       if (!id) throw new Error("Missing request ID");
       return await recordAiOutcome(api, id, isSuccess);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["ai-request", id] });
       queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
       queryClient.invalidateQueries({ queryKey: ["ai-requests"] });
-      Alert.alert("Success", "Pregnancy outcome recorded successfully!");
+      Alert.alert(
+        "Observation saved",
+        variables.isSuccess
+          ? "Possible pregnancy signs were recorded. A technician pregnancy check is still required for confirmation."
+          : "Return to heat was recorded. You can now request re-insemination.",
+      );
     },
     onError: (err: any) => {
       Alert.alert(
@@ -322,12 +284,15 @@ export default function AiRequestDetailScreen() {
 
   if (query.isError || !query.data) {
     return (
-      <FarmerScreen style={{ justifyContent: "center", alignItems: "center" }}>
-        <AsyncState
-          state="error"
-          message="This AI insemination request could not be loaded."
-          onAction={() => query.refetch()}
-        />
+      <FarmerScreen>
+        <FarmerRequestHeader title="AI Request Details" />
+        <View className="flex-1 items-center justify-center px-6">
+          <AsyncState
+            state="error"
+            message="This AI insemination request could not be loaded."
+            onAction={() => query.refetch()}
+          />
+        </View>
       </FarmerScreen>
     );
   }
@@ -339,46 +304,14 @@ export default function AiRequestDetailScreen() {
   const notes = getAdditionalNotesOnly(request.comment || "");
 
   return (
-    <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
-      {/* Header with Safe Area top padding */}
-      <View
-        className="px-5 pb-5"
-        style={{ backgroundColor: colors.primary, paddingTop: insets.top + 16 }}
+    <FarmerScreen scroll={false}>
+      <FarmerRequestHeader title="AI Request Details" />
+
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}
       >
-        <View className="flex-row items-center">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-          >
-            <ArrowLeft size={20} color="white" />
-          </TouchableOpacity>
-
-          <View className="flex-1 ml-3">
-            <Text
-              className="text-white"
-              style={{ fontFamily: "Outfit_700Bold", fontSize: 20 }}
-            >
-              AI Request
-            </Text>
-
-            <Text
-              className="text-emerald-100 mt-0.5"
-              style={{ fontFamily: "Outfit_500Medium", fontSize: 11 }}
-            >
-              {animal.earTag || animal.animalId || "Animal"}
-            </Text>
-          </View>
-
-          <View className="px-3 py-1.5 rounded-full bg-white/15">
-            <Text
-              className="text-white text-[10px]"
-              style={{ fontFamily: "Outfit_700Bold" }}
-            >
-              Attempt #{request.attemptNumber || 1}
-            </Text>
-          </View>
-        </View>
-      </View>
 
       {/* Concern Card */}
       <View
@@ -411,6 +344,7 @@ export default function AiRequestDetailScreen() {
               }}
             >
               {animal.earTag || animal.animalId || "No animal tag"}
+              {` | Attempt ${request.attemptNumber || 1}`}
             </Text>
           </View>
 
@@ -791,14 +725,14 @@ export default function AiRequestDetailScreen() {
                 className="text-[13px] font-bold text-slate-800 dark:text-slate-100"
                 style={{ color: isDark ? "#a7f3d0" : "#14532d" }}
               >
-                Outcome confirmation needed
+                Breeding observation needed
               </Text>
               <Text
                 className="text-[11px] mt-0.5"
                 style={{ color: isDark ? "#6ee7b7" : "#166534" }}
               >
-                Please confirm if the insemination was successful (pregnancy
-                confirmed) or if it failed.
+                Report what you have observed. Pregnancy is only confirmed
+                after a technician pregnancy check.
               </Text>
             </View>
           </View>
@@ -812,7 +746,7 @@ export default function AiRequestDetailScreen() {
               {outcomeMutation.isPending ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text className="text-white text-xs font-bold">Pregnant</Text>
+                <Text className="text-white text-xs font-bold">Possible pregnancy</Text>
               )}
             </TouchableOpacity>
 
@@ -825,7 +759,7 @@ export default function AiRequestDetailScreen() {
                 <ActivityIndicator size="small" color="#ef4444" />
               ) : (
                 <Text className="text-red-600 text-xs font-bold">
-                  Failed / Re-heat
+                  Returned to heat
                 </Text>
               )}
             </TouchableOpacity>
@@ -834,6 +768,44 @@ export default function AiRequestDetailScreen() {
       )}
 
       {/* Cancellation Banner/Request block */}
+      {request.cancellationStatus === "rejected" ? (
+        <View
+          className="mx-5 mt-5 p-4 border"
+          style={{
+            borderRadius: 16,
+            backgroundColor: isDark ? "rgba(239, 68, 68, 0.08)" : "#FEF2F2",
+            borderColor: isDark ? "rgba(239, 68, 68, 0.25)" : "#FECACA",
+          }}
+        >
+          <View className="flex-row gap-2 items-start">
+            <AlertCircle size={18} color={colors.error} />
+            <View className="flex-1">
+              <Text
+                className="text-[13px] font-black uppercase tracking-wider"
+                style={{ color: colors.error }}
+              >
+                Cancellation Not Approved
+              </Text>
+              <Text
+                className="text-[11px] mt-1"
+                style={{ color: colors.textSecondary }}
+              >
+                This visit remains scheduled. You may submit another request if
+                the situation changes.
+              </Text>
+              {request.cancellationResponseReason ? (
+                <Text
+                  className="text-[11px] mt-2 italic font-medium"
+                  style={{ color: colors.textSecondary }}
+                >
+                  Reason: {request.cancellationResponseReason}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      ) : null}
+
       {request.cancellationStatus === "requested" ? (
         <View
           className="mx-5 mt-5 p-4 border"
@@ -1072,6 +1044,7 @@ export default function AiRequestDetailScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      </ScrollView>
     </FarmerScreen>
   );
 }

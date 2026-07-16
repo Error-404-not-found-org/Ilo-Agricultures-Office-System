@@ -6,6 +6,7 @@ import { createAuditLog } from "../services/audit.service.js";
 import { createTimelineEvent } from "../services/animal-timeline.service.js";
 import { AppError } from "../utils/app-error.js";
 import { sendDetail, sendMutation } from "../utils/api-response.js";
+import { activeHealthCaseKey } from "../services/health-request-creation.service.js";
 
 const ACTIVE_STATUSES = new Set(["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress"]);
 
@@ -69,6 +70,7 @@ export const triageHealthRequest = async (req, res) => {
     const before = { status: existing.status, urgency: existing.urgency };
     const update = {
       status: nextStatus,
+      activeCaseKey: activeHealthCaseKey(existing.animalId, existing.requestType),
       handledBy: req.user._id,
       urgency: urgency || existing.urgency,
       findings,

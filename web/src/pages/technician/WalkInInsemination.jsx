@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getAIRequestErrorMessage } from "../../utils/aiRequestErrors";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { CATTLE_BREEDS, CATTLE_SPECIES } from "../../constants/breeds";
@@ -108,7 +109,7 @@ export default function WalkInInsemination() {
       navigate(-1);
     },
     onError: (error) => {
-      toast.error("Failed to record AI: " + (error.response?.data?.message || error.message));
+      toast.error("Failed to record AI: " + getAIRequestErrorMessage(error, "Please try again."));
     },
   });
 

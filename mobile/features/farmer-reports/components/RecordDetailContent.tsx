@@ -156,6 +156,22 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
           Details
         </Text>
 
+        <View style={{ gap: 10 }}>
+          <DetailRow label="Service Date" value={selectedActivity.details?.serviceDate} />
+          <DetailRow label="Entered in BreedSmart" value={selectedActivity.details?.entryDate} />
+          {selectedActivity.details?.isHistoricalEntry && (
+            <DetailRow label="Entry Type" value="Past Record" highlightColor="#d97706" />
+          )}
+          <DetailRow
+            label="Originally Performed By"
+            value={selectedActivity.details?.performedByName}
+          />
+          <DetailRow
+            label="Reason for Late Entry"
+            value={selectedActivity.details?.lateEntryReason}
+          />
+        </View>
+
         {!selectedActivity.details ? (
           <View
             style={{

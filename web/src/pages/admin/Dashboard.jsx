@@ -20,6 +20,7 @@ import Topbar from "../../components/ui/Topbar";
 import DashboardChart from "../../components/data/DashboardChart";
 import AssignTaskModal from "../../components/modals/AssignTaskModal";
 import { ui } from "../../components/ui/uiClasses";
+import { getStoredTheme, isDarkTheme } from "../../lib/theme";
 
 const GREEN = "#00643b";
 const GREEN_SOFT = "rgba(0, 100, 59, 0.72)";
@@ -106,13 +107,13 @@ const toDashboardRequest = (request) => {
 export default function Dashboard() {
   const toast = useToast();
   const queryClient = useQueryClient();
-  const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "emerald");
+  const [theme, setTheme] = useState(getStoredTheme);
   const [activeUrgency, setActiveUrgency] = useState("all");
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
 
   useEffect(() => {
-    const syncTheme = () => setTheme(localStorage.getItem("theme") || "emerald");
+    const syncTheme = () => setTheme(getStoredTheme());
     window.addEventListener("theme-change", syncTheme);
     window.addEventListener("storage", syncTheme);
     return () => {
@@ -186,7 +187,7 @@ export default function Dashboard() {
     refetchInterval: 1000 * 45,
   });
 
-  const darkTheme = theme === "night";
+  const darkTheme = isDarkTheme(theme);
   const sources = data?.sources || EMPTY_OBJECT;
   const stats = data?.stats || EMPTY_OBJECT;
   const monitoring = data?.monitoring || EMPTY_OBJECT;

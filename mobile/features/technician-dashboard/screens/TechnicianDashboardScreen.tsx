@@ -21,6 +21,7 @@ export default function TechnicianDashboardScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const [pastHeader, setPastHeader] = React.useState(false);
 
   const {
     clerkUser,
@@ -75,19 +76,40 @@ export default function TechnicianDashboardScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar
+        barStyle={pastHeader && !isDark ? "dark-content" : "light-content"}
+        backgroundColor={
+          pastHeader
+            ? colors.background
+            : isDark
+              ? "#064e3e"
+              : "#00643B"
+        }
+      />
 
       {/* Persistent Status Bar Safety Zone */}
       <View
         style={{
           height: insets.top,
-          backgroundColor: isDark ? "#064e3e" : "#00643B",
+          backgroundColor: pastHeader
+            ? colors.background
+            : isDark
+              ? "#064e3e"
+              : "#00643B",
         }}
       />
 
       <ScrollView
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          const shouldUsePageColor =
+            event.nativeEvent.contentOffset.y > 120;
+          setPastHeader((current) =>
+            current === shouldUsePageColor ? current : shouldUsePageColor,
+          );
+        }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -101,10 +123,9 @@ export default function TechnicianDashboardScreen() {
         <TechnicianHeroHeader
           clerkUser={clerkUser}
           unreadCount={unreadCount}
-          agendaItems={agendaItems}
         />
 
-        <View style={{ paddingHorizontal: 24, marginTop: -40 }}>
+        <View style={{ paddingHorizontal: 20, marginTop: -105 }}>
           <TechnicianStatsCard stats={stats} analytics={analytics} agendaItems={agendaItems} />
 
           <TechnicianQuickActions
@@ -129,14 +150,6 @@ export default function TechnicianDashboardScreen() {
             handleAction={handleAction}
           />
 
-          {/* <TechnicianPerformanceCard stats={stats} /> */}
-
-          {/* <TechnicianFarmerStandings
-            loadingClients={loadingClients}
-            clientsData={clientsData}
-            farmerSearch={farmerSearch}
-            setFarmerSearch={setFarmerSearch}
-          /> */}
 
           <TechnicianMoowieHelpCard />
         </View>

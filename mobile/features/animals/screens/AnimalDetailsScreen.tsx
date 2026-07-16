@@ -3,7 +3,6 @@ import {
   Text,
   TouchableOpacity,
   ScrollView,
-  StatusBar,
   ActivityIndicator,
   Alert,
   Image,
@@ -16,7 +15,6 @@ import {
 import { useRouter } from "expo-router";
 import { safeBack } from "@/utils/navigation";
 import {
-  ArrowLeft,
   User,
   MapPin,
   Activity,
@@ -47,7 +45,7 @@ import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { TimelineList } from "@/features/farmer-ui/components";
 import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
 import { SelectDropdown } from "@/components/shared";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AppPageHeader } from "@/components/AppPageHeader";
 import {
   useAnimalDetailsQuery,
   useAnimalMedicalRecordsQuery,
@@ -71,7 +69,6 @@ interface AnimalDetailsScreenProps {
 export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   const { colors, isDark } = useTheme();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const primaryColor = isDark ? colors.primary : "#00643B";
 
   const [activeTab, setActiveTab] = useState<"Info" | "Timeline" | "Medical">(
@@ -750,56 +747,34 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
       className="flex-1 bg-[#F9FAFB] dark:bg-slate-950"
       style={{ backgroundColor: colors.background }}
     >
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor="transparent"
-        translucent={true}
+      <AppPageHeader
+        title="Animal Profile"
+        subtitle="Identity, lifecycle, health, and service history"
+        onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
+        rightAction={
+          <TouchableOpacity
+            onPress={handleDelete}
+            disabled={deleting}
+            accessibilityRole="button"
+            accessibilityLabel="Delete animal"
+            activeOpacity={0.8}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: isDark ? "rgba(239,68,68,0.12)" : "#fef2f2",
+            }}
+          >
+            {deleting ? (
+              <ActivityIndicator size="small" color="#ef4444" />
+            ) : (
+              <Trash2 size={18} color="#ef4444" />
+            )}
+          </TouchableOpacity>
+        }
       />
-
-      {/* Solid Header Bar */}
-      <View
-        style={{
-          paddingTop: insets.top + 6,
-          paddingBottom: 12,
-          paddingHorizontal: 16,
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          backgroundColor: colors.card,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-          zIndex: 50,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => safeBack("/(farmer)/(tabs)/farmer.records")}
-          activeOpacity={0.8}
-          className="w-10 h-10 items-center justify-center rounded-full"
-        >
-          <ArrowLeft size={24} color={primaryColor} />
-        </TouchableOpacity>
-        <Text
-          style={{
-            fontFamily: "Outfit_800ExtraBold",
-            color: colors.textPrimary,
-            fontSize: 18,
-          }}
-        >
-          Animal Profile
-        </Text>
-        <TouchableOpacity
-          onPress={handleDelete}
-          disabled={deleting}
-          activeOpacity={0.8}
-          className="w-10 h-10 items-center justify-center rounded-full"
-        >
-          {deleting ? (
-            <ActivityIndicator size="small" color="#ef4444" />
-          ) : (
-            <Trash2 size={20} color="#ef4444" />
-          )}
-        </TouchableOpacity>
-      </View>
 
       {/* Scrollable Content Wrapper */}
       <View className="flex-1">
@@ -2818,6 +2793,9 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                             <Scale size={22} color="#6366F1" />
                           )}
                           {!isAi && !isPregnancy && !isCalving && (recType === "Check-up" || recType === "Medical") && (
+                            <ClipboardList size={22} color="#64748B" />
+                          )}
+                          {!isAi && !isPregnancy && !isCalving && recType === "General Note" && (
                             <ClipboardList size={22} color="#64748B" />
                           )}
                         </View>

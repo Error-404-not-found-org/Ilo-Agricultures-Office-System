@@ -18,10 +18,10 @@ import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "../../constants/breeds";
 
-const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
-const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
+const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content placeholder:text-base-content/55 focus:border-primary focus:outline-none transition-all`;
+const labelClass = `text-[11px] font-bold text-base-content/70 tracking-wide ml-1`;
 
-const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }) => {
+const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null, preSelectedFarmer = null }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -139,14 +139,14 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
             color: "",
             gender: "Female",
             dob: "",
-            farmerName: "",
+            farmerName: preSelectedFarmer ? preSelectedFarmer._id || preSelectedFarmer.id || "" : "",
           });
-          setSearchFarmer("");
+          setSearchFarmer(preSelectedFarmer ? preSelectedFarmer.name || "" : "");
           setImagePreview(null);
         });
       }
     }
-  }, [livestock, isOpen]);
+  }, [livestock, isOpen, preSelectedFarmer]);
 
   useEffect(() => {
     if (formData.species) {
@@ -193,20 +193,20 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-6xl overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-4xl overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[86vh]"
         >
           {/* HEADER */}
-          <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
+          <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-5 py-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
                 <PawPrint size={20} />
               </div>
               <div>
                 <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                  {livestock ? "Edit Livestock Profile" : "Livestock Registry"}
+                  {livestock ? "Edit Animal" : "Register Animal"}
                 </h3>
                 <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                  {livestock ? "Modify municipal asset identification" : "Municipal Asset Identification Protocol"}
+                  {livestock ? "Update animal identity and livestock details" : "Link a new animal to an existing farmer"}
                 </p>
               </div>
             </div>
@@ -222,14 +222,14 @@ const RegisterLivestockModal = ({ isOpen, onClose, onSuccess, livestock = null }
 
           {/* SCROLLABLE CONTENT */}
           <div className="overflow-y-auto flex-1 custom-scrollbar p-6 bg-base-100">
-            <div className="grid grid-cols-1 xl:grid-cols-[320px_1fr] gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-[240px_1fr] gap-5">
               {/* LEFT PANEL: PROFILE ASSETS */}
               <div className="bg-base-200/30 border border-base-300 rounded-2xl p-5 space-y-6">
                 <div>
                   <div className="flex items-center gap-2 mb-3">
                     <Camera size={14} className="text-emerald-500" />
                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                      Identification Asset
+                      Animal photo
                     </h4>
                   </div>
 

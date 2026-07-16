@@ -6,10 +6,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BreedSmart Technician Portal</title>
     <script>
-      (function() {
-        const theme = localStorage.getItem("theme") || "emerald";
+      (function () {
+        const storedTheme = localStorage.getItem("theme");
+        const legacyTheme =
+          storedTheme === "night"
+            ? "breedsmart-dark"
+            : storedTheme === "emerald"
+              ? "breedsmart"
+              : storedTheme;
+        const supportedThemes = [
+          "breedsmart",
+          "breedsmart-dark",
+          "black",
+          "dracula",
+        ];
+        const theme = supportedThemes.includes(legacyTheme)
+          ? legacyTheme
+          : "breedsmart";
+        if (storedTheme !== theme) localStorage.setItem("theme", theme);
         document.documentElement.setAttribute("data-theme", theme);
-        if (theme === "night") {
+        if (theme !== "breedsmart") {
           document.documentElement.classList.add("dark");
         } else {
           document.documentElement.classList.remove("dark");

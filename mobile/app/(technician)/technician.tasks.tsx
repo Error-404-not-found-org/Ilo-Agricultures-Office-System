@@ -6,7 +6,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
-import { Plus, CheckCircle, Search, ClipboardList } from "lucide-react-native";
+import { Plus, CheckCircle, Search, ClipboardList, ArrowLeft } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
@@ -87,7 +87,27 @@ export default function TasksScreen() {
       {/* Header */}
       <View className="px-6 py-4 flex-row justify-between items-center border-b shadow-sm z-10 w-full relative"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}>
-        <Text className="text-2xl font-black" style={{ color: isDark ? "#10b981" : "#00643B" }}>My Work Queue</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{
+              padding: 8,
+              backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+              borderRadius: 999,
+            }}
+          >
+            <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
+          </TouchableOpacity>
+          <Text
+            style={{
+              fontFamily: "Outfit_900Black",
+              fontSize: 20,
+              color: colors.textPrimary,
+            }}
+          >
+            My Work Queue
+          </Text>
+        </View>
         <TouchableOpacity
           className="w-10 h-10 rounded-full items-center justify-center shadow-sm"
           style={{ backgroundColor: isDark ? "#10b981" : "#00643B" }}
@@ -145,6 +165,7 @@ export default function TasksScreen() {
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder="Search by farmer name, ear tag or notes..."
+          variant="directory"
         />
       </View>
 

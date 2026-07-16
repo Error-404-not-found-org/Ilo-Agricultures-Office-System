@@ -51,6 +51,7 @@ import { useAnimalTimeline, useAnimalHealthHistory } from "@/features/animal-rec
 import { AnimalProfileSkeleton } from "@/features/animals/components/skeletons/AnimalProfileSkeleton";
 import { TimelineSkeleton } from "@/features/animals/components/skeletons/TimelineSkeleton";
 import { MedicalHistorySkeleton } from "@/features/animals/components/skeletons/MedicalHistorySkeleton";
+import { formatAddressLabel } from "@/constants/address";
 
 export default function AnimalDetails() {
   const { colors, isDark } = useTheme();
@@ -138,23 +139,6 @@ export default function AnimalDetails() {
     }
   }, [loading, animal]);
 
-  useEffect(() => {
-    if (animalDetailsQuery.error) {
-      const error: any = animalDetailsQuery.error;
-      console.error("Failed to fetch animal details", error);
-      toast.error(
-        error.response?.data?.message || "Could not load animal details.",
-      );
-    }
-    if (animalMedicalQuery.error) {
-      const error: any = animalMedicalQuery.error;
-      console.error("Failed to fetch medical details", error);
-      toast.error(
-        error.response?.data?.message || "Could not load medical details.",
-      );
-    }
-  }, [animalDetailsQuery.error, animalMedicalQuery.error]);
-
   const handleDelete = () => {
     setDeleteModalVisible(true);
   };
@@ -175,6 +159,7 @@ export default function AnimalDetails() {
   }
 
   if (!animal) {
+    const loadFailed = animalDetailsQuery.isError || animalMedicalQuery.isError;
     return (
       <View className="flex-1 items-center justify-center bg-[#F9FAFB] dark:bg-slate-950 px-8">
         <MaterialCommunityIcons
@@ -186,14 +171,26 @@ export default function AnimalDetails() {
           style={{ fontFamily: "Outfit_700Bold" }}
           className="text-slate-500 dark:text-slate-400 text-lg mt-4"
         >
-          Animal Not Found
+          {loadFailed ? "Could Not Load Animal" : "Animal Not Found"}
         </Text>
+        {loadFailed && (
+          <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textMuted }} className="text-sm text-center mt-2">
+            Check the backend connection, then try again.
+          </Text>
+        )}
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => {
+            if (loadFailed) {
+              animalDetailsQuery.refetch();
+              animalMedicalQuery.refetch();
+            } else {
+              router.back();
+            }
+          }}
           className="mt-6 px-10 py-3.5 bg-[#00643B] dark:bg-emerald-600 rounded-full shadow-lg shadow-emerald-200 dark:shadow-none"
         >
           <Text style={{ fontFamily: "Outfit_700Bold" }} className="text-white">
-            Go Back
+            {loadFailed ? "Try Again" : "Go Back"}
           </Text>
         </TouchableOpacity>
       </View>
@@ -204,17 +201,22 @@ export default function AnimalDetails() {
   const farmerName = animal.farmerId?.name || "Unassigned";
   const addr = animal.farmerId?.address;
   const farmerPhone =
-    addr?.phoneNumber || animal.farmerId?.phone || "No phone attached";
-  const farmerAddress = addr
-    ? [addr.street, addr.barangay, addr.city, addr.province]
-        .filter(Boolean)
-        .join(", ")
-    : "Location Unregistered";
+    animal.farmerId?.phoneNumber ||
+    addr?.phoneNumber ||
+    animal.farmerId?.phone ||
+    "";
+  const hasFarmerPhone = Boolean(farmerPhone);
+  const farmerAddress = formatAddressLabel(
+    addr,
+    animal.farmerId?.farmLocation,
+    "Location not provided",
+  );
+  const hasFarmerLocation = farmerAddress !== "Location not provided";
 
   const primaryColor = isDark ? colors.primary : "#00643B";
 
   const handleCall = () => {
-    if (farmerPhone && farmerPhone !== 'No phone attached') {
+    if (hasFarmerPhone) {
       Linking.openURL(`tel:${farmerPhone}`).catch(() => {
         toast.error("Could not initiate phone call.");
       });
@@ -222,8 +224,14 @@ export default function AnimalDetails() {
   };
 
   const handleMapRedirect = () => {
-    if (farmerAddress && farmerAddress !== 'Location Unregistered') {
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(farmerAddress)}`).catch(() => {
+    if (hasFarmerLocation) {
+      const latitude = animal.farmerId?.farmLocation?.latitude;
+      const longitude = animal.farmerId?.farmLocation?.longitude;
+      const mapQuery =
+        Number.isFinite(latitude) && Number.isFinite(longitude)
+          ? `${latitude},${longitude}`
+          : farmerAddress;
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`).catch(() => {
         toast.error("Could not open maps.");
       });
     }
@@ -720,7 +728,11 @@ export default function AnimalDetails() {
                     marginTop: 4,
                   }}
                 >
-                  {animal.farmerId?.address?.barangay || "Unregistered"}
+                  {formatAddressLabel(
+                    animal.farmerId?.address,
+                    animal.farmerId?.farmLocation,
+                    "Unregistered",
+                  )}
                 </Text>
               </View>
             </View>
@@ -1475,10 +1487,10 @@ export default function AnimalDetails() {
                       </View>
                       <View>
                         <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 11, color: colors.textMuted }}>Phone Number</Text>
-                        <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 15, color: colors.textPrimary, marginTop: 1 }}>{farmerPhone}</Text>
+                        <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 15, color: colors.textPrimary, marginTop: 1 }}>{farmerPhone || "Phone not provided"}</Text>
                       </View>
                     </View>
-                    {farmerPhone !== 'No phone attached' && (
+                    {hasFarmerPhone && (
                       <MaterialCommunityIcons name="phone-outgoing" size={18} color={isDark ? "#34d399" : "#00643B"} />
                     )}
                   </TouchableOpacity>
@@ -1493,7 +1505,7 @@ export default function AnimalDetails() {
                         <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 14, color: colors.textPrimary, marginTop: 1 }} numberOfLines={2}>{farmerAddress}</Text>
                       </View>
                     </View>
-                    {farmerAddress !== 'Location Unregistered' && (
+                    {hasFarmerLocation && (
                       <MaterialCommunityIcons name="map-marker-outline" size={18} color={isDark ? "#34d399" : "#00643B"} />
                     )}
                   </TouchableOpacity>
@@ -1568,6 +1580,7 @@ export default function AnimalDetails() {
                     { label: "Deworming", value: "Deworming" },
                     { label: "Check-ups", value: "Check-up" },
                     { label: "Weight Logs", value: "Weight" },
+                    { label: "General Notes", value: "General Note" },
                   ]}
                   value={medicalFilter}
                   onChange={(val) => setMedicalFilter(val)}
@@ -1649,6 +1662,9 @@ export default function AnimalDetails() {
                           {recType === "Check-up" && (
                             <ClipboardList size={22} color="#64748B" />
                           )}
+                          {recType === "General Note" && (
+                            <ClipboardList size={22} color="#64748B" />
+                          )}
                         </View>
 
                         <View className="flex-1">
@@ -1690,6 +1706,18 @@ export default function AnimalDetails() {
                               {new Date(dateVal).toLocaleDateString()}
                             </Text>
                           </View>
+
+                          {record.createdAt && (
+                            <Text
+                              style={{
+                                fontFamily: "Outfit_500Medium",
+                                color: colors.textMuted,
+                              }}
+                              className="text-[10px] mb-1"
+                            >
+                              Entered in BreedSmart: {new Date(record.createdAt).toLocaleDateString()}
+                            </Text>
+                          )}
 
                           {medicineVal ? (
                             <Text

@@ -1,14 +1,14 @@
 import React, { useCallback, useState } from "react";
-import { Text, TouchableOpacity, View, StatusBar } from "react-native";
-import { ArrowLeft, RefreshCw, Trash2, WifiOff } from "lucide-react-native";
-import { useFocusEffect, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Text, TouchableOpacity, View } from "react-native";
+import { RefreshCw, Trash2, WifiOff } from "lucide-react-native";
+import { useFocusEffect } from "expo-router";
 import { useTheme } from "@/lib/theme";
 import {
   discardQueueItem,
   getOfflineQueue,
   getSyncHistory,
   retryQueueItem,
+  processOfflineQueue,
   type QueuedMutation,
 } from "@/lib/offlineQueue";
 import {
@@ -17,13 +17,13 @@ import {
   SectionHeader,
   StatusBadge,
 } from "@/features/farmer-ui/components";
-import { safeBack } from "@/utils/navigation";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { useApi } from "@/lib/api";
+import { AppPageHeader } from "@/components/AppPageHeader";
 
 export default function FarmerSyncCenter() {
-  const router = useRouter();
+  const api = useApi();
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
   const [queue, setQueue] = useState<QueuedMutation[]>([]);
   const [history, setHistory] = useState<QueuedMutation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,36 +62,7 @@ export default function FarmerSyncCenter() {
 
   return (
     <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
-      <StatusBar barStyle="light-content" />
-      {/* Header Container with Safe Area Top Inset */}
-      <View
-        className="px-5 pb-5 flex-row items-center"
-        style={{
-          backgroundColor: colors.primary,
-          paddingTop: insets.top + 16,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => safeBack()}
-          className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View className="ml-3">
-          <Text
-            className="text-white"
-            style={{ fontFamily: "Outfit_700Bold", fontSize: 20 }}
-          >
-            Sync Center
-          </Text>
-          <Text
-            className="text-emerald-100"
-            style={{ fontFamily: "Outfit_500Medium", fontSize: 11 }}
-          >
-            Offline changes and recent activity
-          </Text>
-        </View>
-      </View>
+      <AppPageHeader title="Sync Center" subtitle="Offline changes and recent synchronization activity" />
 
       {loading ? (
         <AsyncState state="loading" />
@@ -152,7 +123,8 @@ export default function FarmerSyncCenter() {
                   <TouchableOpacity
                     onPress={async () => {
                       await retryQueueItem(item.id);
-                      load();
+                      await processOfflineQueue(api);
+                      await load();
                     }}
                     className="h-9 px-3 flex-row items-center justify-center"
                     style={{

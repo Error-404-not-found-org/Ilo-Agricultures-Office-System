@@ -9,6 +9,7 @@ const AddressSchema = new mongoose.Schema({
   // Philippine-specific fields
   barangay: { type: String, required: true },
   city: { type: String, required: true },
+  district: { type: String, required: false },
   province: { type: String, required: true },
   region: { type: String, required: false },
 

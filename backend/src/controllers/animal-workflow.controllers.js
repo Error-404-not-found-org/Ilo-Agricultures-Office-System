@@ -18,6 +18,231 @@ const getAccessibleAnimal = async (id, user) => {
   return animal;
 };
 
+const parseRecordDate = (value, fieldName) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    throw new AppError(`Invalid ${fieldName}.`, {
+      status: 400,
+      code: "RECORD_DATE_FILTER_INVALID",
+    });
+  }
+  return date;
+};
+
+const recordMatchesSearch = (record, search) => {
+  if (!search) return true;
+  const values = [
+    record.title,
+    record.summary,
+    record.status,
+    record.animalId?.animalId,
+    record.animalId?.earTag,
+    record.animalId?.breed,
+    record.animalId?.species,
+    record.farmerId?.name,
+    record.farmerId?.phoneNumber,
+    record.technicianId?.name,
+    record.source?.sireBreed,
+    record.source?.sireCode,
+    record.source?.technicianNote,
+    record.source?.note,
+    record.source?.details?.diagnosis,
+    record.source?.details?.treatment,
+  ];
+  return values
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(search));
+};
+
+export const getOfficialRecords = async (req, res) => {
+  try {
+    const allowedRoles = ["farmer", "technician", "veterinarian", "admin"];
+    if (!allowedRoles.includes(req.user.role)) {
+      throw new AppError("You cannot access official animal records.", {
+        status: 403,
+        code: "OFFICIAL_RECORDS_ACCESS_DENIED",
+      });
+    }
+
+    const pageInfo = getPagination(req.query, {
+      defaultLimit: 25,
+      maxLimit: 100,
+    });
+    const requestedFarmerId = req.query.farmerId;
+    const animalId = req.query.animalId;
+    const requestedType = String(req.query.type || "All").trim().toLowerCase();
+    const search = String(req.query.search || "").trim().toLowerCase();
+    const fromDate = parseRecordDate(req.query.fromDate, "from date");
+    const toDate = parseRecordDate(req.query.toDate, "to date");
+    if (fromDate && toDate && fromDate > toDate) {
+      throw new AppError("From date cannot be later than to date.", {
+        status: 400,
+        code: "RECORD_DATE_RANGE_INVALID",
+      });
+    }
+
+    const farmerId =
+      req.user.role === "farmer" ? req.user._id : requestedFarmerId;
+    const scope = {
+      ...(farmerId ? { farmerId } : {}),
+      ...(animalId ? { animalId } : {}),
+    };
+    const dateRange = {
+      ...(fromDate ? { $gte: fromDate } : {}),
+      ...(toDate ? { $lte: toDate } : {}),
+    };
+    const hasDateRange = Object.keys(dateRange).length > 0;
+
+    const includeAI = ["all", "ai", "insemination", "breeding"].includes(
+      requestedType,
+    );
+    const includePregnancy = ["all", "pregnancy", "pd"].includes(
+      requestedType,
+    );
+    const includeCalving = ["all", "calving"].includes(requestedType);
+    const includeHealth = ["all", "health", "medical"].includes(requestedType);
+    const includeNotes = ["all", "note", "notes", "general note"].includes(
+      requestedType,
+    );
+
+    const [inseminations, pregnancies, calvings, medicalRecords] =
+      await Promise.all([
+        includeAI
+          ? Insemination.find({
+              ...scope,
+              status: "done",
+              deletedAt: null,
+              ...(hasDateRange ? { inseminationDate: dateRange } : {}),
+            })
+              .populate("animalId", "animalId earTag brand color breed species imageUrl reproductiveStatus")
+              .populate("farmerId", "name phoneNumber address")
+              .populate("technicianId approvedBy", "name role")
+              .lean()
+          : [],
+        includePregnancy
+          ? Pregnancy.find({
+              ...scope,
+              deletedAt: null,
+              ...(hasDateRange
+                ? { "pregnancyDiagnosis.date": dateRange }
+                : {}),
+            })
+              .populate("animalId", "animalId earTag brand color breed species imageUrl reproductiveStatus")
+              .populate("farmerId", "name phoneNumber address")
+              .populate("inseminationId", "attemptNumber sireBreed sireCode")
+              .lean()
+          : [],
+        includeCalving
+          ? Calving.find({
+              ...scope,
+              deletedAt: null,
+              ...(hasDateRange ? { date: dateRange } : {}),
+            })
+              .populate("animalId", "animalId earTag brand color breed species imageUrl reproductiveStatus")
+              .populate("farmerId", "name phoneNumber address")
+              .populate("technicianId", "name role")
+              .lean()
+          : [],
+        includeHealth || includeNotes
+          ? MedicalRecord.find({
+              ...scope,
+              ...(hasDateRange ? { date: dateRange } : {}),
+              ...(!includeHealth && includeNotes
+                ? { type: "General Note" }
+                : includeHealth && !includeNotes
+                  ? { type: { $ne: "General Note" } }
+                  : {}),
+            })
+              .populate("animalId", "animalId earTag brand color breed species imageUrl reproductiveStatus")
+              .populate("farmerId", "name phoneNumber address")
+              .populate("technicianId", "name role")
+              .lean()
+          : [],
+      ]);
+
+    const records = [
+      ...inseminations.map((item) => ({
+        id: item._id,
+        recordKind: "insemination",
+        category: "AI",
+        recordDate: item.inseminationDate,
+        enteredAt: item.createdAt,
+        title: `AI Attempt #${item.attemptNumber || 1}`,
+        summary: item.outcome || "Artificial insemination completed",
+        status: "completed",
+        farmerId: item.farmerId,
+        animalId: item.animalId,
+        technicianId: item.technicianId || item.approvedBy,
+        source: item,
+      })),
+      ...pregnancies.map((item) => ({
+        id: item._id,
+        recordKind: "pregnancy",
+        category: "Pregnancy",
+        recordDate: item.pregnancyDiagnosis?.date || item.createdAt,
+        enteredAt: item.createdAt,
+        title: "Pregnancy Diagnosis",
+        summary:
+          item.pregnancyDiagnosis?.result || "Pregnancy diagnosis recorded",
+        status: "completed",
+        farmerId: item.farmerId,
+        animalId: item.animalId,
+        technicianId: item.technicianId,
+        source: item,
+      })),
+      ...calvings.map((item) => ({
+        id: item._id,
+        recordKind: "calving",
+        category: "Calving",
+        recordDate: item.date || item.createdAt,
+        enteredAt: item.createdAt,
+        title: "Calving Record",
+        summary: `${item.numberOfCalves || item.calves?.length || 0} offspring recorded`,
+        status: "completed",
+        farmerId: item.farmerId,
+        animalId: item.animalId,
+        technicianId: item.technicianId,
+        source: item,
+      })),
+      ...medicalRecords.map((item) => {
+        const isGeneralNote = item.type === "General Note";
+        return {
+          id: item._id,
+          recordKind: "medical_record",
+          category: isGeneralNote ? "General Note" : "Health",
+          recordDate: item.date || item.createdAt,
+          enteredAt: item.createdAt,
+          title: item.type || "Health Record",
+          summary:
+            item.details?.diagnosis ||
+            item.details?.treatment ||
+            item.note ||
+            (isGeneralNote ? "General animal note" : "Health record completed"),
+          status: "completed",
+          farmerId: item.farmerId,
+          animalId: item.animalId,
+          technicianId: item.technicianId,
+          source: item,
+        };
+      }),
+    ]
+      .filter((record) => recordMatchesSearch(record, search))
+      .sort(
+        (a, b) =>
+          new Date(b.recordDate || b.enteredAt || 0) -
+          new Date(a.recordDate || a.enteredAt || 0),
+      );
+
+    return sendList(res, paginateArray(records, pageInfo));
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to load official records.",
+      code: error.code || "OFFICIAL_RECORDS_FETCH_FAILED",
+    });
+  }
+};
+
 export const getAnimalTimeline = async (req, res) => {
   try {
     await getAccessibleAnimal(req.params.id, req.user);

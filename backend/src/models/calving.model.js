@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { CALVING_EASE } from "../domain/status-vocabulary.js";
 
 const CalvingSchema = new mongoose.Schema(
   {
@@ -36,8 +37,8 @@ const CalvingSchema = new mongoose.Schema(
     }],
     calvingEase: {
       type: String,
-      enum: ["Normal", "Natural", "Difficult", "Abortion", "Stillbirth", "Cesarean"],
-      default: "Natural"
+      enum: Object.values(CALVING_EASE),
+      default: CALVING_EASE.NATURAL
     },
     technicianId: {
       type: mongoose.Schema.Types.ObjectId,

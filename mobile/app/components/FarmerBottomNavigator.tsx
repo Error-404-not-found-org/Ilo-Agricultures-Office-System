@@ -22,6 +22,7 @@ import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { router } from "expo-router";
 import { useTheme } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useTranslation } from "@/contexts/TranslationContext";
 
 const FarmerBottomNavigator = ({
   state,
@@ -30,6 +31,7 @@ const FarmerBottomNavigator = ({
 }: BottomTabBarProps) => {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [modalVisible, setModalVisible] = useState(false);
 
   const focusedRouteKey = state.routes[state.index].key;
@@ -90,7 +92,7 @@ const FarmerBottomNavigator = ({
                 <View style={styles.modalGrid}>
                   <ModalAction
                     icon={<Syringe size={24} color={colors.primary} />}
-                    label="AI Service Request"
+                    label={t("requestAi")}
                     onPress={() => handleModalAction("/(farmer)/request-ai")}
                     colors={colors}
                     isDark={isDark}
@@ -100,7 +102,7 @@ const FarmerBottomNavigator = ({
                     icon={
                       <MessageCircleQuestion size={24} color={colors.primary} />
                     }
-                    label="Report Health Concern"
+                    label={t("reportSickness")}
                     onPress={() =>
                       handleModalAction("/(farmer)/report-sickness")
                     }
@@ -118,7 +120,7 @@ const FarmerBottomNavigator = ({
 
                   <ModalAction
                     icon={<Plus size={24} color={colors.primary} />}
-                    label="Add Animal"
+                    label={t("addCow")}
                     onPress={() => handleModalAction("/(farmer)/register-animal")}
                     colors={colors}
                     isDark={isDark}
@@ -126,7 +128,7 @@ const FarmerBottomNavigator = ({
 
                   <ModalAction
                     icon={<Sparkles size={24} color={colors.primary} />}
-                    label="Ask Moowie"
+                    label={t("askMoowie")}
                     onPress={() => handleModalAction("/(farmer)/ask-moowie")}
                     colors={colors}
                     isDark={isDark}
@@ -151,7 +153,7 @@ const FarmerBottomNavigator = ({
         <View style={styles.tabRow}>
           <TabItem
             icon={Home}
-            label="Home"
+            label={t("home")}
             isFocused={isFocused("index")}
             onPress={() => navigation.navigate("index")}
             colors={colors}
@@ -160,7 +162,7 @@ const FarmerBottomNavigator = ({
 
           <TabItem
             icon={Dog}
-            label="My Animals"
+            label={t("myAnimals")}
             isFocused={isFocused("add-animal")}
             onPress={() => navigation.navigate("add-animal")}
             colors={colors}
@@ -186,7 +188,7 @@ const FarmerBottomNavigator = ({
 
           <TabItem
             icon={FileText}
-            label="Records"
+            label={t("records")}
             isFocused={isFocused("farmer.records")}
             onPress={() => navigation.navigate("farmer.records")}
             colors={colors}
@@ -195,7 +197,7 @@ const FarmerBottomNavigator = ({
 
           <TabItem
             icon={User}
-            label="Profile"
+            label={t("profile")}
             isFocused={isFocused("profile")}
             onPress={() => navigation.navigate("profile")}
             colors={colors}
@@ -240,9 +242,11 @@ const TabItem = ({
     </View>
 
     <Text
-      numberOfLines={1}
+      numberOfLines={2}
       style={{
         fontSize: 10,
+        minHeight: 24,
+        textAlign: "center",
         color: isFocused ? colors.primary : colors.textMuted,
         fontFamily: isFocused ? "Outfit_700Bold" : "Outfit_500Medium",
         marginTop: 4,
@@ -306,7 +310,7 @@ const styles = StyleSheet.create({
   },
   tabItem: {
     flex: 1,
-    height: 62,
+    minHeight: 62,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -389,6 +393,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Outfit_600SemiBold",
     textAlign: "center",
+    minHeight: 34,
   },
 });
 

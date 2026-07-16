@@ -1,8 +1,7 @@
 import React, { useCallback, useMemo } from "react";
-import { Text, TouchableOpacity, View, ActivityIndicator, StatusBar } from "react-native";
-import { ArrowLeft, FileText, Activity } from "lucide-react-native";
+import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { FileText, Activity } from "lucide-react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
@@ -13,6 +12,8 @@ import { getAnimalRecords } from "@/features/animal-records/services/animalRecor
 import { RecordDetailContent } from "@/features/farmer-reports/components/RecordDetailContent";
 import type { ActivityFeedItem } from "@/features/farmer-reports/types/farmerReports.types";
 import { FarmerScreen } from "@/features/farmer-ui/components";
+import { AppPageHeader } from "@/components/AppPageHeader";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 type RecordActivity = ActivityFeedItem & {
   sourceKind?: string;
@@ -30,7 +31,6 @@ export default function AnimalRecordDetailScreen() {
   const router = useRouter();
   const api = useApi();
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
   const primaryColor = isDark ? colors.primary : "#00643B";
 
   // Query 1: Animal details
@@ -131,6 +131,15 @@ export default function AnimalRecordDetailScreen() {
           record.technicianNote ||
           "",
         recordedBy: record.technicianId?.name || record.handledBy?.name || "",
+        serviceDate: record.recordDate || record.date
+          ? new Date(record.recordDate || record.date).toLocaleDateString()
+          : undefined,
+        entryDate: record.createdAt
+          ? new Date(record.createdAt).toLocaleDateString()
+          : undefined,
+        isHistoricalEntry: Boolean(record.isHistoricalEntry),
+        performedByName: record.performedByName,
+        lateEntryReason: record.lateEntryReason,
         withdrawalPeriodDays:
           record.details?.withdrawalPeriodDays || record.withdrawalPeriodDays,
         withdrawalEndDate:
@@ -182,26 +191,28 @@ export default function AnimalRecordDetailScreen() {
     recordsQuery.data,
     medicalRecordsQuery.data,
     activityQuery.data,
-    animalQuery.data,
-    animalId,
     mapRecordToActivity,
   ]);
 
   if (isLoading) {
     return (
       <FarmerScreen scroll={false}>
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size="large" color={primaryColor} />
-          <Text
-            style={{
-              marginTop: 12,
-              fontFamily: "Outfit_500Medium",
-              color: colors.textSecondary,
-              fontSize: 14,
-            }}
-          >
-            Loading record details...
-          </Text>
+        <AppPageHeader
+          title="Record Detail"
+          subtitle="Service information and recorded observations"
+        />
+        <View style={{ margin: 20, padding: 20, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <Skeleton width="46%" height={20} radius={6} />
+            <Skeleton width={82} height={24} radius={12} />
+          </View>
+          <Skeleton width="62%" height={12} radius={5} style={{ marginTop: 12 }} />
+          {[1, 2, 3, 4, 5].map((row) => (
+            <View key={row} style={{ marginTop: 20 }}>
+              <Skeleton width={row % 2 ? "32%" : "24%"} height={9} radius={4} />
+              <Skeleton width={row === 5 ? "88%" : "58%"} height={14} radius={5} style={{ marginTop: 8 }} />
+            </View>
+          ))}
         </View>
       </FarmerScreen>
     );
@@ -210,6 +221,7 @@ export default function AnimalRecordDetailScreen() {
   if (!foundRecord) {
     return (
       <FarmerScreen scroll={false}>
+        <AppPageHeader title="Record Detail" />
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24 }}>
           <Text
             style={{
@@ -266,30 +278,17 @@ export default function AnimalRecordDetailScreen() {
   const canPreviewAiReport = foundRecord.type === "ai" && Boolean(foundRecord.reportId);
 
   return (
-    <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
-      <StatusBar barStyle="light-content" />
+    <FarmerScreen scroll={false}>
+      <AppPageHeader
+        title="Record Detail"
+        subtitle="Service information and recorded observations"
+      />
 
-      {/* Header */}
-      <View
-        className="px-5 pb-5 flex-row items-center justify-between"
-        style={{
-          backgroundColor: primaryColor,
-          paddingTop: insets.top + 16,
-        }}
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}
       >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <Text
-          className="flex-1 ml-3 text-white"
-          style={{ fontFamily: "Outfit_700Bold", fontSize: 20 }}
-        >
-          Record Detail
-        </Text>
-      </View>
 
       {/* Card Content */}
       <View
@@ -384,6 +383,7 @@ export default function AnimalRecordDetailScreen() {
           </TouchableOpacity>
         )}
       </View>
+      </ScrollView>
     </FarmerScreen>
   );
 }

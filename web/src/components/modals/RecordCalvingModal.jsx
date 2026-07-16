@@ -5,9 +5,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
 
-const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
-const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
-const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
+const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content placeholder:text-base-content/55 focus:border-primary focus:outline-none transition-all`;
+const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content focus:border-primary focus:outline-none transition-all appearance-none`;
+const labelClass = `text-[11px] font-bold text-base-content/70 tracking-wide ml-1`;
 
 const formatDate = (date) => {
     if (!date) return "—";
@@ -18,7 +18,7 @@ const formatDate = (date) => {
     });
 };
 
-const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
+const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSelectedFarmer, preSelectedAnimal, taskId }) => {
     const queryClient = useQueryClient();
     
     // Standalone selectors state (used when pregnancyData is not provided)
@@ -48,6 +48,15 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
         };
         if (isOpen) {
             window.addEventListener('keydown', handleKeyDown);
+            Promise.resolve().then(() => {
+                if (preSelectedFarmer) {
+                    setSelectedFarmerId(preSelectedFarmer._id || preSelectedFarmer);
+                    setSearchFarmer(preSelectedFarmer.name || '');
+                }
+                if (preSelectedAnimal) {
+                    setSelectedAnimalId(preSelectedAnimal._id || preSelectedAnimal);
+                }
+            });
         } else {
             Promise.resolve().then(() => {
                 setSelectedFarmerId('');
@@ -70,7 +79,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
         return () => {
             window.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isOpen, onClose]);
+    }, [isOpen, onClose, preSelectedFarmer, preSelectedAnimal]);
 
     // Queries for standalone mode
     const { data: farmers = [] } = useQuery({
@@ -169,6 +178,8 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
         onSuccess: () => {
             toast.success("Calf Drop and offspring successfully recorded!");
             queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+            queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
+            queryClient.invalidateQueries({ queryKey: ["technician", "schedule"] });
             queryClient.invalidateQueries({ queryKey: ["farmer-animals"] });
             queryClient.invalidateQueries({ queryKey: ["animal-history"] });
             if (onSuccess) onSuccess();
@@ -193,7 +204,10 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
             }
         }
 
-        mutation.mutate(formData);
+        mutation.mutate({
+            ...formData,
+            taskId
+        });
     };
 
     if (!isOpen) return null;
@@ -209,7 +223,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="bg-base-100 border border-base-300 rounded-3xl max-w-4xl w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
+                    className="bg-base-100 border border-base-300 rounded-2xl max-w-3xl w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[86vh]"
                 >
                     {/* Header */}
                     <div className="p-6 border-b border-base-300 bg-base-200/40 flex justify-between items-center">
@@ -218,9 +232,9 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                 <Baby size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-base-content leading-none uppercase">Record Calf Drop</h2>
+                                <h2 className="text-lg font-black text-base-content leading-none uppercase">Record Calving</h2>
                                 <p className="text-[10px] font-black text-base-content/40 uppercase tracking-widest mt-1.5 leading-none">
-                                    Registering offspring for Mother: #{motherEarTag}
+                                    Link birth details and offspring to Mother #{motherEarTag}
                                 </p>
                             </div>
                         </div>
@@ -240,72 +254,84 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                 {/* Farmer Search */}
                                 <div className="space-y-1.5 relative">
                                     <label className={labelClass}>Farmer Owner</label>
-                                    <div className="relative">
-                                        <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
-                                        <input
-                                            value={searchFarmer}
-                                            onChange={(e) => {
-                                                setSearchFarmer(e.target.value);
-                                                setIsDropdownOpen(true);
-                                            }}
-                                            placeholder="Search field records for owner..."
-                                            className={`${inputClass} pl-11`}
-                                        />
-                                        <AnimatePresence>
-                                            {isDropdownOpen && searchFarmer && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: -5 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    exit={{ opacity: 0, y: -5 }}
-                                                    className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
-                                                >
-                                                    {farmers.filter((f) =>
-                                                        f.name.toLowerCase().includes(searchFarmer.toLowerCase())
-                                                    ).length > 0 ? (
-                                                        farmers
-                                                            .filter((f) => f.name.toLowerCase().includes(searchFarmer.toLowerCase()))
-                                                            .map((farmer) => (
-                                                                <button
-                                                                    key={farmer._id}
-                                                                    onClick={() => {
-                                                                        setSelectedFarmerId(farmer._id);
-                                                                        setSelectedAnimalId("");
-                                                                        setSearchFarmer(farmer.name);
-                                                                        setIsDropdownOpen(false);
-                                                                    }}
-                                                                    className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 flex flex-col gap-1 border-b border-base-200/50 last:border-0 cursor-pointer"
-                                                                >
-                                                                    <span className="text-xs font-bold text-base-content block">{farmer.name}</span>
-                                                                    <span className="text-[9px] font-black tracking-widest text-base-content/40 uppercase mt-0.5">
-                                                                        {farmer.phoneNumber || "No Contact"} • {farmer.address?.barangay || "No Barangay"}
-                                                                    </span>
-                                                                </button>
-                                                            ))
-                                                    ) : (
-                                                        <div className="py-10 text-center text-[10px] font-black text-base-content/20 uppercase tracking-widest">No clients found</div>
-                                                    )}
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
+                                    {preSelectedFarmer ? (
+                                        <div className="flex items-center gap-3 h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content/65 select-none">
+                                            <span className="truncate">{preSelectedFarmer.name}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
+                                            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
+                                            <input
+                                                value={searchFarmer}
+                                                onChange={(e) => {
+                                                    setSearchFarmer(e.target.value);
+                                                    setIsDropdownOpen(true);
+                                                }}
+                                                placeholder="Search field records for owner..."
+                                                className={`${inputClass} pl-11`}
+                                            />
+                                            <AnimatePresence>
+                                                {isDropdownOpen && searchFarmer && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: -5 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        exit={{ opacity: 0, y: -5 }}
+                                                        className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
+                                                    >
+                                                        {farmers.filter((f) =>
+                                                            f.name.toLowerCase().includes(searchFarmer.toLowerCase())
+                                                        ).length > 0 ? (
+                                                            farmers
+                                                                .filter((f) => f.name.toLowerCase().includes(searchFarmer.toLowerCase()))
+                                                                .map((farmer) => (
+                                                                    <button
+                                                                        key={farmer._id}
+                                                                        onClick={() => {
+                                                                            setSelectedFarmerId(farmer._id);
+                                                                            setSelectedAnimalId("");
+                                                                            setSearchFarmer(farmer.name);
+                                                                            setIsDropdownOpen(false);
+                                                                        }}
+                                                                        className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 flex flex-col gap-1 border-b border-base-200/50 last:border-0 cursor-pointer"
+                                                                    >
+                                                                        <span className="text-xs font-bold text-base-content block">{farmer.name}</span>
+                                                                        <span className="text-[9px] font-black tracking-widest text-base-content/40 uppercase mt-0.5">
+                                                                            {farmer.phoneNumber || "No Contact"} • {farmer.address?.barangay || "No Barangay"}
+                                                                        </span>
+                                                                    </button>
+                                                                ))
+                                                        ) : (
+                                                            <div className="py-10 text-center text-[10px] font-black text-base-content/20 uppercase tracking-widest">No clients found</div>
+                                                        )}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Animal selector */}
                                 <div className="space-y-1.5">
                                     <label className={labelClass}>Pregnant Cow</label>
-                                    <select
-                                        disabled={!selectedFarmerId || isLoadingAnimals}
-                                        value={selectedAnimalId}
-                                        onChange={(e) => setSelectedAnimalId(e.target.value)}
-                                        className={`${selectClass} cursor-pointer disabled:opacity-50`}
-                                    >
-                                        <option value="">{isLoadingAnimals ? "Synchronizing..." : "Select pregnant cow..."}</option>
-                                        {pregnantAnimals.map((a) => (
-                                            <option key={a._id} value={a._id}>
-                                                Tag #{a.earTag} ({a.breed}) — {a.reproductiveStatus || "Normal"}
-                                            </option>
-                                        ))}
-                                    </select>
+                                    {preSelectedAnimal ? (
+                                        <div className="flex items-center gap-3 h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content/65 select-none">
+                                            <span className="truncate">Tag #{preSelectedAnimal.earTag} ({preSelectedAnimal.breed || "Crossbreed"})</span>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            disabled={!selectedFarmerId || isLoadingAnimals}
+                                            value={selectedAnimalId}
+                                            onChange={(e) => setSelectedAnimalId(e.target.value)}
+                                            className={`${selectClass} cursor-pointer disabled:opacity-50`}
+                                        >
+                                            <option value="">{isLoadingAnimals ? "Synchronizing..." : "Select pregnant cow..."}</option>
+                                            {pregnantAnimals.map((a) => (
+                                                <option key={a._id} value={a._id}>
+                                                    Tag #{a.earTag} ({a.breed}) — {a.reproductiveStatus || "Normal"}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    )}
                                 </div>
 
                                 {/* Insemination/pregnancy check info */}
@@ -349,6 +375,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess }) => {
                                             <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/30" size={16} />
                                             <input 
                                                 type="date"
+                                                max={new Date().toISOString().slice(0, 10)}
                                                 value={formData.date}
                                                 onChange={(e) => setFormData({...formData, date: e.target.value})}
                                                 className="w-full h-11 bg-base-200 border border-base-300 rounded-xl pl-10 pr-4 text-xs font-bold text-base-content focus:outline-none transition-all cursor-pointer"

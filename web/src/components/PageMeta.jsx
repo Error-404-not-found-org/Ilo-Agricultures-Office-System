@@ -3,12 +3,22 @@ import { useLocation } from 'react-router-dom';
 
 const getTitleForPath = (path) => {
   // Technician Routes
-  if (path.startsWith('/technician/dashboard')) return 'Dashboard | Tech Portal';
-  if (path.startsWith('/technician/farmers')) return 'Farmers Directory | Tech Portal';
-  if (path.startsWith('/technician/animals')) return 'Livestock Registry | Tech Portal';
-  if (path.startsWith('/technician/inseminations')) return 'Inseminations | Tech Portal';
-  if (path.startsWith('/technician/health')) return 'Health & Vaccines | Tech Portal';
-  if (path.startsWith('/technician/walk-in')) return 'Walk-in Registration | Tech Portal';
+  if (path.startsWith('/technician/dashboard')) return 'Overview | Technician Portal';
+  if (path.startsWith('/technician/farmers')) return 'Farmers | Technician Portal';
+  if (path.startsWith('/technician/animals')) return 'Animals | Technician Portal';
+  if (path.startsWith('/technician/requests')) return 'Service Requests | Technician Portal';
+  if (path.startsWith('/technician/schedule')) return 'Schedule | Technician Portal';
+  if (path.startsWith('/technician/ledger')) return 'Breeding and Pregnancy Records | Technician Portal';
+  if (path.startsWith('/technician/inseminations')) return 'AI Services | Technician Portal';
+  if (path.startsWith('/technician/newborns')) return 'Calving Records | Technician Portal';
+  if (path.startsWith('/technician/health-map')) return 'Map and Locations | Technician Portal';
+  if (path.startsWith('/technician/health')) return 'Health Records | Technician Portal';
+  if (path.startsWith('/technician/field-notes')) return 'Notes and Photos | Technician Portal';
+  if (path.startsWith('/technician/reports')) return 'Reports and Exports | Technician Portal';
+  if (path.startsWith('/technician/analytics')) return 'My Performance | Technician Portal';
+  if (path.startsWith('/technician/moowie')) return 'Ask Moowie | Technician Portal';
+  if (path.startsWith('/technician/settings')) return 'Settings | Technician Portal';
+  if (path.startsWith('/technician/walk-in')) return 'Add AI Service Record | Technician Portal';
   if (path.startsWith('/technician/profile')) return 'My Profile | Tech Portal';
   
   // Admin Routes

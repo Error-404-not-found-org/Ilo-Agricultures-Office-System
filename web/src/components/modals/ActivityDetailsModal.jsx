@@ -1,4 +1,5 @@
-import { 
+import { useEffect, useRef } from "react";
+import {
   X, 
   Syringe, 
   HeartPulse, 
@@ -13,7 +14,35 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function ActivityDetailsModal({ isOpen, onClose, activity }) {
+export default function ActivityDetailsModal({ isOpen, onClose, activity, onOpenSource }) {
+  const closeButtonRef = useRef(null);
+  const dialogRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    closeButtonRef.current?.focus();
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+      if (event.key === "Tab" && dialogRef.current) {
+        const focusable = [...dialogRef.current.querySelectorAll(
+          'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        )];
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !activity) return null;
 
   const getStatusStyle = (status) => {
@@ -31,6 +60,10 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity }) {
     <AnimatePresence>
       <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
         <motion.div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="activity-details-title"
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -48,7 +81,7 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity }) {
                 {activity.iconType === "FileText" && <FileText size={20} />}
               </div>
               <div>
-                <h2 className="text-xl font-black text-base-content uppercase tracking-tighter leading-none">
+                <h2 id="activity-details-title" className="text-xl font-black text-base-content uppercase tracking-tighter leading-none">
                   Activity <span className="text-emerald-500">Audit</span>
                 </h2>
                 <p className="text-[10px] font-black text-base-content/40 uppercase tracking-widest mt-1.5 leading-none">
@@ -57,6 +90,8 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity }) {
               </div>
             </div>
             <button
+              ref={closeButtonRef}
+              aria-label="Close activity details"
               onClick={onClose}
               className="w-9 h-9 flex items-center justify-center text-base-content/40 hover:text-base-content hover:bg-base-200 rounded-full transition-all cursor-pointer"
             >
@@ -156,6 +191,15 @@ export default function ActivityDetailsModal({ isOpen, onClose, activity }) {
           </div>
 
           <div className="p-6 bg-base-200/30 border-t border-base-300/80">
+            {activity.originId && onOpenSource && (
+              <button
+                type="button"
+                onClick={() => onOpenSource(activity)}
+                className="w-full h-11 mb-3 border border-emerald-700 text-emerald-700 dark:text-emerald-400 font-bold text-xs rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/20 transition-colors cursor-pointer"
+              >
+                Open {activity.originLabel || "source request"}
+              </button>
+            )}
             <button
               onClick={onClose}
               className="w-full h-12 bg-[#074033] hover:bg-[#0d5948] text-white font-black text-[10px] uppercase tracking-[0.3em] rounded-xl transition-all active:scale-95 shadow-md cursor-pointer"

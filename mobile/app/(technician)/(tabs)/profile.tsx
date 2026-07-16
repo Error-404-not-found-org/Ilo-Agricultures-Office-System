@@ -19,7 +19,6 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   ChevronRight,
   LogOut,
-  Settings,
   HelpCircle,
   User,
   Briefcase,
@@ -33,6 +32,7 @@ import {
   Phone,
   ChevronDown,
   X,
+  RefreshCw,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
 import { useColorScheme } from "nativewind";
@@ -56,6 +56,9 @@ const TechnicianProfile = () => {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { colorScheme, toggleColorScheme } = useColorScheme();
+  const [statusBarOnHeader, setStatusBarOnHeader] = React.useState(true);
+  const [profileHeaderHeight, setProfileHeaderHeight] = React.useState(280);
+  const profileHeaderColor = isDark ? "#064e3e" : "#00643B";
 
   const api = useApi();
   const queryClient = useQueryClient();
@@ -207,16 +210,43 @@ const TechnicianProfile = () => {
       className="flex-1 bg-slate-50 dark:bg-slate-950"
       style={{ backgroundColor: colors.background }}
     >
-      <StatusBar barStyle="light-content" />
+      <StatusBar
+        barStyle={statusBarOnHeader || isDark ? "light-content" : "dark-content"}
+        backgroundColor={statusBarOnHeader ? profileHeaderColor : colors.card}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
+          backgroundColor: statusBarOnHeader ? profileHeaderColor : colors.card,
+          zIndex: 999,
+          elevation: 999,
+        }}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
+        onScroll={(event) => {
+          const nextOnHeader =
+            event.nativeEvent.contentOffset.y < profileHeaderHeight - insets.top;
+          if (nextOnHeader !== statusBarOnHeader) {
+            setStatusBarOnHeader(nextOnHeader);
+          }
+        }}
+        scrollEventThrottle={32}
       >
         {/* Profile Header Backdrop - forest green in both light/dark */}
         <View
           className="pt-14 pb-20 px-6 rounded-b-[40px] items-center relative shadow-lg"
-          style={{ backgroundColor: isDark ? "#064e3e" : "#00643B" }}
+          onLayout={(event) =>
+            setProfileHeaderHeight(event.nativeEvent.layout.height)
+          }
+          style={{ backgroundColor: profileHeaderColor }}
         >
           {/* Profile Picture */}
           <View className="relative mt-4">
@@ -431,6 +461,14 @@ const TechnicianProfile = () => {
               icon={<Bell size={18} color={colors.textSecondary} />}
               label="Notifications"
               onPress={() => router.push("/notifications")}
+            />
+
+            <Divider />
+
+            <ActionItem
+              icon={<RefreshCw size={18} color={colors.textSecondary} />}
+              label="Sync Center"
+              onPress={() => router.push("/(technician)/sync-history" as any)}
             />
 
             <Divider />

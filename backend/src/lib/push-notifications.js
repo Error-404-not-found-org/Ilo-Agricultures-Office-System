@@ -1,5 +1,10 @@
 import axios from 'axios';
 
+const EXPO_PUSH_TOKEN_PATTERN = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
+
+export const isValidExpoPushToken = (pushToken) =>
+  typeof pushToken === "string" && EXPO_PUSH_TOKEN_PATTERN.test(pushToken);
+
 /**
  * Sends a push notification via Expo Push API
  * @param {string} pushToken - The recipient's Expo push token
@@ -8,8 +13,8 @@ import axios from 'axios';
  * @param {object} data - Extra data to send
  */
 export const sendPushNotification = async (pushToken, title, body, data = {}) => {
-  if (!pushToken || !pushToken.startsWith('ExponentPushToken')) {
-    console.warn('[PushNotification] Invalid or missing push token:', pushToken);
+  if (!isValidExpoPushToken(pushToken)) {
+    console.warn('[PushNotification] Invalid or missing push token.');
     return;
   }
 

@@ -16,6 +16,8 @@ interface SelectDropdownProps {
   onChange: (value: string) => void;
   flex?: number;
   searchable?: boolean;
+  variant?: "default" | "pill";
+  highlightSelection?: boolean;
 }
 
 export function SelectDropdown({
@@ -25,6 +27,8 @@ export function SelectDropdown({
   onChange,
   flex = 1,
   searchable = false,
+  variant = "default",
+  highlightSelection = true,
 }: SelectDropdownProps) {
   const { colors, isDark } = useTheme();
   const [modalVisible, setModalVisible] = useState(false);
@@ -49,7 +53,9 @@ export function SelectDropdown({
       })
     : options;
 
-  const isSelected = value !== "all" && value !== "All";
+  const isSelected = Boolean(value) && value !== "all" && value !== "All";
+  const isHighlighted = isSelected && highlightSelection;
+  const isPill = variant === "pill";
 
   return (
     <View style={{ flex }}>
@@ -60,35 +66,39 @@ export function SelectDropdown({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
-          backgroundColor: isSelected
+          backgroundColor: isHighlighted
             ? (isDark ? "rgba(16, 185, 129, 0.15)" : "#eafaf1")
-            : colors.card,
-          borderWidth: 1.5,
-          borderColor: isSelected ? colors.primary : colors.border,
-          borderRadius: 12,
-          paddingHorizontal: 12,
-          paddingVertical: 8,
-          minHeight: 38,
-          shadowColor: isSelected ? colors.primary : "#000",
+            : isPill
+              ? isDark
+                ? "rgba(255,255,255,0.07)"
+                : "#f1f2ef"
+              : colors.card,
+          borderWidth: isPill ? 0 : 1.5,
+          borderColor: isHighlighted ? colors.primary : colors.border,
+          borderRadius: isPill ? 999 : 12,
+          paddingHorizontal: isPill ? 16 : 12,
+          paddingVertical: isPill ? 10 : 8,
+          minHeight: isPill ? 44 : 38,
+          shadowColor: isHighlighted ? colors.primary : "#000",
           shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: isSelected ? 0.15 : 0,
+          shadowOpacity: isHighlighted ? 0.15 : 0,
           shadowRadius: 4,
-          elevation: isSelected ? 2 : 0,
+          elevation: isHighlighted ? 2 : 0,
         }}
       >
         <Text
           numberOfLines={1}
           style={{
             fontFamily: "Outfit_700Bold",
-            fontSize: 11,
-            color: isSelected ? colors.primary : colors.textSecondary,
+            fontSize: isPill ? 12 : 11,
+            color: isHighlighted ? colors.primary : colors.textSecondary,
           }}
         >
           {isSelected ? selectedOption.label : label}
         </Text>
         <ChevronDown
           size={12}
-          color={isSelected ? colors.primary : colors.textMuted}
+          color={isHighlighted ? colors.primary : colors.textMuted}
           style={{ marginLeft: 4 }}
         />
       </TouchableOpacity>

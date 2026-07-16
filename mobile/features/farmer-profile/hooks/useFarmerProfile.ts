@@ -18,9 +18,10 @@ import {
 } from "../services/farmerProfile.service";
 import type { EditMode, ProfileFormData, PasswordForm } from "../types/farmerProfile.types";
 import {
-  formatBarangayWithDistrict,
+  findIloiloCityBarangay,
   ILOILO_CITY_BARANGAYS_BY_DISTRICT,
   ILOILO_CITY_NAME,
+  isAddressPlaceholder,
 } from "@/constants/address";
 
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
@@ -149,7 +150,9 @@ export const useFarmerProfile = () => {
 
   const normalizeIloiloCityAddressForForm = (address: any = {}) => {
     const city = address.city || "";
-    const rawBarangay = address.barangay || "";
+    const rawBarangay = isAddressPlaceholder(address.barangay)
+      ? ""
+      : address.barangay || "";
     let district = address.district || "";
     let barangay = rawBarangay;
 
@@ -224,38 +227,27 @@ export const useFarmerProfile = () => {
       let resolvedBarangay = "";
       let resolvedDistrict = "";
 
-      // SPECIAL PARSER FOR Highly Urbanized Cities (Iloilo City)
-      if (resolvedCity.toLowerCase() === "iloilo city" || resolvedCity.toLowerCase() === "jaro") {
+      // Iloilo City reverse-geocoding can return either the city or a district
+      // (for example, Jaro) in the city field. Match against all 180 barangays
+      // first, then derive the district from the matched barangay.
+      const normalizedLocalities = [address.city, address.subregion]
+        .filter((locality): locality is string => Boolean(locality?.trim()))
+        .map((locality) => locality.trim().toLowerCase());
+      const isIloiloCity =
+        normalizedLocalities.includes("iloilo city") ||
+        normalizedLocalities.some((locality) =>
+          Object.keys(ILOILO_CITY_BARANGAYS_BY_DISTRICT).some(
+            (district) => district.toLowerCase() === locality,
+          ),
+        );
+      if (isIloiloCity) {
         resolvedCity = ILOILO_CITY_NAME;
-        const district = address.district || "Jaro";
-        resolvedDistrict = district;
-        const normalizeAddressPart = (value = "") =>
-          value
-            .toLowerCase()
-            .replace(/\b(street|st|road|rd|avenue|ave|barangay|brgy)\b/g, "")
-            .replace(/[^a-z0-9]/g, "");
-
-        const candidates = [
-          address.name,
-          address.street,
-          address.district,
-        ].filter(Boolean) as string[];
-        const districtBarangays =
-          ILOILO_CITY_BARANGAYS_BY_DISTRICT[district] || [];
-        const normalizedCandidates = candidates.map(normalizeAddressPart);
-
-        const matchedBarangay = districtBarangays.find((barangay) => {
-          const normalizedBarangay = normalizeAddressPart(barangay);
-          return normalizedCandidates.some(
-            (candidate) =>
-              candidate &&
-              normalizedBarangay &&
-              (candidate.includes(normalizedBarangay) ||
-                normalizedBarangay.includes(candidate)),
-          );
-        });
-
-        resolvedBarangay = matchedBarangay || "";
+        const match = findIloiloCityBarangay(
+          [address.name, address.street, address.district, address.subregion],
+          address.district || address.city || "",
+        );
+        resolvedBarangay = match?.barangay || "";
+        resolvedDistrict = match?.district || "";
       }
 
       return {
@@ -264,8 +256,8 @@ export const useFarmerProfile = () => {
         barangay: resolvedBarangay,
         city: resolvedCity,
         district: resolvedDistrict,
-        province: address.region || "Iloilo",
-        zipCode: address.postalCode || "5020",
+        province: isIloiloCity ? "Iloilo" : address.region || "Iloilo",
+        zipCode: address.postalCode || "",
       };
     } catch {
       return {
@@ -558,17 +550,20 @@ export const useFarmerProfile = () => {
         latitude: current.coords.latitude,
         longitude: current.coords.longitude,
       });
-      const nextBarangay = suggestion.barangay || formData.barangay || "N/A";
+      const existingBarangay = isAddressPlaceholder(formData.barangay)
+        ? ""
+        : formData.barangay;
+      const nextBarangay = suggestion.barangay || existingBarangay;
 
       if (locationToastId !== undefined) toast.dismiss(locationToastId);
       await mutation.mutateAsync({
         address: {
           street: suggestion.street || formData.street,
-          barangay: nextBarangay,
+          ...(nextBarangay ? { barangay: nextBarangay } : {}),
           city: suggestion.city || formData.city || "",
           district: suggestion.district || formData.district || "",
           province: suggestion.province || "Iloilo",
-          zipCode: suggestion.zipCode || "",
+          zipCode: suggestion.zipCode || dbUser.address?.zipCode || "",
           region: "Region VI",
           detectedAddress: suggestion.detectedAddress,
           coordinates: {
@@ -610,7 +605,7 @@ export const useFarmerProfile = () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {
       toast.error("Location permission denied", {
-        description: "Enable location access to save your farm pin.",
+        description: "Enable location access to save your farm location.",
       });
       return;
     }
@@ -670,7 +665,7 @@ export const useFarmerProfile = () => {
     if (mutation.isPending || locationAction || !dbUser?._id) return;
     const existingLocation = dbUser.farmLocation;
     if (!existingLocation?.latitude || !existingLocation?.longitude) {
-      toast.error("Save farm pin first", {
+      toast.error("Save farm location first", {
         description: "Use current location before saving landmark or directions.",
       });
       return;

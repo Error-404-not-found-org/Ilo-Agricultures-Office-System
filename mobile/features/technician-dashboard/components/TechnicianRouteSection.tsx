@@ -20,7 +20,7 @@ export function TechnicianRouteSection({
   dbUser,
   handleAction,
 }: TechnicianRouteSectionProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const router = useRouter();
 
   return (
@@ -56,8 +56,12 @@ export function TechnicianRouteSection({
       ) : agendaItems.length === 0 ? (
         <Card
           style={{
-            padding: 32,
+            padding: 28,
             alignItems: "center",
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.card,
           }}
         >
           <MaterialCommunityIcons
@@ -116,46 +120,72 @@ const AgendaCard = ({ item, onPress, isFirst, isLocked, lockedByName }: any) => 
 
   const farmer = item.raw?.farmerId || {};
   const farmLoc = farmer.farmLocation || {};
-  const hasFarmPin = !!(farmLoc.latitude && farmLoc.longitude);
+  const hasFarmPin =
+    item.hasFarmPin ??
+    (Number.isFinite(farmLoc.latitude) && Number.isFinite(farmLoc.longitude));
+  const farmLocationLabel =
+    item.farmLocationLabel ||
+    farmLoc.detectedAddress ||
+    farmLoc.landmark ||
+    item.location;
 
-  const getCardBg = () => {
-    if (isOverdue) return isDark ? "#450a0a" : "#fff5f5";
-    if (isFirst) return colors.tint;
-    return colors.card;
-  };
-
-  const getCardBorder = () => {
-    if (isOverdue) return isDark ? "#7f1d1d" : "#fee2e2";
-    if (isFirst) return isDark ? "#064e3b" : "#bbf7d0";
-    return colors.border;
-  };
-
-  const getDividerColor = () => {
-    if (isOverdue) return isDark ? "#991b1b" : "#fca5a5";
-    if (isFirst) return isDark ? "#059669" : "#86efac";
-    return colors.border;
-  };
+  const timeBackground = isOverdue
+    ? isDark
+      ? "rgba(248,113,113,0.12)"
+      : "#fff1f2"
+    : isFirst
+      ? isDark
+        ? "rgba(16,185,129,0.12)"
+        : "#ecfdf5"
+      : isDark
+        ? "rgba(148,163,184,0.08)"
+        : "#f8fafc";
+  const timeColor = isOverdue
+    ? colors.error
+    : isFirst
+      ? isDark
+        ? "#34d399"
+        : colors.primary
+      : colors.textPrimary;
+  const statusLabel = isOverdue
+    ? "Overdue"
+    : item.isReadyToday
+      ? "Ready today"
+      : isFirst
+        ? "Next visit"
+        : null;
+  const statusColor = isOverdue
+    ? colors.error
+    : isDark
+      ? "#34d399"
+      : colors.primary;
 
   return (
     <Card
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.task} visit for ${item.farmer || item.location}`}
       style={{
-        backgroundColor: getCardBg(),
-        borderColor: getCardBorder(),
+        backgroundColor: colors.card,
+        borderColor: colors.border,
         borderWidth: 1,
+        borderRadius: 20,
         flexDirection: "row",
-        alignItems: "center",
+        alignItems: "flex-start",
         marginBottom: 12,
-        padding: 16,
+        padding: 14,
       }}
     >
       <View
         style={{
-          width: 75,
-          borderRightWidth: 1,
-          borderRightColor: getDividerColor(),
-          paddingRight: 10,
-          marginRight: 15,
+          width: 66,
+          minHeight: 58,
+          borderRadius: 14,
+          backgroundColor: timeBackground,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 6,
+          marginRight: 12,
         }}
       >
         <Text
@@ -164,6 +194,7 @@ const AgendaCard = ({ item, onPress, isFirst, isLocked, lockedByName }: any) => 
           style={{
             color: isOverdue ? colors.error : colors.textMuted,
             textTransform: "uppercase",
+            letterSpacing: 0.5,
           }}
         >
           {isOverdue ? "Missed" : "Time"}
@@ -172,8 +203,9 @@ const AgendaCard = ({ item, onPress, isFirst, isLocked, lockedByName }: any) => 
           variant="extrabold"
           size={isOverdue ? 11 : 13}
           style={{
-            color: isOverdue ? colors.error : colors.textPrimary,
+            color: timeColor,
             marginTop: 2,
+            textAlign: "center",
           }}
         >
           {isOverdue
@@ -185,114 +217,118 @@ const AgendaCard = ({ item, onPress, isFirst, isLocked, lockedByName }: any) => 
         </Text>
       </View>
 
-      <View style={{ flex: 1 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-          <Text variant="bold" size={16} style={{ color: colors.textPrimary }}>
-            {item.farmer || item.location}
-          </Text>
-          {isLocked && (
-            <View
-              style={{
-                backgroundColor: "#fef3c7",
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderRadius: 6,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 3,
-              }}
-            >
-              <Feather name="lock" size={8} color="#d97706" />
-              <Text variant="black" size={8} style={{ color: "#d97706" }}>
-                LOCKED
-              </Text>
-            </View>
-          )}
-          {!hasFarmPin && (
-            <View
-              style={{
-                backgroundColor: isDark ? "rgba(245, 158, 11, 0.15)" : "#fffbeb",
-                paddingHorizontal: 6,
-                paddingVertical: 2,
-                borderRadius: 6,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 3,
-              }}
-            >
-              <Feather name="map-pin" size={8} color={isDark ? "#fbbf24" : "#d97706"} />
-              <Text variant="black" size={8} style={{ color: isDark ? "#fbbf24" : "#d97706" }}>
-                PIN MISSING
-              </Text>
-            </View>
-          )}
-        </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text
+          variant="bold"
+          size={14}
+          numberOfLines={1}
+          style={{ color: colors.textPrimary }}
+        >
+          {item.farmer || item.location}
+        </Text>
         <Text
           variant="medium"
           size={12}
-          style={{ color: colors.textSecondary, marginTop: 2 }}
+          numberOfLines={1}
+          style={{ color: colors.textSecondary, marginTop: 3 }}
         >
           {item.task} {item.animalName ? `— ${item.animalName}` : ""}
         </Text>
-        {isLocked && (
-          <Text
-            variant="medium"
-            size={10}
-            style={{ color: "#d97706", marginTop: 2 }}
+
+        {farmLocationLabel ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 5,
+              marginTop: 6,
+            }}
           >
-            Assigned to: {lockedByName}
-          </Text>
-        )}
+            <Feather name="map-pin" size={12} color={colors.textMuted} />
+            <Text
+              variant="medium"
+              size={11}
+              numberOfLines={1}
+              style={{ color: colors.textSecondary, flex: 1 }}
+            >
+              {farmLocationLabel}
+            </Text>
+          </View>
+        ) : null}
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: 8,
+            marginTop: 8,
+          }}
+        >
+          {statusLabel && (
+            <View
+              style={{
+                backgroundColor: isOverdue
+                  ? isDark
+                    ? "rgba(248,113,113,0.12)"
+                    : "#fff1f2"
+                  : isDark
+                    ? "rgba(16,185,129,0.12)"
+                    : "#ecfdf5",
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                borderRadius: 999,
+              }}
+            >
+              <Text variant="bold" size={10} style={{ color: statusColor }}>
+                {statusLabel}
+              </Text>
+            </View>
+          )}
+
+          {!hasFarmPin && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Feather
+                name="map-pin"
+                size={11}
+                color={isDark ? colors.warning : "#b45309"}
+              />
+              <Text
+                variant="medium"
+                size={10}
+                style={{ color: isDark ? colors.warning : "#92400e" }}
+              >
+                Farm location not set
+              </Text>
+            </View>
+          )}
+
+          {isLocked && (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+              <Feather
+                name="lock"
+                size={10}
+                color={isDark ? colors.warning : "#b45309"}
+              />
+              <Text
+                variant="medium"
+                size={10}
+                numberOfLines={1}
+                style={{ color: isDark ? colors.warning : "#92400e" }}
+              >
+                Assigned to {lockedByName}
+              </Text>
+            </View>
+          )}
+        </View>
       </View>
 
-      {isOverdue ? (
-        <View
-          style={{
-            backgroundColor: colors.error,
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 12,
-          }}
-        >
-          <Text variant="black" size={10} style={{ color: "#fff" }}>
-            OVERDUE
-          </Text>
-        </View>
-      ) : item.isReadyToday ? (
-        <View
-          style={{
-            backgroundColor: isDark ? "rgba(16, 185, 129, 0.2)" : "#d1fae5",
-            paddingHorizontal: 8,
-            paddingVertical: 4,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: isDark ? "rgba(16, 185, 129, 0.4)" : "#a7f3d0",
-          }}
-        >
-          <Text variant="black" size={10} style={{ color: isDark ? "#34d399" : "#065f46" }}>
-            READY TODAY
-          </Text>
-        </View>
-      ) : isFirst ? (
-        <View
-          style={{
-            backgroundColor: colors.primary,
-            paddingHorizontal: 12,
-            paddingVertical: 4,
-            borderRadius: 12,
-          }}
-        >
-          <Text variant="black" size={10} style={{ color: "#fff" }}>
-            NEXT
-          </Text>
-        </View>
-      ) : (
-        <MaterialCommunityIcons
-          name="clock-outline"
-          size={20}
-          color={colors.textMuted}
-        />
-      )}
+      <Feather
+        name="chevron-right"
+        size={18}
+        color={colors.textMuted}
+        style={{ marginLeft: 8, marginTop: 20 }}
+      />
     </Card>
   );
 };

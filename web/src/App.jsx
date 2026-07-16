@@ -32,14 +32,22 @@ const AuditLogs = lazy(() => import("./pages/admin/AuditLogs"));
 const ArchivedRecords = lazy(() => import("./pages/admin/ArchivedRecords"));
 
 // Technician Pages
-const TechnicianDashboard = lazy(() => import("./pages/technician/DashboardTechnician"));
-const FarmersDirectory = lazy(() => import("./pages/technician/FarmersDirectory"));
+const TechnicianDashboard = lazy(
+  () => import("./pages/technician/DashboardTechnician"),
+);
+const FarmersDirectory = lazy(
+  () => import("./pages/technician/FarmersDirectory"),
+);
 const FarmerProfile = lazy(() => import("./pages/technician/FarmerProfile"));
 const TechnicianAnimals = lazy(() => import("./pages/technician/Animals"));
-const TechnicianInseminations = lazy(() => import("./pages/technician/Inseminations"));
+const TechnicianInseminations = lazy(
+  () => import("./pages/technician/Inseminations"),
+);
 const TechnicianHealth = lazy(() => import("./pages/technician/Health"));
 const TechnicianHealthMap = lazy(() => import("./pages/technician/HealthMap"));
-const WalkInInsemination = lazy(() => import("./pages/technician/WalkInInsemination"));
+const WalkInInsemination = lazy(
+  () => import("./pages/technician/WalkInInsemination"),
+);
 const TechMyProfile = lazy(() => import("./pages/technician/Profile"));
 const TechnicianAnalytics = lazy(() => import("./pages/technician/Analytics"));
 const TechnicianReports = lazy(() => import("./pages/technician/Reports"));
@@ -52,11 +60,14 @@ const Moowie = lazy(() => import("./pages/technician/Moowie"));
 const Newborns = lazy(() => import("./pages/technician/Newborns"));
 
 const LoadingView = () => (
-  <div className="grow flex flex-col items-center justify-center min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100">
-    <span className="loading loading-infinity loading-lg text-[#00643b] scale-150"></span>
-    <p className="text-[#00643b] dark:text-emerald-400 font-bold tracking-widest animate-pulse uppercase text-[10px] mt-4">
-      Loading BreedSmart Telemetry...
-    </p>
+  <div className="min-h-screen flex items-center justify-center bg-base-200">
+    <div className="flex flex-col items-center gap-4">
+      <span className="loading loading-spinner loading-lg text-primary"></span>
+
+      <h2 className="text-lg font-bold text-base-content">BreedSmart</h2>
+
+      <p className="text-sm text-base-content/60">Loading...</p>
+    </div>
   </div>
 );
 
@@ -85,7 +96,13 @@ function App() {
       localStorage.setItem("breedsmart_last_activity", String(Date.now()));
     };
 
-    const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
+    const events = [
+      "mousedown",
+      "mousemove",
+      "keypress",
+      "scroll",
+      "touchstart",
+    ];
     events.forEach((event) => window.addEventListener(event, updateActivity));
 
     // Check session status every 30 seconds
@@ -118,7 +135,9 @@ function App() {
     }, 30000);
 
     return () => {
-      events.forEach((event) => window.removeEventListener(event, updateActivity));
+      events.forEach((event) =>
+        window.removeEventListener(event, updateActivity),
+      );
       clearInterval(interval);
     };
   }, [isSignedIn, signOut]);
@@ -149,7 +168,10 @@ function App() {
                 </>
               }
             >
-              <Route index element={<Navigate to="/admin/dashboard" replace />} />
+              <Route
+                index
+                element={<Navigate to="/admin/dashboard" replace />}
+              />
               <Route path="dashboard" element={<AdminDashboard />} />
               <Route path="technicians" element={<Technicians />} />
               <Route path="technicians/:id" element={<TechnicianProfile />} />
@@ -189,7 +211,10 @@ function App() {
               <Route path="farmers/:id" element={<FarmerProfile />} />
               <Route path="animals" element={<TechnicianAnimals />} />
               <Route path="animals/:id" element={<LivestockProfile />} />
-              <Route path="inseminations" element={<TechnicianInseminations />} />
+              <Route
+                path="inseminations"
+                element={<TechnicianInseminations />}
+              />
               <Route path="newborns" element={<Newborns />} />
               <Route path="health" element={<TechnicianHealth />} />
               <Route path="health-map" element={<TechnicianHealthMap />} />

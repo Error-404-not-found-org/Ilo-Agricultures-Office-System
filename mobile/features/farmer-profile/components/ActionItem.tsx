@@ -18,7 +18,7 @@ const ActionItem = ({ icon, label, onPress, isDestructive }: ActionItemProps) =>
       className="p-4 flex-row items-center justify-between active:bg-slate-50 dark:active:bg-slate-800"
       style={{ backgroundColor: colors.card }}
     >
-      <View className="flex-row items-center gap-4">
+      <View className="flex-1 flex-row items-center gap-4 pr-3">
         <View
           className={`w-9 h-9 rounded-xl items-center justify-center`}
           style={{
@@ -34,8 +34,9 @@ const ActionItem = ({ icon, label, onPress, isDestructive }: ActionItemProps) =>
           {icon}
         </View>
         <Text
+          numberOfLines={2}
           className={`text-sm ${isDestructive ? "font-outfit-bold" : "font-outfit-semibold"}`}
-          style={{ color: isDestructive ? colors.error : colors.textPrimary }}
+          style={{ flex: 1, color: isDestructive ? colors.error : colors.textPrimary }}
         >
           {label}
         </Text>

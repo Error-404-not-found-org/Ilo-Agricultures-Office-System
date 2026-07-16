@@ -1,3 +1,5 @@
+import type { QueuedMutation } from "../lib/offlineQueue";
+
 export type UserRole = "admin" | "technician" | "veterinarian" | "farmer";
 
 export type UserStatus = "active" | "on-site" | "on-leave" | "inactive";
@@ -30,7 +32,7 @@ export type RequestStatus =
 
 export type ServiceType = "ai" | "health";
 
-export type OfflineMutationStatus = "pending" | "syncing" | "failed" | "synced";
+export type OfflineMutationStatus = QueuedMutation["status"];
 
 export interface Coordinates {
   lat?: number;
@@ -43,6 +45,7 @@ export interface Address {
   subdivision?: string;
   barangay: string;
   city: string;
+  district?: string;
   province: string;
   region?: string;
   zipCode?: string;
@@ -156,6 +159,19 @@ export interface AIRequest extends ServiceRequest {
   serviceType?: "ai";
   inseminationDate?: string;
   isSuccess?: boolean | null;
+  attemptNumber?: number;
+  previousAttemptId?: string | AIRequest;
+  attemptSeriesId?: string;
+  outcome?: string;
+  outcomeVerificationStatus?: "pending" | "reported" | "verified";
+  outcomeConfirmationSource?: string | null;
+  outcomeConfirmedAt?: string;
+  farmerOutcomeReport?:
+    | "possible_pregnancy"
+    | "return_to_heat"
+    | "unsure"
+    | null;
+  farmerOutcomeReportedAt?: string;
   approvedBy?: string | Technician;
   technicianId?: string | Technician;
 }
@@ -198,16 +214,4 @@ export interface AppNotification {
   createdAt?: string;
 }
 
-export interface OfflineMutation {
-  id: string;
-  idempotencyKey: string;
-  url: string;
-  method: "POST" | "PATCH" | "PUT" | "DELETE";
-  data: unknown;
-  description: string;
-  status: OfflineMutationStatus;
-  retryCount: number;
-  lastError?: string;
-  createdAt: number;
-  updatedAt: number;
-}
+export type OfflineMutation = QueuedMutation;

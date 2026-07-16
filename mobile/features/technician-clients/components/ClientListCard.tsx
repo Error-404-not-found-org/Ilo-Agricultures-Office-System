@@ -7,6 +7,7 @@ import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
 import { Client } from "../types/technicianClients.types";
+import { formatAddressLabel } from "@/constants/address";
 
 interface ClientListCardProps {
   item: Client;
@@ -17,31 +18,50 @@ export function ClientListCard({ item }: ClientListCardProps) {
   const { colors, isDark } = useTheme();
 
   const farmerName = item.name || "Farmer";
-  const addressStr =
-    typeof item.address === "string"
-      ? item.address
-      : item.address?.barangay || "Location unmapped";
+  const addressStr = formatAddressLabel(
+    item.address,
+    item.farmLocation,
+    "Location not provided",
+  );
   const hasRealClerkId =
     Boolean(item.clerkId) && !String(item.clerkId).startsWith("manual_");
-  const isClaimed = item.profileClaimStatus === "claimed" || hasRealClerkId;
+  const isBlocked = item.profileClaimStatus === "blocked";
+  const isClaimed =
+    !isBlocked &&
+    (item.profileClaimStatus === "claimed" || hasRealClerkId);
   const isClaimable =
-    item.profileClaimStatus === "unclaimed" ||
-    (item.registeredByTechnician && !item.email && !hasRealClerkId);
-  const claimLabel = isClaimed
-    ? "Connected"
-    : isClaimable
-      ? "No App Account"
-      : "Profile Only";
-  const claimColor = isClaimed
-    ? "#059669"
-    : isClaimable
-      ? "#f59e0b"
-      : colors.textMuted;
-  const claimBg = isClaimed
-    ? isDark ? "rgba(16,185,129,0.16)" : "#ecfdf5"
-    : isClaimable
-      ? isDark ? "rgba(245,158,11,0.16)" : "#fffbeb"
-      : isDark ? "rgba(148,163,184,0.12)" : "#f8fafc";
+    !isBlocked &&
+    (item.profileClaimStatus === "unclaimed" ||
+      (item.registeredByTechnician && !item.email && !hasRealClerkId));
+  const claimLabel = isBlocked
+    ? "Blocked"
+    : isClaimed
+      ? "Connected"
+      : isClaimable
+        ? "No App Account"
+        : "Profile Only";
+  const claimColor = isBlocked
+    ? colors.error
+    : isClaimed
+      ? "#059669"
+      : isClaimable
+        ? "#f59e0b"
+        : colors.textMuted;
+  const claimBg = isBlocked
+    ? isDark
+      ? "rgba(248,113,113,0.14)"
+      : "#fef2f2"
+    : isClaimed
+      ? isDark
+        ? "rgba(16,185,129,0.16)"
+        : "#ecfdf5"
+      : isClaimable
+        ? isDark
+          ? "rgba(245,158,11,0.16)"
+          : "#fffbeb"
+        : isDark
+          ? "rgba(148,163,184,0.12)"
+          : "#f8fafc";
 
   const formatVisitDate = (dateVal?: string | Date | null) => {
     if (!dateVal) return "None";
@@ -71,6 +91,8 @@ export function ClientListCard({ item }: ClientListCardProps) {
   return (
     <Card
       onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${farmerName}'s farmer profile`}
       style={{
         padding: 16,
         marginBottom: 12,
@@ -306,14 +328,17 @@ export function ClientListCard({ item }: ClientListCardProps) {
         {/* DETAILS Link */}
         <TouchableOpacity
           onPress={handlePress}
-          style={{ flexDirection: "row", alignItems: "center" }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+          }}
         >
           <Text
             style={{
               fontFamily: "Outfit_900Black",
               color: isDark ? "#34d399" : "#00643B",
             }}
-            className="text-[12px]  mr-1"
+            className="text-[12px] mr-1"
           >
             Details
           </Text>

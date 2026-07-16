@@ -20,9 +20,9 @@ import { useToast } from "../../contexts/ToastContext";
 import iloiloPsgc from "../../constants/iloilo-psgc.json";
 import { ILOILO_CITY_BARANGAYS_BY_DISTRICT } from "../../constants/barangays";
 
-const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 pl-11 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
-const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
-const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
+const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 pl-11 text-sm font-semibold text-base-content placeholder:text-base-content/55 focus:border-primary focus:outline-none transition-all`;
+const labelClass = `text-[11px] font-bold text-base-content/70 tracking-wide ml-1`;
+const sectionClass = `bg-base-200/40 border border-base-300 rounded-2xl p-4 space-y-4`;
 
 const parseIloiloCityBarangay = (value) => {
   if (value && value.includes("(") && value.includes(")")) {
@@ -209,20 +209,20 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
+            className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[86vh]"
           >
             {/* HEADER */}
-            <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
+            <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-5 py-4">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
                   <UserPlus size={20} />
                 </div>
                 <div>
                   <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                    {farmer ? "Edit Client Profile" : "Farmer Registry"}
+                    {farmer ? "Edit Farmer" : "Register Farmer"}
                   </h3>
                   <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                    {farmer ? "Modify municipal records" : "Municipal Personnel Protocol"}
+                    {farmer ? "Update the farmer's contact and location details" : "Create a farmer profile for animal and service records"}
                   </p>
                 </div>
               </div>
@@ -243,7 +243,7 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
                   <div className="bg-linear-to-r from-[#074033] to-[#0d5948] p-6 rounded-2xl text-white shadow-md">
                     <ShieldCheck size={28} className="text-emerald-400 mb-3" />
                     <h4 className="text-xs font-black uppercase tracking-widest leading-none">
-                      Protocol Verified
+                      Farmer profile
                     </h4>
                     <p className="text-[10px] font-bold text-emerald-100/60 uppercase mt-2.5 leading-relaxed tracking-wider">
                       {farmer 
@@ -270,7 +270,7 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
                     <div className="flex items-center gap-2 mb-1">
                       <User size={14} className="text-emerald-500" />
                       <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                        Personnel Data
+                        Personal information
                       </h4>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { toast } from 'sonner-native';
 import { useApi } from '@/lib/api';
 import { Mail, Lock, ArrowRight, ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const PRIMARY = '#074033';
 
@@ -109,12 +110,17 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className="flex-1 bg-white"
-    >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-        <View className="flex-1 px-8 pt-20 pb-10">
+    <SafeAreaView className="flex-1 bg-white">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={{ width: '100%', maxWidth: 480, alignSelf: 'center' }} className="flex-1 px-6 pt-6 pb-10">
           
           {/* Back Button */}
           <TouchableOpacity 
@@ -128,7 +134,7 @@ export default function ForgotPasswordScreen() {
             className="flex-row items-center mb-6 self-start"
           >
             <ArrowLeft size={20} color={PRIMARY} />
-            <Text className="text-[#074033] font-semibold ml-2">
+            <Text className="text-[#074033] font-outfit-semibold ml-2">
               {step === 'verify' ? 'Back to Request' : 'Back to Login'}
             </Text>
           </TouchableOpacity>
@@ -139,15 +145,15 @@ export default function ForgotPasswordScreen() {
                 <View className="w-20 h-20 bg-emerald-50 rounded-full items-center justify-center mb-6">
                   <Mail size={40} color={PRIMARY} />
                 </View>
-                <Text className="text-3xl font-bold text-slate-800 text-center">Reset Password</Text>
-                <Text className="text-slate-500 text-center mt-3 text-base leading-6">
+                <Text className="text-2xl font-outfit-bold text-slate-800 text-center">Reset Password</Text>
+                <Text className="text-slate-500 font-outfit-medium text-center mt-3 text-[15px] leading-6">
                   Enter your email address or username and we will send you a 6-digit verification code to reset your password.
                 </Text>
               </View>
 
               <View className="space-y-6">
                 <View>
-                  <Text className="text-sm font-semibold text-slate-700 mb-2">
+                  <Text className="text-sm font-outfit-semibold text-slate-700 mb-2">
                     Email or Username
                   </Text>
                   <TextInput
@@ -156,7 +162,7 @@ export default function ForgotPasswordScreen() {
                     placeholder="Enter your email or username"
                     placeholderTextColor="#9ca3af"
                     autoCapitalize="none"
-                    className="w-full border border-gray-300 rounded-xl p-4 bg-white focus:border-[#074033] text-slate-800"
+                    className="w-full h-[52px] border border-slate-200 rounded-xl px-4 bg-white focus:border-[#074033] text-slate-800 font-outfit-medium"
                   />
                 </View>
 
@@ -169,7 +175,7 @@ export default function ForgotPasswordScreen() {
                     <ActivityIndicator color="white" />
                   ) : (
                     <>
-                      <Text className="text-white font-bold text-lg mr-2">Send Code</Text>
+                      <Text className="text-white font-outfit-bold text-base mr-2">Send Code</Text>
                       <ArrowRight size={20} color="white" />
                     </>
                   )}
@@ -182,15 +188,15 @@ export default function ForgotPasswordScreen() {
                 <View className="w-20 h-20 bg-emerald-50 rounded-full items-center justify-center mb-6">
                   <Lock size={40} color={PRIMARY} />
                 </View>
-                <Text className="text-3xl font-bold text-slate-800 text-center">Verify & Reset</Text>
-                <Text className="text-slate-500 text-center mt-3 text-base leading-6">
+                <Text className="text-2xl font-outfit-bold text-slate-800 text-center">Verify &amp; Reset</Text>
+                <Text className="text-slate-500 font-outfit-medium text-center mt-3 text-[15px] leading-6">
                   Please enter the 6-digit verification code sent to your email, along with your new secure password.
                 </Text>
               </View>
 
               <View className="space-y-4">
                 <View>
-                  <Text className="text-sm font-semibold text-slate-700 mb-2">
+                  <Text className="text-sm font-outfit-semibold text-slate-700 mb-2">
                     6-Digit Verification Code
                   </Text>
                   <TextInput
@@ -200,12 +206,12 @@ export default function ForgotPasswordScreen() {
                     placeholderTextColor="#cbd5e1"
                     keyboardType="number-pad"
                     maxLength={6}
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-6 py-4 text-center text-2xl font-bold tracking-[10px] text-slate-800"
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-6 py-4 text-center text-2xl font-outfit-bold tracking-[10px] text-slate-800"
                   />
                 </View>
 
                  <View className="mt-4">
-                  <Text className="text-sm font-semibold text-slate-700 mb-2">
+                  <Text className="text-sm font-outfit-semibold text-slate-700 mb-2">
                     New Password
                   </Text>
                   <View style={{ justifyContent: 'center' }}>
@@ -216,7 +222,7 @@ export default function ForgotPasswordScreen() {
                       placeholderTextColor="#9ca3af"
                       secureTextEntry={!showPassword}
                       autoCapitalize="none"
-                      className="w-full border border-gray-300 rounded-xl pl-4 pr-12 py-4 bg-white focus:border-[#074033] text-slate-800"
+                      className="w-full h-[52px] border border-slate-200 rounded-xl pl-4 pr-12 bg-white focus:border-[#074033] text-slate-800 font-outfit-medium"
                     />
                     <TouchableOpacity
                       onPress={() => setShowPassword(!showPassword)}
@@ -232,7 +238,7 @@ export default function ForgotPasswordScreen() {
                 </View>
 
                 <View className="mt-4">
-                  <Text className="text-sm font-semibold text-slate-700 mb-2">
+                  <Text className="text-sm font-outfit-semibold text-slate-700 mb-2">
                     Confirm New Password
                   </Text>
                   <View style={{ justifyContent: 'center' }}>
@@ -243,7 +249,7 @@ export default function ForgotPasswordScreen() {
                       placeholderTextColor="#9ca3af"
                       secureTextEntry={!showConfirmPassword}
                       autoCapitalize="none"
-                      className="w-full border border-gray-300 rounded-xl pl-4 pr-12 py-4 bg-white focus:border-[#074033] text-slate-800"
+                      className="w-full h-[52px] border border-slate-200 rounded-xl pl-4 pr-12 bg-white focus:border-[#074033] text-slate-800 font-outfit-medium"
                     />
                     <TouchableOpacity
                       onPress={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -267,7 +273,7 @@ export default function ForgotPasswordScreen() {
                     <ActivityIndicator color="white" />
                   ) : (
                     <>
-                      <Text className="text-white font-bold text-lg mr-2">Reset Password</Text>
+                      <Text className="text-white font-outfit-bold text-base mr-2">Reset Password</Text>
                       <ArrowRight size={20} color="white" />
                     </>
                   )}
@@ -278,6 +284,7 @@ export default function ForgotPasswordScreen() {
 
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

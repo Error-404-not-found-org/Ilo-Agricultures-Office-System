@@ -42,25 +42,27 @@ export function TechnicianRequestsSection({
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Text variant="extrabold" size={18}>
-            Requests Board
+            Request Board
           </Text>
           {newRequestsCount > 0 && (
             <View
               style={{
-                backgroundColor: isDark ? "#7c2d12" : "#ffedd5",
+                backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "#ffedd5",
+                borderWidth: isDark ? 1 : 0,
+                borderColor: isDark ? "rgba(245,158,11,0.25)" : "transparent",
                 paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 8,
+                paddingVertical: 3,
+                borderRadius: 999,
               }}
             >
               <Text
                 variant="black"
                 size={10}
                 style={{
-                  color: isDark ? "#fdba74" : "#d97706",
+                  color: isDark ? colors.warning : "#d97706",
                 }}
               >
-                {newRequestsCount} NEW
+                {newRequestsCount} new
               </Text>
             </View>
           )}
@@ -94,8 +96,12 @@ export function TechnicianRequestsSection({
       ) : newRequestsCount === 0 ? (
         <Card
           style={{
-            padding: 32,
+            padding: 28,
             alignItems: "center",
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.card,
           }}
         >
           <MaterialCommunityIcons
@@ -187,10 +193,10 @@ const RequestCard = ({
       : "#f5f3ff"
     : isHealth
       ? isDark
-        ? "#78350f"
+        ? "rgba(245,158,11,0.12)"
         : "#fffbeb"
       : isDark
-        ? "#064e3b"
+        ? "rgba(16,185,129,0.12)"
         : "#f0fdf4";
   const iconColor = isBreedingVerification
     ? isDark
@@ -206,18 +212,27 @@ const RequestCard = ({
 
   return (
     <Card
-      onPress={onPress}
+      onPress={isUpdating ? undefined : onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Review ${serviceTypeLabel} request from ${item.farmer}`}
+      accessibilityState={{ disabled: isUpdating }}
       style={{
         marginBottom: 12,
         flexDirection: "row",
-        alignItems: "center",
+        alignItems: "flex-start",
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: colors.border,
+        backgroundColor: colors.card,
+        padding: 14,
+        opacity: isUpdating ? 0.65 : 1,
       }}
     >
       <View
         style={{
-          width: 52,
-          height: 52,
-          borderRadius: 26,
+          width: 46,
+          height: 46,
+          borderRadius: 15,
           backgroundColor: item.farmerImageUrl ? colors.border : iconBg,
           alignItems: "center",
           justifyContent: "center",
@@ -227,19 +242,19 @@ const RequestCard = ({
         {item.farmerImageUrl ? (
           <Image
             source={{ uri: item.farmerImageUrl }}
-            style={{ width: 52, height: 52, borderRadius: 26 }}
+            style={{ width: 46, height: 46, borderRadius: 15 }}
           />
         ) : (
-          <MaterialCommunityIcons name="account" size={24} color={iconColor} />
+          <MaterialCommunityIcons name="account" size={22} color={iconColor} />
         )}
         <View
           style={{
             position: "absolute",
             right: -2,
             bottom: -2,
-            width: 20,
-            height: 20,
-            borderRadius: 10,
+            width: 18,
+            height: 18,
+            borderRadius: 9,
             backgroundColor: iconBg,
             borderWidth: 1,
             borderColor: colors.card,
@@ -255,34 +270,48 @@ const RequestCard = ({
                   ? "stethoscope"
                   : "needle"
             }
-            size={12}
+            size={11}
             color={iconColor}
           />
         </View>
       </View>
 
-      <View style={{ flex: 1, marginLeft: 16 }}>
-        <Text variant="bold" size={16}>
+      <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
+        <Text variant="bold" size={14} numberOfLines={1}>
           {item.farmer}
         </Text>
         <Text
           variant="medium"
           color="secondary"
           size={12}
-          style={{ marginTop: 2 }}
+          style={{ marginTop: 3 }}
           numberOfLines={1}
         >
           {isHealth || isBreedingVerification ? serviceTypeLabel : item.task}
         </Text>
-        <Text
-          variant="medium"
-          color="muted"
-          size={11}
-          style={{ marginTop: 2 }}
-          numberOfLines={1}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            flexWrap: "wrap",
+            columnGap: 10,
+            rowGap: 4,
+            marginTop: 8,
+          }}
         >
-          {locationLabel || "Location not listed"} • Sent {sentAt}
-        </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Feather name="map-pin" size={11} color={colors.textMuted} />
+            <Text variant="medium" color="muted" size={10} numberOfLines={1}>
+              {locationLabel || "Location not listed"}
+            </Text>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Feather name="clock" size={11} color={colors.textMuted} />
+            <Text variant="medium" color="muted" size={10}>
+              {sentAt}
+            </Text>
+          </View>
+        </View>
         {isLocked && (
           <View
             style={{
@@ -300,46 +329,22 @@ const RequestCard = ({
         )}
       </View>
 
-      {![
-        "done",
-        "resolved",
-        "completed",
-        "rejected",
-        "cancelled",
-        "declined",
-      ].includes(item.status?.toLowerCase()) && (
-        <View style={{ gap: 8, alignItems: "flex-end" }}>
-          <TouchableOpacity
-            onPress={onPress}
-            disabled={isLocked || isUpdating}
-            accessibilityRole="button"
-            accessibilityLabel={`View ${serviceTypeLabel} request from ${item.farmer}`}
-            style={{
-              backgroundColor:
-                isLocked || isUpdating ? colors.textMuted : colors.primary,
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderRadius: 12,
-              minHeight: 44,
-              minWidth: 80,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: isLocked || isUpdating ? 0.5 : 1,
-            }}
-          >
-            <Text
-              variant="black"
-              size={10}
-              style={{
-                color: "#fff",
-                textTransform: "uppercase",
-              }}
-            >
-              View
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 10,
+          backgroundColor: isDark
+            ? "rgba(16,185,129,0.1)"
+            : "#ecfdf5",
+          alignItems: "center",
+          justifyContent: "center",
+          marginLeft: 8,
+          marginTop: 7,
+        }}
+      >
+        <Feather name="chevron-right" size={17} color={colors.primary} />
+      </View>
     </Card>
   );
 };

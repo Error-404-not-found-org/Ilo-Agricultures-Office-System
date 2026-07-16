@@ -7,8 +7,7 @@ import {
   useDeclineTechnicianRequestMutation,
   useUpdateRequestStatusMutation,
 } from "@/features/technician/hooks/useTechnicianDashboard";
-import NetInfo from "@react-native-community/netinfo";
-import { addToOfflineQueue } from "@/lib/offlineQueue";
+import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
 
 export function useTechnicianRequests() {
   const api = useApi();
@@ -180,17 +179,15 @@ export function useTechnicianRequests() {
       type: "health" | "ai" | "breeding_verification";
       requestId: string;
     }) => {
-      const net = await NetInfo.fetch();
-      if (!net.isConnected) {
-        await addToOfflineQueue({
+      return executeOfflineMutation(
+        api,
+        {
           url: `/technician/requests/${type}/${requestId}/claim`,
           method: "PATCH",
-          data: {},
           description: `Claim ${type} request`,
-        });
-        throw new Error("OFFLINE_QUEUED");
-      }
-      return claimTechnicianRequest(api, type, requestId);
+        },
+        {}
+      );
     },
     onSuccess: () => {
       invalidateTechnicianWorkflow();

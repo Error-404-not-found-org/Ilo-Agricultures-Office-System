@@ -501,7 +501,16 @@ const enrichFarmerData = async (farmer) => {
 
 export const getUsers = async (req, res) => {
   try {
-    const { role, page, limit, search, barangay, status } = req.query;
+    const {
+      role,
+      page,
+      limit,
+      search,
+      barangay,
+      status,
+      city,
+      accountStatus,
+    } = req.query;
 
     const query = { deletedAt: null };
 
@@ -532,6 +541,97 @@ export const getUsers = async (req, res) => {
       ];
     }
     if (barangay) query["address.barangay"] = barangay;
+    if (city) {
+      query.$and = [
+        ...(query.$and || []),
+        {
+          $or: [
+            { "address.city": city },
+            { "address.municipality": city },
+          ],
+        },
+      ];
+    }
+    if (accountStatus && accountStatus !== "all") {
+      const supportedAccountStatuses = new Set([
+        "connected",
+        "no_app_account",
+        "profile_only",
+        "blocked",
+      ]);
+
+      if (!supportedAccountStatuses.has(accountStatus)) {
+        return res.status(400).json({ message: "Invalid account status filter." });
+      }
+
+      const withoutRealClerkAccount = {
+        $or: [
+          { clerkId: { $exists: false } },
+          { clerkId: null },
+          { clerkId: "" },
+          { clerkId: { $regex: /^manual_/ } },
+        ],
+      };
+
+      let accountStatusFilter;
+      if (accountStatus === "connected") {
+        accountStatusFilter = {
+          $and: [
+            { profileClaimStatus: { $ne: "blocked" } },
+            {
+              $or: [
+                { profileClaimStatus: "claimed" },
+                {
+                  clerkId: {
+                    $exists: true,
+                    $nin: [null, ""],
+                    $not: /^manual_/,
+                  },
+                },
+              ],
+            },
+          ],
+        };
+      } else if (accountStatus === "no_app_account") {
+        accountStatusFilter = {
+          $and: [
+            withoutRealClerkAccount,
+            {
+              $or: [
+                { profileClaimStatus: "unclaimed" },
+                {
+                  registeredByTechnician: true,
+                  email: { $in: [null, ""] },
+                },
+              ],
+            },
+          ],
+        };
+      } else if (accountStatus === "profile_only") {
+        accountStatusFilter = {
+          $and: [
+            withoutRealClerkAccount,
+            {
+              profileClaimStatus: {
+                $nin: ["claimed", "unclaimed", "blocked"],
+              },
+            },
+            {
+              $nor: [
+                {
+                  registeredByTechnician: true,
+                  email: { $in: [null, ""] },
+                },
+              ],
+            },
+          ],
+        };
+      } else {
+        accountStatusFilter = { profileClaimStatus: "blocked" };
+      }
+
+      query.$and = [...(query.$and || []), accountStatusFilter];
+    }
     if (status === "active") query.isVerified = true;
     if (status === "inactive") query.isVerified = { $ne: true };
 

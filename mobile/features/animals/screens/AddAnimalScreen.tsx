@@ -5,7 +5,6 @@ import {
   Modal,
   Platform,
   ScrollView,
-  StatusBar,
   Text,
   TextInput,
   TouchableOpacity,
@@ -14,13 +13,14 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Camera, ChevronDown, X, ArrowLeft } from "lucide-react-native";
+import { Camera, ChevronDown, X } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { toast } from "sonner-native";
 import { useUser } from "@clerk/clerk-expo";
 import EarTagGenerator from "@/components/EarTagGenerator";
+import { AppPageHeader } from "@/components/AppPageHeader";
 import { useTheme } from "@/lib/theme";
 import {
   BREED_OPTIONS_BY_SPECIES,
@@ -186,97 +186,92 @@ export function AddAnimalScreen() {
 
   return (
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
-      <View
-        className="absolute top-0 left-0 right-0 h-[220px]"
-        style={{ backgroundColor: "#00643B" }}
+      <AppPageHeader
+        title="Add Animal"
+        subtitle="Register an animal and keep its records connected"
       />
-
-      <View
-        style={{ paddingTop: insets.top + 16 }}
-        className="px-6 pb-6 flex-row items-center gap-4"
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-10 h-10 rounded-full items-center justify-center border border-white/10"
-          style={{
-            backgroundColor: isDark
-              ? "rgba(255,255,255,0.05)"
-              : "rgba(255,255,255,0.2)",
-          }}
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View className="flex-1">
-          <Text className="text-[22px] font-outfit-black text-white leading-tight">
-            Add Animal
-          </Text>
-          <Text className="text-[12px] text-emerald-100 font-outfit-medium opacity-90">
-            Register cattle details for your herd
-          </Text>
-        </View>
-      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        className="flex-1 rounded-t-[32px]"
+        className="flex-1"
         style={{ backgroundColor: colors.background }}
       >
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
             paddingHorizontal: 24,
-            paddingTop: 24,
+            paddingTop: 20,
             paddingBottom: insets.bottom + 120,
           }}
         >
-          <View className="mb-8">
-            <View className="flex-row items-end">
-              {/* Mascot Container */}
-              <View className="w-24 h-24 -mb-2 z-10">
-                <Image
-                  source={{
-                    uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
-                  }}
-                  className="w-full h-full"
-                  resizeMode="contain"
-                />
-              </View>
-
-              {/* Speech Bubble */}
-              <View
-                className="flex-1 rounded-[28px] rounded-bl-none p-5 ml-[-15px] border shadow-sm"
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: isDark
+                ? "rgba(52,211,153,0.25)"
+                : "#bbf7d0",
+              backgroundColor: isDark
+                ? "rgba(16,185,129,0.10)"
+                : "#f0fdf4",
+              padding: 14,
+              marginBottom: 24,
+            }}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 11,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: isDark
+                  ? "rgba(52,211,153,0.14)"
+                  : "#dcfce7",
+              }}
+            >
+              <MaterialCommunityIcons
+                name="information-outline"
+                size={20}
+                color={primaryColor}
+              />
+            </View>
+            <View style={{ flex: 1, minWidth: 0, marginLeft: 11 }}>
+              <Text
                 style={{
-                  backgroundColor: isDark
-                    ? "rgba(0, 100, 59, 0.1)"
-                    : "#eaf7ee",
-                  borderColor: isDark ? "transparent" : "#b7dfc4",
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 14,
                 }}
               >
-                <Text
-                  className="font-outfit-black text-[13px] mb-1"
-                  style={{ color: isDark ? "#a8cdb4" : "#00643b" }}
-                >
-                  Moowie Support
-                </Text>
-                <Text
-                  className="font-outfit-medium text-[12px] leading-[18px]"
-                  style={{ color: colors.textSecondary }}
-                >
-                  Add the animal details once so breeding, calving, and health
-                  records can stay connected.
-                </Text>
-              </View>
+                Before you start
+              </Text>
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                  lineHeight: 17,
+                  marginTop: 2,
+                }}
+              >
+                Ear tag, species, and breed are required. Add a clear photo if
+                one is available.
+              </Text>
             </View>
           </View>
 
-          <View className="items-center mb-8">
+          <View className="items-center mb-7">
             <TouchableOpacity
               onPress={() => setPhotoModalVisible(true)}
-              className="h-24 w-24 rounded-full items-center justify-center border border-dashed overflow-hidden"
+              accessibilityRole="button"
+              accessibilityLabel={imageUri ? "Change animal photo" : "Add animal photo"}
+              className="h-28 w-28 rounded-2xl items-center justify-center border border-dashed overflow-hidden"
               style={{
                 backgroundColor: colors.card,
-                borderColor: colors.border,
+                borderColor: isDark ? colors.textMuted : "#94a3b8",
               }}
             >
               {imageUri ? (
@@ -286,12 +281,24 @@ export function AddAnimalScreen() {
               )}
             </TouchableOpacity>
             <Text
-              className="mt-2 text-[12px] font-outfit-bold text-center"
+              className="mt-3 text-[13px] font-outfit-bold text-center"
               style={{ color: colors.textSecondary }}
             >
               {imageUri ? "Change Photo" : "Add Photo"}
             </Text>
+            <Text
+              style={{
+                color: colors.textMuted,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 11,
+                marginTop: 2,
+              }}
+            >
+              Optional, but helpful for identification
+            </Text>
           </View>
+
+          <SectionLabel title="Animal identification" />
 
           <View className="mb-4">
             <InputField
@@ -299,8 +306,9 @@ export function AddAnimalScreen() {
               value={formData.earTag}
               maxLength={10}
               onChangeText={(text: string) => setField("earTag", text)}
-              placeholder="Tag #"
+              placeholder="Enter the ear tag number"
               error={errors.earTag}
+              required
             />
             <View className="mt-1 ml-1">
               <EarTagGenerator
@@ -317,97 +325,112 @@ export function AddAnimalScreen() {
             </View>
           </View>
 
-          <View className="flex-row gap-3">
-            <SelectField
-              label="Species"
-              value={formData.species}
-              onPress={() =>
-                openModal("species", "Select Species", SPECIES_OPTIONS)
+          <SelectField
+            label="Species"
+            value={formData.species}
+            onPress={() =>
+              openModal("species", "Select Species", SPECIES_OPTIONS)
+            }
+            error={errors.species}
+            required
+          />
+          <SelectField
+            label="Breed"
+            value={formData.breed}
+            onPress={() => {
+              if (!formData.species) {
+                setErrors((prev) => ({
+                  ...prev,
+                  species: "Select species before choosing a breed.",
+                }));
+                toast.dismiss();
+                toast.error("Please select a species first.");
+                return;
               }
-              error={errors.species}
-            />
-            <SelectField
-              label="Breed"
-              value={formData.breed}
-              onPress={() => {
-                if (!formData.species) {
-                  setErrors((prev) => ({
-                    ...prev,
-                    species: "Select species before choosing a breed.",
-                  }));
-                  toast.dismiss();
-                  toast.error("Please select a species first.");
-                  return;
-                }
-                openModal(
-                  "breed",
-                  "Select Breed",
-                  BREED_OPTIONS_BY_SPECIES[formData.species] || [],
-                );
-              }}
-              error={errors.breed}
-            />
-          </View>
+              openModal(
+                "breed",
+                "Select Breed",
+                BREED_OPTIONS_BY_SPECIES[formData.species] || [],
+              );
+            }}
+            error={errors.breed}
+            required
+          />
 
-          <View className="flex-row gap-3">
-            <SelectField
-              label="Color"
-              value={formData.color}
-              onPress={() => {
-                if (!formData.species) {
-                  setErrors((prev) => ({
-                    ...prev,
-                    species: "Select species before choosing a color.",
-                  }));
-                  toast.dismiss();
-                  toast.error("Please select a species first.");
-                  return;
-                }
-                openModal(
-                  "color",
-                  "Select Color",
-                  COLOR_OPTIONS_BY_SPECIES[formData.species] || [],
-                );
-              }}
-            />
-            <InputField
-              label="Brand / Markings"
-              value={formData.brand}
-              maxLength={15}
-              onChangeText={(text: string) => setField("brand", text)}
-              placeholder="Optional"
-            />
-          </View>
+          <SectionLabel title="Additional details" />
 
-          <View className="flex-row gap-3">
-            <SelectField
-              label="Gender"
-              value={formData.gender}
-              onPress={() =>
-                openModal("gender", "Select Gender", ["Female", "Male"])
+          <SelectField
+            label="Color"
+            value={formData.color}
+            onPress={() => {
+              if (!formData.species) {
+                setErrors((prev) => ({
+                  ...prev,
+                  species: "Select species before choosing a color.",
+                }));
+                toast.dismiss();
+                toast.error("Please select a species first.");
+                return;
               }
-            />
-            <SelectField
-              label="Birth Date"
-              value={formData.birthDate || "Select Date"}
-              onPress={() => {
-                setTempDate(
-                  formData.birthDate
-                    ? new Date(formData.birthDate)
-                    : new Date(),
-                );
-                setShowDatePicker(true);
-              }}
-            />
-          </View>
+              openModal(
+                "color",
+                "Select Color",
+                COLOR_OPTIONS_BY_SPECIES[formData.species] || [],
+              );
+            }}
+          />
+          <InputField
+            label="Brand or markings"
+            value={formData.brand}
+            maxLength={15}
+            onChangeText={(text: string) => setField("brand", text)}
+            placeholder="Enter markings if available"
+          />
+          <SelectField
+            label="Sex"
+            value={formData.gender}
+            onPress={() =>
+              openModal("gender", "Select Sex", ["Female", "Male"])
+            }
+          />
+          <SelectField
+            label="Birth date"
+            value={
+              formData.birthDate
+                ? new Date(
+                    `${formData.birthDate}T00:00:00`,
+                  ).toLocaleDateString(undefined, {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : ""
+            }
+            placeholder="Select the birth date"
+            onPress={() => {
+              setTempDate(
+                formData.birthDate
+                  ? new Date(formData.birthDate)
+                  : new Date(),
+              );
+              setShowDatePicker(true);
+            }}
+          />
 
           <TouchableOpacity
             onPress={handleSave}
             disabled={loadingForm}
-            className="rounded-full py-4 items-center mt-4 flex-row justify-center"
+            accessibilityRole="button"
+            accessibilityLabel="Add animal to my farm"
             style={{
               backgroundColor: loadingForm ? "#34d399" : primaryColor,
               shadowColor: primaryColor,
+              minHeight: 56,
+              borderRadius: 16,
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              marginTop: 8,
             }}
           >
             {loadingForm ? (
@@ -415,7 +438,14 @@ export function AddAnimalScreen() {
             ) : (
               <>
                 <MaterialCommunityIcons name="cow" size={20} color="white" />
-                <Text className="text-white font-bold text-lg ml-2">
+                <Text
+                  style={{
+                    color: "#fff",
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 16,
+                    marginLeft: 8,
+                  }}
+                >
                   Add to My Farm
                 </Text>
               </>
@@ -478,29 +508,43 @@ export function AddAnimalScreen() {
                 <X size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-            <View className="flex-row flex-wrap justify-between">
+            <ScrollView
+              style={{ maxHeight: 420 }}
+              showsVerticalScrollIndicator={false}
+            >
               {modal.options.map((opt) => (
                 <TouchableOpacity
                   key={opt}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${opt}`}
                   onPress={() => {
                     if (modal.field) setField(modal.field, opt);
                     setModal({ ...modal, visible: false });
                   }}
-                  className="w-[48%] py-4 rounded-2xl items-center justify-center mb-3 border"
                   style={{
+                    minHeight: 52,
+                    borderRadius: 14,
+                    paddingHorizontal: 16,
+                    alignItems: "flex-start",
+                    justifyContent: "center",
+                    marginBottom: 10,
+                    borderWidth: 1,
                     backgroundColor: isDark ? colors.background : "#f8fafc",
                     borderColor: isDark ? colors.border : "#e2e8f0",
                   }}
                 >
                   <Text
-                    className="font-outfit-bold text-[11px] uppercase tracking-tight text-center px-1"
-                    style={{ color: colors.textPrimary }}
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_600SemiBold",
+                      fontSize: 15,
+                    }}
                   >
                     {opt}
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -615,15 +659,22 @@ const InputField = ({
   keyboardType = "default",
   maxLength,
   error,
+  required = false,
 }: any) => {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const [isFocused, setIsFocused] = useState(false);
   return (
-    <View className="flex-1 mb-4">
+    <View style={{ marginBottom: 18 }}>
       <Text
-        className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-        style={{ color: colors.textMuted }}
+        style={{
+          color: colors.textSecondary,
+          fontFamily: "Outfit_700Bold",
+          fontSize: 13,
+          marginBottom: 8,
+        }}
       >
         {label}
+        {required ? <Text style={{ color: colors.error }}> *</Text> : null}
       </Text>
       <TextInput
         value={value}
@@ -631,19 +682,38 @@ const InputField = ({
         placeholder={placeholder}
         keyboardType={keyboardType}
         maxLength={maxLength}
-        className="border rounded-2xl px-4 py-4 text-sm"
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
         style={{
           backgroundColor: colors.card,
-          borderColor: error ? colors.error : colors.border,
+          borderColor: error
+            ? colors.error
+            : isFocused
+              ? isDark
+                ? colors.primary
+                : "#00643B"
+              : colors.border,
           color: colors.textPrimary,
-          elevation: 1,
+          borderWidth: isFocused || error ? 2 : 1,
+          borderRadius: 14,
+          height: 56,
+          paddingHorizontal: 16,
+          fontFamily: "Outfit_500Medium",
+          fontSize: 16,
+          textAlignVertical: "center",
         }}
         placeholderTextColor={colors.textMuted}
+        accessibilityLabel={label}
       />
       {error ? (
         <Text
-          className="text-[11px] font-outfit-semibold mt-1.5 ml-1"
-          style={{ color: colors.error }}
+          style={{
+            color: colors.error,
+            fontFamily: "Outfit_600SemiBold",
+            fontSize: 12,
+            marginTop: 6,
+            marginLeft: 2,
+          }}
         >
           {error}
         </Text>
@@ -652,43 +722,103 @@ const InputField = ({
   );
 };
 
-const SelectField = ({ label, value, onPress, error }: any) => {
+const SelectField = ({
+  label,
+  value,
+  onPress,
+  error,
+  placeholder = "Select an option",
+  required = false,
+}: any) => {
   const { colors } = useTheme();
   return (
-    <View className="flex-1 mb-4">
+    <View style={{ marginBottom: 18 }}>
       <Text
-        className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-        style={{ color: colors.textMuted }}
+        style={{
+          color: colors.textSecondary,
+          fontFamily: "Outfit_700Bold",
+          fontSize: 13,
+          marginBottom: 8,
+        }}
       >
         {label}
+        {required ? <Text style={{ color: colors.error }}> *</Text> : null}
       </Text>
       <TouchableOpacity
         onPress={onPress}
-        className="border rounded-2xl px-4 py-4 flex-row justify-between items-center"
+        accessibilityRole="button"
+        accessibilityLabel={`${label}. ${value || placeholder}`}
         style={{
           backgroundColor: colors.card,
           borderColor: error ? colors.error : colors.border,
-          minHeight: 54,
-          elevation: 1,
+          borderWidth: error ? 2 : 1,
+          borderRadius: 14,
+          minHeight: 56,
+          paddingHorizontal: 16,
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
         <Text
-          className="font-medium text-sm flex-1 mr-2"
           numberOfLines={1}
-          style={{ color: value ? colors.textPrimary : colors.textMuted }}
+          style={{
+            flex: 1,
+            marginRight: 10,
+            color: value ? colors.textPrimary : colors.textMuted,
+            fontFamily: "Outfit_500Medium",
+            fontSize: 16,
+          }}
         >
-          {value || "Select"}
+          {value || placeholder}
         </Text>
-        <ChevronDown size={16} color={colors.textMuted} />
+        <ChevronDown size={19} color={colors.textMuted} />
       </TouchableOpacity>
       {error ? (
         <Text
-          className="text-[11px] font-outfit-semibold mt-1.5 ml-1"
-          style={{ color: colors.error }}
+          style={{
+            color: colors.error,
+            fontFamily: "Outfit_600SemiBold",
+            fontSize: 12,
+            marginTop: 6,
+            marginLeft: 2,
+          }}
         >
           {error}
         </Text>
       ) : null}
+    </View>
+  );
+};
+
+const SectionLabel = ({ title }: { title: string }) => {
+  const { colors } = useTheme();
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 4,
+        marginBottom: 16,
+      }}
+    >
+      <Text
+        style={{
+          color: colors.textPrimary,
+          fontFamily: "Outfit_800ExtraBold",
+          fontSize: 16,
+        }}
+      >
+        {title}
+      </Text>
+      <View
+        style={{
+          flex: 1,
+          height: 1,
+          backgroundColor: colors.border,
+          marginLeft: 12,
+        }}
+      />
     </View>
   );
 };

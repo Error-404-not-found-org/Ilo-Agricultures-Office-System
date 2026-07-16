@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -6,21 +6,35 @@ import {
   StatusBar,
   FlatList,
   RefreshControl,
+  ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
   ArrowLeft,
   Bell,
   Info,
-  CheckCircle2,
-  AlertCircle,
+  Syringe,
+  HeartPulse,
+  ClipboardCheck,
 } from "lucide-react-native";
 import { useApi } from "@/lib/api";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner-native";
 import { useUser } from "@clerk/clerk-expo";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AsyncState } from "@/components/shared";
+import { useTheme } from "@/lib/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+type NotificationFilter =
+  | "all"
+  | "ai"
+  | "health"
+  | "pregnancy"
+  | "calving"
+  | "reminders"
+  | "cancellations"
+  | "system";
 
 interface NotificationItem {
   _id: string;
@@ -28,6 +42,7 @@ interface NotificationItem {
   message: string;
   type: "ai-request" | "health-request" | "system";
   relatedId?: string;
+  linkType?: "request" | "animal" | "record";
   isRead: boolean;
   createdAt: string;
 }
@@ -35,34 +50,81 @@ interface NotificationItem {
 export default function NotificationsScreen() {
   const router = useRouter();
   const api = useApi();
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
   const { user } = useUser();
-  const role = (user?.publicMetadata?.role as string) || "technician";
   const queryClient = useQueryClient();
-
-  // Brand theme based on role
-  const THEME = {
-    primary: role === "admin" ? "#1e3a5f" : "#00643B",
-    light: role === "admin" ? "#eff6ff" : "#ecfdf5",
-    border: role === "admin" ? "#bfdbfe" : "#a7f3d0",
-    dot: role === "admin" ? "#3b82f6" : "#10b981",
-    unreadBorder:
-      role === "admin"
-        ? "border-blue-100 dark:border-blue-900/50"
-        : "border-emerald-100 dark:border-emerald-900/50",
-    unreadBg:
-      role === "admin"
-        ? "bg-blue-50/50 dark:bg-blue-900/20"
-        : "bg-emerald-50/50 dark:bg-emerald-900/20",
-    markRead:
-      role === "admin"
-        ? "text-blue-700 dark:text-blue-400"
-        : "text-emerald-700 dark:text-emerald-400",
-  };
+  const { data: profile } = useQuery({
+    queryKey: ["user", "me"],
+    queryFn: async () => {
+      const response = await api.get("/user/me");
+      return response.data;
+    },
+  });
+  const role =
+    profile?.role || (user?.publicMetadata?.role as string | undefined);
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [activeFilter, setActiveFilter] = useState<NotificationFilter>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
+
+  const filterOptions: { label: string; value: NotificationFilter }[] = [
+    { label: "All", value: "all" },
+    { label: "AI", value: "ai" },
+    { label: "Health", value: "health" },
+    { label: "Pregnancy", value: "pregnancy" },
+    { label: "Calving", value: "calving" },
+    { label: "Reminders", value: "reminders" },
+    { label: "Cancellations", value: "cancellations" },
+    { label: "System", value: "system" },
+  ];
+
+  const getNotificationCategory = useCallback((item: NotificationItem) => {
+    const searchableText = `${item.title} ${item.message}`.toLowerCase();
+    if (searchableText.includes("cancel")) return "cancellations";
+    if (
+      searchableText.includes("pregnan") ||
+      searchableText.includes("diagnosis") ||
+      searchableText.includes("pd check")
+    ) {
+      return "pregnancy";
+    }
+    if (
+      searchableText.includes("calving") ||
+      searchableText.includes("calve") ||
+      searchableText.includes("dystocia")
+    ) {
+      return "calving";
+    }
+    if (
+      searchableText.includes("reminder") ||
+      searchableText.includes("follow-up") ||
+      searchableText.includes("follow up") ||
+      searchableText.includes("overdue") ||
+      searchableText.includes("pending") ||
+      searchableText.includes("due")
+    ) {
+      return "reminders";
+    }
+    if (item.type === "ai-request") return "ai";
+    if (item.type === "health-request") return "health";
+
+    return "system";
+  }, []);
+
+  const filteredNotifications = useMemo(
+    () =>
+      activeFilter === "all"
+        ? notifications
+        : notifications.filter(
+            (item) => getNotificationCategory(item) === activeFilter,
+          ),
+    [activeFilter, getNotificationCategory, notifications],
+  );
+
+  const unreadCount = notifications.filter((item) => !item.isRead).length;
 
   const fetchNotifications = useCallback(
     async (isRefresh = false, isBackgroundPoll = false) => {
@@ -124,37 +186,101 @@ export default function NotificationsScreen() {
     }
   };
 
-  const getIcon = (type: string, isRead: boolean) => {
-    const opacity = isRead ? 0.6 : 1;
+  const getIcon = (item: NotificationItem) => {
+    const { type, isRead } = item;
+    const opacity = isRead ? 0.55 : 1;
+    if (getNotificationCategory(item) === "pregnancy")
+      return (
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 14,
+            backgroundColor: isDark ? "rgba(139,92,246,0.1)" : "#f5f3ff",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <ClipboardCheck
+            size={20}
+            color={isDark ? "#c4b5fd" : "#7c3aed"}
+            style={{ opacity }}
+          />
+        </View>
+      );
     if (type === "ai-request")
       return (
         <View
-          style={{ backgroundColor: THEME.light }}
-          className="w-12 h-12 dark:bg-emerald-900/30 rounded-full items-center justify-center"
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 14,
+            backgroundColor: isDark ? "rgba(16,185,129,0.1)" : "#ecfdf5",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
         >
-          <CheckCircle2 size={24} color={THEME.primary} style={{ opacity }} />
+          <Syringe size={20} color={colors.primary} style={{ opacity }} />
         </View>
       );
     if (type === "health-request")
       return (
-        <View className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-full items-center justify-center">
-          <AlertCircle size={24} color="#D97706" style={{ opacity }} />
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 14,
+            backgroundColor: isDark ? "rgba(245,158,11,0.1)" : "#fffbeb",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <HeartPulse
+            size={20}
+            color={isDark ? "#fbbf24" : "#d97706"}
+            style={{ opacity }}
+          />
         </View>
       );
     if (type === "system")
       return (
-        <View className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full items-center justify-center">
-          <Bell size={24} color="#475569" style={{ opacity }} />
+        <View
+          style={{
+            width: 42,
+            height: 42,
+            borderRadius: 14,
+            backgroundColor: isDark ? "rgba(148,163,184,0.08)" : "#f1f5f9",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Bell size={20} color={colors.textSecondary} style={{ opacity }} />
         </View>
       );
     return (
-      <View className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full items-center justify-center">
-        <Info size={24} color="#2563EB" style={{ opacity }} />
+      <View
+        style={{
+          width: 42,
+          height: 42,
+          borderRadius: 14,
+          backgroundColor: isDark ? "rgba(59,130,246,0.1)" : "#eff6ff",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Info size={20} color={isDark ? "#60a5fa" : "#2563eb"} style={{ opacity }} />
       </View>
     );
   };
 
   const openNotification = (item: NotificationItem) => {
+    if (role === "farmer" && item.type === "system" && item.linkType === "animal" && item.relatedId) {
+      router.push({
+        pathname: "/(farmer)/animal-details",
+        params: { id: item.relatedId },
+      } as any);
+      return;
+    }
     if (item.type === "ai-request" || item.type === "health-request") {
       const requestId = item.relatedId || item._id;
 
@@ -191,7 +317,14 @@ export default function NotificationsScreen() {
   const renderItem = ({ item }: { item: NotificationItem }) => (
     <TouchableOpacity
       activeOpacity={0.7}
-      className={`flex-row p-4 mb-3 rounded-2xl border ${item.isRead ? "bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700" : `${THEME.unreadBg} ${THEME.unreadBorder} shadow-sm`}`}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.isRead ? "Read" : "Unread"} notification: ${item.title}`}
+      style={{
+        flexDirection: "row",
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+      }}
       onPress={() => {
         if (!item.isRead) {
           api.patch("/notifications/mark-read", { notificationId: item._id });
@@ -203,32 +336,57 @@ export default function NotificationsScreen() {
         openNotification(item);
       }}
     >
-      {getIcon(item.type, item.isRead)}
+      {getIcon(item)}
 
-      <View className="flex-1 ml-4 justify-center">
-        <View className="flex-row justify-between items-start mb-1">
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
           <Text
-            style={{ fontFamily: "Outfit_800ExtraBold" }}
-            className={`text-base flex-1 mr-2 ${item.isRead ? "text-slate-700 dark:text-slate-300" : "text-slate-900 dark:text-white"}`}
+            numberOfLines={2}
+            style={{
+              flex: 1,
+              marginRight: 8,
+              fontFamily: item.isRead
+                ? "Outfit_600SemiBold"
+                : "Outfit_800ExtraBold",
+              fontSize: 14,
+              lineHeight: 18,
+              color: item.isRead ? colors.textSecondary : colors.textPrimary,
+            }}
           >
             {item.title}
           </Text>
           {!item.isRead && (
             <View
-              className="w-2.5 h-2.5 rounded-full mt-1.5"
-              style={{ backgroundColor: THEME.dot }}
+              accessibilityLabel="Unread"
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: 4,
+                marginTop: 5,
+                backgroundColor: colors.primary,
+              }}
             />
           )}
         </View>
         <Text
-          style={{ fontFamily: "Outfit_500Medium" }}
-          className={`text-[13px] leading-5 ${item.isRead ? "text-slate-500 dark:text-slate-400" : "text-slate-600 dark:text-slate-300 font-medium"}`}
+          numberOfLines={3}
+          style={{
+            fontFamily: "Outfit_500Medium",
+            fontSize: 13,
+            lineHeight: 18,
+            color: item.isRead ? colors.textMuted : colors.textSecondary,
+            marginTop: 3,
+          }}
         >
           {item.message}
         </Text>
         <Text
-          style={{ fontFamily: "Outfit_700Bold" }}
-          className="text-slate-400 dark:text-slate-500 text-xs mt-2 font-medium"
+          style={{
+            fontFamily: "Outfit_600SemiBold",
+            color: colors.textMuted,
+            fontSize: 11,
+            marginTop: 6,
+          }}
         >
           {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
         </Text>
@@ -237,73 +395,108 @@ export default function NotificationsScreen() {
   );
 
   return (
-    <View className="flex-1 bg-[#F9FAFB] dark:bg-slate-950">
-      <StatusBar barStyle="light-content" />
-
-      <View
-        className="absolute top-0 left-0 right-0 h-[180px]"
-        style={{ backgroundColor: THEME.primary }}
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={colors.card}
       />
 
-      <View className="pt-14 px-6 mb-6 flex-row items-center justify-between">
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 20,
+          paddingTop: insets.top + 14,
+          paddingBottom: 14,
+          backgroundColor: colors.card,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
-          className="w-10 h-10 bg-white/20 rounded-full items-center justify-center"
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+          }}
         >
-          <ArrowLeft size={22} color="white" />
+          <ArrowLeft size={20} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text
-          style={{ fontFamily: "Outfit_900Black" }}
-          className="text-xl text-white tracking-wide"
+          style={{
+            marginLeft: 12,
+            fontFamily: "Outfit_900Black",
+            fontSize: 20,
+            color: colors.textPrimary,
+          }}
         >
           Notifications
         </Text>
-        {/* Role badge */}
-        <View className="bg-white/20 px-3 py-1 rounded-full">
-          <Text
-            style={{ fontFamily: "Outfit_800ExtraBold" }}
-            className="text-white text-xs uppercase tracking-wider"
-          >
-            {role}
-          </Text>
-        </View>
       </View>
 
       <View
-        className="flex-1 bg-[#F9FAFB] dark:bg-slate-950 rounded-t-[32px] px-6 pt-8 shadow-lg"
         style={{
-          shadowColor: "#000",
-          shadowOpacity: 0.1,
-          shadowRadius: 15,
-          elevation: 8,
+          flex: 1,
+          paddingTop: 18,
         }}
       >
-        <View className="flex-row justify-between items-center mb-6">
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            alignItems: "center",
+            paddingHorizontal: 20,
+            marginBottom: 12,
+          }}
+        >
           <Text
-            style={{ fontFamily: "Outfit_900Black" }}
-            className="text-[20px] text-slate-800 dark:text-white"
+            style={{
+              fontFamily: "Outfit_600SemiBold",
+              fontSize: 12,
+              color: colors.textMuted,
+            }}
           >
-            Recent Updates
+            {filteredNotifications.length} {filteredNotifications.length === 1 ? "update" : "updates"}
           </Text>
 
-          <View className="flex-row items-center gap-3">
-            <TouchableOpacity onPress={markAllAsRead}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <TouchableOpacity
+              onPress={markAllAsRead}
+              disabled={unreadCount === 0}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: unreadCount === 0 }}
+              style={{ opacity: unreadCount === 0 ? 0.4 : 1 }}
+            >
               <Text
-                style={{ fontFamily: "Outfit_800ExtraBold" }}
-                className={`text-xs ${THEME.markRead}`}
+                style={{
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 12,
+                  color: colors.primary,
+                }}
               >
-                Mark read
+                Read all
               </Text>
             </TouchableOpacity>
 
-            <Text className="text-slate-300 dark:text-slate-700 text-xs">
-              •
-            </Text>
-
-            <TouchableOpacity onPress={handleClearAll}>
+            <TouchableOpacity
+              onPress={handleClearAll}
+              disabled={notifications.length === 0}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: notifications.length === 0 }}
+              style={{ opacity: notifications.length === 0 ? 0.4 : 1 }}
+            >
               <Text
-                style={{ fontFamily: "Outfit_800ExtraBold" }}
-                className="text-xs text-red-500"
+                style={{
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 12,
+                  color: colors.textMuted,
+                }}
               >
                 Clear all
               </Text>
@@ -311,12 +504,57 @@ export default function NotificationsScreen() {
           </View>
         </View>
 
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{ flexGrow: 0, height: 34, marginBottom: 10 }}
+          contentContainerStyle={{
+            paddingHorizontal: 20,
+            gap: 8,
+            alignItems: "center",
+          }}
+        >
+          {filterOptions.map((option) => {
+            const isActive = activeFilter === option.value;
+            return (
+              <TouchableOpacity
+                key={option.value}
+                onPress={() => setActiveFilter(option.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: isActive }}
+                style={{
+                  minHeight: 34,
+                  paddingHorizontal: 13,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: isActive ? colors.textPrimary : colors.border,
+                  backgroundColor: isActive
+                    ? colors.textPrimary
+                    : colors.card,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 11,
+                    color: isActive ? colors.background : colors.textSecondary,
+                  }}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
         {loading ? (
-          <View className="flex-1 px-6">
+          <View style={{ flex: 1, paddingHorizontal: 20 }}>
             <AsyncState state="loading" />
           </View>
         ) : loadError ? (
-          <View className="flex-1 px-6">
+          <View style={{ flex: 1, paddingHorizontal: 20 }}>
             <AsyncState
               state="error"
               title="Could not load notifications"
@@ -325,28 +563,32 @@ export default function NotificationsScreen() {
               onAction={() => fetchNotifications(true)}
             />
           </View>
-        ) : notifications.length > 0 ? (
+        ) : filteredNotifications.length > 0 ? (
           <FlatList
-            data={notifications}
+            data={filteredNotifications}
             keyExtractor={(item) => item._id}
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={() => fetchNotifications(true)}
-                colors={[THEME.primary]}
+                colors={[colors.primary]}
+                tintColor={colors.primary}
               />
             }
-            contentContainerStyle={{ paddingBottom: 40 }}
+            contentContainerStyle={{
+              paddingHorizontal: 20,
+              paddingBottom: 40,
+            }}
             renderItem={renderItem}
           />
         ) : (
-          <View className="flex-1 px-6">
+          <View style={{ flex: 1, paddingHorizontal: 20 }}>
             <AsyncState
               state="empty"
-              title="You're all caught up"
-              message="New AI, health, visit, and system updates will appear here."
-              icon={<Bell size={24} color={THEME.primary} />}
+              title={activeFilter === "all" ? "You're all caught up" : `No ${filterOptions.find((option) => option.value === activeFilter)?.label.toLowerCase()} updates`}
+              message={activeFilter === "all" ? "New AI, health, pregnancy, and system updates will appear here." : "Try another filter to see your other notifications."}
+              icon={<Bell size={24} color={colors.primary} />}
             />
           </View>
         )}

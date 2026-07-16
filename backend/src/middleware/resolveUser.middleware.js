@@ -1,17 +1,17 @@
-import { User } from "../models/user.model.js";
-import { getClerkUserId } from "./auth.middleware.js";
+import {
+  getClerkUserId,
+  resolveOrSyncUser,
+} from "../services/auth-user.service.js";
 
 export const resolveUserMiddleware = async (req, res, next) => {
   try {
     const clerkId = getClerkUserId(req);
     if (clerkId) {
-      const user = await User.findOne({ clerkId });
-      if (user && !user.deletedAt) {
-        req.user = user;
-      }
+      req.user = await resolveOrSyncUser(clerkId);
     }
   } catch (err) {
-    console.error("[resolveUserMiddleware ERROR]", err);
+    req.userResolutionError = err;
+    console.error("[resolveUserMiddleware ERROR]", err.message);
   }
   next();
 };

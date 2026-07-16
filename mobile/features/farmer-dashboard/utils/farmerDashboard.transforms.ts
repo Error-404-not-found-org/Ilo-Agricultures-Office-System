@@ -19,11 +19,13 @@ export const buildUpcomingVisits = (
   const healthRequests = toArray<HealthRequest>(healthBody);
 
   const upcomingAI = aiRequests
-    .filter((request) =>
-      ["approved", "scheduled", "in-progress"].includes(
-        request.status?.toLowerCase() ?? "",
-      ),
-    )
+    .filter((request) => {
+      const status = request.status?.toLowerCase() ?? "";
+      return (
+        ["scheduled", "in-progress"].includes(status) &&
+        Boolean(request.scheduledDate)
+      );
+    })
     .map((request) => ({
       ...request,
       serviceType: "ai" as const,
@@ -34,11 +36,13 @@ export const buildUpcomingVisits = (
     }));
 
   const upcomingHealth = healthRequests
-    .filter((request) =>
-      ["approved", "scheduled", "in-progress"].includes(
-        request.status?.toLowerCase() ?? "",
-      ),
-    )
+    .filter((request) => {
+      const status = request.status?.toLowerCase() ?? "";
+      return (
+        ["scheduled", "in-progress"].includes(status) &&
+        Boolean(request.scheduledDate)
+      );
+    })
     .map((request) => ({
       ...request,
       serviceType: "health" as const,
@@ -46,19 +50,19 @@ export const buildUpcomingVisits = (
     }));
 
   return [...upcomingAI, ...upcomingHealth].sort((a, b) => {
-    const dateA = new Date(
-      a.scheduledDate || a.preferredDate || a.createdAt || 0,
-    ).getTime();
-    const dateB = new Date(
-      b.scheduledDate || b.preferredDate || b.createdAt || 0,
-    ).getTime();
+    const dateA = new Date(a.scheduledDate || 0).getTime();
+    const dateB = new Date(b.scheduledDate || 0).getTime();
     return dateA - dateB;
   });
 };
 
 export const filterPendingOutcomes = (body: unknown): AIRequest[] => {
   return toArray<AIRequest>(body).filter((request) => {
-    if (request.status !== "done" || request.isSuccess !== null) return false;
+    if (
+      request.status !== "done" ||
+      request.isSuccess !== null ||
+      Boolean(request.farmerOutcomeReport)
+    ) return false;
     const aiDate = new Date(request.inseminationDate || request.createdAt || 0);
     const today = new Date();
     const diffDays = Math.floor(

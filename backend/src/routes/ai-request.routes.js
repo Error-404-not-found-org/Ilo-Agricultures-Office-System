@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createAIRequest,
+  createReInseminationRequest,
   getMyRequests,
   getAllRequests,
   updateRequestStatus,
@@ -19,6 +20,7 @@ const router = Router();
 
 // Farmer submits a new request
 router.post("/", protectedRoute, requestLimiter, createAIRequest);
+router.post("/:id/re-insemination", protectedRoute, requestLimiter, createReInseminationRequest);
 
 // Farmer views their own requests
 router.get("/my", protectedRoute, getMyRequests);

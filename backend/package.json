@@ -9,6 +9,9 @@
     "check": "node --check src/server.js",
     "seed:longterm-demo": "node scripts/seed-longterm-demo.js",
     "seed:longterm-demo:reset": "node scripts/seed-longterm-demo.js --reset",
+    "migrate:status-vocabulary": "node scripts/migrate-status-vocabulary.js",
+    "migrate:ai-active-request-keys": "node scripts/backfill-ai-active-request-keys.js",
+    "migrate:health-active-case-keys": "node scripts/backfill-health-active-case-keys.js",
     "test": "node --test tests/*.test.js"
   },
   "keywords": [],

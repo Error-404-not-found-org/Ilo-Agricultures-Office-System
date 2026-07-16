@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   ArrowLeft,
   User,
@@ -23,36 +24,49 @@ import {
   Plus,
   Calendar,
   ShieldCheck,
-  Search,
 } from "lucide-react-native";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import * as ImagePicker from "expo-image-picker";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES, COLOR_OPTIONS_BY_SPECIES } from "@/lib/constants";
+import {
+  CATTLE_BREEDS,
+  CATTLE_SPECIES,
+  CATTLE_COLORS,
+  BREED_OPTIONS_BY_SPECIES,
+  COLOR_OPTIONS_BY_SPECIES,
+} from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
 
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
+import {
+  formatAddressLabel,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from "@/constants/address";
 
 export default function RegisterAnimalScreen() {
   const router = useRouter();
   const api = useApi();
   const { isDark, colors } = useTheme();
-  
-  const { farmerId, farmerName, phoneNumber, barangay, municipality, source } = useLocalSearchParams<{
-    farmerId?: string;
-    farmerName?: string;
-    phoneNumber?: string;
-    barangay?: string;
-    municipality?: string;
-    source?: string;
-  }>();
+
+  const { farmerId, farmerName, phoneNumber, barangay, municipality } =
+    useLocalSearchParams<{
+      farmerId?: string;
+      farmerName?: string;
+      phoneNumber?: string;
+      barangay?: string;
+      municipality?: string;
+      source?: string;
+    }>();
 
   const [farmers, setFarmers] = useState<any[]>([]);
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [searchFarmerQuery, setSearchFarmerQuery] = useState("");
   const [showFarmerModal, setShowFarmerModal] = useState(false);
+  const [selectedMunicipality, setSelectedMunicipality] = useState<string | null>(null);
+  const [showMunicipalityDropdown, setShowMunicipalityDropdown] = useState(false);
+  const [searchMunicipality, setSearchMunicipality] = useState("");
 
   const [formData, setFormData] = useState({
     earTag: "",
@@ -71,28 +85,35 @@ export default function RegisterAnimalScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [farmerAnimalsCount, setFarmerAnimalsCount] = useState<number>(0);
 
-  const mutation = useOfflineMutation({
-    url: "/technician/walk-in-livestock",
-    method: "POST",
-    description: `Register Animal: Tag #${formData.earTag}`
-  }, {
-    onSuccess: (result) => {
-      if (result.status === "synced") {
-        toast.success("Animal registered successfully!");
-      }
-      router.back();
+  const mutation = useOfflineMutation(
+    {
+      url: "/technician/walk-in-livestock",
+      method: "POST",
+      description: `Register Animal: Tag #${formData.earTag}`,
     },
-    onError: (err: any) => {
-      toast.error(err.response?.data?.message || "Failed to register animal");
-    }
-  });
+    {
+      onSuccess: (result) => {
+        if (result.status === "synced") {
+          toast.success("Animal registered successfully!");
+        }
+        router.back();
+      },
+      onError: (err: any) => {
+        toast.error(err.response?.data?.message || "Failed to register animal");
+      },
+    },
+  );
 
   const handleFarmerSelect = async (farmer: any) => {
     setSelectedFarmer(farmer);
     setShowFarmerModal(false);
+    if (String(farmer._id || "").startsWith("local:")) {
+      setFarmerAnimalsCount(0);
+      return;
+    }
     try {
       const res = await api.get(`/animals/farmer/${farmer._id}`);
-      const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
       setFarmerAnimalsCount(list.length);
     } catch (err) {
       console.error(err);
@@ -151,7 +172,7 @@ export default function RegisterAnimalScreen() {
 
   const handlePickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
+      mediaTypes: ["images"],
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.5,
@@ -194,11 +215,33 @@ export default function RegisterAnimalScreen() {
     mutation.mutate(payload);
   };
 
-  const filteredFarmers = farmers.filter(
-    (f) =>
-      f.name?.toLowerCase().includes(searchFarmerQuery.toLowerCase()) ||
-      f.address?.phoneNumber?.includes(searchFarmerQuery),
-  );
+  const filteredMunicipalities = useMemo(() => {
+    const options = ["All Municipalities", ...ILOILO_MUNICIPALITY_OPTIONS];
+    const query = searchMunicipality.trim().toLowerCase();
+    return query
+      ? options.filter((item) => item.toLowerCase().includes(query))
+      : options;
+  }, [searchMunicipality]);
+
+  const filteredFarmers = useMemo(() => {
+    const query = searchFarmerQuery.trim().toLowerCase();
+    return farmers.filter((farmer) => {
+      const farmerMunicipality =
+        farmer.address?.city || farmer.address?.municipality || "";
+      if (
+        selectedMunicipality &&
+        farmerMunicipality.toLowerCase() !== selectedMunicipality.toLowerCase()
+      ) {
+        return false;
+      }
+      if (!query) return true;
+      return (
+        farmer.name?.toLowerCase().includes(query) ||
+        farmer.phoneNumber?.includes(query) ||
+        farmer.address?.phoneNumber?.includes(query)
+      );
+    });
+  }, [farmers, searchFarmerQuery, selectedMunicipality]);
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
@@ -216,8 +259,8 @@ export default function RegisterAnimalScreen() {
             color: colors.textPrimary,
           }}
         >
-          Register Livestock
-        </Text>
+          Add Animal
+        </Text> 
       </View>
 
       <KeyboardAvoidingView
@@ -261,15 +304,22 @@ export default function RegisterAnimalScreen() {
                 >
                   {selectedFarmer
                     ? selectedFarmer.name
-                    : "Select Client / Owner..."}
+                    : "Select Farmer / Owner..."}
                 </Text>
                 {selectedFarmer && (
                   <Text
                     style={{ fontFamily: "Outfit_500Medium" }}
-                    className="text-[10px] text-slate-400 dark:text-slate-500 uppercase mt-0.5"
+                    className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5"
+                    numberOfLines={1}
                   >
-                    {selectedFarmer.address?.barangay || "No Barangay"} •{" "}
-                    {selectedFarmer.phoneNumber || selectedFarmer.address?.phoneNumber || "No Phone"}
+                    {formatAddressLabel(
+                      selectedFarmer.address,
+                      selectedFarmer.farmLocation,
+                      "Location not provided",
+                    )} ·{" "}
+                    {selectedFarmer.phoneNumber ||
+                      selectedFarmer.address?.phoneNumber ||
+                      "No contact"}
                   </Text>
                 )}
               </View>
@@ -501,80 +551,237 @@ export default function RegisterAnimalScreen() {
       </KeyboardAvoidingView>
 
       {/* FARMER SELECTION MODAL */}
-      <Modal visible={showFarmerModal} animationType="slide" transparent>
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[85%]">
-            <View className="flex-row justify-between items-center mb-4">
-              <Text
-                style={{
-                  fontFamily: "Outfit_900Black",
-                  fontSize: 18,
-                  color: colors.textPrimary,
-                }}
-              >
-                Select Client
-              </Text>
+      <Modal
+        visible={showFarmerModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowFarmerModal(false)}
+      >
+        <View className="flex-1 bg-slate-900/40 justify-end">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-6 pb-12 max-h-[90%] min-h-[60%] shadow-2xl">
+            <View className="flex-row justify-between items-center mb-5">
+              <View>
+                <Text
+                  style={{ fontFamily: "Outfit_900Black" }}
+                  className="text-2xl text-slate-800 dark:text-white"
+                >
+                  Select Farmer
+                </Text>
+                <Text className="text-xs text-slate-400 dark:text-slate-500 font-outfit-medium mt-0.5">
+                  Choose the owner of the animal
+                </Text>
+              </View>
               <TouchableOpacity
                 onPress={() => setShowFarmerModal(false)}
-                className="p-1 bg-slate-50 dark:bg-slate-800 rounded-full"
+                accessibilityRole="button"
+                accessibilityLabel="Close farmer selection"
+                className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full"
               >
-                <X size={20} color={isDark ? "#94a3b8" : "black"} />
+                <X size={22} color={isDark ? "#94a3b8" : "#64748b"} />
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 mb-4 items-center">
-              <Search
-                size={18}
-                color={isDark ? "#6b7280" : "#94a3b8"}
+            <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 mb-4 shadow-inner">
+              <MaterialCommunityIcons
+                name="magnify"
+                size={20}
+                color={isDark ? "#94a3b8" : "#64748b"}
                 style={{ marginRight: 8 }}
               />
               <TextInput
-                placeholder="Search client by name or phone..."
+                className="flex-1 text-slate-800 dark:text-white font-outfit-medium text-sm p-0"
+                placeholder="Search by name or phone..."
                 placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                className="flex-1 font-outfit-medium text-slate-800 dark:text-white text-sm"
                 value={searchFarmerQuery}
                 onChangeText={setSearchFarmerQuery}
               />
-            </View>
-
-            <FlatList
-              data={filteredFarmers}
-              keyExtractor={(item) => item._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => handleFarmerSelect(item)}
-                  className="py-4 border-b border-slate-100 dark:border-slate-800 flex-row justify-between items-center"
-                >
-                  <View>
-                    <Text
-                      style={{ fontFamily: "Outfit_700Bold" }}
-                      className="text-slate-800 dark:text-white text-base"
-                    >
-                      {item.name}
-                    </Text>
-                    <Text
-                      style={{ fontFamily: "Outfit_500Medium" }}
-                      className="text-xs text-slate-400 dark:text-slate-500 uppercase mt-0.5"
-                    >
-                      {item.address?.barangay || "No Barangay"} •{" "}
-                      {item.address?.phoneNumber || "No Phone"}
-                    </Text>
-                  </View>
-                  <ChevronDown
-                    size={14}
+              {searchFarmerQuery !== "" && (
+                <TouchableOpacity onPress={() => setSearchFarmerQuery("")}>
+                  <MaterialCommunityIcons
+                    name="close-circle"
+                    size={18}
                     color={isDark ? "#6b7280" : "#94a3b8"}
-                    style={{ transform: [{ rotate: "-90deg" }] }}
                   />
                 </TouchableOpacity>
               )}
-              ListEmptyComponent={
-                <View className="py-8 items-center">
-                  <Text className="font-outfit-bold text-slate-400 dark:text-slate-500">
-                    No clients found
-                  </Text>
+            </View>
+
+            <View className="mb-4">
+              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[9px] tracking-wider mb-2 ml-1">
+                Filter by Municipality
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchMunicipality("");
+                  setShowMunicipalityDropdown(!showMunicipalityDropdown);
+                }}
+                className={`bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl p-4 flex-row justify-between items-center shadow-sm ${
+                  showMunicipalityDropdown
+                    ? "border-emerald-500 dark:border-emerald-500 rounded-b-none"
+                    : ""
+                }`}
+              >
+                <Text
+                  style={{ fontFamily: "Outfit_700Bold" }}
+                  className="text-slate-700 dark:text-slate-200 text-sm"
+                >
+                  {selectedMunicipality || "All Municipalities"}
+                </Text>
+                <ChevronDown
+                  size={18}
+                  color={isDark ? "#94a3b8" : "#64748b"}
+                  style={{
+                    transform: [
+                      { rotate: showMunicipalityDropdown ? "180deg" : "0deg" },
+                    ],
+                  }}
+                />
+              </TouchableOpacity>
+
+              {showMunicipalityDropdown && (
+                <View className="bg-white dark:bg-slate-900 border-x border-b border-emerald-500 dark:border-emerald-500 rounded-b-2xl p-4 shadow-lg z-50">
+                  <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-3 py-2 mb-3 shadow-inner">
+                    <MaterialCommunityIcons
+                      name="magnify"
+                      size={18}
+                      color={isDark ? "#94a3b8" : "#64748b"}
+                      style={{ marginRight: 6 }}
+                    />
+                    <TextInput
+                      className="flex-1 text-slate-800 dark:text-white font-outfit-medium text-xs p-0"
+                      placeholder="Type to filter..."
+                      placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                      value={searchMunicipality}
+                      onChangeText={setSearchMunicipality}
+                    />
+                    {searchMunicipality !== "" && (
+                      <TouchableOpacity onPress={() => setSearchMunicipality("")}>
+                        <MaterialCommunityIcons
+                          name="close-circle"
+                          size={16}
+                          color={isDark ? "#6b7280" : "#94a3b8"}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <View className="max-h-48">
+                    <FlatList
+                      data={filteredMunicipalities}
+                      keyExtractor={(item) => item}
+                      nestedScrollEnabled
+                      showsVerticalScrollIndicator
+                      renderItem={({ item }) => {
+                        const isAll = item === "All Municipalities";
+                        const isSelected = isAll
+                          ? selectedMunicipality === null
+                          : selectedMunicipality === item;
+                        return (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setSelectedMunicipality(isAll ? null : item);
+                              setShowMunicipalityDropdown(false);
+                            }}
+                            className="py-2.5 border-b border-slate-50 dark:border-slate-800/50 flex-row justify-between items-center"
+                          >
+                            <Text
+                              style={{
+                                fontFamily: isSelected
+                                  ? "Outfit_700Bold"
+                                  : "Outfit_500Medium",
+                              }}
+                              className={`text-sm ${
+                                isSelected
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-slate-600 dark:text-slate-300"
+                              }`}
+                            >
+                              {item}
+                            </Text>
+                            {isSelected && (
+                              <MaterialCommunityIcons
+                                name="check"
+                                size={16}
+                                color={isDark ? "#34d399" : "#059669"}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      }}
+                    />
+                  </View>
                 </View>
-              }
-            />
+              )}
+            </View>
+
+            {farmers.length === 0 ? (
+              <ActivityIndicator
+                size="large"
+                color={isDark ? "#34d399" : "#00643B"}
+                className="mt-10"
+              />
+            ) : filteredFarmers.length === 0 ? (
+              <View className="flex-1 items-center justify-center py-10">
+                <MaterialCommunityIcons
+                  name="account-search-outline"
+                  size={48}
+                  color={isDark ? "#4b5563" : "#cbd5e1"}
+                />
+                <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium mt-4 text-center">
+                  No farmers found matching filters.
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredFarmers}
+                keyExtractor={(item) => item._id}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => {
+                  const isSelected = selectedFarmer?._id === item._id;
+                  return (
+                    <TouchableOpacity
+                      onPress={() => handleFarmerSelect(item)}
+                      className={`flex-row items-center border p-5 rounded-[24px] mb-3 ${
+                        isSelected
+                          ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20"
+                          : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700"
+                      }`}
+                    >
+                      <View className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-4">
+                        <User size={24} color={isDark ? "#34d399" : "#00643B"} />
+                      </View>
+                      <View className="flex-1">
+                        <Text
+                          style={{ fontFamily: "Outfit_700Bold" }}
+                          className="text-slate-800 dark:text-white text-base"
+                        >
+                          {item.name}
+                        </Text>
+                        <Text
+                          className="text-slate-500 dark:text-slate-400 text-xs mt-0.5"
+                          numberOfLines={1}
+                        >
+                          {formatAddressLabel(
+                            item.address,
+                            item.farmLocation,
+                            "Location not provided",
+                          )} ·{" "}
+                          {item.phoneNumber ||
+                            item.address?.phoneNumber ||
+                            "No contact"}
+                        </Text>
+                      </View>
+                      {isSelected && (
+                        <MaterialCommunityIcons
+                          name="check-circle"
+                          size={24}
+                          color={isDark ? "#34d399" : "#00643B"}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
           </View>
         </View>
       </Modal>
@@ -646,7 +853,11 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={formData.species ? (BREED_OPTIONS_BY_SPECIES[formData.species] || []) : CATTLE_BREEDS}
+              data={
+                formData.species
+                  ? BREED_OPTIONS_BY_SPECIES[formData.species] || []
+                  : CATTLE_BREEDS
+              }
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <TouchableOpacity
@@ -691,7 +902,11 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={formData.species ? (COLOR_OPTIONS_BY_SPECIES[formData.species] || []) : CATTLE_COLORS}
+              data={
+                formData.species
+                  ? COLOR_OPTIONS_BY_SPECIES[formData.species] || []
+                  : CATTLE_COLORS
+              }
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <TouchableOpacity

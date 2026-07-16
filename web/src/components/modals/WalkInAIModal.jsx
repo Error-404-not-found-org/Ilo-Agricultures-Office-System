@@ -15,6 +15,7 @@ import {
   Mail,
   ChevronDown,
 } from "lucide-react";
+import { getAIRequestErrorMessage } from "../../utils/aiRequestErrors";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -37,12 +38,12 @@ import {
   verifyPostpartumWindow,
 } from "../../utils/cattleCore";
 
-const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
-const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
-const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
-const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
+const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content placeholder:text-base-content/55 focus:border-primary focus:outline-none transition-all`;
+const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content focus:border-primary focus:outline-none transition-all appearance-none`;
+const labelClass = `text-[11px] font-bold text-base-content/70 tracking-wide ml-1`;
+const sectionClass = `bg-base-200/40 border border-base-300 rounded-2xl p-4 space-y-4`;
 
-const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
+const WalkInAIModal = ({ isOpen, onClose, onSuccess, preSelectedFarmer, preSelectedAnimal, existingOnly = false }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -135,7 +136,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     onError: (error) => {
       toast.error(
         "Failed to record AI: " +
-          (error.response?.data?.message || error.message),
+          getAIRequestErrorMessage(error, "Please try again."),
       );
     },
   });
@@ -158,6 +159,69 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     },
   });
 
+  const handleAnimalChange = (animalId) => {
+    setSelectedAnimalId(animalId);
+    const animal = animals.find((a) => a._id === animalId);
+    if (!animal) {
+      setShowPregnancyWarning(false);
+      setAgeWarning("");
+      setVwpWarning("");
+      return;
+    }
+
+    if (animal.reproductiveStatus === "Pregnant") {
+      setShowPregnancyWarning(true);
+    } else {
+      setShowPregnancyWarning(false);
+    }
+
+    // Check minimum breeding age eligibility
+    if (animal.birthDate) {
+      const ageCheck = checkInseminationAgeEligibility(
+        animal.birthDate,
+        animal.species,
+      );
+      if (!ageCheck.isEligible) {
+        setAgeWarning(ageCheck.reason);
+      } else {
+        setAgeWarning("");
+      }
+    } else {
+      setAgeWarning("");
+    }
+
+    // Check Postpartum Voluntary Waiting Period
+    if (animal.lastCalvingDate) {
+      const vwpCheck = verifyPostpartumWindow(
+        animal.lastCalvingDate,
+        formData.inseminationDetails.inseminationDate || new Date(),
+        animal.species,
+        animal.breed,
+      );
+      if (!vwpCheck.isSafe) {
+        setVwpWarning(
+          `Postpartum Voluntary Waiting Period violated. Only ${vwpCheck.daysPassed} days have passed since calving on ${new Date(animal.lastCalvingDate).toLocaleDateString()}. Minimum required recovery window is ${vwpCheck.requiredDays} days.`,
+        );
+      } else {
+        setVwpWarning("");
+      }
+    } else {
+      setVwpWarning("");
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && preSelectedAnimal && animals && animals.length > 0) {
+      const found = animals.find((a) => a._id === preSelectedAnimal._id);
+      if (found) {
+        Promise.resolve().then(() => {
+          handleAnimalChange(found._id);
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, preSelectedAnimal, animals]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
@@ -166,6 +230,16 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     };
     if (isOpen) {
       window.addEventListener("keydown", handleKeyDown);
+      Promise.resolve().then(() => {
+        if (existingOnly) setIsExistingRecord(true);
+        if (preSelectedFarmer) {
+          setSelectedFarmerId(preSelectedFarmer._id);
+          setSearchFarmer(preSelectedFarmer.name || "");
+        }
+        if (preSelectedAnimal) {
+          setSelectedAnimalId(preSelectedAnimal._id);
+        }
+      });
     } else {
       Promise.resolve().then(() => {
         setIsExistingRecord(true);
@@ -208,7 +282,9 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, preSelectedFarmer, preSelectedAnimal, existingOnly]);
+
+
 
   const getSelectedAnimalSpecies = () => {
     if (isExistingRecord && selectedAnimalId) {
@@ -346,56 +422,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
     mutation.mutate(submissionData);
   };
 
-  const handleAnimalChange = (animalId) => {
-    setSelectedAnimalId(animalId);
-    const animal = animals.find((a) => a._id === animalId);
-    if (!animal) {
-      setShowPregnancyWarning(false);
-      setAgeWarning("");
-      setVwpWarning("");
-      return;
-    }
 
-    if (animal.reproductiveStatus === "Pregnant") {
-      setShowPregnancyWarning(true);
-    } else {
-      setShowPregnancyWarning(false);
-    }
-
-    // Check minimum breeding age eligibility
-    if (animal.birthDate) {
-      const ageCheck = checkInseminationAgeEligibility(
-        animal.birthDate,
-        animal.species,
-      );
-      if (!ageCheck.isEligible) {
-        setAgeWarning(ageCheck.reason);
-      } else {
-        setAgeWarning("");
-      }
-    } else {
-      setAgeWarning("");
-    }
-
-    // Check Postpartum Voluntary Waiting Period
-    if (animal.lastCalvingDate) {
-      const vwpCheck = verifyPostpartumWindow(
-        animal.lastCalvingDate,
-        formData.inseminationDetails.inseminationDate || new Date(),
-        animal.species,
-        animal.breed,
-      );
-      if (!vwpCheck.isSafe) {
-        setVwpWarning(
-          `Postpartum Voluntary Waiting Period violated. Only ${vwpCheck.daysPassed} days have passed since calving on ${new Date(animal.lastCalvingDate).toLocaleDateString()}. Minimum required recovery window is ${vwpCheck.requiredDays} days.`,
-        );
-      } else {
-        setVwpWarning("");
-      }
-    } else {
-      setVwpWarning("");
-    }
-  };
 
   return (
     <AnimatePresence>
@@ -405,20 +432,20 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[86vh]"
         >
           {/* HEADER */}
-          <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
+          <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-5 py-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
                 <Syringe size={20} />
               </div>
               <div>
                 <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                  Artificial Insemination Hub
+                  Record AI Service
                 </h3>
                 <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                  Field Registry Protocol
+                  Select an existing farmer and animal, then record the service
                 </p>
               </div>
             </div>
@@ -432,7 +459,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
           </div>
 
           {/* SCROLLABLE CONTENT */}
-          <div className="overflow-y-auto flex-1 custom-scrollbar p-6 space-y-6 bg-base-100">
+          <div className="overflow-y-auto flex-1 custom-scrollbar p-5 space-y-5 bg-base-100">
             {config?.isHoliday && (
               <div className="border border-rose-500/20 bg-rose-500/5 p-5 flex items-start gap-4 rounded-2xl">
                 <AlertCircle
@@ -453,7 +480,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
 
             {/* TOGGLES */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-base-200/30 p-3 rounded-2xl border border-base-300">
-              <div className="inline-flex p-1 rounded-xl bg-base-100 border border-base-300">
+              {!existingOnly && <div className="inline-flex p-1 rounded-xl bg-base-100 border border-base-300">
                 <button
                   type="button"
                   onClick={() => setIsExistingRecord(true)}
@@ -468,7 +495,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                 >
                   Full Registration
                 </button>
-              </div>
+              </div>}
 
               <div className="flex gap-2">
                 <button
@@ -484,7 +511,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                   }
                   className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.inseminationDetails.status !== "in-progress" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600" : "border-transparent text-base-content/20"}`}
                 >
-                  Service Completed
+                  Completed
                 </button>
                 <button
                   type="button"
@@ -499,7 +526,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                   }
                   className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.inseminationDetails.status === "in-progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-600" : "border-transparent text-base-content/20"}`}
                 >
-                  Schedule Visit
+                  In progress
                 </button>
               </div>
             </div>
@@ -509,106 +536,120 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                 <div className="flex items-center gap-2 mb-1">
                   <BadgeCheck size={14} className="text-emerald-500" />
                   <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                    Registry Selection
+                    Farmer and animal
                   </h4>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className={labelClass}>Farmer Record</label>
-                    <div className="relative">
-                      <Search
-                        size={16}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
-                      />
-                      <input
-                        value={searchFarmer}
-                        onChange={(e) => {
-                          setSearchFarmer(e.target.value);
-                          setIsDropdownOpen(true);
-                        }}
-                        placeholder="Search field records for owner..."
-                        className={`${inputClass} pl-11`}
-                      />
+                    <label className={labelClass}>Farmer</label>
+                    {preSelectedFarmer ? (
+                      <div className="flex items-center gap-3 h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content/65 select-none">
+                        <User size={14} className="text-emerald-600 shrink-0" />
+                        <span className="truncate">{preSelectedFarmer.name}</span>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <Search
+                          size={16}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20"
+                        />
+                        <input
+                          value={searchFarmer}
+                          onChange={(e) => {
+                            setSearchFarmer(e.target.value);
+                            setIsDropdownOpen(true);
+                          }}
+                          placeholder="Search field records for owner..."
+                          className={`${inputClass} pl-11`}
+                        />
 
-                      <AnimatePresence>
-                        {isDropdownOpen && searchFarmer && (
-                          <motion.div
-                            initial={{ opacity: 0, y: -5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -5 }}
-                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
-                          >
-                            {farmers.filter((f) =>
-                              f.name
-                                .toLowerCase()
-                                .includes(searchFarmer.toLowerCase()),
-                            ).length > 0 ? (
-                              farmers
-                                .filter((f) =>
-                                  f.name
-                                    .toLowerCase()
-                                    .includes(searchFarmer.toLowerCase()),
-                                )
-                                .map((farmer) => (
-                                  <button
-                                    key={farmer._id}
-                                    onClick={() => {
-                                      setSelectedFarmerId(farmer._id);
-                                      setSelectedAnimalId("");
-                                      setSearchFarmer(farmer.name);
-                                      setIsDropdownOpen(false);
-                                    }}
-                                    className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 flex flex-col gap-1 border-b border-base-200/50 last:border-0 cursor-pointer"
-                                  >
-                                    <span className="text-xs font-bold text-base-content block">
-                                      {farmer.name}
-                                    </span>
-                                    <span className="text-[9px] font-black tracking-widest text-base-content/40 uppercase leading-none mt-0.5">
-                                      {farmer.phoneNumber || "No Contact"} •{" "}
-                                      {typeof farmer.address === "string"
-                                        ? farmer.address
-                                        : farmer.address?.barangay ||
-                                          "No Address"}
-                                    </span>
-                                  </button>
-                                ))
-                            ) : (
-                              <div className="py-10 text-center text-[10px] font-black text-base-content/20 uppercase tracking-widest">
-                                No field records found
-                              </div>
-                            )}
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
+                        <AnimatePresence>
+                          {isDropdownOpen && searchFarmer && (
+                            <motion.div
+                              initial={{ opacity: 0, y: -5 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: -5 }}
+                              className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
+                            >
+                              {farmers.filter((f) =>
+                                f.name
+                                  .toLowerCase()
+                                  .includes(searchFarmer.toLowerCase()),
+                              ).length > 0 ? (
+                                farmers
+                                  .filter((f) =>
+                                    f.name
+                                      .toLowerCase()
+                                      .includes(searchFarmer.toLowerCase()),
+                                  )
+                                  .map((farmer) => (
+                                    <button
+                                      key={farmer._id}
+                                      onClick={() => {
+                                        setSelectedFarmerId(farmer._id);
+                                        setSelectedAnimalId("");
+                                        setSearchFarmer(farmer.name);
+                                        setIsDropdownOpen(false);
+                                      }}
+                                      className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 flex flex-col gap-1 border-b border-base-200/50 last:border-0 cursor-pointer"
+                                    >
+                                      <span className="text-xs font-bold text-base-content block">
+                                        {farmer.name}
+                                      </span>
+                                      <span className="text-[9px] font-black tracking-widest text-base-content/40 uppercase leading-none mt-0.5">
+                                        {farmer.phoneNumber || "No Contact"} •{" "}
+                                        {typeof farmer.address === "string"
+                                          ? farmer.address
+                                          : farmer.address?.barangay ||
+                                            "No Address"}
+                                      </span>
+                                    </button>
+                                  ))
+                              ) : (
+                                <div className="py-10 text-center text-[10px] font-black text-base-content/20 uppercase tracking-widest">
+                                  No field records found
+                                </div>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-1.5">
-                    <label className={labelClass}>Animal Asset</label>
-                    <div className="relative">
-                      <select
-                        disabled={!selectedFarmerId || isLoadingAnimals}
-                        value={selectedAnimalId}
-                        onChange={(e) => handleAnimalChange(e.target.value)}
-                        className={`${selectClass} cursor-pointer disabled:opacity-50 ${showPregnancyWarning ? "border-rose-500/50" : ""}`}
-                      >
-                        <option value="">
-                          {isLoadingAnimals
-                            ? "Synchronizing..."
-                            : "Select animal"}
-                        </option>
-                        {animals?.map((a) => (
-                          <option
-                            key={a._id}
-                            value={a._id}
-                            disabled={a.gender === "Male"}
-                          >
-                            Tag #{a.earTag} ({a.breed}) —{" "}
-                            {a.reproductiveStatus || "Normal"}
-                            {a.gender === "Male" ? " (Male - Restricted)" : ""}
+                    <label className={labelClass}>Animal</label>
+                    {preSelectedAnimal ? (
+                      <div className="flex items-center gap-3 h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content/65 select-none">
+                        <Activity size={14} className="text-emerald-600 shrink-0" />
+                        <span className="truncate">Tag #{preSelectedAnimal.earTag} ({preSelectedAnimal.breed || "Crossbreed"})</span>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <select
+                          disabled={!selectedFarmerId || isLoadingAnimals}
+                          value={selectedAnimalId}
+                          onChange={(e) => handleAnimalChange(e.target.value)}
+                          className={`${selectClass} cursor-pointer disabled:opacity-50 ${showPregnancyWarning ? "border-rose-500/50" : ""}`}
+                        >
+                          <option value="">
+                            {isLoadingAnimals
+                              ? "Synchronizing..."
+                              : "Select animal"}
                           </option>
-                        ))}
-                      </select>
-                    </div>
+                          {animals?.map((a) => (
+                            <option
+                              key={a._id}
+                              value={a._id}
+                              disabled={a.gender === "Male"}
+                            >
+                              Tag #{a.earTag} ({a.breed}) —{" "}
+                              {a.reproductiveStatus || "Normal"}
+                              {a.gender === "Male" ? " (Male - Restricted)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {/* Sire Selection for Existing Record */}
@@ -1174,15 +1215,16 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
               <div className="flex items-center gap-2 mb-3 pb-2 border-b border-base-300">
                 <History size={14} className="text-emerald-500" />
                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                  Service Metrics
+                  Service details
                 </h4>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <label className={labelClass}>Mission Date</label>
+                  <label className={labelClass}>AI Service Date</label>
                   <input
                     type="date"
+                    max={new Date().toISOString().split("T")[0]}
                     value={formData.inseminationDetails.inseminationDate}
                     onChange={(e) =>
                       setFormData({
@@ -1197,7 +1239,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className={labelClass}>T-Time</label>
+                  <label className={labelClass}>Service time</label>
                   <input
                     type="time"
                     value={formData.inseminationDetails.time}
@@ -1214,7 +1256,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className={labelClass}>Estrus Cycle</label>
+                  <label className={labelClass}>Estrus type</label>
                   <select
                     value={formData.inseminationDetails.estrus}
                     onChange={(e) =>
@@ -1259,7 +1301,7 @@ const WalkInAIModal = ({ isOpen, onClose, onSuccess }) => {
               {mutation.isPending
                 ? "Synchronizing Registry..."
                 : formData.inseminationDetails.status !== "in-progress"
-                  ? "Save AI Record"
+                  ? "Save AI Service"
                   : "Schedule AI Visit"}
             </button>
           </div>

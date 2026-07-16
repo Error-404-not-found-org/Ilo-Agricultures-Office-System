@@ -19,8 +19,8 @@ export const useFarmerDashboardMutations = () => {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: async ({ id, type }: { id: string; type: string }) => {
-      return await cancelFarmerRequest(api, id, type);
+    mutationFn: async ({ id, type, reason }: { id: string; type: string; reason: string }) => {
+      return await cancelFarmerRequest(api, id, type, reason);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["visits", "upcoming"] });

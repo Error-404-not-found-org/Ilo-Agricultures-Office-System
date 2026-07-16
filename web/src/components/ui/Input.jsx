@@ -13,7 +13,7 @@ export default function Input({
   return (
     <div className={`space-y-1.5 w-full ${className}`}>
       {label && (
-        <label className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1 flex items-center gap-0.5">
+        <label className="label text-xs font-semibold text-base-content/70 flex items-center gap-1">
           {label}
           {required && <span className="text-rose-500 font-bold">*</span>}
         </label>
@@ -29,18 +29,18 @@ export default function Input({
           value={value}
           onChange={onChange}
           placeholder={placeholder}
-          className={`w-full h-11 bg-base-200 border rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:outline-none transition-all ${
+          className={`input input-bordered w-full bg-base-100 text-sm text-base-content ${
             Icon ? "pl-11" : ""
           } ${
             error
-              ? "border-rose-500/50 focus:border-rose-500 focus:ring-1 focus:ring-rose-500/30"
-              : "border-base-300 focus:border-primary"
+              ? "input-error"
+              : "focus:outline-primary"
           }`}
           {...props}
         />
       </div>
       {error && (
-        <span className="text-[10px] font-bold text-rose-500 ml-1.5 block animate-fade-in">
+        <span className="label text-xs font-semibold text-error block" role="alert">
           {error}
         </span>
       )}

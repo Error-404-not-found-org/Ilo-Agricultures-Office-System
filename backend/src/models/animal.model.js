@@ -1,4 +1,9 @@
 import mongoose from "mongoose";
+import { ANIMAL_REPRODUCTIVE_STATUS } from "../domain/livestock-workflow.js";
+import {
+  LEGACY_ANIMAL_REPRODUCTIVE_STATUS,
+  normalizeAnimalReproductiveStatus,
+} from "../domain/status-vocabulary.js";
 
 const AnimalSchema = new mongoose.Schema(
   {
@@ -29,8 +34,12 @@ const AnimalSchema = new mongoose.Schema(
     },
     reproductiveStatus: {
       type: String,
-      enum: ["Normal", "In Heat", "Inseminated", "Likely Pregnant", "Pregnant", "Dry", "Lactating", "Post-partum"],
-      default: "Normal",
+      enum: [
+        ...Object.values(ANIMAL_REPRODUCTIVE_STATUS),
+        ...Object.values(LEGACY_ANIMAL_REPRODUCTIVE_STATUS),
+      ],
+      default: ANIMAL_REPRODUCTIVE_STATUS.NORMAL,
+      set: normalizeAnimalReproductiveStatus,
     },
     
     // Advanced Reproduction Tracking

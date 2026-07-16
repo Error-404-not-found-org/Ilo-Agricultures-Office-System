@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Alert,
   Image,
   TextInput,
   Modal,
@@ -15,7 +14,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import {
-  ArrowLeft,
   Syringe,
   Stethoscope,
   Clock,
@@ -33,6 +31,7 @@ import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { ScreenLayout } from "@/components/ScreenLayout";
+import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
 
 export default function MyRequests() {
   const router = useRouter();
@@ -268,30 +267,7 @@ export default function MyRequests() {
 
   return (
     <ScreenLayout>
-      {/* Header */}
-      <View
-        style={{
-          paddingTop: 10,
-          backgroundColor: colors.card,
-          borderBottomColor: colors.border,
-        }}
-        className="px-6 pb-4 border-b flex-row items-center justify-between"
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-10 h-10 items-center justify-center rounded-full"
-          style={{ backgroundColor: isDark ? colors.background : "#f8fafc" }}
-        >
-          <ArrowLeft size={20} color={primaryColor} />
-        </TouchableOpacity>
-        <Text
-          className="text-lg font-black"
-          style={{ color: colors.textPrimary }}
-        >
-          My Service Requests
-        </Text>
-        <View className="w-10" />
-      </View>
+      <FarmerRequestHeader title="Service Requests" includeSafeTop={false} />
 
       <ScrollView
         className="flex-1"
@@ -309,12 +285,18 @@ export default function MyRequests() {
           />
         }
       >
-        <Text
-          className="text-[10px] font-bold uppercase tracking-widest mb-6"
-          style={{ color: colors.textMuted }}
-        >
-          Track and manage your service requests
-        </Text>
+        <View className="mb-5">
+          <Text
+            className="text-sm leading-5"
+            style={{
+              color: colors.textSecondary,
+              fontFamily: "Outfit_500Medium",
+            }}
+          >
+            Start a service request, check its current status, and review visit
+            updates from the assigned technician.
+          </Text>
+        </View>
 
         {/* Status Filter Bar */}
         <ScrollView

@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   RefreshControl,
   ScrollView,
-  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
@@ -17,6 +16,13 @@ import { toast } from "sonner-native";
 import { Text } from "@/components/ui/Text";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import * as Location from "expo-location";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  ILOILO_CITY_BARANGAYS_BY_DISTRICT,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+  getIloiloBarangayOptions,
+} from "@/constants/address";
 
 import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
 import { RequestListCard } from "../components/RequestListCard";
@@ -27,6 +33,8 @@ import {
   Pagination,
   SelectDropdown,
 } from "@/components/shared";
+
+const NEAR_ME_PREFERENCE_KEY = "technician_request_board_near_me";
 
 export default function TechnicianRequestsScreen() {
   const router = useRouter();
@@ -126,6 +134,7 @@ export default function TechnicianRequestsScreen() {
   const statusOptions = [
     { label: "All Statuses", value: "all" },
     { label: "Pending", value: "pending" },
+    { label: "Claimed — Awaiting Schedule", value: "approved" },
     { label: "Scheduled", value: "scheduled" },
     { label: "In Progress", value: "in_progress" },
     { label: "Completed", value: "completed" },
@@ -150,20 +159,95 @@ export default function TechnicianRequestsScreen() {
     { label: "Oldest First", value: "oldest" },
   ];
 
+  const municipalityOptions = React.useMemo(
+    () => [
+      { label: "All municipalities", value: "" },
+      ...ILOILO_MUNICIPALITY_OPTIONS.map((name) => ({
+        label: name,
+        value: name,
+      })),
+    ],
+    [],
+  );
+
+  const barangayOptions = React.useMemo(() => {
+    if (!municipality) {
+      return [{ label: "All barangays", value: "" }];
+    }
+
+    if (municipality === ILOILO_CITY_NAME) {
+      return [
+        { label: "All barangays", value: "" },
+        ...Object.entries(ILOILO_CITY_BARANGAYS_BY_DISTRICT).flatMap(
+          ([district, barangays]) =>
+            barangays.map((name) => ({
+              label: `${name} · ${district}`,
+              value: `${name} (${district})`,
+            })),
+        ),
+      ];
+    }
+
+    return [
+      { label: "All barangays", value: "" },
+      ...getIloiloBarangayOptions(municipality).map((name) => ({
+        label: name,
+        value: name,
+      })),
+    ];
+  }, [municipality]);
+
   const [locationLoading, setLocationLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const restoreNearMePreference = async () => {
+      try {
+        const savedPreference = await AsyncStorage.getItem(
+          NEAR_ME_PREFERENCE_KEY,
+        );
+        if (savedPreference !== "true") return;
+
+        const { status: foregroundStatus } =
+          await Location.requestForegroundPermissionsAsync();
+        if (foregroundStatus !== "granted") return;
+
+        const currentLoc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (!isMounted || !currentLoc?.coords) return;
+
+        setNearLat(String(currentLoc.coords.latitude));
+        setNearLng(String(currentLoc.coords.longitude));
+        setSortBy("distance");
+      } catch (error) {
+        console.warn("Unable to restore Near Me preference:", error);
+      }
+    };
+
+    restoreNearMePreference();
+    return () => {
+      isMounted = false;
+    };
+    // Restore this device preference once whenever the screen is mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleNearMeToggle = async (enable: boolean) => {
     if (!enable) {
       setNearLat(null);
       setNearLng(null);
       setSortBy("newest");
+      await AsyncStorage.setItem(NEAR_ME_PREFERENCE_KEY, "false");
       toast.success("Location filtering disabled.");
       return;
     }
 
     try {
       setLocationLoading(true);
-      const { status: foregroundStatus } = await Location.requestForegroundPermissionsAsync();
+      const { status: foregroundStatus } =
+        await Location.requestForegroundPermissionsAsync();
       if (foregroundStatus !== "granted") {
         toast.error("Location permission denied. Keeping normal board active.");
         setNearLat(null);
@@ -180,6 +264,7 @@ export default function TechnicianRequestsScreen() {
         setNearLat(String(currentLoc.coords.latitude));
         setNearLng(String(currentLoc.coords.longitude));
         setSortBy("distance");
+        await AsyncStorage.setItem(NEAR_ME_PREFERENCE_KEY, "true");
         toast.success("Location retrieved! Sorting by nearby distance.");
       } else {
         toast.error("Failed to acquire location coordinates.");
@@ -269,7 +354,6 @@ export default function TechnicianRequestsScreen() {
       await handleUpdateStatus(item.id, item.type, nextStatus, {
         status: nextStatus,
         technicianNote: `Started by technician ${dbUser?.name || ""}.`,
-        scheduledDate: new Date().toISOString(),
       });
       toast.success("Request started");
     } catch (err: any) {
@@ -348,8 +432,11 @@ export default function TechnicianRequestsScreen() {
         technicianNote:
           note ||
           `${nextStatus === "approved" ? "Assigned" : nextStatus === "scheduled" ? "Scheduled" : nextStatus === "in-progress" ? "Started" : "Completed"} by technician.`,
-        scheduledDate: scheduledDate.toISOString(),
       };
+
+      if (nextStatus === "scheduled") {
+        payload.scheduledDate = scheduledDate.toISOString();
+      }
 
       if (nextStatus === "done") {
         payload.sireBreed = sireBreed;
@@ -383,45 +470,46 @@ export default function TechnicianRequestsScreen() {
       {/* Premium Header Bar */}
       <View
         style={{
-          backgroundColor: isDark ? "#064e3e" : "#00643B",
-          paddingBottom: 24,
-          borderBottomLeftRadius: 32,
-          borderBottomRightRadius: 32,
-          paddingHorizontal: 24,
-          paddingTop: insets.top + 20,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 20,
+          paddingVertical: 14,
+          backgroundColor: isDark ? colors.card : "#fff",
+          borderBottomWidth: 1,
+          borderColor: colors.border,
+          paddingTop: insets.top + 14,
+          zIndex: 10,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-          <TouchableOpacity
-            onPress={() => router.back()}
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{
+            marginRight: 12,
+            padding: 8,
+            backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+            borderRadius: 999,
+          }}
+        >
+          <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
+        </TouchableOpacity>
+        <View style={{ flex: 1 }}>
+          <Text
+            variant="black"
+            size={20}
+            style={{ color: colors.textPrimary, fontFamily: "Outfit_900Black" }}
+          >
+            Requests Board
+          </Text>
+          <Text
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: "rgba(255,255,255,0.2)",
-              alignItems: "center",
-              justifyContent: "center",
+              fontFamily: "Outfit_500Medium",
+              fontSize: 11,
+              color: colors.textSecondary,
+              marginTop: 1,
             }}
           >
-            <ArrowLeft size={20} color="#fff" />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text variant="black" size={24} style={{ color: "#fff" }}>
-              Requests Board
-            </Text>
-
-            <Text
-              style={{
-                fontFamily: "Outfit_500Medium",
-                fontSize: 12,
-                color: "rgba(255,255,255,0.7)",
-                flexWrap: "wrap",
-                width: "100%",
-              }}
-            >
-              Claim and manage farmer-submitted service requests
-            </Text>
-          </View>
+            Claim and manage farmer-submitted service requests
+          </Text>
         </View>
       </View>
 
@@ -432,17 +520,20 @@ export default function TechnicianRequestsScreen() {
           value={search}
           onChangeText={setSearch}
           placeholder="Search by farmer name or ear tag..."
+          variant="directory"
         />
 
         {/* Segmented Control for Assignment Filter */}
-        <View style={{
-          flexDirection: "row",
-          backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9",
-          borderRadius: 12,
-          padding: 4,
-          marginBottom: 12,
-          marginTop: 12,
-        }}>
+        <View
+          style={{
+            flexDirection: "row",
+            backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9",
+            borderRadius: 12,
+            padding: 4,
+            marginBottom: 12,
+            marginTop: 12,
+          }}
+        >
           <TouchableOpacity
             onPress={() => setAssignment("unassigned")}
             style={{
@@ -450,7 +541,12 @@ export default function TechnicianRequestsScreen() {
               paddingVertical: 10,
               alignItems: "center",
               borderRadius: 8,
-              backgroundColor: assignment === "unassigned" ? (isDark ? "#1e293b" : "#fff") : "transparent",
+              backgroundColor:
+                assignment === "unassigned"
+                  ? isDark
+                    ? "#1e293b"
+                    : "#fff"
+                  : "transparent",
               shadowColor: assignment === "unassigned" ? "#000" : "transparent",
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.1,
@@ -458,11 +554,18 @@ export default function TechnicianRequestsScreen() {
               elevation: assignment === "unassigned" ? 1 : 0,
             }}
           >
-            <Text style={{
-              fontFamily: "Outfit_700Bold",
-              color: assignment === "unassigned" ? colors.primary : (isDark ? "#94a3b8" : "#64748b"),
-              fontSize: 13,
-            }}>
+            <Text
+              style={{
+                fontFamily: "Outfit_700Bold",
+                color:
+                  assignment === "unassigned"
+                    ? colors.primary
+                    : isDark
+                      ? "#94a3b8"
+                      : "#64748b",
+                fontSize: 13,
+              }}
+            >
               Available Requests
             </Text>
           </TouchableOpacity>
@@ -474,7 +577,12 @@ export default function TechnicianRequestsScreen() {
               paddingVertical: 10,
               alignItems: "center",
               borderRadius: 8,
-              backgroundColor: assignment === "mine" ? (isDark ? "#1e293b" : "#fff") : "transparent",
+              backgroundColor:
+                assignment === "mine"
+                  ? isDark
+                    ? "#1e293b"
+                    : "#fff"
+                  : "transparent",
               shadowColor: assignment === "mine" ? "#000" : "transparent",
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.1,
@@ -482,11 +590,18 @@ export default function TechnicianRequestsScreen() {
               elevation: assignment === "mine" ? 1 : 0,
             }}
           >
-            <Text style={{
-              fontFamily: "Outfit_700Bold",
-              color: assignment === "mine" ? colors.primary : (isDark ? "#94a3b8" : "#64748b"),
-              fontSize: 13,
-            }}>
+            <Text
+              style={{
+                fontFamily: "Outfit_700Bold",
+                color:
+                  assignment === "mine"
+                    ? colors.primary
+                    : isDark
+                      ? "#94a3b8"
+                      : "#64748b",
+                fontSize: 13,
+              }}
+            >
               My Claimed Requests
             </Text>
           </TouchableOpacity>
@@ -519,22 +634,33 @@ export default function TechnicianRequestsScreen() {
           </View>
 
           {/* Sort & Near Me Row */}
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 8, alignItems: "center" }}>
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 8,
+              marginTop: 8,
+              alignItems: "center",
+            }}
+          >
             <View style={{ flex: 1 }}>
               <SelectDropdown
                 label="Sort By"
                 options={sortOptions}
                 value={sortBy}
+                highlightSelection={false}
                 onChange={async (val) => {
                   if (val === "distance") {
                     await handleNearMeToggle(true);
                   } else {
+                    if (nearLat) {
+                      await handleNearMeToggle(false);
+                    }
                     setSortBy(val as any);
                   }
                 }}
               />
             </View>
-            
+
             <TouchableOpacity
               onPress={() => handleNearMeToggle(!nearLat)}
               disabled={locationLoading}
@@ -542,7 +668,11 @@ export default function TechnicianRequestsScreen() {
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 6,
-                backgroundColor: nearLat ? colors.primary : (isDark ? "rgba(255,255,255,0.05)" : "#f3f4f6"),
+                backgroundColor: nearLat
+                  ? colors.primary
+                  : isDark
+                    ? "rgba(255,255,255,0.05)"
+                    : "#f3f4f6",
                 borderWidth: 1,
                 borderColor: nearLat ? colors.primary : colors.border,
                 paddingHorizontal: 12,
@@ -557,39 +687,50 @@ export default function TechnicianRequestsScreen() {
                   fontSize: 12,
                 }}
               >
-                {locationLoading ? "Acquiring..." : (nearLat ? "Near Me: ON" : "Near Me")}
+                {locationLoading
+                  ? "Acquiring..."
+                  : nearLat
+                    ? "Near Me: ON"
+                    : "Near Me"}
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Location text filters */}
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-            <View style={{ flex: 1, backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#f3f4f6", borderRadius: 12, paddingHorizontal: 12, height: 42, justifyContent: "center" }}>
-              <TextInput
+          {/* Iloilo location filters */}
+          <View
+            style={{
+              flexDirection: "row",
+              gap: 8,
+              marginTop: 8,
+              marginBottom: 12,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <SelectDropdown
+                label="Municipality"
+                options={municipalityOptions}
                 value={municipality}
-                onChangeText={setMunicipality}
-                placeholder="City/Municipality..."
-                placeholderTextColor={colors.textMuted}
-                style={{
-                  fontFamily: "Outfit_500Medium",
-                  color: colors.textPrimary,
-                  fontSize: 13,
-                  padding: 0,
+                onChange={(value) => {
+                  setMunicipality(value);
+                  setBarangay("");
                 }}
+                searchable
               />
             </View>
-            <View style={{ flex: 1, backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "#f3f4f6", borderRadius: 12, paddingHorizontal: 12, height: 42, justifyContent: "center" }}>
-              <TextInput
+            <View
+              style={{
+                flex: 1,
+                minWidth: 0,
+                opacity: municipality ? 1 : 0.5,
+              }}
+              pointerEvents={municipality ? "auto" : "none"}
+            >
+              <SelectDropdown
+                label="Barangay"
+                options={barangayOptions}
                 value={barangay}
-                onChangeText={setBarangay}
-                placeholder="Barangay..."
-                placeholderTextColor={colors.textMuted}
-                style={{
-                  fontFamily: "Outfit_500Medium",
-                  color: colors.textPrimary,
-                  fontSize: 13,
-                  padding: 0,
-                }}
+                onChange={setBarangay}
+                searchable
               />
             </View>
           </View>
@@ -608,6 +749,7 @@ export default function TechnicianRequestsScreen() {
           />
         ) : (
           <FlatList
+            style={{ marginTop: 24 }}
             data={requests}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (

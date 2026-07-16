@@ -10,7 +10,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {
-  formatBarangayWithDistrict,
   getIloiloBarangayOptions,
   ILOILO_CITY_DISTRICT_OPTIONS,
   ILOILO_CITY_NAME,
@@ -91,17 +90,28 @@ export default function RegisterClient() {
     method: 'POST',
     description: `Register Farmer: ${formData.firstName} ${formData.lastName}`
   }, {
-    onSuccess: () => {
-      toast.success("Client successfully registered.");
+    onSuccess: (result) => {
+      isSubmittingRef.current = false;
+      if (result.status === "synced") {
+        toast.success("Client successfully registered.");
+      }
       queryClient.invalidateQueries({ queryKey: ['technician', 'dashboard'] });
-      router.back();
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.replace("/(technician)/(tabs)/technician.clients" as any);
+      }
     },
     onError: (error: any) => {
       isSubmittingRef.current = false;
       if (error.message !== 'OFFLINE_SAVED') {
         toast.error(error.response?.data?.message || "An error occurred while creating the client.");
       } else {
-        router.back();
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/(technician)/(tabs)/technician.clients" as any);
+        }
       }
     }
   });
@@ -153,7 +163,7 @@ export default function RegisterClient() {
       address: {
         houseNumber: formData.houseNumber,
         street: formData.address || 'N/A',
-        barangay: formatBarangayWithDistrict(formData.barangay, formData.city, formData.district) || 'N/A',
+        barangay: formData.barangay,
         city: formData.city || 'N/A',
         district: formData.city === ILOILO_CITY_NAME ? formData.district : '',
         zipCode: formData.zipCode || '0000',

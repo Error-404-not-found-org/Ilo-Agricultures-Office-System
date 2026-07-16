@@ -11,6 +11,10 @@ export const getTechnicianClients = async (
     limit: String(params.limit),
     ...(params.search ? { search: params.search } : {}),
     ...(params.barangay && params.barangay !== "All" ? { barangay: params.barangay } : {}),
+    ...(params.city && params.city !== "All" ? { city: params.city } : {}),
+    ...(params.accountStatus && params.accountStatus !== "all"
+      ? { accountStatus: params.accountStatus }
+      : {}),
   });
 
   const response = await api.get(`/user?${queryParams.toString()}`);

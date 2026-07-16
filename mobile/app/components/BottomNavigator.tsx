@@ -9,7 +9,6 @@ import {
 } from "react-native";
 import {
   Home,
-  User,
   Users,
   Plus,
   FileText,
@@ -18,7 +17,6 @@ import {
   Camera,
   Sparkles,
   Calendar as CalendarIcon,
-  UserPlus,
   ClipboardList,
 } from "lucide-react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
@@ -220,10 +218,10 @@ const BottomNavigator = ({
           />
 
           <TabItem
-            icon={User}
-            label="Profile"
-            isFocused={isFocused("profile")}
-            onPress={() => navigation.navigate("profile")}
+            icon={ClipboardList}
+            label="Records"
+            isFocused={isFocused("technician.records")}
+            onPress={() => navigation.navigate("technician.records")}
             isDark={isDark}
           />
         </View>

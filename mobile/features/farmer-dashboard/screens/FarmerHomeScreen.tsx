@@ -7,6 +7,8 @@ import {
   Image,
   Modal,
   ActivityIndicator,
+  TextInput,
+  StatusBar,
 } from "react-native";
 import {
   Bell,
@@ -27,11 +29,10 @@ import { useFarmerDashboardMutations } from "../hooks/useFarmerDashboardMutation
 import { toast } from "sonner-native";
 import { format } from "date-fns";
 import { useTheme } from "@/lib/theme";
-import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useTranslation } from "../../../contexts/TranslationContext";
-import { calculateTargetCalvingDate } from "@/lib/cattleCore";
 import { AnimalSummaryCard } from "@/features/farmer-ui/components";
 import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const PRIMARY = "#00643B";
 
@@ -39,6 +40,7 @@ export function FarmerHomeScreen() {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user } = useUser();
   const {
     queryClient,
@@ -61,10 +63,13 @@ export function FarmerHomeScreen() {
     type: string;
     animalTag: string;
   } | null>(null);
+  const [cancellationReason, setCancellationReason] = React.useState("");
   const [selectedActivity, setSelectedActivity] = React.useState<any | null>(
     null,
   );
   const [isModalVisible, setIsModalVisible] = React.useState(false);
+  const [statusBarOnHero, setStatusBarOnHero] = React.useState(true);
+  const [heroHeaderHeight, setHeroHeaderHeight] = React.useState(260);
 
   const [congratsModalVisible, setCongratsModalVisible] = React.useState(false);
   const [congratsInfo, setCongratsInfo] = React.useState<{
@@ -163,17 +168,9 @@ export function FarmerHomeScreen() {
         });
         setReInseminateModalVisible(true);
       } else {
-        const targetDate = calculateTargetCalvingDate(
-          req?.inseminationDate || req?.createdAt || new Date(),
-          req?.animalId?.species || "Cattle",
-          undefined,
-          req?.animalId?.breed,
+        toast.success(
+          "Possible pregnancy signs saved. A technician pregnancy check is still required.",
         );
-        setCongratsInfo({
-          animalName,
-          expectedCalvingDate: format(targetDate, "MMMM d, yyyy"),
-        });
-        setCongratsModalVisible(true);
       }
     } catch (err) {
       console.error(err);
@@ -183,16 +180,31 @@ export function FarmerHomeScreen() {
 
   const handleCancelRequest = (id: string, type: string, animalTag: string) => {
     setCancelInfo({ id, type, animalTag });
+    setCancellationReason("");
     setModalVisible(true);
   };
 
   const handleConfirmCancel = async () => {
     if (!cancelInfo) return;
+    if (!cancellationReason.trim()) {
+      toast.error("Please provide a cancellation reason.");
+      return;
+    }
     const { id, type } = cancelInfo;
     try {
-      await cancelMutation.mutateAsync({ id, type });
-      toast.success("Request cancelled");
+      const result = await cancelMutation.mutateAsync({
+        id,
+        type,
+        reason: cancellationReason.trim(),
+      });
+      toast.success(
+        result?.cancellationStatus === "requested"
+          ? "Cancellation request submitted for review"
+          : "Request cancelled",
+      );
       setModalVisible(false);
+      setCancelInfo(null);
+      setCancellationReason("");
     } catch (err: any) {
       toast.error("Failed to cancel");
     }
@@ -203,17 +215,44 @@ export function FarmerHomeScreen() {
       className="flex-1 bg-[#F9FAFB] dark:bg-slate-950"
       style={{ backgroundColor: colors.background }}
     >
+      <StatusBar
+        barStyle={statusBarOnHero || isDark ? "light-content" : "dark-content"}
+        backgroundColor={statusBarOnHero ? PRIMARY : colors.card}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: insets.top,
+          backgroundColor: statusBarOnHero ? PRIMARY : colors.card,
+          zIndex: 999,
+          elevation: 999,
+        }}
+      />
       <ScrollView
         contentContainerStyle={{ paddingBottom: 150 }}
         showsVerticalScrollIndicator={false}
+        onScroll={(event) => {
+          const nextOnHero =
+            event.nativeEvent.contentOffset.y < heroHeaderHeight - insets.top;
+          if (nextOnHero !== statusBarOnHero) setStatusBarOnHero(nextOnHero);
+        }}
+        scrollEventThrottle={32}
       >
         {/* --- HERO HEADER --- */}
         <View
-          className="pt-16 pb-28 px-6 shadow-md z-0"
+          className="pt-16 px-6 shadow-md z-0"
+          onLayout={(event) =>
+            setHeroHeaderHeight(event.nativeEvent.layout.height)
+          }
           style={{
             backgroundColor: PRIMARY,
-            borderBottomLeftRadius: 16,
-            borderBottomRightRadius: 16,
+            paddingBottom: 144,
+            borderBottomLeftRadius: 30,
+            borderBottomRightRadius: 30,
           }}
         >
           {/* Top Row: Avatar + Greeting & Bell */}
@@ -283,90 +322,203 @@ export function FarmerHomeScreen() {
         </View>
 
         {/* --- OVERVIEW CARD (overlaps header) --- */}
-        <View className="px-6 -mt-16 z-10 w-full mb-8">
+        <View className="px-6 z-10 w-full mb-8" style={{ marginTop: -110 }}>
           <View
-            className="bg-white dark:bg-slate-900 rounded-[32px] p-6 shadow-sm border border-gray-100 dark:border-slate-800"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            style={{
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: 22,
+              padding: 18,
+              shadowColor: "#0f172a",
+              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: isDark ? 0.18 : 0.08,
+              shadowRadius: 18,
+              elevation: 4,
+            }}
           >
-            {/* Card Header */}
-            <View className="flex-row justify-between items-center mb-6">
-              <View className="flex-row items-center">
-                <MapPin size={18} color={isDark ? colors.primary : PRIMARY} />
-                <Text className="text-slate-800 dark:text-white font-outfit-bold ml-1.5 text-base">
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <View
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 11,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5",
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="barn"
+                  size={20}
+                  color={isDark ? colors.primary : PRIMARY}
+                />
+              </View>
+              <View style={{ flex: 1, minWidth: 0, marginLeft: 11 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_800ExtraBold",
+                    fontSize: 16,
+                  }}
+                >
                   {t("myFarmStatus")}
                 </Text>
-              </View>
-              <View className="bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/20">
                 <Text
-                  style={{ color: isDark ? colors.primary : PRIMARY }}
-                  className="text-xs font-outfit-bold tracking-wide"
+                  numberOfLines={1}
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 11,
+                    marginTop: 1,
+                  }}
                 >
-                  Active
+                  {t("farmOverview")}
+                </Text>
+              </View>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 9,
+                  paddingVertical: 5,
+                  borderRadius: 999,
+                  backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#f0fdf4",
+                }}
+              >
+                <View
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: 3,
+                    marginRight: 5,
+                    backgroundColor: isDark ? "#34d399" : "#059669",
+                  }}
+                />
+                <Text
+                  style={{
+                    color: isDark ? "#6ee7b7" : "#047857",
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 10,
+                  }}
+                >
+                  {t("active")}
                 </Text>
               </View>
             </View>
 
-            {/* Main Stat */}
-            <View className="flex-row items-end justify-center mb-8 min-h-[82px]">
-              <Text
-                style={{
-                  color: isDark ? colors.primary : PRIMARY,
-                  fontSize: 72,
-                  lineHeight: 78,
-                  fontFamily: "Outfit_900Black",
-                }}
-              >
-                {isLoading ? "..." : stats.totalAnimals}
-              </Text>
-              <Text
-                className="ml-2 mb-2"
-                style={{
-                  color: colors.textSecondary,
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 18,
-                }}
-              >
-                {t("animals")}
-              </Text>
-            </View>
-
-            {/* Sub Stats Row */}
             <View
-              className="flex-row justify-between border-t border-slate-50 dark:border-slate-800/80 pt-5"
-              style={{ borderTopColor: colors.border }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                borderRadius: 16,
+                padding: 14,
+                marginBottom: 16,
+                backgroundColor: isDark ? "rgba(16,185,129,0.10)" : "#f0fdf4",
+              }}
             >
-              <View className="items-center flex-1">
-                <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-outfit-bold mb-1">
-                  {t("waitingResult")}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 11,
+                  }}
+                >
+                  {t("registeredLivestock")}
                 </Text>
-                <Text className="text-slate-800 dark:text-white font-outfit-black text-xl">
-                  {isLoading ? "-" : stats.pendingResults}
-                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "baseline",
+                    marginTop: 2,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_900Black",
+                      fontSize: 36,
+                      lineHeight: 42,
+                    }}
+                  >
+                    {isLoading ? "-" : stats.totalAnimals}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: colors.textSecondary,
+                      fontFamily: "Outfit_600SemiBold",
+                      fontSize: 12,
+                      marginLeft: 7,
+                    }}
+                  >
+                    {t("animals")}
+                  </Text>
+                </View>
               </View>
               <View
-                className="w-[1px] bg-slate-100 dark:bg-slate-800"
-                style={{ backgroundColor: colors.border }}
-              />
-              <View className="items-center flex-1">
-                <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-outfit-bold mb-1">
-                  {t("pregnant")}
-                </Text>
-                <Text className="text-slate-800 dark:text-white font-outfit-black text-xl">
-                  {isLoading ? "-" : stats.activePregnancies}
-                </Text>
+                style={{
+                  width: 46,
+                  height: 46,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: isDark ? "rgba(16,185,129,0.16)" : "#dcfce7",
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="cow"
+                  size={25}
+                  color={isDark ? "#34d399" : PRIMARY}
+                />
               </View>
+            </View>
+
+            <View style={{ flexDirection: "row", alignItems: "stretch" }}>
+              <FarmStatusMetric
+                label={t("waitingResult")}
+                value={isLoading ? "-" : stats.pendingResults}
+                icon="clipboard-clock-outline"
+                color={isDark ? "#fbbf24" : "#b45309"}
+                tint={isDark ? "rgba(245,158,11,0.14)" : "#fffbeb"}
+              />
               <View
-                className="w-[1px] bg-slate-100 dark:bg-slate-800"
-                style={{ backgroundColor: colors.border }}
+                style={{
+                  width: 1,
+                  marginHorizontal: 10,
+                  backgroundColor: colors.border,
+                }}
               />
-              <View className="items-center flex-1">
-                <Text className="text-slate-400 dark:text-slate-500 text-[10px] uppercase tracking-widest font-outfit-bold mb-1">
-                  {t("calving")}
-                </Text>
-                <Text className="text-slate-800 dark:text-white font-outfit-black text-xl">
-                  {isLoading ? "-" : stats.upcomingCalvings}
-                </Text>
-              </View>
+              <FarmStatusMetric
+                label={t("pregnant")}
+                value={isLoading ? "-" : stats.activePregnancies}
+                icon="heart-pulse"
+                color={isDark ? "#f9a8d4" : "#be185d"}
+                tint={isDark ? "rgba(236,72,153,0.14)" : "#fdf2f8"}
+              />
+              <View
+                style={{
+                  width: 1,
+                  marginHorizontal: 10,
+                  backgroundColor: colors.border,
+                }}
+              />
+              <FarmStatusMetric
+                label={t("calving")}
+                value={isLoading ? "-" : stats.upcomingCalvings}
+                icon="calendar-heart"
+                color={isDark ? "#67e8f9" : "#0e7490"}
+                tint={isDark ? "rgba(6,182,212,0.14)" : "#ecfeff"}
+              />
             </View>
           </View>
         </View>
@@ -515,18 +667,16 @@ export function FarmerHomeScreen() {
                 <View key={visit._id}>
                   <VisitItem
                     title={`${visit.serviceType === "health" ? "Health Check" : "AI Service"} — ${visit.animalId?.earTag || visit.animalId?.animalId || "Animal"}`}
-                    time={
-                      visit.scheduledDate || visit.preferredDate
-                        ? `${visit.status?.toLowerCase() === "pending" ? "Preferred: " : "Scheduled: "}${format(
-                            new Date(
-                              visit.scheduledDate || visit.preferredDate,
-                            ),
-                            "MMM d • h:mm a",
-                          )}`
-                        : "TBA"
-                    }
+                    time={`Scheduled: ${format(
+                      new Date(visit.scheduledDate),
+                      "MMM d • h:mm a",
+                    )}`}
                     technician={visit.technician || "Pending Assignment"}
-                    status={visit.status.toUpperCase()}
+                    status={
+                      visit.cancellationStatus === "requested"
+                        ? "CANCEL REQUESTED"
+                        : visit.status.toUpperCase()
+                    }
                     icon={
                       visit.serviceType === "health" ? (
                         <Stethoscope
@@ -550,9 +700,8 @@ export function FarmerHomeScreen() {
                           : "#F0FDF4"
                     }
                     onCancel={
-                      ["pending", "approved"].includes(
-                        visit.status?.toLowerCase(),
-                      )
+                      visit.status?.toLowerCase() === "scheduled" &&
+                      visit.cancellationStatus !== "requested"
                         ? () =>
                             handleCancelRequest(
                               visit._id,
@@ -731,8 +880,14 @@ export function FarmerHomeScreen() {
                   key={item.id}
                   activeOpacity={0.7}
                   onPress={() => {
-                    setSelectedActivity(item);
-                    setIsModalVisible(true);
+                    router.push({
+                      pathname: "/(farmer)/animal-record-detail",
+                      params: {
+                        animalId: item.animalId?._id || "",
+                        recordId: item.id,
+                        recordType: item.type,
+                      },
+                    });
                   }}
                 >
                   <RecordItem
@@ -926,16 +1081,99 @@ export function FarmerHomeScreen() {
         </View>
       </Modal>
       {cancelInfo && (
-        <ConfirmationModal
+        <Modal
           visible={modalVisible}
-          onClose={() => setModalVisible(false)}
-          onConfirm={handleConfirmCancel}
-          title="Cancel Request?"
-          message={`Are you sure you want to cancel this request for ${cancelInfo.animalTag}?`}
-          confirmText="Yes, Cancel"
-          cancelText="No, Keep it"
-          isDestructive={true}
-        />
+          transparent
+          animationType="fade"
+          onRequestClose={() => setModalVisible(false)}
+        >
+          <View className="flex-1 bg-black/50 justify-center px-5">
+            <View
+              className="rounded-3xl p-5 border"
+              style={{
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              }}
+            >
+              <Text
+                className="text-lg font-outfit-bold"
+                style={{ color: colors.textPrimary }}
+              >
+                Request Cancellation
+              </Text>
+              <Text
+                className="text-sm mt-2 font-outfit-medium"
+                style={{ color: colors.textSecondary }}
+              >
+                Tell the technician why you need to cancel the scheduled visit
+                for {cancelInfo.animalTag}.
+              </Text>
+              <TextInput
+                value={cancellationReason}
+                onChangeText={setCancellationReason}
+                placeholder="Enter cancellation reason"
+                placeholderTextColor={colors.textMuted}
+                multiline
+                maxLength={300}
+                className="mt-4 rounded-2xl p-4 min-h-[110px] font-outfit-medium"
+                style={{
+                  color: colors.textPrimary,
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  borderWidth: 1,
+                  textAlignVertical: "top",
+                }}
+              />
+              <Text
+                className="text-right text-[11px] mt-1"
+                style={{ color: colors.textMuted }}
+              >
+                {cancellationReason.length}/300
+              </Text>
+              <View className="flex-row gap-3 mt-5">
+                <TouchableOpacity
+                  onPress={() => {
+                    setModalVisible(false);
+                    setCancelInfo(null);
+                    setCancellationReason("");
+                  }}
+                  disabled={cancelMutation.isPending}
+                  className="flex-1 py-3 rounded-2xl items-center"
+                  style={{ backgroundColor: colors.background }}
+                >
+                  <Text
+                    className="font-outfit-bold"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    Keep Visit
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleConfirmCancel}
+                  disabled={
+                    cancelMutation.isPending || !cancellationReason.trim()
+                  }
+                  className="flex-1 py-3 rounded-2xl items-center"
+                  style={{
+                    backgroundColor: colors.error,
+                    opacity:
+                      cancelMutation.isPending || !cancellationReason.trim()
+                        ? 0.55
+                        : 1,
+                  }}
+                >
+                  {cancelMutation.isPending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text className="text-white font-outfit-bold">
+                      Submit Request
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       )}
 
       {/* Detail Modal */}
@@ -1708,6 +1946,62 @@ export function FarmerHomeScreen() {
 }
 
 // --- SUB COMPONENTS ---
+
+const FarmStatusMetric = ({
+  label,
+  value,
+  icon,
+  color,
+  tint,
+}: {
+  label: string;
+  value: string | number;
+  icon: string;
+  color: string;
+  tint: string;
+}) => {
+  const { colors } = useTheme();
+
+  return (
+    <View style={{ flex: 1, minWidth: 0 }}>
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: tint,
+          marginBottom: 8,
+        }}
+      >
+        <MaterialCommunityIcons name={icon as any} size={17} color={color} />
+      </View>
+      <Text
+        style={{
+          color: colors.textPrimary,
+          fontFamily: "Outfit_900Black",
+          fontSize: 20,
+          lineHeight: 24,
+        }}
+      >
+        {value}
+      </Text>
+      <Text
+        numberOfLines={2}
+        style={{
+          color: colors.textSecondary,
+          fontFamily: "Outfit_500Medium",
+          fontSize: 10,
+          lineHeight: 13,
+          marginTop: 2,
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+};
 
 const HubOption = ({
   title,

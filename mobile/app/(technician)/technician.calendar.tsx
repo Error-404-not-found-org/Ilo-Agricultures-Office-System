@@ -121,101 +121,97 @@ export default function TechnicianCalendar() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? colors.card : "#fff"} />
 
       {/* Header */}
       <View
         style={{
-          backgroundColor: isDark ? "#064e3e" : "#00643B",
-          paddingBottom: 20,
-          borderBottomLeftRadius: 32,
-          borderBottomRightRadius: 32,
-          paddingHorizontal: 24,
-          paddingTop: insets.top + 20,
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: 20,
+          paddingVertical: 14,
+          backgroundColor: isDark ? colors.card : "#fff",
+          borderBottomWidth: 1,
+          borderColor: colors.border,
+          paddingTop: insets.top + 14,
+          zIndex: 10,
         }}
       >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 16 }}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              accessibilityRole="button"
-              accessibilityLabel="Go back"
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={{
+              padding: 8,
+              backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+              borderRadius: 999,
+            }}
+          >
+            <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
+          </TouchableOpacity>
+          <View>
+            <Text
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: "rgba(255,255,255,0.2)",
-                alignItems: "center",
-                justifyContent: "center",
+                color: colors.textPrimary,
+                fontFamily: "Outfit_900Black",
+                fontSize: 20,
               }}
             >
-              <ArrowLeft size={20} color="#fff" />
-            </TouchableOpacity>
-            <View>
-              <Text
-                style={{
-                  color: "#fff",
-                  fontFamily: "Outfit_900Black",
-                  fontSize: 22,
-                }}
-              >
-                Visit Calendar
-              </Text>
-              <Text
-                style={{
-                  color: "rgba(255,255,255,0.7)",
-                  fontFamily: "Outfit_600SemiBold",
-                  fontSize: 12,
-                }}
-              >
-                {format(currentMonth, "MMMM yyyy")}
-              </Text>
-            </View>
-          </View>
-
-          {/* Changeable Month Buttons */}
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <TouchableOpacity
-              onPress={handlePrevMonth}
-              accessibilityRole="button"
-              accessibilityLabel="Previous month"
+              Visit Calendar
+            </Text>
+            <Text
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: "rgba(255,255,255,0.1)",
-                alignItems: "center",
-                justifyContent: "center",
+                color: colors.textSecondary,
+                fontFamily: "Outfit_600SemiBold",
+                fontSize: 11,
+                marginTop: 1,
               }}
             >
-              <ChevronLeft size={20} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleNextMonth}
-              accessibilityRole="button"
-              accessibilityLabel="Next month"
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: "rgba(255,255,255,0.1)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <ChevronRight size={20} color="#fff" />
-            </TouchableOpacity>
+              {format(currentMonth, "MMMM yyyy")}
+            </Text>
           </View>
         </View>
 
-        {/* Scrollable Day Picker */}
-        <View style={{ marginTop: 24, marginBottom: 10 }}>
+        {/* Changeable Month Buttons */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity
+            onPress={handlePrevMonth}
+            accessibilityRole="button"
+            accessibilityLabel="Previous month"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ChevronLeft size={18} color={isDark ? "#fff" : "#1e293b"} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleNextMonth}
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ChevronRight size={18} color={isDark ? "#fff" : "#1e293b"} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Scrollable Day Picker Container */}
+      <View style={{ backgroundColor: isDark ? colors.card : "#fff", paddingBottom: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderColor: colors.border }}>
+        <View style={{ marginTop: 14 }}>
           <FlatList
             ref={dayListRef}
             data={daysInMonth}
@@ -242,7 +238,7 @@ export default function TechnicianCalendar() {
                     paddingVertical: 12,
                     paddingHorizontal: 10,
                     borderRadius: 20,
-                    backgroundColor: isSelected ? (isDark ? colors.background : "#fff") : "transparent",
+                    backgroundColor: isSelected ? (isDark ? colors.background : "#f1f5f9") : "transparent",
                     minWidth: 45,
                     marginHorizontal: 8,
                   }}
@@ -251,7 +247,7 @@ export default function TechnicianCalendar() {
                     style={{
                       fontSize: 10,
                       fontFamily: "Outfit_700Bold",
-                      color: isSelected ? (isDark ? colors.primary : PRIMARY) : "rgba(255,255,255,0.6)",
+                      color: isSelected ? (isDark ? colors.primary : PRIMARY) : (isDark ? "rgba(255,255,255,0.5)" : "rgba(30,41,59,0.5)"),
                     }}
                   >
                     {format(day, "EEE").toUpperCase()}
@@ -260,7 +256,7 @@ export default function TechnicianCalendar() {
                     style={{
                       fontSize: 16,
                       fontFamily: "Outfit_900Black",
-                      color: isSelected ? (isDark ? colors.primary : PRIMARY) : "#fff",
+                      color: isSelected ? (isDark ? colors.primary : PRIMARY) : colors.textPrimary,
                     }}
                   >
                     {format(day, "d")}
@@ -422,6 +418,24 @@ export default function TechnicianCalendar() {
                 reqTechId &&
                 dbUser?._id &&
                 String(reqTechId) !== String(dbUser._id);
+              const scheduledTime = item.time || item.preferredTime;
+              const farmerName =
+                item.farmerName ||
+                item.farmer ||
+                item.raw?.farmerId?.name;
+              const animalTag =
+                item.animalTag ||
+                item.animal ||
+                item.raw?.animalId?.earTag ||
+                item.raw?.animalId?.animalId;
+              const displayStatus =
+                item.displayStatus || item.status || "Scheduled";
+              const serviceLabel =
+                item.type === "insemination" || item.type === "ai"
+                  ? "AI"
+                  : item.type === "health"
+                    ? "Health"
+                    : item.taskType || "Visit";
 
               return (
                 <TouchableOpacity
@@ -475,8 +489,8 @@ export default function TechnicianCalendar() {
                       }}
                     >
                       {item.overdue
-                        ? `${new Date(item.displayDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · ${item.preferredTime || "09:00 AM"}`
-                        : item.preferredTime || "09:00 AM"}
+                        ? `${new Date(item.displayDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })} · ${scheduledTime || "Time not set"}`
+                        : scheduledTime || "Time not set"}
                     </Text>
                   </View>
                   <View
@@ -558,7 +572,28 @@ export default function TechnicianCalendar() {
                           textTransform: "uppercase",
                         }}
                       >
-                        {item.type}
+                        {serviceLabel}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor: isDark
+                          ? "rgba(59,130,246,0.16)"
+                          : "#eff6ff",
+                        paddingHorizontal: 8,
+                        paddingVertical: 2,
+                        borderRadius: 6,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontFamily: "Outfit_800ExtraBold",
+                          color: isDark ? "#93c5fd" : "#1d4ed8",
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {displayStatus.replaceAll("-", " ")}
                       </Text>
                     </View>
                   </View>
@@ -571,7 +606,7 @@ export default function TechnicianCalendar() {
                   color: colors.textPrimary,
                   }}
                 >
-                  {item.farmerName || item.farmer || "Unknown Farmer"}
+                  {farmerName || "Unknown Farmer"}
                 </Text>
                 <View
                   style={{
@@ -589,7 +624,9 @@ export default function TechnicianCalendar() {
                       color: colors.textSecondary,
                     }}
                   >
-                    {item.location || "Location not set"}
+                    {item.farmLocationLabel ||
+                      item.location ||
+                      "Location not set"}
                   </Text>
                 </View>
 
@@ -604,6 +641,7 @@ export default function TechnicianCalendar() {
                     justifyContent: "space-between",
                   }}
                 >
+                  {animalTag ? (
                   <View
                     style={{
                       flexDirection: "row",
@@ -634,9 +672,10 @@ export default function TechnicianCalendar() {
                         color: colors.textSecondary,
                       }}
                     >
-                      Tag: {item.animalTag || "N/A"}
+                      Tag: {animalTag}
                     </Text>
                   </View>
+                  ) : <View />}
                   <TouchableOpacity
                     onPress={() => {
                       if (item.type === "task") {

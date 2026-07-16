@@ -1,26 +1,13 @@
 import { useEffect, useState } from "react";
 import { Sun, Moon } from "lucide-react";
+import { applyTheme, getStoredTheme, isDarkTheme } from "../lib/theme";
 
 const ThemeToggle = () => {
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("theme") || "emerald",
-  );
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    if (theme === "night") {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-    localStorage.setItem("theme", theme);
-    window.dispatchEvent(new Event("theme-change"));
-  }, [theme]);
+  const [theme, setTheme] = useState(getStoredTheme);
 
   useEffect(() => {
     const handleThemeChange = () => {
-      const currentTheme = localStorage.getItem("theme") || "emerald";
-      setTheme(currentTheme);
+      setTheme(getStoredTheme());
     };
     window.addEventListener("theme-change", handleThemeChange);
     window.addEventListener("storage", handleThemeChange);
@@ -31,19 +18,21 @@ const ThemeToggle = () => {
   }, []);
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === "emerald" ? "night" : "emerald"));
+    const nextTheme = isDarkTheme(theme) ? "breedsmart" : "breedsmart-dark";
+    setTheme(applyTheme(nextTheme));
   };
 
   return (
     <button
       onClick={toggleTheme}
-      className="btn btn-ghost btn-circle text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 relative flex items-center justify-center transition-colors"
-      aria-label="Toggle Theme"
+      className="btn btn-ghost btn-circle text-base-content/70"
+      aria-label={`Switch to ${isDarkTheme(theme) ? "light" : "dark"} mode`}
+      aria-pressed={isDarkTheme(theme)}
     >
-      {theme === "emerald" ? (
-        <Moon size={18} className="text-[#074033] dark:text-emerald-400" />
+      {!isDarkTheme(theme) ? (
+        <Moon size={18} />
       ) : (
-        <Sun size={18} className="text-amber-400" />
+        <Sun size={18} className="text-warning" />
       )}
     </button>
   );

@@ -22,6 +22,10 @@ const notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       required: true,
     },
+    linkType: {
+      type: String,
+      enum: ["request", "animal", "record"],
+    },
     title: {
       type: String,
       required: true,

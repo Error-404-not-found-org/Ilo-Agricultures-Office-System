@@ -1,7 +1,6 @@
 import React, { useState } from "react";
-import { Image, Text, TouchableOpacity, View, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, StatusBar } from "react-native";
+import { Image, Text, TouchableOpacity, View, Modal, TextInput, KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import {
-  ArrowLeft,
   CalendarClock,
   FileText,
   Stethoscope,
@@ -12,7 +11,6 @@ import {
 } from "lucide-react-native";
 import { toast } from "sonner-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useApi } from "@/lib/api";
@@ -26,6 +24,7 @@ import {
   StatusBadge,
   WorkflowProgress,
 } from "@/features/farmer-ui/components";
+import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
 
 const stages = [
   { key: "pending", label: "Submitted" },
@@ -49,48 +48,10 @@ const stageIndex = (status?: string) =>
 
 function HealthRequestDetailSkeleton() {
   const { colors } = useTheme();
-  const insets = useSafeAreaInsets();
-  const router = useRouter();
 
   return (
     <FarmerScreen scroll={false}>
-      <StatusBar barStyle="light-content" />
-
-      <View
-        className="px-5 pb-5"
-        style={{ backgroundColor: colors.primary, paddingTop: insets.top + 16 }}
-      >
-        <View className="flex-row items-center">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-          >
-            <ArrowLeft size={20} color="white" />
-          </TouchableOpacity>
-
-          <View className="flex-1 ml-3 gap-2">
-            <Skeleton
-              width="48%"
-              height={18}
-              radius={4}
-              style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
-            />
-            <Skeleton
-              width="28%"
-              height={10}
-              radius={3}
-              style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-            />
-          </View>
-
-          <Skeleton
-            width={82}
-            height={26}
-            radius={13}
-            style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-          />
-        </View>
-      </View>
+      <FarmerRequestHeader title="Health Request Details" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -192,7 +153,6 @@ export default function HealthRequestDetailScreen() {
   const router = useRouter();
   const api = useApi();
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
 
   const [reasonModalVisible, setReasonModalVisible] = useState(false);
@@ -211,12 +171,15 @@ export default function HealthRequestDetailScreen() {
 
   if (query.isError || !query.data) {
     return (
-      <FarmerScreen style={{ justifyContent: "center", alignItems: "center" }}>
-        <AsyncState
-          state="error"
-          message="This health request could not be loaded."
-          onAction={() => query.refetch()}
-        />
+      <FarmerScreen>
+        <FarmerRequestHeader title="Health Request Details" />
+        <View className="flex-1 items-center justify-center px-6">
+          <AsyncState
+            state="error"
+            message="This health request could not be loaded."
+            onAction={() => query.refetch()}
+          />
+        </View>
       </FarmerScreen>
     );
   }
@@ -235,39 +198,14 @@ export default function HealthRequestDetailScreen() {
       : [];
 
   return (
-    <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
-      {/* Header */}
-      <View
-        className="px-5 pb-5"
-        style={{ backgroundColor: colors.primary, paddingTop: insets.top + 16 }}
+    <FarmerScreen scroll={false}>
+      <FarmerRequestHeader title="Health Request Details" />
+
+      <ScrollView
+        style={{ flex: 1 }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 48 }}
       >
-        <View className="flex-row items-center">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="w-10 h-10 rounded-full bg-white/15 items-center justify-center"
-          >
-            <ArrowLeft size={20} color="white" />
-          </TouchableOpacity>
-
-          <View className="flex-1 ml-3">
-            <Text
-              className="text-white"
-              style={{ fontFamily: "Outfit_700Bold", fontSize: 20 }}
-            >
-              Health Request
-            </Text>
-
-            <Text
-              className="text-emerald-100 mt-0.5"
-              style={{ fontFamily: "Outfit_500Medium", fontSize: 11 }}
-            >
-              {animal.earTag || animal.animalId || "Animal"}
-            </Text>
-          </View>
-
-          <StatusBadge label={request.urgency || "medium"} />
-        </View>
-      </View>
 
       {/* Concern Card */}
       <View
@@ -303,7 +241,10 @@ export default function HealthRequestDetailScreen() {
             </Text>
           </View>
 
-          <StatusBadge label={request.status} />
+          <View className="items-end gap-2">
+            <StatusBadge label={request.status} />
+            <StatusBadge label={`${request.urgency || "medium"} urgency`} />
+          </View>
         </View>
 
         <Text
@@ -532,6 +473,44 @@ export default function HealthRequestDetailScreen() {
       ) : null}
 
       {/* Cancellation Banner/Request block */}
+      {request.cancellationStatus === "rejected" ? (
+        <View
+          className="mx-5 mt-5 p-4 border"
+          style={{
+            borderRadius: 16,
+            backgroundColor: isDark ? "rgba(239, 68, 68, 0.08)" : "#FEF2F2",
+            borderColor: isDark ? "rgba(239, 68, 68, 0.25)" : "#FECACA",
+          }}
+        >
+          <View className="flex-row gap-2 items-start">
+            <AlertCircle size={18} color={colors.error} />
+            <View className="flex-1">
+              <Text
+                className="text-[13px] font-black uppercase tracking-wider"
+                style={{ color: colors.error }}
+              >
+                Cancellation Not Approved
+              </Text>
+              <Text
+                className="text-[11px] mt-1"
+                style={{ color: colors.textSecondary }}
+              >
+                This visit remains scheduled. You may submit another request if
+                the situation changes.
+              </Text>
+              {request.cancellationResponseReason ? (
+                <Text
+                  className="text-[11px] mt-2 italic font-medium"
+                  style={{ color: colors.textSecondary }}
+                >
+                  Reason: {request.cancellationResponseReason}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+      ) : null}
+
       {request.cancellationStatus === "requested" ? (
         <View
           className="mx-5 mt-5 p-4 border"
@@ -738,6 +717,7 @@ export default function HealthRequestDetailScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      </ScrollView>
     </FarmerScreen>
   );
 }

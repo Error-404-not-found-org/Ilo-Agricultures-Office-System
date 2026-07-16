@@ -1,5 +1,11 @@
 import React from "react";
-import { View, FlatList, TouchableOpacity, RefreshControl, Image } from "react-native";
+import {
+  View,
+  FlatList,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { ArrowLeft, UserPlus } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -7,10 +13,18 @@ import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { useTechnicianClients } from "../hooks/useTechnicianClients";
-import { SearchBar, FilterChips, AsyncState, Pagination } from "@/components/shared";
+import { SearchBar, AsyncState, Pagination } from "@/components/shared";
 import { ClientListCard } from "../components/ClientListCard";
 import { BarangayFilter } from "../components/BarangayFilter";
 import { Skeleton } from "@/components/ui/Skeleton";
+
+const FARMER_ACCOUNT_FILTERS = [
+  { label: "All", value: "all" },
+  { label: "Connected", value: "connected" },
+  { label: "No App Account", value: "no_app_account" },
+  { label: "Profile Only", value: "profile_only" },
+  { label: "Blocked", value: "blocked" },
+] as const;
 
 function ClientListSkeleton() {
   const { colors } = useTheme();
@@ -37,7 +51,13 @@ function ClientListSkeleton() {
             <Skeleton width={80} height={20} radius={8} />
           </View>
           <View style={{ height: 1, backgroundColor: colors.border }} />
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
             <View style={{ flexDirection: "row", gap: 16, flex: 1 }}>
               <Skeleton width="30%" height={14} radius={4} />
               <Skeleton width="30%" height={14} radius={4} />
@@ -53,16 +73,19 @@ function ClientListSkeleton() {
 export default function TechnicianClientsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { colors, isDark, themeStyle } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const {
     searchQuery,
     setSearchQuery,
+    selectedMunicipality,
+    setSelectedMunicipality,
     selectedBarangay,
     setSelectedBarangay,
+    selectedAccountStatus,
+    setSelectedAccountStatus,
     page,
     clients,
-    total,
     totalPages,
     isLoading,
     isRefetching,
@@ -72,119 +95,130 @@ export default function TechnicianClientsScreen() {
 
   return (
     <ScreenLayout edges={[]}>
-
       {/* Premium Header Container */}
       <View
         style={{
-          backgroundColor: isDark ? "#064e3e" : "#00643B",
-          paddingBottom: 80,
-          borderBottomLeftRadius: 40,
-          borderBottomRightRadius: 40,
-          paddingHorizontal: 24,
-          paddingTop: insets.top + 20,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 20,
+          paddingVertical: 14,
+          backgroundColor: isDark ? colors.card : "#fff",
+          borderBottomWidth: 1,
+          borderColor: colors.border,
+          paddingTop: insets.top + 14,
+          zIndex: 10,
         }}
       >
-        <View
+        <TouchableOpacity
+          onPress={() => router.back()}
           style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 24,
+            marginRight: 12,
+            padding: 8,
+            backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+            borderRadius: 999,
           }}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "rgba(255,255,255,0.2)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <ArrowLeft size={20} color="#fff" />
-            </TouchableOpacity>
-            <Text variant="black" size={24} style={{ color: "#fff" }}>
-              Farmers
-            </Text>
+          <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
+        </TouchableOpacity>
+        <Text
+          variant="black"
+          size={20}
+          style={{ color: colors.textPrimary, fontFamily: "Outfit_900Black" }}
+        >
+          Farmers
+        </Text>
+      </View>
+
+      <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16 }}>
+        {/* Search Row: Search Bar (Left/Center) + New Farmer Button (Right) */}
+        <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
+          <View style={{ flex: 1 }}>
+            <SearchBar
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search farmers by name or email"
+              variant="directory"
+            />
           </View>
+
           <TouchableOpacity
             onPress={() => router.push("/(technician)/register-client" as any)}
+            accessibilityRole="button"
+            accessibilityLabel="Register a new farmer"
             style={{
-              backgroundColor: "rgba(255,255,255,0.2)",
+              height: 40,
               paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderRadius: 20,
+              borderRadius: 28,
+              backgroundColor: colors.primary,
               flexDirection: "row",
               alignItems: "center",
+              justifyContent: "center",
               gap: 6,
+              marginBottom: 16,
+              shadowColor: colors.primary,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.2,
+              shadowRadius: 8,
+              elevation: 4,
             }}
           >
             <UserPlus size={16} color="#fff" />
-            <Text variant="bold" size={13} style={{ color: "#fff" }}>
+            <Text variant="bold" size={12} style={{ color: "#fff" }}>
               New Farmer
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Moowie Client Relations Header Banner Info Block */}
-        <View
-          style={{
-            backgroundColor: "rgba(255,255,255,0.1)",
-            borderRadius: 24,
-            padding: 16,
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.15)",
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 16,
-          }}
-        >
-          <View style={{ width: 60, height: 60 }}>
-            <Image
-              source={{
-                uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
-              }}
-              style={{ width: "100%", height: "100%" }}
-              resizeMode="contain"
-            />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text variant="extrabold" size={14} style={{ color: "#fff" }}>
-              Moowie Farmer Relations
-            </Text>
-            <Text
-              variant="medium"
-              size={11}
-              style={{
-                color: "rgba(255,255,255,0.8)",
-                lineHeight: 15,
-                marginTop: 2,
-              }}
-            >
-              Managing {total} registered farmers. Keep their contact details
-              updated for service notifications! 👨‍🌾
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      <View style={{ flex: 1, marginTop: -40, paddingHorizontal: 20 }}>
-        {/* Search Bar Input Container */}
-        <SearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search farmer by name or email..."
-        />
-
-        {/* Barangay Filter Dropdown */}
-        <View style={{ marginBottom: 16, flexDirection: "row" }}>
+        {/* Location Dropdowns Filter Row */}
+        <View style={{ width: "100%", marginBottom: 12, flexShrink: 0 }}>
           <BarangayFilter
+            selectedMunicipality={selectedMunicipality}
+            setSelectedMunicipality={setSelectedMunicipality}
             selectedBarangay={selectedBarangay}
             setSelectedBarangay={setSelectedBarangay}
           />
+        </View>
+
+        <View style={{ marginBottom: 16, marginTop: 40 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8 }}
+          >
+            {FARMER_ACCOUNT_FILTERS.map((filter) => {
+              const isActive = selectedAccountStatus === filter.value;
+
+              return (
+                <TouchableOpacity
+                  key={filter.value}
+                  onPress={() => setSelectedAccountStatus(filter.value)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
+                  accessibilityLabel={`Show farmers with ${filter.label.toLowerCase()} status`}
+                  style={{
+                    minHeight: 42,
+                    paddingHorizontal: 18,
+                    borderRadius: 999,
+                    borderWidth: 1,
+                    borderColor: isActive ? colors.primary : colors.border,
+                    backgroundColor: isActive ? colors.primary : colors.card,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text
+                    variant="bold"
+                    size={12}
+                    style={{
+                      color: isActive ? "#fff" : colors.textSecondary,
+                    }}
+                  >
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
 
         {/* Farmers FlatList Container */}
@@ -195,7 +229,7 @@ export default function TechnicianClientsScreen() {
             data={clients}
             keyExtractor={(item) => item._id}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 100 }}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
             refreshControl={
               <RefreshControl
                 refreshing={isRefetching}

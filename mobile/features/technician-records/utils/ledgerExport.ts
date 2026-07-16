@@ -4,6 +4,7 @@ import { toast } from "sonner-native";
 
 export const getDisplayDate = (item: any) => {
   if (!item) return null;
+  if (item.recordDate) return item.recordDate;
   if (item.type === "insemination") {
     return (
       item.inseminationDate ||
@@ -18,8 +19,13 @@ export const getDisplayDate = (item: any) => {
   if (item.type === "calving") {
     return item.date || item.createdAt;
   }
-  if (item.type === "ai-request" || item.type === "health-request") {
-    return item.preferredDate || item.scheduledDate || item.createdAt;
+  if (item.type === "health-request") {
+    return (
+      item.examinationDate ||
+      item.resolvedAt ||
+      item.updatedAt ||
+      item.createdAt
+    );
   }
   return item.createdAt;
 };
@@ -50,7 +56,7 @@ export const handleExportCSV = async (filteredRecords: any[]) => {
           typeStr = "AI Request Visit";
           break;
         case "health-request":
-          typeStr = "Health Check";
+          typeStr = item.recordCategory === "General Note" ? "General Note" : "Health Record";
           break;
       }
 

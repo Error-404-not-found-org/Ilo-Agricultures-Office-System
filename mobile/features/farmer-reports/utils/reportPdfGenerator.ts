@@ -8,6 +8,14 @@ const clean = (value: unknown) =>
     ] || char,
   );
 
+const formatReportDate = (value?: string) => {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "Not recorded"
+    : format(date, "MMMM dd, yyyy - h:mm a");
+};
+
 export function generateSingleRecordPdfHtml(record: ActivityFeedItem): string {
   const animal: any = record.animalId || {};
   const dateVal = record.date ? format(new Date(record.date), "MMMM dd, yyyy") : "N/A";
@@ -25,14 +33,28 @@ export function generateSingleRecordPdfHtml(record: ActivityFeedItem): string {
       ["Animal Tag / ID", animal.earTag || animal.animalId || "N/A"],
       ["Breed", animal.breed || "N/A"],
       ["Species", animal.species || "N/A"],
-      ["A.I. Date", dateVal],
+      ["Request Status", record.details?.status || "Not recorded"],
+      ["Requested", formatReportDate(record.details?.requestedAt)],
+      ["Preferred Visit", formatReportDate(record.details?.preferredDate)],
+      ["Scheduled Visit", formatReportDate(record.details?.scheduledDate)],
+      ["A.I. Performed", formatReportDate(record.details?.serviceDate || record.date)],
       ["Attempt Number", record.details?.attemptNumber?.toString() || "1"],
       ["Sire Breed", record.details?.sireBreed || "N/A"],
       ["Sire Code", record.details?.sireCode || "N/A"],
       ["Estrus Type", record.details?.estrus || "N/A"],
       ["Technician", record.details?.technician || "N/A"],
+      ["Technician Contact", record.details?.technicianPhone || "Not provided"],
       ["A.I. Outcome", record.details?.outcome || "Pending"],
+      ["Outcome Verification", record.details?.outcomeVerificationStatus || "Pending"],
+      ["Outcome Confirmed", formatReportDate(record.details?.outcomeConfirmedAt)],
     ];
+
+    if (record.details?.previousAttemptNumber) {
+      rows.push([
+        "Previous Attempt",
+        `Attempt ${record.details.previousAttemptNumber} on ${formatReportDate(record.details.previousAttemptDate)}`,
+      ]);
+    }
 
     if (record.details?.technicianNote) {
       rows.push(["Technician Notes", record.details.technicianNote]);

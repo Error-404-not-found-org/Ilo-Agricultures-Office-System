@@ -1,7 +1,13 @@
 export interface ClientAddress {
+  houseNumber?: string;
+  street?: string;
+  subdivision?: string;
   barangay?: string;
+  district?: string;
+  city?: string;
   municipality?: string;
   province?: string;
+  detectedAddress?: string;
 }
 
 export interface Client {
@@ -20,6 +26,12 @@ export interface Client {
   isVerified?: boolean;
   imageUrl?: string;
   address?: string | ClientAddress;
+  farmLocation?: {
+    latitude?: number;
+    longitude?: number;
+    detectedAddress?: string;
+    landmark?: string;
+  } | null;
   animalsCount?: number;
   activeCount?: number;
   nextVisit?: string | Date | null;
@@ -31,6 +43,8 @@ export interface ClientsFetchParams {
   limit: number;
   search?: string;
   barangay?: string;
+  city?: string;
+  accountStatus?: string;
 }
 
 export interface ClientsResponse {

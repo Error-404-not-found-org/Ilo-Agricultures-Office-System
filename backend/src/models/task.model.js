@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { TASK_STATUS } from "../domain/status-vocabulary.js";
 
 const TaskSchema = new mongoose.Schema(
   {
@@ -52,8 +53,8 @@ const TaskSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Pending", "In Progress", "Completed", "Cancelled"],
-      default: "Pending",
+      enum: Object.values(TASK_STATUS),
+      default: TASK_STATUS.PENDING,
     },
     dueDate: {
       type: Date,

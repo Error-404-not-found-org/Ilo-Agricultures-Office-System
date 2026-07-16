@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { X, CheckCircle, AlertTriangle, Info, AlertOctagon } from 'lucide-react';
 
 /**
@@ -17,18 +17,26 @@ export default function Modal({
   onConfirm,
   isConfirmLoading = false,
 }) {
-  // Listen for Escape key to close the modal
-  useEffect(() => {
-    const handleEscape = (e) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  const dialogRef = useRef(null);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    if (isOpen && !dialog.open) {
+      if (typeof dialog.showModal === "function") {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute("open", "");
+      }
+    } else if (!isOpen && dialog.open) {
+      if (typeof dialog.close === "function") {
+        dialog.close();
+      } else {
+        dialog.removeAttribute("open");
+      }
+    }
+  }, [isOpen]);
 
   // Size mapping
   const sizeClasses = {
@@ -70,33 +78,35 @@ export default function Modal({
       icon: <Info className="text-primary w-6 h-6" />,
       border: 'border-primary/10',
       text: 'text-primary',
-    }
-  }[type] || typeConfigs.default;
+    },
+  };
+  const typeConfig = typeConfigs[type] || typeConfigs.default;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop overlay */}
-      <div 
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300"
-        onClick={onClose}
-      />
-
-      {/* Modal Dialog Card */}
-      <div className={`relative w-full ${sizeClasses} bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-10 transform scale-100 transition-all duration-300`}>
+    <dialog
+      ref={dialogRef}
+      className="modal modal-bottom sm:modal-middle"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      aria-labelledby="shared-modal-title"
+    >
+      <div className={`modal-box w-full ${sizeClasses} max-h-[90vh] bg-base-100 border border-base-300 p-0 overflow-hidden`}>
         
         {/* Dynamic Type Header Banner */}
-        <div className={`flex items-center gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800 ${type !== 'default' ? typeConfigs.bg : ''}`}>
+        <div className={`flex items-center gap-3 px-5 sm:px-6 py-4 border-b border-base-300 ${type !== 'default' ? typeConfig.bg : ''}`}>
           {type !== 'default' && (
             <div className="shrink-0">
-              {typeConfigs.icon}
+              {typeConfig.icon}
             </div>
           )}
-          <h3 className="font-extrabold text-lg text-slate-800 dark:text-slate-100 uppercase tracking-tight flex-1">
+          <h3 id="shared-modal-title" className="font-bold text-lg text-base-content flex-1">
             {title}
           </h3>
           <button 
             onClick={onClose}
-            className="btn btn-ghost btn-circle btn-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+            className="btn btn-ghost btn-circle btn-sm text-base-content/60"
             aria-label="Close modal"
           >
             <X size={18} />
@@ -104,12 +114,12 @@ export default function Modal({
         </div>
 
         {/* Modal Body Content */}
-        <div className="px-6 py-5 max-h-[70vh] overflow-y-auto text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
+        <div className="px-5 sm:px-6 py-5 max-h-[65vh] overflow-y-auto text-base-content/80 text-sm leading-relaxed">
           {children}
         </div>
 
         {/* Modal Actions Footer */}
-        <div className="px-6 py-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-100 dark:border-slate-900 flex justify-end items-center gap-3">
+        <div className="px-5 sm:px-6 py-4 bg-base-200 border-t border-base-300 flex flex-wrap justify-end items-center gap-3">
           {actions ? (
             actions
           ) : (
@@ -117,7 +127,7 @@ export default function Modal({
               <button 
                 type="button" 
                 onClick={onClose}
-                className="btn btn-sm btn-outline border-slate-300 text-slate-600 dark:text-slate-400 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className="btn btn-sm btn-ghost"
               >
                 {cancelText}
               </button>
@@ -135,6 +145,11 @@ export default function Modal({
           )}
         </div>
       </div>
-    </div>
+      <form method="dialog" className="modal-backdrop bg-neutral/60">
+        <button type="button" onClick={onClose} aria-label="Close dialog">
+          close
+        </button>
+      </form>
+    </dialog>
   );
 }

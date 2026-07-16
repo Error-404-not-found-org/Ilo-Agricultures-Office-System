@@ -12,20 +12,29 @@ export function AnimalCardSkeleton() {
         backgroundColor: colors.card,
         borderColor: colors.border,
         borderWidth: 1,
-        borderRadius: 24,
-        padding: 16,
-        marginBottom: 12,
-        flexDirection: "row",
-        alignItems: "center",
+        borderRadius: 20,
+        marginBottom: 16,
+        overflow: "hidden",
       }}
     >
-      <Skeleton width={48} height={48} radius={12} />
-      <View style={{ flex: 1, marginLeft: 16 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Skeleton width="42%" height={15} radius={6} />
-          <Skeleton width={70} height={18} radius={9} />
+      <Skeleton width="100%" height={154} radius={0} />
+      <View style={{ padding: 16 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Skeleton width="52%" height={17} radius={6} />
+            <Skeleton width="65%" height={12} radius={6} style={{ marginTop: 8 }} />
+          </View>
+          <Skeleton width={76} height={24} radius={12} />
         </View>
-        <Skeleton width="60%" height={11} radius={6} style={{ marginTop: 10 }} />
+        <View style={{ marginTop: 14 }}>
+          <Skeleton width="100%" height={58} radius={13} />
+        </View>
       </View>
     </View>
   );

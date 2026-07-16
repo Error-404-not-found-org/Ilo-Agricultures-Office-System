@@ -5,10 +5,38 @@ import { User } from "../models/user.model.js";
 import { sendPushNotification } from "../lib/push-notifications.js";
 import { getPagination } from "../utils/pagination.js";
 import { sendList } from "../utils/api-response.js";
+import { assertAnimalAccess } from "../policies/animal.policy.js";
 
 export const addMedicalRecord = async (req, res) => {
   try {
-    const { animalId, type, details, note, followUpDate } = req.body;
+    const {
+      animalId,
+      type,
+      details,
+      note,
+      followUpDate,
+      serviceDate,
+      isHistoricalEntry = false,
+      lateEntryReason,
+      performedByName,
+    } = req.body;
+
+    const parsedServiceDate = serviceDate ? new Date(serviceDate) : new Date();
+    if (Number.isNaN(parsedServiceDate.getTime())) {
+      return res.status(400).json({ message: "A valid service date is required" });
+    }
+
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    if (parsedServiceDate > endOfToday) {
+      return res.status(400).json({ message: "Service date cannot be in the future" });
+    }
+
+    if (isHistoricalEntry && !String(lateEntryReason || "").trim()) {
+      return res.status(400).json({
+        message: "Reason for late entry is required for a historical record",
+      });
+    }
 
     const animal = await Animal.findById(animalId);
     if (!animal) return res.status(404).json({ message: "Animal not found" });
@@ -16,7 +44,9 @@ export const addMedicalRecord = async (req, res) => {
     const withdrawalDays = req.body.withdrawalPeriodDays || details?.withdrawalPeriodDays;
     let withdrawalEndDate = null;
     if (withdrawalDays && !isNaN(withdrawalDays)) {
-      withdrawalEndDate = new Date(Date.now() + Number(withdrawalDays) * 24 * 60 * 60 * 1000);
+      withdrawalEndDate = new Date(
+        parsedServiceDate.getTime() + Number(withdrawalDays) * 24 * 60 * 60 * 1000,
+      );
     }
 
     const finalDetails = {
@@ -30,6 +60,11 @@ export const addMedicalRecord = async (req, res) => {
       farmerId: animal.farmerId,
       technicianId: req.user._id,
       type,
+      date: parsedServiceDate,
+      isHistoricalEntry: Boolean(isHistoricalEntry),
+      lateEntryReason: isHistoricalEntry ? String(lateEntryReason).trim() : undefined,
+      performedByName: String(performedByName || "").trim() || undefined,
+      entrySource: isHistoricalEntry ? "historical_entry" : "technician_entry",
       details: finalDetails,
       note,
       followUpDate,
@@ -41,6 +76,7 @@ export const addMedicalRecord = async (req, res) => {
       senderId: req.user._id,
       type: "system",
       relatedId: animal._id,
+      linkType: "animal",
       title: `New ${type} Recorded`,
       message: `A new ${type.toLowerCase()} record has been added to the profile of ${animal.earTag || animal.animalId}.`,
     });
@@ -60,6 +96,7 @@ export const addMedicalRecord = async (req, res) => {
         senderId: req.user._id,
         type: "system",
         relatedId: animal._id,
+        linkType: "animal",
         title,
         message: body,
       });
@@ -79,6 +116,9 @@ export const addMedicalRecord = async (req, res) => {
 export const getAnimalMedicalHistory = async (req, res) => {
   try {
     const { animalId } = req.params;
+    const animal = await Animal.findOne({ _id: animalId, deletedAt: null }).select("farmerId");
+    if (!animal) return res.status(404).json({ message: "Animal not found" });
+    assertAnimalAccess(req.user, animal);
     const { page, limit, skip } = getPagination(req.query);
     const query = { animalId };
 
@@ -113,6 +153,9 @@ export const getAnimalMedicalHistory = async (req, res) => {
 
     res.status(200).json(records);
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ message: error.message, code: error.code });
+    }
     res.status(500).json({ message: "Error fetching medical history", error: error.message });
   }
 };

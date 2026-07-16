@@ -1,25 +1,42 @@
 import { Insemination } from "../models/insemination.model.js";
+import { AI_STATUS } from "../domain/status-vocabulary.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { inngest } from "../config/inngest.js";
-import {
-  calculateTargetCalvingDate,
-  checkInseminationAgeEligibility,
-} from "../utils/cattleCore.js";
+import { checkInseminationAgeEligibility } from "../utils/cattleCore.js";
 import { getReproductionEligibility } from "../domain/reproduction-lifecycle.js";
 import { createAuditLog } from "../services/audit.service.js";
 import { createTimelineEvent } from "../services/animal-timeline.service.js";
 import { assertAIRequestAccess } from "../policies/request.policy.js";
 import { Task } from "../models/task.model.js";
+import { assertStatusTransition } from "../domain/livestock-workflow.js";
+import {
+  completeInsemination,
+  persistBreedingObservationVerification,
+} from "../services/livestock-transaction.service.js";
+import { HealthRequest } from "../models/health-request.model.js";
+import {
+  activeRequestKeyForAnimal,
+  createAIRequestWithGuard,
+  findActiveAIRequest,
+  isVerifiedFailedAIAttempt,
+} from "../services/ai-request-creation.service.js";
+import { isActiveAIRequestStatus } from "../domain/status-vocabulary.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
 export const createAIRequest = async (req, res) => {
   try {
     const farmerId = req.user._id;
-    const { animalId, imageUrl, comment, heatSigns } = req.body;
+    const {
+      animalId,
+      imageUrl,
+      comment,
+      heatSigns,
+      previousAttemptId,
+    } = req.body;
 
     if (!animalId) {
       return res
@@ -33,6 +50,18 @@ export const createAIRequest = async (req, res) => {
       return res
         .status(404)
         .json({ message: "Animal not found or does not belong to you." });
+    }
+
+    // Active-request conflicts take priority over broader reproductive rules.
+    const existingActiveRequest = await findActiveAIRequest(animalId);
+    if (existingActiveRequest) {
+      return res.status(409).json({
+        code: "ACTIVE_AI_REQUEST_EXISTS",
+        message:
+          "You already submitted an active AI service request for this animal. Complete or cancel the existing request before submitting another one.",
+        existingRequestId: existingActiveRequest._id,
+        existingRequestStatus: existingActiveRequest.status,
+      });
     }
 
     // Gender check
@@ -52,12 +81,7 @@ export const createAIRequest = async (req, res) => {
       return res.status(400).json({ message: ageCheck.reason });
     }
 
-    // The workflow guard considers active requests, pregnancy, and postpartum recovery.
-    const existingActiveRequest = await Insemination.findOne({
-      animalId,
-      status: { $in: ["pending", "approved", "in-progress"] },
-      deletedAt: null,
-    });
+    // The remaining workflow guard considers pregnancy and postpartum recovery.
     const activePregnancy = await Pregnancy.findOne({
       animalId,
       deletedAt: null,
@@ -65,7 +89,7 @@ export const createAIRequest = async (req, res) => {
     });
     const eligibility = getReproductionEligibility({
       animal,
-      activeRequest: existingActiveRequest,
+      activeRequest: null,
       activePregnancy,
     });
     if (!eligibility.eligible) {
@@ -76,13 +100,60 @@ export const createAIRequest = async (req, res) => {
       });
     }
 
-    // Calculate attempt number
-    const lastAttempt = await Insemination.findOne({ animalId }).sort({
-      attemptNumber: -1,
-    });
-    const attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
+    const lastPerformedAttempt = await Insemination.findOne({
+      animalId,
+      status: AI_STATUS.DONE,
+      inseminationDate: { $exists: true, $ne: null },
+      deletedAt: null,
+    }).sort({ attemptNumber: -1, inseminationDate: -1 });
 
-    const request = await Insemination.create({
+    let attemptLink = {};
+    if (previousAttemptId) {
+      const previousAttempt = await Insemination.findOne({
+        _id: previousAttemptId,
+        animalId,
+        farmerId,
+        deletedAt: null,
+      });
+      if (!previousAttempt) {
+        return res.status(404).json({
+          code: "PREVIOUS_AI_ATTEMPT_NOT_FOUND",
+          message: "The previous AI attempt could not be found for this animal.",
+        });
+      }
+      if (
+        lastPerformedAttempt &&
+        String(lastPerformedAttempt._id) !== String(previousAttempt._id)
+      ) {
+        return res.status(409).json({
+          code: "PREVIOUS_AI_ATTEMPT_NOT_LATEST",
+          message: "Re-insemination must be linked to the latest performed AI attempt.",
+        });
+      }
+      if (!isVerifiedFailedAIAttempt(previousAttempt)) {
+        return res.status(409).json({
+          code: "PREVIOUS_AI_FAILURE_NOT_VERIFIED",
+          message:
+            "The previous AI attempt must be completed and confirmed unsuccessful before requesting re-insemination.",
+        });
+      }
+      attemptLink = {
+        previousAttemptId: previousAttempt._id,
+        attemptSeriesId:
+          previousAttempt.attemptSeriesId || previousAttempt._id,
+        attemptNumber: (previousAttempt.attemptNumber || 1) + 1,
+      };
+    } else if (lastPerformedAttempt) {
+      return res.status(409).json({
+        code: "REINSEMINATION_CONTEXT_REQUIRED",
+        message:
+          "This animal already has a performed AI attempt. Open that attempt and use Request Re-insemination after its failed outcome is confirmed.",
+        existingRequestId: lastPerformedAttempt._id,
+        existingRequestStatus: lastPerformedAttempt.status,
+      });
+    }
+
+    const request = await createAIRequestWithGuard({
       farmerId,
       animalId,
       imageUrl: imageUrl || "",
@@ -90,8 +161,9 @@ export const createAIRequest = async (req, res) => {
       heatSigns: heatSigns || [],
       preferredDate: req.body.preferredDate || new Date(),
       status: "pending",
-      attemptNumber,
+      ...attemptLink,
     });
+    const attemptNumber = request.attemptNumber;
     await Promise.all([
       createTimelineEvent({
         animalId: animal._id,
@@ -121,6 +193,12 @@ export const createAIRequest = async (req, res) => {
     try {
       const technicians = await User.find({ role: "technician" });
       const admins = await User.find({ role: "admin" });
+      const farmerBarangay = req.user.address?.barangay;
+      const farmerMunicipality =
+        req.user.address?.municipality || req.user.address?.city || "Iloilo";
+      const generalLocation = farmerBarangay
+        ? `Brgy. ${farmerBarangay}, ${farmerMunicipality}`
+        : farmerMunicipality;
 
       const techNotifs = technicians.map((t) =>
         Notification.create({
@@ -129,7 +207,7 @@ export const createAIRequest = async (req, res) => {
           type: "ai-request",
           relatedId: request._id,
           title: `📋 AI Request: Tag #${animal.earTag || animal.animalId}`,
-          message: `Farmer ${req.user.name} requested AI service for a ${animal.species} (${animal.breed}). Preferred date: ${new Date(request.preferredDate).toLocaleDateString()}.`,
+          message: `New AI service request for Tag #${animal.earTag || animal.animalId} in ${generalLocation}. Claim the request to view the farmer's contact details and exact farm location.`,
         }),
       );
 
@@ -152,7 +230,7 @@ export const createAIRequest = async (req, res) => {
           await sendPushNotification(
             t.pushToken,
             `📋 AI Request: Tag #${animal.earTag || animal.animalId}`,
-            `Farmer ${req.user.name} requested AI service for a ${animal.species} (${animal.breed}).`,
+            `New AI service request for Tag #${animal.earTag || animal.animalId} in ${generalLocation}. Claim the request to view the farmer's contact details and exact farm location.`,
           );
         }
       }
@@ -171,9 +249,64 @@ export const createAIRequest = async (req, res) => {
       .json({ message: "AI request submitted successfully.", request });
   } catch (error) {
     console.error("[createAIRequest ERROR]", error.message);
-    res
-      .status(500)
-      .json({ message: error.message || "Failed to submit AI request." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to submit AI request.",
+      code: error.code,
+      ...(error.details || {}),
+    });
+  }
+};
+
+export const createReInseminationRequest = async (req, res) => {
+  req.body = { ...req.body, previousAttemptId: req.params.id };
+  return createAIRequest(req, res);
+};
+
+// Compatibility adapter for installed clients that still post an animalId to
+// /api/animals/re-inseminate. All creation and validation remain canonical.
+export const createLegacyReInseminationRequest = async (req, res) => {
+  try {
+    const animalId = req.body?.animalId;
+    if (!animalId) {
+      return res.status(400).json({
+        message: "Please select an animal for the request.",
+        code: "ANIMAL_REQUIRED",
+      });
+    }
+
+    const latestAttempt = await Insemination.findOne({
+      animalId,
+      farmerId: req.user._id,
+      status: AI_STATUS.DONE,
+      inseminationDate: { $exists: true, $ne: null },
+      deletedAt: null,
+    }).sort({ attemptNumber: -1, inseminationDate: -1 });
+
+    if (!latestAttempt) {
+      return res.status(409).json({
+        code: "PREVIOUS_AI_ATTEMPT_NOT_FOUND",
+        message: "No performed AI attempt is available for re-insemination.",
+      });
+    }
+
+    res.set("Deprecation", "true");
+    res.set("Sunset", "Thu, 01 Oct 2026 00:00:00 GMT");
+    res.set(
+      "Link",
+      `</api/ai-request/${latestAttempt._id}/re-insemination>; rel="successor-version"`,
+    );
+    req.params.id = String(latestAttempt._id);
+    req.body = {
+      ...req.body,
+      comment: req.body.comment || req.body.technicianNote,
+    };
+    return createReInseminationRequest(req, res);
+  } catch (error) {
+    console.error("[createLegacyReInseminationRequest ERROR]", error.message);
+    return res.status(500).json({
+      message: "Failed to resolve the previous AI attempt.",
+      code: "REINSEMINATION_COMPATIBILITY_FAILED",
+    });
   }
 };
 
@@ -193,6 +326,7 @@ export const getMyRequests = async (req, res) => {
         .populate("animalId", "animalId earTag species breed imageUrl")
         .populate("approvedBy", "name")
         .populate("technicianId", "name")
+        .populate("previousAttemptId", "attemptNumber inseminationDate outcome outcomeConfirmedAt")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -228,6 +362,7 @@ export const getAllRequests = async (req, res) => {
           .populate("animalId", "animalId earTag species breed imageUrl")
           .populate("approvedBy", "name")
           .populate("technicianId", "name")
+          .populate("previousAttemptId", "attemptNumber inseminationDate outcome outcomeConfirmedAt approvedBy technicianId")
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limitNum)
@@ -249,6 +384,7 @@ export const getAllRequests = async (req, res) => {
       .populate("animalId", "animalId earTag species breed imageUrl")
       .populate("approvedBy", "name")
       .populate("technicianId", "name")
+      .populate("previousAttemptId", "attemptNumber inseminationDate outcome outcomeConfirmedAt approvedBy technicianId")
       .sort({ createdAt: -1 })
       .limit(100);
 
@@ -275,14 +411,7 @@ export const updateRequestStatus = async (req, res) => {
       estrus,
     } = req.body;
 
-    const VALID_STATUSES = [
-      "pending",
-      "approved",
-      "rejected",
-      "done",
-      "in-progress",
-      "scheduled",
-    ];
+    const VALID_STATUSES = Object.values(AI_STATUS);
     if (!VALID_STATUSES.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
     }
@@ -290,6 +419,22 @@ export const updateRequestStatus = async (req, res) => {
     const existing = await Insemination.findById(id);
     if (!existing) {
       return res.status(404).json({ message: "AI request record not found." });
+    }
+
+    assertStatusTransition("ai", existing.status, status, { isAdmin: req.user.role === "admin" });
+
+    if (status === "scheduled" && !scheduledDate) {
+      return res.status(400).json({
+        message: "A visit date and time are required before scheduling.",
+        code: "SCHEDULE_DATE_REQUIRED",
+      });
+    }
+
+    if (status === "in-progress" && !existing.scheduledDate) {
+      return res.status(400).json({
+        message: "Schedule this visit before starting the service.",
+        code: "VISIT_NOT_SCHEDULED",
+      });
     }
 
     // Concurrency guard: check if already assigned to another technician
@@ -372,23 +517,43 @@ export const updateRequestStatus = async (req, res) => {
       status,
       approvedBy: targetTechId,
       technicianNote: technicianNote || "",
-      scheduledDate: scheduledDate || undefined,
       sireBreed,
       sireCode,
       estrus,
     };
 
+    if (isActiveAIRequestStatus(status)) {
+      updateData.activeRequestKey = activeRequestKeyForAnimal(existing.animalId);
+    }
+
+    if (status === "scheduled") {
+      updateData.scheduledDate = new Date(scheduledDate);
+    }
+
     if (status === "done") {
+      updateData.technicianId = targetTechId;
       updateData.inseminationDate = inseminationDate
         ? new Date(inseminationDate)
         : new Date();
     }
 
-    const request = await Insemination.findByIdAndUpdate(id, updateData, {
-      returnDocument: "after",
-    })
-      .populate("farmerId", "name pushToken")
-      .populate("animalId", "animalId earTag species");
+    let request;
+    if (status === "done") {
+      request = await completeInsemination({
+        id, updateData, technicianId: targetTechId,
+        farmerId: existing.farmerId, animalId: existing.animalId,
+        animalTag: existing.animalId?.earTag || existing.animalId?.animalId,
+      });
+      await request.populate("farmerId", "name pushToken");
+      await request.populate("animalId", "animalId earTag species");
+    } else {
+      const statusUpdate = isActiveAIRequestStatus(status)
+        ? { $set: updateData }
+        : { $set: updateData, $unset: { activeRequestKey: 1 } };
+      request = await Insemination.findByIdAndUpdate(id, statusUpdate, { returnDocument: "after" })
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "animalId earTag species");
+    }
 
     if (!request) {
       return res.status(404).json({ message: "AI request record not found." });
@@ -401,12 +566,10 @@ export const updateRequestStatus = async (req, res) => {
         let message = `Your AI request for animal ${request.animalId.earTag || request.animalId.animalId} status has been updated to: ${status}.`;
 
         if (status === "done") {
-          message = `Great news! The artificial insemination for animal ${request.animalId.earTag || request.animalId.animalId} has been successfully completed today. Expected calving calculations are underway!`;
-        } else if (
-          status === "approved" ||
-          status === "in-progress" ||
-          status === "scheduled"
-        ) {
+          message = `The artificial insemination for animal ${request.animalId.earTag || request.animalId.animalId} was completed today. Please monitor the animal and wait for pregnancy confirmation from a technician.`;
+        } else if (status === "approved") {
+          message = `Your artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} was accepted by technician ${req.user.name} and is awaiting a visit schedule.`;
+        } else if (status === "in-progress" || status === "scheduled") {
           const schedDateStr = request.scheduledDate
             ? new Date(request.scheduledDate).toLocaleDateString()
             : "today";
@@ -414,8 +577,6 @@ export const updateRequestStatus = async (req, res) => {
             message = `your artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} is rescheduled to ${schedDateStr} by technician : ${req.user.name}`;
           } else if (status === "scheduled") {
             message = `your artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} is scheduled for ${schedDateStr} by technician : ${req.user.name}`;
-          } else {
-            message = `your artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} is accepted by technician : ${req.user.name}`;
           }
         } else if (status === "rejected") {
           message = `Your AI request for animal ${request.animalId.earTag || request.animalId.animalId} was not approved. Note: ${technicianNote || "No details provided"}.`;
@@ -454,56 +615,8 @@ export const updateRequestStatus = async (req, res) => {
 
     // --- TRIGGER INNGEST AUTOMATION & STATUS SYNC ---
     if (status === "approved" || status === "done") {
-      // 1. Immediately update Animal Status to "Inseminated" if done
-      if (status === "done") {
-        await Animal.findByIdAndUpdate(
-          request.animalId._id || request.animalId,
-          {
-            reproductiveStatus: "Inseminated",
-          },
-        );
-        console.log(
-          `[Status Sync] Animal ${request.animalId} set to Inseminated via updateRequestStatus.`,
-        );
-
-        // Create follow-up Pregnancy Diagnosis task (60 days post-AI)
-        try {
-          const existingAutoTask = await Task.findOne({
-            sourceType: "automatic_pd_followup",
-            "metadata.inseminationId": id,
-            status: { $nin: ["Completed", "Cancelled"] },
-          });
-          if (!existingAutoTask) {
-            const aiBaseDate = new Date(request.inseminationDate || request.dateOfAI || request.completedAt || Date.now());
-            const pdDueDate = new Date(aiBaseDate);
-            pdDueDate.setDate(pdDueDate.getDate() + 60);
-            await Task.create({
-              technicianId: req.user._id,
-              farmerId: request.farmerId?._id || request.farmerId,
-              animalIds: [request.animalId?._id || request.animalId],
-              taskType: "PD",
-              category: "Follow-up",
-              priority: 2,
-              notes: `Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #${request.animalId?.earTag || request.animalId?.animalId || "Unknown"} — due ${pdDueDate.toLocaleDateString()} (60 days post-AI on ${aiBaseDate.toLocaleDateString()}).`,
-              status: "Pending",
-              dueDate: pdDueDate,
-              sourceType: "automatic_pd_followup",
-              metadata: { inseminationId: id },
-            });
-            console.log(
-              `[Task Created] Scheduled PD follow-up for Insemination ${id}, due ${pdDueDate.toISOString()}`,
-            );
-          } else {
-            console.log(
-              `[Task Skipped] Auto PD follow-up already exists for Insemination ${id}`,
-            );
-          }
-        } catch (taskErr) {
-          console.error("Failed to create follow-up task:", taskErr.message);
-        }
-      }
-
-      // 2. Trigger background automation
+      // Official AI, animal status, and PD follow-up writes are committed by
+      // completeInsemination. Inngest is retained for downstream automation.
       try {
         await inngest.send({
           name: "insemination/approved",
@@ -524,7 +637,11 @@ export const updateRequestStatus = async (req, res) => {
     res.status(200).json({ message: "Request status updated.", request });
   } catch (error) {
     console.error("[updateRequestStatus ERROR]", error.message);
-    res.status(500).json({ message: "Failed to update request status." });
+    const transactionUnavailable = /Transaction numbers are only allowed|replica set|mongos/i.test(error.message);
+    res.status(transactionUnavailable ? 503 : error.status || 500).json({
+      message: transactionUnavailable ? "This operation requires a transaction-capable database." : error.message || "Failed to update request status.",
+      code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
+    });
   }
 };
 
@@ -533,106 +650,91 @@ export const updateRequestStatus = async (req, res) => {
 export const confirmAIOutcome = async (req, res) => {
   try {
     const { id } = req.params;
-    const { isSuccess, note } = req.body; // isSuccess: boolean
+    const { isSuccess, note } = req.body;
 
     const request = await Insemination.findById(id).populate("animalId");
     if (!request) return res.status(404).json({ message: "Record not found." });
 
     assertAIRequestAccess(req.user, request);
-
-    request.isSuccess = isSuccess;
-    request.outcome = isSuccess ? "Pregnant" : "Failed (Re-heat)";
-    request.technicianNote = note || request.technicianNote;
-    await request.save();
-
-    // Update Animal status
-    const animal = await Animal.findById(request.animalId);
-    if (animal) {
-      if (isSuccess) {
-        animal.reproductiveStatus = "Pregnant";
-        const baseInsemDate = request.inseminationDate || request.createdAt;
-        const calvingDate = calculateTargetCalvingDate(
-          baseInsemDate,
-          animal.species,
-          undefined,
-          animal.breed,
-        );
-        animal.expectedCalvingDate = calvingDate;
-
-        // Spawn Pregnancy Record so it appears as PD in the Ledger
-        const existingPd = await Pregnancy.findOne({
-          inseminationId: request._id,
-        });
-        if (!existingPd) {
-          await Pregnancy.create({
-            animalId: animal._id,
-            farmerId: req.user._id,
-            inseminationId: request._id,
-            pregnancyDiagnosis: {
-              date: new Date(),
-              result: "Pregnant",
-            },
-            targetCalvingDate: calvingDate,
-            technicianNote: "Confirmed pregnant by farmer via mobile app.",
-          });
-        }
-
-        // Trigger Inngest for Calving Reminder
-        try {
-          await inngest.send({
-            name: "pregnancy/confirmed",
-            data: {
-              inseminationId: request._id,
-              animalId: animal._id,
-              farmerId: req.user._id,
-            },
-          });
-        } catch (inngestErr) {
-          console.error("[confirmAIOutcome INNGEST ERROR]", inngestErr.message);
-        }
-      } else {
-        animal.reproductiveStatus = "In Heat";
-        // Optional: clear expected calving date
-        animal.expectedCalvingDate = undefined;
-
-        // Spawn Empty Pregnancy Record so it appears as PD in the Ledger
-        const existingPd = await Pregnancy.findOne({
-          inseminationId: request._id,
-        });
-        if (!existingPd) {
-          await Pregnancy.create({
-            animalId: animal._id,
-            farmerId: req.user._id,
-            inseminationId: request._id,
-            pregnancyDiagnosis: {
-              date: new Date(),
-              result: "Empty",
-            },
-            technicianNote:
-              "Confirmed reheated (empty) by farmer via mobile app.",
-          });
-        }
-      }
-
-      animal.activityLogs = animal.activityLogs || [];
-      animal.activityLogs.push({
-        event: "AI Outcome Confirmed",
-        date: new Date(),
-        description: `Farmer confirmed AI outcome as: ${isSuccess ? "Pregnant" : "Failed (Re-heat)"}. Note: ${note || "None"}`,
+    if (req.user.role !== "farmer") {
+      return res.status(403).json({
+        code: "FARMER_OUTCOME_ONLY",
+        message: "Use the technician verification workflow to record a clinical outcome.",
       });
-      await animal.save();
     }
+    if (request.status !== AI_STATUS.DONE || !request.inseminationDate) {
+      return res.status(409).json({
+        code: "AI_NOT_COMPLETED",
+        message: "An outcome can only be reported after the AI procedure is completed.",
+      });
+    }
+
+    const animal = await Animal.findById(request.animalId?._id || request.animalId);
+    if (!animal) return res.status(404).json({ message: "Animal not found." });
+
+    const now = new Date();
+    request.farmerOutcomeReport = isSuccess
+      ? "possible_pregnancy"
+      : "return_to_heat";
+    request.farmerOutcomeReportedAt = now;
+    request.farmerObservationNotes = note || "";
+    request.outcomeConfirmedBy = req.user._id;
+    request.outcomeConfirmedAt = now;
+
+    if (isSuccess) {
+      // A farmer can report signs, but only a clinical pregnancy diagnosis can
+      // create a pregnancy record or mark the animal confirmed pregnant.
+      request.isSuccess = null;
+      request.outcome = "Pending";
+      request.outcomeVerificationStatus = "reported";
+      request.outcomeConfirmationSource = "farmer_possible_pregnancy";
+      request.failureReason = null;
+      if (["Inseminated", "Normal"].includes(animal.reproductiveStatus)) {
+        animal.reproductiveStatus = "Likely Pregnant";
+      }
+    } else {
+      request.isSuccess = false;
+      request.outcome = "Failed (Re-heat)";
+      request.outcomeVerificationStatus = "verified";
+      request.outcomeConfirmationSource = "farmer_return_to_heat";
+      request.failureReason = "return_to_heat";
+      animal.reproductiveStatus = "In Heat";
+      animal.expectedCalvingDate = undefined;
+    }
+
+    request.statusHistory = request.statusHistory || [];
+    request.statusHistory.push({
+      status: "farmer_observation",
+      note: isSuccess
+        ? `Farmer reported possible pregnancy signs. ${note || ""}`.trim()
+        : `Farmer confirmed return to heat. ${note || ""}`.trim(),
+      actorId: req.user._id,
+      createdAt: now,
+    });
+    animal.activityLogs = animal.activityLogs || [];
+    animal.activityLogs.push({
+      event: "Breeding Observation Reported",
+      date: now,
+      description: isSuccess
+        ? `Farmer reported possible pregnancy signs. ${note || ""}`.trim()
+        : `Farmer confirmed return to heat after AI. ${note || ""}`.trim(),
+    });
+
+    await Promise.all([request.save(), animal.save()]);
 
     res.status(200).json({
       message: isSuccess
-        ? "Congratulations! Pregnancy recorded."
-        : "Record updated. You can now request a second attempt.",
+        ? "Possible pregnancy signs recorded. A technician pregnancy check is still required for confirmation."
+        : "Return to heat recorded. You can now request re-insemination.",
       request,
       animal,
     });
   } catch (error) {
     console.error("[confirmAIOutcome ERROR]", error.message);
-    res.status(500).json({ message: "Failed to confirm outcome." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to record breeding observation.",
+      code: error.code,
+    });
   }
 };
 
@@ -734,6 +836,10 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     let nextAction = "Observation saved.";
 
     if (reportType === "possible_pregnancy") {
+      request.outcomeVerificationStatus = "reported";
+      request.outcomeConfirmationSource = "farmer_possible_pregnancy";
+      request.outcomeConfirmedBy = req.user._id;
+      request.outcomeConfirmedAt = new Date();
       if (
         animal.reproductiveStatus === "Inseminated" ||
         animal.reproductiveStatus === "Normal"
@@ -749,6 +855,11 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       animal.reproductiveStatus = "In Heat";
       request.isSuccess = false;
       request.outcome = "Failed (Re-heat)";
+      request.outcomeVerificationStatus = "verified";
+      request.outcomeConfirmationSource = "farmer_return_to_heat";
+      request.outcomeConfirmedBy = req.user._id;
+      request.outcomeConfirmedAt = new Date();
+      request.failureReason = "return_to_heat";
       nextAction = verificationRequested
         ? "A technician follow-up task was queued for the return-to-heat observation."
         : "Return-to-heat observation saved. The animal is marked In Heat.";
@@ -903,6 +1014,7 @@ export const deleteRequest = async (req, res) => {
 
     await Insemination.findByIdAndUpdate(id, {
       $set: { deletedAt: new Date() },
+      $unset: { activeRequestKey: 1 },
     });
 
     // Socket update to refresh tech dashboard
@@ -1004,6 +1116,10 @@ export const getAIRequestDetail = async (req, res) => {
       )
       .populate("approvedBy", "name role phoneNumber")
       .populate("technicianId", "name role phoneNumber");
+    await request?.populate(
+      "previousAttemptId",
+      "attemptNumber inseminationDate outcome outcomeVerificationStatus outcomeConfirmationSource outcomeConfirmedAt technicianId approvedBy",
+    );
 
     if (!request) {
       return res.status(404).json({ message: "AI request record not found." });
@@ -1122,6 +1238,8 @@ export const cancelAIRequest = async (req, res) => {
         }
         request.cancellationStatus = "requested";
         request.cancellationReason = reason.trim();
+        request.cancellationResponseReason = "";
+        request.cancellationRespondedAt = undefined;
         request.cancelledBy = actor._id;
         request.cancellationRequestedAt = now;
         request.statusHistory = request.statusHistory || [];
@@ -1196,6 +1314,13 @@ export const cancelAIRequest = async (req, res) => {
           .json({
             message: `Farmers cannot directly cancel a request with status: ${status}.`,
           });
+      }
+
+      if (status === "approved" && !reason?.trim()) {
+        return res.status(400).json({
+          message: "A cancellation reason is required after a technician has accepted the request.",
+          code: "CANCELLATION_REASON_REQUIRED",
+        });
       }
     }
 
@@ -1326,6 +1451,8 @@ export const respondAICancellation = async (req, res) => {
     if (approved) {
       request.status = "cancelled";
       request.cancellationStatus = "approved";
+      request.cancellationResponseReason = reason?.trim() || "";
+      request.cancellationRespondedAt = new Date();
       request.statusHistory = request.statusHistory || [];
       request.statusHistory.push({
         status: "cancelled",
@@ -1367,6 +1494,8 @@ export const respondAICancellation = async (req, res) => {
     } else {
       // Rejected — restore cancellationStatus
       request.cancellationStatus = "rejected";
+      request.cancellationResponseReason = reason?.trim() || "";
+      request.cancellationRespondedAt = new Date();
       request.statusHistory = request.statusHistory || [];
       request.statusHistory.push({
         status: "cancellation_rejected",
@@ -1395,16 +1524,14 @@ export const respondAICancellation = async (req, res) => {
         );
       }
 
-      // Reset to "none" so they can request again after a brief rejection
-      setTimeout(async () => {
-        await Insemination.findByIdAndUpdate(id, {
-          cancellationStatus: "none",
-        });
-      }, 5000);
-
       return res
         .status(200)
-        .json({ message: "Cancellation rejected. Farmer has been notified." });
+        .json({
+          message: "Cancellation rejected. Farmer has been notified.",
+          cancellationStatus: "rejected",
+          cancellationResponseReason: request.cancellationResponseReason,
+          cancellationRespondedAt: request.cancellationRespondedAt,
+        });
     }
   } catch (error) {
     console.error("[respondAICancellation ERROR]", error.message);
@@ -1492,67 +1619,33 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       animalStatus: animal.reproductiveStatus,
     };
 
-    // Update Insemination fields
-    request.verificationStatus =
-      verificationResult === "needs_recheck" ? "pending" : "verified";
-    request.reviewedBy = req.user._id;
-    request.reviewedAt = new Date();
-    if (Array.isArray(evidencePhotos) && evidencePhotos.length > 0) {
-      request.evidencePhotos = [
-        ...(request.evidencePhotos || []),
-        ...evidencePhotos,
-      ];
-    }
+    const verification = await persistBreedingObservationVerification({
+      animal,
+      insemination: request,
+      verificationResult,
+      checkMethod,
+      checkedAt,
+      technicianNotes,
+      nextCheckDate,
+      evidencePhotos,
+      actorId: req.user._id,
+    });
+    const verifiedRequest = verification.request;
+    const verifiedAnimal = verification.animal;
+    const {
+      task,
+      nextAction,
+      pregnancyRecordCreated,
+    } = verification;
 
-    let nextAction = "";
-    let pregnancyRecordCreated = false;
-
-    // Apply outcomes
     if (verificationResult === "pregnant") {
-      request.isSuccess = true;
-      request.outcome = "Pregnant";
-      animal.reproductiveStatus = "Pregnant";
-
-      const baseInsemDate = request.inseminationDate || request.createdAt;
-      const calvingDate = calculateTargetCalvingDate(
-        baseInsemDate,
-        animal.species,
-        undefined,
-        animal.breed,
-      );
-      animal.expectedCalvingDate = calvingDate;
-
-      // Spawn Pregnancy record only if no active pregnancy exists for this insemination
-      const existingPd = await Pregnancy.findOne({
-        inseminationId: request._id,
-        deletedAt: null,
-      });
-
-      if (!existingPd) {
-        const preg = await Pregnancy.create({
-          animalId: animal._id,
-          farmerId: request.farmerId,
-          inseminationId: request._id,
-          pregnancyDiagnosis: {
-            date: checkedAt ? new Date(checkedAt) : new Date(),
-            result: "Pregnant",
-          },
-          targetCalvingDate: calvingDate,
-          technicianNote:
-            technicianNotes || "Confirmed pregnant by technician.",
-        });
-        request.pregnancyId = preg._id;
-        pregnancyRecordCreated = true;
-      }
-
-      // Trigger push notification calving reminder workflow
       try {
         await inngest.send({
           name: "pregnancy/confirmed",
           data: {
-            inseminationId: request._id,
-            animalId: animal._id,
-            farmerId: request.farmerId,
+            inseminationId: verifiedRequest._id,
+            animalId: verifiedAnimal._id,
+            farmerId: verifiedRequest.farmerId,
           },
         });
       } catch (inngestErr) {
@@ -1561,89 +1654,16 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
           inngestErr.message,
         );
       }
-
-      nextAction = "Pregnancy verified and recorded.";
-    } else if (verificationResult === "not_pregnant") {
-      request.isSuccess = false;
-      request.outcome = "Failed (Negative PD)";
-      animal.reproductiveStatus = "Normal";
-      animal.expectedCalvingDate = undefined;
-      nextAction = "Animal confirmed not pregnant. Status reset to Normal.";
-    } else if (verificationResult === "return_to_heat") {
-      request.isSuccess = false;
-      request.outcome = "Failed (Re-heat)";
-      animal.reproductiveStatus = "In Heat";
-      animal.expectedCalvingDate = undefined;
-      nextAction = "Return-to-heat verified. Animal is marked In Heat.";
-    } else if (verificationResult === "needs_recheck") {
-      // Keep Likely Pregnant status if already set, otherwise don't modify reproductiveStatus
-      nextAction = "Recheck required. Follow-up task scheduled.";
     }
-
-    // Task completion / creation
-    let task = null;
-    if (request.verificationTaskId) {
-      task = await Task.findById(request.verificationTaskId);
-    }
-
-    if (verificationResult === "needs_recheck") {
-      const notesString = `Pregnancy Check Recheck Required. Checked on: ${new Date(checkedAt || Date.now()).toLocaleDateString()}. Notes: ${technicianNotes || "None"}. Next check after: ${nextCheckDate ? new Date(nextCheckDate).toLocaleDateString() : "Not Specified"}`;
-      if (task) {
-        task.status = "Pending";
-        task.notes = notesString;
-        await task.save();
-      } else {
-        task = await Task.create({
-          farmerId: request.farmerId,
-          animalIds: [animal._id],
-          taskType: "PD",
-          category: "Follow-up",
-          priority: 2,
-          notes: notesString,
-          status: "Pending",
-        });
-        request.verificationTaskId = task._id;
-      }
-    } else {
-      // Final result - complete task
-      if (task) {
-        task.status = "Completed";
-        task.notes = `Breeding outcome verified: ${verificationResult.replaceAll("_", " ")}. Checked method: ${checkMethod}. Notes: ${technicianNotes || "None"}`;
-        await task.save();
-      }
-    }
-
-    // Save Insemination & Animal updates
-    await Promise.all([request.save(), animal.save()]);
-
-    // Push entry to statusHistory on insemination
-    request.statusHistory = request.statusHistory || [];
-    request.statusHistory.push({
-      status: "technician_verification",
-      note: `Technician verified as: ${verificationResult.replaceAll("_", " ")} using ${checkMethod}. ${technicianNotes}`.trim(),
-      actorId: req.user._id,
-      createdAt: new Date(),
-    });
-    await request.save();
-
-    // Log animal activity
-    animal.activityLogs = animal.activityLogs || [];
-    animal.activityLogs.push({
-      event: "Pregnancy Verification Completed",
-      date: new Date(),
-      description:
-        `Technician verified breeding observation outcome: ${verificationResult.replaceAll("_", " ")}. Method: ${checkMethod}. Notes: ${technicianNotes}`.trim(),
-    });
-    await animal.save();
 
     // Create timeline event
     await createTimelineEvent({
-      animalId: animal._id,
+      animalId: verifiedAnimal._id,
       eventType: "technician_breeding_verification_recorded",
       occurredAt: checkedAt ? new Date(checkedAt) : new Date(),
       actorId: req.user._id,
       sourceType: "Insemination",
-      sourceId: request._id,
+      sourceId: verifiedRequest._id,
       title: "Pregnancy Verification Completed",
       summary:
         `Verified as ${verificationResult.replaceAll("_", " ")} via ${checkMethod}. ${technicianNotes}`.trim(),
@@ -1660,15 +1680,15 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     // Create Audit Log
     await createAuditLog({
       entityType: "Insemination",
-      entityId: request._id,
+      entityId: verifiedRequest._id,
       action: "verify_breeding_observation",
       actorId: req.user._id,
       before: beforeState,
       after: {
-        verificationStatus: request.verificationStatus,
-        isSuccess: request.isSuccess,
-        outcome: request.outcome,
-        animalStatus: animal.reproductiveStatus,
+        verificationStatus: verifiedRequest.verificationStatus,
+        isSuccess: verifiedRequest.isSuccess,
+        outcome: verifiedRequest.outcome,
+        animalStatus: verifiedAnimal.reproductiveStatus,
         verificationResult,
       },
       metadata: {
@@ -1679,25 +1699,25 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
 
     // Notify Farmer
     try {
-      const farmer = await User.findById(request.farmerId);
+      const farmer = await User.findById(verifiedRequest.farmerId);
       const title = `Pregnancy Check: ${verificationResult === "pregnant" ? "Pregnant 🍼" : verificationResult === "needs_recheck" ? "Recheck Scheduled ⏱️" : "Empty ❌"}`;
-      let body = `Technician ${req.user.name} checked ${animal.earTag || animal.animalId} and determined: ${verificationResult.replaceAll("_", " ").toUpperCase()}.`;
+      let body = `Technician ${req.user.name} checked ${verifiedAnimal.earTag || verifiedAnimal.animalId} and determined: ${verificationResult.replaceAll("_", " ").toUpperCase()}.`;
       if (verificationResult === "needs_recheck" && nextCheckDate) {
         body += ` A follow-up recheck is scheduled for ${new Date(nextCheckDate).toLocaleDateString()}.`;
       }
 
       await Notification.create({
-        recipientId: request.farmerId,
+        recipientId: verifiedRequest.farmerId,
         senderId: req.user._id,
         type: "system",
-        relatedId: animal._id,
+        relatedId: verifiedAnimal._id,
         title,
         message: body,
       });
 
       if (farmer?.pushToken) {
         await sendPushNotification(farmer.pushToken, title, body, {
-          requestId: request._id,
+          requestId: verifiedRequest._id,
           type: "AI",
         });
       }
@@ -1711,8 +1731,8 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     res.status(200).json({
       message: "Breeding observation verified successfully.",
       data: {
-        request,
-        animal,
+        request: verifiedRequest,
+        animal: verifiedAnimal,
         task,
         nextAction,
       },

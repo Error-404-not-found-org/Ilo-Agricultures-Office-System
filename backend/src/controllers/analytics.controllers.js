@@ -164,7 +164,7 @@ export const getRegionalHeatmap = async (req, res) => {
         $group: {
           _id: "$farmer.address.barangay",
           issueCount: { $sum: 1 },
-          urgencyHigh: { $sum: { $cond: [{ $eq: ["$urgency", "high"] }, 1, 0] } }
+          urgencyHigh: { $sum: { $cond: [{ $in: ["$urgency", ["high", "emergency", "critical"]] }, 1, 0] } }
         }
       },
       { $project: { barangay: "$_id", issueCount: 1, urgencyHigh: 1, _id: 0 } }

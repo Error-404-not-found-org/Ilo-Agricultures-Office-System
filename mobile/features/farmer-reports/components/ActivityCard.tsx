@@ -15,7 +15,7 @@ interface ActivityCardProps {
 const ActivityCard = ({ item, onPress }: ActivityCardProps) => {
   const { colors, isDark } = useTheme();
   const dateStr = item.date
-    ? format(new Date(item.date), "MMM dd, yyyy • h:mm a")
+    ? format(new Date(item.date), "MMM d, yyyy, h:mm a")
     : "No Date";
 
   const isAI = item.type === "ai";
@@ -42,11 +42,13 @@ const ActivityCard = ({ item, onPress }: ActivityCardProps) => {
     <TouchableOpacity
       activeOpacity={0.8}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${item.title} record from ${dateStr}`}
       style={{
         backgroundColor: colors.card,
-        borderRadius: 24,
-        padding: 20,
-        marginBottom: 16,
+        borderRadius: 18,
+        padding: 16,
+        marginBottom: 12,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: isDark ? 0 : 0.05,
@@ -97,18 +99,16 @@ const ActivityCard = ({ item, onPress }: ActivityCardProps) => {
           <View style={{ flex: 1 }}>
             <Text
               style={{
-                fontSize: 10,
-                fontFamily: "Outfit_800ExtraBold",
-                color: colors.textMuted,
-                textTransform: "uppercase",
-                letterSpacing: 1,
+                fontSize: 12,
+                fontFamily: "Outfit_600SemiBold",
+                color: colors.textSecondary,
               }}
             >
               {dateStr}
             </Text>
             <Text
               style={{
-                fontSize: 15,
+                fontSize: 16,
                 fontFamily: "Outfit_700Bold",
                 color: colors.textPrimary,
                 marginTop: 4,
@@ -118,11 +118,13 @@ const ActivityCard = ({ item, onPress }: ActivityCardProps) => {
             </Text>
             <Text
               style={{
-                fontSize: 12,
+                fontSize: 13,
                 fontFamily: "Outfit_500Medium",
                 color: colors.textSecondary,
-                marginTop: 2,
+                marginTop: 3,
+                lineHeight: 18,
               }}
+              numberOfLines={2}
             >
               {item.description}
             </Text>
@@ -130,29 +132,32 @@ const ActivityCard = ({ item, onPress }: ActivityCardProps) => {
         </View>
       </View>
 
-      {item.animalId && (
-        <View
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          paddingTop: 10,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          marginTop: 10,
+        }}
+      >
+        <Text
           style={{
-            flexDirection: "row",
-            justifyContent: "flex-end",
-            alignItems: "center",
-            paddingTop: 8,
-            borderTopWidth: 1,
-            borderTopColor: colors.border,
-            marginTop: 8,
+            fontSize: 12,
+            fontFamily: "Outfit_700Bold",
+            color: isDark ? colors.primary : "#00643B",
           }}
         >
-          <Text
-            style={{
-              fontSize: 11,
-              fontFamily: "Outfit_700Bold",
-              color: isDark ? colors.primary : "#00643B",
-            }}
-          >
-            View Animal Details →
-          </Text>
-        </View>
-      )}
+          Open record
+        </Text>
+        <MaterialCommunityIcons
+          name="chevron-right"
+          size={20}
+          color={isDark ? colors.primary : "#00643B"}
+        />
+      </View>
     </TouchableOpacity>
   );
 };

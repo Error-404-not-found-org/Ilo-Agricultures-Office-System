@@ -18,8 +18,8 @@ import SafeScreen from "@/components/safeScreen";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
+import { Skeleton } from "@/components/ui/Skeleton";
 import {
-  formatBarangayWithDistrict,
   getIloiloBarangayOptions,
   ILOILO_CITY_DISTRICT_OPTIONS,
   ILOILO_CITY_NAME,
@@ -32,11 +32,76 @@ const parseBarangayWithDistrict = (value = "") => {
   return { barangay: match[1].trim(), district: match[2].trim() };
 };
 
+const EditFarmerProfileSkeleton = ({ onBack }: { onBack: () => void }) => {
+  const { colors } = useTheme();
+  return (
+    <SafeScreen>
+      <View style={{ flex: 1, backgroundColor: colors.background }} className="px-5">
+        <View className="flex-row items-center justify-between mb-4 mt-2">
+          <TouchableOpacity
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderWidth: 1,
+            }}
+          >
+            <ArrowLeft size={22} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text variant="bold" size={16} color="primary">
+            Edit Farmer Profile
+          </Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
+        >
+          <Card style={{ padding: 20 }} className="mt-2 mb-6">
+            <Skeleton width="54%" height={22} radius={6} />
+            <Skeleton width="74%" height={13} radius={5} style={{ marginTop: 8, marginBottom: 24 }} />
+            {[0, 1].map((field) => (
+              <View key={field} style={{ marginBottom: 18 }}>
+                <Skeleton width="34%" height={10} radius={4} />
+                <Skeleton width="100%" height={50} radius={12} style={{ marginTop: 7 }} />
+              </View>
+            ))}
+          </Card>
+
+          <Card style={{ padding: 20 }}>
+            <Skeleton width="46%" height={20} radius={6} />
+            <Skeleton width="82%" height={13} radius={5} style={{ marginTop: 8, marginBottom: 24 }} />
+            {[0, 1, 2].map((field) => (
+              <View key={field} style={{ marginBottom: 18 }}>
+                <Skeleton width="30%" height={10} radius={4} />
+                <Skeleton width="100%" height={50} radius={12} style={{ marginTop: 7 }} />
+              </View>
+            ))}
+          </Card>
+        </ScrollView>
+
+        <View style={{ paddingTop: 16, paddingBottom: 112 }}>
+          <Skeleton width="100%" height={54} radius={27} />
+        </View>
+      </View>
+    </SafeScreen>
+  );
+};
+
 export default function UpdateClientProfileScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const api = useApi();
-  const { colors, isDark, themeStyle } = useTheme();
+  const { colors } = useTheme();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -131,11 +196,7 @@ export default function UpdateClientProfileScreen() {
         phoneNumber: formData.phoneNumber.trim(),
         address: {
           phoneNumber: formData.phoneNumber.trim(), // Syncing backwards to support legacy nested schema
-          barangay: formatBarangayWithDistrict(
-            formData.barangay,
-            formData.city,
-            formData.district,
-          ),
+          barangay: formData.barangay,
           city: formData.city.trim(),
           district: formData.city === ILOILO_CITY_NAME ? formData.district : "",
           province: formData.province.trim(),
@@ -159,14 +220,7 @@ export default function UpdateClientProfileScreen() {
   };
 
   if (loading) {
-    return (
-      <View className="flex-1 items-center justify-center bg-[#F9FAFB] dark:bg-slate-950">
-        <ActivityIndicator
-          size="large"
-          color={isDark ? "#10b981" : "#00643B"}
-        />
-      </View>
-    );
+    return <EditFarmerProfileSkeleton onBack={() => router.back()} />;
   }
 
   return (
@@ -185,7 +239,7 @@ export default function UpdateClientProfileScreen() {
             <ArrowLeft size={22} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text variant="bold" size={16} color="primary">
-            Edit Profile
+            Edit Farmer Profile
           </Text>
           <View className="w-10" />
         </View>

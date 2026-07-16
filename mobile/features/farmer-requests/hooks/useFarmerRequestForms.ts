@@ -5,6 +5,7 @@ import {
   getFarmerAnimalsForPicker,
   getFarmerSelfProfile,
   getMyHealthRequests,
+  getMyAIRequests,
   getSystemConfig,
   getTechnicianDirectory,
 } from "../services/farmerRequests.service";
@@ -15,6 +16,7 @@ export const farmerRequestFormKeys = {
   animalsForAi: ["animals", "my", "request-ai-picker", 1, 25] as const,
   animalsForHealth: ["animals", "my", "health-picker", 1, 25] as const,
   myHealthRequests: ["health-requests", "my"] as const,
+  myAiRequests: ["farmer", "ai-requests", "active-check"] as const,
   technicians: ["technicians", "list"] as const,
 };
 
@@ -55,6 +57,14 @@ export const useMyHealthRequestsQuery = () => {
   return useQuery({
     queryKey: farmerRequestFormKeys.myHealthRequests,
     queryFn: () => getMyHealthRequests(api),
+  });
+};
+
+export const useMyAIRequestsQuery = () => {
+  const api = useApi();
+  return useQuery({
+    queryKey: farmerRequestFormKeys.myAiRequests,
+    queryFn: () => getMyAIRequests(api),
   });
 };
 

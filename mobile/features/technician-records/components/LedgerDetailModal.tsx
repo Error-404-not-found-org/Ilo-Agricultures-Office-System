@@ -1,10 +1,9 @@
 import React from "react";
 import { View, TouchableOpacity, Modal, Image, Linking } from "react-native";
-import { X, MapPin, Calendar, Clock, Phone, ChevronRight, Trash2 } from "lucide-react-native";
+import { X, MapPin, Calendar, Clock, Phone, ChevronRight } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
-import { ActivityIndicator } from "react-native";
 import { getDisplayDate } from "../utils/ledgerExport";
 
 const PRIMARY = "#00643B";
@@ -13,8 +12,6 @@ interface LedgerDetailModalProps {
   visible: boolean;
   item: any;
   onClose: () => void;
-  onDelete: (item: any) => void;
-  isDeleting: boolean;
   router: any;
 }
 
@@ -22,8 +19,6 @@ export function LedgerDetailModal({
   visible,
   item,
   onClose,
-  onDelete,
-  isDeleting,
   router,
 }: LedgerDetailModalProps) {
   const { colors, isDark } = useTheme();
@@ -159,7 +154,7 @@ export function LedgerDetailModal({
                 {item.type === "insemination"
                   ? "AI Insemination"
                   : item.type === "health-request"
-                    ? "Health Assistance / Visit"
+                    ? item.title || "Health Record"
                     : item.type === "pregnancy"
                       ? "Pregnancy Check"
                       : item.type === "calving"
@@ -431,7 +426,7 @@ export function LedgerDetailModal({
                         fontSize: 12,
                       }}
                     >
-                      {item.typeOfService || "Medical Check"}
+                      {item.title || item.typeOfService || "Medical Check"}
                     </Text>
                   </View>
                   {item.details?.medicineName && (
@@ -582,26 +577,6 @@ export function LedgerDetailModal({
               <ChevronRight size={18} color="#fff" />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => onDelete(item)}
-              disabled={isDeleting}
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 20,
-                backgroundColor: isDark ? "rgba(239, 68, 68, 0.15)" : "#fee2e2",
-                alignItems: "center",
-                justifyContent: "center",
-                borderWidth: 1,
-                borderColor: isDark ? "rgba(239, 68, 68, 0.3)" : "#fecaca",
-              }}
-            >
-              {isDeleting ? (
-                <ActivityIndicator size="small" color="#ef4444" />
-              ) : (
-                <Trash2 size={22} color="#ef4444" />
-              )}
-            </TouchableOpacity>
           </View>
         </View>
       </View>

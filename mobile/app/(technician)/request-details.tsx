@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { useUser } from "@clerk/clerk-expo";
 import {
   View,
   TouchableOpacity,
@@ -30,8 +29,6 @@ import {
   Syringe,
   Activity,
   HeartPulse,
-  Plus,
-  Ban,
   Check,
   X,
 } from "lucide-react-native";
@@ -40,13 +37,135 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { BreedSelectorModal } from "@/features/technician-dashboard/components/BreedSelectorModal";
-import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
 import {
   getTechnicianAnimalHistory,
   getTechnicianRequestDetail,
   respondToCancellationRequest,
   updateRequestStatus,
 } from "@/features/technician/services/technician.service";
+
+function SkeletonBlock({
+  width = "100%",
+  height,
+  borderRadius = 10,
+  color,
+  style,
+}: {
+  width?: any;
+  height: number;
+  borderRadius?: number;
+  color: string;
+  style?: any;
+}) {
+  return (
+    <View
+      style={[
+        { width, height, borderRadius, backgroundColor: color },
+        style,
+      ]}
+    />
+  );
+}
+
+function RequestDetailsSkeleton({
+  colors,
+  isDark,
+  topInset,
+  onBack,
+}: {
+  colors: any;
+  isDark: boolean;
+  topInset: number;
+  onBack: () => void;
+}) {
+  const skeletonColor = isDark ? "#1f2937" : "#e8edf3";
+  const cardStyle = {
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+  } as const;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 20,
+          paddingTop: topInset + 10,
+          paddingBottom: 15,
+          backgroundColor: colors.card,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
+        <TouchableOpacity
+          onPress={onBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={{ padding: 8, marginLeft: -8 }}
+        >
+          <ArrowLeft size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text
+          style={{
+            fontFamily: "Outfit_700Bold",
+            fontSize: 18,
+            color: colors.textPrimary,
+            marginLeft: 8,
+          }}
+        >
+          Request details
+        </Text>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 16,
+          paddingBottom: 40,
+          gap: 12,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={cardStyle}>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <SkeletonBlock width={48} height={48} borderRadius={15} color={skeletonColor} />
+            <View style={{ flex: 1, marginLeft: 12, gap: 8 }}>
+              <SkeletonBlock width="62%" height={17} color={skeletonColor} />
+              <SkeletonBlock width="42%" height={12} color={skeletonColor} />
+            </View>
+            <SkeletonBlock width={70} height={26} borderRadius={13} color={skeletonColor} />
+          </View>
+          <View style={{ marginTop: 18, gap: 12 }}>
+            {["92%", "78%", "86%"].map((width, index) => (
+              <View key={index} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <SkeletonBlock width={82} height={12} color={skeletonColor} />
+                <SkeletonBlock width={width} height={12} color={skeletonColor} style={{ maxWidth: 150 }} />
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {[1, 2, 3].map((item) => (
+          <View key={item} style={cardStyle}>
+            <SkeletonBlock width="38%" height={16} color={skeletonColor} />
+            <View style={{ flexDirection: "row", marginTop: 16 }}>
+              <SkeletonBlock width={64} height={64} borderRadius={16} color={skeletonColor} />
+              <View style={{ flex: 1, marginLeft: 12, gap: 9 }}>
+                <SkeletonBlock width="72%" height={14} color={skeletonColor} />
+                <SkeletonBlock width="88%" height={12} color={skeletonColor} />
+                <SkeletonBlock width="55%" height={12} color={skeletonColor} />
+              </View>
+            </View>
+          </View>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
 
 export default function RequestDetailsScreen() {
   const { colors, isDark } = useTheme();
@@ -59,6 +178,7 @@ export default function RequestDetailsScreen() {
   const [updating, setUpdating] = useState(false);
   const [request, setRequest] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(true);
 
   // Action input states
   const [scheduledDate, setScheduledDate] = useState(new Date());
@@ -84,15 +204,15 @@ export default function RequestDetailsScreen() {
   } | null>(null);
 
   // Cancellation review states
-  const { user: clerkUser } = useUser();
   const [rescheduleMode, setRescheduleMode] = useState(false);
   const [cancelResponding, setCancelResponding] = useState(false);
   const [declineModalVisible, setDeclineModalVisible] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
 
-  const fetchRequestDetails = async () => {
+  const fetchRequestDetails = async (showFullSkeleton = false) => {
     try {
-      setLoading(true);
+      if (showFullSkeleton) setLoading(true);
+      setTimelineLoading(true);
       const isHealth = type === "health";
       const requestData = await getTechnicianRequestDetail(
         api,
@@ -122,13 +242,16 @@ export default function RequestDetailsScreen() {
       toast.error(err.message || "Failed to fetch request details");
     } finally {
       setLoading(false);
+      setTimelineLoading(false);
     }
   };
 
   useEffect(() => {
     if (id && type) {
-      fetchRequestDetails();
+      fetchRequestDetails(true);
     }
+    // Route identifiers intentionally own the initial details fetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, type]);
 
   const handleUpdateStatus = async (nextStatus: string, payload: any) => {
@@ -149,12 +272,12 @@ export default function RequestDetailsScreen() {
 
   const getStatusColor = (status: string) => {
     const s = status?.toLowerCase();
-    if (s === "pending") return { bg: "#fef3c7", text: "#d97706", border: "#fde68a" };
-    if (s === "approved" || s === "assigned" || s === "triaged") return { bg: "#dbeafe", text: "#2563eb", border: "#bfdbfe" };
-    if (s === "scheduled") return { bg: "#e0f2fe", text: "#0284c7", border: "#bae6fd" };
-    if (s === "in-progress" || s === "in_progress") return { bg: "#f3e8ff", text: "#7c3aed", border: "#e9d5ff" };
-    if (s === "done" || s === "resolved" || s === "completed") return { bg: "#d1fae5", text: "#059669", border: "#a7f3d0" };
-    return { bg: "#f3f4f6", text: "#4b5563", border: "#e5e7eb" };
+    if (s === "pending") return { bg: isDark ? "rgba(245,158,11,0.14)" : "#fffbeb", text: isDark ? "#fbbf24" : "#b45309", border: isDark ? "rgba(245,158,11,0.25)" : "#fde68a" };
+    if (s === "approved" || s === "assigned" || s === "triaged") return { bg: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5", text: isDark ? "#34d399" : "#047857", border: isDark ? "rgba(16,185,129,0.25)" : "#a7f3d0" };
+    if (s === "scheduled") return { bg: isDark ? "rgba(59,130,246,0.14)" : "#eff6ff", text: isDark ? "#60a5fa" : "#2563eb", border: isDark ? "rgba(59,130,246,0.25)" : "#bfdbfe" };
+    if (s === "in-progress" || s === "in_progress") return { bg: isDark ? "rgba(168,85,247,0.14)" : "#faf5ff", text: isDark ? "#c084fc" : "#7e22ce", border: isDark ? "rgba(168,85,247,0.25)" : "#e9d5ff" };
+    if (s === "done" || s === "resolved" || s === "completed") return { bg: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5", text: isDark ? "#34d399" : "#047857", border: isDark ? "rgba(16,185,129,0.25)" : "#a7f3d0" };
+    return { bg: isDark ? "rgba(148,163,184,0.1)" : "#f1f5f9", text: colors.textSecondary, border: colors.border };
   };
 
   const formatDate = (dateString: string) => {
@@ -420,12 +543,12 @@ export default function RequestDetailsScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 12, color: colors.textSecondary }} variant="medium">
-          Loading Request Details...
-        </Text>
-      </View>
+      <RequestDetailsSkeleton
+        colors={colors}
+        isDark={isDark}
+        topInset={insets.top}
+        onBack={() => router.back()}
+      />
     );
   }
 
@@ -450,10 +573,36 @@ export default function RequestDetailsScreen() {
   const formatServiceType = (value?: string) => {
     if (!value) return isAI ? "Artificial Insemination" : "Health Assistance";
     return value
-      .replace(/_/g, " ")
+      .replace(/[_-]/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
   const serviceTypeLabel = formatServiceType(request.serviceType || request.requestType);
+  const normalizedStatus = request.status?.toLowerCase() || "";
+  const primaryActionLabel =
+    normalizedStatus === "pending"
+      ? "Claim request"
+      : ["approved", "assigned", "triaged"].includes(normalizedStatus)
+        ? "Schedule visit"
+        : normalizedStatus === "scheduled"
+          ? "Start service"
+          : isAI
+            ? "Complete AI service"
+            : "Resolve health request";
+  const nextActionDescription =
+    normalizedStatus === "pending"
+      ? "Claim this request to unlock the farmer's full contact and farm directions."
+      : ["approved", "assigned", "triaged"].includes(normalizedStatus)
+        ? "Confirm a visit date and time before notifying the farmer."
+        : normalizedStatus === "scheduled"
+          ? "Start the service when you arrive at the farm."
+          : "Record the work completed so it becomes part of the animal's history.";
+  const sectionCardStyle = {
+    padding: 16,
+    backgroundColor: colors.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  } as const;
 
   return (
     <KeyboardAvoidingView
@@ -477,64 +626,105 @@ export default function RequestDetailsScreen() {
           <ArrowLeft size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>
-          Request Details
+          Request details
         </Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 16,
+          paddingBottom: 60,
+          gap: 12,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Request Summary Section */}
-        <View style={{ padding: 20, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 20, color: colors.textPrimary }}>
-              {isAI ? "AI Request" : "Health Request"}
-            </Text>
+        <View style={sectionCardStyle}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 15,
+                backgroundColor: isAI
+                  ? isDark
+                    ? "rgba(16,185,129,0.12)"
+                    : "#ecfdf5"
+                  : isDark
+                    ? "rgba(245,158,11,0.12)"
+                    : "#fffbeb",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {isAI ? (
+                <Syringe size={22} color={colors.primary} />
+              ) : (
+                <HeartPulse size={22} color={isDark ? "#fbbf24" : "#d97706"} />
+              )}
+            </View>
+            <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
+              <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary }}>
+                {serviceTypeLabel}
+              </Text>
+              <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
+                Submitted {formatDate(request.createdAt)}
+              </Text>
+            </View>
             <View
               style={{
                 backgroundColor: statusColor.bg,
-                paddingHorizontal: 12,
-                paddingVertical: 4,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
                 borderRadius: 20,
                 borderWidth: 1,
                 borderColor: statusColor.border,
+                marginLeft: 8,
               }}
             >
-              <Text style={{ color: statusColor.text, textTransform: "uppercase", fontSize: 11 }} variant="extrabold">
-                {request.status}
+              <Text style={{ color: statusColor.text, fontSize: 11 }} variant="extrabold">
+                {formatServiceType(request.status)}
               </Text>
             </View>
           </View>
 
-          <View style={{ gap: 8 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+          <View
+            style={{
+              backgroundColor: isDark ? "rgba(255,255,255,0.025)" : "#f8fafc",
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: isDark ? "rgba(255,255,255,0.06)" : "#eef2f7",
+              padding: 14,
+              gap: 11,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
               <Text style={{ color: colors.textMuted }} variant="medium">Priority</Text>
-              <Text style={{ color: colors.textPrimary, textTransform: "uppercase" }} variant="bold">
-                {request.urgency || request.priority || "Normal"}
+              <Text style={{ color: request.urgency === "urgent" ? colors.error : colors.textPrimary }} variant="bold">
+                {formatServiceType(request.urgency || request.priority || "Normal")}
               </Text>
             </View>
             {!isAI && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
                 <Text style={{ color: colors.textMuted }} variant="medium">Service Type</Text>
-                <Text style={{ color: colors.textPrimary }} variant="bold">{serviceTypeLabel}</Text>
+                <Text numberOfLines={2} style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }} variant="bold">{serviceTypeLabel}</Text>
               </View>
             )}
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ color: colors.textMuted }} variant="medium">Submitted Date</Text>
-              <Text style={{ color: colors.textPrimary }} variant="bold">{formatDate(request.createdAt)}</Text>
-            </View>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
               <Text style={{ color: colors.textMuted }} variant="medium">Preferred Date</Text>
-              <Text style={{ color: colors.textPrimary }} variant="bold">{formatDate(request.preferredDate)}</Text>
+              <Text numberOfLines={2} style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }} variant="bold">{formatDate(request.preferredDate)}</Text>
             </View>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
               <Text style={{ color: colors.textMuted }} variant="medium">Scheduled Date</Text>
-              <Text style={{ color: colors.textPrimary }} variant="bold">
+              <Text numberOfLines={2} style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }} variant="bold">
                 {request.scheduledDate ? formatDate(request.scheduledDate) : "Not Scheduled Yet"}
               </Text>
             </View>
             {technician && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
                 <Text style={{ color: colors.textMuted }} variant="medium">Assigned Tech</Text>
-                <Text style={{ color: colors.textPrimary }} variant="bold">{technician.name}</Text>
+                <Text numberOfLines={2} style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }} variant="bold">{technician.name}</Text>
               </View>
             )}
             {isReadyToday && (
@@ -559,7 +749,7 @@ export default function RequestDetailsScreen() {
         </View>
 
         {/* Animal Information Section */}
-        <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={sectionCardStyle}>
           <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 14 }}>
             Animal Profile
           </Text>
@@ -592,7 +782,7 @@ export default function RequestDetailsScreen() {
         </View>
 
         {/* Farmer Information Section */}
-        <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+        <View style={sectionCardStyle}>
           <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 14 }}>
             Farmer Information
           </Text>
@@ -628,7 +818,7 @@ export default function RequestDetailsScreen() {
 
         {/* Farm Location & Directions Section */}
         {(isAI ? request.approvedBy : request.handledBy) ? (
-          <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={sectionCardStyle}>
             <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 10 }}>
               Farm Location & Directions
             </Text>
@@ -658,18 +848,18 @@ export default function RequestDetailsScreen() {
                 >
                   <MapPin size={16} color="#fff" />
                   <Text style={{ fontFamily: "Outfit_700Bold", color: "#fff", fontSize: 14 }}>
-                    Navigate to Farm Pin
+                    Get directions to farm
                   </Text>
                 </TouchableOpacity>
               ) : (
                 <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 4 }}>
-                  Farm pin coordinates missing.
+                  Exact farm location is not set.
                 </Text>
               )}
             </View>
           </View>
         ) : (
-          <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <View style={sectionCardStyle}>
             <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 10 }}>
               Farm Location
             </Text>
@@ -680,7 +870,7 @@ export default function RequestDetailsScreen() {
         )}
 
         {/* Request Information Section */}
-        <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+        <View style={sectionCardStyle}>
           <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 10 }}>
             Request Details
           </Text>
@@ -727,7 +917,7 @@ export default function RequestDetailsScreen() {
 
         {/* Action / Input Section */}
         {!isTerminal && (
-          <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+          <View style={sectionCardStyle}>
             
             {request.cancellationStatus === "requested" ? (
               // Cancellation Requested Review Panel
@@ -957,9 +1147,22 @@ export default function RequestDetailsScreen() {
             ) : (
               // Normal action execution section
               <>
-                <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 12 }}>
-                  Execute Action
-                </Text>
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary }}>
+                    Next action
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 13,
+                      lineHeight: 18,
+                      color: colors.textSecondary,
+                      marginTop: 4,
+                    }}
+                  >
+                    {nextActionDescription}
+                  </Text>
+                </View>
 
             {/* Inline scheduling date/time picker */}
             {(request.status?.toLowerCase() === "approved" ||
@@ -1184,28 +1387,23 @@ export default function RequestDetailsScreen() {
             <TouchableOpacity
               onPress={handleAction}
               disabled={updating}
+              accessibilityRole="button"
+              accessibilityLabel={primaryActionLabel}
               style={{
                 backgroundColor: colors.primary,
-                paddingVertical: 16,
-                borderRadius: 12,
+                minHeight: 50,
+                paddingHorizontal: 16,
+                borderRadius: 14,
                 alignItems: "center",
+                justifyContent: "center",
+                opacity: updating ? 0.65 : 1,
               }}
             >
               {updating ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={{ color: "#fff", fontSize: 16 }} variant="extrabold">
-                  {request.status?.toLowerCase() === "pending"
-                    ? "Assign to Me"
-                    : request.status?.toLowerCase() === "approved" ||
-                      request.status?.toLowerCase() === "assigned" ||
-                      request.status?.toLowerCase() === "triaged"
-                    ? "Schedule Visit"
-                    : request.status?.toLowerCase() === "scheduled"
-                    ? "Start Service"
-                    : isAI
-                    ? "Complete AI Service"
-                    : "Resolve Health Request"}
+                  {primaryActionLabel}
                 </Text>
               )}
             </TouchableOpacity>
@@ -1241,7 +1439,7 @@ export default function RequestDetailsScreen() {
 
         {/* View Record (If completed/resolved) */}
         {isTerminal && (
-          <View style={{ padding: 20, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.card }}>
+          <View style={sectionCardStyle}>
             <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 12 }}>
               Service Record (Completed)
             </Text>
@@ -1298,12 +1496,29 @@ export default function RequestDetailsScreen() {
         )}
 
         {/* Animal History Section */}
-        <View style={{ padding: 20 }}>
+        <View style={sectionCardStyle}>
           <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 14 }}>
             Animal History Timeline
           </Text>
 
-          {timeline.length === 0 ? (
+          {timelineLoading ? (
+            <View style={{ gap: 12 }}>
+              {[1, 2, 3].map((item) => (
+                <View key={item} style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                  <SkeletonBlock
+                    width={28}
+                    height={28}
+                    borderRadius={14}
+                    color={isDark ? "#1f2937" : "#e8edf3"}
+                  />
+                  <View style={{ flex: 1, marginLeft: 12, gap: 7 }}>
+                    <SkeletonBlock width="58%" height={13} color={isDark ? "#1f2937" : "#e8edf3"} />
+                    <SkeletonBlock width="86%" height={11} color={isDark ? "#1f2937" : "#e8edf3"} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : timeline.length === 0 ? (
             <View style={{ paddingVertical: 20, alignItems: "center" }}>
               <Text style={{ color: colors.textMuted }} variant="bold">
                 No past medical or AI history found.

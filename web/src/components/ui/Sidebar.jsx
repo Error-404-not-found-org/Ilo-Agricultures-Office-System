@@ -86,9 +86,9 @@ export default function Sidebar() {
   };
 
   const [openGroups, setOpenGroups] = useState({
-    "Service Records": true,
-    Registries: false,
-    "Field Support": false,
+    "Farmers & Animals": true,
+    Records: true,
+    "Field Tools": false,
   });
 
   // ---- LIVE QUEUE TELEMETRY CONTROLLER ----
@@ -125,23 +125,41 @@ export default function Sidebar() {
 
   // ---- MASTER SIDEBAR CONFIGURATION MATRICES ----
   const TECH_GROUPS = React.useMemo(() => [
-    { type: "label", label: "Main" },
+    { type: "label", label: "Today" },
     {
       path: "/technician/dashboard",
       icon: <LayoutDashboard size={16} />,
-      label: "Dashboard",
+      label: "Overview",
     },
     {
       path: "/technician/requests",
       icon: <ClipboardList size={16} />,
-      label: "Task Requests",
+      label: "Service Requests",
       badge: livePendingCount > 0 ? String(livePendingCount) : null,
     },
-    { type: "label", label: "Core Services" },
+    { type: "label", label: "Find Records" },
     {
       type: "group",
-      label: "Service Records",
-      icon: <HeartPulse size={16} />,
+      label: "Farmers & Animals",
+      icon: <Users size={16} />,
+      paths: ["/technician/farmers", "/technician/animals"],
+      items: [
+        {
+          path: "/technician/farmers",
+          icon: <Users size={14} />,
+          label: "Farmers",
+        },
+        {
+          path: "/technician/animals",
+          icon: <Tractor size={14} />,
+          label: "Animals",
+        },
+      ],
+    },
+    {
+      type: "group",
+      label: "Records",
+      icon: <BookOpen size={16} />,
       paths: [
         "/technician/ledger",
         "/technician/inseminations",
@@ -153,48 +171,30 @@ export default function Sidebar() {
         {
           path: "/technician/ledger",
           icon: <BookOpen size={14} />,
-          label: "Breeding Ledger",
+          label: "Pregnancy Checks",
         },
         {
           path: "/technician/inseminations",
           icon: <Syringe size={14} />,
-          label: "Inseminations Log",
+          label: "AI Services",
         },
         {
           path: "/technician/newborns",
           icon: <Tractor size={14} />,
-          label: "Newborns Log",
+          label: "Calving Records",
           badge: unseenCalvingsCount > 0 ? String(unseenCalvingsCount) : null,
         },
         {
           path: "/technician/health",
           icon: <HeartPulse size={14} />,
-          label: "Health Ledger",
+          label: "Health Records",
         },
       ],
     },
+    { type: "label", label: "Field Work" },
     {
       type: "group",
-      label: "Registries",
-      icon: <Users size={16} />,
-      paths: ["/technician/farmers", "/technician/animals"],
-      items: [
-        {
-          path: "/technician/farmers",
-          icon: <Users size={14} />,
-          label: "Farmer Registry",
-        },
-        {
-          path: "/technician/animals",
-          icon: <Tractor size={14} />,
-          label: "Livestock Registry",
-        },
-      ],
-    },
-    { type: "label", label: "Field Operations" },
-    {
-      type: "group",
-      label: "Field Support",
+      label: "Field Tools",
       icon: <MapPin size={16} />,
       paths: [
         "/technician/schedule",
@@ -205,35 +205,35 @@ export default function Sidebar() {
         {
           path: "/technician/schedule",
           icon: <CalendarDays size={14} />,
-          label: "Daily Schedule",
+          label: "Visit Calendar",
         },
         {
           path: "/technician/health-map",
           icon: <MapPin size={14} />,
-          label: "GIS Field Hub",
+          label: "Map & Locations",
         },
         {
           path: "/technician/field-notes",
           icon: <Image size={14} />,
-          label: "Field Notes & Gallery",
+          label: "Notes & Photos",
         },
       ],
     },
     {
       path: "/technician/reports",
       icon: <FileText size={16} />,
-      label: "Field Reports",
+      label: "Reports & Exports",
     },
     {
       path: "/technician/analytics",
       icon: <BarChart3 size={16} />,
-      label: "Analytics",
+      label: "My Performance",
     },
     { type: "label", label: "System" },
     {
       path: "/technician/moowie",
       icon: <MessageSquare size={16} />,
-      label: "Moowie",
+      label: "Ask Moowie",
     },
     {
       path: "/technician/profile",
@@ -364,7 +364,7 @@ export default function Sidebar() {
   return (
     <>
       <aside
-        className={`fixed lg:relative inset-y-0 left-0 w-64 min-w-64 bg-slate-900 text-slate-100 flex flex-col h-screen border-r border-slate-800/80 shadow-2xl z-40 transition-transform duration-300 lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`relative w-72 min-w-72 bg-neutral text-neutral-content flex flex-col h-screen border-r border-neutral-content/10 shadow-xl transition-transform duration-300 lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         {/* Logo */}
         <div className="flex items-center gap-3 p-6 border-b border-slate-800/60 group">
@@ -386,7 +386,7 @@ export default function Sidebar() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto p-4 space-y-0.5 custom-scrollbar">
+        <nav className="menu menu-sm flex-nowrap flex-1 overflow-y-auto p-4 custom-scrollbar">
           {GROUPS.map((item, idx) => {
             // Section label
             if (item.type === "label") {
@@ -411,7 +411,7 @@ export default function Sidebar() {
                 <div key={idx} className="space-y-0.5">
                   <button
                     onClick={() => toggleGroup(item.label)}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold hover:bg-white/5 text-slate-300 transition-all duration-150 cursor-pointer"
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-field text-sm font-semibold hover:bg-neutral-content/10 text-neutral-content/80 transition-colors cursor-pointer"
                   >
                     <span className="opacity-75">{item.icon}</span>
                     <span className="flex-1 text-left">{item.label}</span>
@@ -431,8 +431,8 @@ export default function Sidebar() {
                             to={sub.path}
                             className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 ${
                               isActive
-                                ? "bg-[#00643b] text-white font-bold shadow-md shadow-slate-950/30 translate-x-1 border-l-4 border-emerald-400 pl-2"
-                                : "text-slate-400 hover:bg-white/5 hover:text-white hover:translate-x-0.5"
+                                ? "bg-primary text-primary-content font-bold"
+                                : "text-neutral-content/70 hover:bg-neutral-content/10 hover:text-neutral-content"
                             }`}
                           >
                             <div className="flex items-center gap-2.5 min-w-0">
@@ -467,8 +467,8 @@ export default function Sidebar() {
                 to={item.path}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all duration-200 ${
                   isActive
-                    ? "bg-[#00643b] text-white shadow-lg shadow-slate-950/30 translate-x-1 border-l-4 border-emerald-400 pl-2"
-                    : "text-slate-300 hover:bg-white/5 hover:text-white hover:translate-x-0.5"
+                    ? "bg-primary text-primary-content shadow-md"
+                    : "text-neutral-content/80 hover:bg-neutral-content/10 hover:text-neutral-content"
                 }`}
               >
                 <span className={isActive ? "text-white" : "opacity-70"}>
@@ -486,7 +486,7 @@ export default function Sidebar() {
         </nav>
 
         {/* Footer User Block Integration */}
-        <div className="p-4 border-t border-slate-800/60 bg-slate-950/40">
+        <div className="p-4 border-t border-neutral-content/10 bg-neutral">
           <div className="flex items-center justify-between p-2.5 rounded-xl hover:bg-white/5 transition-colors mb-3">
             <div className="flex items-center gap-3 min-w-0">
               <UserButton

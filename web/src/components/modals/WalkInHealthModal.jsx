@@ -31,13 +31,13 @@ import {
   ILOILO_MUNICIPALITY_OPTIONS,
 } from "../../utils/addressOptions";
 
-const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all`;
-const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:border-emerald-500 focus:outline-none transition-all appearance-none`;
+const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content placeholder:text-base-content/55 focus:border-primary focus:outline-none transition-all`;
+const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content focus:border-primary focus:outline-none transition-all appearance-none`;
 const textareaClass = `w-full min-h-[120px] bg-base-200 border border-base-300 rounded-xl pl-12 pr-4 py-4 text-xs font-bold text-base-content placeholder:text-base-content/25 focus:border-emerald-500 focus:outline-none transition-all resize-none`;
-const labelClass = `text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] ml-1`;
-const sectionClass = `bg-base-200/20 border border-base-300 rounded-2xl p-6 space-y-5`;
+const labelClass = `text-[11px] font-bold text-base-content/70 tracking-wide ml-1`;
+const sectionClass = `bg-base-200/40 border border-base-300 rounded-2xl p-4 space-y-4`;
 
-const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
+const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData, existingOnly = false }) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -72,6 +72,8 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     treatment: "",
     advice: "",
     technicianNote: "",
+    followUpDate: "",
+    withdrawalPeriodDays: "",
   });
 
   const targetBarangays = useMemo(() => {
@@ -107,6 +109,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
     };
     if (isOpen) {
       window.addEventListener("keydown", handleKeyDown);
+      if (existingOnly) Promise.resolve().then(() => setIsExistingRecord(true));
     }
     if (isOpen && prefillData) {
       Promise.resolve().then(() => {
@@ -153,13 +156,15 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
           treatment: "",
           advice: "",
           technicianNote: "",
+          followUpDate: "",
+          withdrawalPeriodDays: "",
         });
       });
     }
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isOpen, prefillData, onClose]);
+  }, [isOpen, prefillData, onClose, existingOnly]);
 
   useEffect(() => {
     if (formData.animalDetails.species) {
@@ -290,20 +295,20 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          className="relative w-full max-w-4xl overflow-hidden rounded-3xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[90vh]"
+          className="relative w-full max-w-3xl overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-2xl flex flex-col max-h-[86vh]"
         >
           {/* HEADER */}
-          <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-6 py-5">
+          <div className="flex items-center justify-between border-b border-base-300 bg-base-200/40 px-5 py-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-center text-emerald-600 shadow-sm">
                 <HeartPulse size={20} />
               </div>
               <div>
                 <h3 className="text-xl font-black uppercase tracking-tighter text-base-content leading-none">
-                  Livestock Health Hub
+                  Record Health Assistance
                 </h3>
                 <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                  Veterinary Field Protocol
+                  Select an existing farmer and animal, then document the visit
                 </p>
               </div>
             </div>
@@ -317,10 +322,10 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
           </div>
 
           {/* SCROLLABLE CONTENT */}
-          <div className="overflow-y-auto flex-1 custom-scrollbar p-6 space-y-6 bg-base-100">
+          <div className="overflow-y-auto flex-1 custom-scrollbar p-5 space-y-5 bg-base-100">
             {/* TOGGLES */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-base-200/30 p-3 rounded-2xl border border-base-300">
-              <div className="inline-flex p-1 rounded-xl bg-base-100 border border-base-300">
+              {!existingOnly && <div className="inline-flex p-1 rounded-xl bg-base-100 border border-base-300">
                 <button
                   onClick={() => setIsExistingRecord(true)}
                   className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
@@ -333,7 +338,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                 >
                   Manual Entry
                 </button>
-              </div>
+              </div>}
 
               <div className="flex gap-2">
                 <button
@@ -342,7 +347,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                   }
                   className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.status === "resolved" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600" : "border-transparent text-base-content/20"}`}
                 >
-                  Service Completed
+                  Completed
                 </button>
                 <button
                   onClick={() =>
@@ -350,7 +355,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                   }
                   className={`px-4 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-all cursor-pointer ${formData.status === "in-progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-600" : "border-transparent text-base-content/20"}`}
                 >
-                  Schedule Visit
+                  In progress
                 </button>
               </div>
             </div>
@@ -360,12 +365,12 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                 <div className="flex items-center gap-2 mb-1">
                   <BadgeCheck size={14} className="text-emerald-500" />
                   <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                    Asset Selection
+                    Farmer and animal
                   </h4>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className={labelClass}>Farmer Record</label>
+                    <label className={labelClass}>Farmer</label>
                     <div className="relative">
                       <Search
                         size={16}
@@ -434,7 +439,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <label className={labelClass}>Animal Asset</label>
+                    <label className={labelClass}>Animal</label>
                     <div className="relative">
                       <select
                         disabled={!selectedFarmerId || isLoadingAnimals}
@@ -793,7 +798,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
               <div className="flex items-center gap-2 mb-1">
                 <Calendar size={14} className="text-emerald-500" />
                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                  Service Logistics
+                  Visit details
                 </h4>
               </div>
 
@@ -822,7 +827,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className={labelClass}>Mission Date</label>
+                  <label className={labelClass}>Visit date</label>
                   <div className="relative">
                     <input
                       type="date"
@@ -838,7 +843,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <label className={labelClass}>Expected T-Time</label>
+                  <label className={labelClass}>Visit time</label>
                   <div className="relative">
                     <input
                       type="time"
@@ -856,15 +861,15 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
               </div>
 
               <div className="space-y-1.5 pt-4 border-t border-base-300">
-                <label className={labelClass}>Priority Protocol</label>
+                <label className={labelClass}>Urgency</label>
                 <div className="flex gap-4">
-                  {["low", "medium", "high"].map((u) => (
+                  {["low", "medium", "high", "emergency"].map((u) => (
                     <button
                       key={u}
                       onClick={() => setFormData({ ...formData, urgency: u })}
                       className={`flex-1 h-11 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
                         formData.urgency === u
-                          ? u === "high"
+                          ? u === "high" || u === "emergency"
                             ? "bg-rose-500/10 border-rose-500/30 text-rose-600"
                             : u === "medium"
                               ? "bg-amber-500/10 border-amber-500/30 text-amber-600"
@@ -872,7 +877,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                           : "border-base-300 text-base-content/40 hover:bg-base-200"
                       }`}
                     >
-                      {u} Priority
+                      {u}
                     </button>
                   ))}
                 </div>
@@ -884,7 +889,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
               <div className="flex items-center gap-2 mb-1">
                 <StickyNote size={14} className="text-emerald-500" />
                 <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                  Field Findings & Symptoms
+                  Assessment and symptoms
                 </h4>
               </div>
               <div className="relative">
@@ -909,7 +914,7 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                   <div className="flex items-center gap-2 mb-1">
                     <Stethoscope size={14} className="text-emerald-500" />
                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                      Treatment Action & Medication
+                      Treatment and medicine
                     </h4>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -941,13 +946,36 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
                       />
                     </div>
                   </div>
+                  <div className="grid grid-cols-1 gap-4 border-t border-base-300 pt-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>Follow-up date</label>
+                      <input
+                        type="date"
+                        value={formData.followUpDate}
+                        onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
+                        className={`${inputClass} cursor-pointer`}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className={labelClass}>Withdrawal period (days)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        inputMode="numeric"
+                        value={formData.withdrawalPeriodDays}
+                        onChange={(e) => setFormData({ ...formData, withdrawalPeriodDays: e.target.value })}
+                        placeholder="0"
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
                 </section>
 
                 <section className={sectionClass}>
                   <div className="flex items-center gap-2 mb-1">
                     <StickyNote size={14} className="text-emerald-500" />
                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                      Additional Observations
+                      Notes and follow-up
                     </h4>
                   </div>
                   <div className="relative">
@@ -988,8 +1016,8 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData }) => {
               {mutation.isPending
                 ? "Synchronizing Record..."
                 : formData.status === "resolved"
-                  ? "Save Health Record"
-                  : "Schedule Mission"}
+                  ? "Save Health Assistance"
+                  : "Save Visit"}
             </button>
           </div>
         </motion.div>

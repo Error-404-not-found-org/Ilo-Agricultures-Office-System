@@ -630,7 +630,7 @@ export default function FieldReports() {
   }, [activityRecords, searchQuery, reportType, barangay, dateRange]);
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Field Reports"
         subtitle="Compliance compilation, spatial telemetry logs, and officer audits"
@@ -646,38 +646,38 @@ export default function FieldReports() {
             {
               label: "Reports Compiled",
               val: `${reports.length} Records`,
-              color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
+              color: "text-blue-500 bg-blue-500/10",
               icon: <FileText size={16} />,
             },
             {
               label: "Schedules Configured",
               val: `${schedules.filter((s) => s.active).length} Active`,
-              color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
+              color: "text-emerald-500 bg-emerald-500/10",
               icon: <Clock size={16} />,
             },
             {
               label: "Cloud Storage",
               val: "7.3 MB / 100 MB",
-              color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
+              color: "text-purple-500 bg-purple-500/10",
               icon: <HardDrive size={16} />,
             },
             {
               label: "Officer Inspections",
               val: "2 Pending",
-              color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
+              color: "text-amber-500 bg-amber-500/10",
               icon: <AlertCircle size={16} />,
             },
           ].map((stat, i) => (
             <div
               key={i}
-              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
+              className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
             >
               <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
                 {stat.icon}
               </div>
               <div>
                 <div className="text-lg font-black tracking-tight">{stat.val}</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-base-content/40 mt-0.5">
                   {stat.label}
                 </div>
               </div>
@@ -688,27 +688,27 @@ export default function FieldReports() {
         {/* Double-column layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           {/* Left panel: Compiler form */}
-          <div className="lg:col-span-8 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
-              <Play size={13} className="text-[#00643b] dark:text-emerald-500" /> Report Compilation Engine
+          <div className="lg:col-span-8 bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+            <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
+              <Play size={13} className="text-primary" /> Report Compilation Engine
             </h3>
 
             {isCompiling ? (
               <div className="py-10 flex flex-col items-center justify-center space-y-4 text-center">
-                <span className="loading loading-spinner loading-md text-[#00643b] dark:text-emerald-500" />
+                <span className="loading loading-spinner loading-md text-primary" />
                 <div className="space-y-1">
-                  <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Compiling Ledger Metrics</h4>
-                  <p className="text-xs text-slate-400 font-mono italic animate-pulse">{compilingStep}</p>
+                  <h4 className="font-bold text-sm text-base-content">Compiling Ledger Metrics</h4>
+                  <p className="text-xs text-base-content/40 font-mono italic animate-pulse">{compilingStep}</p>
                 </div>
               </div>
             ) : (
               <form onSubmit={handleGenerateReport} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Report Scope / Type</label>
+                  <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">Report Scope / Type</label>
                   <select
                     value={reportType}
                     onChange={(e) => setReportType(e.target.value)}
-                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                    className="select select-bordered select-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none transition-all duration-200"
                   >
                     <option value="breeding-audit">Breeding Accomplishment</option>
                     <option value="health-summary">Health Assistance Summary</option>
@@ -718,11 +718,11 @@ export default function FieldReports() {
                 </div>
 
                 <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Time Interval</label>
+                  <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">Time Interval</label>
                   <select
                     value={dateRange}
                     onChange={(e) => setDateRange(e.target.value)}
-                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                    className="select select-bordered select-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none transition-all duration-200"
                   >
                     <option value="7-days">Last 7 Days</option>
                     <option value="30-days">Last 30 Days</option>
@@ -731,11 +731,11 @@ export default function FieldReports() {
                 </div>
 
                 <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Geographic Segment</label>
+                  <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">Geographic Segment</label>
                   <select
                     value={barangay}
                     onChange={(e) => setBarangay(e.target.value)}
-                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                    className="select select-bordered select-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none transition-all duration-200"
                   >
                     <option value="all">All Barangays</option>
                     <option value="San Miguel">San Miguel</option>
@@ -747,11 +747,11 @@ export default function FieldReports() {
                 </div>
 
                 <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Output Export Layout</label>
+                  <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">Output Export Layout</label>
                   <select
                     value={format}
                     onChange={(e) => setFormat(e.target.value)}
-                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                    className="select select-bordered select-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none transition-all duration-200"
                   >
                     <option value="pdf">PDF Document (.pdf)</option>
                     <option value="csv">CSV Spreadsheet (.csv)</option>
@@ -762,7 +762,7 @@ export default function FieldReports() {
                   <button
                     type="submit"
                     disabled={isCompiling || filteredActivityRecords.length === 0}
-                    className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold rounded-xl px-5 flex items-center gap-1.5"
+                    className="btn btn-primary btn-sm text-white font-bold rounded-xl px-5 flex items-center gap-1.5 cursor-pointer"
                   >
                     <Play size={12} /> Compile &amp; Publish Report
                   </button>
@@ -777,8 +777,8 @@ export default function FieldReports() {
           </div>
 
           {/* Right panel: schedules */}
-          <div className="lg:col-span-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
+          <div className="lg:col-span-4 bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+            <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
               <Settings size={13} /> Automated Dispatch Schedules
             </h3>
 
@@ -809,16 +809,16 @@ export default function FieldReports() {
         </div>
 
         {/* Bottom panel: list of compiled reports or live activity records */}
-        <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xs overflow-hidden flex-1 flex flex-col min-h-0">
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50 flex-wrap gap-2">
+        <div className="bg-base-100 border border-base-300 rounded-2xl shadow-2xs overflow-hidden flex-1 flex flex-col min-h-0">
+          <div className="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50 flex-wrap gap-2">
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setBottomTab("live-records")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide uppercase transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide uppercase transition-all cursor-pointer ${
                   bottomTab === "live-records"
-                    ? "bg-[#00643b] text-white shadow-xs"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                    ? "bg-primary text-white shadow-xs"
+                    : "text-base-content/60 hover:bg-base-200"
                 }`}
               >
                 Live Activity Records
@@ -826,16 +826,16 @@ export default function FieldReports() {
               <button
                 type="button"
                 onClick={() => setBottomTab("library")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide uppercase transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide uppercase transition-all cursor-pointer ${
                   bottomTab === "library"
-                    ? "bg-[#00643b] text-white shadow-xs"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                    ? "bg-primary text-white shadow-xs"
+                    : "text-base-content/60 hover:bg-base-200"
                 }`}
               >
                 Publications Library
               </button>
             </div>
-            <span className="text-[10px] text-slate-400 font-bold">
+            <span className="text-[10px] text-base-content/40 font-bold">
               {bottomTab === "live-records"
                 ? `Displaying ${filteredActivityRecords.length} records`
                 : `Displaying ${filteredReports.length} publications`}
@@ -845,17 +845,17 @@ export default function FieldReports() {
           <div className="flex-1 overflow-x-auto">
             {bottomTab === "live-records" ? (
               isLoadingActivities ? (
-                <div className="p-12 flex flex-col items-center justify-center space-y-2 text-slate-400">
-                  <span className="loading loading-spinner loading-md text-[#00643b] dark:text-emerald-500" />
+                <div className="p-12 flex flex-col items-center justify-center space-y-2 text-base-content/40">
+                  <span className="loading loading-spinner loading-md text-primary" />
                   <p className="text-xs font-semibold italic animate-pulse">Syncing live records...</p>
                 </div>
               ) : filteredActivityRecords.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 dark:text-slate-500 italic text-xs font-semibold">
+                <div className="p-8 text-center text-base-content/40 italic text-xs font-semibold">
                   No live activity records matching filters.
                 </div>
               ) : (
-                <table className="table table-xs w-full divide-y divide-slate-100 dark:divide-slate-800">
-                  <thead className="bg-slate-50 dark:bg-slate-900 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+                <table className="table table-xs w-full divide-y divide-base-300">
+                  <thead className="bg-base-200 text-base-content/40 uppercase font-black tracking-wider text-[10px]">
                     <tr>
                       <th className="py-3 px-4 text-center" style={{ width: "60px" }}>Type</th>
                       <th className="py-3 px-4 text-left">Animal / Ear Tag</th>
@@ -865,28 +865,28 @@ export default function FieldReports() {
                       <th className="py-3 px-4 text-right">Date Occurred</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                  <tbody className="divide-y divide-base-300 text-base-content font-medium">
                     {filteredActivityRecords.map((record) => (
-                      <tr key={record.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition-colors">
+                      <tr key={record.id} className="hover:bg-base-200/50 transition-colors">
                         <td className="py-3 px-4 text-center">
                           <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-md ${
                             record.type === "AI"
-                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400"
+                              ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                               : record.type === "PD"
-                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400"
+                              ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
                               : record.type === "HL"
-                              ? "bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400"
-                              : "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
+                              ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
+                              : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                           }`}>
                             {record.type}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">
-                          {record.animalId} <span className="text-slate-400 font-normal">({record.earTag})</span>
+                        <td className="py-3 px-4 font-bold text-base-content">
+                          {record.animalId} <span className="text-base-content/40 font-normal">({record.earTag})</span>
                         </td>
                         <td className="py-3 px-4 text-xs font-semibold">{record.farmer}</td>
                         <td className="py-3 px-4 text-xs">{record.barangay}</td>
-                        <td className="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        <td className="py-3 px-4 text-xs font-semibold text-base-content/60">
                           {record.details}
                         </td>
                         <td className="py-3 px-4 text-right text-xs font-mono">{record.formattedDate}</td>
@@ -896,12 +896,12 @@ export default function FieldReports() {
                 </table>
               )
             ) : filteredReports.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 dark:text-slate-500 italic text-xs font-semibold">
+              <div className="p-8 text-center text-base-content/40 italic text-xs font-semibold">
                 No reports publications matching query criteria.
               </div>
             ) : (
-              <table className="table table-xs w-full divide-y divide-slate-100 dark:divide-slate-800">
-                <thead className="bg-slate-50 dark:bg-slate-900 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+              <table className="table table-xs w-full divide-y divide-base-300">
+                <thead className="bg-base-200 text-base-content/40 uppercase font-black tracking-wider text-[10px]">
                   <tr>
                     <th className="py-3 px-4 text-left">Report Document Title</th>
                     <th className="py-3 px-4 text-left">Date Compiled</th>
@@ -912,10 +912,10 @@ export default function FieldReports() {
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                <tbody className="divide-y divide-base-300 text-base-content font-medium">
                   {filteredReports.map((report) => (
-                    <tr key={report.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
+                    <tr key={report.id} className="hover:bg-base-200/50 transition-colors">
+                      <td className="py-3.5 px-4 font-bold text-base-content">
                         {report.name}
                       </td>
                       <td className="py-3.5 px-4 text-xs font-mono">{report.date}</td>
@@ -924,17 +924,17 @@ export default function FieldReports() {
                       <td className="py-3.5 px-4 text-center">
                         <span className={`text-[8.5px] font-black px-2 py-0.5 rounded-md ${
                           report.format === "PDF"
-                            ? "bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400"
+                            ? "bg-rose-500/10 text-rose-600 dark:text-rose-400"
                             : report.format === "EXCEL"
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400"
-                            : "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400"
+                            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            : "bg-blue-500/10 text-blue-600 dark:text-blue-400"
                         }`}>
                           {report.format}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-center">
                         <span className={`text-[9px] font-bold uppercase ${
-                          report.status === "Published" ? "text-emerald-500" : "text-slate-400"
+                          report.status === "Published" ? "text-emerald-500" : "text-base-content/40"
                         }`}>
                           {report.status}
                         </span>
@@ -943,14 +943,14 @@ export default function FieldReports() {
                         <div className="flex justify-end gap-1.5">
                           <button
                             onClick={() => handleDownloadReport(report)}
-                            className="btn btn-ghost btn-xs btn-circle text-slate-400 hover:text-[#00643b] hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            className="btn btn-ghost btn-xs btn-circle text-base-content/40 hover:text-primary hover:bg-base-200 cursor-pointer"
                             title="Download Report"
                           >
                             <Download size={13} />
                           </button>
                           <button
                             onClick={() => handleDeleteReport(report.id)}
-                            className="btn btn-ghost btn-xs btn-circle text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            className="btn btn-ghost btn-xs btn-circle text-base-content/40 hover:text-rose-600 hover:bg-base-200 cursor-pointer"
                             title="Delete Report"
                           >
                             <Trash2 size={13} />

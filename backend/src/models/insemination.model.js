@@ -1,4 +1,8 @@
 import mongoose from "mongoose";
+import {
+  AI_STATUS,
+  isActiveAIRequestStatus,
+} from "../domain/status-vocabulary.js";
 
 const InseminationSchema = new mongoose.Schema(
   {
@@ -35,7 +39,7 @@ const InseminationSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected", "done", "in-progress", "scheduled", "cancelled"],
+      enum: Object.values(AI_STATUS),
       default: "pending",
     },
 
@@ -49,6 +53,13 @@ const InseminationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+
+    // Materialized only while this request is active. A sparse unique index
+    // makes the one-active-request-per-animal rule safe under concurrency.
+    activeRequestKey: {
+      type: String,
+      default: undefined,
+    },
     declinedByTechnicianIds: [{
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -61,6 +72,15 @@ const InseminationSchema = new mongoose.Schema(
     attemptNumber: {
       type: Number,
       default: 1,
+    },
+    previousAttemptId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Insemination",
+      default: null,
+    },
+    attemptSeriesId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: () => new mongoose.Types.ObjectId(),
     },
     preferredDate: {
       type: Date,
@@ -89,6 +109,31 @@ const InseminationSchema = new mongoose.Schema(
       default: "Pending",
     },
     pregnancyId: { type: mongoose.Schema.Types.ObjectId, ref: "Pregnancy" },
+    outcomeVerificationStatus: {
+      type: String,
+      enum: ["pending", "reported", "verified"],
+      default: "pending",
+    },
+    outcomeConfirmationSource: {
+      type: String,
+      enum: [
+        "farmer_possible_pregnancy",
+        "farmer_return_to_heat",
+        "technician_pregnancy_diagnosis",
+        "technician_negative_pd",
+        "technician_return_to_heat",
+        "legacy",
+        null,
+      ],
+      default: null,
+    },
+    outcomeConfirmedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    outcomeConfirmedAt: { type: Date },
+    failureReason: {
+      type: String,
+      enum: ["return_to_heat", "negative_pd", "aborted", "other", null],
+      default: null,
+    },
 
     imageUrl: {
       type: String,
@@ -145,8 +190,10 @@ const InseminationSchema = new mongoose.Schema(
       default: "none",
     },
     cancellationReason: { type: String, default: "" },
+    cancellationResponseReason: { type: String, default: "" },
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     cancellationRequestedAt: { type: Date },
+    cancellationRespondedAt: { type: Date },
 
     // Status history (mirrors HealthRequest)
     statusHistory: [{
@@ -169,5 +216,18 @@ InseminationSchema.index({ scheduledDate: 1 });
 InseminationSchema.index({ inseminationDate: -1 });
 InseminationSchema.index({ deletedAt: 1 });
 InseminationSchema.index({ declinedByTechnicianIds: 1 });
+InseminationSchema.index({ previousAttemptId: 1 });
+InseminationSchema.index({ attemptSeriesId: 1, attemptNumber: 1 });
+InseminationSchema.index(
+  { activeRequestKey: 1 },
+  { unique: true, sparse: true, name: "uniq_active_ai_request_per_animal" },
+);
+
+InseminationSchema.pre("validate", function setActiveRequestKey() {
+  this.activeRequestKey =
+    !this.deletedAt && isActiveAIRequestStatus(this.status)
+      ? String(this.animalId)
+      : undefined;
+});
 
 export const Insemination = mongoose.model("Insemination", InseminationSchema);

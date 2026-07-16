@@ -1,100 +1,35 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import {
-  getInseminations,
-  getPregnancyChecks,
-  getCalvings,
-  getAiRequests,
-  getHealthRequests,
-  deleteLedgerRecord,
+  getOfficialRecords,
 } from "../services/records.service";
-import { getTasks } from "../services/tasks.service";
 
 export const recordsQueryKeys = {
-  inseminations: ["technician", "records", "inseminations"] as const,
-  pregnancyChecks: ["technician", "records", "pregnancy-checks"] as const,
-  calvings: ["technician", "records", "calvings"] as const,
-  aiRequests: ["technician", "records", "ai-requests"] as const,
-  healthRequests: ["technician", "records", "health-requests"] as const,
-  tasks: ["technician", "records", "tasks"] as const,
+  official: ["technician", "records", "official"] as const,
 };
 
 export const useTechnicianRecords = () => {
   const api = useApi();
-  const queryClient = useQueryClient();
 
-  const inseminationsQuery = useQuery({
-    queryKey: recordsQueryKeys.inseminations,
-    queryFn: () => getInseminations(api),
-  });
-
-  const pregnancyChecksQuery = useQuery({
-    queryKey: recordsQueryKeys.pregnancyChecks,
-    queryFn: () => getPregnancyChecks(api),
-  });
-
-  const calvingsQuery = useQuery({
-    queryKey: recordsQueryKeys.calvings,
-    queryFn: () => getCalvings(api),
-  });
-
-  const aiRequestsQuery = useQuery({
-    queryKey: recordsQueryKeys.aiRequests,
-    queryFn: () => getAiRequests(api),
-  });
-
-  const healthRequestsQuery = useQuery({
-    queryKey: recordsQueryKeys.healthRequests,
-    queryFn: () => getHealthRequests(api),
-  });
-
-  const tasksQuery = useQuery({
-    queryKey: recordsQueryKeys.tasks,
-    queryFn: () => getTasks(api, { scope: "all", status: "all", page: 1, limit: 50 }),
-  });
-
-  const deleteRecordMutation = useMutation({
-    mutationFn: (params: { id: string; type: string }) => deleteLedgerRecord(api, params),
-    onSuccess: () => {
-      // Invalidate all records queries on successful delete
-      queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
-      queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
-    },
+  const officialRecordsQuery = useInfiniteQuery({
+    queryKey: recordsQueryKeys.official,
+    queryFn: ({ pageParam }) => getOfficialRecords(api, { page: pageParam, limit: 25 }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) =>
+      lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
   });
 
   const refetchAll = async () => {
-    await Promise.all([
-      inseminationsQuery.refetch(),
-      pregnancyChecksQuery.refetch(),
-      calvingsQuery.refetch(),
-      aiRequestsQuery.refetch(),
-      healthRequestsQuery.refetch(),
-      tasksQuery.refetch(),
-    ]);
+    await officialRecordsQuery.refetch();
   };
 
   return {
-    inseminationsQuery,
-    pregnancyChecksQuery,
-    calvingsQuery,
-    aiRequestsQuery,
-    healthRequestsQuery,
-    tasksQuery,
-    deleteRecordMutation,
+    officialRecordsQuery,
     refetchAll,
-    isLoading:
-      inseminationsQuery.isLoading ||
-      pregnancyChecksQuery.isLoading ||
-      calvingsQuery.isLoading ||
-      aiRequestsQuery.isLoading ||
-      healthRequestsQuery.isLoading ||
-      tasksQuery.isLoading,
-    isRefetching:
-      inseminationsQuery.isRefetching ||
-      pregnancyChecksQuery.isRefetching ||
-      calvingsQuery.isRefetching ||
-      aiRequestsQuery.isRefetching ||
-      healthRequestsQuery.isRefetching ||
-      tasksQuery.isRefetching,
+    isLoading: officialRecordsQuery.isLoading,
+    isRefetching: officialRecordsQuery.isRefetching,
+    isLoadingMore: officialRecordsQuery.isFetchingNextPage,
+    hasMoreRecords: officialRecordsQuery.hasNextPage,
+    loadMoreRecords: officialRecordsQuery.fetchNextPage,
   };
 };

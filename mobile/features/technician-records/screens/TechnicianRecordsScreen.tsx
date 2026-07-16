@@ -25,8 +25,6 @@ import { SearchBar } from "@/components/shared";
 import { RecordList } from "../components/RecordList";
 import { DateRangeSelector } from "../components/DateRangeSelector";
 import { LedgerDetailModal } from "../components/LedgerDetailModal";
-import { toast } from "sonner-native";
-import { ConfirmationModal } from "@/components/ConfirmationModal";
 
 const PRIMARY = "#00643B";
 
@@ -57,16 +55,12 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
   }, [defaultTab]);
 
   const {
-    inseminationsQuery,
-    pregnancyChecksQuery,
-    calvingsQuery,
-    aiRequestsQuery,
-    healthRequestsQuery,
-    tasksQuery,
-    deleteRecordMutation,
     refetchAll,
     isLoading,
     isRefetching,
+    isLoadingMore,
+    hasMoreRecords,
+    loadMoreRecords,
     searchQuery,
     setSearchQuery,
     selectedFilter,
@@ -85,6 +79,7 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
     detailsVisible,
     setDetailsVisible,
     allRecords,
+    recordsTotal,
     filteredRecords,
     clearDateRange,
     openDetails,
@@ -118,40 +113,20 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
   // Detail Modal states inside Generate Report
   const [selectedRow, setSelectedRow] = React.useState<any | null>(null);
   const [detailModalOpen, setDetailModalOpen] = React.useState(false);
-  const [deleteTarget, setDeleteTarget] = React.useState<any | null>(null);
-
-  const handleDelete = (item: any) => {
-    setDeleteTarget(item);
-  };
-
-  const confirmDeleteRecord = async () => {
-    if (!deleteTarget) return;
-    try {
-      await deleteRecordMutation.mutateAsync({
-        id: deleteTarget.id || deleteTarget._id,
-        type: deleteTarget.type,
-      });
-      toast.success("Record deleted successfully");
-      setDetailsVisible(false);
-      setDeleteTarget(null);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Failed to delete record");
-    }
-  };
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? colors.card : "#fff"} />
 
-      {/* Header */}
+      {/* Header Container */}
       <View
         style={{
-          backgroundColor: isDark ? "#064e3e" : "#00643B",
-          paddingBottom: 34,
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-          paddingHorizontal: 24,
-          paddingTop: insets.top + 20,
+          paddingHorizontal: 20,
+          paddingVertical: 14,
+          backgroundColor: isDark ? colors.card : "#fff",
+          borderBottomWidth: 1,
+          borderColor: colors.border,
+          paddingTop: insets.top + 14,
+          zIndex: 10,
         }}
       >
         <View
@@ -159,29 +134,26 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
             flexDirection: "row",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 20,
+            marginBottom: 16,
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1, marginRight: 16 }}>
             <TouchableOpacity
               onPress={() => router.back()}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "rgba(255,255,255,0.2)",
-                alignItems: "center",
-                justifyContent: "center",
+                padding: 8,
+                backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+                borderRadius: 999,
               }}
             >
-              <ArrowLeft size={20} color="#fff" />
+              <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
             </TouchableOpacity>
             <View style={{ flex: 1 }}>
               <Text
                 style={{
-                  color: "#fff",
+                  color: colors.textPrimary,
                   fontFamily: "Outfit_900Black",
-                  fontSize: 23,
+                  fontSize: 20,
                 }}
                 numberOfLines={1}
                 adjustsFontSizeToFit
@@ -190,9 +162,9 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
               </Text>
               <Text
                 style={{
-                  color: "rgba(255,255,255,0.74)",
+                  color: colors.textSecondary,
                   fontFamily: "Outfit_500Medium",
-                  fontSize: 12,
+                  fontSize: 11,
                   marginTop: 2,
                 }}
                 numberOfLines={1}
@@ -208,29 +180,28 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
               <TouchableOpacity
                 onPress={exportCSV}
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  backgroundColor: "rgba(255,255,255,0.2)",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Download size={18} color="#fff" />
+                <Download size={18} color={isDark ? "#fff" : "#1e293b"} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowCalendarModal(true)}
                 style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  backgroundColor:
-                    startDate || endDate ? "#eab308" : "rgba(255,255,255,0.2)",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: startDate || endDate ? "#eab308" : (isDark ? "#1e293b" : "#f1f5f9"),
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <Calendar size={18} color="#fff" />
+                <Calendar size={18} color={startDate || endDate ? "#fff" : (isDark ? "#fff" : "#1e293b")} />
               </TouchableOpacity>
             </View>
           ) : (
@@ -242,21 +213,21 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
                 setFilterModalOpen(true);
               }}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: "rgba(255,255,255,0.2)",
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Filter size={18} color="#fff" />
+              <Filter size={18} color={isDark ? "#fff" : "#1e293b"} />
               {(selectedReportType !== "ALL" || selectedReportBarangay !== "ALL" || reportSearchQuery !== "") && (
                 <View
                   style={{
                     position: "absolute",
-                    top: 8,
-                    right: 8,
+                    top: 6,
+                    right: 6,
                     width: 8,
                     height: 8,
                     borderRadius: 4,
@@ -272,18 +243,17 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
         <View
           style={{
             flexDirection: "row",
-            backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.1)",
-            borderRadius: 18,
+            backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9",
+            borderRadius: 14,
             padding: 4,
-            marginBottom: 0,
           }}
         >
           <TouchableOpacity
             onPress={() => setActiveSegment("browse")}
             style={{
               flex: 1,
-              paddingVertical: 10,
-              borderRadius: 12,
+              paddingVertical: 8,
+              borderRadius: 10,
               alignItems: "center",
               backgroundColor: activeSegment === "browse" ? (isDark ? colors.primary : "#ffffff") : "transparent",
             }}
@@ -292,7 +262,7 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
               style={{
                 fontFamily: "Outfit_700Bold",
                 fontSize: 12,
-                color: activeSegment === "browse" ? (isDark ? "#ffffff" : PRIMARY) : "rgba(255,255,255,0.7)",
+                color: activeSegment === "browse" ? (isDark ? "#ffffff" : PRIMARY) : (isDark ? "rgba(255,255,255,0.5)" : "rgba(30,41,59,0.6)"),
               }}
             >
               Browse Records
@@ -302,8 +272,8 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
             onPress={() => setActiveSegment("reports")}
             style={{
               flex: 1,
-              paddingVertical: 10,
-              borderRadius: 12,
+              paddingVertical: 8,
+              borderRadius: 10,
               alignItems: "center",
               backgroundColor: activeSegment === "reports" ? (isDark ? colors.primary : "#ffffff") : "transparent",
             }}
@@ -312,25 +282,20 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
               style={{
                 fontFamily: "Outfit_700Bold",
                 fontSize: 12,
-                color: activeSegment === "reports" ? (isDark ? "#ffffff" : PRIMARY) : "rgba(255,255,255,0.7)",
+                color: activeSegment === "reports" ? (isDark ? "#ffffff" : PRIMARY) : (isDark ? "rgba(255,255,255,0.5)" : "rgba(30,41,59,0.6)"),
               }}
             >
               Generate Report
             </Text>
           </TouchableOpacity>
         </View>
-
       </View>
 
       {/* Main Ledger Content */}
       <View
         style={{
           flex: 1,
-          marginTop: -18,
           backgroundColor: colors.background,
-          borderTopLeftRadius: 28,
-          borderTopRightRadius: 28,
-          overflow: "hidden",
         }}
       >
         {activeSegment === "browse" ? (
@@ -388,7 +353,7 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
                       fontSize: 16,
                     }}
                   >
-                    {allRecords.length}
+                    {recordsTotal}
                   </Text>
                   <Text
                     style={{
@@ -410,6 +375,7 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Search farmer, animal tag, status..."
+                variant="directory"
               />
             </View>
 
@@ -482,8 +448,8 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
                           : selectedFilter === "Calving"
                             ? "Calving / Delivery"
                             : selectedFilter === "Health"
-                              ? "Health Assistance"
-                              : "Farmer Visits"}
+                              ? "Health Records"
+                              : "General Notes"}
                   </Text>
                 </View>
                 <ChevronDown size={18} color={colors.textSecondary} style={{ transform: [{ rotate: showFilterDropdown ? "180deg" : "0deg" }] }} />
@@ -515,8 +481,8 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
                     { label: "A.I. Insemination", value: "AI" },
                     { label: "Pregnancy Diagnosis", value: "Pregnancy" },
                     { label: "Calving / Delivery", value: "Calving" },
-                    { label: "Health Assistance", value: "Health" },
-                    { label: "Farmer Visits", value: "Visits" },
+                    { label: "Health Records", value: "Health" },
+                    { label: "General Notes", value: "Notes" },
                   ].map((option, idx) => (
                     <TouchableOpacity
                       key={option.value}
@@ -566,7 +532,7 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
                   letterSpacing: 0.5,
                 }}
               >
-                Showing {filteredRecords.length} of {allRecords.length} records
+                Showing {filteredRecords.length} loaded of {recordsTotal} records
               </Text>
               {filteredRecords.length > 0 && (
                 <TouchableOpacity
@@ -594,6 +560,10 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
               onRefresh={refetchAll}
               filteredRecords={filteredRecords}
               openDetails={openDetails}
+              isLoadingMore={isLoadingMore}
+              hasMoreRecords={Boolean(hasMoreRecords)}
+              onLoadMore={() => loadMoreRecords()}
+              recordsTotal={recordsTotal}
             />
           </>
         ) : (
@@ -934,20 +904,7 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
         visible={detailsVisible}
         item={selectedItem}
         onClose={() => setDetailsVisible(false)}
-        onDelete={handleDelete}
-        isDeleting={deleteRecordMutation.isPending}
         router={router}
-      />
-
-      <ConfirmationModal
-        visible={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={confirmDeleteRecord}
-        title="Delete Record?"
-        message="Are you sure you want to delete this record permanently? This action cannot be undone."
-        confirmText="Yes, Delete"
-        cancelText="Cancel"
-        isDestructive
       />
 
       {/* Date Range Selector Calendar Modal */}

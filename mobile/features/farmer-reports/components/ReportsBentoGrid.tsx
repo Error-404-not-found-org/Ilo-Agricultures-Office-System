@@ -1,18 +1,28 @@
 import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
-import { Syringe } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme";
 import type { RecordStats } from "../types/farmerReports.types";
 
+type BentoKey = "all" | "history" | "breeding" | "pregnancy" | "calving";
+type RecordType = "all" | "ai" | "health" | "calving";
+
 interface ReportsBentoGridProps {
-  activeBento: "all" | "history" | "breeding" | "pregnancy" | "calving";
-  onBentoPress: (
-    bento: "all" | "history" | "breeding" | "pregnancy" | "calving",
-    recordType: "all" | "ai" | "health" | "calving"
-  ) => void;
+  activeBento: BentoKey;
+  onBentoPress: (bento: BentoKey, recordType: RecordType) => void;
   recordStats: RecordStats;
   milestonesCount: number;
+}
+
+interface RecordCategory {
+  key: BentoKey;
+  recordType: RecordType;
+  label: string;
+  helper: string;
+  icon: string;
+  count: number;
+  color: string;
+  tint: string;
 }
 
 const ReportsBentoGrid = ({
@@ -23,404 +33,243 @@ const ReportsBentoGrid = ({
 }: ReportsBentoGridProps) => {
   const { colors, isDark } = useTheme();
 
+  const categories: RecordCategory[] = [
+    {
+      key: "history",
+      recordType: "health",
+      label: "Health",
+      helper: "Visits and treatment",
+      icon: "stethoscope",
+      count: recordStats.health,
+      color: isDark ? "#fca5a5" : "#b91c1c",
+      tint: isDark ? "rgba(239,68,68,0.13)" : "#fef2f2",
+    },
+    {
+      key: "breeding",
+      recordType: "ai",
+      label: "AI services",
+      helper: "Insemination history",
+      icon: "needle",
+      count: recordStats.ai,
+      color: isDark ? "#93c5fd" : "#1d4ed8",
+      tint: isDark ? "rgba(59,130,246,0.13)" : "#eff6ff",
+    },
+    {
+      key: "pregnancy",
+      recordType: "all",
+      label: "Pregnancy",
+      helper: "Checks and cycles",
+      icon: "heart-pulse",
+      count: milestonesCount,
+      color: isDark ? "#f9a8d4" : "#be185d",
+      tint: isDark ? "rgba(236,72,153,0.13)" : "#fdf2f8",
+    },
+    {
+      key: "calving",
+      recordType: "calving",
+      label: "Calving",
+      helper: "Birth and offspring",
+      icon: "baby-carriage",
+      count: recordStats.calving,
+      color: isDark ? "#fcd34d" : "#a16207",
+      tint: isDark ? "rgba(245,158,11,0.13)" : "#fffbeb",
+    },
+  ];
+
+  const selectCategory = (category: RecordCategory) => {
+    if (activeBento === category.key) {
+      onBentoPress("all", "all");
+      return;
+    }
+    onBentoPress(category.key, category.recordType);
+  };
+
+  const primary = isDark ? colors.primary : "#00643B";
+
   return (
-    <View>
-      <View style={{ flexDirection: "row", gap: 12, marginBottom: 12 }}>
-        {/* Card 1: Animal History (Health) */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            if (activeBento === "history") {
-              onBentoPress("all", "all");
-            } else {
-              onBentoPress("history", "health");
-            }
-          }}
-          style={{
-            flex: 1,
-            aspectRatio: 1,
-            backgroundColor: colors.card,
-            borderRadius: 24,
-            padding: 16,
-            justifyContent: "space-between",
-            borderWidth: activeBento === "history" ? 2 : 1,
-            borderColor:
-              activeBento === "history"
-                ? isDark
-                  ? colors.primary
-                  : "#00643B"
-                : colors.border,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: isDark ? 0 : 0.04,
-            shadowRadius: 8,
-            elevation: 2,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-            }}
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: isDark
-                  ? "rgba(0, 100, 59, 0.15)"
-                  : "rgba(0, 100, 59, 0.05)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <MaterialCommunityIcons
-                name="history"
-                size={22}
-                color={isDark ? colors.primary : "#00643B"}
-              />
-            </View>
-            <View
-              style={{
-                backgroundColor: isDark
-                  ? "rgba(0, 100, 59, 0.15)"
-                  : "#ecfdf5",
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 8,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontFamily: "Outfit_700Bold",
-                  color: isDark ? colors.primary : "#00643B",
-                }}
-              >
-                {recordStats.pending}
-              </Text>
-            </View>
-          </View>
-          <View>
-            <Text
-              style={{
-                fontSize: 15,
-                fontFamily: "Outfit_700Bold",
-                color: colors.textPrimary,
-                lineHeight: 18,
-              }}
-            >
-              Animal History
-            </Text>
-            <Text
-              style={{
-                fontSize: 10,
-                fontFamily: "Outfit_500Medium",
-                color: colors.textSecondary,
-                marginTop: 4,
-              }}
-            >
-              Movement & Health
-            </Text>
-          </View>
-        </TouchableOpacity>
+    <View style={{ marginBottom: 24 }}>
+      <Text
+        style={{
+          color: colors.textPrimary,
+          fontFamily: "Outfit_800ExtraBold",
+          fontSize: 18,
+        }}
+      >
+        Browse records
+      </Text>
+      <Text
+        style={{
+          color: colors.textSecondary,
+          fontFamily: "Outfit_500Medium",
+          fontSize: 12,
+          lineHeight: 17,
+          marginTop: 2,
+          marginBottom: 12,
+        }}
+      >
+        Choose a category to find information faster.
+      </Text>
 
-        {/* Card 2: AI & Breeding (AI) */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            if (activeBento === "breeding") {
-              onBentoPress("all", "all");
-            } else {
-              onBentoPress("breeding", "ai");
-            }
-          }}
+      <TouchableOpacity
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityState={{ selected: activeBento === "all" }}
+        accessibilityLabel={`All records, ${recordStats.total} records`}
+        onPress={() => onBentoPress("all", "all")}
+        style={{
+          minHeight: 64,
+          borderRadius: 16,
+          paddingHorizontal: 14,
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor:
+            activeBento === "all"
+              ? isDark
+                ? "rgba(16,185,129,0.12)"
+                : "#ecfdf5"
+              : colors.card,
+          borderWidth: activeBento === "all" ? 2 : 1,
+          borderColor: activeBento === "all" ? primary : colors.border,
+          marginBottom: 10,
+        }}
+      >
+        <View
           style={{
-            flex: 1,
-            aspectRatio: 1,
-            backgroundColor: colors.card,
-            borderRadius: 24,
-            padding: 16,
-            justifyContent: "space-between",
-            borderWidth: activeBento === "breeding" ? 2 : 1,
-            borderColor:
-              activeBento === "breeding"
-                ? isDark
-                  ? colors.primary
-                  : "#00643B"
-                : colors.border,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: isDark ? 0 : 0.04,
-            shadowRadius: 8,
-            elevation: 2,
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            backgroundColor: isDark ? "rgba(16,185,129,0.14)" : "#dcfce7",
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          <View
+          <MaterialCommunityIcons
+            name="file-document-multiple-outline"
+            size={21}
+            color={primary}
+          />
+        </View>
+        <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
+          <Text
             style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
+              color: colors.textPrimary,
+              fontFamily: "Outfit_700Bold",
+              fontSize: 15,
             }}
           >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: isDark
-                  ? "rgba(37, 99, 235, 0.15)"
-                  : "rgba(37, 99, 235, 0.05)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Syringe size={22} color="#2563eb" />
-            </View>
-            <View
-              style={{
-                backgroundColor: "rgba(37, 99, 235, 0.08)",
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 8,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontFamily: "Outfit_700Bold",
-                  color: "#2563eb",
-                }}
-              >
-                {recordStats.approved}
-              </Text>
-            </View>
-          </View>
-          <View>
-            <Text
-              style={{
-                fontSize: 15,
-                fontFamily: "Outfit_700Bold",
-                color: colors.textPrimary,
-                lineHeight: 18,
-              }}
-            >
-              AI & Breeding
-            </Text>
-            <Text
-              style={{
-                fontSize: 10,
-                fontFamily: "Outfit_500Medium",
-                color: colors.textSecondary,
-                marginTop: 4,
-              }}
-            >
-              Insemination Logs
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+            All records
+          </Text>
+          <Text
+            style={{
+              color: colors.textSecondary,
+              fontFamily: "Outfit_500Medium",
+              fontSize: 11,
+              marginTop: 1,
+            }}
+          >
+            Complete animal history
+          </Text>
+        </View>
+        <Text
+          style={{
+            color: primary,
+            fontFamily: "Outfit_800ExtraBold",
+            fontSize: 17,
+          }}
+        >
+          {recordStats.total}
+        </Text>
+      </TouchableOpacity>
 
-      <View style={{ flexDirection: "row", gap: 12, marginBottom: 20 }}>
-        {/* Card 3: Pregnancy Records (Cycles) */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            if (activeBento === "pregnancy") {
-              onBentoPress("all", "all");
-            } else {
-              onBentoPress("pregnancy", "all");
-            }
-          }}
-          style={{
-            flex: 1,
-            aspectRatio: 1,
-            backgroundColor: colors.card,
-            borderRadius: 24,
-            padding: 16,
-            justifyContent: "space-between",
-            borderWidth: activeBento === "pregnancy" ? 2 : 1,
-            borderColor:
-              activeBento === "pregnancy"
-                ? isDark
-                  ? colors.primary
-                  : "#00643B"
-                : colors.border,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: isDark ? 0 : 0.04,
-            shadowRadius: 8,
-            elevation: 2,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-            }}
-          >
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          marginHorizontal: -5,
+          marginBottom: -10,
+        }}
+      >
+        {categories.map((category) => {
+          const selected = activeBento === category.key;
+          return (
             <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: isDark
-                  ? "rgba(16, 185, 129, 0.15)"
-                  : "rgba(16, 185, 129, 0.05)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              key={category.key}
+              style={{ width: "50%", paddingHorizontal: 5, marginBottom: 10 }}
             >
-              <MaterialCommunityIcons
-                name="heart-pulse"
-                size={22}
-                color={isDark ? colors.primary : "#059669"}
-              />
-            </View>
-            <View
-              style={{
-                backgroundColor: "rgba(16, 185, 129, 0.08)",
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 8,
-              }}
-            >
-              <Text
+              <TouchableOpacity
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                accessibilityLabel={`${category.label}, ${category.count} records`}
+                onPress={() => selectCategory(category)}
                 style={{
-                  fontSize: 10,
-                  fontFamily: "Outfit_700Bold",
-                  color: isDark ? colors.primary : "#059669",
+                  minHeight: 104,
+                  borderRadius: 16,
+                  padding: 13,
+                  backgroundColor: selected ? category.tint : colors.card,
+                  borderWidth: selected ? 2 : 1,
+                  borderColor: selected ? category.color : colors.border,
                 }}
               >
-                {milestonesCount}
-              </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 10,
+                      backgroundColor: category.tint,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name={category.icon as any}
+                      size={18}
+                      color={category.color}
+                    />
+                  </View>
+                  <Text
+                    style={{
+                      color: category.color,
+                      fontFamily: "Outfit_800ExtraBold",
+                      fontSize: 16,
+                    }}
+                  >
+                    {category.count}
+                  </Text>
+                </View>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 14,
+                    marginTop: 9,
+                  }}
+                >
+                  {category.label}
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 10,
+                    marginTop: 1,
+                  }}
+                >
+                  {category.helper}
+                </Text>
+              </TouchableOpacity>
             </View>
-          </View>
-          <View>
-            <Text
-              style={{
-                fontSize: 15,
-                fontFamily: "Outfit_700Bold",
-                color: colors.textPrimary,
-                lineHeight: 18,
-              }}
-            >
-              Pregnancy Records
-            </Text>
-            <Text
-              style={{
-                fontSize: 10,
-                fontFamily: "Outfit_500Medium",
-                color: colors.textSecondary,
-                marginTop: 4,
-              }}
-            >
-              Ultrasound & Cycles
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Card 4: Calving & Offspring (Calving) */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => {
-            if (activeBento === "calving") {
-              onBentoPress("all", "all");
-            } else {
-              onBentoPress("calving", "calving");
-            }
-          }}
-          style={{
-            flex: 1,
-            aspectRatio: 1,
-            backgroundColor: colors.card,
-            borderRadius: 24,
-            padding: 16,
-            justifyContent: "space-between",
-            borderWidth: activeBento === "calving" ? 2 : 1,
-            borderColor:
-              activeBento === "calving"
-                ? isDark
-                  ? colors.primary
-                  : "#00643B"
-                : colors.border,
-            shadowColor: "#000",
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: isDark ? 0 : 0.04,
-            shadowRadius: 8,
-            elevation: 2,
-          }}
-        >
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "flex-start",
-            }}
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: isDark
-                  ? "rgba(180, 83, 9, 0.15)"
-                  : "rgba(180, 83, 9, 0.05)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <MaterialCommunityIcons
-                name="baby-carriage"
-                size={22}
-                color="#b45309"
-              />
-            </View>
-            <View
-              style={{
-                backgroundColor: "rgba(180, 83, 9, 0.08)",
-                paddingHorizontal: 8,
-                paddingVertical: 2,
-                borderRadius: 8,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontFamily: "Outfit_700Bold",
-                  color: "#b45309",
-                }}
-              >
-                {recordStats.rejected}
-              </Text>
-            </View>
-          </View>
-          <View>
-            <Text
-              style={{
-                fontSize: 15,
-                fontFamily: "Outfit_700Bold",
-                color: colors.textPrimary,
-                lineHeight: 18,
-              }}
-            >
-              Calving & Offspring
-            </Text>
-            <Text
-              style={{
-                fontSize: 10,
-                fontFamily: "Outfit_500Medium",
-                color: colors.textSecondary,
-                marginTop: 4,
-              }}
-            >
-              Newborn Registry
-            </Text>
-          </View>
-        </TouchableOpacity>
+          );
+        })}
       </View>
     </View>
   );

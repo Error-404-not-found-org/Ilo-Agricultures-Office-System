@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ActivityIndicator, TextInput, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, TextInput, Image, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import React, { useState } from 'react';
 import useSocialAuth from '../../hooks/useSocialAuth';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -74,16 +74,27 @@ const AuthScreen = () => {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50 h-full">
-      <View className="flex-1 px-6 pt-10">
-        
-        <View className="items-center mt-10 mb-8">
+    <SafeAreaView className="flex-1 bg-slate-50">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        className="flex-1"
+      >
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, paddingVertical: 24 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ width: '100%', maxWidth: 480, alignSelf: 'center' }} className="flex-1 px-6">
+        <View className="items-center mt-4 mb-8">
           <Image 
-            source={require('../../assets/logo.png')} // Changed to relative path to newly copied logo
-            className="h-24 w-24 rounded-full mb-4"
+            source={require('../../assets/logo.png')}
+            className="h-20 w-20 rounded-full mb-4"
             resizeMode="contain"
           />
-           <Text className="text-2xl font-bold text-[#074033]">BreedSmart</Text>
+          <Text className="text-2xl font-outfit-bold text-[#074033]">BreedSmart</Text>
+          <Text className="mt-1 text-sm font-outfit-medium text-slate-500 text-center">
+            Sign in to manage livestock services and records.
+          </Text>
         </View>
 
         {/* Form Container */}
@@ -92,20 +103,20 @@ const AuthScreen = () => {
           {/* Google Sign in */}
           <View className="gap-2">
             <TouchableOpacity 
-              className='flex-row items-center justify-center bg-white border border-gray-300 rounded-xl px-6 py-4 shadow-sm'
+              className='flex-row items-center justify-center bg-white border border-slate-200 rounded-xl px-6 py-3.5 shadow-sm'
               onPress={() => handleSocialAuth("oauth_google")}
               disabled={loadingStrategy !== null}
             >
               {loadingStrategy === 'oauth_google' ? (
-                <ActivityIndicator size="small" color="#0000ff" />
+                <ActivityIndicator size="small" color="#074033" />
               ) : (
                 <View className='flex-row items-center justify-center'>
                   <Image 
                     source={require('../../assets/google.png')} 
-                    className='size-6 mr-3'
+                    className='size-5 mr-3'
                     resizeMode='contain'
                   />
-                  <Text className='text-black font-medium text-base'>Sign in with Google</Text>
+                  <Text className='text-slate-700 font-outfit-semibold text-[15px]'>Sign in with Google</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -113,15 +124,15 @@ const AuthScreen = () => {
 
           <View className="flex-row items-center my-4">
               <View className="flex-1 h-[1px] bg-gray-300" />
-              <Text className="mx-4 text-gray-500 font-medium">OR</Text>
+              <Text className="mx-4 text-slate-400 font-outfit-semibold text-xs">OR</Text>
               <View className="flex-1 h-[1px] bg-gray-300" />
           </View>
           
           {/* Identifier Field */}
           <View>
-            <Text className="text-base font-medium text-slate-700 mb-2">Email or Username</Text>
+            <Text className="text-sm font-outfit-semibold text-slate-700 mb-2">Email or Username</Text>
             <TextInput
-              className="w-full border border-gray-300 rounded-xl p-4 bg-white text-slate-800 focus:border-[#074033]"
+              className="w-full h-[52px] border border-slate-200 rounded-xl px-4 bg-white text-slate-800 font-outfit-medium focus:border-[#074033]"
               placeholder="Enter your email or username"
               placeholderTextColor="#9CA3AF"
               autoCapitalize="none"
@@ -132,10 +143,10 @@ const AuthScreen = () => {
           
           {/* Password Field */}
           <View className="mt-4">
-            <Text className="text-base font-medium text-slate-700 mb-2">Password</Text>
+            <Text className="text-sm font-outfit-semibold text-slate-700 mb-2">Password</Text>
             <View className="relative justify-center">
               <TextInput
-                className="w-full border border-gray-300 rounded-xl p-4 pr-12 bg-white text-slate-800 focus:border-blue-500"
+                className="w-full h-[52px] border border-slate-200 rounded-xl px-4 pr-12 bg-white text-slate-800 font-outfit-medium focus:border-[#074033]"
                 placeholder="Enter your password"
                 placeholderTextColor="#9CA3AF"
                 secureTextEntry={!showPassword}
@@ -157,7 +168,7 @@ const AuthScreen = () => {
               className="items-end mt-2"
               onPress={() => router.push('/(auth)/forgot-password' as any)}
             >
-              <Text className="text-blue-500 font-medium">Forgot password?</Text>
+              <Text className="text-[#074033] font-outfit-semibold text-sm">Forgot password?</Text>
             </TouchableOpacity>
           </View>
 
@@ -170,25 +181,27 @@ const AuthScreen = () => {
             {loading ? (
                 <ActivityIndicator color="#fff" />
             ) : (
-                <Text className="text-white text-lg font-bold">Sign In</Text>
+                <Text className="text-white text-base font-outfit-bold">Sign In</Text>
             )}
           </TouchableOpacity>
         </View>
 
           {/* Footer Register Link */}
           <View className="flex-row justify-center mt-6">
-            <Text className="text-gray-500">Don&apos;t have an account? </Text>
+            <Text className="text-slate-500 font-outfit-medium">Don&apos;t have an account? </Text>
             <TouchableOpacity onPress={() => router.push('/(auth)/register')}>
-              <Text className="text-blue-500 font-bold">Register</Text>
+              <Text className="text-[#074033] font-outfit-bold">Register</Text>
             </TouchableOpacity>
           </View>
-        <Text className="text-center text-gray-500 text-sm mt-10 leading-4">
-          By Signing up, you agree to our <Text className="text-[#074033]">Terms & Conditions</Text> and <Text className="text-[#074033]">Privacy Policy</Text>.
+        <Text className="text-center text-slate-500 font-outfit text-xs mt-8 leading-5 px-2">
+          By continuing, you agree to our <Text className="text-[#074033] font-outfit-semibold">Terms &amp; Conditions</Text> and <Text className="text-[#074033] font-outfit-semibold">Privacy Policy</Text>.
         </Text>
-        <Text className="text-center justify-center items-center text-gray-500 text-sm mt-10 leading-4">
+        <Text className="text-center text-slate-400 font-outfit-medium text-xs mt-8">
           © {new Date().getFullYear()} BreedSmart. All rights reserved.
         </Text>
       </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }

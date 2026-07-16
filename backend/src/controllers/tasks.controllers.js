@@ -1,4 +1,9 @@
 import { Task } from "../models/task.model.js";
+import {
+  ACTIVE_AI_REQUEST_STATUSES,
+  ACTIVE_HEALTH_REQUEST_STATUSES,
+  TASK_STATUS,
+} from "../domain/status-vocabulary.js";
 import { User } from "../models/user.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
@@ -57,7 +62,7 @@ export const getDashboardStats = async (req, res) => {
 
     const tasks = await Task.find({ 
       $or: [ { technicianId }, { technicianId: { $exists: false } }, { technicianId: null } ], 
-      status: "Pending" 
+      status: TASK_STATUS.PENDING 
     });
     
     const stats = {
@@ -84,13 +89,13 @@ export const getTasks = async (req, res) => {
     if (scope === "mine") {
       query = {
         technicianId: req.user._id,
-        status: "Pending",
+        status: TASK_STATUS.PENDING,
       };
     } else if (scope === "available") {
       // Unassigned generic tasks only
       query = {
         technicianId: { $in: [null, undefined] },
-        status: "Pending",
+        status: TASK_STATUS.PENDING,
         taskType: { $nin: Array.from(OFFICIAL_SERVICE_TASK_TYPES) },
       };
     } else if (scope === "all") {
@@ -103,14 +108,14 @@ export const getTasks = async (req, res) => {
           { technicianId: { $exists: false } },
           { technicianId: null },
         ],
-        status: "Pending",
+        status: TASK_STATUS.PENDING,
       };
     }
 
     if (status && status !== "all") {
       query.status = status;
     } else if (scope === "all" && status !== "all") {
-      query.status = "Pending";
+      query.status = TASK_STATUS.PENDING;
     }
 
     const pageNum = Math.max(parseInt(page, 10) || 1, 1);
@@ -147,7 +152,7 @@ export const claimTask = async (req, res) => {
       {
         _id: id,
         technicianId: { $in: [null, undefined] },
-        status: "Pending",
+        status: TASK_STATUS.PENDING,
       },
       {
         $set: {
@@ -203,7 +208,7 @@ export const createTask = async (req, res) => {
       const existingVisit = await Task.findOne({
         technicianId,
         dueDate: parsedDueDate,
-        status: { $in: ["Pending", "In Progress"] },
+        status: { $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS] },
       });
       if (existingVisit) {
         return res.status(409).json({ message: "You already have a visit scheduled at this time." });
@@ -213,7 +218,7 @@ export const createTask = async (req, res) => {
       const existingAI = await Insemination.findOne({
         approvedBy: technicianId,
         scheduledDate: parsedDueDate,
-        status: { $in: ["approved", "scheduled", "in-progress"] },
+        status: { $in: ACTIVE_AI_REQUEST_STATUSES },
         deletedAt: null,
       });
       if (existingAI) {
@@ -223,7 +228,7 @@ export const createTask = async (req, res) => {
       const existingHealth = await HealthRequest.findOne({
         handledBy: technicianId,
         scheduledDate: parsedDueDate,
-        status: { $in: ["assigned", "approved", "scheduled", "in-progress"] },
+        status: { $in: ACTIVE_HEALTH_REQUEST_STATUSES },
         deletedAt: null,
       });
       if (existingHealth) {
@@ -236,7 +241,7 @@ export const createTask = async (req, res) => {
       const activeTask = await Task.findOne({
         animalIds: { $in: animalIds },
         taskType: normalizedTaskType,
-        status: { $in: ["Pending", "In Progress"] },
+        status: { $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS] },
       });
       if (activeTask) {
         return res.status(409).json({ message: "This animal already has an active service request." });
@@ -246,7 +251,7 @@ export const createTask = async (req, res) => {
       if (normalizedTaskType === "AI") {
         const activeAI = await Insemination.findOne({
           animalId: { $in: animalIds },
-          status: { $in: ["pending", "approved", "in-progress"] },
+          status: { $in: ACTIVE_AI_REQUEST_STATUSES },
           deletedAt: null,
         });
         if (activeAI) {
@@ -257,7 +262,7 @@ export const createTask = async (req, res) => {
       if (normalizedTaskType === "Health") {
         const activeHealth = await HealthRequest.findOne({
           animalId: { $in: animalIds },
-          status: { $in: ["pending", "in-progress"] },
+          status: { $in: ACTIVE_HEALTH_REQUEST_STATUSES },
           deletedAt: null,
         });
         if (activeHealth) {
@@ -308,7 +313,7 @@ export const completeTask = async (req, res) => {
     const task = await Task.findOneAndUpdate(
       { _id: id, $or: [ { technicianId: req.user._id }, { technicianId: { $exists: false } }, { technicianId: null } ] },
       {
-        status: "Completed",
+        status: TASK_STATUS.COMPLETED,
         technicianId: req.user._id,
         completedAt: new Date(),
         ...(relatedRecordType && relatedRecordId
