@@ -1,5 +1,9 @@
 import { Insemination } from "../models/insemination.model.js";
-import { AI_STATUS } from "../domain/status-vocabulary.js";
+import {
+  AI_STATUS,
+  TASK_STATUS,
+  isActiveAIRequestStatus,
+} from "../domain/status-vocabulary.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
 import { Notification } from "../models/notification.model.js";
@@ -23,20 +27,14 @@ import {
   findActiveAIRequest,
   isVerifiedFailedAIAttempt,
 } from "../services/ai-request-creation.service.js";
-import { isActiveAIRequestStatus } from "../domain/status-vocabulary.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
 export const createAIRequest = async (req, res) => {
   try {
     const farmerId = req.user._id;
-    const {
-      animalId,
-      imageUrl,
-      comment,
-      heatSigns,
-      previousAttemptId,
-    } = req.body;
+    const { animalId, imageUrl, comment, heatSigns, previousAttemptId } =
+      req.body;
 
     if (!animalId) {
       return res
@@ -82,21 +80,44 @@ export const createAIRequest = async (req, res) => {
     }
 
     // The remaining workflow guard considers pregnancy and postpartum recovery.
-    const activePregnancy = await Pregnancy.findOne({
-      animalId,
-      deletedAt: null,
-      "pregnancyDiagnosis.result": "Pregnant",
-    });
+    // Load the reproductive records required by the canonical next-action resolver.
+    const [activePregnancy, reproductiveTasks] = await Promise.all([
+      Pregnancy.findOne({
+        animalId,
+        deletedAt: null,
+        "pregnancyDiagnosis.result": "Pregnant",
+      }).lean(),
+
+      Task.find({
+        animalIds: animal._id,
+        taskType: {
+          $in: ["AI", "PD", "Calving", "CD"],
+        },
+        status: {
+          $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS],
+        },
+      })
+        .sort({
+          dueDate: 1,
+          createdAt: 1,
+        })
+        .lean(),
+    ]);
+
     const eligibility = getReproductionEligibility({
       animal,
       activeRequest: null,
       activePregnancy,
+      tasks: reproductiveTasks,
     });
     if (!eligibility.eligible) {
       return res.status(400).json({
         message: eligibility.reason,
         code: eligibility.code,
+        nextAction: eligibility.nextAction,
         nextActionAt: eligibility.nextActionAt,
+        requiredRecoveryDays: eligibility.requiredRecoveryDays,
+        daysSinceCalving: eligibility.daysSinceCalving,
       });
     }
 
@@ -118,7 +139,8 @@ export const createAIRequest = async (req, res) => {
       if (!previousAttempt) {
         return res.status(404).json({
           code: "PREVIOUS_AI_ATTEMPT_NOT_FOUND",
-          message: "The previous AI attempt could not be found for this animal.",
+          message:
+            "The previous AI attempt could not be found for this animal.",
         });
       }
       if (
@@ -127,7 +149,8 @@ export const createAIRequest = async (req, res) => {
       ) {
         return res.status(409).json({
           code: "PREVIOUS_AI_ATTEMPT_NOT_LATEST",
-          message: "Re-insemination must be linked to the latest performed AI attempt.",
+          message:
+            "Re-insemination must be linked to the latest performed AI attempt.",
         });
       }
       if (!isVerifiedFailedAIAttempt(previousAttempt)) {
@@ -139,8 +162,7 @@ export const createAIRequest = async (req, res) => {
       }
       attemptLink = {
         previousAttemptId: previousAttempt._id,
-        attemptSeriesId:
-          previousAttempt.attemptSeriesId || previousAttempt._id,
+        attemptSeriesId: previousAttempt.attemptSeriesId || previousAttempt._id,
         attemptNumber: (previousAttempt.attemptNumber || 1) + 1,
       };
     } else if (lastPerformedAttempt) {
@@ -326,7 +348,10 @@ export const getMyRequests = async (req, res) => {
         .populate("animalId", "animalId earTag species breed imageUrl")
         .populate("approvedBy", "name")
         .populate("technicianId", "name")
-        .populate("previousAttemptId", "attemptNumber inseminationDate outcome outcomeConfirmedAt")
+        .populate(
+          "previousAttemptId",
+          "attemptNumber inseminationDate outcome outcomeConfirmedAt",
+        )
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit)),
@@ -362,7 +387,10 @@ export const getAllRequests = async (req, res) => {
           .populate("animalId", "animalId earTag species breed imageUrl")
           .populate("approvedBy", "name")
           .populate("technicianId", "name")
-          .populate("previousAttemptId", "attemptNumber inseminationDate outcome outcomeConfirmedAt approvedBy technicianId")
+          .populate(
+            "previousAttemptId",
+            "attemptNumber inseminationDate outcome outcomeConfirmedAt approvedBy technicianId",
+          )
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limitNum)
@@ -384,7 +412,10 @@ export const getAllRequests = async (req, res) => {
       .populate("animalId", "animalId earTag species breed imageUrl")
       .populate("approvedBy", "name")
       .populate("technicianId", "name")
-      .populate("previousAttemptId", "attemptNumber inseminationDate outcome outcomeConfirmedAt approvedBy technicianId")
+      .populate(
+        "previousAttemptId",
+        "attemptNumber inseminationDate outcome outcomeConfirmedAt approvedBy technicianId",
+      )
       .sort({ createdAt: -1 })
       .limit(100);
 
@@ -421,7 +452,9 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(404).json({ message: "AI request record not found." });
     }
 
-    assertStatusTransition("ai", existing.status, status, { isAdmin: req.user.role === "admin" });
+    assertStatusTransition("ai", existing.status, status, {
+      isAdmin: req.user.role === "admin",
+    });
 
     if (status === "scheduled" && !scheduledDate) {
       return res.status(400).json({
@@ -452,19 +485,27 @@ export const updateRequestStatus = async (req, res) => {
     if (status === "done") {
       if (!sireBreed || !sireCode || !estrus) {
         return res.status(400).json({
-          message: "Sire breed, sire code, and estrus type are required when completing AI.",
+          message:
+            "Sire breed, sire code, and estrus type are required when completing AI.",
         });
       }
-      const completedAt = inseminationDate ? new Date(inseminationDate) : new Date();
+      const completedAt = inseminationDate
+        ? new Date(inseminationDate)
+        : new Date();
       if (Number.isNaN(completedAt.getTime())) {
         return res.status(400).json({ message: "Invalid insemination date." });
       }
       if (completedAt.getTime() > Date.now() + 5 * 60 * 1000) {
-        return res.status(400).json({ message: "Completed AI date and time cannot be in the future." });
+        return res.status(400).json({
+          message: "Completed AI date and time cannot be in the future.",
+        });
       }
     }
 
-    const targetTechId = (req.user.role === "admin" && req.body.approvedBy) ? req.body.approvedBy : req.user._id;
+    const targetTechId =
+      req.user.role === "admin" && req.body.approvedBy
+        ? req.body.approvedBy
+        : req.user._id;
 
     // Schedule conflict guard
     if ((status === "scheduled" || status === "in-progress") && scheduledDate) {
@@ -523,7 +564,9 @@ export const updateRequestStatus = async (req, res) => {
     };
 
     if (isActiveAIRequestStatus(status)) {
-      updateData.activeRequestKey = activeRequestKeyForAnimal(existing.animalId);
+      updateData.activeRequestKey = activeRequestKeyForAnimal(
+        existing.animalId,
+      );
     }
 
     if (status === "scheduled") {
@@ -540,8 +583,11 @@ export const updateRequestStatus = async (req, res) => {
     let request;
     if (status === "done") {
       request = await completeInsemination({
-        id, updateData, technicianId: targetTechId,
-        farmerId: existing.farmerId, animalId: existing.animalId,
+        id,
+        updateData,
+        technicianId: targetTechId,
+        farmerId: existing.farmerId,
+        animalId: existing.animalId,
         animalTag: existing.animalId?.earTag || existing.animalId?.animalId,
       });
       await request.populate("farmerId", "name pushToken");
@@ -550,7 +596,9 @@ export const updateRequestStatus = async (req, res) => {
       const statusUpdate = isActiveAIRequestStatus(status)
         ? { $set: updateData }
         : { $set: updateData, $unset: { activeRequestKey: 1 } };
-      request = await Insemination.findByIdAndUpdate(id, statusUpdate, { returnDocument: "after" })
+      request = await Insemination.findByIdAndUpdate(id, statusUpdate, {
+        returnDocument: "after",
+      })
         .populate("farmerId", "name pushToken")
         .populate("animalId", "animalId earTag species");
     }
@@ -637,9 +685,14 @@ export const updateRequestStatus = async (req, res) => {
     res.status(200).json({ message: "Request status updated.", request });
   } catch (error) {
     console.error("[updateRequestStatus ERROR]", error.message);
-    const transactionUnavailable = /Transaction numbers are only allowed|replica set|mongos/i.test(error.message);
+    const transactionUnavailable =
+      /Transaction numbers are only allowed|replica set|mongos/i.test(
+        error.message,
+      );
     res.status(transactionUnavailable ? 503 : error.status || 500).json({
-      message: transactionUnavailable ? "This operation requires a transaction-capable database." : error.message || "Failed to update request status.",
+      message: transactionUnavailable
+        ? "This operation requires a transaction-capable database."
+        : error.message || "Failed to update request status.",
       code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
     });
   }
@@ -659,17 +712,21 @@ export const confirmAIOutcome = async (req, res) => {
     if (req.user.role !== "farmer") {
       return res.status(403).json({
         code: "FARMER_OUTCOME_ONLY",
-        message: "Use the technician verification workflow to record a clinical outcome.",
+        message:
+          "Use the technician verification workflow to record a clinical outcome.",
       });
     }
     if (request.status !== AI_STATUS.DONE || !request.inseminationDate) {
       return res.status(409).json({
         code: "AI_NOT_COMPLETED",
-        message: "An outcome can only be reported after the AI procedure is completed.",
+        message:
+          "An outcome can only be reported after the AI procedure is completed.",
       });
     }
 
-    const animal = await Animal.findById(request.animalId?._id || request.animalId);
+    const animal = await Animal.findById(
+      request.animalId?._id || request.animalId,
+    );
     if (!animal) return res.status(404).json({ message: "Animal not found." });
 
     const now = new Date();
@@ -800,15 +857,22 @@ export const submitFarmerBreedingObservation = async (req, res) => {
 
     // Timing guard: return-to-heat follow-up is useful earlier than pregnancy diagnosis.
     if (verificationRequested) {
-      const aiDate = request.inseminationDate || request.dateOfAI || request.completedAt || request.createdAt;
+      const aiDate =
+        request.inseminationDate ||
+        request.dateOfAI ||
+        request.completedAt ||
+        request.createdAt;
       if (aiDate) {
-        const daysSinceAI = Math.floor((Date.now() - new Date(aiDate).getTime()) / (1000 * 60 * 60 * 24));
+        const daysSinceAI = Math.floor(
+          (Date.now() - new Date(aiDate).getTime()) / (1000 * 60 * 60 * 24),
+        );
         const minimumDays = reportType === "return_to_heat" ? 18 : 35;
         if (daysSinceAI < minimumDays) {
           return res.status(400).json({
-            message: reportType === "return_to_heat"
-              ? `Return-to-heat follow-up is usually useful around Day 18 post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please keep monitoring or submit your observation without requesting verification.`
-              : `Pregnancy verification is typically accurate after 35 days post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please wait or submit your observation without requesting verification.`,
+            message:
+              reportType === "return_to_heat"
+                ? `Return-to-heat follow-up is usually useful around Day 18 post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please keep monitoring or submit your observation without requesting verification.`
+                : `Pregnancy verification is typically accurate after 35 days post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please wait or submit your observation without requesting verification.`,
             code: "VERIFICATION_TOO_EARLY",
             daysSinceAI,
             minimumDays,
@@ -1127,7 +1191,9 @@ export const getAIRequestDetail = async (req, res) => {
 
     const isUnclaimed = !request.approvedBy;
     const isFarmerRole = req.user.role === "farmer";
-    const isOwnFarmer = isFarmerRole && request.farmerId?._id?.toString() === req.user._id.toString();
+    const isOwnFarmer =
+      isFarmerRole &&
+      request.farmerId?._id?.toString() === req.user._id.toString();
 
     const requestObj = request.toObject();
     if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin") {
@@ -1198,12 +1264,10 @@ export const cancelAIRequest = async (req, res) => {
 
     // Block farmer and technician from cancelling in-progress
     if (["in-progress"].includes(status) && !isAdmin) {
-      return res
-        .status(403)
-        .json({
-          message:
-            "This request is currently in progress and cannot be cancelled.",
-        });
+      return res.status(403).json({
+        message:
+          "This request is currently in progress and cannot be cancelled.",
+      });
     }
 
     const previousStatus = status;
@@ -1229,12 +1293,10 @@ export const cancelAIRequest = async (req, res) => {
       if (isScheduled) {
         // Farmer cannot directly cancel scheduled / Ready Today — create a cancellation request
         if (!reason || reason.trim() === "") {
-          return res
-            .status(400)
-            .json({
-              message:
-                "A reason is required to request cancellation of a scheduled visit.",
-            });
+          return res.status(400).json({
+            message:
+              "A reason is required to request cancellation of a scheduled visit.",
+          });
         }
         request.cancellationStatus = "requested";
         request.cancellationReason = reason.trim();
@@ -1298,27 +1360,24 @@ export const cancelAIRequest = async (req, res) => {
           console.error("[cancelAIRequest notify ERROR]", notifyErr.message);
         }
 
-        return res
-          .status(200)
-          .json({
-            message:
-              "Cancellation request submitted. Awaiting technician review.",
-            cancellationStatus: "requested",
-          });
+        return res.status(200).json({
+          message:
+            "Cancellation request submitted. Awaiting technician review.",
+          cancellationStatus: "requested",
+        });
       }
 
       // Farmer direct cancel: pending or approved
       if (!["pending", "approved"].includes(status)) {
-        return res
-          .status(400)
-          .json({
-            message: `Farmers cannot directly cancel a request with status: ${status}.`,
-          });
+        return res.status(400).json({
+          message: `Farmers cannot directly cancel a request with status: ${status}.`,
+        });
       }
 
       if (status === "approved" && !reason?.trim()) {
         return res.status(400).json({
-          message: "A cancellation reason is required after a technician has accepted the request.",
+          message:
+            "A cancellation reason is required after a technician has accepted the request.",
           code: "CANCELLATION_REASON_REQUIRED",
         });
       }
@@ -1417,12 +1476,10 @@ export const respondAICancellation = async (req, res) => {
     const role = actor.role;
 
     if (!["technician", "admin"].includes(role)) {
-      return res
-        .status(403)
-        .json({
-          message:
-            "Only technicians or admins can respond to cancellation requests.",
-        });
+      return res.status(403).json({
+        message:
+          "Only technicians or admins can respond to cancellation requests.",
+      });
     }
 
     const request = await Insemination.findOne({ _id: id, deletedAt: null })
@@ -1436,11 +1493,9 @@ export const respondAICancellation = async (req, res) => {
     }
 
     if (request.cancellationStatus !== "requested") {
-      return res
-        .status(400)
-        .json({
-          message: "This request does not have a pending cancellation request.",
-        });
+      return res.status(400).json({
+        message: "This request does not have a pending cancellation request.",
+      });
     }
 
     const farmer = request.farmerId;
@@ -1524,14 +1579,12 @@ export const respondAICancellation = async (req, res) => {
         );
       }
 
-      return res
-        .status(200)
-        .json({
-          message: "Cancellation rejected. Farmer has been notified.",
-          cancellationStatus: "rejected",
-          cancellationResponseReason: request.cancellationResponseReason,
-          cancellationRespondedAt: request.cancellationRespondedAt,
-        });
+      return res.status(200).json({
+        message: "Cancellation rejected. Farmer has been notified.",
+        cancellationStatus: "rejected",
+        cancellationResponseReason: request.cancellationResponseReason,
+        cancellationRespondedAt: request.cancellationRespondedAt,
+      });
     }
   } catch (error) {
     console.error("[respondAICancellation ERROR]", error.message);
@@ -1632,11 +1685,7 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     });
     const verifiedRequest = verification.request;
     const verifiedAnimal = verification.animal;
-    const {
-      task,
-      nextAction,
-      pregnancyRecordCreated,
-    } = verification;
+    const { task, nextAction, pregnancyRecordCreated } = verification;
 
     if (verificationResult === "pregnant") {
       try {

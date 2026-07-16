@@ -4,6 +4,11 @@ import { MedicalRecord } from "../models/medical-record.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
+import { Task } from "../models/task.model.js";
+import {
+  ACTIVE_AI_REQUEST_STATUSES,
+  TASK_STATUS,
+} from "../domain/status-vocabulary.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
 import { getReproductionEligibility } from "../domain/reproduction-lifecycle.js";
 import { getAnimalTimeline as buildAnimalTimeline, createTimelineEvent } from "../services/animal-timeline.service.js";
@@ -414,13 +419,60 @@ export const getAnimalRecords = async (req, res) => {
 export const getAnimalReproductionEligibility = async (req, res) => {
   try {
     const animal = await getAccessibleAnimal(req.params.id, req.user);
-    const [activeRequest, activePregnancy] = await Promise.all([
-      Insemination.findOne({ animalId: animal._id, deletedAt: null, status: { $in: ["pending", "approved", "in-progress"] } }).lean(),
-      Pregnancy.findOne({ animalId: animal._id, deletedAt: null, "pregnancyDiagnosis.result": "Pregnant" }).lean(),
-    ]);
-    sendDetail(res, getReproductionEligibility({ animal, activeRequest, activePregnancy }));
+
+    const [activeRequest, activePregnancy, reproductiveTasks] =
+      await Promise.all([
+        Insemination.findOne({
+          animalId: animal._id,
+          deletedAt: null,
+          status: {
+            $in: ACTIVE_AI_REQUEST_STATUSES,
+          },
+        })
+          .sort({
+            createdAt: -1,
+          })
+          .lean(),
+
+        Pregnancy.findOne({
+          animalId: animal._id,
+          deletedAt: null,
+          "pregnancyDiagnosis.result": "Pregnant",
+        })
+          .sort({
+            createdAt: -1,
+          })
+          .lean(),
+
+        Task.find({
+          animalIds: animal._id,
+          taskType: {
+            $in: ["AI", "PD", "Calving", "CD"],
+          },
+          status: {
+            $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS],
+          },
+        })
+          .sort({
+            dueDate: 1,
+            createdAt: 1,
+          })
+          .lean(),
+      ]);
+
+    const eligibility = getReproductionEligibility({
+      animal,
+      activeRequest,
+      activePregnancy,
+      tasks: reproductiveTasks,
+    });
+
+    return sendDetail(res, eligibility);
   } catch (error) {
-    res.status(error.status || 500).json({ message: error.message, code: error.code || "REPRODUCTION_ELIGIBILITY_FAILED" });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to evaluate reproductive eligibility.",
+      code: error.code || "REPRODUCTION_ELIGIBILITY_FAILED",
+    });
   }
 };
 
