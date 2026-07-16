@@ -42,11 +42,33 @@ export const SPECIES_PROFILES = {
  * Maps 'Beef' -> 'Beef Cattle', 'Dairy' -> 'Dairy Cattle', defaulting to 'Cattle'.
  */
 export function normalizeSpecies(species) {
-  if (!species) return "Cattle";
-  const s = species.trim();
-  if (s === "Beef") return "Beef Cattle";
-  if (s === "Dairy") return "Dairy Cattle";
-  return s;
+  if (!species || typeof species !== "string") {
+    return "Cattle";
+  }
+
+  const normalized = species.trim().toLowerCase();
+
+  const aliases = {
+    beef: "Beef Cattle",
+    "beef cattle": "Beef Cattle",
+
+    dairy: "Dairy Cattle",
+    "dairy cattle": "Dairy Cattle",
+
+    cattle: "Cattle",
+    cow: "Cattle",
+
+    carabao: "Carabao",
+    buffalo: "Carabao",
+    "water buffalo": "Carabao",
+    "swamp buffalo": "Carabao",
+
+    goat: "Goat",
+    swine: "Swine",
+    pig: "Swine",
+  };
+
+  return aliases[normalized] || "Cattle";
 }
 
 /**
