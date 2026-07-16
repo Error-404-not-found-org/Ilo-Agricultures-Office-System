@@ -37,6 +37,7 @@ import DateTimePicker, {
   DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import { BreedSelectorModal } from "@/features/technician-dashboard/components/BreedSelectorModal";
+import { ReproductionNextActionCard } from "@/components/ReproductionNextActionCard";
 import {
   getTechnicianAnimalHistory,
   getTechnicianRequestDetail,
@@ -747,6 +748,13 @@ export default function RequestDetailsScreen() {
             )}
           </View>
         </View>
+
+        {isAI && request.nextAction ? (
+          <ReproductionNextActionCard
+            action={request.nextAction}
+            title="Required Reproductive Action"
+          />
+        ) : null}
 
         {/* Animal Information Section */}
         <View style={sectionCardStyle}>

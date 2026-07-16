@@ -112,6 +112,41 @@ export interface FarmerStats {
   pendingResults: number;
 }
 
+export type ReproductionPhase =
+  | "AVAILABLE"
+  | "AI_REQUESTED"
+  | "AI_SCHEDULED"
+  | "HEAT_RETURN_MONITORING"
+  | "PREGNANCY_CHECK_DUE"
+  | "PREGNANCY_MONITORING"
+  | "PREGNANT"
+  | "CALVING_DUE"
+  | "RECOVERY_PERIOD";
+
+export type ReproductionNextActionType =
+  | "SCHEDULE_AI_SERVICE"
+  | "ATTEND_AI_VISIT"
+  | "MONITOR_RETURN_TO_HEAT"
+  | "VERIFY_BREEDING_OUTCOME"
+  | "PERFORM_PREGNANCY_DIAGNOSIS"
+  | "PREPARE_FOR_CALVING"
+  | "WAIT_FOR_POSTPARTUM_RECOVERY";
+
+export type ReproductionNextActionDateKind =
+  | "confirmed"
+  | "requested"
+  | "calculated";
+
+export interface ReproductionNextAction {
+  phase: ReproductionPhase;
+  type: ReproductionNextActionType;
+  label: string;
+  at: string | null;
+  dateKind: ReproductionNextActionDateKind | null;
+  source: string | null;
+  isOverdue: boolean;
+}
+
 export interface Animal {
   _id: string;
   animalId?: string;
@@ -141,6 +176,8 @@ export interface Animal {
   inseminations?: any[];
   calvings?: any[];
   farmerId?: any;
+  nextAction?: ReproductionNextAction | null;
+  nextActionAt?: string | null;
 }
 
 export interface ServiceRequest {
@@ -157,6 +194,16 @@ export interface ServiceRequest {
 
 export interface AIRequest extends ServiceRequest {
   serviceType?: "ai";
+  comment?: string | null;
+  sireBreed?: string | null;
+  sireCode?: string | null;
+  estrus?: string | null;
+  heatSigns?: string[];
+  imageUrl?: string | null;
+  technicianNote?: string | null;
+  cancellationStatus?: "requested" | "approved" | "rejected" | "cancelled" | "canceled" | null;
+  cancellationReason?: string | null;
+  cancellationResponseReason?: string | null;
   inseminationDate?: string;
   isSuccess?: boolean | null;
   attemptNumber?: number;
@@ -174,6 +221,8 @@ export interface AIRequest extends ServiceRequest {
   farmerOutcomeReportedAt?: string;
   approvedBy?: string | Technician;
   technicianId?: string | Technician;
+  nextAction?: ReproductionNextAction | null;
+  nextActionAt?: string | null;
 }
 
 export interface HealthRequest extends ServiceRequest {

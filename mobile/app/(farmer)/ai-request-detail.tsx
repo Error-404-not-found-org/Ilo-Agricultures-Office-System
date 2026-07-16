@@ -37,6 +37,8 @@ import {
   WorkflowProgress,
 } from "@/features/farmer-ui/components";
 import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
+import { ReproductionNextActionCard } from "@/components/ReproductionNextActionCard";
+import type { AIRequest } from "@/types";
 
 const stages = [
   { key: "pending", label: "Submitted" },
@@ -297,7 +299,7 @@ export default function AiRequestDetailScreen() {
     );
   }
 
-  const request: any = query.data;
+  const request = query.data as AIRequest;
   const animal: any = request.animalId || {};
   const handler: any = request.technicianId || request.approvedBy;
 
