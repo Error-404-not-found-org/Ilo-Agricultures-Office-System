@@ -5,12 +5,19 @@ import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Notification } from "../models/notification.model.js";
+import { Task } from "../models/task.model.js";
+import { resolveReproductionNextAction } from "../domain/reproduction-next-action.js";
 import cloudinary from "../config/cloudinary.js";
 import { inngest } from "../config/inngest.js";
 import { verifyPostpartumWindow } from "../utils/cattleCore.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
 import { getPagination } from "../utils/pagination.js";
-import { reproductiveStatusQuery } from "../domain/status-vocabulary.js";
+import {
+  ANIMAL_REPRODUCTIVE_STATUS,
+  TASK_STATUS,
+  isActiveAIRequestStatus,
+  reproductiveStatusQuery,
+} from "../domain/status-vocabulary.js";
 import { persistCalving } from "../services/calving.service.js";
 
 export const registerAnimal = async (req, res) => {
@@ -244,48 +251,116 @@ export const getMyAnimals = async (req, res) => {
 export const getAnimalById = async (req, res) => {
   try {
     const { id } = req.params;
-
-    const [animal, offspring, inseminationsList, calvings, pregnancies, healthRecords] = await Promise.all([
+    const [
+      animal,
+      offspring,
+      inseminationsList,
+      calvings,
+      pregnancies,
+      healthRecords,
+      reproductiveTasks,
+    ] = await Promise.all([
       Animal.findOne({ _id: id, deletedAt: null })
         .populate("farmerId", "-password")
-        .populate("motherId", "earTag animalId breed species imageUrl reproductiveStatus"),
-      Animal.find({ motherId: id, deletedAt: null })
-        .select("earTag animalId breed species gender imageUrl reproductiveStatus birthDate"),
+        .populate(
+          "motherId",
+          "earTag animalId breed species imageUrl reproductiveStatus",
+        ),
+      Animal.find({ motherId: id, deletedAt: null }).select(
+        "earTag animalId breed species gender imageUrl reproductiveStatus birthDate",
+      ),
       Insemination.find({ animalId: id, deletedAt: null })
         .populate("approvedBy", "name email imageUrl")
         .sort({ attemptNumber: -1 }),
-      Calving.find({ animalId: id, deletedAt: null }).populate("pregnancyId").populate("calves.animalId").sort({ date: -1 }),
-      Pregnancy.find({ animalId: id, deletedAt: null }),
-      HealthRequest.find({ animalId: id, deletedAt: null }).populate("handledBy", "name").sort({ createdAt: -1 })
+      Calving.find({ animalId: id, deletedAt: null })
+        .populate("pregnancyId")
+        .populate("calves.animalId")
+        .sort({ date: -1 }),
+      Pregnancy.find({ animalId: id, deletedAt: null }).sort({
+        "pregnancyDiagnosis.date": -1,
+        createdAt: -1,
+      }),
+      HealthRequest.find({ animalId: id, deletedAt: null })
+        .populate("handledBy", "name")
+        .sort({ createdAt: -1 }),
+      Task.find({
+        animalIds: id,
+        taskType: {
+          $in: ["AI", "PD", "Calving", "CD"],
+        },
+        status: {
+          $in: [
+            TASK_STATUS.PENDING,
+            TASK_STATUS.IN_PROGRESS,
+          ],
+        },
+      })
+        .sort({
+          dueDate: 1,
+          createdAt: 1,
+        })
+        .lean(),
     ]);
-
     if (!animal) {
-      return res.status(404).json({ message: "Animal not found" });
+      return res.status(404).json({
+        message: "Animal not found",
+      });
     }
- 
     assertAnimalAccess(req.user, animal);
-
-    const inseminations = inseminationsList.map(ins => {
-      const preg = pregnancies.find(p => p.inseminationId && p.inseminationId.toString() === ins._id.toString());
+    const inseminations = inseminationsList.map((insemination) => {
+      const pregnancy = pregnancies.find(
+        (item) =>
+          item.inseminationId &&
+          item.inseminationId.toString() ===
+            insemination._id.toString(),
+      );
       return {
-        ...ins.toObject(),
-        pregnancy: preg || null
+        ...insemination.toObject(),
+        pregnancy: pregnancy || null,
       };
     });
-
-    res.status(200).json({
+    const activeRequest =
+      inseminationsList.find((insemination) =>
+        isActiveAIRequestStatus(insemination.status),
+      ) || null;
+    const latestPregnantRecord =
+      pregnancies.find(
+        (pregnancy) =>
+          pregnancy.pregnancyDiagnosis?.result === "Pregnant",
+      ) || null;
+    // Pregnancy records are historical. Only treat one as active
+    // while the animal itself is currently marked Pregnant.
+    const activePregnancy =
+      animal.reproductiveStatus ===
+      ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
+        ? latestPregnantRecord
+        : null;
+    const nextAction = resolveReproductionNextAction({
+      animal,
+      activeRequest,
+      activePregnancy,
+      tasks: reproductiveTasks,
+    });
+    return res.status(200).json({
       ...animal.toObject(),
       offspring,
       inseminations,
       calvings,
       healthRecords,
+      nextAction,
+      nextActionAt: nextAction?.at || null,
     });
   } catch (error) {
     console.error("Error fetching animal details:", error);
     if (error.status) {
-      return res.status(error.status).json({ message: error.message, code: error.code });
+      return res.status(error.status).json({
+        message: error.message,
+        code: error.code,
+      });
     }
-    res.status(500).json({ message: "Failed to fetch animal details" });
+    return res.status(500).json({
+      message: "Failed to fetch animal details",
+    });
   }
 };
 

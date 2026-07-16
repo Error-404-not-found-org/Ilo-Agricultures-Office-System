@@ -7,6 +7,7 @@ import { Calving } from "../models/calving.model.js";
 import { Task } from "../models/task.model.js";
 import {
   ACTIVE_AI_REQUEST_STATUSES,
+  ANIMAL_REPRODUCTIVE_STATUS,
   TASK_STATUS,
 } from "../domain/status-vocabulary.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
@@ -16,6 +17,7 @@ import { createAuditLog } from "../services/audit.service.js";
 import { AppError } from "../utils/app-error.js";
 import { sendDetail, sendList, sendMutation } from "../utils/api-response.js";
 import { getPagination, paginateArray } from "../utils/pagination.js";
+
 
 const getAccessibleAnimal = async (id, user) => {
   const animal = await Animal.findOne({ _id: id, deletedAt: null });

@@ -1,6 +1,7 @@
 import { Insemination } from "../models/insemination.model.js";
 import {
   AI_STATUS,
+  ANIMAL_REPRODUCTIVE_STATUS,
   TASK_STATUS,
   isActiveAIRequestStatus,
 } from "../domain/status-vocabulary.js";
@@ -16,6 +17,7 @@ import { createTimelineEvent } from "../services/animal-timeline.service.js";
 import { assertAIRequestAccess } from "../policies/request.policy.js";
 import { Task } from "../models/task.model.js";
 import { assertStatusTransition } from "../domain/livestock-workflow.js";
+import { resolveReproductionNextAction } from "../domain/reproduction-next-action.js";
 import {
   completeInsemination,
   persistBreedingObservationVerification,
@@ -107,7 +109,10 @@ export const createAIRequest = async (req, res) => {
     const eligibility = getReproductionEligibility({
       animal,
       activeRequest: null,
-      activePregnancy,
+      activePregnancy:
+        animal.reproductiveStatus === ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
+          ? activePregnancy
+          : null,
       tasks: reproductiveTasks,
     });
     if (!eligibility.eligible) {
@@ -1172,22 +1177,102 @@ export const getUpcomingVisits = async (req, res) => {
 export const getAIRequestDetail = async (req, res) => {
   try {
     const { id } = req.params;
-    const request = await Insemination.findById(id)
+
+    const request = await Insemination.findOne({
+      _id: id,
+      deletedAt: null,
+    })
       .populate("farmerId", "name address imageUrl phoneNumber farmLocation")
       .populate(
         "animalId",
-        "animalId earTag species breed imageUrl reproductiveStatus birthDate",
+        [
+          "animalId",
+          "earTag",
+          "species",
+          "breed",
+          "imageUrl",
+          "reproductiveStatus",
+          "birthDate",
+          "lastInseminationDate",
+          "expectedCalvingDate",
+          "lastCalvingDate",
+        ].join(" "),
       )
       .populate("approvedBy", "name role phoneNumber")
-      .populate("technicianId", "name role phoneNumber");
-    await request?.populate(
-      "previousAttemptId",
-      "attemptNumber inseminationDate outcome outcomeVerificationStatus outcomeConfirmationSource outcomeConfirmedAt technicianId approvedBy",
-    );
+      .populate("technicianId", "name role phoneNumber")
+      .populate(
+        "previousAttemptId",
+        [
+          "attemptNumber",
+          "inseminationDate",
+          "outcome",
+          "outcomeVerificationStatus",
+          "outcomeConfirmationSource",
+          "outcomeConfirmedAt",
+          "technicianId",
+          "approvedBy",
+        ].join(" "),
+      );
 
     if (!request) {
-      return res.status(404).json({ message: "AI request record not found." });
+      return res.status(404).json({
+        message: "AI request record not found.",
+      });
     }
+
+    const animal = request.animalId;
+
+    let pregnancyRecord = null;
+    let reproductiveTasks = [];
+
+    if (animal?._id) {
+      [pregnancyRecord, reproductiveTasks] = await Promise.all([
+        Pregnancy.findOne({
+          animalId: animal._id,
+          deletedAt: null,
+          "pregnancyDiagnosis.result": "Pregnant",
+        })
+          .sort({
+            "pregnancyDiagnosis.date": -1,
+            createdAt: -1,
+          })
+          .lean(),
+
+        Task.find({
+          animalIds: animal._id,
+          taskType: {
+            $in: ["AI", "PD", "Calving", "CD"],
+          },
+          status: {
+            $in: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS],
+          },
+        })
+          .sort({
+            dueDate: 1,
+            createdAt: 1,
+          })
+          .lean(),
+      ]);
+    }
+
+    // A historical pregnancy record must not override a current
+    // postpartum, normal, or other non-pregnant animal status.
+    const activePregnancy =
+      animal?.reproductiveStatus === ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
+        ? pregnancyRecord
+        : null;
+
+    const nextAction = animal
+      ? resolveReproductionNextAction({
+          animal,
+          activeRequest: request,
+          activePregnancy:
+            animal.reproductiveStatus === ANIMAL_REPRODUCTIVE_STATUS.PREGNANT
+              ? activePregnancy
+              : null,
+          tasks: reproductiveTasks,
+        })
+      : null;
 
     const isUnclaimed = !request.approvedBy;
     const isFarmerRole = req.user.role === "farmer";
@@ -1196,15 +1281,21 @@ export const getAIRequestDetail = async (req, res) => {
       request.farmerId?._id?.toString() === req.user._id.toString();
 
     const requestObj = request.toObject();
+
+    requestObj.nextAction = nextAction;
+    requestObj.nextActionAt = nextAction?.at || null;
+
     if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin") {
       if (requestObj.farmerId) {
         requestObj.farmerId.phoneNumber = "";
+
         if (requestObj.farmerId.address) {
           requestObj.farmerId.address.landmark = "";
           requestObj.farmerId.address.street = "";
           requestObj.farmerId.address.houseNumber = "";
           requestObj.farmerId.address.coordinates = null;
         }
+
         if (requestObj.farmerId.farmLocation) {
           requestObj.farmerId.farmLocation.landmark = "";
           requestObj.farmerId.farmLocation.directionsNote = "";
@@ -1214,12 +1305,16 @@ export const getAIRequestDetail = async (req, res) => {
       }
     }
 
-    return res.status(200).json({ data: requestObj });
+    return res.status(200).json({
+      data: requestObj,
+    });
   } catch (error) {
     console.error("[getAIRequestDetail ERROR]", error.message);
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch AI request details." });
+
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to fetch AI request details.",
+      code: error.code || "AI_REQUEST_DETAIL_FETCH_FAILED",
+    });
   }
 };
 
