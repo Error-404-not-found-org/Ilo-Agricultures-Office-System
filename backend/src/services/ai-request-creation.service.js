@@ -40,15 +40,15 @@ export const createAIRequestWithGuard = async (payload) => {
     inseminationDate: { $exists: true, $ne: null },
     deletedAt: null,
   }).sort({ attemptNumber: -1, inseminationDate: -1 });
-  const attemptNumber = payload.attemptNumber ||
-    (lastPerformedAttempt?.attemptNumber || 0) + 1;
+  const attemptNumber = (lastPerformedAttempt?.attemptNumber || 0) + 1;
 
   try {
-    return await Insemination.create({
-      ...payload,
-      attemptNumber,
-      activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
-    });
+  return await Insemination.create({
+    ...payload,
+    attemptNumber,
+    previousAttemptId: lastPerformedAttempt?._id || null,
+    activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
+  });
   } catch (error) {
     if (!isActiveRequestKeyCollision(error)) throw error;
     const concurrentWinner = await findActiveAIRequest(payload.animalId);

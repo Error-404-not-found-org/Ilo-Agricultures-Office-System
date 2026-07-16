@@ -38,9 +38,11 @@ export const getReproductionEligibility = ({
     return {
       eligible: false,
       code: "ACTIVE_REPRODUCTIVE_WORKFLOW",
-      reason:
-        "AI request is not available yet. This animal is currently under reproductive monitoring.",
-      nextActionAt: animal.expectedCalvingDate || undefined,
+      reason: `A new AI request cannot be created while the animal is in the "${animal.reproductiveStatus}" reproductive workflow.`,
+      nextActionAt:
+        animal.nextReproductiveActionDate ||
+        animal.expectedCalvingDate ||
+        undefined,
     };
   }
 
