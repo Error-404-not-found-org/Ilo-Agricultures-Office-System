@@ -54,3 +54,10 @@ old_web/
 # Backend regression tests are source files and must be versioned.
 !backend/tests/
 !backend/tests/**
+
+
+# Local planning documents
+docs/
+
+# Local backend tests
+backend/tests/
