@@ -508,6 +508,15 @@ export default function AiRequestDetailScreen() {
         ) : null}
       </View>
 
+      {request.nextAction ? (
+        <View className="mx-5 mt-5">
+          <ReproductionNextActionCard
+            action={request.nextAction}
+            title="What Happens Next"
+          />
+        </View>
+      ) : null}
+
       {/* Progress Card */}
       <View
         className="mx-5 mt-5 p-4 border"
@@ -555,7 +564,7 @@ export default function AiRequestDetailScreen() {
               if (s === "in-progress" || s === "in_progress")
                 return "The technician is currently on-site or performing the insemination service.";
               if (s === "done" || s === "resolved" || s === "completed")
-                return "The insemination service has been completed successfully!";
+                return "The insemination procedure has been completed. Continue monitoring the animal and follow the next reproductive action.";
               if (s === "rejected")
                 return "This request was rejected. Please review notes or submit a new request.";
               if (s === "cancelled") return "This request has been cancelled.";

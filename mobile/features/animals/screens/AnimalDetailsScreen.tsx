@@ -1340,185 +1340,123 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     </View>
                   </View>
 
-                  {/* Post-AI timeline */}
+                  {/* Breeding outcome reporting */}
                   {animal.reproductiveStatus?.toLowerCase() === "inseminated" &&
                     (() => {
-                      const lastInsem = animal.inseminations?.[0];
-                      const aiDate =
-                        lastInsem?.dateOfAI ||
-                        lastInsem?.createdAt ||
-                        animal.updatedAt;
-                      const startDate = new Date(aiDate);
-                      const today = new Date();
-
-                      const diffTime = Math.abs(
-                        today.getTime() - startDate.getTime(),
-                      );
-                      const diffHours = Math.floor(diffTime / (1000 * 60 * 60));
-                      const diffDays = Math.floor(
-                        diffTime / (1000 * 60 * 60 * 24),
-                      );
-
-                      let phase = "";
-                      let advice = "";
-                      let color = "";
-                      let bg = "";
-                      let border = "";
-
-                      if (diffDays >= 18 && diffDays <= 24) {
-                        phase = "Heat Watch";
-                        advice =
-                          "CRITICAL: Check for signs of heat. If she 'reheats' within this window, the AI likely failed.";
-                        color = "#f59e0b";
-                        bg = isDark ? "rgba(245, 158, 11, 0.15)" : "#fffbeb";
-                        border = isDark ? "rgba(245, 158, 11, 0.3)" : "#fef3c7";
-                      } else if (diffDays < 18) {
-                        phase = "Recovery";
-                        advice =
-                          "The animal is in the recovery phase after insemination. Keep her calm and well-fed.";
-                        color = "#3b82f6";
-                        bg = isDark ? "rgba(59, 130, 246, 0.15)" : "#eff6ff";
-                        border = isDark ? "rgba(59, 130, 246, 0.3)" : "#dbeafe";
-                      } else if (diffDays > 24 && diffDays < 60) {
-                        phase = "Wait for PD";
-                        advice =
-                          "No signs of heat? Great! Now we wait until Day 60 for a professional pregnancy check.";
-                        color = "#6366f1";
-                        bg = isDark ? "rgba(99, 102, 241, 0.15)" : "#eef2ff";
-                        border = isDark ? "rgba(99, 102, 241, 0.3)" : "#e0e7ff";
-                      } else if (diffDays >= 60) {
-                        phase = "PD Due";
-                        advice =
-                          "It's been 60+ days! Time to request a technician for a Pregnancy Diagnosis (PD).";
-                        color = "#9333ea";
-                        bg = isDark ? "rgba(147, 51, 234, 0.15)" : "#f5f3ff";
-                        border = isDark ? "rgba(147, 51, 234, 0.3)" : "#ede9fe";
-                      }
+                      const latestInsemination = animal.inseminations?.[0];
 
                       return (
                         <View
-                          className="p-5 rounded-3xl border mb-4"
+                          className="p-4 rounded-2xl border mb-4"
                           style={{
-                            backgroundColor: bg,
-                            borderColor: border,
-                            borderWidth: 1,
+                            backgroundColor: isDark ? "rgba(59, 130, 246, 0.08)" : "#f8fafc",
+                            borderColor: colors.border,
                           }}
                         >
-                          <View className="flex-row justify-between items-start mb-3">
-                            <View>
+                          <View className="flex-row items-start gap-3">
+                            <View
+                              className="w-10 h-10 rounded-xl items-center justify-center"
+                              style={{
+                                backgroundColor: isDark
+                                  ? "rgba(59, 130, 246, 0.15)"
+                                  : "#eff6ff",
+                              }}
+                            >
+                              <MaterialCommunityIcons
+                                name="clipboard-text-outline"
+                                size={20}
+                                color={isDark ? "#60a5fa" : "#2563eb"}
+                              />
+                            </View>
+
+                            <View className="flex-1">
                               <Text
                                 style={{
-                                  fontFamily: "Outfit_900Black",
-                                  color: color,
-                                }}
-                                className="text-[9px] uppercase tracking-widest"
-                              >
-                                {phase} Phase
-                              </Text>
-                              <Text
-                                style={{
-                                  fontFamily: "Outfit_900Black",
+                                  fontFamily: "Outfit_800ExtraBold",
                                   color: colors.textPrimary,
                                 }}
-                                className="text-lg"
+                                className="text-[15px]"
                               >
-                                Day {diffDays} Post-AI
+                                Report Breeding Outcome
                               </Text>
+
                               <Text
                                 style={{
-                                  fontFamily: "Outfit_600SemiBold",
+                                  fontFamily: "Outfit_500Medium",
                                   color: colors.textSecondary,
                                 }}
-                                className="text-[11px]"
+                                className="text-[12px] leading-4 mt-1"
                               >
-                                Inseminated{" "}
-                                {diffHours < 24
-                                  ? `${diffHours} hours ago`
-                                  : `${diffDays} days ago`}
+                                Record return-to-heat or possible pregnancy observations.
+                                Pregnancy still requires technician confirmation.
                               </Text>
                             </View>
-                            <MaterialCommunityIcons
-                              name="timer-sand"
-                              size={24}
-                              color={color}
-                            />
                           </View>
 
-                          <Text
-                            style={{
-                              fontFamily: "Outfit_500Medium",
-                              color: colors.textSecondary,
-                            }}
-                            className="text-[12px] leading-4 italic mb-4"
-                          >
-                            &quot;{advice}&quot;
-                          </Text>
-
-                          <View className="flex-col gap-3">
-                            <View className="flex-row gap-3">
-                              <TouchableOpacity
-                                onPress={() => setReheatModalVisible(true)}
-                                className="flex-1 py-3 rounded-2xl items-center"
-                                style={{
-                                  backgroundColor: isDark
-                                    ? "rgba(249, 115, 22, 0.1)"
-                                    : "rgba(255, 255, 255, 0.6)",
-                                  borderColor: isDark
-                                    ? "rgba(249, 115, 22, 0.3)"
-                                    : "#fed7aa",
-                                  borderWidth: 1,
-                                }}
+                          <View className="flex-row gap-3 mt-4">
+                            <TouchableOpacity
+                              onPress={() => setReheatModalVisible(true)}
+                              className="flex-1 py-3 rounded-2xl items-center border"
+                              style={{
+                                backgroundColor: isDark
+                                  ? "rgba(249, 115, 22, 0.08)"
+                                  : "#fff7ed",
+                                borderColor: isDark
+                                  ? "rgba(249, 115, 22, 0.3)"
+                                  : "#fed7aa",
+                              }}
+                            >
+                              <Text
+                                style={{ fontFamily: "Outfit_800ExtraBold" }}
+                                className="text-orange-600 dark:text-orange-400 text-[10px] uppercase"
                               >
-                                <Text
-                                  style={{ fontFamily: "Outfit_800ExtraBold" }}
-                                  className="text-orange-600 dark:text-orange-400 text-[10px] uppercase"
-                                >
-                                  Reheated (Empty)
-                                </Text>
-                              </TouchableOpacity>
+                                Returned to Heat
+                              </Text>
+                            </TouchableOpacity>
 
-                              <TouchableOpacity
-                                onPress={() => setCongratsModalVisible(true)}
-                                className="flex-1 py-3 rounded-2xl items-center shadow-sm"
-                                style={{ backgroundColor: color }}
+                            <TouchableOpacity
+                              onPress={() => setCongratsModalVisible(true)}
+                              className="flex-1 py-3 rounded-2xl items-center"
+                              style={{ backgroundColor: primaryColor }}
+                            >
+                              <Text
+                                style={{ fontFamily: "Outfit_900Black" }}
+                                className="text-white text-[10px] uppercase"
                               >
-                                <Text
-                                  style={{ fontFamily: "Outfit_900Black" }}
-                                  className="text-white text-[10px] uppercase"
-                                >
-                                  Pregnant (Success)
-                                </Text>
-                              </TouchableOpacity>
-                            </View>
+                                Possible Pregnancy
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
 
-                            {diffDays >= 60 && (
-                              <TouchableOpacity
-                                onPress={() =>
-                                  router.push({
-                                    pathname: "/(farmer)/report-sickness",
+                          {nextAction?.type === "PERFORM_PREGNANCY_DIAGNOSIS" ? (
+                            <TouchableOpacity
+                              onPress={() =>
+                                router.push(
+                                  {
+                                    pathname: "/(farmer)/report-breeding-observation",
                                     params: {
                                       animalId: id,
-                                      type: "checkup",
-                                      note: "Requesting Pregnancy Diagnosis (Day 60+)",
+                                      requestId: latestInsemination?._id,
+                                      defaultReport: "unsure",
+                                      requestVerification: "true",
                                     },
-                                  })
-                                }
-                                className="w-full py-3 mt-1 rounded-2xl items-center shadow-sm"
-                                style={{ backgroundColor: colors.primary }}
+                                  } as any,
+                                )
+                              }
+                              className="w-full py-3 mt-3 rounded-2xl items-center"
+                              style={{ backgroundColor: colors.primary }}
+                            >
+                              <Text
+                                style={{ fontFamily: "Outfit_900Black" }}
+                                className="text-white text-[10px] uppercase tracking-widest"
                               >
-                                <Text
-                                  style={{ fontFamily: "Outfit_900Black" }}
-                                  className="text-white text-[10px] uppercase tracking-widest"
-                                >
-                                  Request Professional PD Check
-                                </Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
+                                Request Pregnancy Diagnosis
+                              </Text>
+                            </TouchableOpacity>
+                          ) : null}
                         </View>
                       );
                     })()}
-
                   {/* Calving Countdown */}
                   {animal.reproductiveStatus === "Pregnant" &&
                     (() => {
@@ -1529,16 +1467,25 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         latest?.createdAt ||
                         animal.lastInseminationDate;
                       const aiDate = aiDateValue ? new Date(aiDateValue) : null;
-                      const dueDate = animal.expectedCalvingDate
-                        ? new Date(animal.expectedCalvingDate)
-                        : aiDate
-                          ? calculateTargetCalvingDate(
-                              aiDate,
-                              animal.species || "Cattle",
-                              undefined,
-                              animal.breed,
-                            )
+                      const canonicalCalvingDate =
+                        nextAction?.type === "PREPARE_FOR_CALVING" &&
+                        nextAction.at
+                          ? new Date(nextAction.at)
                           : null;
+                      const dueDate =
+                        canonicalCalvingDate &&
+                        !Number.isNaN(canonicalCalvingDate.getTime())
+                          ? canonicalCalvingDate
+                          : animal.expectedCalvingDate
+                            ? new Date(animal.expectedCalvingDate)
+                            : aiDate
+                              ? calculateTargetCalvingDate(
+                                  aiDate,
+                                  animal.species || "Cattle",
+                                  undefined,
+                                  animal.breed,
+                                )
+                              : null;
 
                       if (!dueDate) return null;
 
