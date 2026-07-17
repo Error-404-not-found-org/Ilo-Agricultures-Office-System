@@ -10,7 +10,17 @@ export const animalKeys = {
   mine: () => [...animalKeys.all, "my-all"] as const,
   detail: (id: string) => [...animalKeys.all, "detail", id] as const,
   medical: (id: string) => ["medical", id] as const,
-  timeline: (id: string) => ["timeline", id] as const,
+  timeline: (id: string) => ["animal-records", "timeline", id] as const,
+};
+
+export const breedingKeys = {
+  tracker: (id: string) => ["animal", id, "pregnancy-tracker"] as const,
+};
+
+export const animalRecordKeys = {
+  all: ["animal-records"] as const,
+  timeline: (id: string) => [...animalRecordKeys.all, "timeline", id] as const,
+  records: (id: string) => [...animalRecordKeys.all, "records", id] as const,
 };
 
 export const aiRequestKeys = {

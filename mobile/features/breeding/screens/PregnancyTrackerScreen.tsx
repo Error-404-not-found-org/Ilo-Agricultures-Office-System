@@ -337,6 +337,12 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
 
   const animal = query.data;
   const latest = animal.inseminations?.[0];
+  const activePregnancy = animal.inseminations
+    ?.map((item: any) => item.pregnancy)
+    .find((item: any) =>
+      item?.pregnancyDiagnosis?.result === "Pregnant" &&
+      !["completed", "lost"].includes(item?.cycleStatus),
+    );
   const aiDateValue =
     latest?.inseminationDate ||
     latest?.dateOfAI ||
@@ -898,12 +904,13 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
         </View>
 
         {/* Action Buttons */}
+        {activePregnancy && animal.reproductiveStatus === "Pregnant" && (
         <View style={{ marginHorizontal: 24, marginTop: 24, gap: 12 }}>
           <TouchableOpacity
             onPress={() =>
               router.push({
                 pathname: "/(farmer)/record-calving",
-                params: { animalId: id, pregnancyId: latest?._id },
+                params: { animalId: id, pregnancyId: activePregnancy._id },
               })
             }
             activeOpacity={0.8}
@@ -997,6 +1004,7 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
             </Text>
           </TouchableOpacity>
         </View>
+        )}
 
         <Text
           style={{

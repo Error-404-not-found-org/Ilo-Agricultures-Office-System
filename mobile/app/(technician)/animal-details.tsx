@@ -912,8 +912,13 @@ export default function AnimalDetails() {
                       subtitle="Record Birth / Offspring"
                       icon={<MaterialCommunityIcons name="baby-carriage" size={20} color={isDark ? "#c084fc" : "#7c3aed"} />}
                       onPress={() => {
-                        const latestInsem = (animal.inseminations || []).find((i: any) => i.pregnancy);
-                        const pregnancyId = latestInsem?.pregnancy?._id;
+                        const confirmedPregnancy = (animal.inseminations || [])
+                          .map((item: any) => item.pregnancy)
+                          .find((item: any) =>
+                            item?.pregnancyDiagnosis?.result === "Pregnant" &&
+                            !["completed", "lost"].includes(item?.cycleStatus),
+                          );
+                        const pregnancyId = confirmedPregnancy?._id;
                         if (!pregnancyId) {
                           toast.error("Could not locate active pregnancy record.");
                           return;

@@ -6,7 +6,6 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
@@ -14,7 +13,6 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ArrowLeft,
-  Baby,
   Calendar,
   Plus,
   Trash2,
@@ -26,13 +24,14 @@ import {
   Image as ImageIcon,
   X,
 } from "lucide-react-native";
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { toast } from "sonner-native";
-import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/lib/theme";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
+import { animalKeys, animalRecordKeys, breedingKeys, notificationKeys, userKeys } from "@/lib/queryKeys";
+import { farmerDashboardQueryKeys } from "@/features/farmer-dashboard/hooks/useFarmerDashboard";
 
 interface CalfEntry {
   sex: "M" | "F";
@@ -40,6 +39,7 @@ interface CalfEntry {
   color: string;
   imageUri?: string;
   imageBase64?: string;
+  isLiving?: boolean;
 }
 
 export default function RecordCalving() {
@@ -57,11 +57,14 @@ export default function RecordCalving() {
 
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [calvingEase, setCalvingEase] = useState("Normal");
+  const [outcome, setOutcome] = useState<"live_birth" | "mixed" | "stillbirth" | "abortion">("live_birth");
   const [technicianNote, setTechnicianNote] = useState("");
   const [calves, setCalves] = useState<CalfEntry[]>([
     { sex: "F", earTag: "", color: "" },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isLiveBirth = outcome === "live_birth";
+  const isAbortion = outcome === "abortion";
   const calvingMutation = useOfflineMutation(
     {
       url: "/animals/record-calving",
@@ -71,11 +74,23 @@ export default function RecordCalving() {
     {
       onSuccess: (result) => {
         if (result.status === "synced") {
-          toast.success("Calving recorded! New animals added to registry.");
+          toast.success(outcome === "abortion"
+            ? "Pregnancy-loss record saved."
+            : outcome === "stillbirth"
+              ? "Stillbirth record saved."
+              : "Calving recorded! Living offspring were added to the registry.");
+          queryClient.invalidateQueries({ queryKey: animalKeys.mine() });
+          queryClient.invalidateQueries({ queryKey: animalKeys.detail(animalId) });
+          queryClient.invalidateQueries({ queryKey: animalKeys.timeline(animalId) });
+          queryClient.invalidateQueries({ queryKey: breedingKeys.tracker(animalId) });
+          queryClient.invalidateQueries({ queryKey: farmerDashboardQueryKeys.milestones });
+          queryClient.invalidateQueries({ queryKey: farmerDashboardQueryKeys.myAnimals });
+          queryClient.invalidateQueries({ queryKey: farmerDashboardQueryKeys.activityFeed });
+          queryClient.invalidateQueries({ queryKey: animalRecordKeys.records(animalId) });
+          queryClient.invalidateQueries({ queryKey: notificationKeys.all });
+          queryClient.invalidateQueries({ queryKey: userKeys.activity() });
+          router.back();
         }
-        queryClient.invalidateQueries({ queryKey: ["animals", "my"] });
-        queryClient.invalidateQueries({ queryKey: ["breeding-milestones"] });
-        router.back();
       },
       onError: (error: any) => {
         toast.error(error.response?.data?.message || "Failed to record calving");
@@ -90,6 +105,21 @@ export default function RecordCalving() {
     setCalves([...calves, { sex: "F", earTag: "", color: "" }]);
   };
 
+  const selectOutcome = (value: string) => {
+    const nextOutcome = value as typeof outcome;
+    setOutcome(nextOutcome);
+    if (nextOutcome === "abortion") {
+      setCalves([]);
+    } else if (calves.length === 0) {
+      setCalves([{ sex: "F", earTag: "", color: "", isLiving: nextOutcome !== "stillbirth" }]);
+    } else {
+      setCalves(calves.map((calf, index) => ({
+        ...calf,
+        isLiving: nextOutcome === "live_birth" ? true : nextOutcome === "stillbirth" ? false : index === 0,
+      })));
+    }
+  };
+
   const removeCalf = (index: number) => {
     if (calves.length === 1) return;
     const newCalves = [...calves];
@@ -99,7 +129,7 @@ export default function RecordCalving() {
 
   const updateCalf = (index: number, field: keyof CalfEntry, value: string) => {
     const newCalves = [...calves];
-    newCalves[index][field] = value as any;
+    (newCalves[index] as any)[field] = value;
     setCalves(newCalves);
   };
 
@@ -153,10 +183,23 @@ export default function RecordCalving() {
 
   const handleSubmit = async () => {
     toast.dismiss();
-    // Basic validation
-    for (let i = 0; i < calves.length; i++) {
-      if (!calves[i].earTag) {
+    const parsedDate = new Date(date);
+    if (!date || Number.isNaN(parsedDate.getTime()) || parsedDate.getTime() > Date.now()) {
+      return toast.error("Enter a valid calving date that is not in the future.");
+    }
+    const livingCalves = calves.filter((calf) => calf.isLiving !== false);
+    for (let i = 0; i < livingCalves.length; i++) {
+      if (!livingCalves[i].earTag) {
         return toast.error(`Please provide an Ear Tag for Calf #${i + 1}`);
+      }
+    }
+    if (outcome === "mixed" && (livingCalves.length === 0 || livingCalves.length === calves.length)) {
+      return toast.error("Mixed outcome requires at least one living and one stillborn calf.");
+    }
+    if (livingCalves.length) {
+      const normalizedTags = livingCalves.map((calf) => calf.earTag.trim().toLowerCase());
+      if (new Set(normalizedTags).size !== normalizedTags.length) {
+        return toast.error("Each living calf must have a unique ear tag.");
       }
     }
 
@@ -167,16 +210,20 @@ export default function RecordCalving() {
         animalId,
         date,
         calvingEase,
-        numberOfCalves: calves.length,
-        calves: calves.map((c) => ({
+        outcome,
+        numberOfCalves: isAbortion ? 0 : calves.length,
+        calves: calves.filter((c) => c.isLiving !== false).map((c) => ({
           sex: c.sex,
           earTag: c.earTag,
           color: c.color,
           imageUrl: c.imageBase64 || "",
         })),
+        nonLivingCalves: calves.filter((c) => c.isLiving === false).map((c) => ({
+          sex: c.sex, earTag: c.earTag, color: c.color,
+        })),
         technicianNote,
       });
-    } catch (error: any) {
+    } catch {
       // Handled by mutation callbacks.
     } finally {
       setIsSubmitting(false);
@@ -225,8 +272,7 @@ export default function RecordCalving() {
         >
           <Info size={18} color={isDark ? '#60a5fa' : '#3B82F6'} style={{ marginTop: 2 }} />
           <Text className="ml-3 flex-1 text-[12px] leading-5 font-medium" style={{ color: isDark ? '#dbeafe' : '#1e3a8a' }}>
-            Recording a calving will automatically register the new offspring
-            into your animal list.
+            Live births register offspring automatically. Abortion and stillbirth preserve the breeding history without creating living livestock profiles.
           </Text>
         </View>
 
@@ -252,25 +298,25 @@ export default function RecordCalving() {
 
         <View className="mt-6">
           <Text className="text-[10px] font-black uppercase tracking-widest ml-1 mb-2" style={{ color: colors.textMuted }}>
-            Calving Ease
+            Outcome
           </Text>
-          <View className="flex-row gap-2">
-            {["Abortion", "Natural", "Difficult", "Stillbirth"].map(
-              (option) => (
+          <View className="flex-row flex-wrap gap-2">
+            {[["live_birth", "Live Birth"], ["mixed", "Mixed"], ["stillbirth", "Stillbirth"], ["abortion", "Abortion"]].map(
+              ([value, label]) => (
                 <TouchableOpacity
-                  key={option}
-                  onPress={() => setCalvingEase(option)}
+                  key={value}
+                  onPress={() => selectOutcome(value)}
                   className="flex-1 py-3 rounded-2xl items-center border"
                   style={{
-                    backgroundColor: calvingEase === option ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5') : colors.card,
-                    borderColor: calvingEase === option ? (isDark ? colors.primary : '#10b981') : colors.border
+                    backgroundColor: outcome === value ? (isDark ? 'rgba(16, 185, 129, 0.15)' : '#ecfdf5') : colors.card,
+                    borderColor: outcome === value ? (isDark ? colors.primary : '#10b981') : colors.border
                   }}
                 >
                   <Text
                     className="text-[11px] font-black"
-                    style={{ color: calvingEase === option ? (isDark ? colors.primary : '#065f46') : colors.textMuted }}
+                    style={{ color: outcome === value ? (isDark ? colors.primary : '#065f46') : colors.textMuted }}
                   >
-                    {option}
+                    {label}
                   </Text>
                 </TouchableOpacity>
               ),
@@ -278,10 +324,22 @@ export default function RecordCalving() {
           </View>
         </View>
 
-        {/* Offspring List */}
+        {!isAbortion && <View className="mt-6">
+          <Text className="text-[10px] font-black uppercase tracking-widest ml-1 mb-2" style={{ color: colors.textMuted }}>Delivery Method</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {["Natural", "Normal", "Difficult", "Cesarean"].map((option) => (
+              <TouchableOpacity key={option} onPress={() => setCalvingEase(option)} className="px-4 py-3 rounded-2xl items-center border" style={{ backgroundColor: calvingEase === option ? colors.tint : colors.card, borderColor: calvingEase === option ? primaryColor : colors.border }}>
+                <Text className="text-[11px] font-black" style={{ color: calvingEase === option ? primaryColor : colors.textMuted }}>{option}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>}
+
+        {/* Outcome-specific offspring details */}
+        {!isAbortion ? <>
         <View className="mt-10 flex-row justify-between items-center mb-4">
           <Text className="text-sm font-black uppercase tracking-widest" style={{ color: colors.textPrimary }}>
-            Offspring Registry
+            {isLiveBirth ? "Offspring Registry" : outcome === "mixed" ? "Living & Stillborn Details" : "Stillborn Calf Details"}
           </Text>
           <TouchableOpacity
             onPress={addCalf}
@@ -290,7 +348,7 @@ export default function RecordCalving() {
           >
             <Plus size={14} color={primaryColor} />
             <Text className="text-[11px] font-black" style={{ color: primaryColor }}>
-              Add Multiple
+              Add Calf
             </Text>
           </TouchableOpacity>
         </View>
@@ -318,6 +376,13 @@ export default function RecordCalving() {
             )}
 
             <View className="gap-5">
+              {outcome === "mixed" && <View className="flex-row gap-2">
+                {[[true, "Living"], [false, "Stillborn"]].map(([value, label]) => (
+                  <TouchableOpacity key={String(value)} onPress={() => updateCalf(index, "isLiving", value as any)} className="flex-1 py-2 rounded-xl items-center border" style={{ backgroundColor: (calf.isLiving !== false) === value ? primaryColor : colors.card, borderColor: colors.border }}>
+                    <Text className="font-black" style={{ color: (calf.isLiving !== false) === value ? "white" : colors.textMuted }}>{label as string}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>}
               {/* Sex Toggle */}
               <View>
                 <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
@@ -394,7 +459,7 @@ export default function RecordCalving() {
               </View>
 
               {/* Calf Image Picker */}
-              <View>
+              {calf.isLiving !== false && <View>
                 <Text className="text-[9px] font-black uppercase tracking-widest mb-2 ml-1" style={{ color: colors.textMuted }}>
                   Calf Image / Photo (Optional)
                 </Text>
@@ -428,10 +493,17 @@ export default function RecordCalving() {
                     </TouchableOpacity>
                   </View>
                 )}
-              </View>
+              </View>}
             </View>
           </View>
         ))}
+        </> : (
+          <View className="mt-8 p-5 rounded-3xl border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+            <Text className="text-sm font-bold" style={{ color: colors.textPrimary }}>
+              No living calf profile will be created. Add relevant observations below.
+            </Text>
+          </View>
+        )}
 
         {/* Note Box */}
         <View className="mt-4">
@@ -459,10 +531,10 @@ export default function RecordCalving() {
       >
         <TouchableOpacity
           onPress={handleSubmit}
-          disabled={isSubmitting}
+          disabled={isSubmitting || calvingMutation.isPending}
           className="h-16 rounded-[24px] flex-row items-center justify-center gap-3"
           style={{
-            backgroundColor: isSubmitting ? '#34d399' : primaryColor,
+            backgroundColor: isSubmitting || calvingMutation.isPending ? '#34d399' : primaryColor,
             elevation: 8,
             shadowColor: primaryColor,
             shadowOpacity: 0.3,
@@ -470,13 +542,13 @@ export default function RecordCalving() {
             shadowOffset: { width: 0, height: 4 },
           }}
         >
-          {isSubmitting ? (
+          {isSubmitting || calvingMutation.isPending ? (
             <ActivityIndicator color="white" />
           ) : (
             <>
               <ClipboardCheck size={20} color="white" />
               <Text className="text-white font-black text-base uppercase tracking-widest">
-                Register Offspring
+                {isLiveBirth ? "Register Offspring" : "Record Pregnancy Loss"}
               </Text>
             </>
           )}
