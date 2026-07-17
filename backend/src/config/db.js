@@ -26,7 +26,8 @@ export const connectDB = async () => {
     }
 
     // 3. Connect using the dynamically chosen string
-    const conn = await mongoose.connect(dbURI);
+    // Production indexes are deployed explicitly after duplicate audits and backfills.
+    const conn = await mongoose.connect(dbURI, { autoIndex: !isProduction });
 
     // Friendly reminder in your terminal so you always know where data is saving
     console.log(

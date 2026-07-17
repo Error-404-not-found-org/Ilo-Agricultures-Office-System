@@ -385,7 +385,7 @@ const onCalvingRecorded = inngest.createFunction(
   { event: "livestock/calving-recorded" },
   async ({ event, step }) => {
     await connectDB();
-    const { animalId, farmerId } = event.data;
+    const { animalId, farmerId, outcome = "live_birth" } = event.data;
 
     // Wait for VWP period (typically 60 days)
     await step.sleep("wait-for-vwp-window", "60 days");
@@ -405,7 +405,12 @@ const onCalvingRecorded = inngest.createFunction(
       await step.run("send-vwp-reminder", async () => {
         const animal = await Animal.findById(animalId);
         const title = "🐮 Optimal Breeding Window Open";
-        const body = `Your animal Tag #${animal?.earTag || 'your animal'} has successfully completed the voluntary waiting period (60 days post-calving) and is ready for re-breeding.`;
+        const recoveryEvent = outcome === "abortion"
+          ? "pregnancy loss"
+          : outcome === "stillbirth"
+            ? "stillbirth"
+            : "calving";
+        const body = `Your animal Tag #${animal?.earTag || 'your animal'} has completed the 60-day recovery period following ${recoveryEvent} and may be evaluated for re-breeding.`;
 
         // Notify Farmer (In-app)
         await Notification.create({
