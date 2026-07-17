@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import { ENV } from "../src/config/env.js";
+import { configureCustomDns } from "../src/config/custom-dns.js";
 import { Animal } from "../src/models/animal.model.js";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
@@ -102,13 +103,17 @@ export const cleanupFromManifest = async ({ manifest, models = MODELS, session =
   return results;
 };
 
-const connectDevelopmentDatabase = async () => {
-  const uri = ENV.DB_URL_DEV || ENV.DB_URL;
+export const connectDevelopmentDatabase = async ({
+  uri = ENV.DB_URL_DEV || ENV.DB_URL,
+  mongooseClient = mongoose,
+  configureDns = configureCustomDns,
+} = {}) => {
   if (!uri) throw new Error("Development database connection string is missing.");
-  const connection = await mongoose.connect(uri, { autoIndex: false });
+  configureDns();
+  const connection = await mongooseClient.connect(uri, { autoIndex: false });
   const name = connection.connection.name;
   if (/prod/i.test(name) || name === "IloIlo-BreeedSmart-DB") {
-    await mongoose.disconnect();
+    await mongooseClient.disconnect();
     throw new Error(`Refusing database whose name appears production-like: ${name}`);
   }
   return connection;

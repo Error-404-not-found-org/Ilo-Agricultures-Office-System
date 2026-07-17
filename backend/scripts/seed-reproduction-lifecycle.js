@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import mongoose from "mongoose";
 import { ENV } from "../src/config/env.js";
+import { configureCustomDns } from "../src/config/custom-dns.js";
 import { User } from "../src/models/user.model.js";
 import { Animal } from "../src/models/animal.model.js";
 import { Insemination } from "../src/models/insemination.model.js";
@@ -41,7 +42,7 @@ const MODELS = { Animal, Insemination, Pregnancy, Calving, Task, Notification, A
 const REQUIRED_SCHEMA_PATHS = {
   Animal: ["farmerId", "animalId", "earTag", "reproductiveStatus", "motherId"],
   Insemination: ["farmerId", "animalId", "status", "attemptNumber", "attemptSeriesId", "previousAttemptId"],
-  Pregnancy: ["animalId", "farmerId", "inseminationId", "pregnancyDiagnosis", "cycleStatus"],
+  Pregnancy: ["animalId", "farmerId", "inseminationId", "pregnancyDiagnosis.date", "pregnancyDiagnosis.result", "cycleStatus"],
   Calving: ["animalId", "pregnancyId", "inseminationId", "outcome", "livingCalfCount", "stillbornCount"],
   Task: ["farmerId", "animalIds", "taskType", "sourceType", "metadata"],
   Notification: ["recipientId", "senderId", "relatedId", "title", "message"],
@@ -72,12 +73,27 @@ export const assertDevelopmentEnvironment = (environment = process.env.NODE_ENV 
   }
 };
 
+export const hasRequiredSchemaPath = (schema, schemaPath, { allowNestedContainer = false } = {}) => {
+  if (!schema || typeof schema.path !== "function") return false;
+  const resolvedPath = schema.path(schemaPath);
+  const pathType = typeof schema.pathType === "function" ? schema.pathType(schemaPath) : null;
+  const isDirectPath = Boolean(resolvedPath) && (!pathType || pathType === "real");
+  if (isDirectPath) return true;
+  return allowNestedContainer && Boolean(schema.nested?.[schemaPath]);
+};
+
+export const assertRequiredSchemaPath = (modelName, schema, schemaPath, options) => {
+  if (!hasRequiredSchemaPath(schema, schemaPath, options)) {
+    throw new Error(`Required schema path is missing: ${modelName}.${schemaPath}`);
+  }
+};
+
 export const assertRequiredSchemas = (models = MODELS) => {
   for (const [name, paths] of Object.entries(REQUIRED_SCHEMA_PATHS)) {
     const model = models[name];
     if (!model?.schema) throw new Error(`Required model is unavailable: ${name}`);
     for (const schemaPath of paths) {
-      if (!model.schema.path(schemaPath)) throw new Error(`Required schema path is missing: ${name}.${schemaPath}`);
+      assertRequiredSchemaPath(name, model.schema, schemaPath);
     }
   }
 };
@@ -554,13 +570,17 @@ const verifyInsertedPlan = async (plan) => {
   return true;
 };
 
-const connectDevelopmentDatabase = async () => {
-  const uri = ENV.DB_URL_DEV || ENV.DB_URL;
+export const connectDevelopmentDatabase = async ({
+  uri = ENV.DB_URL_DEV || ENV.DB_URL,
+  mongooseClient = mongoose,
+  configureDns = configureCustomDns,
+} = {}) => {
   if (!uri) throw new Error("Development database connection string is missing.");
-  const connection = await mongoose.connect(uri, { autoIndex: false });
+  configureDns();
+  const connection = await mongooseClient.connect(uri, { autoIndex: false });
   const databaseName = connection.connection.name;
   if (/prod/i.test(databaseName) || databaseName === "IloIlo-BreeedSmart-DB") {
-    await mongoose.disconnect();
+    await mongooseClient.disconnect();
     throw new Error(`Refusing database whose name appears production-like: ${databaseName}`);
   }
   return connection;

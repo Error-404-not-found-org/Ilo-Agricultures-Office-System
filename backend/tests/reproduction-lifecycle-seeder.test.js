@@ -1,19 +1,27 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import dns from "node:dns";
 import mongoose from "mongoose";
+import { Pregnancy } from "../src/models/pregnancy.model.js";
+import { CUSTOM_DNS_SERVERS, configureCustomDns } from "../src/config/custom-dns.js";
 import {
   SCENARIO_NAMES,
   applySeedPlan,
   assertDevelopmentEnvironment,
+  assertRequiredSchemaPath,
+  assertRequiredSchemas,
   assertSeedBatchAvailable,
   buildReproductionLifecyclePlan,
   createManifest,
+  connectDevelopmentDatabase as connectSeedDatabase,
+  hasRequiredSchemaPath,
   resolveSeedUsers,
   validateSeedPlan,
 } from "../scripts/seed-reproduction-lifecycle.js";
 import {
   buildCleanupOperations,
   cleanupFromManifest,
+  connectDevelopmentDatabase as connectCleanupDatabase,
   loadManifest,
   validateManifest,
 } from "../scripts/cleanup-reproduction-lifecycle.js";
@@ -50,6 +58,65 @@ test("Reproduction seeder: dry-run performs no writes", async () => {
 test("Reproduction seeder: production environment is rejected before work", () => {
   assert.throws(() => assertDevelopmentEnvironment("production"), /NODE_ENV=production/);
   assert.doesNotThrow(() => assertDevelopmentEnvironment("development"));
+});
+
+test("Reproduction lifecycle connections configure custom DNS before connecting", async () => {
+  const originalServers = dns.getServers();
+  const originalFlag = process.env.FORCE_CUSTOM_DNS;
+  const originalEnvironment = process.env.NODE_ENV;
+  let writes = 0;
+  try {
+    process.env.FORCE_CUSTOM_DNS = "true";
+    process.env.NODE_ENV = "test";
+    const mongooseClient = {
+      connect: async () => {
+        assert.deepEqual(dns.getServers(), CUSTOM_DNS_SERVERS);
+        return { connection: { name: "development-test" } };
+      },
+      disconnect: async () => { writes += 1; },
+    };
+    await connectSeedDatabase({ uri: "mongodb://example.invalid/test", mongooseClient });
+    await connectCleanupDatabase({ uri: "mongodb://example.invalid/test", mongooseClient });
+    assert.equal(writes, 0);
+  } finally {
+    dns.setServers(originalServers);
+    if (originalFlag === undefined) delete process.env.FORCE_CUSTOM_DNS;
+    else process.env.FORCE_CUSTOM_DNS = originalFlag;
+    if (originalEnvironment === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = originalEnvironment;
+  }
+});
+
+test("Custom DNS remains unchanged without the opt-in flag and in production", () => {
+  const calls = [];
+  const dnsModule = {
+    getServers: () => ["192.0.2.53"],
+    setServers: (servers) => calls.push(servers),
+  };
+  assert.deepEqual(configureCustomDns({ forceCustomDns: "", environment: "development", dnsModule }), {
+    enabled: false,
+    servers: ["192.0.2.53"],
+  });
+  assert.deepEqual(configureCustomDns({ forceCustomDns: "true", environment: "production", dnsModule }), {
+    enabled: false,
+    servers: ["192.0.2.53"],
+  });
+  assert.deepEqual(calls, []);
+});
+
+test("Reproduction seeder: current schemas and pregnancy diagnosis leaf paths pass validation", () => {
+  assert.doesNotThrow(() => assertRequiredSchemas());
+  assert.equal(hasRequiredSchemaPath(Pregnancy.schema, "pregnancyDiagnosis.date"), true);
+  assert.equal(hasRequiredSchemaPath(Pregnancy.schema, "pregnancyDiagnosis.result"), true);
+});
+
+test("Reproduction seeder: schema validation rejects a genuinely missing leaf path", () => {
+  assert.equal(hasRequiredSchemaPath(Pregnancy.schema, "pregnancyDiagnosis.missingLeaf"), false);
+  assert.equal(hasRequiredSchemaPath(Pregnancy.schema, "pregnancyDiagnosis", { allowNestedContainer: true }), true);
+  assert.throws(
+    () => assertRequiredSchemaPath("Pregnancy", Pregnancy.schema, "pregnancyDiagnosis.missingLeaf"),
+    /Required schema path is missing: Pregnancy\.pregnancyDiagnosis\.missingLeaf/,
+  );
 });
 
 test("Reproduction seeder: an existing seed batch is refused", async () => {
