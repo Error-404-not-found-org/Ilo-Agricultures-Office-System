@@ -6,6 +6,8 @@ scripts/
 !backend/scripts/
 backend/scripts/*
 !backend/scripts/audit-duplicate-ear-tags.js
+!backend/scripts/seed-reproduction-lifecycle.js
+!backend/scripts/cleanup-reproduction-lifecycle.js
 
 # Local assistant / IDE state
 .codex/
