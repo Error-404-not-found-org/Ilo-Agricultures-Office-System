@@ -258,7 +258,7 @@ export const resolveReproductionNextAction = ({
    * Postpartum recovery is calculated using the canonical
    * species and breed recovery rules.
    */
-  const lastCalvingDate = toValidDate(animal.lastCalvingDate);
+  const lastCalvingDate = toValidDate(animal.lastCalvingDate || animal.lastPregnancyLossDate);
 
   if (lastCalvingDate) {
     const recovery = verifyPostpartumWindow(
@@ -272,10 +272,14 @@ export const resolveReproductionNextAction = ({
       return createAction({
         phase: REPRODUCTION_PHASE.RECOVERY_PERIOD,
         type: REPRODUCTION_NEXT_ACTION_TYPE.WAIT_FOR_POSTPARTUM_RECOVERY,
-        label: "Wait for postpartum recovery",
+        label: animal.lastPregnancyLossDate && !animal.lastCalvingDate
+          ? "Wait for pregnancy-loss recovery"
+          : "Wait for postpartum recovery",
         at: addDays(lastCalvingDate, recovery.requiredDays),
         dateKind: NEXT_ACTION_DATE_KIND.CALCULATED,
-        source: "animal.lastCalvingDate+postpartumRecoveryDays",
+        source: animal.lastPregnancyLossDate && !animal.lastCalvingDate
+          ? "animal.lastPregnancyLossDate+recoveryDays"
+          : "animal.lastCalvingDate+postpartumRecoveryDays",
         now: currentDate,
       });
     }

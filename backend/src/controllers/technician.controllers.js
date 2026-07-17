@@ -1083,12 +1083,17 @@ export const getAnimalHistory = async (req, res) => {
     // - Calvings
     calvings.forEach((c) => {
       const sexDist = c.calves?.map((calf) => calf.sex).join("/") || "N/A";
+      const isLiveBirth = c.outcome === "live_birth" || !c.outcome;
       timeline.push({
         _id: c._id,
         relatedId: c._id,
         type: "Calving",
         title: "Calving Event",
-        description: `Successful birth of ${c.numberOfCalves} calf/calves. Sex distribution: [${sexDist}]. Ease: ${c.calvingEase}.`,
+        description: isLiveBirth
+          ? `Live birth of ${c.numberOfCalves} calf/calves. Sex distribution: [${sexDist}]. Ease: ${c.calvingEase}.`
+          : c.outcome === "stillbirth"
+            ? `Stillbirth of ${c.numberOfCalves} calf/calves recorded.`
+            : "Pregnancy loss recorded as abortion.",
         date: c.date || c.createdAt,
         status: "Done",
         iconType: "CheckCircle2",
@@ -1352,8 +1357,10 @@ export const recordCalving = async (req, res) => {
       animalId,
       date,
       calvingEase,
+      outcome: submittedOutcome,
       numberOfCalves,
       calves,
+      nonLivingCalves,
       technicianNote,
       taskId,
     } = req.body;
@@ -1363,21 +1370,6 @@ export const recordCalving = async (req, res) => {
     if (!mother)
       return res.status(404).json({ message: "Mother animal not found" });
 
-    // Chronological Calving Postpartum Firewall
-    if (mother.lastCalvingDate) {
-      const windowCheck = verifyPostpartumWindow(
-        mother.lastCalvingDate,
-        date || new Date(),
-        mother.species,
-        mother.breed,
-      );
-      if (!windowCheck.isSafe) {
-        return res.status(422).json({
-          message: `Warning: Calving event occurs too close to the previous calving event. Only ${windowCheck.daysPassed} days have passed, but the voluntary waiting period for ${mother.species} is ${windowCheck.requiredDays} days.`,
-        });
-      }
-    }
-
     const pregnancy = await Pregnancy.findOne({
       _id: pregnancyId,
       deletedAt: null,
@@ -1385,12 +1377,14 @@ export const recordCalving = async (req, res) => {
     if (!pregnancy)
       return res.status(404).json({ message: "Pregnancy record not found" });
 
-    const { calving, offspring: registeredCalves } = await persistCalving({
+    const { calving, offspring: registeredCalves, outcome } = await persistCalving({
       mother,
       pregnancy,
       calves,
+      nonLivingCalves,
       date,
       calvingEase,
+      outcome: submittedOutcome,
       numberOfCalves,
       technicianNote,
       actor: req.user,
@@ -1406,6 +1400,7 @@ export const recordCalving = async (req, res) => {
           farmerId: mother.farmerId,
           numberOfCalves: registeredCalves.length,
           offspringIds: registeredCalves.map((c) => c._id),
+          outcome,
         },
       });
     } catch (inngestErr) {
@@ -1422,7 +1417,11 @@ export const recordCalving = async (req, res) => {
     }
 
     res.status(201).json({
-      message: "Calving and offspring registered successfully",
+      message: ["live_birth", "mixed"].includes(outcome)
+        ? "Calving and offspring registered successfully"
+        : outcome === "stillbirth"
+          ? "Stillbirth event recorded successfully"
+          : "Pregnancy-loss event recorded successfully",
       calving,
       offspring: registeredCalves,
     });

@@ -8,6 +8,8 @@ import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Calving } from "../src/models/calving.model.js";
 import { Task } from "../src/models/task.model.js";
 import { Notification } from "../src/models/notification.model.js";
+import { AnimalTimelineEvent } from "../src/models/animal-timeline-event.model.js";
+import { AuditLog } from "../src/models/audit-log.model.js";
 
 // Helper to create mock query object for Mongoose find/findOne
 const mockQuery = (result) => {
@@ -134,9 +136,16 @@ test("Phase 5 Alignment: recordCalving with taskId completes and links task", as
   const originalCreateAnimal = Animal.create;
   const originalInsertMany = Animal.insertMany;
   const originalFindPregnancyOne = Pregnancy.findOne;
+  const originalUpdatePregnancy = Pregnancy.updateOne;
+  const originalFindInsemination = Insemination.findOne;
+  const originalUpdateInsemination = Insemination.updateOne;
+  const originalFindCalving = Calving.findOne;
   const originalCreateCalving = Calving.create;
+  const originalFindTask = Task.findOne;
   const originalFindTaskAndUpdate = Task.findOneAndUpdate;
   const originalNotificationCreate = Notification.create;
+  const originalTimelineInsert = AnimalTimelineEvent.insertMany;
+  const originalAuditCreate = AuditLog.create;
 
   let taskUpdated = false;
   let taskUpdateData = null;
@@ -149,7 +158,7 @@ test("Phase 5 Alignment: recordCalving with taskId completes and links task", as
 
   // Mock Mother lookup
   Animal.findOne = (query) => {
-    if (query && query.earTag) {
+    if (query && (query.earTag || query.normalizedEarTag || query.$or)) {
       return mockQuery(null); // No duplicate calf tag exists
     }
     return mockQuery({ _id: "507f1f77bcf86cd799439011", reproductiveStatus: "Pregnant", lastCalvingDate: null, species: "Cattle", breed: "Angus", farmerId: "507f1f77bcf86cd799439016" });
@@ -167,8 +176,18 @@ test("Phase 5 Alignment: recordCalving with taskId completes and links task", as
   Pregnancy.findOne = (query) => mockQuery({
     _id: "507f1f77bcf86cd799439013",
     animalId: "507f1f77bcf86cd799439011",
-    inseminationId: { _id: "507f1f77bcf86cd799439012", sireBreed: "Angus" }
+    inseminationId: "507f1f77bcf86cd799439012",
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2025-12-01") },
+    cycleStatus: "active",
   });
+  Pregnancy.updateOne = () => Promise.resolve({});
+  Insemination.findOne = () => mockQuery({
+    _id: "507f1f77bcf86cd799439012",
+    animalId: "507f1f77bcf86cd799439011",
+    inseminationDate: new Date("2025-10-01"),
+    sireBreed: "Angus",
+  });
+  Insemination.updateOne = () => Promise.resolve({});
 
   Calving.findOne = (query) => mockQuery(null); // No existing calving
   Calving.create = (docs, options) => {
@@ -178,7 +197,13 @@ test("Phase 5 Alignment: recordCalving with taskId completes and links task", as
   };
 
   Notification.create = () => Promise.resolve({});
+  AnimalTimelineEvent.insertMany = () => Promise.resolve([]);
+  AuditLog.create = () => Promise.resolve([]);
 
+  Task.findOne = () => mockQuery({
+    _id: "507f1f77bcf86cd799439015",
+    status: "Pending",
+  });
   Task.findOneAndUpdate = async (query, update, options) => {
     taskUpdated = true;
     taskUpdateData = { query, update, options };
@@ -189,7 +214,7 @@ test("Phase 5 Alignment: recordCalving with taskId completes and links task", as
     body: {
       animalId: "507f1f77bcf86cd799439011",
       pregnancyId: "507f1f77bcf86cd799439013",
-      date: new Date(),
+      date: new Date("2026-07-10"),
       calvingEase: "Natural",
       numberOfCalves: 1,
       calves: [{ sex: "F", earTag: "TAG-C1" }],
@@ -219,8 +244,15 @@ test("Phase 5 Alignment: recordCalving with taskId completes and links task", as
     Animal.create = originalCreateAnimal;
     Animal.insertMany = originalInsertMany;
     Pregnancy.findOne = originalFindPregnancyOne;
+    Pregnancy.updateOne = originalUpdatePregnancy;
+    Insemination.findOne = originalFindInsemination;
+    Insemination.updateOne = originalUpdateInsemination;
+    Calving.findOne = originalFindCalving;
     Calving.create = originalCreateCalving;
+    Task.findOne = originalFindTask;
     Task.findOneAndUpdate = originalFindTaskAndUpdate;
     Notification.create = originalNotificationCreate;
+    AnimalTimelineEvent.insertMany = originalTimelineInsert;
+    AuditLog.create = originalAuditCreate;
   }
 });

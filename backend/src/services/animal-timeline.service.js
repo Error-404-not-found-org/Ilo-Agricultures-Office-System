@@ -4,6 +4,7 @@ import { Pregnancy } from "../models/pregnancy.model.js";
 import { Calving } from "../models/calving.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
+import { inferCalvingOutcome } from "../domain/calving-outcome.js";
 
 export const createTimelineEvent = (entry) => AnimalTimelineEvent.create(entry);
 
@@ -48,7 +49,25 @@ export const getAnimalTimeline = async (animalId, filters = {}) => {
   const projected = [
     ...inseminations.map((item) => event("inseminated", item.inseminationDate || item.createdAt, "Insemination record", (item.status === "cancelled" || item.status === "canceled" ? "Cancelled" : item.status === "declined" || item.status === "rejected" ? "Declined" : item.outcome || item.status), "Insemination", item._id, { status: item.status })),
     ...pregnancies.map((item) => event(item.pregnancyDiagnosis?.result === "Pregnant" ? "pregnancy_confirmed" : "pregnancy_checked", item.pregnancyDiagnosis?.date || item.createdAt, "Pregnancy check", item.pregnancyDiagnosis?.result || "Pending", "Pregnancy", item._id, { targetCalvingDate: item.targetCalvingDate })),
-    ...calvings.map((item) => event("calving_recorded", item.date || item.createdAt, "Calving recorded", `${item.numberOfCalves || item.calves?.length || 0} offspring recorded`, "Calving", item._id)),
+    ...calvings.map((item) => {
+      const outcome = inferCalvingOutcome(item) || "live_birth";
+      const living = item.livingCalfCount ?? item.calves?.length ?? (outcome === "live_birth" ? item.numberOfCalves : 0);
+      const stillborn = item.stillbornCount ?? item.nonLivingCalves?.length ?? (outcome === "stillbirth" ? item.numberOfCalves : 0);
+      return event(
+      outcome === "abortion" ? "pregnancy_loss_recorded" : "calving_recorded",
+      item.date || item.createdAt,
+      outcome === "abortion" ? "Pregnancy loss recorded" : "Calving recorded",
+      outcome === "abortion"
+        ? "Abortion recorded; no living offspring registered"
+        : outcome === "stillbirth"
+          ? `${stillborn} stillborn calf/calves recorded`
+          : outcome === "mixed"
+            ? `${living} living and ${stillborn} stillborn calf/calves recorded`
+            : `${living} living offspring recorded`,
+      "Calving",
+      item._id,
+      { outcome, livingCalfCount: living, stillbornCount: stillborn, numberOfCalves: item.numberOfCalves ?? living + stillborn },
+    ); }),
     ...healthRequests.map((item) => event("health_request_created", item.createdAt, "Health request", item.symptoms, "HealthRequest", item._id, { status: item.status, urgency: item.urgency, attachments: item.photos?.length ? item.photos : item.imageUrl ? [item.imageUrl] : [] })),
     ...medicalRecords.map((item) => event("treatment_recorded", item.date || item.createdAt, item.type, item.details?.diagnosis || item.note || "Medical record", "MedicalRecord", item._id)),
   ];

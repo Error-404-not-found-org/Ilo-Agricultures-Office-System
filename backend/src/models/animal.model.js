@@ -13,7 +13,8 @@ const AnimalSchema = new mongoose.Schema(
       required: true,
     },
     animalId: { type: String, required: true },
-    earTag: { type: String },
+    earTag: { type: String, trim: true },
+    normalizedEarTag: { type: String, select: false },
     brand: { type: String },
 
     species: {
@@ -46,6 +47,7 @@ const AnimalSchema = new mongoose.Schema(
     lastInseminationDate: { type: Date },
     expectedCalvingDate: { type: Date },
     lastCalvingDate: { type: Date },
+    lastPregnancyLossDate: { type: Date },
     parity: { type: Number, default: 0 }, // Number of births
     sireDetails: {
       breed: { type: String },
@@ -82,10 +84,47 @@ const AnimalSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+AnimalSchema.pre("validate", function normalizeEarTagForUniqueIndex() {
+  const normalized = String(this.earTag || "").trim().toLowerCase();
+  this.normalizedEarTag = normalized || undefined;
+});
+
+const normalizeEarTagUpdate = function normalizeEarTagUpdate() {
+  const update = this.getUpdate() || {};
+  const earTag = update.$set?.earTag ?? update.earTag;
+  if (earTag === undefined) return;
+  const trimmed = String(earTag || "").trim();
+  const normalized = trimmed.toLowerCase();
+  if (update.$set) update.$set.earTag = trimmed;
+  else update.earTag = trimmed;
+  if (normalized) {
+    if (update.$set) update.$set.normalizedEarTag = normalized;
+    else update.normalizedEarTag = normalized;
+  } else {
+    if (update.$set) delete update.$set.normalizedEarTag;
+    else delete update.normalizedEarTag;
+    update.$unset = { ...(update.$unset || {}), normalizedEarTag: 1 };
+  }
+};
+AnimalSchema.pre("findOneAndUpdate", normalizeEarTagUpdate);
+AnimalSchema.pre("updateOne", normalizeEarTagUpdate);
+AnimalSchema.pre("updateMany", normalizeEarTagUpdate);
+
 // Indexes for scalability
 AnimalSchema.index({ farmerId: 1 });
 AnimalSchema.index({ animalId: 1 });
 AnimalSchema.index({ earTag: 1 });
+AnimalSchema.index(
+  { farmerId: 1, normalizedEarTag: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      deletedAt: null,
+      normalizedEarTag: { $type: "string", $gt: "" },
+    },
+    name: "uniq_active_ear_tag_per_farmer",
+  },
+);
 AnimalSchema.index({ species: 1 });
 AnimalSchema.index({ barangay: 1 });
 AnimalSchema.index({ deletedAt: 1 });

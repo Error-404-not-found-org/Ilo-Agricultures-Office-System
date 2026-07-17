@@ -35,6 +35,13 @@ const PregnancySchema = new mongoose.Schema(
 
     // Optional technician notes
     technicianNote: String,
+    cycleStatus: {
+      type: String,
+      enum: ["active", "completed", "lost"],
+      default: "active",
+      index: true,
+    },
+    completedAt: { type: Date, default: null },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

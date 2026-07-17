@@ -34,9 +34,10 @@ export const getReproductionEligibility = ({
 
   // Postpartum recovery should return its specific code and recovery details
   // instead of being handled as a generic active reproductive workflow.
-  if (animal.lastCalvingDate) {
+  const recoveryAnchor = animal.lastCalvingDate || animal.lastPregnancyLossDate;
+  if (recoveryAnchor) {
     const recovery = verifyPostpartumWindow(
-      animal.lastCalvingDate,
+      recoveryAnchor,
       now,
       animal.species,
       animal.breed,
@@ -47,7 +48,7 @@ export const getReproductionEligibility = ({
 
       // Keep a safe fallback in case the resolver cannot produce the date.
       if (!nextActionAt) {
-        nextActionAt = new Date(animal.lastCalvingDate);
+        nextActionAt = new Date(recoveryAnchor);
         nextActionAt.setDate(nextActionAt.getDate() + recovery.requiredDays);
       }
 

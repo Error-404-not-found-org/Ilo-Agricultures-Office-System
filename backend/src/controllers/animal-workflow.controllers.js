@@ -15,6 +15,7 @@ import { getReproductionEligibility } from "../domain/reproduction-lifecycle.js"
 import { getAnimalTimeline as buildAnimalTimeline, createTimelineEvent } from "../services/animal-timeline.service.js";
 import { createAuditLog } from "../services/audit.service.js";
 import { AppError } from "../utils/app-error.js";
+import { isPregnancyCycleActive } from "../domain/pregnancy-lifecycle.js";
 import { sendDetail, sendList, sendMutation } from "../utils/api-response.js";
 import { getPagination, paginateArray } from "../utils/pagination.js";
 
@@ -422,7 +423,7 @@ export const getAnimalReproductionEligibility = async (req, res) => {
   try {
     const animal = await getAccessibleAnimal(req.params.id, req.user);
 
-    const [activeRequest, activePregnancy, reproductiveTasks] =
+    const [activeRequest, candidatePregnancy, reproductiveTasks] =
       await Promise.all([
         Insemination.findOne({
           animalId: animal._id,
@@ -440,6 +441,7 @@ export const getAnimalReproductionEligibility = async (req, res) => {
           animalId: animal._id,
           deletedAt: null,
           "pregnancyDiagnosis.result": "Pregnant",
+          cycleStatus: { $nin: ["completed", "lost"] },
         })
           .sort({
             createdAt: -1,
@@ -462,10 +464,21 @@ export const getAnimalReproductionEligibility = async (req, res) => {
           .lean(),
       ]);
 
+    const historicalCalving = candidatePregnancy
+      ? await Calving.exists({ pregnancyId: candidatePregnancy._id, deletedAt: null })
+      : null;
+    const activePregnancy = isPregnancyCycleActive(candidatePregnancy, Boolean(historicalCalving))
+      ? candidatePregnancy
+      : null;
+    const effectiveAnimal = historicalCalving
+      ? { ...animal.toObject(), reproductiveStatus: "Post-partum", expectedCalvingDate: undefined }
+      : animal;
     const eligibility = getReproductionEligibility({
-      animal,
+      animal: effectiveAnimal,
       activeRequest,
-      activePregnancy,
+      activePregnancy: ["Pregnant", "Dry"].includes(animal.reproductiveStatus)
+        ? activePregnancy
+        : null,
       tasks: reproductiveTasks,
     });
 

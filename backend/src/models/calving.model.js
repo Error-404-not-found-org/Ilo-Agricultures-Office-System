@@ -21,6 +21,11 @@ const CalvingSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    inseminationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Insemination",
+      required: true,
+    },
 
     date: {
       type: Date,
@@ -30,11 +35,27 @@ const CalvingSchema = new mongoose.Schema(
       type: Number,
       default: 1,
     },
+    totalDelivered: { type: Number, default: 0, min: 0 },
     calves: [{
       sex: { type: String, enum: ["M", "F"] },
       earTag: String,
       animalId: { type: mongoose.Schema.Types.ObjectId, ref: "Animal" }
     }],
+    outcome: {
+      type: String,
+      enum: ["live_birth", "mixed", "abortion", "stillbirth"],
+      required: true,
+    },
+    // Pregnancy-loss offspring are deliberately embedded here instead of
+    // being registered as active Animal documents.
+    nonLivingCalves: [{
+      sex: { type: String, enum: ["M", "F"] },
+      earTag: { type: String, default: "" },
+      color: { type: String, default: "" },
+      brand: { type: String, default: "" },
+    }],
+    livingCalfCount: { type: Number, default: 0, min: 0 },
+    stillbornCount: { type: Number, default: 0, min: 0 },
     calvingEase: {
       type: String,
       enum: Object.values(CALVING_EASE),
@@ -59,6 +80,7 @@ const CalvingSchema = new mongoose.Schema(
 
 // Indexes for scalability
 CalvingSchema.index({ animalId: 1 });
+CalvingSchema.index({ inseminationId: 1 });
 CalvingSchema.index({ deletedAt: 1 });
 
 export const Calving = mongoose.model("Calving", CalvingSchema);

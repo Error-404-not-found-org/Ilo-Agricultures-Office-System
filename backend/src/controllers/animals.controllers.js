@@ -9,7 +9,6 @@ import { Task } from "../models/task.model.js";
 import { resolveReproductionNextAction } from "../domain/reproduction-next-action.js";
 import cloudinary from "../config/cloudinary.js";
 import { inngest } from "../config/inngest.js";
-import { verifyPostpartumWindow } from "../utils/cattleCore.js";
 import { assertAnimalAccess } from "../policies/animal.policy.js";
 import { getPagination } from "../utils/pagination.js";
 import {
@@ -323,10 +322,13 @@ export const getAnimalById = async (req, res) => {
       inseminationsList.find((insemination) =>
         isActiveAIRequestStatus(insemination.status),
       ) || null;
+    const calvedPregnancyIds = new Set(calvings.map((item) => String(item.pregnancyId?._id || item.pregnancyId)));
     const latestPregnantRecord =
       pregnancies.find(
         (pregnancy) =>
-          pregnancy.pregnancyDiagnosis?.result === "Pregnant",
+          pregnancy.pregnancyDiagnosis?.result === "Pregnant" &&
+          !["completed", "lost"].includes(pregnancy.cycleStatus) &&
+          !calvedPregnancyIds.has(String(pregnancy._id)),
       ) || null;
     // Pregnancy records are historical. Only treat one as active
     // while the animal itself is currently marked Pregnant.
@@ -343,6 +345,7 @@ export const getAnimalById = async (req, res) => {
     });
     return res.status(200).json({
       ...animal.toObject(),
+      ...(calvings.length ? { expectedCalvingDate: undefined } : {}),
       offspring,
       inseminations,
       calvings,
@@ -561,8 +564,10 @@ export const recordCalving = async (req, res) => {
       animalId,
       date,
       calvingEase,
+      outcome: submittedOutcome,
       numberOfCalves,
       calves,
+      nonLivingCalves,
       technicianNote,
     } = req.body;
 
@@ -574,32 +579,30 @@ export const recordCalving = async (req, res) => {
     if (req.user.role === "farmer" && mother.farmerId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Unauthorized." });
     }
-
-    // Chronological Calving Postpartum Firewall
-    if (mother.lastCalvingDate) {
-      const windowCheck = verifyPostpartumWindow(mother.lastCalvingDate, date || new Date(), mother.species, mother.breed);
-      if (!windowCheck.isSafe) {
-        return res.status(422).json({ 
-          message: `Warning: Calving event occurs too close to the previous calving event. Only ${windowCheck.daysPassed} days have passed, but the voluntary waiting period for ${mother.species} is ${windowCheck.requiredDays} days.` 
-        });
-      }
+    if (req.user.role === "farmer" && (req.body.earlyCalvingOverride || req.body.allowEarlyCalving)) {
+      return res.status(403).json({
+        message: "Farmers cannot override early-calving safeguards.",
+        code: "EARLY_CALVING_OVERRIDE_FORBIDDEN",
+      });
+    }
+    if (!["farmer", "technician", "veterinarian", "admin"].includes(req.user.role)) {
+      return res.status(403).json({ message: "Unauthorized role." });
     }
 
-    let pregnancy = null;
-    if (pregnancyId) {
-        pregnancy = await Pregnancy.findOne({ _id: pregnancyId, deletedAt: null }).populate("inseminationId");
-    } else {
-        pregnancy = await Pregnancy.findOne({ animalId, "pregnancyDiagnosis.result": "Pregnant", deletedAt: null }).populate("inseminationId").sort({ createdAt: -1 });
-    }
+    const pregnancy = pregnancyId
+      ? await Pregnancy.findOne({ _id: pregnancyId, deletedAt: null })
+      : null;
     
     if (!pregnancy) return res.status(404).json({ message: "Pregnancy record not found. Please ensure the animal is confirmed pregnant first." });
 
-    const { calving, offspring } = await persistCalving({
+    const { calving, offspring, outcome } = await persistCalving({
       mother,
       pregnancy,
       calves,
+      nonLivingCalves,
       date,
       calvingEase,
+      outcome: submittedOutcome,
       numberOfCalves,
       technicianNote,
       actor: req.user,
@@ -614,6 +617,7 @@ export const recordCalving = async (req, res) => {
           farmerId: mother.farmerId,
           numberOfCalves: offspring.length,
           offspringIds: offspring.map(c => c._id),
+          outcome,
         },
       });
     } catch (inngestErr) {
@@ -626,7 +630,11 @@ export const recordCalving = async (req, res) => {
     });
 
     res.status(201).json({
-      message: "Calving and offspring registered successfully",
+      message: ["live_birth", "mixed"].includes(outcome)
+        ? "Calving and offspring registered successfully"
+        : outcome === "stillbirth"
+          ? "Stillbirth event recorded successfully"
+          : "Pregnancy-loss event recorded successfully",
       calving,
       offspring,
     });

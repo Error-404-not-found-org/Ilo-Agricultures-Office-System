@@ -109,6 +109,13 @@ const InseminationSchema = new mongoose.Schema(
       default: "Pending",
     },
     pregnancyId: { type: mongoose.Schema.Types.ObjectId, ref: "Pregnancy" },
+    breedingCycleStatus: {
+      type: String,
+      enum: ["active", "completed", "lost"],
+      default: "active",
+      index: true,
+    },
+    breedingCycleCompletedAt: { type: Date, default: null },
     outcomeVerificationStatus: {
       type: String,
       enum: ["pending", "reported", "verified"],

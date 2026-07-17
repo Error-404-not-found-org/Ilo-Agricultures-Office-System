@@ -224,10 +224,18 @@ export const getMe = async (req, res) => {
         (id) => !diagnosedInsIds.includes(id.toString()),
       ).length;
 
-      // 2. Active Pregnancies: Animals currently marked as "Pregnant" in the Animal model
-      const activePregnancies = await Animal.countDocuments({
+      const calvedPregnancyIds = await Calving.distinct("pregnancyId", {
         farmerId: user._id,
-        reproductiveStatus: "Pregnant",
+        deletedAt: null,
+      });
+
+      // Legacy pregnancies may not have cycleStatus yet. Existing Calving
+      // records are therefore also excluded from every active count.
+      const activePregnancies = await Pregnancy.countDocuments({
+        farmerId: user._id,
+        "pregnancyDiagnosis.result": "Pregnant",
+        cycleStatus: { $nin: ["completed", "lost"] },
+        _id: { $nin: calvedPregnancyIds },
         deletedAt: null,
       });
 
@@ -235,6 +243,8 @@ export const getMe = async (req, res) => {
       const upcomingCalvings = await Pregnancy.countDocuments({
         farmerId: user._id,
         "pregnancyDiagnosis.result": "Pregnant",
+        cycleStatus: { $nin: ["completed", "lost"] },
+        _id: { $nin: calvedPregnancyIds },
         targetCalvingDate: { $gte: now, $lte: next30Days },
         deletedAt: null,
       });
