@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   TextInput,
   StatusBar,
+  useWindowDimensions,
 } from "react-native";
 import {
   Bell,
@@ -31,8 +32,16 @@ import { format } from "date-fns";
 import { useTheme } from "@/lib/theme";
 import { useTranslation } from "../../../contexts/TranslationContext";
 import { AnimalSummaryCard } from "@/features/farmer-ui/components";
-import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  formatAnimalReference,
+  getFarmerDashboardLayout,
+  getFullAnimalReference,
+  selectNeedsAttention,
+  selectRecentActivities,
+  selectUpcomingVisits,
+} from "../utils/farmerDashboard.transforms";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 
 const PRIMARY = "#00643B";
 
@@ -41,6 +50,7 @@ export function FarmerHomeScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { width: screenWidth } = useWindowDimensions();
   const { user } = useUser();
   const {
     queryClient,
@@ -148,6 +158,22 @@ export function FarmerHomeScreen() {
   const { data: milestones } = milestonesQuery;
   const { data: myAnimals } = myAnimalsQuery;
   const { data: activityFeed } = activityFeedQuery;
+  const dashboardLayout = React.useMemo(
+    () => getFarmerDashboardLayout(screenWidth),
+    [screenWidth],
+  );
+  const visibleVisits = React.useMemo(
+    () => selectUpcomingVisits(upcomingVisits || []),
+    [upcomingVisits],
+  );
+  const attentionItems = React.useMemo(
+    () => selectNeedsAttention(Array.isArray(milestones) ? milestones : []),
+    [milestones],
+  );
+  const recentActivities = React.useMemo(
+    () => selectRecentActivities(Array.isArray(activityFeed) ? activityFeed : []),
+    [activityFeed],
+  );
 
   const handleOutcome = async (
     requestId: string,
@@ -524,7 +550,10 @@ export function FarmerHomeScreen() {
         </View>
 
         {/* --- QUICK ACTIONS --- */}
-        <View className="px-6 mb-8">
+        <View
+          className="mb-8"
+          style={{ paddingHorizontal: dashboardLayout.horizontalPadding }}
+        >
           <View
             className="bg-white dark:bg-slate-900 rounded-[32px] p-6 shadow-sm border border-gray-100 dark:border-slate-800"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
@@ -644,13 +673,19 @@ export function FarmerHomeScreen() {
         </View>
 
         {/* --- UPCOMING VISITS --- */}
-        <View className="px-6 mb-8">
+        <View
+          className="mb-8"
+          style={{ paddingHorizontal: dashboardLayout.horizontalPadding }}
+        >
           <View className="flex-row justify-between items-center mb-4 px-1">
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px]">
               {t("upcomingVisits")}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(farmer)/my-requests")}
+              accessibilityRole="button"
+              className="justify-center"
+              style={{ minHeight: 44 }}
             >
               <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[13px]">
                 {t("viewAll")}
@@ -662,21 +697,28 @@ export function FarmerHomeScreen() {
             className="bg-white dark:bg-blue-300-900 rounded-[32px] p-4 shadow-sm border border-gray-100 dark:border-slate-800"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
-            {upcomingVisits && upcomingVisits.length > 0 ? (
-              upcomingVisits.map((visit: any, idx: number) => (
+            {visibleVisits.length > 0 ? (
+              visibleVisits.map((visit: any, idx: number) => (
                 <View key={visit._id}>
                   <VisitItem
-                    title={`${visit.serviceType === "health" ? "Health Check" : "AI Service"} — ${visit.animalId?.earTag || visit.animalId?.animalId || "Animal"}`}
+                    title={`${visit.serviceType === "health" ? "Health Check" : "AI Service"} · ${formatAnimalReference(visit.animalId)}`}
                     time={`Scheduled: ${format(
                       new Date(visit.scheduledDate),
                       "MMM d • h:mm a",
                     )}`}
                     technician={visit.technician || "Pending Assignment"}
-                    status={
+                    serviceStatus={
                       visit.cancellationStatus === "requested"
                         ? "CANCEL REQUESTED"
                         : visit.status.toUpperCase()
                     }
+                    reproductiveOutcome={
+                      visit.serviceType === "ai" && visit.outcome &&
+                      String(visit.outcome).toLowerCase() !== "pending"
+                        ? visit.outcome
+                        : undefined
+                    }
+                    accessibilityLabel={`${visit.serviceType === "health" ? "Health check" : "AI service"} for ${getFullAnimalReference(visit.animalId)}. Service status ${visit.status}.`}
                     icon={
                       visit.serviceType === "health" ? (
                         <Stethoscope
@@ -706,7 +748,7 @@ export function FarmerHomeScreen() {
                             handleCancelRequest(
                               visit._id,
                               visit.serviceType,
-                              visit.animalId?.earTag || "Animal",
+                              getFullAnimalReference(visit.animalId),
                             )
                         : undefined
                     }
@@ -720,7 +762,7 @@ export function FarmerHomeScreen() {
                       });
                     }}
                   />
-                  {idx < upcomingVisits.length - 1 && (
+                  {idx < visibleVisits.length - 1 && (
                     <View
                       className="h-[1px] bg-slate-50 dark:bg-slate-800 my-2 mx-4"
                       style={{ backgroundColor: colors.border }}
@@ -738,11 +780,14 @@ export function FarmerHomeScreen() {
           </View>
         </View>
 
-        {/* --- HEAT & BREEDING ALERTS --- */}
-        {Array.isArray(milestones) && milestones.length > 0 && (
-          <View className="px-6 mb-8">
+        {/* --- NEEDS ATTENTION --- */}
+        {attentionItems.length > 0 && (
+          <View
+            className="mb-8"
+            style={{ paddingHorizontal: dashboardLayout.horizontalPadding }}
+          >
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px] mb-4 px-1">
-              {t("heatBreedingAlerts")}
+              Needs Attention
             </Text>
             <View
               className="bg-white dark:bg-slate-900 rounded-lg p-3 border border-gray-100 dark:border-slate-800"
@@ -751,13 +796,20 @@ export function FarmerHomeScreen() {
                 borderColor: colors.border,
               }}
             >
-              {milestones.map((m: any, idx: number) => (
-                <View key={`${m.type}-${m.animal?._id}-${idx}`}>
+              {attentionItems.map((m, idx) => (
+                <View key={`${m.type}-${m.animal?._id || m.relatedId}-${idx}`}>
                   <AlertItem
-                    title={`${m.animal?.earTag || "Animal"} — ${m.title}`}
-                    subtitle={`${m.daysLeft > 0 ? `Due in ${m.daysLeft} days` : "Due today"} • ${format(new Date(m.date), "MMM d")}`}
+                    title={m.displayTitle}
+                    subtitle={`${m.displaySubtitle}${m.date ? ` · ${format(new Date(m.date), "MMM d")}` : ""}`}
+                    accessibilityLabel={`${m.displayTitle} for ${getFullAnimalReference(m.animal)}. ${m.displaySubtitle}`}
                     icon={
-                      m.type === "calving" ? (
+                      m.urgency === "awaiting" ? (
+                        <MaterialCommunityIcons
+                          name="clock-outline"
+                          size={20}
+                          color={colors.textMuted}
+                        />
+                      ) : m.type === "calving" ? (
                         <MaterialCommunityIcons
                           name="baby-face-outline"
                           size={20}
@@ -772,7 +824,11 @@ export function FarmerHomeScreen() {
                       )
                     }
                     bgColor={
-                      m.type === "calving"
+                      m.urgency === "awaiting"
+                        ? isDark
+                          ? "rgba(148,163,184,0.10)"
+                          : "#F8FAFC"
+                        : m.type === "calving"
                         ? isDark
                           ? "rgba(52,211,153,0.12)"
                           : "#F0FDF4"
@@ -781,7 +837,9 @@ export function FarmerHomeScreen() {
                           : "#FDF2E9"
                     }
                     textColor={
-                      m.type === "calving"
+                      m.urgency === "awaiting"
+                        ? colors.textSecondary
+                        : m.type === "calving"
                         ? isDark
                           ? "#34d399"
                           : "#166534"
@@ -794,7 +852,7 @@ export function FarmerHomeScreen() {
                       router.push(`/(farmer)/animal-details?id=${m.animal._id}`)
                     }
                   />
-                  {idx < milestones.length - 1 && <View className="h-3" />}
+                  {idx < attentionItems.length - 1 && <View className="h-3" />}
                 </View>
               ))}
             </View>
@@ -802,13 +860,19 @@ export function FarmerHomeScreen() {
         )}
 
         {/* --- MY CATTLE --- */}
-        <View className="px-6 mb-8">
+        <View
+          className="mb-8"
+          style={{ paddingHorizontal: dashboardLayout.horizontalPadding }}
+        >
           <View className="flex-row justify-between items-center mb-4 px-1">
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px]">
               {t("myCattle")}
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(farmer)/(tabs)/add-animal")}
+              accessibilityRole="button"
+              className="justify-center"
+              style={{ minHeight: 44 }}
             >
               <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[13px]">
                 View all
@@ -820,17 +884,20 @@ export function FarmerHomeScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingRight: 12 }}
+              contentContainerStyle={{ paddingRight: dashboardLayout.nextCardPreview }}
+              snapToInterval={dashboardLayout.animalCardWidth + dashboardLayout.cardGap}
+              decelerationRate="fast"
             >
               {myAnimals.slice(0, 5).map((animal: any) => (
                 <AnimalSummaryCard
                   key={animal._id}
                   animal={animal}
                   variant="preview"
+                  cardWidth={dashboardLayout.animalCardWidth}
                   nextAction={
                     animal.expectedCalvingDate
                       ? `Calving ${format(new Date(animal.expectedCalvingDate), "MMM d")}`
-                      : animal.reproductiveStatus || "View profile"
+                      : undefined
                   }
                   onPress={() =>
                     router.push({
@@ -857,13 +924,19 @@ export function FarmerHomeScreen() {
         </View>
 
         {/* --- RECENT RECORDS --- */}
-        <View className="px-6 mb-12">
+        <View
+          className="mb-12"
+          style={{ paddingHorizontal: dashboardLayout.horizontalPadding }}
+        >
           <View className="flex-row justify-between items-center mb-4 px-1">
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px]">
               Recent Activity
             </Text>
             <TouchableOpacity
               onPress={() => router.push("/(farmer)/(tabs)/farmer.records")}
+              accessibilityRole="button"
+              className="justify-center"
+              style={{ minHeight: 44 }}
             >
               <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[13px]">
                 View all
@@ -874,16 +947,21 @@ export function FarmerHomeScreen() {
             className="bg-white dark:bg-slate-900 rounded-lg px-3 border border-gray-100 dark:border-slate-800"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
-            {Array.isArray(activityFeed) && activityFeed.length > 0 ? (
-              activityFeed.slice(0, 5).map((item: any, idx: number) => (
+            {recentActivities.length > 0 ? (
+              recentActivities.map((item, idx) => (
                 <TouchableOpacity
                   key={item.id}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.title}. ${item.outcome}. Full animal identifier ${item.fullAnimalReference}.`}
                   onPress={() => {
                     router.push({
                       pathname: "/(farmer)/animal-record-detail",
                       params: {
-                        animalId: item.animalId?._id || "",
+                        animalId:
+                          typeof item.animalId === "string"
+                            ? item.animalId
+                            : item.animalId?._id || "",
                         recordId: item.id,
                         recordType: item.type,
                       },
@@ -892,7 +970,8 @@ export function FarmerHomeScreen() {
                 >
                   <RecordItem
                     title={item.title}
-                    date={format(new Date(item.date), "MMM d, yyyy • h:mm a")}
+                    outcome={item.outcome}
+                    date={item.date ? format(new Date(item.date), "MMM d, h:mm a") : "Date unavailable"}
                     icon={
                       item.type === "ai" ? (
                         <Syringe
@@ -926,7 +1005,7 @@ export function FarmerHomeScreen() {
                             : "#fef3c7"
                     }
                   />
-                  {idx < Math.min(activityFeed.length, 5) - 1 && (
+                  {idx < recentActivities.length - 1 && (
                     <View
                       className="h-[1px] bg-slate-50 dark:bg-slate-800 my-1 mx-4"
                       style={{ backgroundColor: colors.border }}
@@ -2113,19 +2192,23 @@ const VisitItem = ({
   title,
   time,
   technician,
-  status,
+  serviceStatus,
+  reproductiveOutcome,
+  accessibilityLabel,
   icon,
   iconBg,
   onCancel,
   onPress,
 }: any) => {
-  const { colors, isDark } = useTheme();
   return (
     <TouchableOpacity
       onPress={onPress}
       disabled={!onPress}
       activeOpacity={0.7}
-      className="flex-row items-center p-2"
+      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityLabel={accessibilityLabel}
+      className="flex-row items-start p-2"
+      style={{ minHeight: 84 }}
     >
       <View
         className="w-12 h-12 rounded-full items-center justify-center"
@@ -2133,10 +2216,16 @@ const VisitItem = ({
       >
         {icon}
       </View>
-      <View className="flex-1 ml-4">
-        <Text className="text-slate-800 dark:text-white font-outfit-bold text-[15px]">
-          {title}
-        </Text>
+      <View className="flex-1 min-w-0 ml-3">
+        <View className="flex-row items-start gap-2">
+          <Text
+            numberOfLines={2}
+            className="flex-1 min-w-0 text-slate-800 dark:text-white font-outfit-bold text-[14px]"
+          >
+            {title}
+          </Text>
+          <StatusBadge label={serviceStatus} domain="service" size={9} compact />
+        </View>
         <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-[12px]">
           {time}
         </Text>
@@ -2145,41 +2234,41 @@ const VisitItem = ({
             ? `Technician: ${technician}`
             : "Pending Assignment"}
         </Text>
-      </View>
-      <View className="items-end gap-2">
-        <View
-          style={{
-            backgroundColor:
-              status === "APPROVED"
-                ? "#ECFDF5"
-                : status === "IN-PROGRESS"
-                  ? "#EFF6FF"
-                  : "#FFF7ED",
-          }}
-          className="px-2.5 py-1 rounded-full"
-        >
+        {reproductiveOutcome ? (
           <Text
-            style={{
-              color:
-                status === "APPROVED"
-                  ? "#047857"
-                  : status === "IN-PROGRESS"
-                    ? "#1D4ED8"
-                    : "#C2410C",
-            }}
-            className="font-outfit-bold text-[9px]"
+            numberOfLines={1}
+            className="text-slate-500 dark:text-slate-400 font-outfit-medium text-[11px]"
           >
-            {status}
+            Reproductive outcome: {reproductiveOutcome}
           </Text>
-        </View>
-        {onCancel && ["PENDING", "APPROVED", "SCHEDULED"].includes(status) && (
-          <TouchableOpacity onPress={onCancel}>
-            <Text className="text-red-500 font-outfit-bold text-[10px]">
-              Cancel
-            </Text>
-          </TouchableOpacity>
-        )}
+        ) : null}
+        {onCancel &&
+          ["PENDING", "APPROVED", "SCHEDULED"].includes(serviceStatus) && (
+            <TouchableOpacity
+              onPress={onCancel}
+              accessibilityRole="button"
+              accessibilityLabel={`Cancel ${title}`}
+              className="self-start justify-center"
+              style={{ minHeight: 44 }}
+            >
+              <Text className="text-red-500 font-outfit-bold text-[10px]">
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          )}
       </View>
+      {onPress ? (
+        <View
+          className="items-center justify-center"
+          style={{ width: 24, minHeight: 44, marginLeft: 4 }}
+        >
+          <MaterialCommunityIcons
+            name="chevron-right"
+            size={20}
+            color="#94A3B8"
+          />
+        </View>
+      ) : null}
     </TouchableOpacity>
   );
 };
@@ -2191,23 +2280,28 @@ const AlertItem = ({
   bgColor,
   textColor,
   onPress,
+  accessibilityLabel,
 }: any) => (
   <TouchableOpacity
     onPress={onPress}
     disabled={!onPress}
     activeOpacity={0.75}
+    accessibilityRole={onPress ? "button" : undefined}
+    accessibilityLabel={accessibilityLabel}
     className="flex-row items-center p-3 rounded-lg"
-    style={{ backgroundColor: bgColor }}
+    style={{ backgroundColor: bgColor, minHeight: 68 }}
   >
     <View className="mr-3">{icon}</View>
-    <View className="flex-1">
+    <View className="flex-1 min-w-0">
       <Text
+        numberOfLines={2}
         className="font-outfit-bold text-[15px]"
         style={{ color: textColor }}
       >
         {title}
       </Text>
       <Text
+        numberOfLines={2}
         className="font-outfit-medium text-[12px] opacity-70"
         style={{ color: textColor }}
       >
@@ -2224,20 +2318,20 @@ const AlertItem = ({
   </TouchableOpacity>
 );
 
-const RecordItem = ({ title, date, icon, iconBg }: any) => (
-  <View className="flex-row items-center p-3">
+const RecordItem = ({ title, outcome, date, icon, iconBg }: any) => (
+  <View className="flex-row items-center px-3 py-2" style={{ minHeight: 68 }}>
     <View
       className="w-10 h-10 rounded-full items-center justify-center"
       style={{ backgroundColor: iconBg }}
     >
       {icon}
     </View>
-    <View className="flex-1 ml-4">
-      <Text className="text-slate-800 dark:text-white font-outfit-bold text-[14px]">
+    <View className="flex-1 min-w-0 ml-3">
+      <Text numberOfLines={2} className="text-slate-800 dark:text-white font-outfit-bold text-[14px]">
         {title}
       </Text>
-      <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium text-[11px]">
-        {date}
+      <Text numberOfLines={1} className="text-slate-500 dark:text-slate-400 font-outfit-medium text-[11px]">
+        {outcome} · {date}
       </Text>
     </View>
   </View>

@@ -1528,6 +1528,9 @@ export const getMyActivityFeed = async (req, res) => {
         details: {
           calvingEase: c.calvingEase || "Natural",
           numberOfCalves: c.numberOfCalves || 1,
+          outcome: c.outcome,
+          livingCalfCount: c.livingCalfCount || 0,
+          stillbornCount: c.stillbornCount || 0,
           calves: c.calves || [],
           technician: c.technicianId?.name || "Technician",
           technicianNote: c.technicianNote || "No notes logged.",

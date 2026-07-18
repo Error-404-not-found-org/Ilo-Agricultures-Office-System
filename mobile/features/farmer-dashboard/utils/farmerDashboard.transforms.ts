@@ -1,5 +1,48 @@
 import type { AIRequest, HealthRequest } from "@/types";
-import type { UpcomingVisit } from "../types/farmerDashboard.types";
+import type {
+  FarmerActivity,
+  FarmerActivityPresentation,
+  FarmerAttentionItem,
+  FarmerMilestone,
+  UpcomingVisit,
+} from "../types/farmerDashboard.types";
+
+export const FARMER_HOME_LIMITS = {
+  visits: 2,
+  actions: 2,
+  activities: 3,
+} as const;
+
+const rawAnimalValue = (animal: unknown): string => {
+  if (!animal) return "Animal";
+  if (typeof animal === "string") return animal;
+  if (typeof animal !== "object") return String(animal);
+  const value = animal as Record<string, unknown>;
+  return String(value.earTag || value.animalId || value.name || "Animal");
+};
+
+export const formatAnimalReference = (animal: unknown): string => {
+  const raw = rawAnimalValue(animal).trim();
+  const scenarioReference = raw.match(/(RC\d{2})-(?:\d{6}-)?(\d{2})(?:-|$)/i);
+  if (scenarioReference) {
+    return `${scenarioReference[1].toUpperCase()}-${scenarioReference[2]}`;
+  }
+
+  return raw
+    .replace(/^SEED-repro-manual-\d{8}-/i, "")
+    .replace(/^SEED-repro-[^-]+-/i, "") || "Animal";
+};
+
+export const getFullAnimalReference = rawAnimalValue;
+
+export const getFarmerDashboardLayout = (screenWidth: number) => {
+  const horizontalPadding = screenWidth <= 320 ? 16 : screenWidth <= 360 ? 20 : 24;
+  const nextCardPreview = screenWidth <= 320 ? 24 : screenWidth <= 360 ? 30 : 34;
+  const cardGap = 12;
+  const animalCardWidth = screenWidth <= 320 ? 148 : screenWidth <= 360 ? 156 : 164;
+
+  return { horizontalPadding, animalCardWidth, cardGap, nextCardPreview };
+};
 
 const toArray = <T>(body: unknown): T[] => {
   if (Array.isArray(body)) return body as T[];
@@ -49,12 +92,156 @@ export const buildUpcomingVisits = (
       technician: (request.handledBy as any)?.name || null,
     }));
 
-  return [...upcomingAI, ...upcomingHealth].sort((a, b) => {
+  const seen = new Set<string>();
+  return [...upcomingAI, ...upcomingHealth].filter((visit) => {
+    const value = visit as UpcomingVisit & Record<string, unknown>;
+    const linkedIdentity =
+      value.requestId || value.relatedRequestId || value.taskId || value._id;
+    const key = `${value.serviceType}:${String(linkedIdentity)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => {
     const dateA = new Date(a.scheduledDate || 0).getTime();
     const dateB = new Date(b.scheduledDate || 0).getTime();
     return dateA - dateB;
   });
 };
+
+export const selectUpcomingVisits = (visits: UpcomingVisit[] = []) =>
+  visits.slice(0, FARMER_HOME_LIMITS.visits);
+
+const attentionRank: Record<FarmerAttentionItem["urgency"], number> = {
+  overdue: 0,
+  due_today: 1,
+  actionable: 2,
+  awaiting: 3,
+};
+
+const isResolvedMilestone = (milestone: FarmerMilestone) => {
+  const status = String(milestone.status || "").toLowerCase();
+  return milestone.resolved === true ||
+    ["resolved", "completed", "done", "cancelled", "canceled", "lost"].includes(status);
+};
+
+const toAttentionItem = (milestone: FarmerMilestone): FarmerAttentionItem | null => {
+  if (isResolvedMilestone(milestone)) return null;
+
+  const daysLeft = Number(milestone.daysLeft ?? 0);
+  const animalReference = formatAnimalReference(milestone.animal);
+  const isPregnancyCheck = milestone.type === "pd_check";
+  const urgency: FarmerAttentionItem["urgency"] =
+    daysLeft < 0
+      ? "overdue"
+      : daysLeft === 0
+        ? "due_today"
+        : isPregnancyCheck
+          ? "awaiting"
+          : "actionable";
+
+  const displayTitle = isPregnancyCheck && daysLeft > 0
+    ? `Pregnancy check available in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+    : milestone.title || (milestone.type === "calving" ? "Calving check" : "Breeding action");
+  const displaySubtitle = daysLeft < 0
+    ? `${animalReference} · Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"}`
+    : daysLeft === 0
+      ? `${animalReference} · Due today`
+      : `${animalReference} · ${urgency === "awaiting" ? "Not yet available" : `Due in ${daysLeft} days`}`;
+
+  return {
+    ...milestone,
+    displayTitle,
+    displaySubtitle,
+    urgency,
+    animalReference,
+  };
+};
+
+export const selectNeedsAttention = (milestones: FarmerMilestone[] = []) =>
+  milestones
+    .map(toAttentionItem)
+    .filter((item): item is FarmerAttentionItem => Boolean(item))
+    .sort((a, b) => {
+      const rankDifference = attentionRank[a.urgency] - attentionRank[b.urgency];
+      if (rankDifference !== 0) return rankDifference;
+      return new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime();
+    })
+    .slice(0, FARMER_HOME_LIMITS.actions);
+
+const humanizeOutcome = (value: unknown): string => {
+  const normalized = String(value || "").trim().toLowerCase();
+  const outcomes: Record<string, string> = {
+    live_birth: "Live birth",
+    stillbirth: "Stillbirth",
+    mixed: "Live birth and stillbirth",
+    abortion: "Pregnancy loss",
+    pending: "Outcome awaiting confirmation",
+  };
+  if (outcomes[normalized]) return outcomes[normalized];
+  if (!normalized) return "Details recorded";
+  return normalized
+    .replace(/[_-]+/g, " ")
+    .replace(/^./, (character) => character.toUpperCase());
+};
+
+export const formatHumanReadableRecordTitle = (
+  activity: FarmerActivity,
+): FarmerActivityPresentation => {
+  const animalReference = formatAnimalReference(activity.animalId || activity.title);
+  const fullAnimalReference = getFullAnimalReference(activity.animalId || activity.title);
+  const type = String(activity.type || "record").toLowerCase();
+  const details = activity.details || {};
+
+  if (type === "calving") {
+    const outcome = details.outcome ||
+      (Number(details.stillbornCount) > 0 && Number(details.livingCalfCount) > 0
+        ? "mixed"
+        : Number(details.stillbornCount) > 0
+          ? "stillbirth"
+          : "live_birth");
+    const outcomeLabel = humanizeOutcome(outcome);
+    return {
+      id: String(activity.id || activity._id || "calving"),
+      title: outcomeLabel === "Stillbirth" || outcomeLabel === "Pregnancy loss"
+        ? `Calving outcome recorded for ${animalReference}`
+        : `Calving recorded for ${animalReference}`,
+      outcome: outcomeLabel,
+      date: activity.date || activity.createdAt,
+      type,
+      animalId: activity.animalId,
+      fullAnimalReference,
+    };
+  }
+
+  if (type === "ai") {
+    const status = String(details.status || "").toLowerCase();
+    const completed = ["done", "completed"].includes(status) || /performed|completed/i.test(activity.title || "");
+    return {
+      id: String(activity.id || activity._id || "ai"),
+      title: `${completed ? "AI service completed" : "AI service requested"} for ${animalReference}`,
+      outcome: humanizeOutcome(details.outcome || (completed ? "pending" : details.status)),
+      date: activity.date || activity.createdAt,
+      type,
+      animalId: activity.animalId,
+      fullAnimalReference,
+    };
+  }
+
+  return {
+    id: String(activity.id || activity._id || type),
+    title: `${type === "health" ? "Health check" : "Record updated"} for ${animalReference}`,
+    outcome: String(activity.description || humanizeOutcome(details.status)),
+    date: activity.date || activity.createdAt,
+    type,
+    animalId: activity.animalId,
+    fullAnimalReference,
+  };
+};
+
+export const selectRecentActivities = (activities: FarmerActivity[] = []) =>
+  activities
+    .slice(0, FARMER_HOME_LIMITS.activities)
+    .map(formatHumanReadableRecordTitle);
 
 export const filterPendingOutcomes = (body: unknown): AIRequest[] => {
   return toArray<AIRequest>(body).filter((request) => {

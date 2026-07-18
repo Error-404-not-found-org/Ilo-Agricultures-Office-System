@@ -27,12 +27,45 @@ export type UpcomingVisit =
   | (HealthRequest & UpcomingVisitBase & { serviceType: "health" });
 
 export interface FarmerActivity {
+  id?: string;
   _id?: string;
   type?: string;
   title?: string;
+  description?: string;
   message?: string;
+  date?: string;
+  animalId?: string | Animal;
   details?: Record<string, any>;
   createdAt?: string;
+}
+
+export interface FarmerMilestone {
+  type?: string;
+  title?: string;
+  animal?: Animal;
+  date?: string;
+  daysLeft?: number;
+  priority?: string;
+  relatedId?: string;
+  resolved?: boolean;
+  status?: string;
+}
+
+export interface FarmerAttentionItem extends FarmerMilestone {
+  displayTitle: string;
+  displaySubtitle: string;
+  urgency: "overdue" | "due_today" | "actionable" | "awaiting";
+  animalReference: string;
+}
+
+export interface FarmerActivityPresentation {
+  id: string;
+  title: string;
+  outcome: string;
+  date?: string;
+  type: string;
+  animalId?: string | Animal;
+  fullAnimalReference: string;
 }
 
 export interface FarmerDashboardData {
@@ -40,7 +73,7 @@ export interface FarmerDashboardData {
   unreadCount: number;
   upcomingVisits: UpcomingVisit[];
   pendingOutcomes: AIRequest[];
-  milestones: unknown[];
+  milestones: FarmerMilestone[];
   myAnimals: Animal[];
   activityFeed: FarmerActivity[];
 }

@@ -6,6 +6,8 @@ interface StatusBadgeProps {
   label: string;
   variant?: string;
   size?: number;
+  domain?: "service" | "reproduction" | "general";
+  compact?: boolean;
 }
 
 const statusTone = (value: string) => {
@@ -54,7 +56,13 @@ const statusTone = (value: string) => {
   return ["#475569", "#f1f5f9"];
 };
 
-export function StatusBadge({ label, variant, size = 10 }: StatusBadgeProps) {
+export function StatusBadge({
+  label,
+  variant,
+  size = 10,
+  domain = "general",
+  compact = false,
+}: StatusBadgeProps) {
   const { isDark, colors } = useTheme();
 
   const getColors = () => {
@@ -95,6 +103,11 @@ export function StatusBadge({ label, variant, size = 10 }: StatusBadgeProps) {
   };
 
   const [foreground, background] = getColors();
+  const accessibleDomain = domain === "service"
+    ? "Service status"
+    : domain === "reproduction"
+      ? "Reproductive status"
+      : "Status";
 
   return (
     <View
@@ -103,12 +116,13 @@ export function StatusBadge({ label, variant, size = 10 }: StatusBadgeProps) {
         borderColor: isDark ? colors.border : background,
         borderWidth: 1,
         borderRadius: 999,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
+        paddingHorizontal: compact ? 8 : 10,
+        paddingVertical: compact ? 4 : 5,
         alignSelf: "flex-start",
-        maxWidth: 180,
+        maxWidth: compact ? 112 : 180,
+        flexShrink: 1,
       }}
-      accessibilityLabel={`Status: ${label || "Unknown"}`}
+      accessibilityLabel={`${accessibleDomain}: ${label || "Unknown"}`}
     >
       <Text
         numberOfLines={1}

@@ -2,6 +2,7 @@ import type { AxiosInstance } from "axios";
 import type { AIRequest, Animal, HealthRequest } from "@/types";
 import type {
   FarmerActivity,
+  FarmerMilestone,
   FarmerDashboardNotificationSummary,
   FarmerDashboardProfile,
   UpcomingVisit,
@@ -58,7 +59,7 @@ export const getPendingOutcomes = async (
   return filterPendingOutcomes(response.data);
 };
 
-export const getMilestones = async (api: AxiosInstance): Promise<unknown[]> => {
+export const getMilestones = async (api: AxiosInstance): Promise<FarmerMilestone[]> => {
   const response = await api.get("/user/milestones");
   return responseToArray(response.data);
 };
