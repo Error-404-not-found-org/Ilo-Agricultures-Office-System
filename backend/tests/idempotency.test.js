@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { Idempotency } from "../src/models/idempotency.model.js";
 import { idempotencyMiddleware } from "../src/middleware/idempotency.middleware.js";
 
@@ -136,5 +137,64 @@ test("Idempotency: passes and calls next if key is new", async () => {
     assert.equal(createCalledWith.key, "test-new-key");
   } finally {
     Idempotency.create = originalCreate;
+  }
+});
+
+test("Idempotency: replaying the original key returns the original success", async () => {
+  const body = { pregnancyId: "pregnancy-1", animalId: "animal-1" };
+  const requestHash = crypto
+    .createHash("sha256")
+    .update(JSON.stringify(body))
+    .digest("hex");
+  const req = {
+    method: "POST",
+    headers: { "idempotency-key": "calving-operation-1" },
+    body,
+    user: { _id: "farmer-1" },
+    path: "/animals/record-calving",
+  };
+  let statusCode;
+  let responseBody;
+  let nextCalled = false;
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(value) {
+      responseBody = value;
+      return this;
+    },
+  };
+
+  const originalCreate = Idempotency.create;
+  const originalFindOne = Idempotency.findOne;
+  Idempotency.create = async () => {
+    const error = new Error("Duplicate key");
+    error.code = 11000;
+    throw error;
+  };
+  Idempotency.findOne = async () => ({
+    status: "resolved",
+    requestHash,
+    responseStatus: 201,
+    responseBody: {
+      message: "Calving and offspring registered successfully",
+      calving: { _id: "calving-1" },
+      offspring: [{ _id: "calf-1" }],
+    },
+  });
+
+  try {
+    await idempotencyMiddleware(req, res, () => {
+      nextCalled = true;
+    });
+    assert.equal(nextCalled, false);
+    assert.equal(statusCode, 201);
+    assert.equal(responseBody.calving._id, "calving-1");
+    assert.equal(responseBody.offspring.length, 1);
+  } finally {
+    Idempotency.create = originalCreate;
+    Idempotency.findOne = originalFindOne;
   }
 });

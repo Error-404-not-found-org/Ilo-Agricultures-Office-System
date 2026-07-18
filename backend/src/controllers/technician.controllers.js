@@ -1377,7 +1377,7 @@ export const recordCalving = async (req, res) => {
     if (!pregnancy)
       return res.status(404).json({ message: "Pregnancy record not found" });
 
-    const { calving, offspring: registeredCalves, outcome } = await persistCalving({
+    const { calving, offspring: registeredCalves, outcome, alreadyRecorded } = await persistCalving({
       mother,
       pregnancy,
       calves,
@@ -1392,23 +1392,25 @@ export const recordCalving = async (req, res) => {
     });
 
     // 6. Trigger Inngest & Socket
-    try {
-      await inngest.send({
-        name: "livestock/calving-recorded",
-        data: {
-          animalId,
-          farmerId: mother.farmerId,
-          numberOfCalves: registeredCalves.length,
-          offspringIds: registeredCalves.map((c) => c._id),
-          outcome,
-        },
-      });
-    } catch (inngestErr) {
-      console.error("[recordCalving INNGEST ERROR]", inngestErr.message);
+    if (!alreadyRecorded) {
+      try {
+        await inngest.send({
+          name: "livestock/calving-recorded",
+          data: {
+            animalId,
+            farmerId: mother.farmerId,
+            numberOfCalves: registeredCalves.length,
+            offspringIds: registeredCalves.map((c) => c._id),
+            outcome,
+          },
+        });
+      } catch (inngestErr) {
+        console.error("[recordCalving INNGEST ERROR]", inngestErr.message);
+      }
     }
 
     const io = req.app.get("io");
-    if (io) {
+    if (io && !alreadyRecorded) {
       io.emit("dashboardUpdate", {
         type: "CALVING_RECORDED",
         motherId: animalId,
@@ -1416,12 +1418,15 @@ export const recordCalving = async (req, res) => {
       });
     }
 
-    res.status(201).json({
-      message: ["live_birth", "mixed"].includes(outcome)
-        ? "Calving and offspring registered successfully"
-        : outcome === "stillbirth"
-          ? "Stillbirth event recorded successfully"
-          : "Pregnancy-loss event recorded successfully",
+    res.status(alreadyRecorded ? 200 : 201).json({
+      message: alreadyRecorded
+        ? "This calving was already recorded. The original result has been returned."
+        : ["live_birth", "mixed"].includes(outcome)
+          ? "Calving and offspring registered successfully"
+          : outcome === "stillbirth"
+            ? "Stillbirth event recorded successfully"
+            : "Pregnancy-loss event recorded successfully",
+      code: alreadyRecorded ? "CALVING_ALREADY_RECORDED" : undefined,
       calving,
       offspring: registeredCalves,
     });

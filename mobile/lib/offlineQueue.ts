@@ -243,7 +243,19 @@ export const addToOfflineQueue = async (
   try {
     // Process payload to extract base64 images to local files
     const { data: cleanData, filePaths } = await cacheImagesInPayload(mutation.data);
-    return await mutateStoredQueue((queue) => {
+    const outcome = await mutateStoredQueue((queue) => {
+      const existingOperation = mutation.idempotencyKey
+        ? queue.find(
+            (item) =>
+              item.idempotencyKey === mutation.idempotencyKey &&
+              item.method === mutation.method &&
+              item.url === mutation.url &&
+              item.status !== "failed",
+          )
+        : undefined;
+      if (existingOperation) {
+        return { queue, result: { item: existingOperation, reused: true } };
+      }
       const referencedTempIds = findTemporaryReferences({ url: mutation.url, data: cleanData });
       const inferredDependencies = queue
         .filter((item) => item.tempId && referencedTempIds.includes(item.tempId))
@@ -257,8 +269,15 @@ export const addToOfflineQueue = async (
         timestamp: Date.now(), status: "pending", retryCount: 0, updatedAt: Date.now(),
         dependsOn: [...new Set([...(mutation.dependsOn || []), ...inferredDependencies])],
       };
-      return { queue: [...queue, newMutation], result: newMutation };
+      return {
+        queue: [...queue, newMutation],
+        result: { item: newMutation, reused: false },
+      };
     });
+    if (outcome.reused) {
+      for (const path of filePaths) await deleteLocalFile(path);
+    }
+    return outcome.item;
   } catch (error) {
     console.error("[OfflineQueue] Failed to add mutation", error);
     throw error;

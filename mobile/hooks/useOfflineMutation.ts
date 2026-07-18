@@ -7,6 +7,9 @@ import { toast } from "sonner-native";
 
 const OFFLINE_FALLBACK_TIMEOUT_MS = 7000;
 const CONNECTIVITY_CHECK_TIMEOUT_MS = 1500;
+const RECONCILIATION_TIMEOUT_MS = 30000;
+const RECONCILIATION_REQUEST_TIMEOUT_MS = 10000;
+const RECONCILIATION_RETRY_DELAY_MS = 750;
 
 class OfflineFallbackTimeoutError extends Error {
   code = "OFFLINE_FALLBACK_TIMEOUT";
@@ -22,18 +25,54 @@ export interface OfflineMutationParams {
   method: "POST" | "PATCH" | "PUT" | "DELETE";
   description: string;
   entityType?: string;
+  reconcileOnTimeout?: boolean;
 }
+
+export type OfflineMutationLifecycleState =
+  | "idle"
+  | "submitting"
+  | "reconciling"
+  | "replaying"
+  | "queued"
+  | "synced";
 
 export interface MutationResult<TData = any> {
   status: "synced" | "queued";
   data?: TData;
 }
 
+type OfflineMutationOptions<TData, TError, TVariables, TContext> =
+  UseMutationOptions<MutationResult<TData>, TError, TVariables, TContext> & {
+    onLifecycleStateChange?: (state: OfflineMutationLifecycleState) => void;
+  };
+
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+
+const isNetworkFailure = (error: any) =>
+  !error?.response &&
+  (Boolean(error?.request) ||
+    error?.code === "ERR_NETWORK" ||
+    error?.code === "ECONNABORTED" ||
+    error?.code === "ETIMEDOUT" ||
+    error?.code === "OFFLINE_FALLBACK_TIMEOUT");
+
+const refreshConnectivity = async () => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), CONNECTIVITY_CHECK_TIMEOUT_MS);
+  });
+  const state = await Promise.race([NetInfo.refresh(), timeout]);
+  if (timer) clearTimeout(timer);
+  return state;
+};
+
 export async function executeOfflineMutation<TData = any, TVariables = any>(
   api: AxiosInstance,
   params: OfflineMutationParams,
   variables: TVariables,
-  idempotencyKeyInput?: string
+  idempotencyKeyInput?: string,
+  onLifecycleStateChange?: (state: OfflineMutationLifecycleState) => void,
 ): Promise<MutationResult<TData>> {
   const idempotencyKey = idempotencyKeyInput || createStableId();
   const queueMutation = async (
@@ -51,25 +90,18 @@ export async function executeOfflineMutation<TData = any, TVariables = any>(
       idempotencyKey: queueIdempotencyKey,
     });
 
+    onLifecycleStateChange?.("queued");
     return { status: "queued", data: { ...queuedItem, _id: tempId } as any };
   };
 
   // Some Android devices leave NetInfo.refresh() pending until connectivity
   // returns. A connectivity check must never be allowed to block a form.
-  let connectivityTimer: ReturnType<typeof setTimeout> | undefined;
-  const connectivityTimeout = new Promise<null>((resolve) => {
-    connectivityTimer = setTimeout(
-      () => resolve(null),
-      CONNECTIVITY_CHECK_TIMEOUT_MS,
-    );
-  });
-  const state = await Promise.race([NetInfo.refresh(), connectivityTimeout]);
-  if (connectivityTimer) clearTimeout(connectivityTimer);
+  onLifecycleStateChange?.("submitting");
+  const state = await refreshConnectivity();
   
   const isDefinitelyOffline =
-    state === null ||
-    state.isConnected === false ||
-    state.isInternetReachable === false;
+    state?.isConnected === false ||
+    state?.isInternetReachable === false;
 
   if (isDefinitelyOffline) {
     return queueMutation();
@@ -77,16 +109,53 @@ export async function executeOfflineMutation<TData = any, TVariables = any>(
 
   let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
 
-  try {
-    const request = api({
+  const sendRequest = (timeout: number) =>
+    api({
       method: params.method,
       url: params.url,
       data: variables,
-      timeout: 5000,
+      timeout,
       headers: {
         "Idempotency-Key": idempotencyKey,
       },
     });
+
+  const reconcileTimedOutRequest = async (): Promise<MutationResult<TData>> => {
+    const deadline = Date.now() + RECONCILIATION_TIMEOUT_MS;
+    onLifecycleStateChange?.("reconciling");
+
+    while (Date.now() < deadline) {
+      await wait(RECONCILIATION_RETRY_DELAY_MS);
+      onLifecycleStateChange?.("replaying");
+      try {
+        const response = await sendRequest(RECONCILIATION_REQUEST_TIMEOUT_MS);
+        onLifecycleStateChange?.("synced");
+        return { status: "synced", data: response.data };
+      } catch (error: any) {
+        if (error?.response?.data?.code === "IDEMPOTENCY_IN_PROGRESS") {
+          onLifecycleStateChange?.("reconciling");
+          continue;
+        }
+        if (!isNetworkFailure(error)) throw error;
+
+        const currentState = await refreshConnectivity();
+        if (
+          currentState?.isConnected === false ||
+          currentState?.isInternetReachable === false
+        ) {
+          return queueMutation(idempotencyKey);
+        }
+        onLifecycleStateChange?.("reconciling");
+      }
+    }
+
+    // The outcome is still ambiguous. Persist the exact same operation/key for
+    // background replay and keep the form locked against a fresh submission.
+    return queueMutation(idempotencyKey);
+  };
+
+  try {
+    const request = sendRequest(params.reconcileOnTimeout ? 12000 : 5000);
 
     // Axios/React Native can leave a request pending indefinitely when the
     // device loses internet. Enforce our own deadline so the form can finish
@@ -94,22 +163,22 @@ export async function executeOfflineMutation<TData = any, TVariables = any>(
     const fallback = new Promise<never>((_, reject) => {
       fallbackTimer = setTimeout(
         () => reject(new OfflineFallbackTimeoutError()),
-        OFFLINE_FALLBACK_TIMEOUT_MS,
+        params.reconcileOnTimeout ? 15000 : OFFLINE_FALLBACK_TIMEOUT_MS,
       );
     });
 
     const response = await Promise.race([request, fallback]);
+    onLifecycleStateChange?.("synced");
     return { status: "synced", data: response.data };
   } catch (error: any) {
-    const isNetworkFailure =
-      !error?.response &&
-      (Boolean(error?.request) ||
-        error?.code === "ERR_NETWORK" ||
-        error?.code === "ECONNABORTED" ||
-        error?.code === "ETIMEDOUT" ||
-        error?.code === "OFFLINE_FALLBACK_TIMEOUT");
-
-    if (isNetworkFailure) {
+    if (fallbackTimer) {
+      clearTimeout(fallbackTimer);
+      fallbackTimer = undefined;
+    }
+    if (isNetworkFailure(error)) {
+      if (params.reconcileOnTimeout) {
+        return reconcileTimedOutRequest();
+      }
       // Preserve the original key in case the request reached the server but
       // its response was lost. Sync retries remain idempotent.
       return queueMutation(idempotencyKey);
@@ -123,26 +192,35 @@ export async function executeOfflineMutation<TData = any, TVariables = any>(
 
 export function useOfflineMutation<TData = any, TError = any, TVariables = any, TContext = any>(
   params: OfflineMutationParams,
-  options?: UseMutationOptions<MutationResult<TData>, TError, TVariables, TContext>
+  options?: OfflineMutationOptions<TData, TError, TVariables, TContext>,
 ) {
   const api = useApi();
+  const { onLifecycleStateChange, ...mutationOptions } = options || {};
 
   return useMutation({
-    ...options,
+    ...mutationOptions,
     mutationFn: async (variables: TVariables): Promise<MutationResult<TData>> => {
-      return executeOfflineMutation<TData, TVariables>(api, params, variables);
+      return executeOfflineMutation<TData, TVariables>(
+        api,
+        params,
+        variables,
+        undefined,
+        onLifecycleStateChange,
+      );
     },
     onSuccess: (data, variables, context, mutation) => {
       if (data.status === "queued") {
-        toast.success("Record saved on this device", {
-          description: "It will sync automatically when you reconnect.",
+        toast.success("Submission saved safely", {
+          description: params.reconcileOnTimeout
+            ? "It will continue syncing with the original operation ID. Do not submit it again."
+            : "It will sync automatically when you reconnect.",
           duration: 4000,
           id: `offline-queued-${params.entityType || params.url}`,
         });
       }
 
-      if (options?.onSuccess) {
-        options.onSuccess(data, variables, context as any, mutation);
+      if (mutationOptions.onSuccess) {
+        mutationOptions.onSuccess(data, variables, context as any, mutation);
       }
     },
   });

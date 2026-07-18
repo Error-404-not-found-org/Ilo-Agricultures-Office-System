@@ -193,6 +193,127 @@ const normalizeDatabaseError = (error) => {
   return error;
 };
 
+const taskActorFilter = (actor) =>
+  actor.role === "farmer"
+    ? {}
+    : { $or: [{ technicianId: actor._id }, { technicianId: null }] };
+
+const findMatchingCalvingTask = async ({
+  taskId,
+  mother,
+  pregnancy,
+  inseminationId,
+  existingCalving,
+  actor,
+  session,
+}) => {
+  const baseFilter = {
+    farmerId: mother.farmerId,
+    animalIds: mother._id,
+    taskType: { $in: ["CD", "Calving"] },
+    status: { $in: ["Pending", "In Progress"] },
+    ...taskActorFilter(actor),
+  };
+
+  if (taskId) {
+    const suppliedTask = await Task.findOne({
+      ...baseFilter,
+      _id: taskId,
+      $and: [
+        {
+          $or: [
+            { relatedRecordType: "pregnancy", relatedRecordId: pregnancy._id },
+            { "metadata.inseminationId": inseminationId },
+            {
+              $or: [
+                { relatedRecordId: null },
+                { relatedRecordId: { $exists: false } },
+              ],
+              "metadata.inseminationId": { $exists: false },
+            },
+          ],
+        },
+      ],
+    }).session(session || null);
+    if (!suppliedTask) {
+      if (existingCalving) {
+        const completedMatchingTask = await Task.findOne({
+          _id: taskId,
+          farmerId: mother.farmerId,
+          animalIds: mother._id,
+          taskType: { $in: ["CD", "Calving"] },
+          status: "Completed",
+          relatedRecordType: "calving",
+          relatedRecordId: existingCalving._id,
+        }).session(session || null);
+        if (completedMatchingTask) return null;
+      }
+      throw new AppError("The calving task is inactive or does not match this record.", {
+        status: 409,
+        code: "TASK_RECORD_MISMATCH",
+      });
+    }
+    return suppliedTask;
+  }
+
+  const pregnancyTask = await Task.findOne({
+    ...baseFilter,
+    relatedRecordType: "pregnancy",
+    relatedRecordId: pregnancy._id,
+  })
+    .sort({ dueDate: 1, createdAt: 1 })
+    .session(session || null);
+  if (pregnancyTask) return pregnancyTask;
+
+  const inseminationTask = await Task.findOne({
+    ...baseFilter,
+    "metadata.inseminationId": inseminationId,
+  })
+    .sort({ dueDate: 1, createdAt: 1 })
+    .session(session || null);
+  if (inseminationTask) return inseminationTask;
+
+  return Task.findOne({
+    ...baseFilter,
+    sourceType: { $in: ["task_scheduler", "client_profile", "manual"] },
+    $and: [
+      {
+        $or: [
+          { relatedRecordId: null },
+          { relatedRecordId: { $exists: false } },
+        ],
+      },
+      { "metadata.inseminationId": { $exists: false } },
+    ],
+  })
+    .sort({ dueDate: 1, createdAt: 1 })
+    .session(session || null);
+};
+
+const completeCalvingTask = async ({ task, calving, actor, session }) => {
+  if (!task) return null;
+  const completedTask = await Task.findOneAndUpdate(
+    { _id: task._id, status: { $in: ["Pending", "In Progress"] } },
+    {
+      $set: {
+        status: "Completed",
+        relatedRecordType: "calving",
+        relatedRecordId: calving._id,
+        completedAt: new Date(),
+        ...(actor.role === "farmer" ? {} : { technicianId: actor._id }),
+      },
+    },
+    { returnDocument: "after", session },
+  );
+  if (!completedTask) {
+    throw new AppError("The calving task has already been completed.", {
+      status: 409,
+      code: "TASK_RECORD_MISMATCH",
+    });
+  }
+  return completedTask;
+};
+
 const loadAndValidateContext = async ({ motherId, pregnancyId, taskId, actor, calvingDate, outcome, session }) => {
   const currentMother = await Animal.findOne({ _id: motherId, deletedAt: null }).session(session || null);
   if (!currentMother) {
@@ -204,6 +325,41 @@ const loadAndValidateContext = async ({ motherId, pregnancyId, taskId, actor, ca
   }
   if (String(currentPregnancy.animalId) !== String(currentMother._id)) {
     throw new AppError("The pregnancy record does not belong to this mother.", { status: 409, code: "PREGNANCY_MOTHER_MISMATCH" });
+  }
+  if (actor.role === "farmer" && String(currentMother.farmerId) !== String(actor._id)) {
+    throw new AppError("You cannot record calving for another farmer's animal.", {
+      status: 403,
+      code: "CALVING_ACCESS_DENIED",
+    });
+  }
+
+  const existingCalving = await Calving.findOne({
+    pregnancyId: currentPregnancy._id,
+    animalId: currentMother._id,
+    farmerId: currentMother.farmerId,
+    deletedAt: null,
+  })
+    .populate("calves.animalId")
+    .session(session || null);
+  const canonicalInseminationId =
+    existingCalving?.inseminationId || currentPregnancy.inseminationId;
+  if (existingCalving) {
+    const task = await findMatchingCalvingTask({
+      taskId,
+      mother: currentMother,
+      pregnancy: currentPregnancy,
+      inseminationId: canonicalInseminationId,
+      existingCalving,
+      actor,
+      session,
+    });
+    return {
+      currentMother,
+      currentPregnancy,
+      insemination: null,
+      task,
+      existingCalving,
+    };
   }
   if (
     currentPregnancy.pregnancyDiagnosis?.result !== "Pregnant" ||
@@ -221,24 +377,15 @@ const loadAndValidateContext = async ({ motherId, pregnancyId, taskId, actor, ca
     throw new AppError("The related insemination record was not found.", { status: 409, code: "INSEMINATION_NOT_FOUND" });
   }
   validateChronology({ calvingDate, mother: currentMother, pregnancy: currentPregnancy, insemination, outcome });
-  if (await Calving.findOne({ pregnancyId: currentPregnancy._id, deletedAt: null }).session(session || null)) {
-    throw new AppError("A calving record already exists for this pregnancy.", { status: 409, code: "CALVING_ALREADY_RECORDED" });
-  }
-  let task = null;
-  if (taskId) {
-    task = await Task.findOne({
-      _id: taskId,
-      farmerId: currentMother.farmerId,
-      animalIds: currentMother._id,
-      taskType: { $in: ["CD", "Calving"] },
-      status: { $in: ["Pending", "In Progress"] },
-      $or: [{ technicianId: actor._id }, { technicianId: null }],
-    }).session(session || null);
-    if (!task) {
-      throw new AppError("The calving task is inactive or does not match this record.", { status: 409, code: "TASK_RECORD_MISMATCH" });
-    }
-  }
-  return { currentMother, currentPregnancy, insemination, task };
+  const task = await findMatchingCalvingTask({
+    taskId,
+    mother: currentMother,
+    pregnancy: currentPregnancy,
+    inseminationId: insemination._id,
+    actor,
+    session,
+  });
+  return { currentMother, currentPregnancy, insemination, task, existingCalving: null };
 };
 
 export const persistCalving = async ({
@@ -287,7 +434,7 @@ export const persistCalving = async ({
   }
 
   // Read-only preflight prevents expensive uploads for already-invalid requests.
-  await loadAndValidateContext({
+  const preflight = await loadAndValidateContext({
     motherId: mother?._id,
     pregnancyId: pregnancy?._id,
     taskId,
@@ -295,6 +442,48 @@ export const persistCalving = async ({
     calvingDate,
     outcome,
   });
+  if (preflight.existingCalving) {
+    let reconciliationSession;
+    try {
+      reconciliationSession = await mongoose.startSession();
+      let existingResult;
+      await reconciliationSession.withTransaction(async () => {
+        const context = await loadAndValidateContext({
+          motherId: mother?._id,
+          pregnancyId: pregnancy?._id,
+          taskId,
+          actor,
+          calvingDate,
+          outcome,
+          session: reconciliationSession,
+        });
+        if (!context.existingCalving) {
+          throw new AppError("The existing calving record could not be reconciled.", {
+            status: 409,
+            code: "CALVING_RECONCILIATION_CONFLICT",
+          });
+        }
+        await completeCalvingTask({
+          task: context.task,
+          calving: context.existingCalving,
+          actor,
+          session: reconciliationSession,
+        });
+        const offspring = (context.existingCalving.calves || [])
+          .map((calf) => calf.animalId)
+          .filter((calf) => calf && typeof calf === "object" && calf._id);
+        existingResult = {
+          calving: context.existingCalving,
+          offspring,
+          outcome: context.existingCalving.outcome,
+          alreadyRecorded: true,
+        };
+      });
+      return existingResult;
+    } finally {
+      if (reconciliationSession) await reconciliationSession.endSession();
+    }
+  }
   const imageUploads = hasLivingCalves ? await uploadCalfImages(normalizedCalves) : [];
   let session;
   let result;
@@ -302,7 +491,7 @@ export const persistCalving = async ({
   try {
     session = await mongoose.startSession();
     await session.withTransaction(async () => {
-      const { currentMother, currentPregnancy, insemination, task } = await loadAndValidateContext({
+      const { currentMother, currentPregnancy, insemination, task, existingCalving } = await loadAndValidateContext({
         motherId: mother?._id,
         pregnancyId: pregnancy?._id,
         taskId,
@@ -311,6 +500,18 @@ export const persistCalving = async ({
         outcome,
         session,
       });
+      if (existingCalving) {
+        await completeCalvingTask({ task, calving: existingCalving, actor, session });
+        result = {
+          calving: existingCalving,
+          offspring: (existingCalving.calves || [])
+            .map((calf) => calf.animalId)
+            .filter((calf) => calf && typeof calf === "object" && calf._id),
+          outcome: existingCalving.outcome,
+          alreadyRecorded: true,
+        };
+        return;
+      }
 
       if (hasLivingCalves) {
         const normalizedTags = normalizedCalves.map((calf) => calf.earTag.toLowerCase());
@@ -407,19 +608,7 @@ export const persistCalving = async ({
         { session },
       );
 
-      if (task) {
-        const completedTask = await Task.findOneAndUpdate(
-          { _id: task._id, status: { $in: ["Pending", "In Progress"] } },
-          { $set: { status: "Completed", relatedRecordType: "calving", relatedRecordId: calving._id, completedAt: new Date(), technicianId: actor._id } },
-          { returnDocument: "after", session },
-        );
-        if (!completedTask) {
-          throw new AppError("The calving task has already been completed.", {
-            status: 409,
-            code: "TASK_RECORD_MISMATCH",
-          });
-        }
-      }
+      await completeCalvingTask({ task, calving, actor, session });
 
       const timelineEntries = [{
         animalId: currentMother._id,
@@ -484,8 +673,9 @@ export const persistCalving = async ({
         }], { session });
       }
 
-      result = { calving, offspring, outcome };
+      result = { calving, offspring, outcome, alreadyRecorded: false };
     });
+    if (result?.alreadyRecorded) await cleanupUploadedImages(imageUploads);
   } catch (error) {
     await cleanupUploadedImages(imageUploads);
     throw normalizeDatabaseError(error);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, FlatList, Image } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,7 +10,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import EarTagGenerator from '@/components/EarTagGenerator';
 import * as ImagePicker from 'expo-image-picker';
-import { useOfflineMutation } from '@/hooks/useOfflineMutation';
+import {
+    OfflineMutationLifecycleState,
+    useOfflineMutation,
+} from '@/hooks/useOfflineMutation';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
 import { animalKeys, animalRecordKeys, breedingKeys, notificationKeys, technicianKeys } from '@/lib/queryKeys';
 import { tasksQueryKeys } from '@/features/technician/hooks/useTechnicianTasks';
@@ -75,14 +78,19 @@ export default function RecordCalfDropScreen() {
     ]);
     const [note, setNote] = useState('');
     const [saving, setSaving] = useState(false);
+    const [submissionState, setSubmissionState] =
+        useState<OfflineMutationLifecycleState>('idle');
+    const submitLockRef = useRef(false);
     const [confirmSubmitVisible, setConfirmSubmitVisible] = useState(false);
     const calvingMutation = useOfflineMutation(
         {
             url: '/technician/record-calving',
             method: 'POST',
             description: `Technician calving record for ${motherTag || 'mother animal'}`,
+            reconcileOnTimeout: true,
         },
         {
+            onLifecycleStateChange: setSubmissionState,
             onSuccess: (result) => {
                 if (result.status === 'synced') {
                     toast.success("Calving recorded successfully!");
@@ -102,6 +110,8 @@ export default function RecordCalfDropScreen() {
                 }
             },
             onError: (err: any) => {
+                submitLockRef.current = false;
+                setSubmissionState('idle');
                 console.error(err);
                 toast.error(err.response?.data?.message || "Failed to record calving event");
             },
@@ -395,6 +405,8 @@ export default function RecordCalfDropScreen() {
     };
 
     const submitCalvingRecord = async () => {
+        if (submitLockRef.current) return;
+        submitLockRef.current = true;
         setSaving(true);
         try {
             const payload = {
@@ -427,10 +439,23 @@ export default function RecordCalfDropScreen() {
     };
 
     const handleSave = () => {
-        if (saving || calvingMutation.isPending || !validateCalvingForm()) return;
+        if (submitLockRef.current || saving || calvingMutation.isPending || !validateCalvingForm()) return;
 
         setConfirmSubmitVisible(true);
     };
+
+    const submissionLocked =
+        submitLockRef.current ||
+        saving ||
+        calvingMutation.isPending ||
+        ['submitting', 'reconciling', 'replaying', 'queued'].includes(submissionState);
+    const submissionStatusMessage = submissionState === 'queued'
+        ? 'Submission saved safely and queued. It will continue with the same operation ID.'
+        : ['reconciling', 'replaying'].includes(submissionState)
+            ? 'Checking submission status…'
+            : submissionState === 'submitting'
+                ? 'Submitting calving record…'
+                : null;
 
     const filteredFarmers = farmers.filter(f => 
         f.name?.toLowerCase().includes(searchFarmerQuery.toLowerCase()) ||
@@ -779,12 +804,26 @@ export default function RecordCalfDropScreen() {
                             onChangeText={setNote}
                         />
 
+                        {submissionStatusMessage ? (
+                            <View
+                                className="mb-3 rounded-2xl border px-4 py-3"
+                                style={{ backgroundColor: isDark ? colors.background : '#eff6ff', borderColor: colors.border }}
+                            >
+                                <Text
+                                    className="text-center text-xs font-outfit-bold"
+                                    style={{ color: colors.textPrimary }}
+                                >
+                                    {submissionStatusMessage}
+                                </Text>
+                            </View>
+                        ) : null}
+
                         <TouchableOpacity 
-                            className={`py-5 rounded-[28px] flex-row justify-center items-center shadow-xl mb-20 ${saving || calvingMutation.isPending ? 'bg-slate-400' : 'bg-emerald-600'}`}
+                            className={`py-5 rounded-[28px] flex-row justify-center items-center shadow-xl mb-20 ${submissionLocked ? 'bg-slate-400' : 'bg-emerald-600'}`}
                             onPress={handleSave}
-                            disabled={saving || calvingMutation.isPending}
+                            disabled={submissionLocked}
                         >
-                            {saving || calvingMutation.isPending ? <ActivityIndicator color="white" /> : (
+                            {submissionLocked ? <ActivityIndicator color="white" /> : (
                                 <>
                                     <Save size={20} color="white" style={{ marginRight: 10 }} />
                                     <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-white text-base uppercase tracking-widest">Submit Calving Registry</Text>

@@ -24,13 +24,16 @@ import {
   Image as ImageIcon,
   X,
 } from "lucide-react-native";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { toast } from "sonner-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/lib/theme";
-import { useOfflineMutation } from "@/hooks/useOfflineMutation";
-import { animalKeys, animalRecordKeys, breedingKeys, notificationKeys, userKeys } from "@/lib/queryKeys";
+import {
+  OfflineMutationLifecycleState,
+  useOfflineMutation,
+} from "@/hooks/useOfflineMutation";
+import { animalKeys, animalRecordKeys, breedingKeys, notificationKeys, taskKeys, userKeys } from "@/lib/queryKeys";
 import { farmerDashboardQueryKeys } from "@/features/farmer-dashboard/hooks/useFarmerDashboard";
 
 interface CalfEntry {
@@ -54,6 +57,7 @@ export default function RecordCalving() {
   const pregnancyId = params.pregnancyId as string;
   const animalId = params.animalId as string;
   const earTag = params.earTag as string;
+  const taskId = params.taskId as string;
 
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [calvingEase, setCalvingEase] = useState("Normal");
@@ -63,6 +67,9 @@ export default function RecordCalving() {
     { sex: "F", earTag: "", color: "" },
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionState, setSubmissionState] =
+    useState<OfflineMutationLifecycleState>("idle");
+  const submitLockRef = useRef(false);
   const isLiveBirth = outcome === "live_birth";
   const isAbortion = outcome === "abortion";
   const calvingMutation = useOfflineMutation(
@@ -70,8 +77,10 @@ export default function RecordCalving() {
       url: "/animals/record-calving",
       method: "POST",
       description: `Farmer calving record for ${earTag || "animal"}`,
+      reconcileOnTimeout: true,
     },
     {
+      onLifecycleStateChange: setSubmissionState,
       onSuccess: (result) => {
         if (result.status === "synced") {
           toast.success(outcome === "abortion"
@@ -89,10 +98,13 @@ export default function RecordCalving() {
           queryClient.invalidateQueries({ queryKey: animalRecordKeys.records(animalId) });
           queryClient.invalidateQueries({ queryKey: notificationKeys.all });
           queryClient.invalidateQueries({ queryKey: userKeys.activity() });
+          queryClient.invalidateQueries({ queryKey: taskKeys.all });
           router.back();
         }
       },
       onError: (error: any) => {
+        submitLockRef.current = false;
+        setSubmissionState("idle");
         toast.error(error.response?.data?.message || "Failed to record calving");
       },
     },
@@ -182,6 +194,7 @@ export default function RecordCalving() {
   };
 
   const handleSubmit = async () => {
+    if (submitLockRef.current) return;
     toast.dismiss();
     const parsedDate = new Date(date);
     if (!date || Number.isNaN(parsedDate.getTime()) || parsedDate.getTime() > Date.now()) {
@@ -203,6 +216,7 @@ export default function RecordCalving() {
       }
     }
 
+    submitLockRef.current = true;
     setIsSubmitting(true);
     try {
       await calvingMutation.mutateAsync({
@@ -222,6 +236,7 @@ export default function RecordCalving() {
           sex: c.sex, earTag: c.earTag, color: c.color,
         })),
         technicianNote,
+        taskId: taskId || undefined,
       });
     } catch {
       // Handled by mutation callbacks.
@@ -229,6 +244,22 @@ export default function RecordCalving() {
       setIsSubmitting(false);
     }
   };
+
+  const submissionLocked =
+    submitLockRef.current ||
+    isSubmitting ||
+    calvingMutation.isPending ||
+    ["submitting", "reconciling", "replaying", "queued"].includes(
+      submissionState,
+    );
+  const submissionStatusMessage =
+    submissionState === "queued"
+      ? "Submission saved safely and queued. It will continue with the same operation ID."
+      : ["reconciling", "replaying"].includes(submissionState)
+        ? "Checking submission status…"
+        : submissionState === "submitting"
+          ? "Submitting calving record…"
+          : null;
 
   return (
     <KeyboardAvoidingView
@@ -529,12 +560,28 @@ export default function RecordCalving() {
         style={{ paddingBottom: Math.max(insets.bottom + 16, 24), backgroundColor: colors.card, borderTopColor: colors.border }}
         className="px-6 pt-4 border-t absolute bottom-0 left-0 right-0"
       >
+        {submissionStatusMessage ? (
+          <View
+            className="mb-3 rounded-2xl border px-4 py-3"
+            style={{
+              backgroundColor: isDark ? colors.background : "#eff6ff",
+              borderColor: colors.border,
+            }}
+          >
+            <Text
+              className="text-center text-xs font-bold"
+              style={{ color: colors.textPrimary }}
+            >
+              {submissionStatusMessage}
+            </Text>
+          </View>
+        ) : null}
         <TouchableOpacity
           onPress={handleSubmit}
-          disabled={isSubmitting || calvingMutation.isPending}
+          disabled={submissionLocked}
           className="h-16 rounded-[24px] flex-row items-center justify-center gap-3"
           style={{
-            backgroundColor: isSubmitting || calvingMutation.isPending ? '#34d399' : primaryColor,
+            backgroundColor: submissionLocked ? '#34d399' : primaryColor,
             elevation: 8,
             shadowColor: primaryColor,
             shadowOpacity: 0.3,
@@ -542,7 +589,7 @@ export default function RecordCalving() {
             shadowOffset: { width: 0, height: 4 },
           }}
         >
-          {isSubmitting || calvingMutation.isPending ? (
+          {submissionLocked ? (
             <ActivityIndicator color="white" />
           ) : (
             <>

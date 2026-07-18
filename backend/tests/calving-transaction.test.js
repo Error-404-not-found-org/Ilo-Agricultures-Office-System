@@ -103,11 +103,32 @@ const installHarness = (overrides = {}) => {
     cloudinaryUpload: cloudinary.uploader.upload,
     cloudinaryDestroy: cloudinary.uploader.destroy,
   };
+  let state;
   const session = {
-    async withTransaction(work) { await work(); },
+    async withTransaction(work) {
+      const snapshot = {
+        inserted: state.inserted.length,
+        calvings: state.calvings.length,
+        motherUpdates: state.motherUpdates.length,
+        pregnancyUpdates: state.pregnancyUpdates.length,
+        inseminationUpdates: state.inseminationUpdates.length,
+        taskUpdates: state.taskUpdates.length,
+        notifications: state.notifications.length,
+        timelines: state.timelines.length,
+        audits: state.audits.length,
+      };
+      try {
+        await work();
+      } catch (error) {
+        for (const [key, length] of Object.entries(snapshot)) {
+          state[key].length = length;
+        }
+        throw error;
+      }
+    },
     async endSession() {},
   };
-  const state = {
+  state = {
     mother: { ...baseMother, ...overrides.mother },
     pregnancy: {
       ...basePregnancy,
@@ -127,6 +148,10 @@ const installHarness = (overrides = {}) => {
       taskType: "CD",
       status: "Pending",
       technicianId: ids.actor,
+      sourceType: "task_scheduler",
+      relatedRecordType: "pregnancy",
+      relatedRecordId: ids.pregnancy,
+      metadata: { inseminationId: ids.insemination },
     }),
     inserted: [],
     calvings: [],
@@ -134,6 +159,7 @@ const installHarness = (overrides = {}) => {
     pregnancyUpdates: [],
     inseminationUpdates: [],
     taskUpdates: [],
+    taskQueries: [],
     notifications: [],
     timelines: [],
     audits: [],
@@ -164,16 +190,54 @@ const installHarness = (overrides = {}) => {
   Insemination.updateOne = async (...args) => { state.inseminationUpdates.push(args); };
   Calving.findOne = () => query(state.existingCalving);
   Calving.create = async (documents, options) => {
+    if (overrides.calvingDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, overrides.calvingDelayMs));
+    }
     const calving = { ...documents[0], _id: ids.calving };
     state.calvings.push({ calving, options });
     state.existingCalving = calving;
     return [calving];
   };
-  Task.findOne = () => query(
-    state.task && ["Pending", "In Progress"].includes(state.task.status)
-      ? state.task
-      : null,
-  );
+  Task.findOne = (filter) => {
+    state.taskQueries.push(filter);
+    const candidate = state.task;
+    if (!candidate || !["Pending", "In Progress"].includes(candidate.status)) {
+      return query(null);
+    }
+    if (filter._id && String(filter._id) !== String(candidate._id)) return query(null);
+    if (
+      filter.relatedRecordType &&
+      filter.relatedRecordType !== candidate.relatedRecordType
+    ) return query(null);
+    if (
+      filter.relatedRecordId &&
+      filter.relatedRecordId.$in &&
+      !filter.relatedRecordId.$in.some(
+        (value) => String(value) === String(candidate.relatedRecordId),
+      )
+    ) return query(null);
+    if (
+      filter.relatedRecordId &&
+      !filter.relatedRecordId.$in &&
+      String(filter.relatedRecordId) !== String(candidate.relatedRecordId)
+    ) return query(null);
+    if (
+      filter["metadata.inseminationId"] &&
+      String(filter["metadata.inseminationId"]) !==
+        String(candidate.metadata?.inseminationId)
+    ) return query(null);
+    if (
+      filter.sourceType?.$in &&
+      !filter.sourceType.$in.includes(candidate.sourceType)
+    ) return query(null);
+    if (
+      filter.$and?.some((condition) =>
+        condition.$or?.some((entry) => entry.relatedRecordId === null) &&
+        candidate.relatedRecordId != null,
+      )
+    ) return query(null);
+    return query(candidate);
+  };
   Task.findOneAndUpdate = async (...args) => {
     if (overrides.taskCompletionFailure) return null;
     state.taskUpdates.push(args);
@@ -181,6 +245,9 @@ const installHarness = (overrides = {}) => {
   };
   Notification.create = async (documents, options) => {
     state.notifications.push({ document: documents[0], options });
+    if (overrides.notificationFailure) {
+      throw new Error("notification write failed");
+    }
     return documents;
   };
   AnimalTimelineEvent.insertMany = async (documents, options) => {
@@ -249,6 +316,21 @@ test("Calving: natural birth creates a female calf and all canonical records", a
   });
 });
 
+test("Calving: a response taking longer than five seconds still creates one lifecycle result", async () => {
+  await withHarness({ calvingDelayMs: 5100 }, async (state) => {
+    const result = await persistCalving(validInput());
+    assert.equal(result.offspring.length, 1);
+    assert.equal(state.inserted.length, 1);
+    assert.equal(state.calvings.length, 1);
+    assert.equal(state.motherUpdates.length, 1);
+    assert.equal(state.pregnancyUpdates.length, 1);
+    assert.equal(state.inseminationUpdates.length, 1);
+    assert.equal(state.taskUpdates.length, 1);
+    assert.equal(state.timelines.length, 1);
+    assert.equal(state.audits.length, 1);
+  });
+});
+
 test("Calving: difficult twin birth creates two unique offspring", async () => {
   await withHarness({}, async (state) => {
     const result = await persistCalving(validInput({
@@ -279,7 +361,7 @@ test("Calving: mother update clears expected date and increments parity once", a
     assert.equal(update.$set.reproductiveStatus, "Post-partum");
     assert.equal(update.$unset.expectedCalvingDate, 1);
     assert.equal(update.$inc.parity, 1);
-    assert.equal(state.taskUpdates.length, 0);
+    assert.equal(state.taskUpdates.length, 1);
   });
 });
 
@@ -314,11 +396,26 @@ test("Calving: rejects likely-pregnant farmer report without clinical confirmati
   });
 });
 
-test("Calving: rejects duplicate pregnancy record", async () => {
-  await withHarness({ existingCalving: { _id: ids.calving } }, async (state) => {
-    await assert.rejects(persistCalving(validInput()), { code: "CALVING_ALREADY_RECORDED" });
+test("Calving: an existing matching record is returned before pregnancy-state rejection", async () => {
+  await withHarness({
+    mother: { reproductiveStatus: "Post-partum" },
+    pregnancy: { cycleStatus: "completed" },
+    existingCalving: {
+      _id: ids.calving,
+      pregnancyId: ids.pregnancy,
+      animalId: ids.mother,
+      farmerId: ids.farmer,
+      inseminationId: ids.insemination,
+      outcome: "live_birth",
+      calves: [],
+    },
+  }, async (state) => {
+    const result = await persistCalving(validInput());
+    assert.equal(result.alreadyRecorded, true);
+    assert.equal(result.calving._id, ids.calving);
     assert.equal(state.inserted.length, 0);
     assert.equal(state.motherUpdates.length, 0);
+    assert.equal(state.taskUpdates.length, 1);
   });
 });
 
@@ -372,12 +469,43 @@ test("Calving: invalid or completed task is rejected before offspring writes", a
   });
 });
 
-test("Calving: retry conflicts without duplicating offspring or parity", async () => {
+test("Calving: retry returns the existing result without duplicating offspring or parity", async () => {
   await withHarness({}, async (state) => {
-    await persistCalving(validInput());
-    await assert.rejects(persistCalving(validInput()), { code: "CALVING_ALREADY_RECORDED" });
+    const original = await persistCalving(validInput());
+    const replay = await persistCalving(validInput());
+    assert.equal(replay.alreadyRecorded, true);
+    assert.equal(replay.calving._id, original.calving._id);
     assert.equal(state.inserted.length, 1);
     assert.equal(state.motherUpdates.length, 1);
+  });
+});
+
+test("Calving: resolves the canonical task when taskId is absent", async () => {
+  await withHarness({}, async (state) => {
+    await persistCalving(validInput());
+    assert.equal(state.taskUpdates.length, 1);
+    assert.equal(state.taskUpdates[0][0]._id, ids.task);
+    assert.equal(state.taskUpdates[0][1].$set.relatedRecordType, "calving");
+  });
+});
+
+test("Calving: does not complete an unrelated open calving task", async () => {
+  await withHarness({
+    task: {
+      _id: ids.task,
+      farmerId: ids.farmer,
+      animalIds: [ids.mother],
+      taskType: "Calving",
+      status: "Pending",
+      technicianId: ids.actor,
+      sourceType: "task_scheduler",
+      relatedRecordType: "pregnancy",
+      relatedRecordId: "507f1f77bcf86cd799439099",
+      metadata: { inseminationId: "507f1f77bcf86cd799439098" },
+    },
+  }, async (state) => {
+    await persistCalving(validInput());
+    assert.equal(state.taskUpdates.length, 0);
   });
 });
 
@@ -499,6 +627,24 @@ test("Calving: offspring failure prevents calving, mother, task, timeline, and a
     assert.equal(state.calvings.length, 0);
     assert.equal(state.motherUpdates.length, 0);
     assert.equal(state.taskUpdates.length, 0);
+    assert.equal(state.timelines.length, 0);
+    assert.equal(state.audits.length, 0);
+  });
+});
+
+test("Calving: a late transaction failure rolls back every lifecycle write", async () => {
+  await withHarness({ notificationFailure: true }, async (state) => {
+    await assert.rejects(
+      persistCalving(validInput({ taskId: ids.task })),
+      /notification write failed/,
+    );
+    assert.equal(state.inserted.length, 0);
+    assert.equal(state.calvings.length, 0);
+    assert.equal(state.motherUpdates.length, 0);
+    assert.equal(state.pregnancyUpdates.length, 0);
+    assert.equal(state.inseminationUpdates.length, 0);
+    assert.equal(state.taskUpdates.length, 0);
+    assert.equal(state.notifications.length, 0);
     assert.equal(state.timelines.length, 0);
     assert.equal(state.audits.length, 0);
   });

@@ -38,9 +38,18 @@ export function ConfirmationModal({
 }: ConfirmationModalProps) {
   const { colors, isDark } = useTheme();
   const [confirming, setConfirming] = React.useState(false);
+  const confirmLockRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!visible) {
+      confirmLockRef.current = false;
+      setConfirming(false);
+    }
+  }, [visible]);
 
   const handleConfirm = async () => {
-    if (confirming) return;
+    if (confirmLockRef.current) return;
+    confirmLockRef.current = true;
     setConfirming(true);
     try {
       await onConfirm();
@@ -54,7 +63,7 @@ export function ConfirmationModal({
 
   const showCancel = cancelText !== null && cancelText !== "";
   const handleCancel = () => {
-    if (confirming) return;
+    if (confirmLockRef.current) return;
     if (onCancel) {
       onCancel();
       return;
@@ -67,7 +76,9 @@ export function ConfirmationModal({
       animationType="fade"
       transparent={true}
       visible={visible}
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (!confirmLockRef.current) onClose();
+      }}
     >
       <View style={styles.overlay}>
         <View
