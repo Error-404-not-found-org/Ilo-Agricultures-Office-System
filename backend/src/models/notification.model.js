@@ -26,6 +26,14 @@ const notificationSchema = new mongoose.Schema(
       type: String,
       enum: ["request", "animal", "record"],
     },
+    dedupeKey: {
+      type: String,
+      default: undefined,
+    },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: undefined,
+    },
     title: {
       type: String,
       required: true,
@@ -40,6 +48,11 @@ const notificationSchema = new mongoose.Schema(
     },
   },
   { timestamps: true }
+);
+
+notificationSchema.index(
+  { dedupeKey: 1 },
+  { unique: true, sparse: true, name: "uniq_notification_dedupe_key" },
 );
 
 export const Notification = mongoose.model("Notification", notificationSchema);

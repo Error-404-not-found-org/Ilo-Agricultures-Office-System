@@ -46,7 +46,11 @@ export const createAIRequestWithGuard = async (payload) => {
   return await Insemination.create({
     ...payload,
     attemptNumber,
-    previousAttemptId: lastPerformedAttempt?._id || null,
+    previousAttemptId: payload.previousAttemptId || lastPerformedAttempt?._id || null,
+    attemptSeriesId:
+      payload.attemptSeriesId ||
+      lastPerformedAttempt?.attemptSeriesId ||
+      undefined,
     activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
   });
   } catch (error) {

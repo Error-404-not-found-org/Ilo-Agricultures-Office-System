@@ -228,6 +228,8 @@ export default function TasksScreen() {
             filteredTasks.map((t: any) => {
               const badge = getTaskBadgeStyle(t.taskType);
               const catColor = getCategoryColor(t.category);
+              const pregnancyReadiness =
+                t.taskType === "PD" ? t.pregnancyReadiness : null;
               return (
                 <TouchableOpacity
                   key={t._id}
@@ -253,6 +255,23 @@ export default function TasksScreen() {
                   <Text className="font-bold text-base mt-1 flex-1" numberOfLines={2} style={{ color: colors.textPrimary }}>
                     {t.notes}
                   </Text>
+
+                  {pregnancyReadiness && !pregnancyReadiness.isEligible && (
+                    <View
+                      className="rounded-xl p-3 mt-3 border"
+                      style={{
+                        backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#fffbeb",
+                        borderColor: isDark ? "rgba(245,158,11,0.30)" : "#fde68a",
+                      }}
+                    >
+                      <Text style={{ color: isDark ? "#fbbf24" : "#92400e", fontFamily: "Outfit_700Bold", fontSize: 12 }}>
+                        Pregnancy check not yet available
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 11, marginTop: 3, lineHeight: 16 }}>
+                        {pregnancyReadiness.reason}
+                      </Text>
+                    </View>
+                  )}
 
                   <View className="rounded-lg p-3 mt-3" style={{ backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc" }}>
                     <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textPrimary, fontSize: 13 }}>

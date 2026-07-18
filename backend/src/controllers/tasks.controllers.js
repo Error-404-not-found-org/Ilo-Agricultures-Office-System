@@ -8,6 +8,7 @@ import { User } from "../models/user.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import mongoose from "mongoose";
+import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
 
 
 const TASK_TYPE_ALIASES = {
@@ -135,8 +136,23 @@ export const getTasks = async (req, res) => {
     }
 
     const tasks = await taskQuery;
+    const tasksWithReadiness = await Promise.all(
+      tasks.map(async (task) => {
+        const taskObj = typeof task.toObject === "function" ? task.toObject() : task;
+        if (task.taskType !== "PD") return taskObj;
 
-    res.status(200).json(tasks);
+        const inseminationQuery = task.metadata?.inseminationId
+          ? { _id: task.metadata.inseminationId, deletedAt: null }
+          : { verificationTaskId: task._id, deletedAt: null };
+        const insemination = await Insemination.findOne(inseminationQuery);
+        return {
+          ...taskObj,
+          pregnancyReadiness: getPregnancyCheckReadiness({ insemination }),
+        };
+      }),
+    );
+
+    res.status(200).json(tasksWithReadiness);
   } catch (error) {
     console.error("Error fetching tasks:", error);
     res.status(500).json({ message: "Failed to fetch tasks" });
@@ -380,6 +396,7 @@ export const getTaskById = async (req, res) => {
       const insemination = await Insemination.findOne(inseminationQuery)
         .populate("animalId", "animalId earTag species breed color");
       taskObj.insemination = insemination || null;
+      taskObj.pregnancyReadiness = getPregnancyCheckReadiness({ insemination });
     }
 
     res.status(200).json(taskObj);

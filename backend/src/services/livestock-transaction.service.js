@@ -7,6 +7,7 @@ import { Pregnancy } from "../models/pregnancy.model.js";
 import { Task } from "../models/task.model.js";
 import { AppError } from "../utils/app-error.js";
 import { ANIMAL_REPRODUCTIVE_STATUS, reproductiveStatusForPregnancyResult } from "../domain/livestock-workflow.js";
+import { assertPregnancyDiagnosisWindow } from "../domain/pregnancy-readiness.js";
 
 const runTransaction = async (work) => {
   const session = await mongoose.startSession();
@@ -19,76 +20,7 @@ const runTransaction = async (work) => {
   }
 };
 
-const PREGNANCY_DIAGNOSIS_MINIMUM_DAYS = 60;
-const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 const FINAL_PREGNANCY_RESULTS = new Set(["pregnant", "not_pregnant"]);
-const assertPregnancyDiagnosisWindow = ({
-  insemination,
-  diagnosisDate,
-}) => {
-  const status = String(insemination?.status || "")
-    .trim()
-    .toLowerCase();
-  if (!["done", "resolved", "completed"].includes(status)) {
-    throw new AppError(
-      "Pregnancy diagnosis requires a completed AI service.",
-      {
-        status: 409,
-        code: "AI_SERVICE_NOT_COMPLETED",
-      },
-    );
-  }
-  const aiDate = insemination?.inseminationDate
-    ? new Date(insemination.inseminationDate)
-    : null;
-  if (!aiDate || Number.isNaN(aiDate.getTime())) {
-    throw new AppError(
-      "The completed AI service date is missing or invalid.",
-      {
-        status: 409,
-        code: "AI_SERVICE_DATE_REQUIRED",
-      },
-    );
-  }
-  const eligibleDate = new Date(aiDate);
-  eligibleDate.setUTCDate(
-    eligibleDate.getUTCDate() + PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
-  );
-  if (diagnosisDate.getTime() < eligibleDate.getTime()) {
-    const daysPostAI = Math.max(
-      0,
-      Math.floor(
-        (diagnosisDate.getTime() - aiDate.getTime()) /
-          MILLISECONDS_PER_DAY,
-      ),
-    );
-    const eligibleDateLabel = eligibleDate.toLocaleDateString(
-      "en-US",
-      {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-        timeZone: "UTC",
-      },
-    );
-    throw new AppError(
-      `Pregnancy diagnosis is not yet available. This animal is ${daysPostAI} days post-AI. Diagnosis is available on ${eligibleDateLabel}.`,
-      {
-        status: 422,
-        code: "PREGNANCY_CHECK_TOO_EARLY",
-        details: {
-          daysPostAI,
-          minimumDays: PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
-          eligibleDate: eligibleDate.toISOString(),
-        },
-      },
-    );
-  }
-  return {
-    aiDate,
-    eligibleDate,
-  };
-};
 export const completeInsemination = ({ id, updateData, technicianId, farmerId, animalId, animalTag }) =>
   runTransaction(async (session) => {
     const request = await Insemination.findOneAndUpdate(

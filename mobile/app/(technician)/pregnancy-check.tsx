@@ -30,6 +30,10 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { calculateTargetCalvingDate } from "@/lib/cattleCore";
+import {
+  getPregnancyCheckReadiness,
+  PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
+} from "@/lib/reproductionEligibility";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function PregnancyCheckScreen() {
@@ -61,37 +65,17 @@ export default function PregnancyCheckScreen() {
   const [result, setResult] = useState<"Pregnant" | "Empty" | "">("");
   const [note, setNote] = useState("");
 
-  const PREGNANCY_DIAGNOSIS_MINIMUM_DAYS = 60;
-  const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
   const getPregnancyDiagnosisTiming = (attempt: any) => {
-    const aiDate = attempt?.inseminationDate
-      ? new Date(attempt.inseminationDate)
-      : null;
-    if (!aiDate || Number.isNaN(aiDate.getTime())) {
-      return {
-        aiDate: null,
-        eligibleDate: null,
-        daysPostAI: null,
-        isReady: false,
-      };
-    }
-    const eligibleDate = new Date(aiDate);
-    eligibleDate.setUTCDate(
-      eligibleDate.getUTCDate() +
-        PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
-    );
-    const daysPostAI = Math.max(
-      0,
-      Math.floor(
-        (Date.now() - aiDate.getTime()) /
-          MILLISECONDS_PER_DAY,
-      ),
-    );
+    const readiness = getPregnancyCheckReadiness(attempt);
     return {
-      aiDate,
-      eligibleDate,
-      daysPostAI,
-      isReady: Date.now() >= eligibleDate.getTime(),
+      ...readiness,
+      aiDate: attempt?.inseminationDate
+        ? new Date(attempt.inseminationDate)
+        : null,
+      eligibleDate: readiness.availableDate
+        ? new Date(readiness.availableDate)
+        : null,
+      isReady: readiness.isEligible,
     };
   };
   // VALID INSEMINATIONS FILTER

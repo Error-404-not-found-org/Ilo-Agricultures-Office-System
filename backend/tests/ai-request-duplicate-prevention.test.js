@@ -166,6 +166,34 @@ test("cancelled and rejected requests do not consume an official AI attempt numb
   assert.equal(records.length, 3);
 });
 
+test("Attempt 2 links to Attempt 1 and preserves the breeding series", async () => {
+  installMemoryStore([
+    {
+      _id: "attempt-1",
+      animalId: "animal-1",
+      farmerId: "farmer-1",
+      status: AI_STATUS.DONE,
+      inseminationDate: new Date("2026-06-01T00:00:00.000Z"),
+      attemptNumber: 1,
+      attemptSeriesId: "series-1",
+      isSuccess: false,
+      outcome: "Failed (Re-heat)",
+      outcomeVerificationStatus: "verified",
+    },
+  ]);
+  const attempt2 = await createAIRequestWithGuard({
+    animalId: "animal-1",
+    farmerId: "farmer-1",
+    status: AI_STATUS.PENDING,
+    previousAttemptId: "attempt-1",
+    attemptSeriesId: "series-1",
+  });
+
+  assert.equal(attempt2.attemptNumber, 2);
+  assert.equal(attempt2.previousAttemptId, "attempt-1");
+  assert.equal(attempt2.attemptSeriesId, "series-1");
+});
+
 test("only a completed and verified failed AI attempt can start re-insemination", () => {
   const base = {
     status: AI_STATUS.DONE,

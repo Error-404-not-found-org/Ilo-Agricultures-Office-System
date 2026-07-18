@@ -24,6 +24,7 @@ export interface SpeciesProfile {
 
 export interface EligibilityResult {
   isEligible: boolean;
+  code?: string;
   reason?: string;
 }
 
@@ -125,20 +126,36 @@ export function checkInseminationAgeEligibility(
   birthDate: Date | string | undefined,
   species: string,
 ): EligibilityResult {
-  if (!birthDate) return { isEligible: true };
+  if (!birthDate) {
+    return {
+      isEligible: false,
+      code: "BIRTH_DATE_REQUIRED",
+      reason: "Birth date is required before insemination eligibility can be verified. Complete the animal profile first.",
+    };
+  }
 
-  const ageInMonths = calculateAgeInMonths(birthDate);
+  const parsedBirthDate = new Date(birthDate);
+  if (Number.isNaN(parsedBirthDate.getTime())) {
+    return {
+      isEligible: false,
+      code: "INVALID_BIRTH_DATE",
+      reason: "The animal birth date is invalid. Correct the animal profile before recording AI.",
+    };
+  }
+
+  const ageInMonths = calculateAgeInMonths(parsedBirthDate);
   const normSpecies = normalizeSpecies(species);
   const profile = SPECIES_PROFILES[normSpecies] || SPECIES_PROFILES["Cattle"];
 
   if (ageInMonths < profile.minBreedingAgeMonths) {
     return {
       isEligible: false,
+      code: "BELOW_MINIMUM_BREEDING_AGE",
       reason: `Animal is too young for insemination. Current age is ${ageInMonths === 0 ? "Newborn" : ageInMonths + " months"}. Minimum required for ${species} is ${profile.minBreedingAgeMonths} months.`,
     };
   }
 
-  return { isEligible: true };
+  return { isEligible: true, code: "ELIGIBLE" };
 }
 
 /**

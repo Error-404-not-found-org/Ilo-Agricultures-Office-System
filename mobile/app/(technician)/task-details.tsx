@@ -82,6 +82,10 @@ export default function TaskDetailsScreen() {
   };
 
   const handlePrimaryAction = () => {
+    if (task?.taskType === "PD" && !task?.pregnancyReadiness?.isEligible) {
+      toast.error(task?.pregnancyReadiness?.reason || "Pregnancy check is not yet available.");
+      return;
+    }
     const action = getPrimaryAction();
     if (!action.pathname) {
       handleComplete();
@@ -146,6 +150,8 @@ export default function TaskDetailsScreen() {
   }
 
   const isClaimed = !!task.technicianId;
+  const pregnancyReadiness =
+    task.taskType === "PD" ? task.pregnancyReadiness : null;
 
   const farmLocation = task.farmerId?.farmLocation;
   const farmerCoords =
@@ -389,6 +395,29 @@ export default function TaskDetailsScreen() {
             </View>
           )}
 
+          {pregnancyReadiness && !pregnancyReadiness.isEligible && (
+            <View
+              style={[
+                styles.section,
+                styles.cardContainer,
+                {
+                  backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#fffbeb",
+                  borderColor: isDark ? "rgba(245,158,11,0.30)" : "#fde68a",
+                },
+              ]}
+            >
+              <View style={styles.sectionHeader}>
+                <Info size={18} color={isDark ? "#fbbf24" : "#92400e"} />
+                <Text style={[styles.sectionTitle, { color: isDark ? "#fbbf24" : "#92400e" }]}>
+                  Pregnancy check not yet available
+                </Text>
+              </View>
+              <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 20 }}>
+                {pregnancyReadiness.reason}
+              </Text>
+            </View>
+          )}
+
           {/* Save/Action Button */}
           {!isClaimed ? (
             <TouchableOpacity
@@ -432,7 +461,7 @@ export default function TaskDetailsScreen() {
             </View>
           ) : (
             <TouchableOpacity
-              disabled={completing}
+              disabled={completing || Boolean(pregnancyReadiness && !pregnancyReadiness.isEligible)}
               style={[
                 styles.completeBtn,
                 {
@@ -442,7 +471,7 @@ export default function TaskDetailsScreen() {
                       ? "#10b981"
                       : "#00643B",
                   shadowColor: isDark ? "transparent" : "#00643B",
-                  opacity: completing ? 0.7 : 1,
+                  opacity: completing || (pregnancyReadiness && !pregnancyReadiness.isEligible) ? 0.55 : 1,
                 },
               ]}
               onPress={handlePrimaryAction}
@@ -452,7 +481,11 @@ export default function TaskDetailsScreen() {
               ) : (
                 <>
                   <CheckCircle size={20} color="#fff" />
-                  <Text style={styles.completeBtnText}>{getPrimaryAction().label}</Text>
+                  <Text style={styles.completeBtnText}>
+                    {pregnancyReadiness && !pregnancyReadiness.isEligible
+                      ? "Pregnancy Check Unavailable"
+                      : getPrimaryAction().label}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>

@@ -23,6 +23,7 @@ import {
   activeRequestKeyForAnimal,
   createAIRequestWithGuard,
 } from "../services/ai-request-creation.service.js";
+import { getAnimalAIEligibility } from "../services/ai-eligibility.service.js";
 import { activeHealthCaseKey } from "../services/health-request-creation.service.js";
 import {
   verifyPostpartumWindow,
@@ -857,64 +858,17 @@ export const walkInInsemination = async (req, res) => {
     }
 
     if (!animal) {
-      if (!animalDetails?.animalId && !animalDetails?.earTag) {
-        return res
-          .status(400)
-          .json({ message: "Animal details are required." });
-      }
-      const newAnimalId =
-        animalDetails.animalId || `ANM-${Date.now().toString().slice(-6)}`;
-      animal = await Animal.create({
-        farmerId: farmer._id,
-        animalId: newAnimalId,
-        earTag: animalDetails.earTag || undefined,
-        species: animalDetails.species || "Cattle",
-        breed: animalDetails.breed || "Crossbreed",
-        color: animalDetails.color || "Not Provided",
-        gender: "Female",
-        barangay: farmer.address?.barangay || "Not Provided",
-        isVerified: true,
-      });
-    }
-
-    // Gender check
-    if (animal.gender !== "Female") {
       return res.status(400).json({
+        code: "ANIMAL_SELECTION_REQUIRED",
         message:
-          `Insemination is restricted to female animals only. This animal is registered as ${animal.gender || "unknown"}.`,
+          "Select an existing animal before recording AI. Historical or incomplete animal records must be entered through an authorized historical-record workflow.",
       });
     }
-
-    const ageCheck = checkInseminationAgeEligibility(
-      animal.birthDate,
-      animal.species,
-    );
-    if (!ageCheck.isEligible) {
-      return res.status(400).json({ message: ageCheck.reason });
-    }
-
-    if (animal.reproductiveStatus === "Pregnant") {
+    if (String(animal.farmerId) !== String(farmer._id)) {
       return res.status(400).json({
-        message:
-          "This animal is currently marked as pregnant. Record calving or update the pregnancy outcome before recording another AI.",
+        code: "ANIMAL_FARMER_MISMATCH",
+        message: "The selected animal does not belong to the selected farmer.",
       });
-    }
-
-    if (animal.lastCalvingDate) {
-      const targetDate =
-        inseminationDetails?.inseminationDate ||
-        new Date().toISOString().split("T")[0];
-      const windowCheck = verifyPostpartumWindow(
-        animal.lastCalvingDate,
-        targetDate,
-        animal.species,
-        animal.breed,
-      );
-      if (!windowCheck.isSafe) {
-        return res.status(400).json({
-          message: `Postpartum recovery period is not complete. ${windowCheck.daysPassed} day(s) have passed; ${windowCheck.requiredDays} day(s) are required before insemination.`,
-        });
-      }
     }
 
     // Combine date and time into a single timestamp
@@ -930,6 +884,23 @@ export const walkInInsemination = async (req, res) => {
     }
     if (entryDate.getTime() > Date.now() + 5 * 60 * 1000) {
       return res.status(400).json({ message: "AI service date cannot be in the future." });
+    }
+    if (entryDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+      return res.status(400).json({
+        code: "HISTORICAL_AI_WORKFLOW_REQUIRED",
+        message:
+          "The Record AI form is for a current field service. Older AI records require an authorized historical-record workflow.",
+      });
+    }
+
+    const eligibility = await getAnimalAIEligibility({ animal, at: entryDate });
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        code: eligibility.code,
+        message: eligibility.reason,
+        nextAction: eligibility.nextAction,
+        nextActionAt: eligibility.nextActionAt,
+      });
     }
 
     const insemination = await createAIRequestWithGuard({

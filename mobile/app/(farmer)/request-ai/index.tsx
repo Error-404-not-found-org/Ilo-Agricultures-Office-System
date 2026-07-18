@@ -32,6 +32,7 @@ import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
+import { getAIEligibility } from "@/lib/reproductionEligibility";
 import { safeBack } from "@/utils/navigation";
 import { useApi } from "@/lib/api";
 import {
@@ -458,13 +459,13 @@ export default function RequestAI() {
         return;
       }
 
-      const ageCheck = checkInseminationAgeEligibility(
-        selectedAnimal.birthDate,
-        selectedAnimal.species,
-      );
-      if (!ageCheck.isEligible) {
+      const eligibility = getAIEligibility({
+        animal: selectedAnimal,
+        activeRequest,
+      });
+      if (!eligibility.isEligible) {
         setAgeCheckReason(
-          ageCheck.reason || "Animal is too young for insemination.",
+          eligibility.reason || "This animal is not currently eligible for insemination.",
         );
         setAgeModalVisible(true);
         return;

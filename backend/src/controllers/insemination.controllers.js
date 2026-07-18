@@ -11,6 +11,7 @@ import {
 } from "../services/ai-request-creation.service.js";
 import { isActiveAIRequestStatus } from "../domain/status-vocabulary.js";
 import { createAuditLog } from "../services/audit.service.js";
+import { getAnimalAIEligibility } from "../services/ai-eligibility.service.js";
 
 export const createInsemination = async (req, res) => {
   try {
@@ -38,15 +39,17 @@ export const createInsemination = async (req, res) => {
       return res.status(400).json({ message: "Animal does not belong to the selected farmer." });
     }
 
-    // Gender check
-    if (animal.gender !== "Female") {
-      return res.status(400).json({ message: "Insemination is restricted to female animals only. This animal is registered as Male." });
-    }
-
-    // Age Check Check
-    const ageCheck = checkInseminationAgeEligibility(animal.birthDate, animal.species);
-    if (!ageCheck.isEligible) {
-        return res.status(400).json({ message: ageCheck.reason });
+    const eligibility = await getAnimalAIEligibility({
+      animal,
+      at: inseminationDate ? new Date(inseminationDate) : new Date(),
+    });
+    if (!eligibility.eligible) {
+      return res.status(400).json({
+        code: eligibility.code,
+        message: eligibility.reason,
+        nextAction: eligibility.nextAction,
+        nextActionAt: eligibility.nextActionAt,
+      });
     }
 
     // 3. Create insemination

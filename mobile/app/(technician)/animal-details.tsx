@@ -52,6 +52,10 @@ import { AnimalProfileSkeleton } from "@/features/animals/components/skeletons/A
 import { TimelineSkeleton } from "@/features/animals/components/skeletons/TimelineSkeleton";
 import { MedicalHistorySkeleton } from "@/features/animals/components/skeletons/MedicalHistorySkeleton";
 import { formatAddressLabel } from "@/constants/address";
+import {
+  getAIEligibility,
+  getPregnancyCheckReadiness,
+} from "@/lib/reproductionEligibility";
 
 export default function AnimalDetails() {
   const { colors, isDark } = useTheme();
@@ -386,6 +390,16 @@ export default function AnimalDetails() {
   };
 
   const nextAction = getNextAction();
+  const latestCompletedInsemination = (animal.inseminations || []).find(
+    (item: any) =>
+      ["done", "resolved", "completed"].includes(
+        String(item?.status || "").toLowerCase(),
+      ) && item?.inseminationDate,
+  );
+  const pregnancyReadiness = getPregnancyCheckReadiness(
+    latestCompletedInsemination,
+  );
+  const aiEligibility = getAIEligibility({ animal });
 
   return (
     <View
@@ -887,6 +901,7 @@ export default function AnimalDetails() {
                       } as any)}
                       color={isDark ? "#34d399" : "#00643B"}
                       bg={isDark ? "rgba(16, 185, 129, 0.1)" : "#f0fdf4"}
+                      disabled={!aiEligibility.isEligible}
                     />
                     <ActionCard
                       title="Pregnancy Check"
@@ -904,8 +919,41 @@ export default function AnimalDetails() {
                       } as any)}
                       color={isDark ? "#60a5fa" : "#1d4ed8"}
                       bg={isDark ? "rgba(59, 130, 246, 0.1)" : "#eff6ff"}
+                      disabled={!pregnancyReadiness.isEligible}
                     />
                   </View>
+                  {!aiEligibility.isEligible && (
+                    <View
+                      className="rounded-xl border p-3"
+                      style={{
+                        backgroundColor: isDark ? "rgba(245,158,11,0.08)" : "#fffbeb",
+                        borderColor: isDark ? "rgba(245,158,11,0.25)" : "#fde68a",
+                      }}
+                    >
+                      <Text style={{ color: isDark ? "#fbbf24" : "#92400e", fontFamily: "Outfit_700Bold", fontSize: 11 }}>
+                        Record AI unavailable
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 11, lineHeight: 16, marginTop: 2 }}>
+                        {aiEligibility.reason}
+                      </Text>
+                    </View>
+                  )}
+                  {!pregnancyReadiness.isEligible && latestCompletedInsemination && (
+                    <View
+                      className="rounded-xl border p-3"
+                      style={{
+                        backgroundColor: isDark ? "rgba(59,130,246,0.08)" : "#eff6ff",
+                        borderColor: isDark ? "rgba(59,130,246,0.25)" : "#bfdbfe",
+                      }}
+                    >
+                      <Text style={{ color: isDark ? "#60a5fa" : "#1d4ed8", fontFamily: "Outfit_700Bold", fontSize: 11 }}>
+                        Pregnancy check not yet available
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 11, lineHeight: 16, marginTop: 2 }}>
+                        {pregnancyReadiness.reason}
+                      </Text>
+                    </View>
+                  )}
                   <View className="flex-row gap-3">
                     <ActionCard
                       title="Record Calving"
@@ -2612,13 +2660,16 @@ interface ActionCardProps {
   onPress: () => void;
   color: string;
   bg: string;
+  disabled?: boolean;
 }
 
-const ActionCard = ({ title, subtitle, icon, onPress, color, bg }: ActionCardProps) => {
+const ActionCard = ({ title, subtitle, icon, onPress, color, bg, disabled = false }: ActionCardProps) => {
   const { isDark } = useTheme();
   return (
     <TouchableOpacity
       onPress={onPress}
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       activeOpacity={0.7}
       style={{
         flex: 1,
@@ -2635,6 +2686,7 @@ const ActionCard = ({ title, subtitle, icon, onPress, color, bg }: ActionCardPro
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
+        opacity: disabled ? 0.45 : 1,
       }}
     >
       <View

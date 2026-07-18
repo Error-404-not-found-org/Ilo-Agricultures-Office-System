@@ -15,6 +15,14 @@ interface NotificationDetails {
     message: string;
     type: 'ai-request' | 'health-request' | 'system';
     linkType?: 'request' | 'animal' | 'record';
+    metadata?: {
+      animalId?: string;
+      observationId?: string;
+      taskId?: string | null;
+      reportType?: string;
+      reportedAt?: string;
+      deepLinkTarget?: string;
+    };
     createdAt: string;
     senderId: {
       _id: string;
@@ -139,6 +147,13 @@ export default function NotificationDetailsScreen() {
     }
 
     if (role === "technician" || role === "veterinarian") {
+      if (notification.metadata?.taskId) {
+        router.push({
+          pathname: "/(technician)/task-details",
+          params: { id: notification.metadata.taskId },
+        } as any);
+        return;
+      }
       router.push({
         pathname: "/(technician)/request-details",
         params: {

@@ -30,6 +30,7 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { generatePregnancyTimeline, TimelineMilestones } from "@/lib/cattleCore";
+import { getPregnancyCheckReadiness } from "@/lib/reproductionEligibility";
 
 export default function PregnancyVerificationScreen() {
   const { id } = useLocalSearchParams();
@@ -57,6 +58,10 @@ export default function PregnancyVerificationScreen() {
   // Date picker visibility states
   const [showCheckedAtPicker, setShowCheckedAtPicker] = useState(false);
   const [showNextCheckDatePicker, setShowNextCheckDatePicker] = useState(false);
+  const pregnancyReadiness =
+    insem
+      ? getPregnancyCheckReadiness(insem, checkedAt)
+      : task?.pregnancyReadiness || null;
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -90,6 +95,12 @@ export default function PregnancyVerificationScreen() {
   }, [id, api]);
 
   const handleVerify = async () => {
+    if (!pregnancyReadiness?.isEligible) {
+      toast.error(
+        pregnancyReadiness?.reason || "Pregnancy check is not yet available.",
+      );
+      return;
+    }
     if (!verificationResult) {
       toast.error("Please select a verification result.");
       return;
@@ -292,10 +303,34 @@ export default function PregnancyVerificationScreen() {
           {/* Verification Outcome Form */}
           <Text style={[styles.sectionTitle, { color: isDark ? "#34d399" : "#00643B" }]}>Verification Form</Text>
 
+          {pregnancyReadiness && !pregnancyReadiness.isEligible && (
+            <View
+              style={[
+                styles.card,
+                {
+                  backgroundColor: isDark ? "rgba(245,158,11,0.10)" : "#fffbeb",
+                  borderColor: isDark ? "rgba(245,158,11,0.30)" : "#fde68a",
+                  marginBottom: 20,
+                },
+              ]}
+            >
+              <View style={styles.cardHeader}>
+                <Info size={20} color={isDark ? "#fbbf24" : "#92400e"} />
+                <Text style={[styles.cardTitle, { color: isDark ? "#fbbf24" : "#92400e" }]}>
+                  Pregnancy check not yet available
+                </Text>
+              </View>
+              <Text style={{ color: colors.textSecondary, lineHeight: 20 }}>
+                {pregnancyReadiness.reason}
+              </Text>
+            </View>
+          )}
+
           {/* Outcome Segmented Control */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Pregnancy Diagnosis Outcome</Text>
           <View style={styles.segmentedControl}>
             <TouchableOpacity
+              disabled={!pregnancyReadiness?.isEligible}
               style={[
                 styles.segmentBtn,
                 verificationResult === "pregnant" && [styles.segmentBtnActive, { backgroundColor: isDark ? "#10b981" : "#00643B" }],
@@ -314,6 +349,7 @@ export default function PregnancyVerificationScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              disabled={!pregnancyReadiness?.isEligible}
               style={[
                 styles.segmentBtn,
                 verificationResult === "not_pregnant" && [styles.segmentBtnActive, { backgroundColor: "#ef4444" }],
@@ -332,6 +368,7 @@ export default function PregnancyVerificationScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              disabled={!pregnancyReadiness?.isEligible}
               style={[
                 styles.segmentBtn,
                 verificationResult === "return_to_heat" && [styles.segmentBtnActive, { backgroundColor: "#f59e0b" }],
@@ -350,6 +387,7 @@ export default function PregnancyVerificationScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              disabled={!pregnancyReadiness?.isEligible}
               style={[
                 styles.segmentBtn,
                 verificationResult === "needs_recheck" && [styles.segmentBtnActive, { backgroundColor: "#3b82f6" }],
@@ -375,13 +413,19 @@ export default function PregnancyVerificationScreen() {
               (method) => (
                 <TouchableOpacity
                   key={method}
+                  disabled={!pregnancyReadiness?.isEligible}
                   style={[
                     styles.pillBtn,
-                    checkMethod === method && [
-                      styles.pillBtnActive,
-                      { backgroundColor: isDark ? "#34d399" : "#00643B" }
-                    ],
-                    { borderColor: colors.border, backgroundColor: isDark ? colors.card : "#f8fafc" }
+                    {
+                      borderColor: checkMethod === method
+                        ? isDark ? "#047857" : "#00643B"
+                        : colors.border,
+                      backgroundColor: checkMethod === method
+                        ? isDark ? "#047857" : "#00643B"
+                        : colors.card,
+                      opacity: pregnancyReadiness?.isEligible ? 1 : 0.5,
+                    },
+                    checkMethod === method && styles.pillBtnActive,
                   ]}
                   onPress={() => setCheckMethod(method)}
                 >
@@ -402,6 +446,7 @@ export default function PregnancyVerificationScreen() {
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Checked At</Text>
           <TouchableOpacity
             style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border }]}
+            disabled={!pregnancyReadiness?.isEligible}
             onPress={() => setShowCheckedAtPicker(true)}
           >
             <CalendarIcon size={18} color={colors.textSecondary} />
@@ -416,6 +461,7 @@ export default function PregnancyVerificationScreen() {
               <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Next Recheck Date</Text>
               <TouchableOpacity
                 style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border }]}
+                disabled={!pregnancyReadiness?.isEligible}
                 onPress={() => setShowNextCheckDatePicker(true)}
               >
                 <CalendarIcon size={18} color={colors.textSecondary} />
@@ -429,6 +475,7 @@ export default function PregnancyVerificationScreen() {
           {/* Notes */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Technician notes</Text>
           <TextInput
+            editable={Boolean(pregnancyReadiness?.isEligible)}
             multiline
             numberOfLines={4}
             placeholder="Add diagnosis details, health notes, recommendation..."
@@ -447,11 +494,14 @@ export default function PregnancyVerificationScreen() {
 
           {/* Submit Button */}
           <TouchableOpacity
-            disabled={submitting}
+            disabled={submitting || !pregnancyReadiness?.isEligible}
             style={[
               styles.submitBtn,
               {
-                backgroundColor: submitting ? "#34d399" : isDark ? "#10b981" : "#00643B",
+                backgroundColor:
+                  submitting || !pregnancyReadiness?.isEligible
+                    ? colors.textMuted
+                    : isDark ? "#10b981" : "#00643B",
                 shadowColor: isDark ? "transparent" : "#00643B",
               },
             ]}

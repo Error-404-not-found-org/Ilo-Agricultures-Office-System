@@ -62,6 +62,7 @@ import {
 import { AnimalProfileSkeleton } from "../components/skeletons/AnimalProfileSkeleton";
 import { TimelineSkeleton } from "../components/skeletons/TimelineSkeleton";
 import { MedicalHistorySkeleton } from "../components/skeletons/MedicalHistorySkeleton";
+import { getReInseminationAvailability } from "@/lib/reproductionEligibility";
 
 interface AnimalDetailsScreenProps {
   id: string;
@@ -459,6 +460,18 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
     totalAttempts > 0
       ? Math.round((successfulAttempts / totalAttempts) * 100)
       : 0;
+  const latestObservation = (animal.inseminations || []).find(
+    (item: any) => item?.farmerOutcomeReport,
+  );
+  const showObservationSummary = Boolean(
+    latestObservation &&
+      (["Inseminated", "Likely Pregnant"].includes(
+        animal.reproductiveStatus || "",
+      ) ||
+        latestObservation.verificationStatus === "pending" ||
+        latestObservation.outcomeVerificationStatus === "reported"),
+  );
+  const reInsemination = getReInseminationAvailability(animal);
 
   const timelineEvents = timelineData?.events || [];
   const healthRecords = animalRecordsData?.records || [];
@@ -1340,8 +1353,90 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     </View>
                   </View>
 
+                  {showObservationSummary && (
+                    <View
+                      className="p-4 rounded-2xl border mb-4"
+                      style={{
+                        backgroundColor: isDark ? "rgba(139,92,246,0.08)" : "#f5f3ff",
+                        borderColor: isDark ? "rgba(167,139,250,0.25)" : "#ddd6fe",
+                      }}
+                    >
+                      <Text style={{ fontFamily: "Outfit_800ExtraBold", color: isDark ? "#c4b5fd" : "#6d28d9", fontSize: 14 }}>
+                        Farmer report submitted
+                      </Text>
+                      <Text style={{ fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                        Awaiting technician verification
+                      </Text>
+                      <View className="mt-4 gap-2">
+                        <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_600SemiBold", fontSize: 12 }}>
+                          Reported outcome: {String(latestObservation.farmerOutcomeReport).replaceAll("_", " ")}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                          Selected signs: {(latestObservation.farmerObservationSigns || []).join(", ") || "None selected"}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                          Farmer notes: {latestObservation.farmerObservationNotes || "No notes provided"}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                          Reported: {latestObservation.farmerOutcomeReportedAt
+                            ? new Date(latestObservation.farmerOutcomeReportedAt).toLocaleString("en-US")
+                            : "Date unavailable"}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                          Submitted by: {animal.farmerId?.name || "Farmer"}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                          Verification status: {latestObservation.verificationStatus === "pending" || latestObservation.outcomeVerificationStatus === "reported" ? "Awaiting technician verification" : String(latestObservation.verificationStatus || latestObservation.outcomeVerificationStatus || "Not requested").replaceAll("_", " ")}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                          Technician next action: Review this observation and perform pregnancy verification when eligible.
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
+                  {reInsemination.isAvailable && reInsemination.latestAttempt && (
+                    <View
+                      className="p-4 rounded-2xl border mb-4"
+                      style={{
+                        backgroundColor: isDark ? "rgba(16,185,129,0.08)" : "#ecfdf5",
+                        borderColor: isDark ? "rgba(52,211,153,0.25)" : "#a7f3d0",
+                      }}
+                    >
+                      <Text style={{ fontFamily: "Outfit_800ExtraBold", color: primaryColor, fontSize: 15 }}>
+                        Re-insemination available
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 6 }}>
+                        The previous attempt on {new Date(reInsemination.latestAttempt.inseminationDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} was marked unsuccessful because {String(reInsemination.latestAttempt.failureReason).replaceAll("_", " ")}.
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 }}>
+                        This request creates Attempt #{(reInsemination.latestAttempt.attemptNumber || 1) + 1} and keeps it linked to the previous breeding series.
+                      </Text>
+                      <TouchableOpacity
+                        className="rounded-xl py-3 items-center mt-4"
+                        style={{ backgroundColor: primaryColor }}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(farmer)/request-ai",
+                            params: {
+                              requestId: reInsemination.latestAttempt._id,
+                              mode: "re-inseminate",
+                              animalId: animal._id,
+                              earTag: animal.earTag || animal.animalId,
+                            },
+                          } as any)
+                        }
+                      >
+                        <Text style={{ color: "white", fontFamily: "Outfit_700Bold" }}>
+                          Request Re-insemination
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
                   {/* Breeding outcome reporting */}
                   {animal.reproductiveStatus?.toLowerCase() === "inseminated" &&
+                    !animal.inseminations?.[0]?.farmerOutcomeReport &&
                     (() => {
                       const latestInsemination = animal.inseminations?.[0];
 

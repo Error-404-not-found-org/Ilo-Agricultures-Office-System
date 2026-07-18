@@ -29,6 +29,7 @@ import {
   findActiveAIRequest,
   isVerifiedFailedAIAttempt,
 } from "../services/ai-request-creation.service.js";
+import { notifyTechniciansOfBreedingObservation } from "../services/breeding-observation-notification.service.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -892,8 +893,9 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         ? [evidenceImageUrl]
         : [];
 
+    const observationReportedAt = new Date();
     request.farmerOutcomeReport = reportType;
-    request.farmerOutcomeReportedAt = new Date();
+    request.farmerOutcomeReportedAt = observationReportedAt;
     request.farmerObservationSigns = Array.isArray(signs) ? signs : [];
     request.farmerObservationNotes = notes || "";
     request.evidencePhotos = photos;
@@ -1011,6 +1013,18 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         },
       }),
     ]);
+
+    await notifyTechniciansOfBreedingObservation({
+      farmer: req.user,
+      animal,
+      insemination: request,
+      task: verificationTask,
+      reportType,
+      signs: Array.isArray(signs) ? signs : [],
+      notes,
+      reportedAt: observationReportedAt,
+      verificationRequested,
+    });
 
     res.status(200).json({
       message: "Breeding observation saved.",

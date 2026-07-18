@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Modal,
   FlatList,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
@@ -30,7 +30,11 @@ import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianC
 import { useWalkInInseminationMutation } from "@/features/technician/hooks/useTechnicianFieldRecords";
 import { getAnimalsByFarmer } from "@/features/technician/services/animalManagement.service";
 import { ILOILO_MUNICIPALITY_OPTIONS } from "@/constants/address";
-import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "@/lib/cattleCore";
+import { getAIEligibility } from "@/lib/reproductionEligibility";
+
+const readRouteParam = (value: string | string[] | undefined) =>
+  Array.isArray(value) ? value[0] : value;
+const isMongoId = (value?: string) => Boolean(value && /^[a-f\d]{24}$/i.test(value));
 
 const getReproductiveStatusStyle = (status?: string) => {
   switch (status) {
@@ -55,12 +59,26 @@ const getReproductiveStatusStyle = (status?: string) => {
 
 export default function RecordAIScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{
+    farmerId?: string | string[];
+    animalId?: string | string[];
+    source?: string | string[];
+  }>();
   const api = useApi();
   const { isDark, colors } = useTheme();
   const { clientsQuery } = useTechnicianClients();
   const walkInInseminationMutation = useWalkInInseminationMutation();
+  const prefillAppliedRef = useRef(false);
+  const routeFarmerId = readRouteParam(params.farmerId);
+  const routeAnimalId = readRouteParam(params.animalId);
+  const routeSource = readRouteParam(params.source);
+  const isProfileLaunch =
+    routeSource === "animal-profile" &&
+    isMongoId(routeFarmerId) &&
+    isMongoId(routeAnimalId);
+  const [profileContextLocked, setProfileContextLocked] = useState(false);
 
-  const farmers = clientsQuery.data || [];
+  const farmers = useMemo(() => clientsQuery.data || [], [clientsQuery.data]);
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [showFarmerModal, setShowFarmerModal] = useState(false);
 
@@ -98,37 +116,8 @@ export default function RecordAIScreen() {
 
   const animalWarning = useMemo(() => {
     if (!selectedAnimal) return null;
-
-    if (selectedAnimal.gender === "Male" || (selectedAnimal.gender && selectedAnimal.gender.toLowerCase() === "male")) {
-      return "Artificial insemination is only available for female cattle.";
-    }
-
-    const ageCheck = checkInseminationAgeEligibility(selectedAnimal.dob, selectedAnimal.species || "Cattle");
-    if (!ageCheck.isEligible) {
-      return ageCheck.reason || "Animal is too young for breeding.";
-    }
-
-    if (selectedAnimal.reproductiveStatus === "Pregnant") {
-      return "There is already an active pregnancy registered for this animal.";
-    }
-
-    if (["Inseminated", "Likely Pregnant"].includes(selectedAnimal.reproductiveStatus || "")) {
-      return "This animal is currently under reproductive monitoring.";
-    }
-
-    if (selectedAnimal.lastCalvingDate) {
-      const recovery = verifyPostpartumWindow(
-        selectedAnimal.lastCalvingDate,
-        new Date(),
-        selectedAnimal.species || "Cattle",
-        selectedAnimal.breed
-      );
-      if (!recovery.isSafe) {
-        return `Animal is in the postpartum recovery lockout window. Voluntary waiting period is ${recovery.requiredDays} days (${recovery.daysPassed} days passed).`;
-      }
-    }
-
-    return null;
+    const eligibility = getAIEligibility({ animal: selectedAnimal });
+    return eligibility.isEligible ? null : eligibility.reason;
   }, [selectedAnimal]);
 
   const [sireBreed, setSireBreed] = useState("");
@@ -180,6 +169,7 @@ export default function RecordAIScreen() {
   // Quick Registration States removed
 
   const handleFarmerSelect = async (farmer: any) => {
+    if (profileContextLocked) return;
     setSelectedFarmer(farmer);
     setShowFarmerModal(false);
     setSelectedAnimal(null);
@@ -195,6 +185,63 @@ export default function RecordAIScreen() {
       setLoadingAnimals(false);
     }
   };
+
+  const handleAnimalSelect = async (animal: any) => {
+    if (profileContextLocked && String(animal._id) !== String(routeAnimalId)) return;
+    setLoadingAnimals(true);
+    try {
+      const response = await api.get(`/animals/${animal._id}`);
+      setSelectedAnimal(response.data);
+      setShowAnimalModal(false);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to load the animal eligibility record.");
+    } finally {
+      setLoadingAnimals(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isProfileLaunch || prefillAppliedRef.current || farmers.length === 0) return;
+    prefillAppliedRef.current = true;
+
+    const applyProfileContext = async () => {
+      const farmer = farmers.find((item: any) => String(item._id) === routeFarmerId);
+      if (!farmer) {
+        toast.error("The animal owner could not be resolved. Select the farmer manually.");
+        return;
+      }
+
+      setLoadingAnimals(true);
+      try {
+        const [farmerAnimals, animalResponse] = await Promise.all([
+          getAnimalsByFarmer(api, farmer._id),
+          api.get(`/animals/${routeAnimalId}`),
+        ]);
+        const list = Array.isArray(farmerAnimals)
+          ? farmerAnimals
+          : farmerAnimals?.data || [];
+        const animal = animalResponse.data;
+        if (
+          String(animal?._id) !== routeAnimalId ||
+          String(animal?.farmerId?._id || animal?.farmerId) !== routeFarmerId
+        ) {
+          throw new Error("ANIMAL_FARMER_MISMATCH");
+        }
+        setSelectedFarmer(farmer);
+        setAnimals(list);
+        setSelectedAnimal(animal);
+        setProfileContextLocked(true);
+      } catch (error) {
+        console.error(error);
+        toast.error("The supplied animal and owner do not match. Select them manually.");
+      } finally {
+        setLoadingAnimals(false);
+      }
+    };
+
+    applyProfileContext();
+  }, [api, farmers, isProfileLaunch, routeAnimalId, routeFarmerId]);
 
   const handleSave = async () => {
     toast.dismiss();
@@ -284,7 +331,8 @@ export default function RecordAIScreen() {
         </View>
 
         <TouchableOpacity
-          onPress={() => setShowFarmerModal(true)}
+          onPress={() => !profileContextLocked && setShowFarmerModal(true)}
+          disabled={profileContextLocked}
           className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
         >
           <View className="flex-row items-center flex-1">
@@ -302,6 +350,11 @@ export default function RecordAIScreen() {
           </View>
           <ChevronDown size={20} color={isDark ? "#6b7280" : "#94a3b8"} />
         </TouchableOpacity>
+        {profileContextLocked && (
+          <Text className="-mt-4 mb-5 text-xs" style={{ color: colors.textSecondary }}>
+            Owner locked to the animal profile that opened this form.
+          </Text>
+        )}
 
         {/* ANIMAL SELECTION */}
         {selectedFarmer && (
@@ -351,7 +404,8 @@ export default function RecordAIScreen() {
               </View>
             ) : (
               <TouchableOpacity
-                onPress={() => setShowAnimalModal(true)}
+                onPress={() => !profileContextLocked && setShowAnimalModal(true)}
+                disabled={profileContextLocked}
                 className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-5 flex-row items-center justify-between shadow-sm"
               >
                 <View className="flex-row items-center flex-1">
@@ -424,6 +478,17 @@ export default function RecordAIScreen() {
         )}
 
         {/* AI DETAILS */}
+        <View
+          className="rounded-2xl border p-4 mb-4"
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+        >
+          <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_700Bold", fontSize: 13 }}>
+            Current AI field service
+          </Text>
+          <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 11, lineHeight: 17, marginTop: 3 }}>
+            Use this form for a service performed now. Older AI records require the authorized historical-record workflow.
+          </Text>
+        </View>
         <View className="bg-emerald-50/50 dark:bg-emerald-900/10 p-6 rounded-[32px] mb-8 border border-emerald-100 dark:border-emerald-800/50">
           <View className="flex-row items-center gap-2 mb-4">
             <MaterialCommunityIcons
@@ -954,10 +1019,7 @@ export default function RecordAIScreen() {
                 showsVerticalScrollIndicator={false}
                 renderItem={({ item }) => (
                   <TouchableOpacity
-                    onPress={() => {
-                      setSelectedAnimal(item);
-                      setShowAnimalModal(false);
-                    }}
+                    onPress={() => handleAnimalSelect(item)}
                     className={`flex-row items-center bg-slate-50 dark:bg-slate-800 border p-5 rounded-[24px] mb-3 ${selectedAnimal?._id === item._id ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20" : "border-slate-100 dark:border-slate-700"}`}
                   >
                     <View className="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 rounded-full items-center justify-center mr-4">
@@ -1075,7 +1137,11 @@ export default function RecordAIScreen() {
           display="default"
           onChange={handleDateChange}
           maximumDate={status === "done" ? new Date() : undefined}
-          minimumDate={status === "in-progress" ? new Date() : undefined}
+          minimumDate={
+            status === "in-progress"
+              ? new Date()
+              : new Date(Date.now() - 24 * 60 * 60 * 1000)
+          }
         />
       )}
 
