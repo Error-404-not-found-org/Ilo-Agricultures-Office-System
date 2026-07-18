@@ -338,12 +338,29 @@ export const getAnimalRecords = async (req, res) => {
     }
 
     const [inseminations, pregnancies, calvings, healthRequests, medicalRecords] = await Promise.all([
-      Insemination.find(animalQuery).sort({ createdAt: -1 }).populate("technicianId approvedBy", "name role").lean(),
-      Pregnancy.find(animalQuery).sort({ createdAt: -1 }).populate("inseminationId").lean(),
+      Insemination.find(animalQuery)
+        .sort({ createdAt: -1 })
+        .populate("technicianId approvedBy", "name role")
+        .populate("previousAttemptId", "attemptNumber")
+        .lean(),
+      Pregnancy.find(animalQuery)
+        .sort({ createdAt: -1 })
+        .populate("inseminationId", "attemptNumber")
+        .populate("confirmation.confirmedBy", "name role")
+        .lean(),
       Calving.find({ ...animalQuery, ...(Object.keys(dateFilter).length ? { date: dateFilter } : {}) }).sort({ date: -1 }).populate("technicianId", "name role").lean(),
       HealthRequest.find(healthQuery).sort({ createdAt: -1 }).populate("handledBy assignedVeterinarianId", "name role").lean(),
       MedicalRecord.find(medicalQuery).sort({ date: -1 }).populate("technicianId", "name role").lean(),
     ]);
+
+    const nextAttemptByPreviousId = new Map(
+      inseminations
+        .filter((item) => item.previousAttemptId)
+        .map((item) => [
+          String(item.previousAttemptId?._id || item.previousAttemptId),
+          item.attemptNumber,
+        ]),
+    );
 
     const records = [
       ...inseminations.map((item) => ({
@@ -352,6 +369,8 @@ export const getAnimalRecords = async (req, res) => {
         recordDate: item.inseminationDate || item.scheduledDate || item.createdAt,
         title: "A.I. Insemination",
         summary: item.outcome || item.status || "AI service record",
+        previousAttemptReference: item.previousAttemptId?.attemptNumber || null,
+        nextAttemptReference: nextAttemptByPreviousId.get(String(item._id)) || null,
       })),
       ...pregnancies.map((item) => ({
         ...item,
@@ -391,6 +410,9 @@ export const getAnimalRecords = async (req, res) => {
         const requestType = String(item.requestType || "").toLowerCase();
         const itemType = String(item.type || "").toLowerCase();
         if (normalized === "breeding") return recordKind === "insemination";
+        if (normalized === "reproduction") {
+          return recordKind === "insemination" || recordKind === "pregnancy";
+        }
         if (normalized === "pregnancy") return recordKind === "pregnancy";
         if (normalized === "calving") return recordKind === "calving";
         if (normalized === "health") return recordKind === "health_request" || recordKind === "medical_record";

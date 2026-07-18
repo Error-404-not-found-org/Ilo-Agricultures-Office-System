@@ -63,6 +63,11 @@ import { AnimalProfileSkeleton } from "../components/skeletons/AnimalProfileSkel
 import { TimelineSkeleton } from "../components/skeletons/TimelineSkeleton";
 import { MedicalHistorySkeleton } from "../components/skeletons/MedicalHistorySkeleton";
 import { getReInseminationAvailability } from "@/lib/reproductionEligibility";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  ANIMAL_RECORD_CATEGORY_OPTIONS,
+  formatAnimalRecord,
+} from "@/features/animal-records/utils/recordPresentation";
 
 interface AnimalDetailsScreenProps {
   id: string;
@@ -484,6 +489,13 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   });
 
   const nextAction = isFemaleAnimal ? animal.nextAction ?? null : null;
+  const aiUnavailableReason = isMaleAnimal
+    ? "Artificial insemination is available only for female animals."
+    : animal.reproductiveStatus === "Pregnant"
+      ? "This animal already has an active pregnancy."
+      : ["Inseminated", "Likely Pregnant"].includes(animal.reproductiveStatus || "")
+        ? "This animal is currently under reproductive monitoring."
+        : "";
 
   return (
     <View
@@ -959,12 +971,9 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 <View className="flex-row gap-3">
                   <ActionCard
                     title="Request A.I."
-                    subtitle={
-                      isMaleAnimal
-                        ? "Unavailable for male animals"
-                        : "Request breeding service"
-                    }
-                    disabled={isMaleAnimal}
+                    subtitle={aiUnavailableReason || "Request breeding service"}
+                    disabled={Boolean(aiUnavailableReason)}
+                    disabledReason={aiUnavailableReason}
                     icon={<Syringe size={20} color={primaryColor} />}
                     onPress={() => {
                       if (isMaleAnimal) {
@@ -1472,7 +1481,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                 }}
                                 className="text-[15px]"
                               >
-                                Report Breeding Outcome
+                                Report Observation
                               </Text>
 
                               <Text
@@ -1545,7 +1554,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                 style={{ fontFamily: "Outfit_900Black" }}
                                 className="text-white text-[10px] uppercase tracking-widest"
                               >
-                                Request Pregnancy Diagnosis
+                                Request Technician Review
                               </Text>
                             </TouchableOpacity>
                           ) : null}
@@ -2334,14 +2343,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 </Text>
                 <SelectDropdown
                   label="All Records"
-                  options={[
-                    { label: "All Records", value: "All" },
-                    { label: "AI / Breeding", value: "Breeding" },
-                    { label: "Pregnancy", value: "Pregnancy" },
-                    { label: "Calving", value: "Calving" },
-                    { label: "Health", value: "Health" },
-                    { label: "Medical", value: "medical_record" },
-                  ]}
+                  options={[...ANIMAL_RECORD_CATEGORY_OPTIONS]}
                   value={medicalFilter}
                   onChange={(val) => setMedicalFilter(val)}
                   flex={1}
@@ -2353,6 +2355,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
               ) : healthRecords.length > 0 ? (
                 <View className="mt-2 text-primary">
                   {healthRecords.map((record: any, idx: number) => {
+                    const presentation = formatAnimalRecord(record, animal);
                     const recordKind = record.recordKind || record.type;
                     const isAi = recordKind === "insemination";
                     const isPregnancy = recordKind === "pregnancy";
@@ -2367,17 +2370,6 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                           : isRequest
                             ? "Health"
                             : record.type || "Medical";
-                    const title = record.title || (isAi
-                      ? "A.I. Insemination"
-                      : isPregnancy
-                        ? "Pregnancy Check"
-                        : isCalving
-                          ? "Calving / Offspring"
-                          : isRequest
-                            ? `Health Visit (${record.status || "Pending"})`
-                            : record.type || "Medical Record");
-                    const dateVal =
-                      record.recordDate || record.date || record.createdAt;
                     const medicineVal =
                       record.details?.medicineName || record.advice || "";
                     const weightVal = record.details?.weight;
@@ -2393,15 +2385,6 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       record.handledBy?.name ||
                       record.approvedBy?.name ||
                       "";
-                    const badgeLabel = isAi
-                      ? "AI"
-                      : isPregnancy
-                        ? "Pregnancy"
-                        : isCalving
-                          ? "Calving"
-                          : isRequest
-                            ? "Health"
-                            : "Medical";
                     const iconBg = isAi
                       ? isDark
                         ? "rgba(59, 130, 246, 0.15)"
@@ -2436,8 +2419,11 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                           });
                         }}
                         activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${presentation.title}. Full animal identifier ${presentation.fullAnimalReference}. ${presentation.badges.map((badge) => badge.label).join(". ")}.`}
                         className="p-5 rounded-[24px] mb-4 flex-row border"
                         style={{
+                          minHeight: 124,
                           backgroundColor: colors.card,
                           borderColor: colors.border,
                           shadowColor: "#94a3b8",
@@ -2492,7 +2478,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                           )}
                         </View>
 
-                        <View className="flex-1">
+                        <View className="flex-1 min-w-0">
                           <View className="flex-row justify-between items-start mb-1">
                             <Text
                               style={{
@@ -2501,7 +2487,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                               }}
                               className="text-[16px]"
                             >
-                              {title}
+                              {presentation.title}
                             </Text>
                             <View
                               className="px-2.5 py-0.5 rounded-full"
@@ -2514,7 +2500,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                 }}
                                 className="text-[9px] uppercase tracking-wider"
                               >
-                                {badgeLabel}
+                                {presentation.category}
                               </Text>
                             </View>
                           </View>
@@ -2528,9 +2514,38 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                               }}
                               className="text-xs"
                             >
-                              {new Date(dateVal).toLocaleDateString()}
+                              {presentation.date
+                                ? new Date(presentation.date).toLocaleDateString()
+                                : "Date unavailable"}
                             </Text>
                           </View>
+
+                          <View className="flex-row flex-wrap gap-1.5 mb-2">
+                            {presentation.badges.map((badge) => (
+                              <StatusBadge
+                                key={`${badge.domain}-${badge.label}`}
+                                label={badge.label}
+                                domain={badge.domain}
+                                variant={badge.variant}
+                                compact
+                                size={9}
+                              />
+                            ))}
+                          </View>
+
+                          {presentation.details.slice(0, 3).map((detail) => (
+                            <Text
+                              key={detail}
+                              numberOfLines={2}
+                              style={{
+                                fontFamily: "Outfit_500Medium",
+                                color: colors.textSecondary,
+                              }}
+                              className="text-[11px] leading-4 mt-1"
+                            >
+                              {detail}
+                            </Text>
+                          ))}
 
                           {medicineVal ? (
                             <Text
@@ -3703,7 +3718,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
               className="text-xl font-outfit-black text-center"
               style={{ color: colors.textPrimary }}
             >
-              Confirm Pregnancy 🎉
+              Report Possible Pregnancy
             </Text>
 
             <View className="mt-3 px-1 items-center flex-row flex-wrap justify-center gap-1.5">
@@ -3711,7 +3726,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 className="text-sm font-outfit-medium text-center"
                 style={{ color: colors.textSecondary }}
               >
-                Are you sure you want to mark
+                Submit possible pregnancy signs for
               </Text>
               <View className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100/50 dark:border-emerald-900/30 px-2.5 py-0.5 rounded-full">
                 <Text
@@ -3725,7 +3740,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 className="text-sm font-outfit-medium text-center"
                 style={{ color: colors.textSecondary }}
               >
-                as pregnant?
+                ? A technician must review this observation before pregnancy is confirmed.
               </Text>
             </View>
 
@@ -3785,7 +3800,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                   </View>
                   <View className="flex-1">
                     <Text className="text-[10px] font-outfit-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                      Estimated Calving Date
+                      Estimated date if pregnancy is confirmed
                     </Text>
                     <Text className="text-[16px] font-outfit-black text-slate-800 dark:text-white mt-0.5">
                       {formattedDueDate}
@@ -3833,7 +3848,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       color="white"
                     />
                     <Text className="text-white font-outfit-bold text-xs tracking-wide">
-                      YES, PREGNANT
+                      SUBMIT OBSERVATION
                     </Text>
                   </>
                 )}
@@ -4054,6 +4069,7 @@ interface ActionCardProps {
   color: string;
   bg: string;
   disabled?: boolean;
+  disabledReason?: string;
 }
 
 const ActionCard = ({
@@ -4064,11 +4080,15 @@ const ActionCard = ({
   color,
   bg,
   disabled,
+  disabledReason,
 }: ActionCardProps) => {
   const { isDark } = useTheme();
   return (
     <TouchableOpacity
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      accessibilityLabel={`${title}. ${disabled && disabledReason ? disabledReason : subtitle}`}
       onPress={onPress}
       activeOpacity={0.7}
       style={{
@@ -4087,6 +4107,7 @@ const ActionCard = ({
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
+        minHeight: 72,
       }}
     >
       <View
@@ -4120,7 +4141,7 @@ const ActionCard = ({
             fontSize: 9,
             marginTop: 1,
           }}
-          numberOfLines={1}
+          numberOfLines={3}
         >
           {subtitle}
         </Text>

@@ -14,6 +14,7 @@ import type { ActivityFeedItem } from "@/features/farmer-reports/types/farmerRep
 import { FarmerScreen } from "@/features/farmer-ui/components";
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { formatAnimalRecord } from "@/features/animal-records/utils/recordPresentation";
 
 type RecordActivity = ActivityFeedItem & {
   sourceKind?: string;
@@ -71,7 +72,6 @@ export default function AnimalRecordDetailScreen() {
     sourceHint = "",
   ): RecordActivity => {
     const sourceKind = record.recordKind || sourceHint || recordType || record.type;
-    const isHealthRequest = sourceKind === "health_request";
     const isMedicalRecord = sourceKind === "medical_record";
     const isAiRecord =
       sourceKind === "insemination" ||
@@ -85,6 +85,7 @@ export default function AnimalRecordDetailScreen() {
       sourceKind === "calving" ||
       record.type === "calving" ||
       record.type === "Calving";
+    const presentation = formatAnimalRecord(record, animalQuery.data);
 
     const type: ActivityFeedItem["type"] = isAiRecord
       ? "ai"
@@ -100,22 +101,25 @@ export default function AnimalRecordDetailScreen() {
       reportId: record.sourceId || record._id || record.id,
       sourceKind,
       type,
-      title: isAiRecord
-        ? "A.I. Insemination"
-        : isPregnancyRecord
-          ? "Pregnancy Check"
-        : isCalvingRecord
-          ? "Calving / Offspring"
-          : isHealthRequest
-            ? `Health Visit (${record.status || "Pending"})`
-            : record.type || "Medical Record",
-      description: record.description || record.comment || record.summary || "",
+      title: presentation.pageTitle,
+      description:
+        presentation.details.join(" · ") ||
+        record.description ||
+        record.comment ||
+        record.summary ||
+        "",
       date: record.recordDate || record.date || record.createdAt,
-      animalId: record.animalId || {
-        _id: animalId,
-        earTag: animalQuery.data?.earTag,
-        breed: animalQuery.data?.breed,
-        species: animalQuery.data?.species,
+      animalId: {
+        ...(animalQuery.data || {}),
+        ...(record.animalId && typeof record.animalId === "object"
+          ? record.animalId
+          : {}),
+        _id:
+          (record.animalId && typeof record.animalId === "object"
+            ? record.animalId._id
+            : record.animalId) ||
+          animalQuery.data?._id ||
+          animalId,
       },
       details: record.details || {
         status: record.status,
@@ -148,16 +152,26 @@ export default function AnimalRecordDetailScreen() {
         sireBreed: record.sireBreed,
         sireCode: record.sireCode,
         attemptNumber: record.attemptNumber,
+        previousAttempt: record.previousAttemptReference,
+        nextAttempt: record.nextAttemptReference,
+        failureReason: record.failureReason,
         estrus: record.estrus || record.estrusType,
         outcome:
           record.pregnancyDiagnosis?.result ||
           record.pregnancyStatus ||
           record.outcome,
         targetCalvingDate: record.targetCalvingDate,
+        diagnosticMethod: record.confirmation?.methodCode,
+        confirmationStage: record.confirmation?.stage,
+        recheckStatus: record.recheckStatus,
+        relatedAttempt: record.inseminationId?.attemptNumber,
         technician: record.technicianId?.name || record.handledBy?.name || "",
         technicianNote: record.technicianNote || record.note || record.notes,
         calvingEase: record.calvingEase,
         numberOfCalves: record.numberOfCalves,
+        calvingOutcome: record.outcome,
+        livingCalfCount: record.livingCalfCount,
+        stillbornCount: record.stillbornCount,
         calves: record.calves,
       },
     };
@@ -280,7 +294,7 @@ export default function AnimalRecordDetailScreen() {
   return (
     <FarmerScreen scroll={false}>
       <AppPageHeader
-        title="Record Detail"
+        title={foundRecord.title || "Record Detail"}
         subtitle="Service information and recorded observations"
       />
 

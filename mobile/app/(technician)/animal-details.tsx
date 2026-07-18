@@ -47,7 +47,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTechnicianAnimal } from "@/features/technician/hooks/useTechnicianAnimal";
 import { TimelineList } from "@/features/farmer-ui/components";
 import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
-import { useAnimalTimeline, useAnimalHealthHistory } from "@/features/animal-records/hooks/useAnimalTimeline";
+import { useAnimalTimeline, useAnimalRecords } from "@/features/animal-records/hooks/useAnimalTimeline";
 import { AnimalProfileSkeleton } from "@/features/animals/components/skeletons/AnimalProfileSkeleton";
 import { TimelineSkeleton } from "@/features/animals/components/skeletons/TimelineSkeleton";
 import { MedicalHistorySkeleton } from "@/features/animals/components/skeletons/MedicalHistorySkeleton";
@@ -56,6 +56,11 @@ import {
   getAIEligibility,
   getPregnancyCheckReadiness,
 } from "@/lib/reproductionEligibility";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  ANIMAL_RECORD_CATEGORY_OPTIONS,
+  formatAnimalRecord,
+} from "@/features/animal-records/utils/recordPresentation";
 
 export default function AnimalDetails() {
   const { colors, isDark } = useTheme();
@@ -101,10 +106,13 @@ export default function AnimalDetails() {
     fetchNextPage: fetchNextHealthPage,
     hasNextPage: hasNextHealthPage,
     isFetchingNextPage: isFetchingNextHealthPage,
-  } = useAnimalHealthHistory({ animalId: id as string, type: medicalFilter });
+  } = useAnimalRecords({ animalId: id as string, type: medicalFilter });
 
   const [selectedRecord, setSelectedRecord] = useState<any>(null);
   const [recordModalVisible, setRecordModalVisible] = useState(false);
+  const selectedPresentation = selectedRecord
+    ? formatAnimalRecord(selectedRecord, animal)
+    : null;
 
   const displayRecord = selectedRecord ? {
     type: selectedRecord.type || (selectedRecord.recordKind === "health_request" ? (selectedRecord.requestType === "vaccination" ? "Vaccination" : selectedRecord.requestType === "deworming" ? "Deworming" : selectedRecord.requestType === "medicine" ? "Treatment" : "Check-up") : "Medical Record"),
@@ -1238,7 +1246,7 @@ export default function AnimalDetails() {
                   }}
                   className="text-[13px]"
                 >
-                  Medical
+                  Records
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1616,7 +1624,7 @@ export default function AnimalDetails() {
             </View>
           ) : (
             <View className="px-6">
-              {/* Medical Filters selector */}
+              {/* Records Filters selector */}
               <View className="mb-4 flex-row items-center justify-between gap-4">
                 <Text
                   style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary }}
@@ -1626,15 +1634,7 @@ export default function AnimalDetails() {
                 </Text>
                 <SelectDropdown
                   label="All Records"
-                  options={[
-                    { label: "All Records", value: "All" },
-                    { label: "Treatments", value: "Treatment" },
-                    { label: "Vaccinations", value: "Vaccination" },
-                    { label: "Deworming", value: "Deworming" },
-                    { label: "Check-ups", value: "Check-up" },
-                    { label: "Weight Logs", value: "Weight" },
-                    { label: "General Notes", value: "General Note" },
-                  ]}
+                  options={[...ANIMAL_RECORD_CATEGORY_OPTIONS]}
                   value={medicalFilter}
                   onChange={(val) => setMedicalFilter(val)}
                   flex={1}
@@ -1646,12 +1646,17 @@ export default function AnimalDetails() {
               ) : healthRecords.length > 0 ? (
                 <View className="mt-2 text-primary">
                   {healthRecords.map((record: any, idx: number) => {
-                    const isRequest = record.recordKind === "health_request";
-                    const recType = isRequest 
-                      ? (record.requestType === "vaccination" ? "Vaccination" : record.requestType === "deworming" ? "Deworming" : record.requestType === "medicine" ? "Treatment" : "Check-up")
-                      : (record.type || "Medical Record");
-                    const title = isRequest ? `Health Visit (${record.status || "Pending"})` : record.type;
-                    const dateVal = record.recordDate || record.date || record.createdAt;
+                    const presentation = formatAnimalRecord(record, animal);
+                    const recType = record.recordKind === "health_request"
+                      ? record.requestType === "vaccination"
+                        ? "Vaccination"
+                        : record.requestType === "deworming"
+                          ? "Deworming"
+                          : record.requestType === "medicine"
+                            ? "Treatment"
+                            : "Check-up"
+                      : record.type || "Medical Record";
+                    const title = presentation.title;
                     const medicineVal = record.details?.medicineName || record.advice || "";
                     const weightVal = record.details?.weight;
                     const noteVal = record.note || record.technicianNote || record.notes || "";
@@ -1665,8 +1670,11 @@ export default function AnimalDetails() {
                           setRecordModalVisible(true);
                         }}
                         activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${presentation.title}. Full animal identifier ${presentation.fullAnimalReference}. ${presentation.badges.map((badge) => badge.label).join(". ")}.`}
                         className="p-5 rounded-[24px] mb-4 flex-row border"
                         style={{
+                          minHeight: 124,
                           backgroundColor: colors.card,
                           borderColor: colors.border,
                           shadowColor: "#94a3b8",
@@ -1696,6 +1704,23 @@ export default function AnimalDetails() {
                                       : "#f8fafc",
                           }}
                         >
+                          {presentation.category === "Reproduction" && (
+                            <MaterialCommunityIcons
+                              name="calendar-heart"
+                              size={22}
+                              color="#2563EB"
+                            />
+                          )}
+                          {presentation.category === "Calving" && (
+                            <MaterialCommunityIcons
+                              name="cow"
+                              size={22}
+                              color="#65A30D"
+                            />
+                          )}
+                          {presentation.category === "Health" && (
+                            <Stethoscope size={22} color="#F59E0B" />
+                          )}
                           {recType === "Vaccination" && (
                             <Syringe size={22} color="#10B981" />
                           )}
@@ -1720,7 +1745,7 @@ export default function AnimalDetails() {
                           )}
                         </View>
 
-                        <View className="flex-1">
+                        <View className="flex-1 min-w-0">
                           <View className="flex-row justify-between items-start mb-1">
                             <Text
                               style={{
@@ -1742,7 +1767,7 @@ export default function AnimalDetails() {
                                 }}
                                 className="text-[9px] uppercase tracking-wider"
                               >
-                                Medical
+                                {presentation.category}
                               </Text>
                             </View>
                           </View>
@@ -1756,9 +1781,38 @@ export default function AnimalDetails() {
                               }}
                                 className="text-xs"
                             >
-                              {new Date(dateVal).toLocaleDateString()}
+                              {presentation.date
+                                ? new Date(presentation.date).toLocaleDateString()
+                                : "Date unavailable"}
                             </Text>
                           </View>
+
+                          <View className="flex-row flex-wrap gap-1.5 mb-2">
+                            {presentation.badges.map((badge) => (
+                              <StatusBadge
+                                key={`${badge.domain}-${badge.label}`}
+                                label={badge.label}
+                                domain={badge.domain}
+                                variant={badge.variant}
+                                compact
+                                size={9}
+                              />
+                            ))}
+                          </View>
+
+                          {presentation.details.slice(0, 3).map((detail) => (
+                            <Text
+                              key={detail}
+                              numberOfLines={2}
+                              style={{
+                                fontFamily: "Outfit_500Medium",
+                                color: colors.textSecondary,
+                              }}
+                              className="text-[11px] leading-4 mt-1"
+                            >
+                              {detail}
+                            </Text>
+                          ))}
 
                           {record.createdAt && (
                             <Text
@@ -1878,7 +1932,7 @@ export default function AnimalDetails() {
                     }}
                     className="text-lg mb-1"
                   >
-                    No Medical Records
+                    No Records Yet
                   </Text>
                   <Text
                     style={{
@@ -1887,7 +1941,7 @@ export default function AnimalDetails() {
                     }}
                     className="text-center text-sm px-4 leading-5"
                   >
-                    This animal does not have any recorded medical history matching the filter.
+                    This animal does not have any reproduction, health, or calving records matching the filter.
                   </Text>
                 </View>
               )}
@@ -1896,7 +1950,7 @@ export default function AnimalDetails() {
         </ScrollView>
       </View>
 
-      {/* --- MEDICAL RECORD DETAIL DIALOG --- */}
+      {/* --- RECORD DETAIL DIALOG --- */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -1924,11 +1978,7 @@ export default function AnimalDetails() {
                   style={{ fontFamily: "Outfit_900Black" }}
                   className="text-[22px] text-slate-800 dark:text-white leading-7"
                 >
-                  {selectedRecord?.type === "insemination"
-                    ? `A.I. Insemination`
-                    : selectedRecord?.type === "calving"
-                      ? "Calving / Offspring"
-                      : selectedRecord?.type || "Medical Record"}
+                  {selectedPresentation?.pageTitle || "Record Detail"}
                 </Text>
               </View>
               <TouchableOpacity
@@ -1947,6 +1997,42 @@ export default function AnimalDetails() {
             >
               {selectedRecord && (
                 <View className="bg-slate-50 dark:bg-slate-900/50 rounded-2xl p-5 border border-slate-100 dark:border-slate-800 gap-y-4 mb-2">
+                  {selectedPresentation ? (
+                    <View className="gap-2">
+                      <Text
+                        style={{
+                          color: colors.textPrimary,
+                          fontFamily: "Outfit_800ExtraBold",
+                          fontSize: 14,
+                        }}
+                      >
+                        {selectedPresentation.title}
+                      </Text>
+                      <View className="flex-row flex-wrap gap-1.5">
+                        {selectedPresentation.badges.map((badge) => (
+                          <StatusBadge
+                            key={`${badge.domain}-${badge.label}`}
+                            label={badge.label}
+                            domain={badge.domain}
+                            variant={badge.variant}
+                            compact
+                          />
+                        ))}
+                      </View>
+                      {selectedPresentation.details.map((detail) => (
+                        <Text
+                          key={detail}
+                          style={{
+                            color: colors.textSecondary,
+                            fontFamily: "Outfit_500Medium",
+                            fontSize: 12,
+                          }}
+                        >
+                          {detail}
+                        </Text>
+                      ))}
+                    </View>
+                  ) : null}
                   {/* Photo attachment if present */}
                   {selectedRecord.imageUrl ? (
                     <View className="mb-2 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm">

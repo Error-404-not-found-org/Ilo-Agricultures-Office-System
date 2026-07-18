@@ -6,6 +6,10 @@ import { format } from "date-fns";
 import { useTheme } from "@/lib/theme";
 import type { ActivityFeedItem } from "../types/farmerReports.types";
 import DetailRow from "./DetailRow";
+import {
+  formatAnimalReference,
+  getFullAnimalReference,
+} from "@/features/farmer-dashboard/utils/farmerDashboard.transforms";
 
 interface RecordDetailContentProps {
   selectedActivity: ActivityFeedItem;
@@ -96,6 +100,8 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
       {/* Animal Info */}
       {selectedActivity.animalId && (
         <View
+          accessible
+          accessibilityLabel={`Subject animal ${getFullAnimalReference(selectedActivity.animalId)}. ${selectedActivity.animalId.breed || "Breed unavailable"}. ${selectedActivity.animalId.species || "Species unavailable"}.`}
           style={{
             backgroundColor: isDark
               ? "rgba(255,255,255,0.03)"
@@ -124,7 +130,7 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
               color: colors.textPrimary,
             }}
           >
-            Tag: #{selectedActivity.animalId.earTag || "No Tag"}
+            Tag: #{formatAnimalReference(selectedActivity.animalId)}
           </Text>
           <Text
             style={{
@@ -134,8 +140,8 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
               marginTop: 2,
             }}
           >
-            {selectedActivity.animalId.breed || "Unknown Breed"} •{" "}
-            {selectedActivity.animalId.species || "Unknown Species"}
+            {selectedActivity.animalId.breed || "Breed unavailable"} •{" "}
+            {selectedActivity.animalId.species || "Species unavailable"}
           </Text>
         </View>
       )}

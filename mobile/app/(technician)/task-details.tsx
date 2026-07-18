@@ -32,6 +32,14 @@ export default function TaskDetailsScreen() {
 
   const { taskDetailsQuery, claimTaskMutation, completeTaskMutation } = useTechnicianTasks(String(id));
   const { data: task, isLoading, refetch } = taskDetailsQuery;
+  const pregnancyWorkflowStage =
+    task?.metadata?.workflowStage || task?.workflowStage || "initial_confirmation";
+  const initialPregnancyCheckLocked = Boolean(
+    task?.taskType === "PD" &&
+      pregnancyWorkflowStage === "initial_confirmation" &&
+      task?.pregnancyReadiness &&
+      !task.pregnancyReadiness.isEligible,
+  );
 
   const [completing, setCompleting] = useState(false);
   const [claiming, setClaiming] = useState(false);
@@ -73,6 +81,12 @@ export default function TaskDetailsScreen() {
       return { label: "Record Health Assistance", pathname: "/(technician)/health-log" };
     }
     if (taskType === "PD") {
+      if (pregnancyWorkflowStage === "continuation_recheck") {
+        return { label: "Record Continuation Recheck", pathname: "/(technician)/pregnancy-verification" };
+      }
+      if (pregnancyWorkflowStage === "diagnostic_follow_up") {
+        return { label: "Record Diagnostic Follow-up", pathname: "/(technician)/pregnancy-verification" };
+      }
       return { label: "Record Pregnancy Check", pathname: "/(technician)/pregnancy-verification" };
     }
     if (taskType === "CD" || taskType === "Calving") {
@@ -82,7 +96,7 @@ export default function TaskDetailsScreen() {
   };
 
   const handlePrimaryAction = () => {
-    if (task?.taskType === "PD" && !task?.pregnancyReadiness?.isEligible) {
+    if (initialPregnancyCheckLocked) {
       toast.error(task?.pregnancyReadiness?.reason || "Pregnancy check is not yet available.");
       return;
     }
@@ -461,7 +475,14 @@ export default function TaskDetailsScreen() {
             </View>
           ) : (
             <TouchableOpacity
-              disabled={completing || Boolean(pregnancyReadiness && !pregnancyReadiness.isEligible)}
+              disabled={completing || initialPregnancyCheckLocked}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: completing || initialPregnancyCheckLocked }}
+              accessibilityLabel={
+                initialPregnancyCheckLocked
+                  ? `Pregnancy check unavailable. ${pregnancyReadiness?.reason || "Not yet available."}`
+                  : getPrimaryAction().label
+              }
               style={[
                 styles.completeBtn,
                 {
@@ -471,7 +492,7 @@ export default function TaskDetailsScreen() {
                       ? "#10b981"
                       : "#00643B",
                   shadowColor: isDark ? "transparent" : "#00643B",
-                  opacity: completing || (pregnancyReadiness && !pregnancyReadiness.isEligible) ? 0.55 : 1,
+                  opacity: completing || initialPregnancyCheckLocked ? 0.55 : 1,
                 },
               ]}
               onPress={handlePrimaryAction}
@@ -482,7 +503,7 @@ export default function TaskDetailsScreen() {
                 <>
                   <CheckCircle size={20} color="#fff" />
                   <Text style={styles.completeBtnText}>
-                    {pregnancyReadiness && !pregnancyReadiness.isEligible
+                    {initialPregnancyCheckLocked
                       ? "Pregnancy Check Unavailable"
                       : getPrimaryAction().label}
                   </Text>

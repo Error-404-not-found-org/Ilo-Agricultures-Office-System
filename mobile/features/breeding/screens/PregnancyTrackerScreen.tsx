@@ -937,7 +937,7 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
                 marginLeft: 8,
               }}
             >
-              Report Possible Labor
+              Record Calving
             </Text>
           </TouchableOpacity>
 

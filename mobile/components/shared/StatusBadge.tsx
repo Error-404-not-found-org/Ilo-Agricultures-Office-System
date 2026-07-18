@@ -6,7 +6,18 @@ interface StatusBadgeProps {
   label: string;
   variant?: string;
   size?: number;
-  domain?: "service" | "reproduction" | "general";
+  domain?:
+    | "request"
+    | "service"
+    | "outcome"
+    | "observation"
+    | "pregnancy"
+    | "task"
+    | "animal"
+    | "calving"
+    | "health"
+    | "reproduction"
+    | "general";
   compact?: boolean;
 }
 
@@ -103,11 +114,19 @@ export function StatusBadge({
   };
 
   const [foreground, background] = getColors();
-  const accessibleDomain = domain === "service"
-    ? "Service status"
-    : domain === "reproduction"
-      ? "Reproductive status"
-      : "Status";
+  const accessibleDomain: Record<NonNullable<StatusBadgeProps["domain"]>, string> = {
+    request: "Request status",
+    service: "Service status",
+    outcome: "Breeding outcome",
+    observation: "Observation status",
+    pregnancy: "Pregnancy status",
+    task: "Task status",
+    animal: "Animal status",
+    calving: "Calving status",
+    health: "Health status",
+    reproduction: "Reproductive status",
+    general: "Status",
+  };
 
   return (
     <View
@@ -119,18 +138,19 @@ export function StatusBadge({
         paddingHorizontal: compact ? 8 : 10,
         paddingVertical: compact ? 4 : 5,
         alignSelf: "flex-start",
-        maxWidth: compact ? 112 : 180,
+        maxWidth: 180,
         flexShrink: 1,
       }}
-      accessibilityLabel={`${accessibleDomain}: ${label || "Unknown"}`}
+      accessibilityLabel={`${accessibleDomain[domain]}: ${label || "Unknown"}`}
     >
       <Text
-        numberOfLines={1}
+        numberOfLines={2}
         ellipsizeMode="tail"
         style={{
           color: isDark ? colors.textSecondary : foreground,
           fontFamily: "Outfit_700Bold",
           fontSize: size,
+          flexShrink: 1,
         }}
       >
         {label || "Unknown"}
