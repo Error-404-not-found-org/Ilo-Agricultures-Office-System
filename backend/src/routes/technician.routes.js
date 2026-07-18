@@ -3,7 +3,7 @@ import {
   getMyInseminations, getMyProfile, getMyReInseminations, 
   getMyPregnancyChecks, getMyCalvings, getMyNotifications, 
   walkInInsemination, getTechnicianDashboardData, 
-  getAnimalHistory, registerFarmer, recordPregnancyCheck,
+  getAnimalHistory, registerFarmer, recordPregnancyCheck, recordPregnancyContinuation,
   recordCalving, getDashboardStats, getDashboardFeed, getDashboardRegistry, walkInLivestock,
   toggleFarmerVerification, getTechnicianAnalytics, deleteAnimal,
   deletePregnancyCheck, deleteCalving, correctPregnancyCheck, correctCalving, getFieldNotes,
@@ -46,6 +46,7 @@ router.patch("/inseminations/:id/status", updateCanonicalAIRequestStatus);
 router.get("/animal-history/:id", getAnimalHistory);
 router.post("/register-farmer", registerFarmer);
 router.post("/pregnancy-check", recordPregnancyCheck);
+router.post("/pregnancy-checks/:id/continuation-recheck", recordPregnancyContinuation);
 router.post("/record-calving", recordCalving);
 router.patch("/farmers/:id/verify", toggleFarmerVerification);
 router.delete("/animals/:id", deleteAnimal);

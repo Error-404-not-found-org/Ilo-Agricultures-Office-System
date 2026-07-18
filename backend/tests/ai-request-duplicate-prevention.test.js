@@ -213,7 +213,7 @@ test("only a completed and verified failed AI attempt can start re-insemination"
       ...base,
       farmerOutcomeReport: "return_to_heat",
     }),
-    true,
+    false,
   );
   assert.equal(
     isVerifiedFailedAIAttempt({

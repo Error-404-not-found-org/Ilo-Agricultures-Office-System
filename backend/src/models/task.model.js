@@ -93,10 +93,44 @@ const TaskSchema = new mongoose.Schema(
       default: {},
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+    // Task indexes are deployment-managed after read-only duplicate audits.
+    autoIndex: false,
+  },
 );
 
 TaskSchema.index({ taskType: 1, sourceType: 1, dueDate: 1, status: 1 });
 TaskSchema.index({ taskType: 1, sourceType: 1, "metadata.inseminationId": 1 });
+TaskSchema.index({ taskType: 1, "metadata.workflowStage": 1, "metadata.pregnancyId": 1, status: 1 });
+// Deployment intent: allow only one continuation milestone task per Pregnancy.
+// Before explicit production index deployment, run a read-only duplicate audit for this key.
+TaskSchema.index(
+  { taskType: 1, "metadata.workflowStage": 1, "metadata.pregnancyId": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      taskType: "PD",
+      "metadata.workflowStage": "continuation_recheck",
+      "metadata.pregnancyId": { $exists: true },
+    },
+    name: "uniq_pregnancy_continuation_task",
+  },
+);
+// Deployment intent: allow only one Pending diagnostic follow-up per Pregnancy.
+// Audit duplicate Pending rows read-only before explicitly deploying this index.
+TaskSchema.index(
+  { taskType: 1, "metadata.workflowStage": 1, "metadata.pregnancyId": 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      taskType: "PD",
+      "metadata.workflowStage": "diagnostic_follow_up",
+      "metadata.pregnancyId": { $exists: true },
+      status: "Pending",
+    },
+    name: "uniq_open_pregnancy_follow_up_task",
+  },
+);
 
 export const Task = mongoose.model("Task", TaskSchema);

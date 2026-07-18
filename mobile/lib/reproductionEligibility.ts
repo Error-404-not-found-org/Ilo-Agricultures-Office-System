@@ -16,67 +16,42 @@ export interface PregnancyCheckReadiness {
   code: string;
   reason: string;
   daysPostAI: number | null;
-  minimumDays: number;
+  minimumDays: number | null;
   availableDate: string | null;
   availableDateLabel?: string;
+  policyVersion?: string;
+  policyMode?: "legacy_day_60" | "method_based";
+  methods?: {
+    methodCode: string;
+    label: string;
+    enabled: boolean;
+    isEligible: boolean;
+    earliestDaysPostAI: number | null;
+    availableDate: string | null;
+    availableDateLabel?: string | null;
+    daysRemaining: number | null;
+    reasonCode: string;
+    reason: string;
+  }[];
+  earliestAvailableMethod?: unknown;
+  continuationRecheck?: unknown;
 }
 
 export function getPregnancyCheckReadiness(
   insemination: any,
-  at: Date = new Date(),
+  _at: Date = new Date(),
 ): PregnancyCheckReadiness {
-  const status = String(insemination?.status || "").trim().toLowerCase();
-  if (!["done", "resolved", "completed"].includes(status)) {
-    return {
-      isEligible: false,
-      code: "AI_SERVICE_NOT_COMPLETED",
-      reason: "Pregnancy diagnosis requires a completed AI service.",
-      daysPostAI: null,
-      minimumDays: PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
-      availableDate: null,
-    };
-  }
-
-  const aiDate = insemination?.inseminationDate
-    ? new Date(insemination.inseminationDate)
-    : null;
-  if (!aiDate || Number.isNaN(aiDate.getTime())) {
-    return {
-      isEligible: false,
-      code: "AI_SERVICE_DATE_REQUIRED",
-      reason: "The completed AI service date is missing or invalid.",
-      daysPostAI: null,
-      minimumDays: PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
-      availableDate: null,
-    };
-  }
-
-  const availableDate = new Date(aiDate);
-  availableDate.setUTCDate(
-    availableDate.getUTCDate() + PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
-  );
-  const daysPostAI = Math.max(
-    0,
-    Math.floor((at.getTime() - aiDate.getTime()) / (24 * 60 * 60 * 1000)),
-  );
-  const availableDateLabel = availableDate.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-  const isEligible = at.getTime() >= availableDate.getTime();
-
+  const serverReadiness = insemination?.pregnancyReadiness;
+  if (serverReadiness) return serverReadiness as PregnancyCheckReadiness;
   return {
-    isEligible,
-    code: isEligible ? "PREGNANCY_CHECK_AVAILABLE" : "PREGNANCY_CHECK_TOO_EARLY",
-    reason: isEligible
-      ? "Pregnancy check is available."
-      : `Pregnancy check not yet available. This animal is currently ${daysPostAI} days after insemination. The pregnancy check will be available on ${availableDateLabel}.`,
-    daysPostAI,
-    minimumDays: PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
-    availableDate: availableDate.toISOString(),
-    availableDateLabel,
+    isEligible: false,
+    code: "PREGNANCY_READINESS_REQUIRED",
+    reason: "Authoritative pregnancy readiness is unavailable. Refresh this record before continuing.",
+    daysPostAI: null,
+    minimumDays: null,
+    availableDate: null,
+    policyMode: "legacy_day_60",
+    methods: [],
   };
 }
 
@@ -155,7 +130,6 @@ export function getReInseminationAvailability(animal: any) {
     latestAttempt?.isSuccess === false &&
     String(latestAttempt?.outcome || "").startsWith("Failed") &&
     (latestAttempt?.outcomeVerificationStatus === "verified" ||
-      latestAttempt?.farmerOutcomeReport === "return_to_heat" ||
       Boolean(latestAttempt?.reviewedBy) ||
       latestAttempt?.outcome === "Failed (Negative PD)");
 

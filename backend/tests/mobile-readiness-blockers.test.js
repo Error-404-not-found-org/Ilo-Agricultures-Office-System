@@ -36,7 +36,8 @@ test("pregnancy readiness blocks Day 59 with an exact available date", () => {
   assert.match(server.reason, /available on/i);
   const mobile = source("mobile/lib/reproductionEligibility.ts");
   assert.match(mobile, /PREGNANCY_DIAGNOSIS_MINIMUM_DAYS = 60/);
-  assert.match(mobile, /availableDate\.setUTCDate/);
+  assert.match(mobile, /insemination\?\.pregnancyReadiness/);
+  assert.doesNotMatch(mobile, /availableDate\.setUTCDate/);
 });
 
 test("pregnancy readiness enables the current Day-60 policy", () => {
@@ -58,7 +59,8 @@ test("work queue, task details, animal details, and verification form share read
     assert.match(code, /Pregnancy check not yet available/);
   }
   assert.match(task, /pregnancyReadiness && !pregnancyReadiness\.isEligible/);
-  assert.match(form, /disabled=\{submitting \|\| !pregnancyReadiness\?\.isEligible\}/);
+  assert.match(form, /officialDiagnosisReady/);
+  assert.match(form, /pregnancyReadiness\?\.methods/);
 });
 
 test("farmer observation stays visible for Likely Pregnant without creating Pregnancy", () => {
@@ -73,6 +75,7 @@ test("farmer observation stays visible for Likely Pregnant without creating Preg
   assert.match(profile, /farmerObservationSigns/);
   assert.match(profile, /farmerObservationNotes/);
   assert.doesNotMatch(observationHandler, /Pregnancy\.create/);
+  assert.doesNotMatch(observationHandler, /request\.outcome = "Failed \(Re-heat\)"/);
   assert.match(observationHandler, /notifyTechniciansOfBreedingObservation/);
 });
 
@@ -125,9 +128,9 @@ test("one technician receives one contextual notification for the same observati
 
 test("diagnostic methods use one readable selected-state background in both themes", () => {
   const form = source("mobile/app/(technician)/pregnancy-verification.tsx");
-  assert.match(form, /backgroundColor: checkMethod === method/);
+  assert.match(form, /backgroundColor: checkMethod === method\.methodCode/);
   assert.match(form, /isDark \? "#047857" : "#00643B"/);
-  assert.match(form, /checkMethod === method \? "#fff"/);
+  assert.match(form, /checkMethod === method\.methodCode \? "#fff"/);
   assert.doesNotMatch(
     form,
     /pillBtnActive[\s\S]{0,180}backgroundColor: isDark \? colors\.card/,

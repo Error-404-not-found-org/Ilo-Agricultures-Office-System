@@ -64,6 +64,7 @@ export default function PregnancyCheckScreen() {
 
   const [result, setResult] = useState<"Pregnant" | "Empty" | "">("");
   const [note, setNote] = useState("");
+  const [methodCode, setMethodCode] = useState("");
 
   const getPregnancyDiagnosisTiming = (attempt: any) => {
     const readiness = getPregnancyCheckReadiness(attempt);
@@ -77,6 +78,17 @@ export default function PregnancyCheckScreen() {
         : null,
       isReady: readiness.isEligible,
     };
+  };
+  const getPregnancyDiagnosisStatus = (attempt: any) => {
+    const timing = getPregnancyDiagnosisTiming(attempt);
+    if (timing.policyMode === "method_based") {
+      return timing.isReady
+        ? "SELECT AN AVAILABLE DIAGNOSTIC METHOD"
+        : "NO DIAGNOSTIC METHOD IS AVAILABLE YET";
+    }
+    return timing.isReady
+      ? "READY FOR PREGNANCY DIAGNOSIS"
+      : `MONITORING — DAY ${timing.daysPostAI ?? 0} OF ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}`;
   };
   // VALID INSEMINATIONS FILTER
   const validInseminations = inseminations.filter(
@@ -118,6 +130,7 @@ export default function PregnancyCheckScreen() {
     setSelectedAnimal(null);
     setInseminations([]);
     setSelectedInsemination(null);
+    setMethodCode("");
     setResult("");
     setShowFarmerModal(false);
 
@@ -180,6 +193,7 @@ export default function PregnancyCheckScreen() {
   const handleAnimalSelect = async (animal: any) => {
     setSelectedAnimal(animal);
     setSelectedInsemination(null);
+    setMethodCode("");
     setInseminations([]);
     setResult("");
     setShowAnimalModal(false);
@@ -253,6 +267,10 @@ export default function PregnancyCheckScreen() {
       toast.error("Please select a diagnosis result");
       return false;
     }
+    if (timing.policyMode === "method_based" && !methodCode) {
+      toast.error("Please select an available diagnostic method");
+      return false;
+    }
 
     return true;
   };
@@ -265,6 +283,8 @@ export default function PregnancyCheckScreen() {
         inseminationId: selectedInsemination._id || selectedInsemination.id,
         result,
         technicianNote: note,
+        methodCode: methodCode || undefined,
+        policyVersion: selectedDiagnosisTiming.policyVersion,
       };
 
       await api.post("/technician/pregnancy-check", payload);
@@ -333,12 +353,18 @@ export default function PregnancyCheckScreen() {
     selectedInsemination?.inseminationDate || null;
   const selectedDiagnosisTiming =
     getPregnancyDiagnosisTiming(selectedInsemination);
+  const methodBased = selectedDiagnosisTiming.policyMode === "method_based";
+  const methodOptions = selectedDiagnosisTiming.methods || [];
+  const selectedMethod = methodOptions.find(
+    (method: any) => method.methodCode === methodCode,
+  );
   const daysSinceAI =
     selectedDiagnosisTiming.daysPostAI;
   const diagnosisEligibleDate =
     selectedDiagnosisTiming.eligibleDate;
-  const isDiagnosisReady =
-    selectedDiagnosisTiming.isReady;
+  const isDiagnosisReady = methodBased
+    ? Boolean(selectedMethod?.enabled && selectedMethod?.isEligible)
+    : selectedDiagnosisTiming.isReady;
   const diagnosisEligibleDateLabel =
     diagnosisEligibleDate
       ? diagnosisEligibleDate.toLocaleDateString(
@@ -674,9 +700,15 @@ export default function PregnancyCheckScreen() {
                         : "#d97706",
                     }}
                   >
-                    {isDiagnosisReady
-                      ? "Ready for Pregnancy Diagnosis"
-                      : `Monitoring — Day ${daysSinceAI ?? 0} of ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}`}
+                    {methodBased
+                      ? methodCode
+                        ? isDiagnosisReady
+                          ? `${selectedMethod?.label || "Selected method"} is available`
+                          : `${selectedMethod?.label || "Selected method"} is not yet available`
+                        : "Select an available diagnostic method"
+                      : isDiagnosisReady
+                        ? "Ready for Pregnancy Diagnosis"
+                        : `Monitoring — Day ${daysSinceAI ?? 0} of ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}`}
                   </Text>
                 </Text>
                 <Text
@@ -722,15 +754,39 @@ export default function PregnancyCheckScreen() {
                       lineHeight: 15,
                     }}
                   >
-                    Pregnancy diagnosis is locked until Day{" "}
-                    {PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}.
-                    This attempt is currently at Day{" "}
-                    {daysSinceAI ?? 0}. Diagnosis becomes
-                    available on {diagnosisEligibleDateLabel}.
+                    {methodBased
+                      ? selectedMethod?.reason || "Select a diagnostic method that is currently available."
+                      : `Pregnancy diagnosis is locked until Day ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}. This attempt is currently at Day ${daysSinceAI ?? 0}. Diagnosis becomes available on ${diagnosisEligibleDateLabel}.`}
                   </Text>
                 </View>
               )}
             </View>
+          )}
+
+          {selectedInsemination && methodBased && (
+            <>
+              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
+                Diagnostic Method
+              </Text>
+              <View className="gap-2 mb-6">
+                {methodOptions.map((method: any) => (
+                  <TouchableOpacity
+                    key={method.methodCode}
+                    disabled={!method.enabled || !method.isEligible}
+                    onPress={() => setMethodCode(method.methodCode)}
+                    style={{ opacity: method.enabled && method.isEligible ? 1 : 0.5 }}
+                    className={`rounded-2xl border p-4 ${methodCode === method.methodCode ? "border-[#00643B] bg-emerald-50 dark:bg-emerald-950/20" : "border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900"}`}
+                  >
+                    <Text className="font-outfit-bold text-slate-800 dark:text-white">
+                      {method.label}
+                    </Text>
+                    <Text className="font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      {method.isEligible ? "Available now" : method.availableDateLabel || method.reason}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
           )}
 
           {/* DIAGNOSIS RESULT */}
@@ -1057,6 +1113,7 @@ export default function PregnancyCheckScreen() {
                 <TouchableOpacity
                   onPress={() => {
                     setSelectedInsemination(item);
+                    setMethodCode("");
                     setShowInsemModal(false);
                   }}
                   className={`py-4 px-1 border-b border-slate-100 dark:border-slate-800 ${
@@ -1083,12 +1140,7 @@ export default function PregnancyCheckScreen() {
                         : "text-amber-600 dark:text-amber-400"
                     }`}
                   >
-                    {getPregnancyDiagnosisTiming(item).isReady
-                      ? "READY FOR PREGNANCY DIAGNOSIS"
-                      : `MONITORING — DAY ${
-                          getPregnancyDiagnosisTiming(item)
-                            .daysPostAI ?? 0
-                        } OF ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}`}
+                    {getPregnancyDiagnosisStatus(item)}
                   </Text>
                 </TouchableOpacity>
               )}

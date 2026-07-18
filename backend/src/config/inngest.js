@@ -9,6 +9,7 @@ import { Notification } from "../models/notification.model.js";
 import { Config } from "../models/config.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { sendPushNotification } from "../lib/push-notifications.js";
+import { getLegacyPregnancyReminderRelevance } from "../services/pregnancy-reminder-relevance.service.js";
 
 export const inngest = new Inngest({
   id: "ilo-agricultures-office-system-backend",
@@ -193,8 +194,8 @@ const onInseminationApproved = inngest.createFunction(
     await step.sleep("wait-for-pd-window", "35 days"); // Day 25 + 35 = Day 60
 
     const stillRelevant60 = await step.run("check-relevance-60", async () => {
-      const ins = await Insemination.findById(inseminationId);
-      return ins && ins.status === "done" && ins.isSuccess === null;
+      const relevance = await getLegacyPregnancyReminderRelevance({ inseminationId });
+      return relevance.isRelevant;
     });
 
     if (stillRelevant60) {
@@ -224,8 +225,8 @@ const onInseminationApproved = inngest.createFunction(
     await step.sleep("wait-for-missed-pd-window", "15 days"); // Day 60 + 15 = Day 75
 
     const stillRelevant75 = await step.run("check-relevance-75", async () => {
-      const ins = await Insemination.findById(inseminationId);
-      return ins && ins.status === "done" && ins.isSuccess === null;
+      const relevance = await getLegacyPregnancyReminderRelevance({ inseminationId });
+      return relevance.isRelevant;
     });
 
     if (stillRelevant75) {
@@ -454,9 +455,18 @@ const automatedGestationLifecycle = inngest.createFunction(
       const technicians = await User.find({ role: "technician" });
       const title = "⏱️ Pregnancy Diagnosis Due";
 
+      let reminders = 0;
       for (const animal of animals) {
-        animal.reproductiveStatus = "Likely Pregnant";
-        await animal.save();
+        const insemination = await Insemination.findOne({
+          animalId: animal._id,
+          status: "done",
+          deletedAt: null,
+        }).sort({ inseminationDate: -1, createdAt: -1 });
+        if (!insemination) continue;
+        const relevance = await getLegacyPregnancyReminderRelevance({
+          inseminationId: insemination._id,
+        });
+        if (!relevance.isRelevant) continue;
 
         const body = `Animal ${animal.earTag || 'the animal'} was inseminated 60+ days ago. PD is now due.`;
 
@@ -474,8 +484,9 @@ const automatedGestationLifecycle = inngest.createFunction(
             await sendPushNotification(tech.pushToken, title, body);
           }
         }));
+        reminders += 1;
       }
-      return { flagged: animals.length };
+      return { reminders };
     });
 
     // 2. Process Pregnant Animals (Notification before calving)

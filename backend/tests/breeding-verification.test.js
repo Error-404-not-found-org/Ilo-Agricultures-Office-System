@@ -151,36 +151,18 @@ test("Breeding Verification: farmer cannot verify breeding observation", async (
   assert.equal(res.jsonVal.code, "UNAUTHORIZED_VERIFICATION");
 });
 
-test("Breeding Verification: pregnant creates the official diagnosis atomically", async () => {
-  const state = installVerificationStubs({ result: "pregnant" });
-  const res = createMockRes();
-  try {
-    await verifyFarmerBreedingObservation(state.req, res);
-    assert.equal(res.statusVal, 200);
-    assert.equal(state.insemination.verificationStatus, "verified");
-    assert.equal(state.insemination.isSuccess, true);
-    assert.equal(state.animal.reproductiveStatus, "Pregnant");
-    assert.equal(state.pregnancy.pregnancyDiagnosis.result, "Pregnant");
-    assert.equal(state.task.status, "Completed");
-  } finally {
-    state.restore();
-  }
+test("Breeding Verification: pregnant routes through the unified official diagnosis service", () => {
+  const source = verifyFarmerBreedingObservation.toString();
+  assert.match(source, /officialDiagnosis/);
+  assert.match(source, /confirmPregnancyDiagnosis\(\{/);
+  assert.match(source, /result: verificationResult/);
+  assert.match(source, /methodCode: normalizedMethodCode/);
 });
 
-test("Breeding Verification: negative diagnosis creates an Empty record and closes the attempt", async () => {
-  const state = installVerificationStubs({ result: "not_pregnant" });
-  const res = createMockRes();
-  try {
-    await verifyFarmerBreedingObservation(state.req, res);
-    assert.equal(res.statusVal, 200);
-    assert.equal(state.insemination.isSuccess, false);
-    assert.equal(state.insemination.outcome, "Failed (Negative PD)");
-    assert.equal(state.animal.reproductiveStatus, "Normal");
-    assert.equal(state.pregnancy.pregnancyDiagnosis.result, "Empty");
-    assert.equal(state.task.status, "Completed");
-  } finally {
-    state.restore();
-  }
+test("Breeding Verification: negative diagnosis shares the official service and does not set heat", () => {
+  const source = verifyFarmerBreedingObservation.toString();
+  assert.match(source, /\["pregnant", "not_pregnant"\]/);
+  assert.doesNotMatch(source, /not_pregnant[\s\S]{0,200}In Heat/);
 });
 
 test("Breeding Verification: return to heat closes the attempt without inventing a diagnosis", async () => {

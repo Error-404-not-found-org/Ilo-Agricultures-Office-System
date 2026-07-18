@@ -9,6 +9,8 @@ import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import mongoose from "mongoose";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import { withNormalizedPregnancyTaskMetadata } from "../domain/pregnancy-task-workflow.js";
+import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
 
 const TASK_TYPE_ALIASES = {
@@ -136,6 +138,7 @@ export const getTasks = async (req, res) => {
     }
 
     const tasks = await taskQuery;
+    const policyResolution = await loadPregnancyConfirmationPolicy();
     const tasksWithReadiness = await Promise.all(
       tasks.map(async (task) => {
         const taskObj = typeof task.toObject === "function" ? task.toObject() : task;
@@ -147,7 +150,12 @@ export const getTasks = async (req, res) => {
         const insemination = await Insemination.findOne(inseminationQuery);
         return {
           ...taskObj,
-          pregnancyReadiness: getPregnancyCheckReadiness({ insemination }),
+          metadata: withNormalizedPregnancyTaskMetadata(taskObj),
+          pregnancyReadiness: getPregnancyCheckReadiness({
+            insemination,
+            policy: policyResolution.policy,
+            species: taskObj.animalIds?.[0]?.species,
+          }),
         };
       }),
     );
@@ -395,8 +403,14 @@ export const getTaskById = async (req, res) => {
 
       const insemination = await Insemination.findOne(inseminationQuery)
         .populate("animalId", "animalId earTag species breed color");
+      const policyResolution = await loadPregnancyConfirmationPolicy();
+      taskObj.metadata = withNormalizedPregnancyTaskMetadata(taskObj);
       taskObj.insemination = insemination || null;
-      taskObj.pregnancyReadiness = getPregnancyCheckReadiness({ insemination });
+      taskObj.pregnancyReadiness = getPregnancyCheckReadiness({
+        insemination,
+        policy: policyResolution.policy,
+        species: insemination?.animalId?.species || taskObj.animalIds?.[0]?.species,
+      });
     }
 
     res.status(200).json(taskObj);

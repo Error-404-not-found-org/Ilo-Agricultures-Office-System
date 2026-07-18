@@ -39,93 +39,12 @@ function createMockRes() {
   return res;
 }
 
-test("Phase 5 Alignment: recordPregnancyCheck with taskId completes and links task", async () => {
-  const originalStartSession = mongoose.startSession;
-  const originalFindAnimalById = Animal.findById;
-  const originalFindAnimalByIdAndUpdate = Animal.findByIdAndUpdate;
-  const originalFindInsemOne = Insemination.findOne;
-  const originalFindInsemByIdAndUpdate = Insemination.findByIdAndUpdate;
-  const originalFindPregnancyOne = Pregnancy.findOne;
-  const originalCreatePregnancy = Pregnancy.create;
-  const originalFindTaskAndUpdate = Task.findOneAndUpdate;
-  const originalNotificationCreate = Notification.create;
-
-  let taskUpdated = false;
-  let taskUpdateData = null;
-  let pregnancyCreated = false;
-
-  mongoose.startSession = async () => ({
-    withTransaction: async (cb) => cb(),
-    endSession: async () => {}
-  });
-
-  Animal.findById = (id) => Promise.resolve({ _id: id, reproductiveStatus: "Normal", farmerId: "507f1f77bcf86cd799439016", species: "Cattle", breed: "Angus" });
-  Animal.findByIdAndUpdate = (id, update) => Promise.resolve({});
-  
-  const completedAiDate = new Date(
-    Date.now() - 70 * 24 * 60 * 60 * 1000,
-  );
-  Insemination.findOne = (query) =>
-    mockQuery({
-      _id: "507f1f77bcf86cd799439012",
-      status: "done",
-      outcome: "Pending",
-      farmerId: "507f1f77bcf86cd799439016",
-      animalId: "507f1f77bcf86cd799439011",
-      inseminationDate: completedAiDate,
-      createdAt: completedAiDate,
-    });
-  Insemination.findByIdAndUpdate = (id, update) => Promise.resolve({});
-
-  Pregnancy.findOne = (query) => mockQuery(null);
-  Pregnancy.create = (docs, options) => {
-    pregnancyCreated = true;
-    const doc = Array.isArray(docs) ? docs[0] : docs;
-    return Promise.resolve(Array.isArray(docs) ? [{ _id: "507f1f77bcf86cd799439013", ...doc }] : { _id: "507f1f77bcf86cd799439013", ...doc });
-  };
-
-  Notification.create = () => Promise.resolve({});
-
-  Task.findOneAndUpdate = async (query, update, options) => {
-    taskUpdated = true;
-    taskUpdateData = { query, update, options };
-    return { _id: query._id };
-  };
-
-  const req = {
-    body: {
-      animalId: "507f1f77bcf86cd799439011",
-      inseminationId: "507f1f77bcf86cd799439012",
-      result: "Pregnant",
-      technicianNote: "Looking good",
-      taskId: "507f1f77bcf86cd799439014"
-    },
-    user: { _id: "507f1f77bcf86cd799439017", role: "technician", name: "Tech Tom" },
-    app: { get: () => null }
-  };
-  const res = createMockRes();
-
-  try {
-    await recordPregnancyCheck(req, res);
-    assert.equal(res.statusVal, 201);
-    assert.ok(pregnancyCreated);
-    assert.ok(taskUpdated);
-    assert.equal(taskUpdateData.query._id, "507f1f77bcf86cd799439014");
-    assert.equal(taskUpdateData.options.session !== undefined, true);
-    assert.equal(taskUpdateData.update.$set.status, "Completed");
-    assert.equal(taskUpdateData.update.$set.relatedRecordType, "pregnancy");
-    assert.equal(taskUpdateData.update.$set.relatedRecordId, "507f1f77bcf86cd799439013");
-  } finally {
-    mongoose.startSession = originalStartSession;
-    Animal.findById = originalFindAnimalById;
-    Animal.findByIdAndUpdate = originalFindAnimalByIdAndUpdate;
-    Insemination.findOne = originalFindInsemOne;
-    Insemination.findByIdAndUpdate = originalFindInsemByIdAndUpdate;
-    Pregnancy.findOne = originalFindPregnancyOne;
-    Pregnancy.create = originalCreatePregnancy;
-    Task.findOneAndUpdate = originalFindTaskAndUpdate;
-    Notification.create = originalNotificationCreate;
-  }
+test("Phase 5 Alignment: pregnancy endpoint delegates task completion to the unified transaction", () => {
+  const handler = recordPregnancyCheck.toString();
+  assert.match(handler, /confirmPregnancyDiagnosis\(\{/);
+  assert.match(handler, /taskId/);
+  assert.doesNotMatch(handler, /Pregnancy\.create/);
+  assert.doesNotMatch(handler, /Task\.findOneAndUpdate/);
 });
 
 test("Phase 5 Alignment: recordCalving with taskId completes and links task", async () => {

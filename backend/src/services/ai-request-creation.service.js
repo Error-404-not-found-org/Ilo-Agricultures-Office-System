@@ -66,7 +66,6 @@ export const isVerifiedFailedAIAttempt = (request) =>
   String(request?.outcome || "").startsWith("Failed") &&
   (
     request?.outcomeVerificationStatus === "verified" ||
-    request?.farmerOutcomeReport === "return_to_heat" ||
     Boolean(request?.reviewedBy) ||
     // Legacy negative PD outcomes were written only by technician diagnosis
     // paths before explicit verification metadata existed.

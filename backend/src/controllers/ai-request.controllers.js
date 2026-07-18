@@ -22,6 +22,7 @@ import {
   completeInsemination,
   persistBreedingObservationVerification,
 } from "../services/livestock-transaction.service.js";
+import { confirmPregnancyDiagnosis } from "../services/pregnancy-confirmation.service.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import {
   activeRequestKeyForAnimal,
@@ -899,8 +900,9 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     request.farmerObservationSigns = Array.isArray(signs) ? signs : [];
     request.farmerObservationNotes = notes || "";
     request.evidencePhotos = photos;
-    request.verificationRequested = Boolean(verificationRequested);
-    request.verificationStatus = verificationRequested
+    const technicianVerificationRequired = reportType === "return_to_heat" || Boolean(verificationRequested);
+    request.verificationRequested = technicianVerificationRequired;
+    request.verificationStatus = technicianVerificationRequired
       ? "pending"
       : "not_requested";
 
@@ -924,16 +926,9 @@ export const submitFarmerBreedingObservation = async (req, res) => {
 
     if (reportType === "return_to_heat") {
       animal.reproductiveStatus = "In Heat";
-      request.isSuccess = false;
-      request.outcome = "Failed (Re-heat)";
-      request.outcomeVerificationStatus = "verified";
+      request.outcomeVerificationStatus = "reported";
       request.outcomeConfirmationSource = "farmer_return_to_heat";
-      request.outcomeConfirmedBy = req.user._id;
-      request.outcomeConfirmedAt = new Date();
-      request.failureReason = "return_to_heat";
-      nextAction = verificationRequested
-        ? "A technician follow-up task was queued for the return-to-heat observation."
-        : "Return-to-heat observation saved. The animal is marked In Heat.";
+      nextAction = "Return-to-heat observation saved. A technician must verify the failed attempt before re-insemination.";
     }
 
     if (reportType === "unsure") {
@@ -943,7 +938,7 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     }
 
     let verificationTask = null;
-    if (verificationRequested) {
+    if (technicianVerificationRequired) {
       if (request.verificationTaskId) {
         verificationTask = await Task.findById(request.verificationTaskId);
       }
@@ -968,7 +963,7 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     request.statusHistory = request.statusHistory || [];
     request.statusHistory.push({
       status: "farmer_observation",
-      note: `Farmer reported ${reportType}${verificationRequested ? " and requested verification" : ""}.`,
+      note: `Farmer reported ${reportType}${technicianVerificationRequired ? " and requires verification" : ""}.`,
       actorId: req.user._id,
       createdAt: new Date(),
     });
@@ -995,7 +990,7 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         metadata: {
           reportType,
           signs: Array.isArray(signs) ? signs : [],
-          verificationRequested: Boolean(verificationRequested),
+          verificationRequested: technicianVerificationRequired,
           verificationTaskId: verificationTask?._id,
         },
       }),
@@ -1007,7 +1002,7 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         after: {
           reportType,
           signs,
-          verificationRequested: Boolean(verificationRequested),
+          verificationRequested: technicianVerificationRequired,
           verificationTaskId: verificationTask?._id,
           animalStatus: animal.reproductiveStatus,
         },
@@ -1023,7 +1018,7 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       signs: Array.isArray(signs) ? signs : [],
       notes,
       reportedAt: observationReportedAt,
-      verificationRequested,
+      verificationRequested: technicianVerificationRequired,
     });
 
     res.status(200).json({
@@ -1713,6 +1708,8 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       technicianNotes = "",
       nextCheckDate,
       evidencePhotos = [],
+      policyVersion,
+      taskId,
     } = req.body;
 
     if (!["admin", "technician"].includes(req.user.role)) {
@@ -1741,6 +1738,11 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       "visual_observation",
       "farmer_interview",
       "other",
+      "blood_pag",
+      "milk_pag",
+      "rectal_palpation",
+      "clinical_examination",
+      "other_approved",
     ];
     if (!validMethods.includes(checkMethod)) {
       return res.status(400).json({
@@ -1781,20 +1783,61 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       animalStatus: animal.reproductiveStatus,
     };
 
-    const verification = await persistBreedingObservationVerification({
-      animal,
-      insemination: request,
-      verificationResult,
-      checkMethod,
-      checkedAt,
-      technicianNotes,
-      nextCheckDate,
-      evidencePhotos,
-      actorId: req.user._id,
-    });
-    const verifiedRequest = verification.request;
-    const verifiedAnimal = verification.animal;
-    const { task, nextAction, pregnancyRecordCreated } = verification;
+    const officialDiagnosis = ["pregnant", "not_pregnant"].includes(verificationResult);
+    const methodAliases = {
+      palpation: "rectal_palpation",
+      visual_observation: "clinical_examination",
+      farmer_interview: "clinical_examination",
+      other: "other_approved",
+    };
+    const normalizedMethodCode = methodAliases[checkMethod] || checkMethod;
+    let verifiedRequest;
+    let verifiedAnimal;
+    let task;
+    let nextAction;
+    let pregnancyRecordCreated;
+
+    if (officialDiagnosis) {
+      const confirmation = await confirmPregnancyDiagnosis({
+        animalId: animal._id,
+        inseminationId: request._id,
+        result: verificationResult,
+        diagnosisDate: checkedAt,
+        technicianNote: technicianNotes,
+        methodCode: normalizedMethodCode,
+        policyVersion,
+        taskId: taskId || request.verificationTaskId,
+        actor: req.user,
+      });
+      [verifiedRequest, verifiedAnimal] = await Promise.all([
+        Insemination.findById(request._id),
+        Animal.findById(animal._id),
+      ]);
+      task = confirmation.completedTask;
+      nextAction = verificationResult === "pregnant"
+        ? confirmation.continuationTask
+          ? "Pregnancy confirmed. A Day-60 continuation recheck is required."
+          : "Pregnancy confirmed and recorded."
+        : "Animal confirmed not pregnant. Status reset to Normal.";
+      pregnancyRecordCreated = true;
+    } else {
+      const verification = await persistBreedingObservationVerification({
+        animal,
+        insemination: request,
+        verificationResult,
+        checkMethod,
+        checkedAt,
+        technicianNotes,
+        nextCheckDate,
+        evidencePhotos,
+        actorId: req.user._id,
+      });
+      verifiedRequest = verification.request;
+      verifiedAnimal = verification.animal;
+      task = verification.task;
+      nextAction = verification.nextAction;
+      pregnancyRecordCreated = verification.pregnancyRecordCreated;
+    }
 
     if (verificationResult === "pregnant") {
       try {
@@ -1814,8 +1857,8 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       }
     }
 
-    // Create timeline event
-    await createTimelineEvent({
+    // Official diagnoses write their timeline and audit entries in the shared transaction.
+    if (!officialDiagnosis) await createTimelineEvent({
       animalId: verifiedAnimal._id,
       eventType: "technician_breeding_verification_recorded",
       occurredAt: checkedAt ? new Date(checkedAt) : new Date(),
@@ -1836,7 +1879,7 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     });
 
     // Create Audit Log
-    await createAuditLog({
+    if (!officialDiagnosis) await createAuditLog({
       entityType: "Insemination",
       entityId: verifiedRequest._id,
       action: "verify_breeding_observation",

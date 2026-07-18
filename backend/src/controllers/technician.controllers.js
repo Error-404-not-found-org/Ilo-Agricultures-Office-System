@@ -13,7 +13,10 @@ import { FieldNote } from "../models/field-note.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { Task } from "../models/task.model.js";
 import { inngest } from "../config/inngest.js";
-import { persistPregnancyDiagnosis } from "../services/livestock-transaction.service.js";
+import {
+  confirmPregnancyDiagnosis,
+  recordPregnancyContinuationRecheck,
+} from "../services/pregnancy-confirmation.service.js";
 import { persistCalving } from "../services/calving.service.js";
 import {
   correctCalvingRecord,
@@ -24,6 +27,9 @@ import {
   createAIRequestWithGuard,
 } from "../services/ai-request-creation.service.js";
 import { getAnimalAIEligibility } from "../services/ai-eligibility.service.js";
+import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
+import { withPregnancyConfirmationMetadata } from "../domain/pregnancy-confirmation-metadata.js";
 import { activeHealthCaseKey } from "../services/health-request-creation.service.js";
 import {
   verifyPostpartumWindow,
@@ -687,7 +693,7 @@ export const getMyPregnancyChecks = async (req, res) => {
     ]);
 
     res.status(200).json({
-      data: records,
+      data: records.map(withPregnancyConfirmationMetadata),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
@@ -984,6 +990,15 @@ export const getAnimalHistory = async (req, res) => {
       ]);
 
     if (!animal) return res.status(404).json({ message: "Animal not found" });
+    const policyResolution = await loadPregnancyConfirmationPolicy();
+    const inseminationsWithReadiness = inseminations.map((insemination) => ({
+      ...insemination,
+      pregnancyReadiness: getPregnancyCheckReadiness({
+        insemination,
+        policy: policyResolution.policy,
+        species: animal.species,
+      }),
+    }));
 
     // 2. Build Timeline Events
     const timeline = [];
@@ -1026,7 +1041,7 @@ export const getAnimalHistory = async (req, res) => {
     });
 
     // - Pregnancy Checks
-    pregnancies.forEach((p) => {
+    pregnancies.map(withPregnancyConfirmationMetadata).forEach((p) => {
       const result = p.pregnancyDiagnosis?.result || "Pending";
       timeline.push({
         _id: p._id,
@@ -1108,8 +1123,8 @@ export const getAnimalHistory = async (req, res) => {
     res.status(200).json({
       animal,
       timeline,
-      inseminations,
-      pregnancies,
+      inseminations: inseminationsWithReadiness,
+      pregnancies: pregnancies.map(withPregnancyConfirmationMetadata),
       calvings,
       healthRequests,
     });
@@ -1207,7 +1222,16 @@ export const registerFarmer = async (req, res) => {
 
 export const recordPregnancyCheck = async (req, res) => {
   try {
-    const { animalId, result, technicianNote, inseminationId, diagnosisDate, taskId } = req.body;
+    const {
+      animalId,
+      result,
+      technicianNote,
+      inseminationId,
+      diagnosisDate,
+      taskId,
+      methodCode,
+      policyVersion,
+    } = req.body;
     console.log(
       `[recordPregnancyCheck] Recording result for Animal: ${animalId}, Insem: ${inseminationId}, Result: ${result}, Task: ${taskId || "None"}`,
     );
@@ -1218,52 +1242,18 @@ export const recordPregnancyCheck = async (req, res) => {
       });
     }
 
-    const animal = await Animal.findById(animalId);
-    if (!animal) return res.status(404).json({ message: "Animal not found" });
-
-    const insemination = await Insemination.findOne({
-      _id: inseminationId,
+    const confirmation = await confirmPregnancyDiagnosis({
       animalId,
-      deletedAt: null,
-    });
-    if (!insemination) {
-      return res.status(404).json({
-        message:
-          "Insemination attempt not found for this animal. Please select a valid AI record.",
-      });
-    }
-
-    if (insemination.outcome && insemination.outcome !== "Pending") {
-      return res.status(400).json({
-        message: "Pregnancy outcome already determined for this insemination attempt.",
-      });
-    }
-
-    // PROTECTION 1: Don't allow diagnosing a cow that's already pregnant
-    if (animal.reproductiveStatus === "Pregnant") {
-      return res.status(400).json({
-        message: "Animal is already marked as pregnant.",
-      });
-    }
-
-    // PROTECTION 2: Stop overwriting old records
-    const existingPregnancy = await Pregnancy.findOne({ inseminationId });
-    if (existingPregnancy) {
-      return res.status(400).json({
-        message:
-          "Pregnancy diagnosis already recorded for this insemination attempt.",
-      });
-    }
-
-    const pregnancy = await persistPregnancyDiagnosis({
-      animal,
-      insemination,
+      inseminationId,
       result,
       technicianNote,
       diagnosisDate,
       taskId,
-      actorId: req.user._id,
+      methodCode,
+      policyVersion,
+      actor: req.user,
     });
+    const { pregnancy, animal, pregnancyReadiness } = confirmation;
 
     if (animal.farmerId) {
       try {
@@ -1308,7 +1298,12 @@ export const recordPregnancyCheck = async (req, res) => {
       }
     }
 
-    res.status(201).json({ message: "Pregnancy check recorded", pregnancy });
+    res.status(201).json({
+      message: "Pregnancy check recorded",
+      pregnancy,
+      pregnancyReadiness,
+      continuationTask: confirmation.continuationTask,
+    });
   } catch (error) {
     console.error("[recordPregnancyCheck ERROR]", error);
     const transactionUnavailable = /Transaction numbers are only allowed|replica set|mongos/i.test(error.message);
@@ -2005,6 +2000,26 @@ export const deletePregnancyCheck = async (req, res) => {
     message: "Official pregnancy records cannot be deleted. Use the correction endpoint with an audit reason.",
     code: "OFFICIAL_RECORD_CORRECTION_REQUIRED",
   });
+};
+
+export const recordPregnancyContinuation = async (req, res) => {
+  try {
+    const result = await recordPregnancyContinuationRecheck({
+      pregnancyId: req.params.id,
+      result: req.body.result,
+      checkedAt: req.body.checkedAt,
+      notes: req.body.notes,
+      followUpDate: req.body.followUpDate,
+      taskId: req.body.taskId,
+      actor: req.user,
+    });
+    res.status(200).json({ message: "Pregnancy continuation recheck recorded.", data: result });
+  } catch (error) {
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to record pregnancy continuation recheck.",
+      code: error.code,
+    });
+  }
 };
 
 export const deleteCalving = async (req, res) => {

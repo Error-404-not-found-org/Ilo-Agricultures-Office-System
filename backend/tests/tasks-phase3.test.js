@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { Task } from "../src/models/task.model.js";
+import { Config } from "../src/models/config.model.js";
 import { getTasks, claimTask, completeTask } from "../src/controllers/tasks.controllers.js";
 
 // Helper to create mock response object
@@ -24,6 +25,8 @@ function createMockRes() {
 
 test("Tasks Phase 3: getTasks queries by scope=mine", async () => {
   const originalFind = Task.find;
+  const originalConfigFindOne = Config.findOne;
+  Config.findOne = () => Promise.resolve(null);
 
   let capturedQuery = null;
   Task.find = (query) => {
@@ -58,10 +61,13 @@ test("Tasks Phase 3: getTasks queries by scope=mine", async () => {
 
   // Restore
   Task.find = originalFind;
+  Config.findOne = originalConfigFindOne;
 });
 
 test("Tasks Phase 3: getTasks queries by scope=available", async () => {
   const originalFind = Task.find;
+  const originalConfigFindOne = Config.findOne;
+  Config.findOne = () => Promise.resolve(null);
 
   let capturedQuery = null;
   Task.find = (query) => {
@@ -95,6 +101,7 @@ test("Tasks Phase 3: getTasks queries by scope=available", async () => {
 
   // Restore
   Task.find = originalFind;
+  Config.findOne = originalConfigFindOne;
 });
 
 test("Tasks Phase 3: claimTask atomically updates and claims unassigned task", async () => {

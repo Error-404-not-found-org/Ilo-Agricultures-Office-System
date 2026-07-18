@@ -29,10 +29,10 @@ test("Workflow consolidation: legacy AI status route delegates to canonical cont
   );
 });
 
-test("Workflow consolidation: technician pregnancy check uses transaction service", () => {
+test("Workflow consolidation: technician pregnancy check uses unified confirmation service", () => {
   const source = readSource("../src/controllers/technician.controllers.js");
   const handler = functionSource(source, "recordPregnancyCheck", "recordCalving");
-  assert.match(handler, /persistPregnancyDiagnosis\(\{/);
+  assert.match(handler, /confirmPregnancyDiagnosis\(\{/);
   assert.doesNotMatch(handler, /Pregnancy\.create\(/);
   assert.doesNotMatch(handler, /Insemination\.findByIdAndUpdate\(/);
   assert.doesNotMatch(handler, /Animal\.findByIdAndUpdate\(/);

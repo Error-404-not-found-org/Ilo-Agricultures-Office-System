@@ -15,13 +15,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
   Calendar as CalendarIcon,
-  Clock,
-  Sparkles,
   Info,
   CheckCircle,
-  HelpCircle,
   FileText,
-  User,
   Heart,
   CalendarCheck,
 } from "lucide-react-native";
@@ -30,7 +26,6 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { generatePregnancyTimeline, TimelineMilestones } from "@/lib/cattleCore";
-import { getPregnancyCheckReadiness } from "@/lib/reproductionEligibility";
 
 export default function PregnancyVerificationScreen() {
   const { id } = useLocalSearchParams();
@@ -48,9 +43,7 @@ export default function PregnancyVerificationScreen() {
   const [verificationResult, setVerificationResult] = useState<
     "pregnant" | "not_pregnant" | "return_to_heat" | "needs_recheck" | ""
   >("");
-  const [checkMethod, setCheckMethod] = useState<
-    "palpation" | "ultrasound" | "visual_observation" | "farmer_interview" | "other" | ""
-  >("");
+  const [checkMethod, setCheckMethod] = useState("");
   const [checkedAt, setCheckedAt] = useState<Date>(new Date());
   const [nextCheckDate, setNextCheckDate] = useState<Date | null>(null);
   const [notes, setNotes] = useState("");
@@ -58,10 +51,22 @@ export default function PregnancyVerificationScreen() {
   // Date picker visibility states
   const [showCheckedAtPicker, setShowCheckedAtPicker] = useState(false);
   const [showNextCheckDatePicker, setShowNextCheckDatePicker] = useState(false);
-  const pregnancyReadiness =
-    insem
-      ? getPregnancyCheckReadiness(insem, checkedAt)
-      : task?.pregnancyReadiness || null;
+  const pregnancyReadiness = task?.pregnancyReadiness || insem?.pregnancyReadiness || null;
+  const methodBased = pregnancyReadiness?.policyMode === "method_based";
+  const methodOptions = methodBased
+    ? pregnancyReadiness?.methods || []
+    : [
+        { methodCode: "palpation", label: "palpation", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
+        { methodCode: "ultrasound", label: "ultrasound", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
+        { methodCode: "visual_observation", label: "visual observation", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
+        { methodCode: "farmer_interview", label: "farmer interview", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
+        { methodCode: "other", label: "other", enabled: true, isEligible: pregnancyReadiness?.isEligible, reason: pregnancyReadiness?.reason },
+      ];
+  const selectedMethod = methodOptions.find((method: any) => method.methodCode === checkMethod);
+  const officialDiagnosis = ["pregnant", "not_pregnant"].includes(verificationResult);
+  const officialDiagnosisReady = methodBased
+    ? Boolean(selectedMethod?.enabled && selectedMethod?.isEligible)
+    : Boolean(pregnancyReadiness?.isEligible);
 
   useEffect(() => {
     const fetchTask = async () => {
@@ -95,7 +100,7 @@ export default function PregnancyVerificationScreen() {
   }, [id, api]);
 
   const handleVerify = async () => {
-    if (!pregnancyReadiness?.isEligible) {
+    if (officialDiagnosis && !officialDiagnosisReady) {
       toast.error(
         pregnancyReadiness?.reason || "Pregnancy check is not yet available.",
       );
@@ -105,7 +110,7 @@ export default function PregnancyVerificationScreen() {
       toast.error("Please select a verification result.");
       return;
     }
-    if (!checkMethod) {
+    if (!checkMethod && (methodBased || officialDiagnosis)) {
       toast.error("Please select a diagnostic method.");
       return;
     }
@@ -122,6 +127,8 @@ export default function PregnancyVerificationScreen() {
         checkedAt: checkedAt.toISOString(),
         technicianNotes: notes,
         nextCheckDate: nextCheckDate ? nextCheckDate.toISOString() : undefined,
+        policyVersion: pregnancyReadiness?.policyVersion,
+        taskId: task?._id,
       });
 
       toast.success("Pregnancy verification recorded!");
@@ -262,7 +269,7 @@ export default function PregnancyVerificationScreen() {
           </View>
 
           {/* Scientific Milestones Checklist */}
-          {milestones && (
+          {milestones && !methodBased && (
             <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.cardHeader}>
                 <CalendarCheck size={20} color={isDark ? "#34d399" : "#00643B"} />
@@ -330,7 +337,6 @@ export default function PregnancyVerificationScreen() {
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Pregnancy Diagnosis Outcome</Text>
           <View style={styles.segmentedControl}>
             <TouchableOpacity
-              disabled={!pregnancyReadiness?.isEligible}
               style={[
                 styles.segmentBtn,
                 verificationResult === "pregnant" && [styles.segmentBtnActive, { backgroundColor: isDark ? "#10b981" : "#00643B" }],
@@ -349,7 +355,6 @@ export default function PregnancyVerificationScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              disabled={!pregnancyReadiness?.isEligible}
               style={[
                 styles.segmentBtn,
                 verificationResult === "not_pregnant" && [styles.segmentBtnActive, { backgroundColor: "#ef4444" }],
@@ -368,7 +373,6 @@ export default function PregnancyVerificationScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              disabled={!pregnancyReadiness?.isEligible}
               style={[
                 styles.segmentBtn,
                 verificationResult === "return_to_heat" && [styles.segmentBtnActive, { backgroundColor: "#f59e0b" }],
@@ -387,7 +391,6 @@ export default function PregnancyVerificationScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
-              disabled={!pregnancyReadiness?.isEligible}
               style={[
                 styles.segmentBtn,
                 verificationResult === "needs_recheck" && [styles.segmentBtnActive, { backgroundColor: "#3b82f6" }],
@@ -409,34 +412,39 @@ export default function PregnancyVerificationScreen() {
           {/* Diagnostic Check Method */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Diagnostic Method</Text>
           <View style={styles.pillRow}>
-            {(["palpation", "ultrasound", "visual_observation", "farmer_interview", "other"] as const).map(
-              (method) => (
+            {methodOptions.map(
+              (method: any) => (
                 <TouchableOpacity
-                  key={method}
-                  disabled={!pregnancyReadiness?.isEligible}
+                  key={method.methodCode}
+                  disabled={!method.enabled || !method.isEligible}
                   style={[
                     styles.pillBtn,
                     {
-                      borderColor: checkMethod === method
+                      borderColor: checkMethod === method.methodCode
                         ? isDark ? "#047857" : "#00643B"
                         : colors.border,
-                      backgroundColor: checkMethod === method
+                      backgroundColor: checkMethod === method.methodCode
                         ? isDark ? "#047857" : "#00643B"
                         : colors.card,
-                      opacity: pregnancyReadiness?.isEligible ? 1 : 0.5,
+                      opacity: method.enabled && method.isEligible ? 1 : 0.5,
                     },
-                    checkMethod === method && styles.pillBtnActive,
+                    checkMethod === method.methodCode && styles.pillBtnActive,
                   ]}
-                  onPress={() => setCheckMethod(method)}
+                  onPress={() => setCheckMethod(method.methodCode)}
                 >
                   <Text
                     style={[
                       styles.pillText,
-                      { color: checkMethod === method ? "#fff" : colors.textPrimary }
+                      { color: checkMethod === method.methodCode ? "#fff" : colors.textPrimary }
                     ]}
                   >
-                    {method.replaceAll("_", " ")}
+                    {method.label}
                   </Text>
+                  {methodBased && (
+                    <Text style={[styles.pillText, { color: checkMethod === method.methodCode ? "#fff" : colors.textSecondary, fontSize: 9 }]}>
+                      {method.isEligible ? "Available" : method.availableDateLabel || method.reason}
+                    </Text>
+                  )}
                 </TouchableOpacity>
               )
             )}
@@ -446,7 +454,7 @@ export default function PregnancyVerificationScreen() {
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Checked At</Text>
           <TouchableOpacity
             style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border }]}
-            disabled={!pregnancyReadiness?.isEligible}
+            disabled={officialDiagnosis && !officialDiagnosisReady}
             onPress={() => setShowCheckedAtPicker(true)}
           >
             <CalendarIcon size={18} color={colors.textSecondary} />
@@ -461,7 +469,7 @@ export default function PregnancyVerificationScreen() {
               <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Next Recheck Date</Text>
               <TouchableOpacity
                 style={[styles.dateInput, { backgroundColor: colors.card, borderColor: colors.border }]}
-                disabled={!pregnancyReadiness?.isEligible}
+                disabled={officialDiagnosis && !officialDiagnosisReady}
                 onPress={() => setShowNextCheckDatePicker(true)}
               >
                 <CalendarIcon size={18} color={colors.textSecondary} />
@@ -475,7 +483,7 @@ export default function PregnancyVerificationScreen() {
           {/* Notes */}
           <Text style={[styles.formLabel, { color: colors.textPrimary }]}>Technician notes</Text>
           <TextInput
-            editable={Boolean(pregnancyReadiness?.isEligible)}
+            editable={!officialDiagnosis || officialDiagnosisReady}
             multiline
             numberOfLines={4}
             placeholder="Add diagnosis details, health notes, recommendation..."
@@ -494,12 +502,12 @@ export default function PregnancyVerificationScreen() {
 
           {/* Submit Button */}
           <TouchableOpacity
-            disabled={submitting || !pregnancyReadiness?.isEligible}
+            disabled={submitting || (officialDiagnosis && !officialDiagnosisReady)}
             style={[
               styles.submitBtn,
               {
                 backgroundColor:
-                  submitting || !pregnancyReadiness?.isEligible
+                  submitting || (officialDiagnosis && !officialDiagnosisReady)
                     ? colors.textMuted
                     : isDark ? "#10b981" : "#00643B",
                 shadowColor: isDark ? "transparent" : "#00643B",

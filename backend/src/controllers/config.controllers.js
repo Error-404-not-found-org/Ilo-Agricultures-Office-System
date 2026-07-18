@@ -1,4 +1,6 @@
 import { Config } from "../models/config.model.js";
+import { validatePregnancyConfirmationPolicyForWrite } from "../services/pregnancy-policy.service.js";
+import { resolvePregnancyConfirmationPolicy } from "../domain/pregnancy-confirmation-policy.js";
 
 // GET /api/config — Get public configuration (Holiday status)
 export const getConfig = async (req, res) => {
@@ -41,16 +43,32 @@ export const toggleHoliday = async (req, res) => {
 // GET /api/config/settings — Retrieve configuration settings parameters
 export const getConfigSettings = async (req, res) => {
   try {
-    const keys = ["pregnancyWindowDays", "maxAttemptLimit", "emailNotificationEnabled", "smsNotificationEnabled", "registered_breeds"];
+    const keys = ["pregnancyWindowDays", "pregnancyConfirmationPolicy", "maxAttemptLimit", "emailNotificationEnabled", "smsNotificationEnabled", "registered_breeds"];
     const configs = await Config.find({ key: { $in: keys } });
     
     const configMap = {};
     configs.forEach(c => {
       configMap[c.key] = c.value;
     });
+    const pregnancyPolicyResolution = resolvePregnancyConfirmationPolicy({
+      policy: configMap["pregnancyConfirmationPolicy"],
+    });
+    const pregnancyPolicyWarning = pregnancyPolicyResolution.validationError
+      ? {
+          code: pregnancyPolicyResolution.validationError.code || "INVALID_PREGNANCY_POLICY",
+          message: pregnancyPolicyResolution.validationError.message,
+        }
+      : null;
 
     res.status(200).json({
       pregnancyWindowDays: configMap["pregnancyWindowDays"] !== undefined ? configMap["pregnancyWindowDays"] : "60",
+      pregnancyWindowDaysDeprecated: true,
+      pregnancyConfirmationPolicy: configMap["pregnancyConfirmationPolicy"] ?? null,
+      pregnancyConfirmationPolicyStatus: {
+        policyMode: pregnancyPolicyResolution.mode,
+        isValid: !pregnancyPolicyResolution.validationError,
+        warning: pregnancyPolicyWarning,
+      },
       maxAttemptLimit: configMap["maxAttemptLimit"] !== undefined ? configMap["maxAttemptLimit"] : "3",
       emailNotificationEnabled: configMap["emailNotificationEnabled"] !== undefined ? configMap["emailNotificationEnabled"] : true,
       smsNotificationEnabled: configMap["smsNotificationEnabled"] !== undefined ? configMap["smsNotificationEnabled"] : true,
@@ -71,11 +89,19 @@ export const getConfigSettings = async (req, res) => {
 // POST /api/config/settings — Update configuration settings parameters
 export const updateConfigSettings = async (req, res) => {
   try {
-    const { pregnancyWindowDays, maxAttemptLimit, emailNotificationEnabled, smsNotificationEnabled, registered_breeds } = req.body;
+    const { pregnancyWindowDays, pregnancyConfirmationPolicy, maxAttemptLimit, emailNotificationEnabled, smsNotificationEnabled, registered_breeds } = req.body;
     
     const updates = [];
     if (pregnancyWindowDays !== undefined) {
       updates.push(Config.findOneAndUpdate({ key: "pregnancyWindowDays" }, { value: String(pregnancyWindowDays) }, { upsert: true }));
+    }
+    if (pregnancyConfirmationPolicy !== undefined) {
+      const validatedPolicy = validatePregnancyConfirmationPolicyForWrite(pregnancyConfirmationPolicy);
+      updates.push(Config.findOneAndUpdate(
+        { key: "pregnancyConfirmationPolicy" },
+        { value: validatedPolicy },
+        { upsert: true },
+      ));
     }
     if (maxAttemptLimit !== undefined) {
       updates.push(Config.findOneAndUpdate({ key: "maxAttemptLimit" }, { value: String(maxAttemptLimit) }, { upsert: true }));
@@ -95,6 +121,9 @@ export const updateConfigSettings = async (req, res) => {
     res.status(200).json({ message: "Configuration settings updated successfully." });
   } catch (error) {
     console.error("[updateConfigSettings ERROR]", error.message);
-    res.status(500).json({ message: "Failed to update configuration settings." });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to update configuration settings.",
+      code: error.code,
+    });
   }
 };
