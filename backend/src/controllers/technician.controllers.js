@@ -2709,6 +2709,7 @@ export const getTechnicianRequests = async (req, res) => {
       sortBy,
       municipality,
       barangay,
+      includeOperationalTasks,
     } = req.query;
     page = parseInt(page, 10) || 1;
     limit = parseInt(limit, 10) || 10;
@@ -2879,7 +2880,8 @@ export const getTechnicianRequests = async (req, res) => {
     const fetchAI = type === "all" || type === "ai" || !type;
     const fetchHealth = type === "all" || type === "health" || !type;
     const fetchPregnancyChecks =
-      type === "all" || type === "breeding_verification" || !type;
+      includeOperationalTasks !== "false" &&
+      (type === "all" || type === "breeding_verification" || !type);
 
     const [aiRecords, healthRecords, pregnancyCheckTasks] = await Promise.all([
       fetchAI

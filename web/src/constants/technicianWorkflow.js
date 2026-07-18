@@ -67,3 +67,106 @@ export const getClaimType = (type) => {
   }
   return null;
 };
+
+export const PREGNANCY_WORKFLOW_STAGE = {
+  INITIAL: "initial_confirmation",
+  CONTINUATION: "continuation_recheck",
+  FOLLOW_UP: "diagnostic_follow_up",
+};
+
+export const TASK_STATUS = {
+  pending: { label: "Open", badgeClass: "badge-warning" },
+  open: { label: "Open", badgeClass: "badge-warning" },
+  claimed: { label: "In progress", badgeClass: "badge-info" },
+  "in-progress": { label: "In progress", badgeClass: "badge-info" },
+  in_progress: { label: "In progress", badgeClass: "badge-info" },
+  completed: { label: "Completed", badgeClass: "badge-success" },
+  done: { label: "Completed", badgeClass: "badge-success" },
+  cancelled: { label: "Cancelled", badgeClass: "badge-ghost" },
+};
+
+export const TASK_TYPE = {
+  AI: { label: "AI service", badgeClass: "badge-info" },
+  PD: { label: "Pregnancy diagnosis", badgeClass: "badge-warning" },
+  CD: { label: "Calving assistance", badgeClass: "badge-accent" },
+  Calving: { label: "Calving assistance", badgeClass: "badge-accent" },
+  Health: { label: "Health assistance", badgeClass: "badge-error" },
+  Treatment: { label: "Treatment", badgeClass: "badge-error" },
+  Vaccination: { label: "Vaccination", badgeClass: "badge-success" },
+  Deworming: { label: "Deworming", badgeClass: "badge-success" },
+  FollowUp: { label: "Follow-up visit", badgeClass: "badge-secondary" },
+  GeneralVisit: { label: "General visit", badgeClass: "badge-ghost" },
+};
+
+export const WORKFLOW_STAGE = {
+  initial_confirmation: "Initial pregnancy diagnosis",
+  continuation_recheck: "Continuation recheck",
+  diagnostic_follow_up: "Diagnostic follow-up",
+};
+
+const normalizeStatusKey = (value) =>
+  String(value || "pending").trim().toLowerCase().replaceAll(" ", "_");
+
+export const getTaskStatus = (status, dueDate, now = new Date()) => {
+  const normalized = normalizeStatusKey(status);
+  const base = TASK_STATUS[normalized] || {
+    label: status || "Open",
+    badgeClass: "badge-ghost",
+  };
+  const isComplete = ["completed", "done", "cancelled"].includes(normalized);
+  const isOverdue = Boolean(
+    !isComplete && dueDate && new Date(dueDate).getTime() < now.getTime(),
+  );
+  return isOverdue
+    ? { label: "Overdue", badgeClass: "badge-error", isOverdue: true }
+    : { ...base, isOverdue: false };
+};
+
+export const getTaskOperationalStatus = (task = {}, now = new Date()) => {
+  const normalized = normalizeStatusKey(task.status);
+  const status = normalized === "pending" && task.technicianId ? "claimed" : task.status;
+  return getTaskStatus(status, task.dueDate, now);
+};
+
+export const getTaskType = (taskType) =>
+  TASK_TYPE[taskType] || {
+    label: String(taskType || "Task").replaceAll("_", " "),
+    badgeClass: "badge-ghost",
+  };
+
+export const getWorkflowStage = (task = {}) => {
+  const stage = task.metadata?.workflowStage || task.workflowStage;
+  if (stage) return stage;
+  return task.taskType === "PD" ? PREGNANCY_WORKFLOW_STAGE.INITIAL : null;
+};
+
+export const getWorkflowStageLabel = (task) => {
+  const stage = typeof task === "string" ? task : getWorkflowStage(task);
+  return WORKFLOW_STAGE[stage] || (stage ? String(stage).replaceAll("_", " ") : "Not applicable");
+};
+
+export const getTaskReadiness = (task = {}) => {
+  const stage = getWorkflowStage(task);
+  if (task.taskType !== "PD") {
+    return { ready: true, label: "Ready", reason: "" };
+  }
+  if (stage !== PREGNANCY_WORKFLOW_STAGE.INITIAL) {
+    return {
+      ready: true,
+      label: stage === PREGNANCY_WORKFLOW_STAGE.CONTINUATION ? "Milestone task" : "Follow-up required",
+      reason:
+        stage === PREGNANCY_WORKFLOW_STAGE.CONTINUATION
+          ? "This task updates the existing pregnancy record."
+          : "Review the previous diagnosis before continuing.",
+    };
+  }
+  const readiness = task.pregnancyReadiness;
+  if (!readiness || readiness.isEligible) {
+    return { ready: true, label: "Ready", reason: "" };
+  }
+  return {
+    ready: false,
+    label: "Locked",
+    reason: readiness.reason || "Pregnancy diagnosis is not available yet.",
+  };
+};

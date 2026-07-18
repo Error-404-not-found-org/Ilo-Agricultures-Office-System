@@ -20,9 +20,6 @@ import { useToast } from "../../contexts/ToastContext";
 import Topbar from "../../components/ui/Topbar";
 import { TableRowSkeleton } from "../../components/Skeleton";
 import TaskActionModal from "../../components/modals/TaskActionModal";
-import PregnancyDiagnosisModal from "../../components/modals/PregnancyDiagnosisModal";
-import RecordCalfDropModal from "../../components/modals/RecordCalvingModal";
-import BreedingVerificationModal from "../../components/modals/BreedingVerificationModal";
 import { ui } from "../../components/ui/uiClasses";
 import Modal from "../../components/ui/Modal";
 import RequestQueueCard from "../../components/technician/RequestQueueCard";
@@ -166,9 +163,6 @@ export default function OperationalInbox() {
   });
   const [selectedTask, setSelectedTask] = useState(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [isPDModalOpen, setIsPDModalOpen] = useState(false);
-  const [isBreedingVerificationOpen, setIsBreedingVerificationOpen] = useState(false);
-  const [isCalvingModalOpen, setIsCalvingModalOpen] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   
   const itemsPerPage = 10;
@@ -214,6 +208,7 @@ export default function OperationalInbox() {
           nearLat: nearCoords?.latitude,
           nearLng: nearCoords?.longitude,
           search: searchQuery || undefined,
+          includeOperationalTasks: false,
           page: currentPage,
           limit: itemsPerPage,
         },
@@ -319,12 +314,6 @@ export default function OperationalInbox() {
       toast.error("This request cannot be declined from the service queue.");
       return;
     }
-    if (claimType === "breeding_verification") {
-      setSelectedTask(request);
-      setIsBreedingVerificationOpen(true);
-      return;
-    }
-
     setIsUpdating(true);
     try {
       await axiosInstance.patch(
@@ -388,15 +377,7 @@ export default function OperationalInbox() {
 
   const openRequest = (request) => {
     setSelectedTask(request);
-    if (request.type === "breeding_verification") {
-      setIsBreedingVerificationOpen(true);
-    } else if (request.type === "pregnancy_check") {
-      setIsPDModalOpen(true);
-    } else if (request.type === "calving") {
-      setIsCalvingModalOpen(true);
-    } else {
-      setIsTaskModalOpen(true);
-    }
+    setIsTaskModalOpen(true);
   };
 
   const barangayOptions = getIloiloBarangayOptions(municipality, district);
@@ -521,7 +502,6 @@ export default function OperationalInbox() {
             <option value="all">All services</option>
             <option value="ai">AI services</option>
             <option value="health">Health assistance</option>
-            <option value="breeding_verification">Breeding verification</option>
           </select>
           {isAdmin && (
             <select className={ui.select} value={assignmentFilter} onChange={(event) => { setAssignmentFilter(event.target.value); setCurrentPage(1); }} aria-label="Filter by assignment">
@@ -676,11 +656,6 @@ export default function OperationalInbox() {
                       reqTechId &&
                       dbUser?._id &&
                       String(reqTechId) !== String(dbUser._id);
-                    const isAssignedToMe =
-                      reqTechId &&
-                      dbUser?._id &&
-                      String(reqTechId) === String(dbUser._id);
-
                     const visitDate = req.visitDate ? new Date(req.visitDate) : null;
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
@@ -757,18 +732,7 @@ export default function OperationalInbox() {
                             <div className="flex items-center justify-end gap-1.5">
                               {req.status === "pending" && (
                                 <>
-                                  {req.type === "breeding_verification" && isAssignedToMe ? (
-                                    <button
-                                      disabled={isUpdating}
-                                      onClick={() => {
-                                        setSelectedTask(req);
-                                        setIsBreedingVerificationOpen(true);
-                                      }}
-                                      className="btn btn-primary btn-xs"
-                                    >
-                                      <CheckCircle size={12} /> Verify
-                                    </button>
-                                  ) : !reqTechId ? (
+                                  {!reqTechId ? (
                                     <>
                                       <button
                                         disabled={isUpdating}
@@ -916,41 +880,6 @@ export default function OperationalInbox() {
         isAdmin={isAdmin}
       />
 
-      <PregnancyDiagnosisModal
-        isOpen={isPDModalOpen}
-        onClose={() => {
-          setIsPDModalOpen(false);
-          setSelectedTask(null);
-        }}
-        taskData={selectedTask}
-        onSuccess={() => {
-          refetchQueue();
-        }}
-      />
-
-      <BreedingVerificationModal
-        isOpen={isBreedingVerificationOpen}
-        onClose={() => {
-          setIsBreedingVerificationOpen(false);
-          setSelectedTask(null);
-        }}
-        taskData={selectedTask}
-        onSuccess={refetchQueue}
-      />
-
-      <RecordCalfDropModal
-        isOpen={isCalvingModalOpen}
-        onClose={() => {
-          setIsCalvingModalOpen(false);
-          setSelectedTask(null);
-        }}
-        preSelectedFarmer={selectedTask?.raw?.farmerId}
-        preSelectedAnimal={selectedTask?.raw?.animalIds?.[0] || selectedTask?.raw?.animalId}
-        taskId={selectedTask?.id}
-        onSuccess={() => {
-          refetchQueue();
-        }}
-      />
     </div>
   );
 }

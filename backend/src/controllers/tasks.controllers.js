@@ -92,7 +92,6 @@ export const getTasks = async (req, res) => {
     if (scope === "mine") {
       query = {
         technicianId: req.user._id,
-        status: TASK_STATUS.PENDING,
       };
     } else if (scope === "available") {
       // Unassigned generic tasks only
@@ -117,7 +116,7 @@ export const getTasks = async (req, res) => {
 
     if (status && status !== "all") {
       query.status = status;
-    } else if (scope === "all" && status !== "all") {
+    } else if (status !== "all") {
       query.status = TASK_STATUS.PENDING;
     }
 

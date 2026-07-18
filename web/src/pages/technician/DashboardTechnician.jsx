@@ -361,6 +361,9 @@ export default function Dashboard() {
               <Link to="/technician/requests" className="btn btn-primary btn-sm mt-2 w-full">
                 Review requests <ArrowRight size={14} />
               </Link>
+              <Link to="/technician/work-queue" className="btn btn-outline btn-sm mt-2 w-full">
+                Open work queue <ArrowRight size={14} />
+              </Link>
             </div>
           </div>
         </section>

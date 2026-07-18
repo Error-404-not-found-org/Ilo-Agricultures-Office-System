@@ -5,6 +5,12 @@ import { useQueryClient, useQuery } from '@tanstack/react-query';
 import axiosInstance from '../../lib/axios';
 import { toast } from 'sonner';
 import { calculateTargetCalvingDate } from "../../utils/cattleCore";
+import {
+    PREGNANCY_WORKFLOW_STAGE,
+    getWorkflowStage,
+    getWorkflowStageLabel,
+} from "../../constants/technicianWorkflow";
+import { buildPregnancyActionRequest } from "../../utils/taskNavigation";
 
 const inputClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content placeholder:text-base-content/55 focus:border-primary focus:outline-none transition-all`;
 const selectClass = `w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-sm font-semibold text-base-content focus:border-primary focus:outline-none transition-all appearance-none`;
@@ -14,11 +20,24 @@ const labelClass = `text-[11px] font-bold text-base-content/70 tracking-wide ml-
 const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSelectedFarmer, preSelectedAnimal, taskId }) => {
     const queryClient = useQueryClient();
     const isVerificationTask = taskData && (taskData.raw?.taskType === "PD" || taskData.type === "breeding_verification" || taskData.type === "pregnancy_check");
+    const rawTask = taskData?.raw || taskData || {};
+    const workflowStage = getWorkflowStage(rawTask);
+    const isInitialDiagnosis = workflowStage === PREGNANCY_WORKFLOW_STAGE.INITIAL;
+    const isContinuation = workflowStage === PREGNANCY_WORKFLOW_STAGE.CONTINUATION;
+    const isDiagnosticFollowUp = workflowStage === PREGNANCY_WORKFLOW_STAGE.FOLLOW_UP;
+    const isContinuationFlow = isContinuation || isDiagnosticFollowUp;
+    const pregnancyId = rawTask.metadata?.pregnancyId || rawTask.relatedRecordId?._id || rawTask.relatedRecordId;
+    const readiness = rawTask.pregnancyReadiness;
     
     // Form & UI state
     const [result, setResult] = useState(''); // 'Pregnant' or 'Empty'
     const [note, setNote] = useState('');
     const [diagnosisDate, setDiagnosisDate] = useState(new Date().toISOString().slice(0, 10));
+    const [followUpDate, setFollowUpDate] = useState("");
+    const [diagnosticMethod, setDiagnosticMethod] = useState("");
+    const [minimumFollowUpDate] = useState(
+        () => new Date(Date.now() + 86400000).toISOString().slice(0, 10),
+    );
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Standalone selectors state (used when taskData is not provided)
@@ -60,6 +79,8 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                 setResult('');
                 setNote('');
                 setDiagnosisDate(new Date().toISOString().slice(0, 10));
+                setFollowUpDate('');
+                setDiagnosticMethod('');
                 setSelectedFarmerId('');
                 setSearchFarmer('');
                 setIsDropdownOpen(false);
@@ -190,27 +211,39 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
             toast.error("Please select a valid cow record.");
             return;
         }
-        if (!inseminationId) {
+        if (!isContinuationFlow && !inseminationId) {
             toast.error("No active breeding attempt referenced.");
+            return;
+        }
+        if (isContinuationFlow && !pregnancyId) {
+            toast.error("The related pregnancy record is missing from this task.");
             return;
         }
         if (!result) {
             toast.error("Please select a diagnosis result.");
             return;
         }
+        if (isInitialDiagnosis && readiness?.policyMode === "method_based" && !diagnosticMethod) {
+            toast.error("Select an available diagnostic method.");
+            return;
+        }
 
         setIsSubmitting(true);
         try {
-            await axiosInstance.post('/technician/pregnancy-check', {
+            const request = buildPregnancyActionRequest({
+                task: rawTask,
                 animalId,
                 inseminationId,
                 result,
-                technicianNote: note,
+                note,
                 diagnosisDate,
-                taskId: taskId || taskData?.id
+                taskId: taskId || taskData?.id,
+                followUpDate,
+                diagnosticMethod,
             });
+            await axiosInstance.post(request.url, request.payload);
 
-            toast.success(`Diagnosis recorded: ${result}`);
+            toast.success(isContinuationFlow ? "Pregnancy follow-up recorded." : `Diagnosis recorded: ${result}`);
             queryClient.invalidateQueries({ queryKey: ["technician"] });
             queryClient.invalidateQueries({ queryKey: ["farmer-animals"] });
             queryClient.invalidateQueries({ queryKey: ["animal-history"] });
@@ -231,7 +264,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
+            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-neutral/45" role="dialog" aria-modal="true" aria-labelledby="pregnancy-modal-title">
                 
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -294,15 +327,19 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                         <div>
                             <div className="flex justify-between items-start mb-6">
                                 <div>
-                                    <h3 className="text-xl font-black text-base-content leading-tight uppercase">Record Pregnancy Check</h3>
+                                    <h3 id="pregnancy-modal-title" className="text-xl font-extrabold text-base-content leading-tight">
+                                        {isContinuation ? "Record Continuation Recheck" : isDiagnosticFollowUp ? "Record Diagnostic Follow-up" : "Record Pregnancy Diagnosis"}
+                                    </h3>
                                     <p className="text-base-content/40 font-bold text-[9px] uppercase tracking-widest mt-1.5 leading-none">
                                         {taskData ? `Animal: #${animal.earTag || 'Not recorded'} • ${animal.breed || 'Breed not recorded'}` : 'Select a farmer, animal, and related AI service'}
+                                        {animal.animalId && <span className="sr-only"> Full animal identifier: {animal.animalId}.</span>}
                                     </p>
                                 </div>
                                 <button
                                     onClick={() => !isSubmitting && onClose()}
                                     disabled={isSubmitting}
-                                    className="p-2 bg-base-200 text-base-content/40 rounded-full hover:bg-base-300 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                    className="btn btn-ghost btn-circle min-h-11 min-w-11"
+                                    aria-label="Close pregnancy form"
                                 >
                                     <X size={18} />
                                 </button>
@@ -429,6 +466,29 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                 </div>
                             )}
 
+                            {taskData && (
+                                <div className="alert mb-5 border border-base-300 bg-base-200 text-sm" role="status">
+                                    <div className="space-y-1">
+                                        <p className="font-bold">{getWorkflowStageLabel(rawTask)}</p>
+                                        <p className="text-base-content/70">
+                                            {isContinuation
+                                                ? "This recheck updates the existing pregnancy record."
+                                                : isDiagnosticFollowUp
+                                                    ? "Additional follow-up is required. Review the previous diagnosis before continuing."
+                                                    : readiness?.reason || `${readiness?.daysPostAI ?? daysSinceAI} days after AI.`}
+                                        </p>
+                                        {pregnancyId && <p className="text-xs text-base-content/60">Pregnancy reference: {pregnancyId}</p>}
+                                    </div>
+                                </div>
+                            )}
+
+                            {isInitialDiagnosis && readiness && !readiness.isEligible && (
+                                <div className="alert alert-warning mb-5" role="alert">
+                                    <AlertCircle size={18} />
+                                    <span>{readiness.reason || "Pregnancy diagnosis is not available yet."}</span>
+                                </div>
+                            )}
+
                             {/* Result & Diagnosis details */}
                             {(taskData || selectedInseminationId) && (
                                 <div className="space-y-6">
@@ -455,22 +515,54 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                         <div className="grid grid-cols-2 gap-3">
                                             <button
                                                 type="button"
-                                                onClick={() => setResult('Pregnant')}
-                                                className={`flex flex-col items-center justify-center py-5 rounded-2xl border-2 transition-all gap-2 cursor-pointer ${result === 'Pregnant' ? 'border-purple-600 bg-purple-500/10 text-purple-600' : 'border-base-300 bg-base-200 text-base-content/40 hover:border-base-300'}`}
+                                                onClick={() => setResult(isContinuationFlow ? 'continuing' : 'Pregnant')}
+                                                className={`btn min-h-20 h-auto flex-col ${result === (isContinuationFlow ? 'continuing' : 'Pregnant') ? 'btn-success' : 'btn-outline'}`}
                                             >
-                                                <Sparkles size={22} className={result === 'Pregnant' ? 'text-purple-600' : 'text-base-content/20'} />
-                                                <span className="font-black uppercase tracking-widest text-[9px]">Pregnant</span>
+                                                <Sparkles size={22} />
+                                                <span>{isContinuationFlow ? "Pregnancy continuing" : "Pregnant"}</span>
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => setResult('Empty')}
-                                                className={`flex flex-col items-center justify-center py-5 rounded-2xl border-2 transition-all gap-2 cursor-pointer ${result === 'Empty' ? 'border-rose-600 bg-rose-500/10 text-rose-600' : 'border-base-300 bg-base-200 text-base-content/40 hover:border-base-300'}`}
+                                                onClick={() => setResult(isContinuationFlow ? 'loss_detected' : 'Empty')}
+                                                className={`btn min-h-20 h-auto flex-col ${result === (isContinuationFlow ? 'loss_detected' : 'Empty') ? 'btn-error' : 'btn-outline'}`}
                                             >
-                                                <AlertCircle size={22} className={result === 'Empty' ? 'text-rose-600' : 'text-base-content/20'} />
-                                                <span className="font-black uppercase tracking-widest text-[9px]">Not Pregnant</span>
+                                                <AlertCircle size={22} />
+                                                <span>{isContinuationFlow ? "Pregnancy loss detected" : "Not pregnant"}</span>
                                             </button>
+                                            {isContinuationFlow && (
+                                                <button type="button" onClick={() => setResult('follow_up_required')} className={`btn col-span-2 min-h-14 ${result === 'follow_up_required' ? 'btn-warning' : 'btn-outline'}`}>
+                                                    Additional follow-up required
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
+
+                                    {isContinuationFlow && result === "follow_up_required" && (
+                                        <div className="space-y-1.5">
+                                            <label className={labelClass} htmlFor="pregnancy-follow-up-date">Follow-up date</label>
+                                            <input id="pregnancy-follow-up-date" type="date" min={minimumFollowUpDate} value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)} className={inputClass} required />
+                                        </div>
+                                    )}
+
+                                    {isInitialDiagnosis && readiness?.policyMode === "method_based" && (
+                                        <fieldset className="space-y-2">
+                                            <legend className={labelClass}>Diagnostic method</legend>
+                                            <div className="grid gap-2 sm:grid-cols-2">
+                                                {(readiness.methods || []).map((method) => (
+                                                    <button
+                                                        key={method.methodCode}
+                                                        type="button"
+                                                        className={`btn min-h-14 h-auto justify-start text-left ${diagnosticMethod === method.methodCode ? "btn-primary" : "btn-outline"}`}
+                                                        disabled={!method.enabled || !method.isEligible}
+                                                        onClick={() => setDiagnosticMethod(method.methodCode)}
+                                                        title={method.reason}
+                                                    >
+                                                        <span><span className="block">{method.label}</span><span className="block text-xs font-normal opacity-75">{method.isEligible ? "Available now" : method.availableDateLabel || method.reason}</span></span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </fieldset>
+                                    )}
 
                                     {/* Note */}
                                     <div className="space-y-1.5">
@@ -508,10 +600,10 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                         <div className="mt-6">
                             <button
                                 onClick={handleSubmit}
-                                disabled={isSubmitting || !result || (!taskData && !selectedInseminationId)}
-                                className="w-full h-11 bg-[#074033] hover:bg-[#0d5948] text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-md active:scale-95 disabled:opacity-30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                disabled={isSubmitting || !result || (!taskData && !selectedInseminationId) || (isInitialDiagnosis && readiness && !readiness.isEligible) || (isInitialDiagnosis && readiness?.policyMode === "method_based" && !diagnosticMethod) || (result === "follow_up_required" && !followUpDate)}
+                                className="btn btn-primary min-h-11 w-full"
                             >
-                                {isSubmitting ? <span className="loading loading-spinner loading-xs"></span> : 'Finalize Diagnosis'}
+                                {isSubmitting ? <span className="loading loading-spinner loading-xs"></span> : isContinuationFlow ? 'Save follow-up result' : 'Finalize diagnosis'}
                             </button>
                         </div>
                     </div>

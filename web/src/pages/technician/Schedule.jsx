@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Calendar as CalendarIcon,
   Syringe,
@@ -18,12 +19,13 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/ui/Topbar";
-import TaskActionModal from "../../components/modals/TaskActionModal";
 import WalkInAIModal from "../../components/modals/WalkInAIModal";
 import WalkInHealthModal from "../../components/modals/WalkInHealthModal";
+import { getCalendarTarget } from "../../utils/taskNavigation";
 
 export default function DeploymentSchedule() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   // ---- DATE NAVIGATION STATES ----
   const [viewDate, setViewDate] = useState(new Date()); // Month/Year view
@@ -32,8 +34,6 @@ export default function DeploymentSchedule() {
   const [searchQuery, setSearchQuery] = useState("");
 
   // ---- MODAL STATES ----
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isAppointmentMenuOpen, setIsAppointmentMenuOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
@@ -399,8 +399,8 @@ export default function DeploymentSchedule() {
                     <div
                       key={task.id}
                       onClick={() => {
-                        setSelectedTask(task);
-                        setIsTaskModalOpen(true);
+                        const target = getCalendarTarget(task);
+                        if (target.path) navigate(`${target.path}${target.search}`);
                       }}
                       className="card bg-base-100 border border-base-300 p-4 rounded-xl flex flex-row items-center justify-between gap-4 shadow-2xs hover:shadow-md hover:border-primary transition-all cursor-pointer"
                     >
@@ -474,8 +474,8 @@ export default function DeploymentSchedule() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedTask(task);
-                          setIsTaskModalOpen(true);
+                          const target = getCalendarTarget(task);
+                          if (target.path) navigate(`${target.path}${target.search}`);
                         }}
                         className="btn btn-xs btn-outline border-base-300 hover:border-primary text-[11px] font-bold rounded-lg px-3 py-1 bg-base-100 text-base-content/60 transition-colors shrink-0"
                       >
@@ -489,18 +489,6 @@ export default function DeploymentSchedule() {
           </div>
         </div>
       </main>
-
-      {/* Task management action modal */}
-      <TaskActionModal
-        isOpen={isTaskModalOpen}
-        onClose={() => setIsTaskModalOpen(false)}
-        task={selectedTask}
-        onSuccess={() => {
-          queryClient.invalidateQueries({
-            queryKey: ["technician", "schedule"],
-          });
-        }}
-      />
 
       {/* Quick Action Insemination Registration Modal */}
       <WalkInAIModal

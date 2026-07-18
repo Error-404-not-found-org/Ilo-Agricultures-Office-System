@@ -495,11 +495,16 @@ export const recordPregnancyContinuationRecheck = ({
     const tasks = taskId
       ? [await Task.findOne(taskQuery).session(session)]
       : await Task.find(taskQuery).session(session);
-    continuationTask = tasks.find(
-      (task) => task && getPregnancyTaskStage(task) === PREGNANCY_TASK_STAGE.CONTINUATION_RECHECK,
-    ) || null;
+    continuationTask = tasks.find((task) => {
+      if (!task) return false;
+      const stage = getPregnancyTaskStage(task);
+      return [
+        PREGNANCY_TASK_STAGE.CONTINUATION_RECHECK,
+        PREGNANCY_TASK_STAGE.DIAGNOSTIC_FOLLOW_UP,
+      ].includes(stage);
+    }) || null;
     if (taskId && !continuationTask) {
-      throw new AppError("The supplied task is not the active continuation recheck.", {
+      throw new AppError("The supplied task is not an active pregnancy follow-up.", {
         status: 409,
         code: "TASK_RECORD_MISMATCH",
       });

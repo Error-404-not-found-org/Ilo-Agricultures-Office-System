@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Activity,
   ArchiveRestore,
+  ListChecks,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import { useSidebar } from "../../contexts/SidebarContext";
@@ -136,6 +137,11 @@ export default function Sidebar() {
       icon: <ClipboardList size={16} />,
       label: "Service Requests",
       badge: livePendingCount > 0 ? String(livePendingCount) : null,
+    },
+    {
+      path: "/technician/work-queue",
+      icon: <ListChecks size={16} />,
+      label: "Work Queue",
     },
     { type: "label", label: "Find Records" },
     {

@@ -445,3 +445,44 @@ test("continuation results update the existing Pregnancy and never create anothe
     }
   }
 });
+
+test("diagnostic follow-up task updates the linked Pregnancy instead of creating a new record", async () => {
+  const pregnancy = {
+    _id: ids.pregnancy,
+    animalId: ids.animal,
+    farmerId: ids.farmer,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-06-01") },
+    confirmation: { methodCode: "ultrasound", policyVersion: activePolicy.version },
+    cycleStatus: "active",
+    recheckStatus: "follow_up_required",
+  };
+  const stubs = installDiagnosisStubs({ daysPostAI: 72, existingPregnancy: pregnancy });
+  const originalPregnancyUpdate = Pregnancy.updateOne;
+  const followUpTask = {
+    ...stubs.state.initialTask,
+    metadata: { workflowStage: "diagnostic_follow_up", pregnancyId: ids.pregnancy },
+  };
+  Task.findOne = () => query(followUpTask);
+  Task.find = () => query([followUpTask]);
+  Pregnancy.updateOne = async (_filter, update) => {
+    Object.assign(pregnancy, update.$set);
+    return { modifiedCount: 1 };
+  };
+  try {
+    const result = await recordPregnancyContinuationRecheck({
+      pregnancyId: ids.pregnancy,
+      result: "continuing",
+      checkedAt: stubs.now,
+      notes: "Follow-up completed",
+      taskId: ids.task,
+      actor,
+    });
+    assert.equal(result.recheckStatus, "continuing");
+    assert.equal(stubs.state.pregnancy._id, ids.pregnancy);
+    assert.equal(followUpTask.status, "Completed");
+  } finally {
+    Pregnancy.updateOne = originalPregnancyUpdate;
+    stubs.restore();
+  }
+});

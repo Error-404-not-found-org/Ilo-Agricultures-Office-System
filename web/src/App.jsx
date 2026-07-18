@@ -53,6 +53,7 @@ const TechnicianAnalytics = lazy(() => import("./pages/technician/Analytics"));
 const TechnicianReports = lazy(() => import("./pages/technician/Reports"));
 const TechnicianSchedule = lazy(() => import("./pages/technician/Schedule"));
 const TechnicianRequests = lazy(() => import("./pages/technician/Requests"));
+const TechnicianWorkQueue = lazy(() => import("./pages/technician/WorkQueue"));
 const BreedingLedger = lazy(() => import("./pages/technician/BreedingLedger"));
 const FieldNotes = lazy(() => import("./pages/technician/FieldNotes"));
 const TechSettings = lazy(() => import("./pages/technician/Settings"));
@@ -187,6 +188,7 @@ function App() {
               <Route path="audit-logs" element={<AuditLogs />} />
               <Route path="archived" element={<ArchivedRecords />} />
               <Route path="requests" element={<TechnicianRequests />} />
+              <Route path="work-queue" element={<TechnicianWorkQueue />} />
               <Route path="newborns" element={<Newborns />} />
             </Route>
 
