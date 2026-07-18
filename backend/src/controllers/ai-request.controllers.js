@@ -1911,9 +1911,27 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
         recipientId: verifiedRequest.farmerId,
         senderId: req.user._id,
         type: "system",
+        category: "pregnancy",
+        eventType:
+          verificationResult === "pregnant"
+            ? "pregnancy_confirmed"
+            : verificationResult === "needs_recheck"
+              ? "continuation_recheck_due"
+              : "pregnancy_not_confirmed",
         relatedId: verifiedAnimal._id,
+        linkType: "animal",
         title,
         message: body,
+        metadata: {
+          animalId: verifiedAnimal._id,
+          animalTag: verifiedAnimal.earTag || verifiedAnimal.animalId,
+          technicianName: req.user.name,
+          requestId: verifiedRequest._id,
+          workflowStage:
+            verificationResult === "needs_recheck"
+              ? "diagnostic_follow_up"
+              : "initial_confirmation",
+        },
       });
 
       if (farmer?.pushToken) {

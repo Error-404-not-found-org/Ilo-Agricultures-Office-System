@@ -66,6 +66,8 @@ export const notifyTechniciansOfBreedingObservation = async ({
             recipientId,
             senderId: farmer._id,
             type: "ai-request",
+            category: "observation",
+            eventType: "technician_review_required",
             relatedId: insemination._id,
             linkType: "request",
             dedupeKey,
@@ -73,6 +75,7 @@ export const notifyTechniciansOfBreedingObservation = async ({
             message: `${farmerName} reported ${reportLabel(reportType)} for ${animalTag} after the ${aiDate} insemination. Review the observation and decide the appropriate technician follow-up.`,
             metadata: {
               animalId: animal._id,
+              animalTag,
               observationId: insemination._id,
               taskId: task?._id || null,
               reportType,

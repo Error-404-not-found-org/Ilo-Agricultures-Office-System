@@ -668,7 +668,16 @@ export const persistCalving = async ({
           recipientId: currentMother.farmerId,
           senderId: actor._id,
           type: "system",
+          category: "calving",
+          eventType: outcome === "abortion" ? "pregnancy_loss" : "calving_recorded",
           relatedId: calving._id,
+          linkType: "record",
+          metadata: {
+            animalId: currentMother._id,
+            animalTag: currentMother.earTag || currentMother.animalId,
+            recordId: calving._id,
+            outcomeSummary: notification.message,
+          },
           ...notification,
         }], { session });
       }

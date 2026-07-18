@@ -1,10 +1,13 @@
 import React from "react";
-import { View, TouchableOpacity } from "react-native";
+import { View, TouchableOpacity, useWindowDimensions } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { Card } from "@/components/ui/Card";
 import { useTheme } from "@/lib/theme";
 import { useRouter } from "expo-router";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { getQuickActionGridMetrics } from "../utils/responsiveActionGrid";
+
+export { getQuickActionGridMetrics } from "../utils/responsiveActionGrid";
 
 interface TechnicianQuickActionsProps {
   pendingRequestCount?: number;
@@ -16,13 +19,18 @@ export function TechnicianQuickActions({
   todayVisitCount = 0,
 }: TechnicianQuickActionsProps) {
   const router = useRouter();
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
+  const { width } = useWindowDimensions();
+  const metrics = getQuickActionGridMetrics(width);
 
   return (
     <Card
       style={{
-        padding: 24,
+        padding: 16,
         marginBottom: 24,
+        width: "100%",
+        maxWidth: 720,
+        alignSelf: "center",
       }}
     >
       <Text
@@ -38,9 +46,8 @@ export function TechnicianQuickActions({
         style={{
           flexDirection: "row",
           flexWrap: "wrap",
-          justifyContent: "space-between",
           alignItems: "flex-start",
-          gap: 16,
+          gap: metrics.gap,
         }}
       >
         <ActionCard
@@ -48,6 +55,8 @@ export function TechnicianQuickActions({
           icon="needle"
           color={isDark ? "#34d399" : "#10b981"}
           bg={isDark ? "#064e3b" : "#f0fdf4"}
+          width={metrics.itemWidth}
+          iconSize={metrics.iconSize}
           onPress={() => router.navigate("/(technician)/record-ai" as any)}
         />
         <ActionCard
@@ -55,6 +64,8 @@ export function TechnicianQuickActions({
           icon="stethoscope"
           color={isDark ? "#fbbf24" : "#f59e0b"}
           bg={isDark ? "#78350f" : "#fffbeb"}
+          width={metrics.itemWidth}
+          iconSize={metrics.iconSize}
           onPress={() => router.navigate("/(technician)/health-log" as any)}
         />
         <ActionCard
@@ -62,6 +73,8 @@ export function TechnicianQuickActions({
           icon="account-plus-outline"
           color={isDark ? "#60a5fa" : "#3b82f6"}
           bg={isDark ? "#1e3a8a" : "#eff6ff"}
+          width={metrics.itemWidth}
+          iconSize={metrics.iconSize}
           onPress={() =>
             router.navigate("/(technician)/register-client" as any)
           }
@@ -71,6 +84,8 @@ export function TechnicianQuickActions({
           icon="cow"
           color={isDark ? "#a78bfa" : "#8b5cf6"}
           bg={isDark ? "#4c1d95" : "#f5f3ff"}
+          width={metrics.itemWidth}
+          iconSize={metrics.iconSize}
           onPress={() =>
             router.navigate("/(technician)/register-animal" as any)
           }
@@ -80,6 +95,8 @@ export function TechnicianQuickActions({
           icon="heart-pulse"
           color={isDark ? "#f472b6" : "#ec4899"}
           bg={isDark ? "#831843" : "#fdf2f8"}
+          width={metrics.itemWidth}
+          iconSize={metrics.iconSize}
           onPress={() =>
             router.navigate("/(technician)/pregnancy-check" as any)
           }
@@ -89,6 +106,8 @@ export function TechnicianQuickActions({
           icon="baby-carriage"
           color={isDark ? "#22d3ee" : "#06b6d4"}
           bg={isDark ? "#164e63" : "#ecfeff"}
+          width={metrics.itemWidth}
+          iconSize={metrics.iconSize}
           onPress={() =>
             router.navigate("/(technician)/record-calf-drop" as any)
           }
@@ -104,6 +123,8 @@ const ActionCard = ({
   color,
   bg,
   onPress,
+  width,
+  iconSize,
   badgeCount = 0,
 }: any) => {
   const { isDark } = useTheme();
@@ -111,13 +132,15 @@ const ActionCard = ({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
-      style={{ alignItems: "center", width: "30%", marginBottom: 8 }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={{ alignItems: "center", width, minHeight: 92, marginBottom: 8 }}
     >
       <View
         style={{
-          width: 62,
-          height: 62,
-          borderRadius: 31,
+          width: iconSize,
+          height: iconSize,
+          borderRadius: iconSize / 2,
           backgroundColor: bg,
           alignItems: "center",
           justifyContent: "center",
@@ -156,7 +179,8 @@ const ActionCard = ({
         variant="bold"
         color="secondary"
         size={10}
-        style={{ textAlign: "center" }}
+        numberOfLines={2}
+        style={{ textAlign: "center", flexShrink: 1, minWidth: 0, lineHeight: 14 }}
       >
         {label}
       </Text>

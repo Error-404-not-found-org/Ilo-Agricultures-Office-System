@@ -1,5 +1,5 @@
 import React from "react";
-import { View, ScrollView, StatusBar, RefreshControl } from "react-native";
+import { View, ScrollView, StatusBar, RefreshControl, useWindowDimensions } from "react-native";
 import { useTheme } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
@@ -9,7 +9,7 @@ import { useRouter } from "expo-router";
 import { useTechnicianDashboardScreen } from "../hooks/useTechnicianDashboardScreen";
 import { TechnicianHeroHeader } from "../components/TechnicianHeroHeader";
 import { TechnicianStatsCard } from "../components/TechnicianStatsCard";
-import { TechnicianQuickActions } from "../components/TechnicianQuickActions";
+import { TechnicianQuickActions, getQuickActionGridMetrics } from "../components/TechnicianQuickActions";
 import { TechnicianRouteSection } from "../components/TechnicianRouteSection";
 import { TechnicianRequestsSection } from "../components/TechnicianRequestsSection";
 import { TechnicianPerformanceCard } from "../components/TechnicianPerformanceCard";
@@ -21,6 +21,8 @@ export default function TechnicianDashboardScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const quickActionMetrics = getQuickActionGridMetrics(width);
   const [pastHeader, setPastHeader] = React.useState(false);
 
   const {
@@ -118,14 +120,14 @@ export default function TechnicianDashboardScreen() {
             tintColor={colors.primary}
           />
         }
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
         <TechnicianHeroHeader
           clerkUser={clerkUser}
           unreadCount={unreadCount}
         />
 
-        <View style={{ paddingHorizontal: 20, marginTop: -105 }}>
+        <View style={{ paddingHorizontal: quickActionMetrics.screenPadding, marginTop: -105, width: "100%", maxWidth: 960, alignSelf: "center" }}>
           <TechnicianStatsCard stats={stats} analytics={analytics} agendaItems={agendaItems} />
 
           <TechnicianQuickActions

@@ -22,9 +22,17 @@ const notificationSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       required: true,
     },
+    category: {
+      type: String,
+      trim: true,
+    },
+    eventType: {
+      type: String,
+      trim: true,
+    },
     linkType: {
       type: String,
-      enum: ["request", "animal", "record"],
+      enum: ["request", "animal", "record", "task", "pregnancy"],
     },
     dedupeKey: {
       type: String,

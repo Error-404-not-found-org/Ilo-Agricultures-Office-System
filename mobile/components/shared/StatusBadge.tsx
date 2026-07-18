@@ -67,6 +67,23 @@ const statusTone = (value: string) => {
   return ["#475569", "#f1f5f9"];
 };
 
+const darkStatusTone = (value: string) => {
+  const normalized = String(value || "").toLowerCase();
+  if (["danger", "error", "failed", "cancelled", "overdue", "rejected", "sick", "loss"].some((word) => normalized.includes(word))) {
+    return { foreground: "#fecaca", background: "rgba(239,68,68,0.18)", border: "rgba(248,113,113,0.38)" };
+  }
+  if (["warning", "pending", "scheduled", "in heat", "due"].some((word) => normalized.includes(word))) {
+    return { foreground: "#fde68a", background: "rgba(245,158,11,0.18)", border: "rgba(251,191,36,0.38)" };
+  }
+  if (["success", "approved", "pregnant", "resolved", "active", "available", "done", "completed", "normal", "continuing"].some((word) => normalized.includes(word))) {
+    return { foreground: "#a7f3d0", background: "rgba(16,185,129,0.18)", border: "rgba(52,211,153,0.38)" };
+  }
+  if (["info", "primary", "inseminated", "in-progress", "in_progress", "triaged", "assigned", "review"].some((word) => normalized.includes(word))) {
+    return { foreground: "#bfdbfe", background: "rgba(59,130,246,0.18)", border: "rgba(96,165,250,0.38)" };
+  }
+  return { foreground: "#e2e8f0", background: "rgba(148,163,184,0.16)", border: "rgba(148,163,184,0.32)" };
+};
+
 export function StatusBadge({
   label,
   variant,
@@ -74,7 +91,7 @@ export function StatusBadge({
   domain = "general",
   compact = false,
 }: StatusBadgeProps) {
-  const { isDark, colors } = useTheme();
+  const { isDark } = useTheme();
 
   const getColors = () => {
     if (variant) {
@@ -114,6 +131,7 @@ export function StatusBadge({
   };
 
   const [foreground, background] = getColors();
+  const darkTone = darkStatusTone(`${variant || ""} ${label}`);
   const accessibleDomain: Record<NonNullable<StatusBadgeProps["domain"]>, string> = {
     request: "Request status",
     service: "Service status",
@@ -131,8 +149,8 @@ export function StatusBadge({
   return (
     <View
       style={{
-        backgroundColor: isDark ? colors.background : background,
-        borderColor: isDark ? colors.border : background,
+        backgroundColor: isDark ? darkTone.background : background,
+        borderColor: isDark ? darkTone.border : background,
         borderWidth: 1,
         borderRadius: 999,
         paddingHorizontal: compact ? 8 : 10,
@@ -147,7 +165,7 @@ export function StatusBadge({
         numberOfLines={2}
         ellipsizeMode="tail"
         style={{
-          color: isDark ? colors.textSecondary : foreground,
+          color: isDark ? darkTone.foreground : foreground,
           fontFamily: "Outfit_700Bold",
           fontSize: size,
           flexShrink: 1,

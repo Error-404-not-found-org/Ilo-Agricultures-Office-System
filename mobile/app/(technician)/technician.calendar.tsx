@@ -38,6 +38,11 @@ import {
   useCurrentTechnicianProfileQuery,
   useTechnicianFullAgendaQuery,
 } from "@/features/technician/hooks/useTechnicianDashboard";
+import {
+  deduplicateCalendarVisits,
+  getCalendarAnimalIdentity,
+  getCalendarVisitTarget,
+} from "@/features/technician-dashboard/utils/calendarPresentation";
 
 const PRIMARY = "#00643B";
 
@@ -61,9 +66,14 @@ export default function TechnicianCalendar() {
   );
 
   // Fetch data dynamically based on the visible month
-  const { data: dashboardData, isLoading } = useTechnicianFullAgendaQuery();
+  const {
+    data: dashboardData,
+    isLoading,
+    isError,
+    refetch,
+  } = useTechnicianFullAgendaQuery();
   const tasks = useMemo(
-    () => dashboardData?.agendaItems || [],
+    () => deduplicateCalendarVisits(dashboardData?.agendaItems || []),
     [dashboardData?.agendaItems],
   );
 
@@ -181,8 +191,8 @@ export default function TechnicianCalendar() {
             accessibilityRole="button"
             accessibilityLabel="Previous month"
             style={{
-              width: 36,
-              height: 36,
+              width: 44,
+              height: 44,
               borderRadius: 18,
               backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
               alignItems: "center",
@@ -196,8 +206,8 @@ export default function TechnicianCalendar() {
             accessibilityRole="button"
             accessibilityLabel="Next month"
             style={{
-              width: 36,
-              height: 36,
+              width: 44,
+              height: 44,
               borderRadius: 18,
               backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
               alignItems: "center",
@@ -358,6 +368,23 @@ export default function TechnicianCalendar() {
 
         {isLoading ? (
           <ActivityIndicator color={isDark ? colors.primary : PRIMARY} style={{ marginTop: 40 }} />
+        ) : isError ? (
+          <View style={{ alignItems: "center", paddingTop: 44, paddingHorizontal: 20 }}>
+            <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_800ExtraBold", fontSize: 17, textAlign: "center" }}>
+              Couldn’t load the calendar
+            </Text>
+            <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 13, lineHeight: 19, textAlign: "center", marginTop: 6 }}>
+              Check your connection and try again.
+            </Text>
+            <TouchableOpacity
+              onPress={() => refetch()}
+              accessibilityRole="button"
+              accessibilityLabel="Retry loading calendar"
+              style={{ minHeight: 44, marginTop: 16, paddingHorizontal: 20, borderRadius: 14, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" }}
+            >
+              <Text style={{ color: "#fff", fontFamily: "Outfit_700Bold" }}>Retry</Text>
+            </TouchableOpacity>
+          </View>
         ) : dailyTasks.length === 0 ? (
           <View
             style={{
@@ -387,7 +414,7 @@ export default function TechnicianCalendar() {
                 fontSize: 16,
               }}
             >
-              No visits scheduled
+              No scheduled visits
             </Text>
             <Text
               style={{
@@ -397,15 +424,15 @@ export default function TechnicianCalendar() {
                 marginTop: 4,
               }}
             >
-              Enjoy your quiet day!
+              Assigned and scheduled services will appear here.
             </Text>
           </View>
         ) : (
           <FlatList
             data={dailyTasks}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item) => String(item.id)}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 100 }}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 112 }}
             renderItem={({ item }) => {
               const reqTechId =
                 item.raw?.approvedBy?._id ||
@@ -428,6 +455,7 @@ export default function TechnicianCalendar() {
                 item.animal ||
                 item.raw?.animalId?.earTag ||
                 item.raw?.animalId?.animalId;
+              const animalIdentity = getCalendarAnimalIdentity(item);
               const displayStatus =
                 item.displayStatus || item.status || "Scheduled";
               const serviceLabel =
@@ -439,17 +467,9 @@ export default function TechnicianCalendar() {
 
               return (
                 <TouchableOpacity
-                  onPress={() => {
-                    if (item.type === "task") {
-                      router.push(`/(technician)/task-details?id=${item.id}` as any);
-                      return;
-                    }
-                    const typeStr = item.type === "insemination" || item.type === "ai" ? "ai" : "health";
-                    router.push({
-                      pathname: "/(technician)/request-details",
-                      params: { id: item.id, type: typeStr },
-                    } as any);
-                  }}
+                  onPress={() => router.push(getCalendarVisitTarget(item) as any)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${serviceLabel} visit for ${animalIdentity.full}, ${farmerName || "farmer"}`}
                   activeOpacity={0.8}
                   style={{
                     backgroundColor: item.overdue ? (isDark ? '#2d1616' : '#fff5f5') : colors.card,
@@ -672,22 +692,14 @@ export default function TechnicianCalendar() {
                         color: colors.textSecondary,
                       }}
                     >
-                      Tag: {animalTag}
+                      {animalIdentity.compact}
                     </Text>
                   </View>
                   ) : <View />}
                   <TouchableOpacity
-                    onPress={() => {
-                      if (item.type === "task") {
-                        router.push(`/(technician)/task-details?id=${item.id}` as any);
-                        return;
-                      }
-                      const typeStr = item.type === "insemination" || item.type === "ai" ? "ai" : "health";
-                      router.push({
-                        pathname: "/(technician)/request-details",
-                        params: { id: item.id, type: typeStr },
-                      } as any);
-                    }}
+                    onPress={() => router.push(getCalendarVisitTarget(item) as any)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${serviceLabel} visit details`}
                     style={{
                       backgroundColor:
                         item.type === "task"

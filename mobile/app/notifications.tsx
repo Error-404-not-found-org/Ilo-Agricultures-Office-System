@@ -25,6 +25,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AsyncState } from "@/components/shared";
 import { useTheme } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  getNotificationCategory,
+  getNotificationTarget,
+  presentNotification,
+  type NotificationData,
+} from "@/features/notifications/utils/notificationPresentation";
 
 type NotificationFilter =
   | "all"
@@ -36,13 +42,16 @@ type NotificationFilter =
   | "cancellations"
   | "system";
 
-interface NotificationItem {
+interface NotificationItem extends NotificationData {
   _id: string;
   title: string;
   message: string;
   type: "ai-request" | "health-request" | "system";
   relatedId?: string;
-  linkType?: "request" | "animal" | "record";
+  linkType?: "request" | "animal" | "record" | "task" | "pregnancy";
+  category?: string;
+  eventType?: string;
+  metadata?: Record<string, any>;
   isRead: boolean;
   createdAt: string;
 }
@@ -81,39 +90,6 @@ export default function NotificationsScreen() {
     { label: "System", value: "system" },
   ];
 
-  const getNotificationCategory = useCallback((item: NotificationItem) => {
-    const searchableText = `${item.title} ${item.message}`.toLowerCase();
-    if (searchableText.includes("cancel")) return "cancellations";
-    if (
-      searchableText.includes("pregnan") ||
-      searchableText.includes("diagnosis") ||
-      searchableText.includes("pd check")
-    ) {
-      return "pregnancy";
-    }
-    if (
-      searchableText.includes("calving") ||
-      searchableText.includes("calve") ||
-      searchableText.includes("dystocia")
-    ) {
-      return "calving";
-    }
-    if (
-      searchableText.includes("reminder") ||
-      searchableText.includes("follow-up") ||
-      searchableText.includes("follow up") ||
-      searchableText.includes("overdue") ||
-      searchableText.includes("pending") ||
-      searchableText.includes("due")
-    ) {
-      return "reminders";
-    }
-    if (item.type === "ai-request") return "ai";
-    if (item.type === "health-request") return "health";
-
-    return "system";
-  }, []);
-
   const filteredNotifications = useMemo(
     () =>
       activeFilter === "all"
@@ -121,7 +97,7 @@ export default function NotificationsScreen() {
         : notifications.filter(
             (item) => getNotificationCategory(item) === activeFilter,
           ),
-    [activeFilter, getNotificationCategory, notifications],
+    [activeFilter, notifications],
   );
 
   const unreadCount = notifications.filter((item) => !item.isRead).length;
@@ -274,51 +250,16 @@ export default function NotificationsScreen() {
   };
 
   const openNotification = (item: NotificationItem) => {
-    if (role === "farmer" && item.type === "system" && item.linkType === "animal" && item.relatedId) {
-      router.push({
-        pathname: "/(farmer)/animal-details",
-        params: { id: item.relatedId },
-      } as any);
-      return;
-    }
-    if (item.type === "ai-request" || item.type === "health-request") {
-      const requestId = item.relatedId || item._id;
-
-      if (role === "technician" || role === "veterinarian") {
-        router.push({
-          pathname: "/(technician)/request-details",
-          params: {
-            id: requestId,
-            notificationId: item._id,
-            type: item.type === "health-request" ? "health" : "ai",
-          },
-        } as any);
-        return;
-      }
-
-      if (role === "farmer") {
-        router.push({
-          pathname:
-            item.type === "health-request"
-              ? "/(farmer)/health-request-detail"
-              : "/(farmer)/ai-request-detail",
-          params: { id: requestId, notificationId: item._id },
-        } as any);
-        return;
-      }
-    }
-
-    router.push({
-      pathname: "/notification-details",
-      params: { id: item._id },
-    });
+    router.push(getNotificationTarget(item, role) as any);
   };
 
-  const renderItem = ({ item }: { item: NotificationItem }) => (
+  const renderItem = ({ item }: { item: NotificationItem }) => {
+    const presentation = presentNotification(item);
+    return (
     <TouchableOpacity
       activeOpacity={0.7}
       accessibilityRole="button"
-      accessibilityLabel={`${item.isRead ? "Read" : "Unread"} notification: ${item.title}`}
+      accessibilityLabel={`${item.isRead ? "Read" : "Unread"} notification: ${presentation.title}. ${presentation.body}`}
       style={{
         flexDirection: "row",
         paddingVertical: 16,
@@ -338,7 +279,7 @@ export default function NotificationsScreen() {
     >
       {getIcon(item)}
 
-      <View style={{ flex: 1, marginLeft: 12 }}>
+      <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
           <Text
             numberOfLines={2}
@@ -353,7 +294,7 @@ export default function NotificationsScreen() {
               color: item.isRead ? colors.textSecondary : colors.textPrimary,
             }}
           >
-            {item.title}
+            {presentation.title}
           </Text>
           {!item.isRead && (
             <View
@@ -378,7 +319,7 @@ export default function NotificationsScreen() {
             marginTop: 3,
           }}
         >
-          {item.message}
+          {presentation.body}
         </Text>
         <Text
           style={{
@@ -392,7 +333,8 @@ export default function NotificationsScreen() {
         </Text>
       </View>
     </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -418,8 +360,8 @@ export default function NotificationsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Go back"
           style={{
-            width: 36,
-            height: 36,
+            width: 44,
+            height: 44,
             borderRadius: 18,
             alignItems: "center",
             justifyContent: "center",
@@ -470,8 +412,9 @@ export default function NotificationsScreen() {
               onPress={markAllAsRead}
               disabled={unreadCount === 0}
               accessibilityRole="button"
+              accessibilityLabel="Mark all notifications as read"
               accessibilityState={{ disabled: unreadCount === 0 }}
-              style={{ opacity: unreadCount === 0 ? 0.4 : 1 }}
+              style={{ opacity: unreadCount === 0 ? 0.4 : 1, minHeight: 44, justifyContent: "center" }}
             >
               <Text
                 style={{
@@ -488,8 +431,9 @@ export default function NotificationsScreen() {
               onPress={handleClearAll}
               disabled={notifications.length === 0}
               accessibilityRole="button"
+              accessibilityLabel="Clear all notifications"
               accessibilityState={{ disabled: notifications.length === 0 }}
-              style={{ opacity: notifications.length === 0 ? 0.4 : 1 }}
+              style={{ opacity: notifications.length === 0 ? 0.4 : 1, minHeight: 44, justifyContent: "center" }}
             >
               <Text
                 style={{
@@ -507,7 +451,7 @@ export default function NotificationsScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={{ flexGrow: 0, height: 34, marginBottom: 10 }}
+          style={{ flexGrow: 0, minHeight: 44, marginBottom: 10 }}
           contentContainerStyle={{
             paddingHorizontal: 20,
             gap: 8,
@@ -523,7 +467,7 @@ export default function NotificationsScreen() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: isActive }}
                 style={{
-                  minHeight: 34,
+                  minHeight: 44,
                   paddingHorizontal: 13,
                   borderRadius: 999,
                   borderWidth: 1,
@@ -558,7 +502,7 @@ export default function NotificationsScreen() {
             <AsyncState
               state="error"
               title="Could not load notifications"
-              message="Check your connection, then try again."
+              message="Your notifications were not removed. Try again."
               actionLabel="Retry"
               onAction={() => fetchNotifications(true)}
             />
@@ -578,7 +522,7 @@ export default function NotificationsScreen() {
             }
             contentContainerStyle={{
               paddingHorizontal: 20,
-              paddingBottom: 40,
+              paddingBottom: insets.bottom + 96,
             }}
             renderItem={renderItem}
           />
@@ -586,8 +530,8 @@ export default function NotificationsScreen() {
           <View style={{ flex: 1, paddingHorizontal: 20 }}>
             <AsyncState
               state="empty"
-              title={activeFilter === "all" ? "You're all caught up" : `No ${filterOptions.find((option) => option.value === activeFilter)?.label.toLowerCase()} updates`}
-              message={activeFilter === "all" ? "New AI, health, pregnancy, and system updates will appear here." : "Try another filter to see your other notifications."}
+              title={activeFilter === "all" ? "No notifications yet" : `No ${filterOptions.find((option) => option.value === activeFilter)?.label.toLowerCase()} updates`}
+              message={activeFilter === "all" ? "Updates about requests, visits, and animal records will appear here." : "Try another filter to see your other notifications."}
               icon={<Bell size={24} color={colors.primary} />}
             />
           </View>
