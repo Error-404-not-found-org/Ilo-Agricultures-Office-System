@@ -50,4 +50,57 @@ describe("Technician Work Queue", () => {
     fireEvent.click(screen.getByRole("button", { name: /Retry/i }));
     await waitFor(() => expect(screen.getByText("No tasks in this queue")).toBeInTheDocument());
   });
+
+  it("verifies Work Queue filters and search elements have id, name, and accessible label", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [] });
+    renderQueue();
+    await waitFor(() => expect(screen.getByText("No tasks in this queue")).toBeInTheDocument());
+
+    // 1. Search input
+    const searchInput = screen.getByPlaceholderText("Search farmer, animal, or task");
+    expect(searchInput).toHaveAttribute("id", "work-queue-search");
+    expect(searchInput).toHaveAttribute("name", "work-queue-search");
+    expect(screen.getByText("Search tasks")).toHaveAttribute("for", "work-queue-search");
+
+    // 2. Scope filter (tablist)
+    const scopeContainer = screen.getByRole("tablist", { name: "Queue scope" });
+    expect(scopeContainer).toHaveAttribute("id", "work-queue-scope");
+
+    // 3. Task type select
+    const typeSelect = screen.getByLabelText("Filter by task type");
+    expect(typeSelect).toHaveAttribute("id", "work-queue-task-type");
+    expect(typeSelect).toHaveAttribute("name", "work-queue-task-type");
+    expect(screen.getByText("Filter by task type")).toHaveAttribute("for", "work-queue-task-type");
+
+    // 4. Status select
+    const statusSelect = screen.getByLabelText("Filter by task status");
+    expect(statusSelect).toHaveAttribute("id", "work-queue-status");
+    expect(statusSelect).toHaveAttribute("name", "work-queue-status");
+    expect(screen.getByText("Filter by task status")).toHaveAttribute("for", "work-queue-status");
+  });
+
+  it("verifies repeated task cards do not produce duplicate IDs", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [
+      {
+        _id: "task-abc", taskType: "PD", status: "Pending", dueDate: "2099-08-06T05:00:00.000Z",
+        farmerId: { name: "Farmer A" }, animalIds: [{ _id: "animal-1", earTag: "ILO-101" }],
+        technicianId: "tech-1", pregnancyReadiness: { isEligible: false, reason: "Lock reason A" },
+      },
+      {
+        _id: "task-xyz", taskType: "PD", status: "Pending", dueDate: "2099-08-06T05:00:00.000Z",
+        farmerId: { name: "Farmer B" }, animalIds: [{ _id: "animal-2", earTag: "ILO-102" }],
+        technicianId: "tech-1", pregnancyReadiness: { isEligible: false, reason: "Lock reason B" },
+      }
+    ] });
+    renderQueue();
+    await waitFor(() => expect(screen.getAllByText("Farmer A").length).toBeGreaterThan(0));
+
+    // Verify unique IDs derived from task ID are rendered in cards
+    const lockSpan1 = document.querySelector("#task-lock-task-abc");
+    const lockSpan2 = document.querySelector("#task-lock-task-xyz");
+    // Sibling elements in separate cards do not duplicate the same ID
+    expect(lockSpan1).toBeInTheDocument();
+    expect(lockSpan2).toBeInTheDocument();
+    expect(lockSpan1).not.toBe(lockSpan2);
+  });
 });

@@ -1,5 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
+import { validateTaskContextForAction, sanitizeReturnTo } from "../../utils/taskNavigation";
+import TaskContextCard from "../../components/technician/TaskContextCard";
+import TaskContextErrorView from "../../components/technician/TaskContextErrorView";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import {
@@ -22,11 +26,25 @@ import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
 
 export default function HealthLog() {
   const toast = useToast();
+  const location = useLocation();
+
+  const searchParams = new URLSearchParams(location.search);
+  const taskIdQuery = searchParams.get("taskId");
+
+  const taskContext = location.state?.taskContext || null;
+  const returnTo = sanitizeReturnTo(location.state?.returnTo);
+
+  const isTaskWorkflow = !!taskIdQuery;
+  const validation = taskContext ? validateTaskContextForAction(taskContext) : null;
+  const isStateMissing = isTaskWorkflow && (!taskContext || (validation && !validation.valid));
+  const isTaskPreview = isTaskWorkflow && !isStateMissing;
 
   // ---- APPLICATION STATES ----
   const [searchQuery, setSearchQuery] = useState("");
   const [urgencyFilter, setUrgencyFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+
+
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedCase, setSelectedCase] = useState(null);
   const [confirmModal, setConfirmModal] = useState({
@@ -142,6 +160,11 @@ export default function HealthLog() {
     toast.success("Health assistance CSV exported.");
   };
 
+  if (isStateMissing) {
+    const errorType = (validation && validation.errorType) || "missing_info";
+    return <TaskContextErrorView errorType={errorType} returnTo={returnTo} />;
+  }
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
@@ -150,6 +173,8 @@ export default function HealthLog() {
       />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
+        {isTaskPreview && <TaskContextCard taskContext={taskContext} />}
+
         {/* Metric Grid Display */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs">
@@ -383,7 +408,8 @@ export default function HealthLog() {
                           </button>
                           <button
                             onClick={() => handleDeleteCase(c)}
-                            className="p-1.5 text-base-content/40 hover:text-rose-600 transition-colors rounded-lg hover:bg-base-200 cursor-pointer"
+                            disabled={isTaskPreview}
+                            className="p-1.5 text-base-content/40 hover:text-rose-600 transition-colors rounded-lg hover:bg-base-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             title="Delete Incident"
                           >
                             <Trash2 size={13} />

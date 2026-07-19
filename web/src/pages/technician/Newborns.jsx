@@ -1,5 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
+import { validateTaskContextForAction, sanitizeReturnTo } from "../../utils/taskNavigation";
+import TaskContextCard from "../../components/technician/TaskContextCard";
+import TaskContextErrorView from "../../components/technician/TaskContextErrorView";
 import { useUser } from "@clerk/clerk-react";
 import axiosInstance from "../../lib/axios";
 import {
@@ -23,10 +27,25 @@ import { toast } from "sonner";
 export default function NewbornsLog() {
   const queryClient = useQueryClient();
   const { user } = useUser();
+  const location = useLocation();
+
+  const searchParams = new URLSearchParams(location.search);
+  const taskIdQuery = searchParams.get("taskId");
+
+  const taskContext = location.state?.taskContext || null;
+  const returnTo = sanitizeReturnTo(location.state?.returnTo);
+
+  const isTaskWorkflow = !!taskIdQuery;
+  const validation = taskContext ? validateTaskContextForAction(taskContext) : null;
+  const isStateMissing = isTaskWorkflow && (!taskContext || (validation && !validation.valid));
+  const isTaskPreview = isTaskWorkflow && !isStateMissing;
+
   const role = user?.publicMetadata?.role || "Field Officer";
   const normalizedRole = String(role).toLowerCase();
 
   const [searchQuery, setSearchQuery] = useState("");
+
+
   const [speciesFilter, setSpeciesFilter] = useState("");
   const [easeFilter, setEaseFilter] = useState("");
   const [seenFilter, setSeenFilter] = useState("");
@@ -208,6 +227,11 @@ export default function NewbornsLog() {
     }
   };
 
+  if (isStateMissing) {
+    const errorType = (validation && validation.errorType) || "missing_info";
+    return <TaskContextErrorView errorType={errorType} returnTo={returnTo} />;
+  }
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
@@ -216,6 +240,8 @@ export default function NewbornsLog() {
       />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
+        {isTaskPreview && <TaskContextCard taskContext={taskContext} />}
+
         {/* Metric widgets */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs">
@@ -694,7 +720,7 @@ export default function NewbornsLog() {
                           {(isColorEmpty || isBrandEmpty) && calfId && (
                             <div className="flex justify-end pt-1">
                               <button
-                                disabled={savingCalfId === calfId || (!calfEdits[calfId]?.color?.trim() && !calfEdits[calfId]?.brand?.trim())}
+                                disabled={savingCalfId === calfId || (!calfEdits[calfId]?.color?.trim() && !calfEdits[calfId]?.brand?.trim()) || isTaskPreview}
                                 onClick={() => handleSaveCalfDetails(calfId)}
                                 className="btn btn-xs btn-primary disabled:opacity-40 text-white border-none rounded-lg px-3 font-bold text-[9px] uppercase tracking-wider cursor-pointer"
                               >

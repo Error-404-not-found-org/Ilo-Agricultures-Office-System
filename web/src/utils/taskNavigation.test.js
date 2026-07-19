@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { buildPregnancyActionRequest, getCalendarTarget, getTaskPrimaryActionLabel } from "./taskNavigation";
+import { render, screen } from "@testing-library/react";
+import React from "react";
+import { MemoryRouter } from "react-router-dom";
+import {
+  buildPregnancyActionRequest,
+  getCalendarTarget,
+  getTaskPrimaryActionLabel,
+  normalizeTaskContext,
+  getTaskActionTarget,
+  validateTaskContextForAction,
+  sanitizeReturnTo,
+  buildTaskNavigationState
+} from "./taskNavigation";
+import TaskContextCard from "../components/technician/TaskContextCard";
+import TaskContextErrorView from "../components/technician/TaskContextErrorView";
 
 describe("canonical technician task navigation", () => {
   it("routes a linked task by task id without using its title", () => {
@@ -46,5 +60,184 @@ describe("canonical technician task navigation", () => {
       expect(request.payload).toMatchObject({ taskId: "task-2", result: "follow_up_required", followUpDate: "2026-09-08" });
       expect(request.payload).not.toHaveProperty("animalId");
     }
+  });
+
+  // --- BATCH 2A-1 EXTENDED UTILITY TESTS ---
+
+  it("normalizes task context correctly and safely", () => {
+    const rawTask = {
+      _id: "t-100",
+      taskType: "AI",
+      status: "pending",
+      farmerId: { _id: "f-200", name: "seed-john" },
+      animalIds: [{ _id: "a-300", earTag: "seed-tag-123", animalId: "a-300" }],
+      dueDate: "2026-07-25T12:00:00Z",
+      metadata: { pregnancyId: "p-400", sourceType: "request" },
+      requestId: "r-500"
+    };
+
+    const ctx = normalizeTaskContext(rawTask);
+    expect(ctx).toEqual({
+      taskId: "t-100",
+      taskType: "AI",
+      workflowStage: null,
+      taskStatus: "pending",
+      requestId: "r-500",
+      sourceType: "request",
+      sourceId: null,
+      farmerId: "f-200",
+      farmerName: "seed-john",
+      animalId: "a-300",
+      animalReference: "seed-tag-123",
+      dueDate: "2026-07-25T12:00:00Z",
+      pregnancyId: "p-400",
+      inseminationId: null,
+      healthRequestId: null,
+      metadata: { pregnancyId: "p-400", sourceType: "request" },
+      returnTo: null,
+      raw: rawTask
+    });
+  });
+
+  it("resolves action targets correctly for dedicated and generic tasks", () => {
+    expect(getTaskActionTarget({ taskType: "AI" })).toEqual({
+      type: "route",
+      path: "/technician/walk-in",
+      label: "Record AI Service",
+    });
+
+    expect(getTaskActionTarget({ taskType: "Health" })).toEqual({
+      type: "route",
+      path: "/technician/health",
+      label: "Complete Health Assistance",
+    });
+
+    expect(getTaskActionTarget({ taskType: "Calving" })).toEqual({
+      type: "route",
+      path: "/technician/newborns",
+      label: "Record Calving",
+    });
+
+    expect(getTaskActionTarget({ taskType: "PD" })).toEqual({
+      type: "modal",
+      path: null,
+      label: "Record pregnancy diagnosis",
+    });
+
+    expect(getTaskActionTarget({ taskType: "Other" })).toEqual({
+      type: "none",
+      path: null,
+      label: "Complete task",
+    });
+  });
+
+  it("validates task context for required fields", () => {
+    // Valid context
+    expect(validateTaskContextForAction({
+      taskId: "t-1",
+      taskType: "AI",
+      animalId: "a-1",
+      farmerId: "f-1"
+    })).toEqual({ valid: true, errorType: null, message: null });
+
+    // Missing taskId
+    expect(validateTaskContextForAction({
+      taskType: "AI",
+      animalId: "a-1",
+      farmerId: "f-1"
+    })).toEqual({
+      valid: false,
+      errorType: "missing_info",
+      message: "This task does not contain enough information to open the service form."
+    });
+
+    // Missing animalId for AI
+    expect(validateTaskContextForAction({
+      taskId: "t-1",
+      taskType: "AI",
+      farmerId: "f-1"
+    })).toEqual({
+      valid: false,
+      errorType: "missing_info",
+      message: "This task does not contain enough information to open the service form."
+    });
+
+    // Unavailable target
+    expect(validateTaskContextForAction({
+      taskId: "t-1",
+      taskType: "Other"
+    })).toEqual({
+      valid: false,
+      errorType: "unavailable",
+      message: "The requested service workflow could not be opened."
+    });
+  });
+
+  it("sanitizes returnTo path with whitelist and falls back safely", () => {
+    expect(sanitizeReturnTo("/technician/work-queue")).toBe("/technician/work-queue");
+    expect(sanitizeReturnTo("/technician/schedule?taskId=123")).toBe("/technician/schedule?taskId=123");
+    expect(sanitizeReturnTo("/technician/requests")).toBe("/technician/requests");
+
+    // Invalid / external paths
+    expect(sanitizeReturnTo("/admin/dashboard")).toBe("/technician/work-queue");
+    expect(sanitizeReturnTo("http://google.com")).toBe("/technician/work-queue");
+    expect(sanitizeReturnTo("")).toBe("/technician/work-queue");
+    expect(sanitizeReturnTo(null)).toBe("/technician/work-queue");
+  });
+
+  it("builds task navigation state correctly", () => {
+    const ctx = { taskId: "t-1", animalId: "a-1", farmerId: "f-1", requestId: "r-1", pregnancyId: "p-1" };
+    const state = buildTaskNavigationState(ctx, "/technician/requests");
+    expect(state).toEqual({
+      taskContext: ctx,
+      taskId: "t-1",
+      animalId: "a-1",
+      farmerId: "f-1",
+      requestId: "r-1",
+      pregnancyId: "p-1",
+      returnTo: "/technician/requests"
+    });
+  });
+
+  // --- BATCH 2A-1 COMPONENT TESTS ---
+
+  it("renders TaskContextCard beautifully and sanitizes test-seed prefixes", () => {
+    const ctx = {
+      taskType: "AI",
+      workflowStage: "continuation_recheck",
+      farmerName: "seed-john-doe",
+      animalReference: "seed-ilo-102",
+      dueDate: "2099-08-06T05:00:00.000Z",
+    };
+
+    render(React.createElement(TaskContextCard, { taskContext: ctx }));
+
+    // Verify sanitized displays
+    expect(screen.getByText("John Doe")).toBeInTheDocument();
+    expect(screen.getByText("Ilo 102")).toBeInTheDocument();
+    expect(screen.getByText("Artificial Insemination")).toBeInTheDocument();
+    expect(screen.getByText(/Continuation Recheck/i)).toBeInTheDocument();
+
+    // Verify integration status indicating preview mode
+    expect(screen.getByText("Preview Mode - Submission Disabled")).toBeInTheDocument();
+  });
+
+  it("renders TaskContextErrorView correctly according to errorType", () => {
+    const { rerender } = render(
+      React.createElement(MemoryRouter, null,
+        React.createElement(TaskContextErrorView, { errorType: "missing_info" })
+      )
+    );
+    expect(screen.getByText("Missing task information")).toBeInTheDocument();
+    expect(screen.getByText("This task does not contain enough information to open the service form.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Return to Work Queue/i })).toBeInTheDocument();
+
+    rerender(
+      React.createElement(MemoryRouter, null,
+        React.createElement(TaskContextErrorView, { errorType: "unavailable" })
+      )
+    );
+    expect(screen.getByText("Task target unavailable")).toBeInTheDocument();
+    expect(screen.getByText("The requested service workflow could not be opened.")).toBeInTheDocument();
   });
 });

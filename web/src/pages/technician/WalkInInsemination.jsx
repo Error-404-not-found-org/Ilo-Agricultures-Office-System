@@ -5,13 +5,16 @@ import {
   AlertCircle, AlertTriangle, BadgeCheck, History, ArrowLeft,
   CheckCircle2, Info, Dna, ChevronDown
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getAIRequestErrorMessage } from "../../utils/aiRequestErrors";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { CATTLE_BREEDS, CATTLE_SPECIES } from "../../constants/breeds";
 import { getSireCodeByBreed } from "../../constants/sireRegistry";
+import { validateTaskContextForAction, sanitizeReturnTo } from "../../utils/taskNavigation";
+import TaskContextCard from "../../components/technician/TaskContextCard";
+import TaskContextErrorView from "../../components/technician/TaskContextErrorView";
 import {
   formatBarangayWithDistrict,
   getIloiloBarangayOptions,
@@ -28,21 +31,34 @@ const cardClass = `bg-white dark:bg-slate-950 border border-slate-200 dark:borde
 
 export default function WalkInInsemination() {
   const navigate = useNavigate();
+  const location = useLocation();
   const toast = useToast();
   const queryClient = useQueryClient();
+
+  const searchParams = new URLSearchParams(location.search);
+  const taskIdQuery = searchParams.get("taskId");
+
+  const taskContext = location.state?.taskContext || null;
+  const returnTo = sanitizeReturnTo(location.state?.returnTo);
+
+  const isTaskWorkflow = !!taskIdQuery;
+  const validation = taskContext ? validateTaskContextForAction(taskContext) : null;
+  const isStateMissing = isTaskWorkflow && (!taskContext || (validation && !validation.valid));
+  const isTaskPreview = isTaskWorkflow && !isStateMissing;
 
   // --- MODE: existing record lookup or full new registration ---
   const [isExistingRecord, setIsExistingRecord] = useState(true);
 
   // Existing-record lookup state
-  const [searchFarmer, setSearchFarmer] = useState("");
+  const [searchFarmer, setSearchFarmer] = useState(() => taskContext?.farmerName || "");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [selectedFarmerId, setSelectedFarmerId] = useState("");
-  const [selectedAnimalId, setSelectedAnimalId] = useState("");
+  const [selectedFarmerId, setSelectedFarmerId] = useState(() => taskContext?.farmerId || "");
+  const [selectedAnimalId, setSelectedAnimalId] = useState(() => taskContext?.animalId || "");
   const [showPregnancyWarning, setShowPregnancyWarning] = useState(false);
   const [isOverriding, setIsOverriding] = useState(false);
   const [ageWarning, setAgeWarning] = useState("");
   const [vwpWarning, setVwpWarning] = useState("");
+
 
   // Barangay autocomplete for new-entry mode
   const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
@@ -230,12 +246,23 @@ export default function WalkInInsemination() {
     mutation.mutate(submissionData);
   };
 
+  if (isStateMissing) {
+    const errorType = (validation && validation.errorType) || "missing_info";
+    return <TaskContextErrorView errorType={errorType} returnTo={returnTo} />;
+  }
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
       {/* Header */}
       <header className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 px-8 h-16 flex items-center shrink-0 gap-4">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => {
+            if (location.state?.returnTo) {
+              navigate(location.state.returnTo);
+            } else {
+              navigate(-1);
+            }
+          }}
           className="flex items-center gap-2 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-bold text-xs uppercase tracking-widest transition-all group cursor-pointer"
         >
           <ArrowLeft size={14} className="group-hover:-translate-x-1 transition-transform" />
@@ -260,6 +287,7 @@ export default function WalkInInsemination() {
 
       <main className="flex-1 p-6">
         <div className="max-w-6xl mx-auto space-y-5">
+          {isTaskPreview && <TaskContextCard taskContext={taskContext} />}
 
           {/* Mode / Status Toggle Bar */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
@@ -707,7 +735,7 @@ export default function WalkInInsemination() {
 
                 <button
                   onClick={handleSubmit}
-                  disabled={mutation.isPending || (showPregnancyWarning && !isOverriding)}
+                  disabled={mutation.isPending || (showPregnancyWarning && !isOverriding) || isTaskPreview}
                   className={`w-full h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                     formData.inseminationDetails.status === "done"
                       ? "bg-white text-[#074033] hover:bg-emerald-50"

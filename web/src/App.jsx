@@ -227,6 +227,7 @@ function App() {
               <Route path="reports" element={<TechnicianReports />} />
               <Route path="schedule" element={<TechnicianSchedule />} />
               <Route path="requests" element={<TechnicianRequests />} />
+              <Route path="work-queue" element={<TechnicianWorkQueue />} />
               <Route path="field-notes" element={<FieldNotes />} />
               <Route path="moowie" element={<Moowie />} />
               <Route path="settings" element={<TechSettings />} />

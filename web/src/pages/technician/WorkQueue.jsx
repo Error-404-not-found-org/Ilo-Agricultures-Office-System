@@ -13,7 +13,12 @@ import {
   getTaskType,
   getWorkflowStageLabel,
 } from "../../constants/technicianWorkflow";
-import { getTaskPrimaryActionLabel } from "../../utils/taskNavigation";
+import {
+  getTaskPrimaryActionLabel,
+  normalizeTaskContext,
+  getTaskActionTarget,
+  buildTaskNavigationState
+} from "../../utils/taskNavigation";
 
 const formatDue = (value) =>
   value
@@ -34,10 +39,10 @@ export default function WorkQueue() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [scope, setScope] = useState("mine");
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [scope, setScope] = useState(() => searchParams.get("scope") || "mine");
+  const [search, setSearch] = useState(() => searchParams.get("search") || "");
+  const [typeFilter, setTypeFilter] = useState(() => searchParams.get("typeFilter") || "all");
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get("statusFilter") || "all");
   const [selectedTask, setSelectedTask] = useState(null);
 
   const query = useQuery({
@@ -82,11 +87,26 @@ export default function WorkQueue() {
   const openTask = (task) => {
     const readiness = getTaskReadiness(task);
     if (!readiness.ready) return;
-    if (task.taskType === "PD") setSelectedTask(task);
-    else if (task.taskType === "AI") navigate(`/technician/walk-in?taskId=${encodeURIComponent(task._id)}`);
-    else if (["Health", "Treatment", "Vaccination", "Deworming"].includes(task.taskType)) navigate(`/technician/health?taskId=${encodeURIComponent(task._id)}`);
-    else if (["CD", "Calving"].includes(task.taskType)) navigate(`/technician/newborns?taskId=${encodeURIComponent(task._id)}`);
-    else completeMutation.mutate(task);
+
+    const context = normalizeTaskContext(task);
+    const target = getTaskActionTarget(context);
+
+    if (target.type === "modal") {
+      if (task.taskType === "PD") setSelectedTask(task);
+    } else if (target.type === "route") {
+      const returnParams = new URLSearchParams();
+      if (scope) returnParams.set("scope", scope);
+      if (search) returnParams.set("search", search);
+      if (typeFilter) returnParams.set("typeFilter", typeFilter);
+      if (statusFilter) returnParams.set("statusFilter", statusFilter);
+      if (context.taskId) returnParams.set("taskId", context.taskId);
+      const returnToPath = `/technician/work-queue?${returnParams.toString()}`;
+
+      const navState = buildTaskNavigationState(context, returnToPath);
+      navigate(`${target.path}?taskId=${encodeURIComponent(context.taskId)}`, { state: navState });
+    } else {
+      completeMutation.mutate(task);
+    }
   };
 
   const focusedTaskId = searchParams.get("taskId");
@@ -104,15 +124,63 @@ export default function WorkQueue() {
           <div className="border-b border-base-300 p-4 sm:p-5">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div><h1 id="work-queue-heading" className="text-lg font-bold">Technician tasks</h1><p className="text-sm text-base-content/65">{tasks.length} task{tasks.length === 1 ? "" : "s"} shown</p></div>
-              <div className="tabs tabs-box" role="tablist" aria-label="Queue scope">
+              <div id="work-queue-scope" className="tabs tabs-box" role="tablist" aria-label="Queue scope">
                 <button className={`tab min-h-11 ${scope === "mine" ? "tab-active" : ""}`} onClick={() => setScope("mine")}>My queue</button>
                 <button className={`tab min-h-11 ${scope === "available" ? "tab-active" : ""}`} onClick={() => setScope("available")}>Available tasks</button>
               </div>
             </div>
             <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_180px_180px_auto]">
-              <label className="input input-bordered flex min-h-11 items-center gap-2"><Search size={17} aria-hidden="true" /><span className="sr-only">Search tasks</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search farmer, animal, or task" className="grow" /></label>
-              <select className="select select-bordered min-h-11" aria-label="Filter by task type" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}><option value="all">All task types</option><option value="AI">AI service</option><option value="PD">Pregnancy</option><option value="Health">Health assistance</option><option value="CD">Calving</option><option value="FollowUp">Follow-up</option><option value="GeneralVisit">General visit</option></select>
-              <select className="select select-bordered min-h-11" aria-label="Filter by task status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option><option value="open">Open</option><option value="in_progress">In progress</option><option value="completed">Completed</option><option value="overdue">Overdue</option></select>
+              <div className="input input-bordered flex min-h-11 items-center gap-2">
+                <Search size={17} aria-hidden="true" />
+                <label htmlFor="work-queue-search" className="sr-only">Search tasks</label>
+                <input
+                  id="work-queue-search"
+                  name="work-queue-search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search farmer, animal, or task"
+                  className="grow"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="work-queue-task-type" className="sr-only">Filter by task type</label>
+                <select
+                  id="work-queue-task-type"
+                  name="work-queue-task-type"
+                  className="select select-bordered min-h-11 w-full"
+                  aria-label="Filter by task type"
+                  value={typeFilter}
+                  onChange={(event) => setTypeFilter(event.target.value)}
+                >
+                  <option value="all">All task types</option>
+                  <option value="AI">AI service</option>
+                  <option value="PD">Pregnancy</option>
+                  <option value="Health">Health assistance</option>
+                  <option value="CD">Calving</option>
+                  <option value="FollowUp">Follow-up</option>
+                  <option value="GeneralVisit">General visit</option>
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="work-queue-status" className="sr-only">Filter by task status</label>
+                <select
+                  id="work-queue-status"
+                  name="work-queue-status"
+                  className="select select-bordered min-h-11 w-full"
+                  aria-label="Filter by task status"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="open">Open</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="completed">Completed</option>
+                  <option value="overdue">Overdue</option>
+                </select>
+              </div>
+
               <button className="btn btn-ghost min-h-11" onClick={() => { setSearch(""); setTypeFilter("all"); setStatusFilter("all"); }}>Clear filters</button>
             </div>
           </div>
