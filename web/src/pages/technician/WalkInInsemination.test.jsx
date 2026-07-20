@@ -125,6 +125,7 @@ describe("WalkInInsemination Component", () => {
 
   it("shows TaskContextErrorView if the task is a Health or Calving task (preview-only)", async () => {
     axiosInstance.get.mockImplementation((url) => {
+      console.log("TEST REQUESTED URL (Test 2):", url);
       if (url.includes("/tasks/task-456")) {
         return Promise.resolve({
           data: {

@@ -103,4 +103,18 @@ describe("Technician Work Queue", () => {
     expect(lockSpan2).toBeInTheDocument();
     expect(lockSpan1).not.toBe(lockSpan2);
   });
+
+  it("renders the desktop table inside a scroll container with horizontal overflow support", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [{
+      _id: "task-1", taskType: "PD", status: "Pending", dueDate: "2099-08-06T05:00:00.000Z",
+      farmerId: { name: "Maria Farmer" }, animalIds: [{ _id: "animal-1", earTag: "ILO-101" }],
+      technicianId: "tech-1",
+    }] });
+    renderQueue();
+    await waitFor(() => expect(screen.getByTestId("work-queue-table-scroll")).toBeInTheDocument());
+    const scrollContainer = screen.getByTestId("work-queue-table-scroll");
+    expect(scrollContainer.className).toContain("overflow-x-auto");
+    const table = screen.getByRole("table", { name: "Technician work queue" });
+    expect(scrollContainer).toContainElement(table);
+  });
 });

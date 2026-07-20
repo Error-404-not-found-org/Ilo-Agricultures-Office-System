@@ -112,9 +112,9 @@ export default function WorkQueue() {
   const focusedTaskId = searchParams.get("taskId");
 
   return (
-    <div className="flex min-h-screen flex-1 flex-col bg-base-200 text-base-content">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content">
       <Topbar title="Work Queue" subtitle="Complete assigned field tasks and lifecycle follow-ups" />
-      <main className="space-y-5 p-4 sm:p-6">
+      <main className="space-y-5 p-4 sm:p-6 flex-1 flex flex-col min-h-0">
         <div className="alert border border-base-300 bg-base-100 text-sm" role="note">
           <ClipboardCheck className="text-primary" size={20} aria-hidden="true" />
           <span><strong>Work Queue</strong> contains operational tasks. New service requests are reviewed and scheduled from the Request Board.</span>
@@ -191,8 +191,8 @@ export default function WorkQueue() {
             <div className="p-10 text-center"><h2 className="font-bold">{search || typeFilter !== "all" || statusFilter !== "all" ? "No tasks match these filters" : "No tasks in this queue"}</h2><p className="mt-1 text-sm text-base-content/65">{search || typeFilter !== "all" || statusFilter !== "all" ? "Try changing the task type, status, or search term." : "Tasks assigned to you or requiring action will appear here."}</p></div>
           ) : (
             <>
-              <div className="hidden overflow-x-auto lg:block">
-                <table className="table table-pin-rows" aria-label="Technician work queue">
+              <div className="hidden overflow-x-auto lg:block" data-testid="work-queue-table-scroll">
+                <table className="table table-pin-rows w-full min-w-[1100px]" aria-label="Technician work queue">
                   <thead><tr><th>Task</th><th>Animal</th><th>Farmer</th><th>Due</th><th>Workflow stage</th><th>Status</th><th>Readiness</th><th><span className="sr-only">Actions</span></th></tr></thead>
                   <tbody>{tasks.map((task) => { const animal = task.animalIds?.[0] || {}; const status = getTaskOperationalStatus(task); const readiness = getTaskReadiness(task); const type = getTaskType(task.taskType); const available = !task.technicianId; const complete = ["completed", "done", "cancelled"].includes(String(task.status || "").toLowerCase()); return <tr key={task._id} className={focusedTaskId === task._id ? "bg-primary/10" : "hover"}><td><span className={`badge badge-sm ${type.badgeClass}`}>{type.label}</span></td><td><span className="font-medium" title={animal.earTag || animal.animalId}>{animal.earTag || animal.animalId || "Not recorded"}</span></td><td>{task.farmerId?.name || "Not recorded"}</td><td className={status.isOverdue ? "font-semibold text-error" : ""}>{formatDue(task.dueDate)}</td><td>{getWorkflowStageLabel(task)}</td><td><span className={`badge badge-sm ${status.badgeClass}`}>{status.label}</span></td><td><span className={`badge badge-sm ${readiness.ready ? "badge-success" : "badge-warning"}`} title={readiness.reason}>{readiness.label}</span></td><td>{!complete && <button className="btn btn-primary btn-sm min-h-11 whitespace-nowrap" disabled={!available && !readiness.ready} onClick={() => available ? claimMutation.mutate(task) : openTask(task)} aria-label={`${available ? "Claim" : getTaskPrimaryActionLabel(task)} for ${animal.earTag || animal.animalId || "animal"}`}>{available ? "Claim" : getTaskPrimaryActionLabel(task)}</button>}</td></tr>; })}</tbody>
                 </table>
