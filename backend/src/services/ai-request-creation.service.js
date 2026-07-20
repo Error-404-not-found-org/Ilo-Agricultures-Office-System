@@ -23,15 +23,16 @@ export const createActiveAIRequestError = (existingRequest) =>
     },
   });
 
-export const findActiveAIRequest = (animalId) =>
-  Insemination.findOne(activeAIRequestQuery(animalId)).sort({ createdAt: 1 });
+export const findActiveAIRequest = (animalId, session = null) =>
+  Insemination.findOne(activeAIRequestQuery(animalId)).sort({ createdAt: 1 }).session(session);
 
 const isActiveRequestKeyCollision = (error) =>
   error?.code === 11000 &&
   (error?.keyPattern?.activeRequestKey || error?.keyValue?.activeRequestKey);
 
-export const createAIRequestWithGuard = async (payload) => {
-  const existing = await findActiveAIRequest(payload.animalId);
+export const createAIRequestWithGuard = async (payload, options = {}) => {
+  const session = options?.session || null;
+  const existing = await findActiveAIRequest(payload.animalId, session);
   if (existing) throw createActiveAIRequestError(existing);
 
   const lastPerformedAttempt = await Insemination.findOne({
@@ -39,23 +40,24 @@ export const createAIRequestWithGuard = async (payload) => {
     status: "done",
     inseminationDate: { $exists: true, $ne: null },
     deletedAt: null,
-  }).sort({ attemptNumber: -1, inseminationDate: -1 });
+  }).sort({ attemptNumber: -1, inseminationDate: -1 }).session(session);
   const attemptNumber = (lastPerformedAttempt?.attemptNumber || 0) + 1;
 
   try {
-  return await Insemination.create({
-    ...payload,
-    attemptNumber,
-    previousAttemptId: payload.previousAttemptId || lastPerformedAttempt?._id || null,
-    attemptSeriesId:
-      payload.attemptSeriesId ||
-      lastPerformedAttempt?.attemptSeriesId ||
-      undefined,
-    activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
-  });
+    const [insemination] = await Insemination.create([{
+      ...payload,
+      attemptNumber,
+      previousAttemptId: payload.previousAttemptId || lastPerformedAttempt?._id || null,
+      attemptSeriesId:
+        payload.attemptSeriesId ||
+        lastPerformedAttempt?.attemptSeriesId ||
+        undefined,
+      activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
+    }], { session });
+    return insemination;
   } catch (error) {
     if (!isActiveRequestKeyCollision(error)) throw error;
-    const concurrentWinner = await findActiveAIRequest(payload.animalId);
+    const concurrentWinner = await findActiveAIRequest(payload.animalId, session);
     throw createActiveAIRequestError(concurrentWinner);
   }
 };

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Syringe, User, Activity, Search, MapPin, Phone, Mail,
@@ -38,26 +38,118 @@ export default function WalkInInsemination() {
   const searchParams = new URLSearchParams(location.search);
   const taskIdQuery = searchParams.get("taskId");
 
-  const taskContext = location.state?.taskContext || null;
+  const [taskContext, setTaskContext] = useState(() => location.state?.taskContext || null);
   const returnTo = sanitizeReturnTo(location.state?.returnTo);
 
   const isTaskWorkflow = !!taskIdQuery;
+
+  const { data: fetchedContext, isLoading: isLoadingContext } = useQuery({
+    queryKey: ["task-context", taskIdQuery],
+    queryFn: async () => {
+      const res = await axiosInstance.get(`/technician/tasks/${taskIdQuery}/context`);
+      return res.data;
+    },
+    enabled: !!taskIdQuery && !location.state?.taskContext,
+  });
+
+  useEffect(() => {
+    if (fetchedContext) {
+      setTaskContext(fetchedContext);
+    }
+  }, [fetchedContext]);
+
+  const isContextLoading = isTaskWorkflow && !location.state?.taskContext && isLoadingContext;
   const validation = taskContext ? validateTaskContextForAction(taskContext) : null;
-  const isStateMissing = isTaskWorkflow && (!taskContext || (validation && !validation.valid));
-  const isTaskPreview = isTaskWorkflow && !isStateMissing;
+  const isStateMissing = isTaskWorkflow && !isContextLoading && (!taskContext || (validation && !validation.valid));
+  const isTaskPreview = isTaskWorkflow && !isStateMissing && !isContextLoading;
 
   // --- MODE: existing record lookup or full new registration ---
   const [isExistingRecord, setIsExistingRecord] = useState(true);
 
   // Existing-record lookup state
-  const [searchFarmer, setSearchFarmer] = useState(() => taskContext?.farmerName || "");
+  const [searchFarmer, setSearchFarmer] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [selectedFarmerId, setSelectedFarmerId] = useState(() => taskContext?.farmerId || "");
-  const [selectedAnimalId, setSelectedAnimalId] = useState(() => taskContext?.animalId || "");
+  const [selectedFarmerId, setSelectedFarmerId] = useState("");
+  const [selectedAnimalId, setSelectedAnimalId] = useState("");
   const [showPregnancyWarning, setShowPregnancyWarning] = useState(false);
   const [isOverriding, setIsOverriding] = useState(false);
   const [ageWarning, setAgeWarning] = useState("");
   const [vwpWarning, setVwpWarning] = useState("");
+
+  useEffect(() => {
+    if (taskContext) {
+      setSearchFarmer(taskContext.farmerName || "");
+      setSelectedFarmerId(taskContext.farmerId || "");
+      setSelectedAnimalId(taskContext.animalId || "");
+    }
+  }, [taskContext]);
+
+  const [hasPrefilled, setHasPrefilled] = useState(false);
+
+  // Synchronize context once loaded
+  const { data: farmers = [] } = useQuery({
+    queryKey: ["farmers", "list"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/user?role=farmer");
+      return Array.isArray(res.data) ? res.data : res.data.data || [];
+    },
+  });
+
+  const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({
+    queryKey: ["farmer-animals", selectedFarmerId],
+    queryFn: async () => {
+      const res = await axiosInstance.get(`/animals/farmer/${selectedFarmerId}`);
+      return Array.isArray(res.data) ? res.data : res.data.data || [];
+    },
+    enabled: !!selectedFarmerId && isExistingRecord,
+  });
+
+  const contextError = useMemo(() => {
+    if (!isTaskWorkflow) return null;
+    if (isContextLoading) return null;
+    if (taskContext && taskContext.isValid === false) {
+      return taskContext.message || "Invalid task context.";
+    }
+
+    if (farmers.length > 0) {
+      const farmerExists = farmers.some((f) => f._id === taskContext.farmerId);
+      if (!farmerExists) {
+        return `Context Mismatch: Farmer "${taskContext.farmerName}" (ID: ${taskContext.farmerId}) was not found in the registry.`;
+      }
+    }
+
+    if (selectedFarmerId && !isLoadingAnimals && animals.length > 0) {
+      const targetAnimal = animals.find((a) => a._id === taskContext.animalId);
+      if (!targetAnimal) {
+        return `Context Mismatch: Animal Tag #${taskContext.animalReference} (ID: ${taskContext.animalId}) does not belong to farmer "${taskContext.farmerName}".`;
+      }
+    }
+
+    return null;
+  }, [isTaskWorkflow, isContextLoading, taskContext, farmers, animals, selectedFarmerId, isLoadingAnimals]);
+
+  useEffect(() => {
+    if (isTaskWorkflow && taskContext) {
+      setIsExistingRecord(true);
+      if (taskContext.farmerId) {
+        setSelectedFarmerId(taskContext.farmerId);
+        setSearchFarmer(taskContext.farmerName || "");
+      }
+      if (taskContext.animalId) {
+        setSelectedAnimalId(taskContext.animalId);
+      }
+    }
+  }, [isTaskWorkflow, taskContext]);
+
+  useEffect(() => {
+    if (isTaskWorkflow && selectedAnimalId && animals.length > 0 && !hasPrefilled) {
+      const targetAnimal = animals.find((a) => a._id === selectedAnimalId);
+      if (targetAnimal) {
+        handleAnimalChange(selectedAnimalId);
+        setHasPrefilled(true);
+      }
+    }
+  }, [animals, selectedAnimalId, isTaskWorkflow, hasPrefilled]);
 
 
   // Barangay autocomplete for new-entry mode
@@ -81,28 +173,10 @@ export default function WalkInInsemination() {
     },
   }));
 
-  // --- QUERIES ---
-  const { data: farmers = [] } = useQuery({
-    queryKey: ["farmers", "list"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/user?role=farmer");
-      return Array.isArray(res.data) ? res.data : res.data.data || [];
-    },
-  });
-
   const targetBarangays = useMemo(() => {
     const selectedCity = formData.address.city || "Oton";
     return getIloiloBarangayOptions(selectedCity, selectedDistrict);
   }, [formData.address.city, selectedDistrict]);
-
-  const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({
-    queryKey: ["farmer-animals", selectedFarmerId],
-    queryFn: async () => {
-      const res = await axiosInstance.get(`/animals/farmer/${selectedFarmerId}`);
-      return Array.isArray(res.data) ? res.data : res.data.data || [];
-    },
-    enabled: !!selectedFarmerId && isExistingRecord,
-  });
 
   const { data: config } = useQuery({
     queryKey: ["config"],
@@ -118,11 +192,26 @@ export default function WalkInInsemination() {
       const res = await axiosInstance.post("/technician/walk-in-insemination", data);
       return res.data;
     },
-    onSuccess: () => {
-      toast.success("AI Transaction recorded successfully!");
+    onSuccess: (data) => {
+      if (data?.outcome === "existing_and_task_completed" || data?.outcome === "existing_task_reconciled") {
+        toast.success("AI Service record verified and task completed (reconciled).");
+      } else {
+        toast.success("AI Transaction recorded successfully!");
+      }
+      queryClient.invalidateQueries({ queryKey: ["technician", "work-queue"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["farmer-animals"] });
-      navigate(-1);
+      queryClient.invalidateQueries({ queryKey: ["inseminations"] });
+      queryClient.invalidateQueries({ queryKey: ["technician-requests-badge"] });
+      queryClient.invalidateQueries({ queryKey: ["animal-history"] });
+      queryClient.invalidateQueries({ queryKey: ["farmer-profile"] });
+      queryClient.invalidateQueries({ queryKey: ["breeding-ledger"] });
+
+      if (isTaskWorkflow && returnTo) {
+        navigate(returnTo);
+      } else {
+        navigate(-1);
+      }
     },
     onError: (error) => {
       toast.error("Failed to record AI: " + getAIRequestErrorMessage(error, "Please try again."));
@@ -205,6 +294,8 @@ export default function WalkInInsemination() {
         address: typeof farmer.address === "string" ? farmer.address : farmer.address?.street || "",
         animalDetails: { earTag: animal.earTag, species: animal.species, breed: animal.breed },
         inseminationDetails: formData.inseminationDetails,
+        taskId: taskContext?.taskId || null,
+        requestId: taskContext?.requestId || null,
       };
     } else {
       if (!formData.firstName || !formData.lastName || !formData.phoneNumber || !formData.address.city || !formData.address.barangay) {
@@ -251,6 +342,10 @@ export default function WalkInInsemination() {
     return <TaskContextErrorView errorType={errorType} returnTo={returnTo} />;
   }
 
+  if (contextError) {
+    return <TaskContextErrorView errorType="mismatch" title="Context Mismatch Error" message={contextError} returnTo={returnTo} />;
+  }
+
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
       {/* Header */}
@@ -290,43 +385,45 @@ export default function WalkInInsemination() {
           {isTaskPreview && <TaskContextCard taskContext={taskContext} />}
 
           {/* Mode / Status Toggle Bar */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
-            {/* Record mode toggle */}
-            <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-              <button
-                type="button"
-                onClick={() => setIsExistingRecord(true)}
-                className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
-              >
-                Existing Record
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsExistingRecord(false)}
-                className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${!isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
-              >
-                Full Registration
-              </button>
-            </div>
+          {!isTaskWorkflow && (
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
+              {/* Record mode toggle */}
+              <div className="inline-flex p-1 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsExistingRecord(true)}
+                  className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                >
+                  Existing Record
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsExistingRecord(false)}
+                  className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${!isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                >
+                  Full Registration
+                </button>
+              </div>
 
-            {/* Status toggle */}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, inseminationDetails: { ...formData.inseminationDetails, status: "done" } })}
-                className={`px-4 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${formData.inseminationDetails.status !== "in-progress" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600" : "border-slate-200 dark:border-slate-800 text-slate-400"}`}
-              >
-                Service Completed
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, inseminationDetails: { ...formData.inseminationDetails, status: "in-progress" } })}
-                className={`px-4 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${formData.inseminationDetails.status === "in-progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-600" : "border-slate-200 dark:border-slate-800 text-slate-400"}`}
-              >
-                Schedule Visit
-              </button>
+              {/* Status toggle */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, inseminationDetails: { ...formData.inseminationDetails, status: "done" } })}
+                  className={`px-4 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${formData.inseminationDetails.status !== "in-progress" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-600" : "border-slate-200 dark:border-slate-800 text-slate-400"}`}
+                >
+                  Service Completed
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, inseminationDetails: { ...formData.inseminationDetails, status: "in-progress" } })}
+                  className={`px-4 h-9 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${formData.inseminationDetails.status === "in-progress" ? "bg-blue-500/10 border-blue-500/20 text-blue-600" : "border-slate-200 dark:border-slate-800 text-slate-400"}`}
+                >
+                  Schedule Visit
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
             {/* LEFT: Main Form */}
@@ -348,13 +445,14 @@ export default function WalkInInsemination() {
                         <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                           value={searchFarmer}
-                          onChange={(e) => { setSearchFarmer(e.target.value); setIsDropdownOpen(true); }}
-                          onFocus={() => setIsDropdownOpen(true)}
+                          onChange={(e) => { if (!isTaskWorkflow) { setSearchFarmer(e.target.value); setIsDropdownOpen(true); } }}
+                          onFocus={() => { if (!isTaskWorkflow) setIsDropdownOpen(true); }}
+                          disabled={isTaskWorkflow}
                           placeholder="Search farmer name..."
-                          className={`${inputClass} pl-10`}
+                          className={`${inputClass} pl-10 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:opacity-80`}
                         />
                         <AnimatePresence>
-                          {isDropdownOpen && searchFarmer && (
+                          {isDropdownOpen && searchFarmer && !isTaskWorkflow && (
                             <motion.div
                               initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}
                               className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 shadow-xl rounded-xl custom-scrollbar"
@@ -385,9 +483,11 @@ export default function WalkInInsemination() {
 
                     {/* Animal select */}
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Animal Asset</label>
+                      <label htmlFor="walk-in-animal-select" className={labelClass}>Animal Asset</label>
                       <select
-                        disabled={!selectedFarmerId || isLoadingAnimals}
+                        id="walk-in-animal-select"
+                        name="walk-in-animal-select"
+                        disabled={!selectedFarmerId || isLoadingAnimals || isTaskWorkflow}
                         value={selectedAnimalId}
                         onChange={(e) => handleAnimalChange(e.target.value)}
                         className={`${selectClass} disabled:opacity-50 ${showPregnancyWarning ? "border-rose-400" : ""}`}
@@ -405,8 +505,10 @@ export default function WalkInInsemination() {
                   {/* Sire selection for existing record */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Sire Breed</label>
+                      <label htmlFor="walk-in-sire-breed-existing" className={labelClass}>Sire Breed</label>
                       <select
+                        id="walk-in-sire-breed-existing"
+                        name="walk-in-sire-breed-existing"
                         value={formData.inseminationDetails.sireBreed}
                         onChange={(e) => handleSireBreedChange(e.target.value)}
                         className={selectClass}
@@ -639,8 +741,14 @@ export default function WalkInInsemination() {
                     </div>
                     <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
                       <div className="space-y-1.5">
-                        <label className={labelClass}>Sire Breed *</label>
-                        <select value={formData.inseminationDetails.sireBreed} onChange={(e) => handleSireBreedChange(e.target.value)} className={selectClass}>
+                        <label htmlFor="walk-in-sire-breed" className={labelClass}>Sire Breed *</label>
+                        <select
+                          id="walk-in-sire-breed"
+                          name="walk-in-sire-breed"
+                          value={formData.inseminationDetails.sireBreed}
+                          onChange={(e) => handleSireBreedChange(e.target.value)}
+                          className={selectClass}
+                        >
                           <option value="" disabled>Select Sire Breed</option>
                           {CATTLE_BREEDS.map((b) => <option key={b} value={b}>{b}</option>)}
                         </select>
@@ -735,7 +843,7 @@ export default function WalkInInsemination() {
 
                 <button
                   onClick={handleSubmit}
-                  disabled={mutation.isPending || (showPregnancyWarning && !isOverriding) || isTaskPreview}
+                  disabled={mutation.isPending || (showPregnancyWarning && !isOverriding) || (isTaskWorkflow && taskContext?.taskType !== "AI")}
                   className={`w-full h-12 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                     formData.inseminationDetails.status === "done"
                       ? "bg-white text-[#074033] hover:bg-emerald-50"

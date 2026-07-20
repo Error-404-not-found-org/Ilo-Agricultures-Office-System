@@ -5,12 +5,18 @@ import { Insemination } from "../models/insemination.model.js";
 import { MedicalRecord } from "../models/medical-record.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { Task } from "../models/task.model.js";
+import { AuditLog } from "../models/audit-log.model.js";
+import { Notification } from "../models/notification.model.js";
 import { AppError } from "../utils/app-error.js";
 import { ANIMAL_REPRODUCTIVE_STATUS, reproductiveStatusForPregnancyResult } from "../domain/livestock-workflow.js";
 import { assertPregnancyDiagnosisWindow } from "../domain/pregnancy-readiness.js";
 import { PREGNANCY_TASK_STAGE } from "../domain/pregnancy-task-workflow.js";
 import { loadPregnancyConfirmationPolicy } from "./pregnancy-policy.service.js";
 import { getMethodThresholdForSpecies, LEGACY_PREGNANCY_POLICY_VERSION } from "../domain/pregnancy-confirmation-policy.js";
+import { getAnimalAIEligibility } from "./ai-eligibility.service.js";
+import { createAIRequestWithGuard, isVerifiedFailedAIAttempt } from "./ai-request-creation.service.js";
+import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../utils/cattleCore.js";
+import { createAuditLog } from "./audit.service.js";
 
 const runTransaction = async (work) => {
   const session = await mongoose.startSession();
@@ -24,12 +30,13 @@ const runTransaction = async (work) => {
 };
 
 const FINAL_PREGNANCY_RESULTS = new Set(["pregnant", "not_pregnant"]);
-export const completeInsemination = async ({ id, updateData, technicianId, farmerId, animalId, animalTag }) => {
+export const completeInsemination = async ({ id, updateData, technicianId, farmerId, animalId, animalTag }, parentSession = null) => {
   const policyResolution = await loadPregnancyConfirmationPolicy({ at: updateData.inseminationDate });
   const policyVersion = policyResolution.mode === "method_based"
     ? policyResolution.policy.version
     : LEGACY_PREGNANCY_POLICY_VERSION;
-  return runTransaction(async (session) => {
+
+  const executeWork = async (session) => {
     const request = await Insemination.findOneAndUpdate(
       { _id: id, status: { $nin: ["done", "rejected", "cancelled"] }, deletedAt: null },
       { $set: updateData, $unset: { activeRequestKey: 1 } },
@@ -60,7 +67,12 @@ export const completeInsemination = async ({ id, updateData, technicianId, farme
       { upsert: true, session },
     );
     return request;
-  });
+  };
+
+  if (parentSession) {
+    return executeWork(parentSession);
+  }
+  return runTransaction(executeWork);
 };
 
 export const persistPregnancyDiagnosis = ({ animal, insemination, result, technicianNote, diagnosisDate, taskId, actorId }) =>
@@ -451,3 +463,307 @@ export const createResolvedWalkInHealth = ({ requestData, medicalRecord }) =>
     }], { session });
     return { request, medicalRecord: record };
   });
+
+export const recordTechnicianAIService = async ({
+  taskId,
+  requestId,
+  farmerId,
+  animalId,
+  inseminationDate,
+  sireBreed,
+  sireCode,
+  estrus,
+  actorId,
+  isAdmin,
+}) => {
+  return runTransaction(async (session) => {
+    let task = null;
+
+    // 1. Authoritative Task Acquisition & Reservation
+    if (taskId) {
+      task = await Task.findOneAndUpdate(
+        {
+          _id: taskId,
+          taskType: "AI",
+          status: { $in: ["Pending", "In Progress"] },
+          $or: [
+            { technicianId: actorId },
+            { technicianId: null },
+            { technicianId: { $exists: false } }
+          ]
+        },
+        {
+          $set: {
+            status: "Completed",
+            completedAt: new Date(),
+            technicianId: actorId
+          }
+        },
+        { session, new: true }
+      );
+
+      if (!task) {
+        // Acquisition failed, reload the task to resolve the scenario
+        const currentTask = await Task.findById(taskId).session(session);
+        if (!currentTask) {
+          throw new AppError("Task not found.", { status: 404, code: "TASK_NOT_FOUND" });
+        }
+        if (currentTask.taskType !== "AI") {
+          throw new AppError("Invalid task type for AI recording.", { status: 400, code: "INVALID_TASK_TYPE" });
+        }
+        if (currentTask.status === "Completed") {
+          const expectedRecordId = requestId || currentTask.relatedRecordId;
+          if (currentTask.relatedRecordType === "insemination" && String(currentTask.relatedRecordId) === String(expectedRecordId)) {
+            const existingAI = await Insemination.findById(currentTask.relatedRecordId).session(session);
+            return {
+              outcome: "existing_and_task_completed",
+              insemination: existingAI,
+              task: currentTask,
+            };
+          } else {
+            throw new AppError("This task is already completed and linked to another record.", {
+              status: 409,
+              code: "TASK_ALREADY_LINKED",
+            });
+          }
+        }
+        if (currentTask.status === "Cancelled") {
+          throw new AppError("This task has been cancelled.", { status: 400, code: "TASK_CANCELLED" });
+        }
+        const isClaimedByMe = currentTask.technicianId && String(currentTask.technicianId) === String(actorId);
+        const isClaimable = !currentTask.technicianId;
+        if (!isClaimedByMe && !isClaimable && !isAdmin) {
+          throw new AppError("This task is assigned to another technician.", { status: 403, code: "TASK_ASSIGNED_TO_OTHER" });
+        }
+        throw new AppError("A concurrency conflict occurred. Please retry.", { status: 409, code: "CONCURRENCY_CONFLICT" });
+      }
+
+      // Context matching & verification
+      if (String(task.farmerId) !== String(farmerId)) {
+        throw new AppError("Task farmer mismatch.", { status: 409, code: "TASK_FARMER_MISMATCH" });
+      }
+      if (!task.animalIds || !task.animalIds.some((id) => String(id) === String(animalId))) {
+        throw new AppError("Task animal mismatch.", { status: 409, code: "TASK_ANIMAL_MISMATCH" });
+      }
+      if (requestId) {
+        const metadataRequestId = task.metadata?.requestId || task.relatedRecordId;
+        if (metadataRequestId && String(metadataRequestId) !== String(requestId)) {
+          throw new AppError("Task request mismatch.", { status: 409, code: "TASK_REQUEST_MISMATCH" });
+        }
+      }
+    }
+
+    // 2. Resolve Animal and Farmer
+    const animal = await Animal.findById(animalId).session(session);
+    if (!animal) {
+      throw new AppError("Animal not found.", { status: 404, code: "ANIMAL_NOT_FOUND" });
+    }
+    if (String(animal.farmerId) !== String(farmerId)) {
+      throw new AppError("The selected animal does not belong to the selected farmer.", {
+        status: 400,
+        code: "ANIMAL_FARMER_MISMATCH",
+      });
+    }
+
+    let insemination;
+    let isCreated = false;
+
+    if (requestId) {
+      // Request-Linked Path
+      insemination = await Insemination.findById(requestId).session(session);
+      if (!insemination) {
+        throw new AppError("Insemination request not found.", { status: 404, code: "AI_REQUEST_NOT_FOUND" });
+      }
+
+      // Check if the request is already complete
+      if (insemination.status === "done") {
+        if (taskId) {
+          await Task.updateOne(
+            { _id: taskId },
+            { $set: { relatedRecordType: "insemination", relatedRecordId: insemination._id } },
+            { session }
+          );
+        }
+        return {
+          outcome: "existing_task_reconciled",
+          insemination,
+          task,
+        };
+      }
+
+      // Validate age and species and postpartum window
+      const ageCheck = checkInseminationAgeEligibility(animal.birthDate, animal.species);
+      if (!ageCheck.isEligible) {
+        throw new AppError(ageCheck.reason, { status: 400, code: ageCheck.code });
+      }
+      const recoveryAnchor = animal.lastCalvingDate || animal.lastPregnancyLossDate;
+      if (recoveryAnchor) {
+        const recovery = verifyPostpartumWindow(recoveryAnchor, inseminationDate, animal.species, animal.breed);
+        if (!recovery.isSafe) {
+          throw new AppError(
+            `The animal is still within the postpartum recovery period. Rebreeding is allowed after ${recovery.requiredDays} days post-calving.`,
+            { status: 400, code: "POSTPARTUM_RECOVERY" }
+          );
+        }
+      }
+
+      const updateData = {
+        status: "done",
+        approvedBy: actorId,
+        technicianId: actorId,
+        technicianNote: insemination.technicianNote || "",
+        sireBreed,
+        sireCode,
+        estrus,
+        inseminationDate,
+      };
+
+      insemination = await completeInsemination(
+        {
+          id: requestId,
+          updateData,
+          technicianId: actorId,
+          farmerId,
+          animalId,
+          animalTag: animal.earTag || animal.animalId,
+        },
+        session
+      );
+    } else {
+      // Manual Walk-In Path
+      const eligibility = await getAnimalAIEligibility({ animal, at: inseminationDate });
+      if (!eligibility.eligible) {
+        throw new AppError(eligibility.reason, { status: 400, code: eligibility.code });
+      }
+
+      // Verify the last performed attempt was a failure
+      const lastPerformedAttempt = await Insemination.findOne({
+        animalId,
+        status: "done",
+        inseminationDate: { $exists: true, $ne: null },
+        deletedAt: null,
+      }).sort({ attemptNumber: -1, inseminationDate: -1 }).session(session);
+
+      if (lastPerformedAttempt && !isVerifiedFailedAIAttempt(lastPerformedAttempt)) {
+        throw new AppError("The previous AI attempt is not a verified failure.", {
+          status: 400,
+          code: "PREVIOUS_AI_ATTEMPT_NOT_FAILED",
+        });
+      }
+
+      insemination = await createAIRequestWithGuard(
+        {
+          farmerId,
+          animalId,
+          inseminationDate,
+          scheduledDate: inseminationDate,
+          preferredDate: inseminationDate,
+          sireBreed,
+          sireCode,
+          estrus: estrus || "Natural",
+          status: "done",
+          technicianId: actorId,
+          approvedBy: actorId,
+        },
+        { session }
+      );
+
+      isCreated = true;
+
+      // Sync Animal reproductiveStatus
+      await Animal.findByIdAndUpdate(animalId, {
+        $set: {
+          reproductiveStatus: ANIMAL_REPRODUCTIVE_STATUS.INSEMINATED,
+          lastInseminationDate: inseminationDate,
+        },
+        $push: { activityLogs: { event: "Artificial Insemination", date: inseminationDate, description: "Artificial insemination completed." } },
+      }, { session });
+
+      // Create automatic PD follow-up task
+      const policyResolution = await loadPregnancyConfirmationPolicy({ at: inseminationDate });
+      const policyVersion = policyResolution.mode === "method_based"
+        ? policyResolution.policy.version
+        : LEGACY_PREGNANCY_POLICY_VERSION;
+      const enabledThresholds = policyResolution.mode === "method_based"
+        ? policyResolution.policy.methods
+            .filter((method) => method.enabled)
+            .map((method) => getMethodThresholdForSpecies(method, animal?.species))
+            .filter((threshold) => threshold !== null)
+        : [];
+      const initialConfirmationDays = enabledThresholds.length
+        ? Math.min(...enabledThresholds)
+        : 60;
+      const pdDueDate = new Date(inseminationDate);
+      pdDueDate.setDate(pdDueDate.getDate() + initialConfirmationDays);
+
+      await Task.updateOne(
+        { sourceType: "automatic_pd_followup", "metadata.inseminationId": insemination._id, status: { $nin: ["Completed", "Cancelled"] } },
+        {
+          $setOnInsert: {
+            technicianId: actorId,
+            farmerId,
+            animalIds: [animalId],
+            taskType: "PD",
+            category: "Follow-up",
+            priority: 2,
+            notes: `Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #${animal.earTag || "Unknown"}.`,
+            status: "Pending",
+            dueDate: pdDueDate,
+            sourceType: "automatic_pd_followup",
+            metadata: {
+              workflowStage: PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION,
+              animalId,
+              farmerId,
+              inseminationId: insemination._id,
+              policyVersion,
+            },
+          },
+        },
+        { upsert: true, session }
+      );
+    }
+
+    // 3. Link completed record back to task
+    if (taskId) {
+      await Task.updateOne(
+        { _id: taskId },
+        { $set: { relatedRecordType: "insemination", relatedRecordId: insemination._id } },
+        { session }
+      );
+    }
+
+    // 4. Create Audit Log
+    await createAuditLog(
+      {
+        action: "RECORD_AI_SERVICE",
+        actorId,
+        entityType: "Insemination",
+        entityId: insemination._id,
+        details: { taskId, requestId, animalId, attemptNumber: insemination.attemptNumber },
+      },
+      { session }
+    );
+
+    // 5. Create Notification
+    await Notification.create(
+      [
+        {
+          recipientId: farmerId,
+          senderId: actorId,
+          type: "ai-request",
+          relatedId: insemination._id,
+          title: "Field AI Recorded",
+          message: `A field insemination has been recorded for your animal (${animal.earTag || animal.animalId}) by the technician.`,
+          linkType: "record",
+        },
+      ],
+      { session }
+    );
+
+    return {
+      outcome: isCreated ? "created_and_task_completed" : "existing_and_task_completed",
+      insemination,
+      task: taskId ? await Task.findById(taskId).session(session) : null,
+    };
+  });
+};

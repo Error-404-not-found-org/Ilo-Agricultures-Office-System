@@ -1,12 +1,17 @@
 import { AlertTriangle, ChevronLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
-export default function TaskContextErrorView({ errorType = "missing_info", returnTo = "/technician/work-queue" }) {
+export default function TaskContextErrorView({
+  errorType = "missing_info",
+  returnTo = "/technician/work-queue",
+  title: customTitle = "",
+  message: customMessage = ""
+}) {
   const isUnavailable = errorType === "unavailable";
-  const title = isUnavailable ? "Task target unavailable" : "Missing task information";
-  const message = isUnavailable
+  const title = customTitle || (isUnavailable ? "Task target unavailable" : "Missing task information");
+  const message = customMessage || (isUnavailable
     ? "The requested service workflow could not be opened."
-    : "This task does not contain enough information to open the service form.";
+    : "This task does not contain enough information to open the service form.");
 
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center p-6 text-center bg-base-200 text-base-content" role="alert" aria-live="assertive">

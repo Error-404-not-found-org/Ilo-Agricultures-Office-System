@@ -37,7 +37,13 @@ const textareaClass = `w-full min-h-[120px] bg-base-200 border border-base-300 r
 const labelClass = `text-[11px] font-bold text-base-content/70 tracking-wide ml-1`;
 const sectionClass = `bg-base-200/40 border border-base-300 rounded-2xl p-4 space-y-4`;
 
-const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData, existingOnly = false }) => {
+const WalkInHealthModal = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  prefillData,
+  existingOnly = false,
+}) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -325,20 +331,22 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData, existingOn
           <div className="overflow-y-auto flex-1 custom-scrollbar p-5 space-y-5 bg-base-100">
             {/* TOGGLES */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-base-200/30 p-3 rounded-2xl border border-base-300">
-              {!existingOnly && <div className="inline-flex p-1 rounded-xl bg-base-100 border border-base-300">
-                <button
-                  onClick={() => setIsExistingRecord(true)}
-                  className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
-                >
-                  Existing Record
-                </button>
-                <button
-                  onClick={() => setIsExistingRecord(false)}
-                  className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${!isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
-                >
-                  Manual Entry
-                </button>
-              </div>}
+              {!existingOnly && (
+                <div className="inline-flex p-1 rounded-xl bg-base-100 border border-base-300">
+                  <button
+                    onClick={() => setIsExistingRecord(true)}
+                    className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
+                  >
+                    Existing Record
+                  </button>
+                  <button
+                    onClick={() => setIsExistingRecord(false)}
+                    className={`px-5 h-9 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${!isExistingRecord ? "bg-[#074033] text-white shadow-md" : "text-base-content/40 hover:text-base-content"}`}
+                  >
+                    Manual Entry
+                  </button>
+                </div>
+              )}
 
               <div className="flex gap-2">
                 <button
@@ -952,18 +960,30 @@ const WalkInHealthModal = ({ isOpen, onClose, onSuccess, prefillData, existingOn
                       <input
                         type="date"
                         value={formData.followUpDate}
-                        onChange={(e) => setFormData({ ...formData, followUpDate: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            followUpDate: e.target.value,
+                          })
+                        }
                         className={`${inputClass} cursor-pointer`}
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className={labelClass}>Withdrawal period (days)</label>
+                      <label className={labelClass}>
+                        Withdrawal period (days)
+                      </label>
                       <input
                         type="number"
                         min="0"
                         inputMode="numeric"
                         value={formData.withdrawalPeriodDays}
-                        onChange={(e) => setFormData({ ...formData, withdrawalPeriodDays: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            withdrawalPeriodDays: e.target.value,
+                          })
+                        }
                         placeholder="0"
                         className={inputClass}
                       />

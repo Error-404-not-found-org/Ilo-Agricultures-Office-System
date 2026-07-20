@@ -36,6 +36,7 @@ import {
   calculateTargetCalvingDate,
   checkInseminationAgeEligibility,
 } from "../utils/cattleCore.js";
+import { recordTechnicianAIService } from "../services/livestock-transaction.service.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
@@ -792,6 +793,8 @@ export const walkInInsemination = async (req, res) => {
       address,
       animalDetails,
       inseminationDetails,
+      taskId,
+      requestId,
     } = req.body;
 
     // 1. Resolve or Create Farmer
@@ -899,47 +902,17 @@ export const walkInInsemination = async (req, res) => {
       });
     }
 
-    const eligibility = await getAnimalAIEligibility({ animal, at: entryDate });
-    if (!eligibility.eligible) {
-      return res.status(400).json({
-        code: eligibility.code,
-        message: eligibility.reason,
-        nextAction: eligibility.nextAction,
-        nextActionAt: eligibility.nextActionAt,
-      });
-    }
-
-    const insemination = await createAIRequestWithGuard({
+    const result = await recordTechnicianAIService({
+      taskId,
+      requestId,
       farmerId: farmer._id,
       animalId: animal._id,
       inseminationDate: entryDate,
-      scheduledDate: entryDate, // Ensure walk-ins show up on the schedule
-      preferredDate: entryDate, // Ensure requested date matches for walk-ins
       sireBreed: inseminationDetails?.sireBreed,
       sireCode: inseminationDetails?.sireCode,
-      estrus: inseminationDetails?.estrus || "Natural",
-      status: inseminationDetails?.status || "in-progress",
-      approvedBy: req.user._id,
-    });
-
-    // Sync Animal Status if marked as 'done'
-    if (insemination.status === "done") {
-      await Animal.findByIdAndUpdate(animal._id, {
-        reproductiveStatus: "Inseminated",
-      });
-      console.log(
-        `[Status Sync] Animal ${animal._id} set to Inseminated via walkInInsemination.`,
-      );
-    }
-
-    // Notify Farmer
-    await Notification.create({
-      recipientId: farmer._id,
-      senderId: req.user._id,
-      type: "ai-request",
-      relatedId: insemination._id,
-      title: "Field AI Recorded",
-      message: `A field insemination has been recorded for your animal (${animal.earTag}) by technician ${req.user.name}.`,
+      estrus: inseminationDetails?.estrus,
+      actorId: req.user._id,
+      isAdmin: req.user.role === "admin",
     });
 
     // Trigger Socket Update
@@ -949,7 +922,9 @@ export const walkInInsemination = async (req, res) => {
 
     res.status(201).json({
       message: "Walk-in insemination recorded successfully",
-      insemination,
+      insemination: result.insemination,
+      outcome: result.outcome,
+      task: result.task,
       farmer,
       animal,
     });
