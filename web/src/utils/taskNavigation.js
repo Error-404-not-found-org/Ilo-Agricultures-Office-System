@@ -103,20 +103,38 @@ export const normalizeTaskContext = (task = {}) => {
     taskType: raw.taskType || null,
     workflowStage: getWorkflowStage(raw),
     taskStatus: raw.status || null,
-    requestId: idOf(raw.requestId),
+    requestId: idOf(raw.requestId || metadata.requestId),
     sourceType: raw.sourceType || metadata.sourceType || null,
     sourceId: idOf(raw.sourceId || metadata.sourceId),
     farmerId: idOf(raw.farmerId),
     farmerName: raw.farmerId?.name || raw.farmerName || null,
-    animalId: idOf(raw.animalId || metadata.animalId || (raw.animalIds?.[0])),
+    animalId: idOf(raw.animalId || metadata.animalId || raw.animalIds?.[0]),
     animalReference,
     dueDate: raw.dueDate || null,
-    pregnancyId: idOf(metadata.pregnancyId || raw.pregnancyId || (["PD", "CD", "Calving"].includes(raw.taskType) ? raw.relatedRecordId : null)),
-    inseminationId: idOf(metadata.inseminationId || raw.inseminationId || (raw.taskType === "PD" ? raw.relatedRecordId : null)),
-    healthRequestId: idOf(metadata.healthRequestId || raw.healthRequestId || (["Health", "Treatment", "Vaccination", "Deworming"].includes(raw.taskType) ? raw.relatedRecordId : null)),
+    pregnancyId: idOf(
+      metadata.pregnancyId ||
+        raw.pregnancyId ||
+        (["PD", "CD", "Calving"].includes(raw.taskType)
+          ? raw.relatedRecordId
+          : null),
+    ),
+    inseminationId: idOf(
+      metadata.inseminationId ||
+        raw.inseminationId ||
+        (raw.taskType === "PD" ? raw.relatedRecordId : null),
+    ),
+    healthRequestId: idOf(
+      metadata.healthRequestId ||
+        raw.healthRequestId ||
+        (["Health", "Treatment", "Vaccination", "Deworming"].includes(
+          raw.taskType,
+        )
+          ? raw.relatedRecordId
+          : null),
+    ),
     metadata,
     returnTo: raw.returnTo || null,
-    raw: raw
+    raw: raw,
   };
 };
 

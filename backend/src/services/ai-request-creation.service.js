@@ -23,8 +23,15 @@ export const createActiveAIRequestError = (existingRequest) =>
     },
   });
 
+const applySession = (query, session) => {
+  if (session && typeof query.session === "function") {
+    return query.session(session);
+  }
+  return query;
+};
+
 export const findActiveAIRequest = (animalId, session = null) =>
-  Insemination.findOne(activeAIRequestQuery(animalId)).sort({ createdAt: 1 }).session(session);
+  applySession(Insemination.findOne(activeAIRequestQuery(animalId)).sort({ createdAt: 1 }), session);
 
 const isActiveRequestKeyCollision = (error) =>
   error?.code === 11000 &&
@@ -35,25 +42,43 @@ export const createAIRequestWithGuard = async (payload, options = {}) => {
   const existing = await findActiveAIRequest(payload.animalId, session);
   if (existing) throw createActiveAIRequestError(existing);
 
-  const lastPerformedAttempt = await Insemination.findOne({
-    animalId: payload.animalId,
-    status: "done",
-    inseminationDate: { $exists: true, $ne: null },
-    deletedAt: null,
-  }).sort({ attemptNumber: -1, inseminationDate: -1 }).session(session);
+  const lastPerformedAttempt = await applySession(
+    Insemination.findOne({
+      animalId: payload.animalId,
+      status: "done",
+      inseminationDate: { $exists: true, $ne: null },
+      deletedAt: null,
+    }).sort({ attemptNumber: -1, inseminationDate: -1 }),
+    session
+  );
   const attemptNumber = (lastPerformedAttempt?.attemptNumber || 0) + 1;
 
   try {
-    const [insemination] = await Insemination.create([{
-      ...payload,
-      attemptNumber,
-      previousAttemptId: payload.previousAttemptId || lastPerformedAttempt?._id || null,
-      attemptSeriesId:
-        payload.attemptSeriesId ||
-        lastPerformedAttempt?.attemptSeriesId ||
-        undefined,
-      activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
-    }], { session });
+    let createdResult;
+    if (session) {
+      createdResult = await Insemination.create([{
+        ...payload,
+        attemptNumber,
+        previousAttemptId: payload.previousAttemptId || lastPerformedAttempt?._id || null,
+        attemptSeriesId:
+          payload.attemptSeriesId ||
+          lastPerformedAttempt?.attemptSeriesId ||
+          undefined,
+        activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
+      }], { session });
+    } else {
+      createdResult = await Insemination.create({
+        ...payload,
+        attemptNumber,
+        previousAttemptId: payload.previousAttemptId || lastPerformedAttempt?._id || null,
+        attemptSeriesId:
+          payload.attemptSeriesId ||
+          lastPerformedAttempt?.attemptSeriesId ||
+          undefined,
+        activeRequestKey: activeRequestKeyForAnimal(payload.animalId),
+      });
+    }
+    const insemination = Array.isArray(createdResult) ? createdResult[0] : createdResult;
     return insemination;
   } catch (error) {
     if (!isActiveRequestKeyCollision(error)) throw error;

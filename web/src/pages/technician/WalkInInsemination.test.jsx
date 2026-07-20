@@ -11,6 +11,12 @@ vi.mock("../../lib/axios", () => ({
     post: vi.fn(),
   },
 }));
+vi.mock("../../contexts/ToastContext", () => ({
+  useToast: () => ({
+    success: vi.fn(),
+    error: vi.fn(),
+  }),
+}));
 
 vi.mock("../../components/technician/TaskContextCard", () => ({
   default: ({ taskContext }) => (
@@ -41,10 +47,13 @@ const renderWithProviders = (initialEntries = ["/technician/walk-in"]) => {
       <MemoryRouter initialEntries={initialEntries}>
         <Routes>
           <Route path="/technician/walk-in" element={<WalkInInsemination />} />
-          <Route path="/technician/work-queue" element={<div>Work Queue Page</div>} />
+          <Route
+            path="/technician/work-queue"
+            element={<div>Work Queue Page</div>}
+          />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 };
 
@@ -56,7 +65,7 @@ describe("WalkInInsemination Component", () => {
   it("locks the farmer and animal selectors when launched from an AI task context", async () => {
     // Mock response for farmer and animal details
     axiosInstance.get.mockImplementation((url) => {
-      if (url.includes("/technician/tasks/task-123/context")) {
+      if (url.includes("/tasks/task-123")) {
         return Promise.resolve({
           data: {
             isValid: true,
@@ -69,13 +78,23 @@ describe("WalkInInsemination Component", () => {
           },
         });
       }
-      if (url.includes("/farmers")) {
-        return Promise.resolve({ data: [{ _id: "farmer-1", name: "Juan Dela Cruz" }] });
+      if (url.includes("/user")) {
+        return Promise.resolve({
+          data: [{ _id: "farmer-1", name: "Juan Dela Cruz" }],
+        });
       }
       if (url.includes("/animals")) {
-        return Promise.resolve({ data: [{ _id: "animal-1", animalId: "ILO-100", reproductiveStatus: "Normal" }] });
+        return Promise.resolve({
+          data: [
+            {
+              _id: "animal-1",
+              earTag: "ILO-100",
+              reproductiveStatus: "Normal",
+            },
+          ],
+        });
       }
-      if (url.includes("/configurations/holiday")) {
+      if (url.includes("/config")) {
         return Promise.resolve({ data: { isHoliday: false } });
       }
       return Promise.reject(new Error("not found"));
@@ -89,6 +108,11 @@ describe("WalkInInsemination Component", () => {
     });
     expect(screen.getByText(/Task ID: task-123/)).toBeInTheDocument();
 
+    // Wait for animal select options to load
+    await waitFor(() => {
+      expect(screen.getByText(/Tag #ILO-100/i)).toBeInTheDocument();
+    });
+
     // Verify farmer input is disabled
     const farmerInput = screen.getByPlaceholderText("Search farmer name...");
     expect(farmerInput).toBeDisabled();
@@ -101,7 +125,7 @@ describe("WalkInInsemination Component", () => {
 
   it("shows TaskContextErrorView if the task is a Health or Calving task (preview-only)", async () => {
     axiosInstance.get.mockImplementation((url) => {
-      if (url.includes("/technician/tasks/task-456/context")) {
+      if (url.includes("/tasks/task-456")) {
         return Promise.resolve({
           data: {
             isValid: true,
@@ -114,10 +138,10 @@ describe("WalkInInsemination Component", () => {
           },
         });
       }
-      if (url.includes("/farmers")) {
+      if (url.includes("/user")) {
         return Promise.resolve({ data: [] });
       }
-      if (url.includes("/configurations/holiday")) {
+      if (url.includes("/config")) {
         return Promise.resolve({ data: { isHoliday: false } });
       }
       return Promise.reject(new Error("not found"));
@@ -134,7 +158,7 @@ describe("WalkInInsemination Component", () => {
 
   it("shows TaskContextErrorView when context validation fails", async () => {
     axiosInstance.get.mockImplementation((url) => {
-      if (url.includes("/technician/tasks/task-999/context")) {
+      if (url.includes("/tasks/task-999")) {
         return Promise.resolve({
           data: {
             isValid: false,
@@ -142,10 +166,10 @@ describe("WalkInInsemination Component", () => {
           },
         });
       }
-      if (url.includes("/farmers")) {
+      if (url.includes("/user")) {
         return Promise.resolve({ data: [] });
       }
-      if (url.includes("/configurations/holiday")) {
+      if (url.includes("/config")) {
         return Promise.resolve({ data: { isHoliday: false } });
       }
       return Promise.reject(new Error("not found"));
@@ -156,12 +180,14 @@ describe("WalkInInsemination Component", () => {
     await waitFor(() => {
       expect(screen.getByTestId("task-context-error")).toBeInTheDocument();
     });
-    expect(screen.getByText("This task has already been completed.")).toBeInTheDocument();
+    expect(
+      screen.getByText("This task has already been completed."),
+    ).toBeInTheDocument();
   });
 
   it("submits AI record successfully and redirects to the Work Queue page", async () => {
     axiosInstance.get.mockImplementation((url) => {
-      if (url.includes("/technician/tasks/task-123/context")) {
+      if (url.includes("/tasks/task-123")) {
         return Promise.resolve({
           data: {
             isValid: true,
@@ -174,13 +200,23 @@ describe("WalkInInsemination Component", () => {
           },
         });
       }
-      if (url.includes("/farmers")) {
-        return Promise.resolve({ data: [{ _id: "farmer-1", name: "Juan Dela Cruz" }] });
+      if (url.includes("/user")) {
+        return Promise.resolve({
+          data: [{ _id: "farmer-1", name: "Juan Dela Cruz" }],
+        });
       }
       if (url.includes("/animals")) {
-        return Promise.resolve({ data: [{ _id: "animal-1", animalId: "ILO-100", reproductiveStatus: "Normal" }] });
+        return Promise.resolve({
+          data: [
+            {
+              _id: "animal-1",
+              earTag: "ILO-100",
+              reproductiveStatus: "Normal",
+            },
+          ],
+        });
       }
-      if (url.includes("/configurations/holiday")) {
+      if (url.includes("/config")) {
         return Promise.resolve({ data: { isHoliday: false } });
       }
       return Promise.reject(new Error("not found"));
@@ -196,6 +232,11 @@ describe("WalkInInsemination Component", () => {
       expect(screen.getByTestId("task-context-card")).toBeInTheDocument();
     });
 
+    // Wait for the animal list options to load
+    await waitFor(() => {
+      expect(screen.getByText(/Tag #ILO-100/i)).toBeInTheDocument();
+    });
+
     // Populate sire breed
     const sireBreedInput = screen.getByLabelText(/Sire Breed/i);
     fireEvent.change(sireBreedInput, { target: { value: "Brahman" } });
@@ -207,7 +248,7 @@ describe("WalkInInsemination Component", () => {
 
     await waitFor(() => {
       expect(axiosInstance.post).toHaveBeenCalledWith(
-        "/technician/walk-in?taskId=task-123",
+        "/technician/walk-in-insemination",
         expect.objectContaining({
           farmerId: "farmer-1",
           animalId: "animal-1",
@@ -215,7 +256,7 @@ describe("WalkInInsemination Component", () => {
             sireBreed: "Brahman",
             sireCode: expect.any(String),
           }),
-        })
+        }),
       );
     });
 

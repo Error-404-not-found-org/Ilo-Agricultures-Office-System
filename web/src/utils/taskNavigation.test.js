@@ -10,7 +10,7 @@ import {
   getTaskActionTarget,
   validateTaskContextForAction,
   sanitizeReturnTo,
-  buildTaskNavigationState
+  buildTaskNavigationState,
 } from "./taskNavigation";
 import TaskContextCard from "../components/technician/TaskContextCard";
 import TaskContextErrorView from "../components/technician/TaskContextErrorView";
@@ -22,7 +22,11 @@ describe("canonical technician task navigation", () => {
       taskId: "task-22",
       metadata: { workflowStage: "continuation_recheck" },
     });
-    expect(target).toMatchObject({ kind: "task", path: "/technician/work-queue", search: "?taskId=task-22" });
+    expect(target).toMatchObject({
+      kind: "task",
+      path: "/technician/work-queue",
+      search: "?taskId=task-22",
+    });
   });
 
   it("routes a standalone request to Request Board", () => {
@@ -34,30 +38,80 @@ describe("canonical technician task navigation", () => {
   });
 
   it("uses stage-specific pregnancy actions", () => {
-    expect(getTaskPrimaryActionLabel({ taskType: "PD", metadata: { workflowStage: "initial_confirmation" } })).toBe("Record pregnancy diagnosis");
-    expect(getTaskPrimaryActionLabel({ taskType: "PD", metadata: { workflowStage: "continuation_recheck" } })).toBe("Record continuation recheck");
-    expect(getTaskPrimaryActionLabel({ taskType: "PD", metadata: { workflowStage: "diagnostic_follow_up" } })).toBe("Record diagnostic follow-up");
+    expect(
+      getTaskPrimaryActionLabel({
+        taskType: "PD",
+        metadata: { workflowStage: "initial_confirmation" },
+      }),
+    ).toBe("Record pregnancy diagnosis");
+    expect(
+      getTaskPrimaryActionLabel({
+        taskType: "PD",
+        metadata: { workflowStage: "continuation_recheck" },
+      }),
+    ).toBe("Record continuation recheck");
+    expect(
+      getTaskPrimaryActionLabel({
+        taskType: "PD",
+        metadata: { workflowStage: "diagnostic_follow_up" },
+      }),
+    ).toBe("Record diagnostic follow-up");
   });
 
   it("builds an initial diagnosis payload with method policy context", () => {
     const request = buildPregnancyActionRequest({
-      task: { _id: "task-1", taskType: "PD", metadata: { workflowStage: "initial_confirmation" }, pregnancyReadiness: { policyVersion: "policy-4" } },
-      animalId: "animal-1", inseminationId: "ai-1", result: "Pregnant", note: "Palpated", diagnosisDate: "2026-08-06", diagnosticMethod: "palpation",
+      task: {
+        _id: "task-1",
+        taskType: "PD",
+        metadata: { workflowStage: "initial_confirmation" },
+        pregnancyReadiness: { policyVersion: "policy-4" },
+      },
+      animalId: "animal-1",
+      inseminationId: "ai-1",
+      result: "Pregnant",
+      note: "Palpated",
+      diagnosisDate: "2026-08-06",
+      diagnosticMethod: "palpation",
     });
     expect(request).toEqual({
       url: "/technician/pregnancy-check",
-      payload: { animalId: "animal-1", inseminationId: "ai-1", result: "Pregnant", technicianNote: "Palpated", diagnosisDate: "2026-08-06", taskId: "task-1", methodCode: "palpation", policyVersion: "policy-4" },
+      payload: {
+        animalId: "animal-1",
+        inseminationId: "ai-1",
+        result: "Pregnant",
+        technicianNote: "Palpated",
+        diagnosisDate: "2026-08-06",
+        taskId: "task-1",
+        methodCode: "palpation",
+        policyVersion: "policy-4",
+      },
     });
   });
 
   it("builds continuation and diagnostic follow-up payloads against the existing Pregnancy", () => {
-    for (const workflowStage of ["continuation_recheck", "diagnostic_follow_up"]) {
+    for (const workflowStage of [
+      "continuation_recheck",
+      "diagnostic_follow_up",
+    ]) {
       const request = buildPregnancyActionRequest({
-        task: { _id: "task-2", taskType: "PD", metadata: { workflowStage, pregnancyId: "preg-1" } },
-        result: "follow_up_required", note: "Review again", diagnosisDate: "2026-09-01", followUpDate: "2026-09-08",
+        task: {
+          _id: "task-2",
+          taskType: "PD",
+          metadata: { workflowStage, pregnancyId: "preg-1" },
+        },
+        result: "follow_up_required",
+        note: "Review again",
+        diagnosisDate: "2026-09-01",
+        followUpDate: "2026-09-08",
       });
-      expect(request.url).toBe("/technician/pregnancy-checks/preg-1/continuation-recheck");
-      expect(request.payload).toMatchObject({ taskId: "task-2", result: "follow_up_required", followUpDate: "2026-09-08" });
+      expect(request.url).toBe(
+        "/technician/pregnancy-checks/preg-1/continuation-recheck",
+      );
+      expect(request.payload).toMatchObject({
+        taskId: "task-2",
+        result: "follow_up_required",
+        followUpDate: "2026-09-08",
+      });
       expect(request.payload).not.toHaveProperty("animalId");
     }
   });
@@ -73,7 +127,7 @@ describe("canonical technician task navigation", () => {
       animalIds: [{ _id: "a-300", earTag: "seed-tag-123", animalId: "a-300" }],
       dueDate: "2026-07-25T12:00:00Z",
       metadata: { pregnancyId: "p-400", sourceType: "request" },
-      requestId: "r-500"
+      requestId: "r-500",
     };
 
     const ctx = normalizeTaskContext(rawTask);
@@ -95,7 +149,7 @@ describe("canonical technician task navigation", () => {
       healthRequestId: null,
       metadata: { pregnancyId: "p-400", sourceType: "request" },
       returnTo: null,
-      raw: rawTask
+      raw: rawTask,
     });
   });
 
@@ -133,60 +187,84 @@ describe("canonical technician task navigation", () => {
 
   it("validates task context for required fields", () => {
     // Valid context
-    expect(validateTaskContextForAction({
-      taskId: "t-1",
-      taskType: "AI",
-      animalId: "a-1",
-      farmerId: "f-1"
-    })).toEqual({ valid: true, errorType: null, message: null });
+    expect(
+      validateTaskContextForAction({
+        taskId: "t-1",
+        taskType: "AI",
+        animalId: "a-1",
+        farmerId: "f-1",
+      }),
+    ).toEqual({ valid: true, errorType: null, message: null });
 
     // Missing taskId
-    expect(validateTaskContextForAction({
-      taskType: "AI",
-      animalId: "a-1",
-      farmerId: "f-1"
-    })).toEqual({
+    expect(
+      validateTaskContextForAction({
+        taskType: "AI",
+        animalId: "a-1",
+        farmerId: "f-1",
+      }),
+    ).toEqual({
       valid: false,
       errorType: "missing_info",
-      message: "This task does not contain enough information to open the service form."
+      message:
+        "This task does not contain enough information to open the service form.",
     });
 
     // Missing animalId for AI
-    expect(validateTaskContextForAction({
-      taskId: "t-1",
-      taskType: "AI",
-      farmerId: "f-1"
-    })).toEqual({
+    expect(
+      validateTaskContextForAction({
+        taskId: "t-1",
+        taskType: "AI",
+        farmerId: "f-1",
+      }),
+    ).toEqual({
       valid: false,
       errorType: "missing_info",
-      message: "This task does not contain enough information to open the service form."
+      message:
+        "This task does not contain enough information to open the service form.",
     });
 
     // Unavailable target
-    expect(validateTaskContextForAction({
-      taskId: "t-1",
-      taskType: "Other"
-    })).toEqual({
+    expect(
+      validateTaskContextForAction({
+        taskId: "t-1",
+        taskType: "Other",
+      }),
+    ).toEqual({
       valid: false,
       errorType: "unavailable",
-      message: "The requested service workflow could not be opened."
+      message: "The requested service workflow could not be opened.",
     });
   });
 
   it("sanitizes returnTo path with whitelist and falls back safely", () => {
-    expect(sanitizeReturnTo("/technician/work-queue")).toBe("/technician/work-queue");
-    expect(sanitizeReturnTo("/technician/schedule?taskId=123")).toBe("/technician/schedule?taskId=123");
-    expect(sanitizeReturnTo("/technician/requests")).toBe("/technician/requests");
+    expect(sanitizeReturnTo("/technician/work-queue")).toBe(
+      "/technician/work-queue",
+    );
+    expect(sanitizeReturnTo("/technician/schedule?taskId=123")).toBe(
+      "/technician/schedule?taskId=123",
+    );
+    expect(sanitizeReturnTo("/technician/requests")).toBe(
+      "/technician/requests",
+    );
 
     // Invalid / external paths
     expect(sanitizeReturnTo("/admin/dashboard")).toBe("/technician/work-queue");
-    expect(sanitizeReturnTo("http://google.com")).toBe("/technician/work-queue");
+    expect(sanitizeReturnTo("http://google.com")).toBe(
+      "/technician/work-queue",
+    );
     expect(sanitizeReturnTo("")).toBe("/technician/work-queue");
     expect(sanitizeReturnTo(null)).toBe("/technician/work-queue");
   });
 
   it("builds task navigation state correctly", () => {
-    const ctx = { taskId: "t-1", animalId: "a-1", farmerId: "f-1", requestId: "r-1", pregnancyId: "p-1" };
+    const ctx = {
+      taskId: "t-1",
+      animalId: "a-1",
+      farmerId: "f-1",
+      requestId: "r-1",
+      pregnancyId: "p-1",
+    };
     const state = buildTaskNavigationState(ctx, "/technician/requests");
     expect(state).toEqual({
       taskContext: ctx,
@@ -195,7 +273,7 @@ describe("canonical technician task navigation", () => {
       farmerId: "f-1",
       requestId: "r-1",
       pregnancyId: "p-1",
-      returnTo: "/technician/requests"
+      returnTo: "/technician/requests",
     });
   });
 
@@ -219,25 +297,57 @@ describe("canonical technician task navigation", () => {
     expect(screen.getByText(/Continuation Recheck/i)).toBeInTheDocument();
 
     // Verify integration status indicating preview mode
-    expect(screen.getByText("Preview Mode - Submission Disabled")).toBeInTheDocument();
+    expect(
+      screen.getByText("Preview Mode - Submission Disabled"),
+    ).toBeInTheDocument();
   });
 
   it("renders TaskContextErrorView correctly according to errorType", () => {
     const { rerender } = render(
-      React.createElement(MemoryRouter, null,
-        React.createElement(TaskContextErrorView, { errorType: "missing_info" })
-      )
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(TaskContextErrorView, {
+          errorType: "missing_info",
+        }),
+      ),
     );
     expect(screen.getByText("Missing task information")).toBeInTheDocument();
-    expect(screen.getByText("This task does not contain enough information to open the service form.")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Return to Work Queue/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This task does not contain enough information to open the service form.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Return to Work Queue/i }),
+    ).toBeInTheDocument();
 
     rerender(
-      React.createElement(MemoryRouter, null,
-        React.createElement(TaskContextErrorView, { errorType: "unavailable" })
-      )
+      React.createElement(
+        MemoryRouter,
+        null,
+        React.createElement(TaskContextErrorView, { errorType: "unavailable" }),
+      ),
     );
     expect(screen.getByText("Task target unavailable")).toBeInTheDocument();
-    expect(screen.getByText("The requested service workflow could not be opened.")).toBeInTheDocument();
+    expect(
+      screen.getByText("The requested service workflow could not be opened."),
+    ).toBeInTheDocument();
   });
+});
+
+it("resolves the linked AI request from task metadata", () => {
+  const context = normalizeTaskContext({
+    _id: "task-1",
+    taskType: "AI",
+    status: "In Progress",
+    farmerId: "farmer-1",
+    animalIds: ["animal-1"],
+    metadata: {
+      requestId: "request-1",
+      animalId: "animal-1",
+    },
+  });
+
+  expect(context.requestId).toBe("request-1");
 });
