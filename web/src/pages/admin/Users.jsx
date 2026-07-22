@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
-import { TableRowSkeleton } from "../../components/Skeleton";
+import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import {
   Users as UsersIcon,
   Shield,
@@ -9,7 +9,8 @@ import {
   UserCheck,
   SlidersHorizontal,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
+import UserAvatar from "../../components/ui/UserAvatar";
 import {
   ILOILO_MUNICIPALITIES,
   MUNICIPALITY_BARANGAYS,
@@ -245,14 +246,6 @@ export default function Users() {
                   </tr>
                 ) : (
                   filteredUsers.map((u) => {
-                    const initials = u.name
-                      ? u.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .slice(0, 2)
-                          .toUpperCase()
-                      : "FI";
                     return (
                       <tr
                         key={u._id}
@@ -260,9 +253,12 @@ export default function Users() {
                       >
                         <td className="p-3.5 pl-5">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 text-primary dark:text-emerald-400 flex items-center justify-center font-bold text-[11px]">
-                              {initials}
-                            </div>
+                            <UserAvatar
+                              name={u.name}
+                              imageUrl={u.imageUrl || u.profileImage}
+                              size={32}
+                              sizeClass="h-8 w-8"
+                            />
                             <span className="font-bold text-slate-800 dark:text-slate-200">
                               {u.name}
                             </span>

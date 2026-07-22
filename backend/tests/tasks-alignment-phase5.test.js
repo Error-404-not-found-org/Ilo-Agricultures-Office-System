@@ -43,6 +43,10 @@ test("Phase 5 Alignment: pregnancy endpoint delegates task completion to the uni
   const handler = recordPregnancyCheck.toString();
   assert.match(handler, /confirmPregnancyDiagnosis\(\{/);
   assert.match(handler, /taskId/);
+  assert.match(handler, /alreadyRecorded/);
+  assert.match(handler, /PREGNANCY_DIAGNOSIS_RECONCILED/);
+  assert.match(handler, /animal\.farmerId && !alreadyRecorded/);
+  assert.match(handler, /result === "Pregnant" && !alreadyRecorded/);
   assert.doesNotMatch(handler, /Pregnancy\.create/);
   assert.doesNotMatch(handler, /Task\.findOneAndUpdate/);
 });

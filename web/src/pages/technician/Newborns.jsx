@@ -2,8 +2,8 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { validateTaskContextForAction, sanitizeReturnTo } from "../../utils/taskNavigation";
-import TaskContextCard from "../../components/technician/TaskContextCard";
-import TaskContextErrorView from "../../components/technician/TaskContextErrorView";
+import TaskContextCard from "../../features/technician/TaskContextCard";
+import TaskContextErrorView from "../../features/technician/TaskContextErrorView";
 import { useUser } from "@clerk/clerk-react";
 import axiosInstance from "../../lib/axios";
 import {
@@ -21,7 +21,8 @@ import {
   Calendar,
   Baby,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
+import TableNameLink from "../../components/ui/TableNameLink";
 import { toast } from "sonner";
 
 export default function NewbornsLog() {
@@ -106,7 +107,7 @@ export default function NewbornsLog() {
 
   // ---- FETCH REAL DATA ----
   const endpoint = normalizedRole === "admin" ? "/admin/calvings" : "/technician/calvings";
-  const { data: calvingPage = {}, isLoading } = useQuery({
+  const { data: calvingPage = {}, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["technician", "calvings-list-isolated", normalizedRole, currentPage, searchQuery, speciesFilter, easeFilter, seenFilter],
     queryFn: async () => {
       const res = await axiosInstance.get(endpoint, {
@@ -145,19 +146,20 @@ export default function NewbornsLog() {
       
       return {
         id: c._id,
+        animalId: c.animalId?._id || c.animalId?.id || null,
         date: new Date(birthDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         time: new Date(birthDate).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
         rawDate: birthDate,
-        motherTag: c.animalId?.earTag || "N/A",
-        motherSpecies: c.animalId?.species || "Cattle",
-        motherBreed: c.animalId?.breed || "N/A",
-        farmer: c.farmerId?.name || "N/A",
-        farmerPhone: c.farmerId?.phoneNumber || "N/A",
-        farmerEmail: c.farmerId?.email || "N/A",
-        numberOfCalves: c.numberOfCalves || calfList.length || 1,
+        motherTag: c.animalId?.earTag || "Not recorded",
+        motherSpecies: c.animalId?.species || "Not recorded",
+        motherBreed: c.animalId?.breed || "Not recorded",
+        farmer: c.farmerId?.name || "Farmer not recorded",
+        farmerPhone: c.farmerId?.phoneNumber || "Not recorded",
+        farmerEmail: c.farmerId?.email || "Not recorded",
+        numberOfCalves: c.numberOfCalves ?? (calfList.length || null),
         calves: calfList,
-        calvesSummary: calvesInfo || "N/A",
-        calvingEase: c.calvingEase || "Natural",
+        calvesSummary: calvesInfo || "Not recorded",
+        calvingEase: c.calvingEase || "Not recorded",
         technicianNote: c.technicianNote || "",
         isSeen: c.isSeen || false,
       };
@@ -173,6 +175,7 @@ export default function NewbornsLog() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedLogs = filteredLogs;
   const totalPages = calvingPage.totalPages || calvingPage.pagination?.totalPages || Math.ceil((calvingPage.total || calvingPage.pagination?.total || filteredLogs.length) / itemsPerPage) || 1;
+  const totalItems = calvingPage.total || calvingPage.pagination?.total || filteredLogs.length;
 
   // ---- CSV EXPORTER ----
   const handleExportCSV = () => {
@@ -295,6 +298,7 @@ export default function NewbornsLog() {
               </span>
               <input
                 type="text"
+                aria-label="Search calving records"
                 placeholder="Search tag, breed, farmer..."
                 className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content placeholder-base-content/40 focus:ring-1 focus:ring-primary outline-none transition-all duration-200"
                 value={searchQuery}
@@ -328,6 +332,7 @@ export default function NewbornsLog() {
             
             <select
               className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
+              aria-label="Filter calving records by species"
               value={speciesFilter}
               onChange={(e) => {
                 setSpeciesFilter(e.target.value);
@@ -343,6 +348,7 @@ export default function NewbornsLog() {
 
             <select
               className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
+              aria-label="Filter calving records by calving ease"
               value={easeFilter}
               onChange={(e) => {
                 setEaseFilter(e.target.value);
@@ -360,6 +366,7 @@ export default function NewbornsLog() {
 
             <select
               className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
+              aria-label="Filter calving records by notification status"
               value={seenFilter}
               onChange={(e) => {
                 setSeenFilter(e.target.value);
@@ -389,7 +396,7 @@ export default function NewbornsLog() {
 
           {/* Table */}
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full border-collapse">
+            <table className="table w-full min-w-[1040px] border-collapse" aria-label="Calving and newborn records">
               <thead>
                 <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider select-none">
                   <th className="p-3.5 pl-5">Status</th>
@@ -420,6 +427,15 @@ export default function NewbornsLog() {
                       </td>
                     </tr>
                   ))
+                ) : isError ? (
+                  <tr>
+                    <td colSpan={8} className="p-6">
+                      <div role="alert" className="alert alert-error">
+                        <span>{error?.response?.data?.message || "Calving records could not be loaded."}</span>
+                        <button type="button" className="btn btn-sm" onClick={() => refetch()}>Retry</button>
+                      </div>
+                    </td>
+                  </tr>
                 ) : paginatedLogs.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="text-center p-12 text-base-content/40 font-medium">
@@ -429,18 +445,17 @@ export default function NewbornsLog() {
                 ) : (
                   paginatedLogs.map((l) => {
                     const rowGlowClass = !l.isSeen
-                      ? "bg-primary/10 hover:bg-primary/15! shadow-[inset_4px_0_0_0_#10b981] transition-all animate-pulse duration-[2000ms]"
+                      ? "bg-primary/10 hover:bg-primary/15! shadow-[inset_4px_0_0_0_#10b981] transition-all animate-pulse motion-reduce:animate-none duration-[2000ms]"
                       : "hover:bg-base-200 transition-colors";
 
                     return (
                       <tr
                         key={l.id}
-                        className={`${rowGlowClass} cursor-pointer`}
-                        onClick={() => handleInspectLog(l)}
+                        className={rowGlowClass}
                       >
                         <td className="p-3.5 pl-5 font-bold">
                           {!l.isSeen ? (
-                            <span className="flex items-center gap-1.5 text-primary animate-pulse">
+                            <span className="flex items-center gap-1.5 text-primary animate-pulse motion-reduce:animate-none">
                               <span className="h-2 w-2 rounded-full bg-primary"></span>
                               <span className="text-[9px] uppercase tracking-widest font-black">New</span>
                             </span>
@@ -453,7 +468,14 @@ export default function NewbornsLog() {
                           <div className="text-[10px] text-base-content/40 mt-0.5">{l.time}</div>
                         </td>
                         <td className="p-3.5 font-extrabold text-primary">
-                          {l.motherTag}
+                          {l.animalId ? (
+                            <TableNameLink
+                              to={`/technician/animals/${l.animalId}`}
+                              ariaLabel={`Open livestock profile for mother ${l.motherTag}`}
+                            >
+                              {l.motherTag}
+                            </TableNameLink>
+                          ) : l.motherTag}
                         </td>
                         <td className="p-3.5 font-bold">{l.farmer}</td>
                         <td className="p-3.5 font-medium">
@@ -461,7 +483,9 @@ export default function NewbornsLog() {
                           <div className="text-[10px] text-base-content/40 mt-0.5">{l.motherBreed}</div>
                         </td>
                         <td className="p-3.5 text-center font-bold text-base-content/85">
-                          {l.numberOfCalves} Calf/Calves
+                          {l.numberOfCalves == null
+                            ? "Not recorded"
+                            : `${l.numberOfCalves} Calf/Calves`}
                           <div className="text-[10px] font-medium text-base-content/40 mt-0.5 truncate max-w-[180px]">
                             {l.calvesSummary}
                           </div>
@@ -484,7 +508,9 @@ export default function NewbornsLog() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
+                            type="button"
                             onClick={() => handleInspectLog(l)}
+                            aria-label={`Inspect calving record for ${l.motherTag}`}
                             className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-base-300 hover:border-primary hover:text-primary items-center gap-1 bg-base-100 text-base-content/70 transition-all cursor-pointer inline-flex"
                           >
                             <Eye size={12} /> Inspect
@@ -502,10 +528,12 @@ export default function NewbornsLog() {
           {totalPages > 1 && (
             <div className="pt-4 border-t border-base-300 flex items-center justify-between mt-3">
               <span className="text-[11px] font-medium text-base-content/40">
-                Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filteredLogs.length)} of {filteredLogs.length} calving events
+                Showing {totalItems === 0 ? 0 : startIndex + 1}–{Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems} calving events
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1" aria-label="Calving records pagination">
                 <button
+                  type="button"
+                  aria-label="Previous calving records page"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1 || isLoading}
                   className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
@@ -514,6 +542,9 @@ export default function NewbornsLog() {
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNumber) => (
                   <button
+                    type="button"
+                    aria-label={`Go to calving records page ${pageNumber}`}
+                    aria-current={currentPage === pageNumber ? "page" : undefined}
                     key={pageNumber}
                     disabled={isLoading}
                     onClick={() => setCurrentPage(pageNumber)}
@@ -527,6 +558,8 @@ export default function NewbornsLog() {
                   </button>
                 ))}
                 <button
+                  type="button"
+                  aria-label="Next calving records page"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages || isLoading}
                   className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
@@ -628,7 +661,11 @@ export default function NewbornsLog() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-base-content/40 font-semibold">Offspring Count</span>
-                  <span className="font-bold">{selectedLog.numberOfCalves} Calf/Calves</span>
+                  <span className="font-bold">
+                    {selectedLog.numberOfCalves == null
+                      ? "Not recorded"
+                      : `${selectedLog.numberOfCalves} Calf/Calves`}
+                  </span>
                 </div>
               </div>
             </div>

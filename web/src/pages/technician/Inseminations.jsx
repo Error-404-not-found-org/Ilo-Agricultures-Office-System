@@ -12,13 +12,54 @@ import {
   Search,
   Sparkles,
   Syringe,
+  MoreVertical,
   X,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import Modal from "../../components/ui/Modal";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
+import UserAvatar from "../../components/ui/UserAvatar";
+import TableNameLink from "../../components/ui/TableNameLink";
 
 const ITEMS_PER_PAGE = 8;
+
+const formatRelativeSchedule = (value) => {
+  if (!value) return { date: "No date", time: "—" };
+  const targetDate = new Date(value);
+  if (Number.isNaN(targetDate.getTime())) return { date: "No date", time: "—" };
+
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const targetDateStr = targetDate.toDateString();
+  const todayStr = today.toDateString();
+  const tomorrowStr = tomorrow.toDateString();
+  const yesterdayStr = yesterday.toDateString();
+
+  let datePart;
+  if (targetDateStr === todayStr) {
+    datePart = "Today";
+  } else if (targetDateStr === tomorrowStr) {
+    datePart = "Tomorrow";
+  } else if (targetDateStr === yesterdayStr) {
+    datePart = "Yesterday";
+  } else {
+    datePart = targetDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  const timePart = targetDate.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  return { date: datePart, time: timePart };
+};
 
 const formatDate = (value) => {
   if (!value) return "Not recorded";
@@ -164,7 +205,10 @@ export default function InseminationLog() {
         rawDate: performedDate,
         tag: item.animalId?.earTag || item.animalId?.animalId || "Unassigned tag",
         animal: item.animalId,
+        animalId: item.animalId?._id || item.animalId?.id || null,
+        farmerId: item.farmerId?._id || item.farmerId?.id || null,
         farmer: item.farmerId?.name || "Farmer not available",
+        farmerImageUrl: item.farmerId?.imageUrl || null,
         farmerPhone: item.farmerId?.phoneNumber || "Not provided",
         sireBreed: item.sireBreed || "Not recorded",
         sireCode: item.sireCode || "Not recorded",
@@ -320,7 +364,7 @@ export default function InseminationLog() {
                         <th>Attempt</th>
                         <th>Outcome</th>
                         <th>Status</th>
-                        <th><span className="sr-only">Actions</span></th>
+                        <th className="text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -357,43 +401,127 @@ export default function InseminationLog() {
                 </div>
 
                 <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
-                  <table className="table table-sm">
+                  <table className="table table-pin-rows w-full text-left min-w-[1000px]">
                     <thead>
-                      <tr>
-                        <th>AI date</th>
-                        <th>Animal / farmer</th>
-                        <th>Sire</th>
-                        <th>Attempt</th>
-                        <th>Outcome</th>
-                        <th>Status</th>
-                        <th><span className="sr-only">Actions</span></th>
+                      <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="p-3.5 pl-6">Animal</th>
+                        <th className="p-3.5">Visit</th>
+                        <th className="p-3.5">Schedule</th>
+                        <th className="p-3.5">Outcome</th>
+                        <th className="p-3.5">Status</th>
+                        <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
                       </tr>
                     </thead>
-                    <tbody>
-                      {records.map((record) => (
-                        <tr key={record.id} className="hover:bg-base-200">
-                          <td className="whitespace-nowrap font-semibold">{record.date}</td>
-                          <td>
-                            <div className="font-bold">{record.tag}</div>
-                            <div className="text-xs text-base-content/55">{record.farmer}</div>
-                          </td>
-                          <td>
-                            <div className="font-semibold">{record.sireBreed}</div>
-                            <div className="text-xs text-base-content/55">{record.sireCode}</div>
-                          </td>
-                          <td>
-                            <span className="badge badge-outline badge-sm">#{record.attempt}</span>
-                            {record.previousAttempt && <div className="mt-1 text-xs text-base-content/50">Linked history</div>}
-                          </td>
-                          <td><span className={`badge badge-sm badge-soft ${outcomeClass(record.outcome)}`}>{record.outcome}</span></td>
-                          <td><span className={`badge badge-sm badge-soft ${statusClass(record.status)}`}>{friendlyStatus(record.status)}</span></td>
-                          <td className="text-right">
-                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedLog(record)}>
-                              <Eye size={15} /> View
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                    <tbody className="divide-y divide-base-300">
+                      {records.map((record) => {
+                        const sched = formatRelativeSchedule(record.date);
+                        return (
+                          <tr key={record.id} className="hover:bg-base-200/50 transition-colors text-xs font-semibold text-base-content/85">
+
+                            {/* 1. ANIMAL */}
+                            <td className="p-3.5 pl-6">
+                              <div className="flex items-center gap-3">
+                                <UserAvatar
+                                  name={record.farmer}
+                                  imageUrl={record.farmerImageUrl}
+                                  size={36}
+                                  sizeClass="h-9 w-9"
+                                />
+                                <div>
+                                  {record.animalId ? (
+                                    <TableNameLink
+                                      to={`/technician/animals/${record.animalId}`}
+                                      ariaLabel={`Open livestock profile for animal ${record.tag}`}
+                                    >
+                                      {record.tag}
+                                    </TableNameLink>
+                                  ) : (
+                                    <span className="block text-sm font-extrabold leading-tight text-base-content">
+                                      {record.tag}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] text-base-content/50 block mt-0.5 font-bold">
+                                    {record.farmer}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* 2. VISIT (Attempt + Sire details) */}
+                            <td className="p-3.5">
+                              <span className="font-extrabold text-xs text-base-content block leading-tight">
+                                Attempt #{record.attempt}
+                              </span>
+                              <span className="text-[10px] text-base-content/55 block mt-0.5 max-w-[150px] truncate">
+                                {record.sireBreed} · {record.sireCode}
+                              </span>
+                            </td>
+
+                            {/* 3. SCHEDULE */}
+                            <td className="p-3.5">
+                              <span className="font-bold text-xs text-base-content block leading-tight">
+                                {sched.date}
+                              </span>
+                              <span className="text-[10px] text-base-content/40 block mt-0.5 font-bold">
+                                {sched.time}
+                              </span>
+                            </td>
+
+                            {/* 4. OUTCOME */}
+                            <td className="p-3.5">
+                              <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${outcomeClass(record.outcome)}`}>
+                                {record.outcome}
+                              </span>
+                            </td>
+
+                            {/* 5. STATUS */}
+                            <td className="p-3.5">
+                              <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${statusClass(record.status)}`}>
+                                {friendlyStatus(record.status)}
+                              </span>
+                            </td>
+
+                            {/* 6. ACTIONS */}
+                            <td className="p-3.5 pr-6 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div>
+                                <button
+                                  type="button"
+                                  popoverTarget={`insemination-actions-${record.id}`}
+                                  style={{ anchorName: `--insemination-actions-${record.id}` }}
+                                  className="btn btn-ghost btn-circle btn-xs hover:bg-base-200"
+                                  aria-label={`Actions for record ${record.id}`}
+                                  aria-haspopup="menu"
+                                >
+                                  <MoreVertical size={16} className="text-base-content/60" />
+                                </button>
+                                <ul
+                                  id={`insemination-actions-${record.id}`}
+                                  popover="auto"
+                                  role="menu"
+                                  aria-label={`Actions for record ${record.id}`}
+                                  style={{ positionAnchor: `--insemination-actions-${record.id}` }}
+                                  className="dropdown dropdown-end menu menu-sm w-44 rounded-box border border-base-300 bg-base-100 p-2 text-base-content shadow-xl"
+                                >
+                                  <li role="none">
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={(event) => {
+                                        event.currentTarget.closest("[popover]")?.hidePopover?.();
+                                        setSelectedLog(record);
+                                      }}
+                                      className="text-xs font-extrabold"
+                                    >
+                                      <Eye size={13} className="mr-1" /> View Details
+                                    </button>
+                                  </li>
+                                </ul>
+                              </div>
+                            </td>
+
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -12,8 +12,8 @@ import {
   sanitizeReturnTo,
   buildTaskNavigationState,
 } from "./taskNavigation";
-import TaskContextCard from "../components/technician/TaskContextCard";
-import TaskContextErrorView from "../components/technician/TaskContextErrorView";
+import TaskContextCard from "../features/technician/TaskContextCard";
+import TaskContextErrorView from "../features/technician/TaskContextErrorView";
 
 describe("canonical technician task navigation", () => {
   it("routes a linked task by task id without using its title", () => {
@@ -300,6 +300,26 @@ describe("canonical technician task navigation", () => {
     expect(
       screen.getByText("Preview Mode - Submission Disabled"),
     ).toBeInTheDocument();
+    const contextCard = screen.getByRole("note", {
+      name: "Task context description",
+    });
+    expect(contextCard).toHaveClass("bg-primary/10", "text-base-content");
+    expect(contextCard.className).not.toMatch(/text-slate|bg-emerald-50/);
+  });
+
+  it("names the active TaskContextCard workflow from its real task type", () => {
+    render(
+      React.createElement(TaskContextCard, {
+        mode: "active",
+        taskContext: {
+          taskType: "PD",
+          workflowStage: "diagnostic_follow_up",
+        },
+      }),
+    );
+
+    expect(screen.getByText("Pregnancy Diagnosis workflow")).toBeInTheDocument();
+    expect(screen.queryByText("AI Task Workflow")).not.toBeInTheDocument();
   });
 
   it("renders TaskContextErrorView correctly according to errorType", () => {

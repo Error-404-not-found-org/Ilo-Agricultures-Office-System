@@ -26,11 +26,13 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { generatePregnancyTimeline, TimelineMilestones } from "@/lib/cattleCore";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function PregnancyVerificationScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const api = useApi();
+  const queryClient = useQueryClient();
   const { colors, isDark } = useTheme();
 
   const [task, setTask] = useState<any>(null);
@@ -131,6 +133,10 @@ export default function PregnancyVerificationScreen() {
         taskId: task?._id,
       });
 
+      queryClient.invalidateQueries({ queryKey: ["technician", "tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
       toast.success("Pregnancy verification recorded!");
       
       // Navigate back and dismiss this screen

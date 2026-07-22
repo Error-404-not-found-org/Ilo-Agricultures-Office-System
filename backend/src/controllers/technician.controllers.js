@@ -615,7 +615,7 @@ export const getMyInseminations = async (req, res) => {
     const summaryQuery = { deletedAt: null };
     const [records, total, totalCycles, confirmedPregnant, pendingChecks] = await Promise.all([
       Insemination.find(query)
-        .populate("farmerId", "name phoneNumber address")
+        .populate("farmerId", "name phoneNumber address imageUrl")
         .populate("animalId", "animalId earTag breed species imageUrl")
         .populate("pregnancyId")
         .populate("technicianId", "name")
@@ -1228,9 +1228,9 @@ export const recordPregnancyCheck = async (req, res) => {
       policyVersion,
       actor: req.user,
     });
-    const { pregnancy, animal, pregnancyReadiness } = confirmation;
+    const { pregnancy, animal, pregnancyReadiness, alreadyRecorded } = confirmation;
 
-    if (animal.farmerId) {
+    if (animal.farmerId && !alreadyRecorded) {
       try {
         const title =
           result === "Pregnant"
@@ -1255,7 +1255,7 @@ export const recordPregnancyCheck = async (req, res) => {
     }
 
     // Trigger Inngest if Pregnant
-    if (result === "Pregnant") {
+    if (result === "Pregnant" && !alreadyRecorded) {
       try {
         await inngest.send({
           name: "pregnancy/confirmed",
@@ -1273,8 +1273,11 @@ export const recordPregnancyCheck = async (req, res) => {
       }
     }
 
-    res.status(201).json({
-      message: "Pregnancy check recorded",
+    res.status(alreadyRecorded ? 200 : 201).json({
+      message: alreadyRecorded
+        ? "The pregnancy diagnosis was already recorded. The matching task has been completed."
+        : "Pregnancy check recorded",
+      code: alreadyRecorded ? "PREGNANCY_DIAGNOSIS_RECONCILED" : undefined,
       pregnancy,
       pregnancyReadiness,
       continuationTask: confirmation.continuationTask,
@@ -2861,7 +2864,7 @@ export const getTechnicianRequests = async (req, res) => {
     const [aiRecords, healthRecords, pregnancyCheckTasks] = await Promise.all([
       fetchAI
         ? Insemination.find(aiQuery)
-            .populate("farmerId", "name address imageUrl farmLocation")
+            .populate("farmerId", "name address imageUrl phoneNumber farmLocation")
             .populate("animalId", "animalId earTag species breed imageUrl")
             .populate("approvedBy", "name")
             .populate({
@@ -2873,19 +2876,37 @@ export const getTechnicianRequests = async (req, res) => {
         : [],
       fetchHealth
         ? HealthRequest.find(healthQuery)
-            .populate("farmerId", "name address imageUrl farmLocation")
+            .populate("farmerId", "name address imageUrl phoneNumber farmLocation")
             .populate("animalId", "animalId earTag species breed imageUrl")
             .populate("handledBy", "name")
             .lean()
         : [],
       fetchPregnancyChecks
         ? Task.find(taskQuery)
-            .populate("farmerId", "name address imageUrl farmLocation")
+            .populate("farmerId", "name address imageUrl phoneNumber farmLocation")
             .populate("animalIds", "animalId earTag species breed imageUrl")
             .populate("technicianId", "name")
             .lean()
         : [],
     ]);
+
+    const linkedObservationIds = pregnancyCheckTasks
+      .filter((task) => task.sourceType === "farmer_requested_verification")
+      .map((task) => task.metadata?.inseminationId)
+      .filter(Boolean);
+    const linkedObservations = linkedObservationIds.length
+      ? await Insemination.find({ _id: { $in: linkedObservationIds } })
+          .select(
+            "farmerOutcomeReport farmerOutcomeReportedAt farmerObservationSigns farmerObservationNotes evidencePhotos verificationRequested verificationStatus",
+          )
+          .lean()
+      : [];
+    const observationByInseminationId = new Map(
+      linkedObservations.map((observation) => [
+        String(observation._id),
+        observation,
+      ]),
+    );
 
     const formatAddress = (addr) => {
       if (!addr) return "Unknown Location";
@@ -2968,6 +2989,7 @@ export const getTechnicianRequests = async (req, res) => {
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
         farmerImageUrl: farmer.imageUrl || "",
+        farmerPhone: farmer.phoneNumber || "",
         animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
         animalId: rec.animalId?._id || rec.animalId,
         earTag: rec.animalId?.earTag || "",
@@ -3028,6 +3050,7 @@ export const getTechnicianRequests = async (req, res) => {
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
         farmerImageUrl: farmer.imageUrl || "",
+        farmerPhone: farmer.phoneNumber || "",
         animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
         animalId: rec.animalId?._id || rec.animalId,
         earTag: rec.animalId?.earTag || "",
@@ -3051,6 +3074,9 @@ export const getTechnicianRequests = async (req, res) => {
     // Normalize Pregnancy Checks
     const normalizedPregnancyChecks = pregnancyCheckTasks.map((task) => {
       const animal = Array.isArray(task.animalIds) ? task.animalIds[0] : null;
+      const linkedObservation = task.metadata?.inseminationId
+        ? observationByInseminationId.get(String(task.metadata.inseminationId))
+        : null;
 
       const farmer = task.farmerId || {};
       const farmLoc = farmer.farmLocation || {};
@@ -3078,6 +3104,7 @@ export const getTechnicianRequests = async (req, res) => {
         farmer: farmer.name || "Unknown Farmer",
         farmerId: farmer._id || farmer,
         farmerImageUrl: farmer.imageUrl || "",
+        farmerPhone: farmer.phoneNumber || "",
         animal: animal?.animalId || animal?.earTag || "Unknown",
         animalId: animal?._id || animal,
         earTag: animal?.earTag || "",
@@ -3094,6 +3121,34 @@ export const getTechnicianRequests = async (req, res) => {
         scheduledDate: task.dueDate || null,
         assignedTechnician: task.technicianId?.name || "",
         createdAt: task.createdAt,
+        farmerObservation: linkedObservation
+          ? {
+              reportType: linkedObservation.farmerOutcomeReport || null,
+              reportedAt: linkedObservation.farmerOutcomeReportedAt || null,
+              signs: Array.isArray(linkedObservation.farmerObservationSigns)
+                ? linkedObservation.farmerObservationSigns
+                : [],
+              notes: linkedObservation.farmerObservationNotes || "",
+              evidencePhotos: Array.isArray(linkedObservation.evidencePhotos)
+                ? linkedObservation.evidencePhotos.filter(Boolean)
+                : [],
+              verificationRequested: Boolean(
+                linkedObservation.verificationRequested,
+              ),
+              verificationStatus:
+                linkedObservation.verificationStatus || "not_requested",
+            }
+          : task.sourceType === "farmer_requested_verification"
+            ? {
+                reportType: task.metadata?.reportType || null,
+                reportedAt: null,
+                signs: [],
+                notes: "",
+                evidencePhotos: [],
+                verificationRequested: true,
+                verificationStatus: "pending",
+              }
+            : null,
         raw: task,
       };
     });

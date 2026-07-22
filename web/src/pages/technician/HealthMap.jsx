@@ -14,7 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import {
   ILOILO_MUNICIPALITIES,
   MUNICIPALITY_BARANGAYS,

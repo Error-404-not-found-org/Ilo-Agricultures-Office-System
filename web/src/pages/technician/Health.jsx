@@ -2,8 +2,8 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { validateTaskContextForAction, sanitizeReturnTo } from "../../utils/taskNavigation";
-import TaskContextCard from "../../components/technician/TaskContextCard";
-import TaskContextErrorView from "../../components/technician/TaskContextErrorView";
+import TaskContextCard from "../../features/technician/TaskContextCard";
+import TaskContextErrorView from "../../features/technician/TaskContextErrorView";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import {
@@ -20,13 +20,54 @@ import {
   Trash2,
   Info,
   SlidersHorizontal,
+  MoreVertical,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
+import UserAvatar from "../../components/ui/UserAvatar";
+import TableNameLink from "../../components/ui/TableNameLink";
 import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
 
 export default function HealthLog() {
   const toast = useToast();
   const location = useLocation();
+
+  const formatRelativeSchedule = (value) => {
+    if (!value) return { date: "No date", time: "—" };
+    const targetDate = new Date(value);
+    if (Number.isNaN(targetDate.getTime())) return { date: "No date", time: "—" };
+
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+
+    const targetDateStr = targetDate.toDateString();
+    const todayStr = today.toDateString();
+    const tomorrowStr = tomorrow.toDateString();
+    const yesterdayStr = yesterday.toDateString();
+
+  let datePart;
+    if (targetDateStr === todayStr) {
+      datePart = "Today";
+    } else if (targetDateStr === tomorrowStr) {
+      datePart = "Tomorrow";
+    } else if (targetDateStr === yesterdayStr) {
+      datePart = "Yesterday";
+    } else {
+      datePart = targetDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    }
+
+    const timePart = targetDate.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    return { date: datePart, time: timePart };
+  };
 
   const searchParams = new URLSearchParams(location.search);
   const taskIdQuery = searchParams.get("taskId");
@@ -56,7 +97,7 @@ export default function HealthLog() {
   const itemsPerPage = 8;
 
   // ---- LIVE DATA PIPELINE ----
-  const { data: healthPage = {}, isLoading, refetch } = useQuery({
+  const { data: healthPage = {}, isLoading, isError, error, refetch } = useQuery({
     queryKey: ["technician", "health-requests-list", currentPage, searchQuery, urgencyFilter, statusFilter],
     queryFn: async () => {
       const res = await axiosInstance.get("/health-request", {
@@ -77,11 +118,11 @@ export default function HealthLog() {
   // ---- DYNAMIC METRIC RESOLVERS ----
   const metrics = useMemo(() => {
     return {
-      total: rawCases.length,
+      total: healthPage.total ?? rawCases.length,
       highUrgency: rawCases.filter((c) => c.urgency === "high").length,
       closed: rawCases.filter((c) => c.status === "resolved" || c.status === "done").length,
     };
-  }, [rawCases]);
+  }, [healthPage.total, rawCases]);
 
   // ---- MEMOIZED DATA PROCESSING (Filtering) ----
   const filteredCases = useMemo(() => {
@@ -89,15 +130,17 @@ export default function HealthLog() {
       const visitDate = item.scheduledDate || item.preferredDate || item.createdAt;
       return {
         id: item._id,
+        animalId: item.animalId?._id || item.animalId?.id || null,
         date: new Date(visitDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         rawDate: visitDate,
-        tag: item.animalId?.earTag || "N/A",
-        farmer: item.farmerId?.name || "N/A",
-        barangay: item.farmerId?.address?.barangay || "Oton",
-        symptoms: item.symptoms || "Consultation Request",
-        urgency: item.urgency || "low",
-        diagnosis: item.diagnosis || "Pending Diagnosis",
-        treatment: item.treatment || "None",
+        tag: item.animalId?.earTag || "Not recorded",
+        farmer: item.farmerId?.name || "Farmer not recorded",
+        farmerImageUrl: item.farmerId?.imageUrl || null,
+        barangay: item.farmerId?.address?.barangay || "Not recorded",
+        symptoms: item.symptoms || "Not recorded",
+        urgency: item.urgency || "not recorded",
+        diagnosis: item.diagnosis || "Not recorded",
+        treatment: item.treatment || "Not recorded",
         status: item.status || "pending",
         technicianNote: item.technicianNote || ""
       };
@@ -226,6 +269,7 @@ export default function HealthLog() {
               </span>
               <input
                 type="text"
+                aria-label="Search health records"
                 placeholder="Search tag, diagnostic notes, farmer..."
                 className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content placeholder-base-content/40 focus:ring-1 focus:ring-primary outline-none transition-all duration-200"
                 value={searchQuery}
@@ -264,6 +308,7 @@ export default function HealthLog() {
             </div>
             <select
               className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
+              aria-label="Filter health records by urgency"
               value={urgencyFilter}
               onChange={(e) => {
                 setUrgencyFilter(e.target.value);
@@ -280,6 +325,7 @@ export default function HealthLog() {
 
             <select
               className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
+              aria-label="Filter health records by status"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
@@ -304,30 +350,22 @@ export default function HealthLog() {
           </div>
 
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full border-collapse">
+            <table className="table w-full min-w-[860px] border-collapse" aria-label="Technician health records">
               <thead>
                 <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
-                  <th className="p-3.5 pl-5">Case #</th>
-                  <th className="p-3.5">Logged Date</th>
-                  <th className="p-3.5">Animal Tag</th>
-                  <th className="p-3.5">Farmer Client</th>
-                  <th className="p-3.5">Clinical Symptoms</th>
-                  <th className="p-3.5">Assigned Diagnosis</th>
-                  <th className="p-3.5 text-center">Urgency</th>
-                  <th className="p-3.5 text-center">Status</th>
-                  <th className="p-3.5 pr-5 text-right">Actions</th>
+                  <th className="p-3.5 pl-6">Animal</th>
+                  <th className="p-3.5">Incident</th>
+                  <th className="p-3.5">Schedule</th>
+                  <th className="p-3.5">Status</th>
+                  <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-base-300 text-xs">
+              <tbody className="divide-y divide-base-300 text-xs font-semibold text-base-content/85">
                 {isLoading ? (
                   [...Array(6)].map((_, idx) => (
                     <tr key={idx}>
-                      <td colSpan={9}>
-                        <div className="grid grid-cols-[.8fr_1fr_.8fr_1.2fr_1.5fr_1.5fr_.8fr_.8fr_.8fr] gap-5 py-1">
-                          <span className="skeleton h-4" />
-                          <span className="skeleton h-4" />
-                          <span className="skeleton h-4" />
-                          <span className="skeleton h-4" />
+                      <td colSpan={5}>
+                        <div className="grid grid-cols-[1.5fr_2fr_1fr_1fr_.5fr] gap-5 py-1">
                           <span className="skeleton h-4" />
                           <span className="skeleton h-4" />
                           <span className="skeleton h-4" />
@@ -337,87 +375,168 @@ export default function HealthLog() {
                       </td>
                     </tr>
                   ))
+                ) : isError ? (
+                  <tr>
+                    <td colSpan={5} className="p-6">
+                      <div role="alert" className="alert alert-error">
+                        <span>{error?.response?.data?.message || "Health records could not be loaded."}</span>
+                        <button type="button" className="btn btn-sm" onClick={() => refetch()}>Retry</button>
+                      </div>
+                    </td>
+                  </tr>
                 ) : paginatedCases.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={12}
+                      colSpan={5}
                       className="text-center p-12 text-base-content/40 font-medium"
                     >
                       No matching historical diagnostic records found.
                     </td>
                   </tr>
                 ) : (
-                  paginatedCases.map((c) => (
-                    <tr
-                      key={c.id}
-                      className="hover:bg-base-200 transition-colors cursor-pointer"
-                      onClick={() => setSelectedCase(c)}
-                    >
-                      <td className="p-3.5 pl-5 font-bold text-base-content/40 truncate max-w-[80px]">
-                        #{c.id.slice(-6)}
-                      </td>
-                      <td className="p-3.5 font-medium whitespace-nowrap">
-                        {c.date}
-                      </td>
-                      <td className="p-3.5 font-extrabold text-primary">
-                        {c.tag}
-                      </td>
-                      <td className="p-3.5 font-bold">{c.farmer}</td>
-                      <td className="p-3.5 max-w-[180px] truncate font-medium text-base-content/70">
-                        {c.symptoms}
-                      </td>
-                      <td className="p-3.5 font-bold text-base-content/85 truncate max-w-[150px]">
-                        {c.diagnosis}
-                      </td>
-                      <td className="p-3.5 text-center">
-                        <span
-                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border ${
-                            c.urgency === "high"
-                              ? "bg-red-500/10 text-rose-600 border-red-200/50"
-                              : c.urgency === "medium"
-                                ? "bg-amber-500/10 text-amber-600 border-amber-200/50"
-                                : "bg-blue-500/10 text-blue-600 border-blue-200/50"
-                          }`}
-                        >
-                          {c.urgency}
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-center">
-                        <span
-                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider border ${
-                            c.status === "resolved" || c.status === "done"
-                              ? "bg-primary/10 text-primary border-primary/20"
-                              : c.status === "in-progress"
-                                ? "bg-blue-500/10 text-blue-600 border-blue-200/50"
-                                : "bg-amber-500/10 text-amber-600 border-amber-200/50"
-                          }`}
-                        >
-                          {c.status}
-                        </span>
-                      </td>
-                      <td
-                        className="p-3.5 pr-5 text-right"
-                        onClick={(e) => e.stopPropagation()}
+                  paginatedCases.map((c) => {
+                    const sched = formatRelativeSchedule(c.rawDate);
+                    return (
+                      <tr
+                        key={c.id}
+                        className="hover:bg-base-200/50 transition-colors"
                       >
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => setSelectedCase(c)}
-                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-base-300 hover:border-primary hover:text-primary flex items-center gap-1 transition-all bg-base-100 text-base-content/70 cursor-pointer"
+                        {/* 1. ANIMAL */}
+                        <td className="p-3.5 pl-6">
+                          <div className="flex items-center gap-3">
+                            <UserAvatar
+                              name={c.farmer}
+                              imageUrl={c.farmerImageUrl}
+                              size={36}
+                              sizeClass="h-9 w-9"
+                            />
+                            <div>
+                              {c.animalId ? (
+                                <TableNameLink
+                                  to={`/technician/animals/${c.animalId}`}
+                                  ariaLabel={`Open livestock profile for animal ${c.tag}`}
+                                >
+                                  #{c.tag || "Unassigned"}
+                                </TableNameLink>
+                              ) : (
+                                <span className="font-extrabold text-sm text-base-content block leading-tight">
+                                  #{c.tag || "Unassigned"}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-base-content/50 block mt-0.5 font-bold">
+                                {c.farmer || "Unknown farmer"}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 2. INCIDENT */}
+                        <td className="p-3.5">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-extrabold text-xs text-base-content leading-tight">
+                                {c.diagnosis || "Undiagnosed"}
+                              </span>
+                              <span
+                                className={`inline-block text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider border ${
+                                  c.urgency === "high"
+                                    ? "bg-red-500/10 text-rose-600 border-red-200/50"
+                                    : c.urgency === "medium"
+                                      ? "bg-amber-500/10 text-amber-600 border-amber-200/50"
+                                      : "bg-blue-500/10 text-blue-600 border-blue-200/50"
+                                }`}
+                              >
+                                {c.urgency}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-base-content/55 block leading-tight font-medium max-w-[200px] truncate">
+                              Symptoms: {c.symptoms || "None reported"}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* 3. SCHEDULE */}
+                        <td className="p-3.5">
+                          <span className="font-bold text-xs text-base-content block leading-tight">
+                            {sched.date}
+                          </span>
+                          <span className="text-[10px] text-base-content/40 block mt-0.5 font-bold">
+                            {sched.time}
+                          </span>
+                        </td>
+
+                        {/* 4. STATUS */}
+                        <td className="p-3.5">
+                          <span
+                            className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${
+                              c.status === "resolved" || c.status === "done"
+                                ? "badge-success"
+                                : c.status === "in-progress"
+                                  ? "badge-info"
+                                  : "badge-warning"
+                            }`}
                           >
-                            <Eye size={12} /> Inspect
-                          </button>
-                          <button
-                            onClick={() => handleDeleteCase(c)}
-                            disabled={isTaskPreview}
-                            className="p-1.5 text-base-content/40 hover:text-rose-600 transition-colors rounded-lg hover:bg-base-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            title="Delete Incident"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            {c.status}
+                          </span>
+                        </td>
+
+                        {/* 5. ACTIONS */}
+                        <td
+                          className="p-3.5 pr-6 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div>
+                            <button
+                              type="button"
+                              popoverTarget={`health-actions-${c.id}`}
+                              style={{ anchorName: `--health-actions-${c.id}` }}
+                              className="btn btn-ghost btn-circle btn-xs hover:bg-base-200"
+                              aria-label={`Actions for case ${c.id}`}
+                              aria-haspopup="menu"
+                            >
+                              <MoreVertical size={16} className="text-base-content/60" />
+                            </button>
+                            <ul
+                              id={`health-actions-${c.id}`}
+                              popover="auto"
+                              role="menu"
+                              aria-label={`Actions for health case ${c.id}`}
+                              style={{ positionAnchor: `--health-actions-${c.id}` }}
+                              className="dropdown dropdown-end menu menu-sm w-44 rounded-box border border-base-300 bg-base-100 p-2 text-base-content shadow-xl"
+                            >
+                              <li role="none">
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={(event) => {
+                                    event.currentTarget.closest("[popover]")?.hidePopover?.();
+                                    setSelectedCase(c);
+                                  }}
+                                  className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                >
+                                  <Eye size={13} className="mr-1" /> Inspect Case
+                                </button>
+                              </li>
+                              <li role="none">
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={(event) => {
+                                    event.currentTarget.closest("[popover]")?.hidePopover?.();
+                                    handleDeleteCase(c);
+                                  }}
+                                  disabled={isTaskPreview}
+                                  className="text-xs font-extrabold text-rose-600 hover:bg-rose-50 rounded-lg p-2.5 disabled:opacity-40 disabled:hover:bg-transparent"
+                                >
+                                  <Trash2 size={13} className="mr-1" /> Delete Record
+                                </button>
+                              </li>
+                            </ul>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -430,8 +549,10 @@ export default function HealthLog() {
               {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
               health dispatches
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1" aria-label="Health records pagination">
               <button
+                type="button"
+                aria-label="Previous health records page"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1 || isLoading}
                 className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
@@ -441,6 +562,9 @@ export default function HealthLog() {
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(
                 (pageNumber) => (
                   <button
+                    type="button"
+                    aria-label={`Go to health records page ${pageNumber}`}
+                    aria-current={currentPage === pageNumber ? "page" : undefined}
                     key={pageNumber}
                     disabled={isLoading}
                     onClick={() => setCurrentPage(pageNumber)}
@@ -455,6 +579,8 @@ export default function HealthLog() {
                 ),
               )}
               <button
+                type="button"
+                aria-label="Next health records page"
                 onClick={() =>
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }

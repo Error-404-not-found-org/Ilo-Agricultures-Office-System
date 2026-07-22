@@ -30,8 +30,8 @@ import {
   validateTaskContextForAction,
   sanitizeReturnTo,
 } from "../../utils/taskNavigation";
-import TaskContextCard from "../../components/technician/TaskContextCard";
-import TaskContextErrorView from "../../components/technician/TaskContextErrorView";
+import TaskContextCard from "../../features/technician/TaskContextCard";
+import TaskContextErrorView from "../../features/technician/TaskContextErrorView";
 import {
   formatBarangayWithDistrict,
   getIloiloBarangayOptions,
@@ -143,7 +143,7 @@ export default function WalkInInsemination() {
       inseminationDate: new Date().toISOString().split("T")[0],
       time: "08:00",
       sireBreed: "",
-      sireCode: `SIRE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      sireCode: "",
       estrus: "Natural",
       status: "done",
     },

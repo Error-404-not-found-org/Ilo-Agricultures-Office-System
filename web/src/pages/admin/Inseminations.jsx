@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
-import { TableRowSkeleton } from "../../components/Skeleton";
+import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import {
   Download,
   Syringe,
@@ -14,7 +14,8 @@ import {
   ChevronRight,
   Filter,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
+import TableNameLink from "../../components/ui/TableNameLink";
 
 export default function Inseminations() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,7 +26,7 @@ export default function Inseminations() {
   const itemsPerPage = 10;
 
   // ---- DYNAMIC DATA PIPELINE ----
-  const { data: inseminationPage = {}, isLoading } = useQuery({
+  const { data: inseminationPage = {}, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "inseminations-list-all", currentPage, searchQuery, estrusFilter, pResultFilter],
     queryFn: async () => {
       const res = await axiosInstance.get("/admin/inseminations", {
@@ -51,14 +52,15 @@ export default function Inseminations() {
         id: ins._id,
         date: new Date(visitDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         rawDate: visitDate,
-        tag: ins.animalId?.earTag || "N/A",
-        farmer: ins.farmerId?.name || "N/A",
-        sireBreed: ins.sireBreed || "N/A",
-        sireCode: ins.sireCode || "N/A",
-        estrus: ins.estrus || "Natural",
+        animalId: ins.animalId?._id || ins.animalId?.id || null,
+        tag: ins.animalId?.earTag || "Not recorded",
+        farmer: ins.farmerId?.name || "Not recorded",
+        sireBreed: ins.sireBreed || "Not recorded",
+        sireCode: ins.sireCode || "Not recorded",
+        estrus: ins.estrus || "Not recorded",
         pdResult: ins.outcome || "Pending",
-        tech: ins.technicianId?.name || "Juan dela Cruz",
-        attempt: ins.attemptNumber || 1,
+        tech: ins.technicianId?.name || ins.approvedBy?.name || "Technician not recorded",
+        attempt: ins.attemptNumber ?? "Not recorded",
         comment: ins.comment || "",
         technicianNote: ins.technicianNote || ""
       };
@@ -74,6 +76,7 @@ export default function Inseminations() {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedLogs = filteredLogs;
   const totalPages = inseminationPage.totalPages || inseminationPage.pagination?.totalPages || Math.ceil((inseminationPage.total || inseminationPage.pagination?.total || filteredLogs.length) / itemsPerPage) || 1;
+  const totalRecords = inseminationPage.total || inseminationPage.pagination?.total || filteredLogs.length;
 
   // ---- REAL EXPORTER TO CSV ----
   const handleExportCSV = () => {
@@ -118,7 +121,7 @@ export default function Inseminations() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex h-screen flex-1 flex-col overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Municipal Inseminations"
         subtitle="Artificial Insemination registers, bloodlines, and pregnancy diagnosis status tracker"
@@ -146,7 +149,7 @@ export default function Inseminations() {
               <Syringe size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">{isLoading ? "..." : processedLogs.length}</div>
+              <div className="text-xl font-black">{isLoading ? "..." : totalRecords}</div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                 Total AI Cycles Run
               </div>
@@ -161,7 +164,7 @@ export default function Inseminations() {
                 {isLoading ? "..." : processedLogs.filter((l) => l.pdResult === "Pregnant").length}
               </div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                Confirmed Conceptions
+                Pregnant on This Page
               </div>
             </div>
           </div>
@@ -174,7 +177,7 @@ export default function Inseminations() {
                 {isLoading ? "..." : processedLogs.filter((l) => l.pdResult === "Pending" || l.pdResult === "pending").length}
               </div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                Pending Palpation Checks
+                Pending on This Page
               </div>
             </div>
           </div>
@@ -189,6 +192,7 @@ export default function Inseminations() {
             </div>
             <select
               className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+              aria-label="Filter inseminations by estrus type"
               value={estrusFilter}
               onChange={(e) => {
                 setEstrusFilter(e.target.value);
@@ -201,6 +205,7 @@ export default function Inseminations() {
             </select>
             <select
               className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+              aria-label="Filter inseminations by pregnancy result"
               value={pResultFilter}
               onChange={(e) => {
                 setPResultFilter(e.target.value);
@@ -213,15 +218,15 @@ export default function Inseminations() {
               <option value="Empty">Open (Failed cycle)</option>
             </select>
 
-            <span className="text-xs text-slate-400 font-semibold ml-auto whitespace-nowrap px-1">
+            <span className="ml-auto whitespace-nowrap px-1 text-xs font-semibold text-base-content/60">
               {isLoading ? "Fetching entries..." : `${filteredLogs.length} cycle${filteredLogs.length !== 1 ? "s" : ""} matched`}
             </span>
           </div>
 
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full border-collapse">
+            <table className="table w-full border-collapse" aria-label="Municipal insemination records">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none">
+                <tr className="select-none border-b border-base-300 bg-base-200 text-[11px] font-bold uppercase tracking-wider text-base-content/60">
                   <th className="p-3.5 pl-5">Registry ID</th>
                   <th className="p-3.5">Date Run</th>
                   <th className="p-3.5">Livestock Tag</th>
@@ -232,49 +237,63 @@ export default function Inseminations() {
                   <th className="p-3.5 pr-5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+              <tbody className="divide-y divide-base-300 text-xs">
                 {isLoading ? (
                   [...Array(6)].map((_, idx) => <TableRowSkeleton key={idx} />)
+                ) : isError ? (
+                  <tr>
+                    <td colSpan={8} className="p-6">
+                      <div role="alert" className="alert alert-error">
+                        <span>Insemination records could not be loaded.</span>
+                        <button type="button" className="btn btn-sm" onClick={() => refetch()}>Retry</button>
+                      </div>
+                    </td>
+                  </tr>
                 ) : paginatedLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium">
+                    <td colSpan={8} className="p-12 text-center font-medium text-base-content/60">
                       No matching insemination cycles found.
                     </td>
                   </tr>
                 ) : (
                   paginatedLogs.map((l) => (
-                    <tr
-                      key={l.id}
-                      className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors cursor-pointer"
-                      onClick={() => setSelectedLog(l)}
-                    >
-                      <td className="p-3.5 pl-5 font-bold text-slate-400">
+                    <tr key={l.id} className="transition-colors hover:bg-base-200/70">
+                      <td className="p-3.5 pl-5 font-bold text-base-content/60">
                         #{l.id.slice(-6)}
                       </td>
                       <td className="p-3.5 font-medium">{l.date}</td>
-                      <td className="p-3.5 font-extrabold text-[#00643b] dark:text-[#10b981]">
-                        {l.tag}
+                      <td className="p-3.5">
+                        {l.animalId ? (
+                          <TableNameLink
+                            to={`/admin/livestock/${l.animalId}`}
+                            ariaLabel={`Open livestock profile for animal ${l.tag}`}
+                          >
+                            {l.tag}
+                          </TableNameLink>
+                        ) : (
+                          <span className="font-extrabold text-base-content">{l.tag}</span>
+                        )}
                       </td>
                       <td className="p-3.5 font-bold">{l.farmer}</td>
                       <td className="p-3.5 font-medium">
                         {l.sireBreed}{" "}
-                        <span className="text-slate-400 font-mono text-[11px]">
+                        <span className="font-mono text-[11px] text-base-content/60">
                           ({l.sireCode})
                         </span>
                       </td>
                       <td className="p-3.5">
-                        <span className="badge badge-outline border-slate-200 text-slate-600 dark:text-slate-400 font-semibold text-[10px]">
+                        <span className="badge badge-outline text-[10px] font-semibold text-base-content/70">
                           {l.estrus}
                         </span>
                       </td>
                       <td className="p-3.5 text-center">
                         <span
-                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${
+                          className={`badge badge-sm badge-soft text-[10px] font-bold uppercase tracking-wider ${
                             l.pdResult === "Pregnant"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400"
+                              ? "badge-success"
                               : l.pdResult === "Pending" || l.pdResult === "pending"
-                                ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400"
-                                : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400"
+                                ? "badge-info"
+                                : "badge-error"
                           }`}
                         >
                           {l.pdResult}
@@ -285,8 +304,10 @@ export default function Inseminations() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
+                          type="button"
                           onClick={() => setSelectedLog(l)}
-                          className="px-2.5 py-1 text-[11px] font-extrabold rounded-lg border border-slate-200 dark:border-slate-800 hover:border-[#00643b] hover:text-[#00643b] flex items-center gap-1 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 transition-all cursor-pointer"
+                          className="btn btn-outline btn-xs text-[11px] font-extrabold"
+                          aria-label={`View insemination record ${l.id.slice(-6)}`}
                         >
                           <Eye size={12} /> View
                         </button>
@@ -300,36 +321,43 @@ export default function Inseminations() {
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between mt-3">
-              <span className="text-[11px] font-medium text-slate-400">
+            <div className="mt-3 flex items-center justify-between border-t border-base-300 pt-4">
+              <span className="text-[11px] font-medium text-base-content/60">
                 Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filteredLogs.length)} of {filteredLogs.length} cycles
               </span>
-              <div className="flex items-center gap-1">
+              <div className="join" aria-label="Insemination records pagination">
                 <button
+                  type="button"
+                  aria-label="Previous insemination page"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1 || isLoading}
-                  className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                  className="btn btn-sm join-item"
                 >
                   <ChevronLeft size={12} />
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNumber) => (
                   <button
+                    type="button"
                     key={pageNumber}
+                    aria-label={`Go to insemination page ${pageNumber}`}
+                    aria-current={currentPage === pageNumber ? "page" : undefined}
                     disabled={isLoading}
                     onClick={() => setCurrentPage(pageNumber)}
-                    className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
+                    className={`btn btn-sm join-item text-[11px] font-bold ${
                       currentPage === pageNumber
-                        ? "bg-[#00643b] text-white shadow-xs"
-                        : "border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                        ? "btn-primary"
+                        : ""
                     }`}
                   >
                     {pageNumber}
                   </button>
                 ))}
                 <button
+                  type="button"
+                  aria-label="Next insemination page"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages || isLoading}
-                  className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                  className="btn btn-sm join-item"
                 >
                   <ChevronRight size={12} />
                 </button>

@@ -143,6 +143,64 @@ const completeInitialConfirmationTask = async ({
   return task;
 };
 
+const reconcileExistingDiagnosisTask = async ({
+  taskId,
+  animal,
+  insemination,
+  pregnancy,
+  actor,
+  methodCode,
+  policyVersion,
+  session,
+}) => {
+  const task = await Task.findOne({
+    _id: taskId,
+    farmerId: animal.farmerId,
+    animalIds: animal._id,
+    taskType: "PD",
+    ...(actor.role === "admin"
+      ? {}
+      : { $or: [{ technicianId: actor._id }, { technicianId: null }] }),
+  }).session(session);
+  const linkedToDiagnosis = Boolean(
+    task &&
+    getPregnancyTaskStage(task) === PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION &&
+    (
+      String(task.metadata?.inseminationId || "") === String(insemination._id) ||
+      String(insemination.verificationTaskId || "") === String(task._id) ||
+      (
+        task.relatedRecordType === "pregnancy" &&
+        String(task.relatedRecordId || "") === String(pregnancy._id)
+      )
+    )
+  );
+  if (!linkedToDiagnosis || task.status === "Cancelled") {
+    throw new AppError("The pregnancy-check task does not match the existing diagnosis.", {
+      status: 409,
+      code: "TASK_RECORD_MISMATCH",
+    });
+  }
+  if (task.status === "Completed") return task;
+
+  task.status = "Completed";
+  task.completedAt = new Date();
+  task.technicianId = actor._id;
+  task.relatedRecordType = "pregnancy";
+  task.relatedRecordId = pregnancy._id;
+  task.metadata = {
+    ...(task.metadata || {}),
+    workflowStage: PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION,
+    animalId: animal._id,
+    farmerId: animal.farmerId,
+    inseminationId: insemination._id,
+    pregnancyId: pregnancy._id,
+    methodCode: methodCode || null,
+    policyVersion: policyVersion || null,
+  };
+  await task.save({ session });
+  return task;
+};
+
 const ensureContinuationTask = async ({
   animal,
   insemination,
@@ -217,10 +275,41 @@ export const confirmPregnancyDiagnosis = ({
     const { animal, insemination } = await loadContext({ animalId, inseminationId, session });
     const existing = await Pregnancy.findOne({ inseminationId: insemination._id, deletedAt: null }).session(session);
     if (existing) {
-      throw new AppError("Pregnancy diagnosis already recorded for this insemination attempt.", {
-        status: 409,
-        code: "PREGNANCY_DIAGNOSIS_EXISTS",
+      if (!taskId) {
+        throw new AppError("Pregnancy diagnosis already recorded for this insemination attempt.", {
+          status: 409,
+          code: "PREGNANCY_DIAGNOSIS_EXISTS",
+        });
+      }
+      const existingResult = normalizeResult(existing.pregnancyDiagnosis?.result);
+      if (existingResult !== officialResult) {
+        throw new AppError(
+          `This insemination already has an official ${existingResult} diagnosis. Use the audited correction workflow to change it.`,
+          {
+            status: 409,
+            code: "PREGNANCY_DIAGNOSIS_CONFLICT",
+          },
+        );
+      }
+      const completedTask = await reconcileExistingDiagnosisTask({
+        taskId,
+        animal,
+        insemination,
+        pregnancy: existing,
+        actor,
+        methodCode: existing.confirmation?.methodCode || methodCode || null,
+        policyVersion: existing.confirmation?.policyVersion || clientPolicyVersion || null,
+        session,
       });
+      return {
+        pregnancy: existing,
+        animal,
+        insemination,
+        completedTask,
+        continuationTask: null,
+        pregnancyReadiness: null,
+        alreadyRecorded: true,
+      };
     }
     if (confirmedAt < new Date(insemination.inseminationDate)) {
       throw new AppError("Diagnosis date cannot be earlier than the AI service date.", {
@@ -421,6 +510,7 @@ export const confirmPregnancyDiagnosis = ({
       completedTask,
       continuationTask,
       pregnancyReadiness: readiness,
+      alreadyRecorded: false,
     };
   }).catch((error) => {
     if (error?.code === 11000 && (error?.keyPattern?.inseminationId || error?.keyValue?.inseminationId)) {

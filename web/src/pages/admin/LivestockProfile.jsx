@@ -21,14 +21,16 @@ import {
   Search,
   Plus,
   FileText,
+  Beef,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import EditInseminationModal from "../../components/EditInseminationModal";
-import AddMedicalRecordModal from "../../components/modals/AddMedicalRecordModal";
-import ActivityDetailsModal from "../../components/modals/ActivityDetailsModal";
-import WalkInAIModal from "../../components/modals/WalkInAIModal";
-import PregnancyDiagnosisModal from "../../components/modals/PregnancyDiagnosisModal";
-import RecordCalfDropModal from "../../components/modals/RecordCalvingModal";
+import EditInseminationModal from "../../components/dialogs/EditInseminationModal";
+import AddMedicalRecordModal from "../../components/dialogs/AddMedicalRecordModal";
+import ActivityDetailsModal from "../../components/dialogs/ActivityDetailsModal";
+import WalkInAIModal from "../../components/dialogs/WalkInAIModal";
+import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
+import RecordCalfDropModal from "../../components/dialogs/RecordCalvingModal";
+import { getBreedingAttemptPresentation } from "../../utils/reproductionWorkflow";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -44,14 +46,6 @@ function statusChip(status) {
   if (s === "open" || s === "normal")
     return "badge-primary";
   return "badge-ghost";
-}
-
-function outcomeChip(status) {
-  const s = status?.toLowerCase() || "";
-  if (s === "pending")
-    return "badge-warning";
-  if (s.startsWith("failed") || s === "negative") return "badge-error";
-  return "badge-success";
 }
 
 function cleanLocationPart(value) {
@@ -70,31 +64,31 @@ function getRecordMeta(kind) {
   switch (kind) {
     case "AI":
       return {
-        bg: "bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400 border-blue-100 dark:border-blue-900",
+        bg: "border-info/20 bg-info/10 text-info",
         icon: <Syringe size={17} />,
         label: "AI Record",
       };
     case "Health":
       return {
-        bg: "bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400 border-rose-100 dark:border-rose-900",
+        bg: "border-error/20 bg-error/10 text-error",
         icon: <Stethoscope size={17} />,
         label: "Health Record",
       };
     case "Pregnancy Check":
       return {
-        bg: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400 border-emerald-100 dark:border-emerald-900",
+        bg: "border-success/20 bg-success/10 text-success",
         icon: <ShieldCheck size={17} />,
         label: "Pregnancy Check",
       };
     case "Calving":
       return {
-        bg: "bg-purple-50 text-purple-600 dark:bg-purple-950/30 dark:text-purple-400 border-purple-100 dark:border-purple-900",
+        bg: "border-secondary/20 bg-secondary/10 text-secondary",
         icon: <Heart size={17} />,
         label: "Calving Event",
       };
     default:
       return {
-        bg: "bg-slate-50 text-slate-600 dark:bg-slate-900/50 dark:text-slate-400 border-slate-100 dark:border-slate-800",
+        bg: "border-base-300 bg-base-200 text-base-content/60",
         icon: <FileText size={17} />,
         label: "Record",
       };
@@ -139,7 +133,7 @@ function formatAge(birthDate) {
 function MetricCard({ icon, label, value, sub, accent = false }) {
   return (
     <div className="rounded-box border border-base-300 bg-base-200 p-4 flex flex-col gap-1">
-      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-base-content/50 uppercase tracking-wider">
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-base-content/60 uppercase tracking-wider">
         {icon}
         {label}
       </span>
@@ -153,7 +147,7 @@ function MetricCard({ icon, label, value, sub, accent = false }) {
         {value}
       </p>
       {sub && (
-        <p className="text-[11px] text-base-content/50 font-medium">
+        <p className="text-[11px] text-base-content/60 font-medium">
           {sub}
         </p>
       )}
@@ -164,7 +158,7 @@ function MetricCard({ icon, label, value, sub, accent = false }) {
 function InfoCell({ label, value, mono = false, accent = false }) {
   return (
     <div className="rounded-box border border-base-300 bg-base-200 p-3">
-      <p className="text-[10px] font-semibold text-base-content/50 uppercase tracking-wider mb-1">
+      <p className="text-[10px] font-semibold text-base-content/60 uppercase tracking-wider mb-1">
         {label}
       </p>
       <p
@@ -443,7 +437,7 @@ export default function LivestockProfile() {
                 {animal.reproductiveStatus || "Normal"}
               </span>
             </div>
-            <p className="mt-0.5 text-xs text-base-content/50">
+            <p className="mt-0.5 text-xs text-base-content/60">
               Animal record · ID ending 
               {animal._id?.slice(-8).toUpperCase()}
             </p>
@@ -483,14 +477,19 @@ export default function LivestockProfile() {
             <div className="card card-border overflow-hidden bg-base-100 shadow-sm">
               {/* Photo */}
               <div className="h-44 bg-base-200 relative">
-                <img
-                  src={
-                    animal.imageUrl ||
-                    `https://ui-avatars.com/api/?name=${animal.earTag}&size=200&background=074033&color=fff`
-                  }
-                  alt={animal.earTag}
-                  className="w-full h-full object-cover"
-                />
+                {animal.imageUrl ? (
+                  <img
+                    src={animal.imageUrl}
+                    alt={`Animal ${animal.earTag || animal.animalId}`}
+                    width="280"
+                    height="176"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-base-200 text-primary/45" role="img" aria-label={`No photo available for animal ${animal.earTag || animal.animalId}`}>
+                    <Beef size={56} aria-hidden="true" />
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-linear-to-t from-black/30 to-transparent pointer-events-none" />
                 {/* Floating tag */}
                 <div className="absolute bottom-3 left-3 flex gap-1.5">
@@ -505,7 +504,7 @@ export default function LivestockProfile() {
 
               {/* Owner block */}
               <div className="p-4 space-y-3">
-                <p className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                <p className="text-[10px] font-semibold text-base-content/60 uppercase tracking-wider">
                   Ownership details
                 </p>
                 <div className="flex items-center gap-3">
@@ -516,7 +515,7 @@ export default function LivestockProfile() {
                     <p className="truncate text-sm font-semibold text-base-content">
                       {animal.farmerId?.name || "Unknown farmer"}
                     </p>
-                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-base-content/50">
+                    <p className="mt-0.5 flex items-center gap-1 text-[11px] text-base-content/60">
                       <MapPin size={10} />
                       {getOwnerLocation(animal.farmerId?.address)}
                     </p>
@@ -525,10 +524,10 @@ export default function LivestockProfile() {
 
                 {animal.farmerId?.phoneNumber && (
                   <div className="flex items-center gap-2 text-[12px]">
-                    <Phone size={12} className="text-slate-400 shrink-0" />
+                    <Phone size={12} className="text-base-content/60 shrink-0" />
                     <a
                       href={`tel:${animal.farmerId.phoneNumber}`}
-                      className="font-mono font-semibold text-primary hover:underline"
+                      className="rounded-sm font-mono font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100"
                     >
                       {animal.farmerId.phoneNumber}
                     </a>
@@ -539,7 +538,7 @@ export default function LivestockProfile() {
 
             {/* Quick vitals */}
             <div className="card card-border space-y-3 bg-base-100 p-4 shadow-sm">
-              <p className="text-[10px] font-semibold text-base-content/50 uppercase tracking-wider">
+              <p className="text-[10px] font-semibold text-base-content/60 uppercase tracking-wider">
                 Quick vitals
               </p>
               <div className="grid grid-cols-2 gap-2">
@@ -560,15 +559,18 @@ export default function LivestockProfile() {
           {/* ── Right panel ── */}
           <div className="space-y-4">
             {/* Tab bar */}
-            <div className="flex max-w-full flex-wrap gap-1 rounded-box border border-base-300 bg-base-100 p-1 shadow-sm">
+            <div role="tablist" aria-label="Livestock profile sections" className="tabs tabs-box tabs-sm flex max-w-full flex-wrap gap-1 border border-base-300 bg-base-100 p-1 shadow-sm">
               {TABS.map((tab) => (
                 <button
                   key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`btn btn-sm h-auto min-h-9 flex-1 whitespace-nowrap ${
+                  className={`tab h-auto min-h-9 flex-1 gap-1.5 whitespace-nowrap font-semibold ${
                     activeTab === tab.id
-                      ? "btn-primary"
-                      : "btn-ghost text-base-content/65"
+                      ? "tab-active bg-primary text-primary-content"
+                      : "text-base-content/65 hover:bg-base-200 hover:text-base-content"
                   }`}
                 >
                   {tab.icon}
@@ -612,13 +614,13 @@ export default function LivestockProfile() {
                 </div>
 
                 {/* Breeding timeline */}
-                <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5">
-                  <h3 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <div className="card card-border bg-base-100 p-5 shadow-sm">
+                  <h3 className="mb-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
                     <Syringe size={12} /> Breeding timeline
                   </h3>
 
                   {!animal.inseminations?.length ? (
-                    <p className="text-sm text-slate-400 dark:text-slate-500 text-center py-6 italic">
+                    <p className="py-6 text-center text-sm italic text-base-content/60">
                       No insemination records logged yet.
                     </p>
                   ) : (
@@ -631,9 +633,10 @@ export default function LivestockProfile() {
                             new Date(a.inseminationDate),
                         )
                         .map((ins, i, arr) => (
-                          <div
+                          <button
+                            type="button"
                             key={ins._id}
-                            className="flex gap-3 cursor-pointer group"
+                            className="group flex w-full gap-3 rounded-box text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-base-100"
                             onClick={() => {
                               setSelectedActivity({
                                 ...ins,
@@ -658,75 +661,82 @@ export default function LivestockProfile() {
                               <div
                                 className={`w-2.5 h-2.5 rounded-full border-2 shrink-0 ${
                                   i === 0
-                                    ? "bg-emerald-500 border-emerald-500"
-                                    : "bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-700"
+                                    ? "border-primary bg-primary"
+                                    : "border-base-300 bg-base-100"
                                 }`}
                               />
                               {i < arr.length - 1 && (
-                                <div className="w-px flex-1 bg-slate-200 dark:bg-slate-800 my-1" />
+                                <div className="my-1 w-px flex-1 bg-base-300" />
                               )}
                             </div>
 
                             {/* Event card */}
                             <div
-                              className={`flex-1 mb-3 p-3 rounded-xl border transition-colors group-hover:border-emerald-200 dark:group-hover:border-emerald-800 ${
+                              className={`mb-3 flex-1 rounded-box border p-3 transition-colors group-hover:border-primary/40 ${
                                 i === 0
-                                  ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900"
-                                  : "bg-slate-50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800"
+                                  ? "border-primary/20 bg-primary/10"
+                                  : "border-base-300 bg-base-200"
                               }`}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div>
-                                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                  <p className="text-xs font-semibold text-base-content">
                                     Attempt #{ins.attemptNumber} —{" "}
                                     {ins.sireBreed || "Crossbreed"}
                                   </p>
-                                  <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                                  <p className="mt-0.5 font-mono text-[11px] text-base-content/60">
                                     {ins.sireCode || "—"}
                                   </p>
                                 </div>
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 ${outcomeChip(
-                                    ins.status,
-                                  )}`}
-                                >
-                                  {ins.status || "Done"}
-                                </span>
+                                <div className="flex shrink-0 flex-col items-end gap-1">
+                                  <span
+                                    className={`badge badge-sm badge-soft text-[10px] font-bold ${getBreedingAttemptPresentation(ins).serviceProgress.badgeClass}`}
+                                    aria-label={`Service progress: ${getBreedingAttemptPresentation(ins).serviceProgress.label}`}
+                                  >
+                                    {getBreedingAttemptPresentation(ins).serviceProgress.label}
+                                  </span>
+                                  <span
+                                    className={`badge badge-sm badge-soft text-[10px] font-bold ${getBreedingAttemptPresentation(ins).reproductiveOutcome.badgeClass}`}
+                                    aria-label={`Reproductive outcome: ${getBreedingAttemptPresentation(ins).reproductiveOutcome.label}`}
+                                  >
+                                    {getBreedingAttemptPresentation(ins).reproductiveOutcome.label}
+                                  </span>
+                                </div>
                               </div>
-                              <p className="text-[11px] text-slate-400 mt-2">
+                              <p className="mt-2 text-[11px] text-base-content/60">
                                 {fmtDate(ins.inseminationDate)}
                               </p>
                             </div>
-                          </div>
+                          </button>
                         ))}
                     </div>
                   )}
                 </div>
 
                 {/* Notifications */}
-                <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3">
-                  <h3 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="card card-border space-y-3 bg-base-100 p-5 shadow-sm">
+                  <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
                     <AlertCircle size={12} /> Active notifications
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {animal.reproductiveStatus === "Pregnant" && (
-                      <div className="flex gap-2.5 p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900 rounded-xl">
+                      <div className="alert alert-success items-start py-3 text-xs">
                         <CheckCircle2
                           size={14}
-                          className="text-emerald-500 shrink-0 mt-0.5"
+                          className="shrink-0 mt-0.5"
                         />
-                        <p className="text-xs font-medium text-emerald-800 dark:text-emerald-300 leading-relaxed">
+                        <p className="text-xs font-medium leading-relaxed">
                           Confirmed pregnant. Switch to high-protein feed and
                           schedule prenatal check.
                         </p>
                       </div>
                     )}
-                    <div className="flex gap-2.5 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900 rounded-xl">
+                    <div className="alert alert-info items-start py-3 text-xs">
                       <ShieldCheck
                         size={14}
-                        className="text-blue-500 shrink-0 mt-0.5"
+                        className="shrink-0 mt-0.5"
                       />
-                      <p className="text-xs font-medium text-blue-800 dark:text-blue-300 leading-relaxed">
+                      <p className="text-xs font-medium leading-relaxed">
                         Vaccination schedule is current. Local records up to
                         date.
                       </p>
@@ -738,14 +748,14 @@ export default function LivestockProfile() {
 
             {/* ── Tab: Animal Records ── */}
             {activeTab === "records" && (
-              <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden animate-in fade-in duration-150">
-                <div className="p-5 border-b border-slate-100 dark:border-slate-800 space-y-4">
+              <div className="card card-border overflow-hidden bg-base-100 shadow-sm animate-in fade-in duration-150">
+                <div className="space-y-4 border-b border-base-300 p-5">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <div>
-                      <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                      <h3 className="text-sm font-bold text-base-content">
                         Complete Animal History
                       </h3>
-                      <p className="text-[11px] text-slate-400 mt-1">
+                      <p className="mt-1 text-[11px] text-base-content/60">
                         Health and breeding records for this animal, newest first.
                       </p>
                     </div>
@@ -753,7 +763,9 @@ export default function LivestockProfile() {
                       <div className="relative">
                         <button
                           onClick={() => setIsAddRecordDropdownOpen(!isAddRecordDropdownOpen)}
-                          className="inline-flex items-center justify-center gap-1.5 h-9 px-4 bg-[#00643b] hover:bg-[#004d2e] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                          className="btn btn-primary btn-sm"
+                          aria-haspopup="menu"
+                          aria-expanded={isAddRecordDropdownOpen}
                         >
                           <Plus size={14} /> Add Record
                         </button>
@@ -763,15 +775,15 @@ export default function LivestockProfile() {
                               className="fixed inset-0 z-40" 
                               onClick={() => setIsAddRecordDropdownOpen(false)} 
                             />
-                            <div className="absolute right-0 mt-2 w-56 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-2 shadow-xl z-50 space-y-1">
+                            <div role="menu" className="menu menu-sm absolute right-0 z-50 mt-2 w-56 rounded-box border border-base-300 bg-base-100 p-2 shadow-xl">
                               <button
                                 onClick={() => {
                                   setIsAddRecordDropdownOpen(false);
                                   setIsAIModalOpen(true);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg flex items-center gap-2 cursor-pointer"
+                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                               >
-                                <Syringe size={14} className="text-blue-500" />
+                                <Syringe size={14} className="text-info" />
                                 Artificial Insemination (AI)
                               </button>
                               <button
@@ -779,9 +791,9 @@ export default function LivestockProfile() {
                                   setIsAddRecordDropdownOpen(false);
                                   setIsPDModalOpen(true);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg flex items-center gap-2 cursor-pointer"
+                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                               >
-                                <ShieldCheck size={14} className="text-emerald-500" />
+                                <ShieldCheck size={14} className="text-success" />
                                 Pregnancy Diagnosis (PD)
                               </button>
                               <button
@@ -789,9 +801,9 @@ export default function LivestockProfile() {
                                   setIsAddRecordDropdownOpen(false);
                                   setIsCalvingModalOpen(true);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg flex items-center gap-2 cursor-pointer"
+                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                               >
-                                <Heart size={14} className="text-purple-500" />
+                                <Heart size={14} className="text-secondary" />
                                 Calving Record
                               </button>
                               <button
@@ -800,9 +812,9 @@ export default function LivestockProfile() {
                                   setMedicalInitialType("Check-up");
                                   setIsAddMedicalModalOpen(true);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg flex items-center gap-2 cursor-pointer"
+                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                               >
-                                <Stethoscope size={14} className="text-rose-500" />
+                                <Stethoscope size={14} className="text-error" />
                                 Health / Medical Log
                               </button>
                               <button
@@ -811,9 +823,9 @@ export default function LivestockProfile() {
                                   setMedicalInitialType("General Note");
                                   setIsAddMedicalModalOpen(true);
                                 }}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-900 rounded-lg flex items-center gap-2 cursor-pointer"
+                                className="flex w-full items-center gap-2 rounded-btn px-3 py-2 text-left text-xs font-bold text-base-content hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                               >
-                                <FileText size={14} className="text-slate-500" />
+                                <FileText size={14} className="text-base-content/60" />
                                 General Note
                               </button>
                             </div>
@@ -828,13 +840,13 @@ export default function LivestockProfile() {
                       <span className="sr-only">Search animal records</span>
                       <Search
                         size={14}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50"
                       />
                       <input
                         value={recordSearch}
                         onChange={(event) => setRecordSearch(event.target.value)}
-                        placeholder="Search diagnosis, medicine, sire code, technician, or notes"
-                        className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                        placeholder="Search diagnosis, medicine, sire code, technician, or notes…"
+                        className="input input-sm h-10 w-full pl-9 text-xs placeholder:text-base-content/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       />
                     </label>
                     <label>
@@ -842,7 +854,7 @@ export default function LivestockProfile() {
                       <select
                         value={recordTypeFilter}
                         onChange={(event) => setRecordTypeFilter(event.target.value)}
-                        className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs outline-none focus:border-emerald-600"
+                        className="select select-sm h-10 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         <option value="All">All record types</option>
                         <option value="Health">Health records</option>
@@ -856,7 +868,7 @@ export default function LivestockProfile() {
                       <select
                         value={recordDateBasis}
                         onChange={(event) => setRecordDateBasis(event.target.value)}
-                        className="h-10 w-full sm:w-auto px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs outline-none focus:border-emerald-600"
+                        className="select select-sm h-10 w-full text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:w-auto"
                       >
                         <option value="service">Service date</option>
                         <option value="entry">Entry date</option>
@@ -867,7 +879,7 @@ export default function LivestockProfile() {
                       <select
                         value={recordRecentDays}
                         onChange={(event) => setRecordRecentDays(event.target.value)}
-                        className="h-10 w-full sm:w-auto px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs outline-none focus:border-emerald-600"
+                        className="select select-sm h-10 w-full text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:w-auto"
                       >
                         <option value="All">All activity</option>
                         <option value="7">Last 7 days</option>
@@ -876,24 +888,24 @@ export default function LivestockProfile() {
                       </select>
                     </label>
                     <label className="flex items-center gap-2">
-                      <span className="text-[10px] font-semibold text-slate-500">From</span>
+                      <span className="text-[10px] font-semibold text-base-content/60">From</span>
                       <input
                         type="date"
                         value={recordFromDate}
                         max={recordToDate || new Date().toISOString().slice(0, 10)}
                         onChange={(event) => setRecordFromDate(event.target.value)}
-                        className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs outline-none focus:border-emerald-600"
+                        className="input input-sm h-10 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       />
                     </label>
                     <label className="flex items-center gap-2">
-                      <span className="text-[10px] font-semibold text-slate-500">To</span>
+                      <span className="text-[10px] font-semibold text-base-content/60">To</span>
                       <input
                         type="date"
                         value={recordToDate}
                         min={recordFromDate || undefined}
                         max={new Date().toISOString().slice(0, 10)}
                         onChange={(event) => setRecordToDate(event.target.value)}
-                        className="h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs outline-none focus:border-emerald-600"
+                        className="input input-sm h-10 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       />
                     </label>
                   </div>
@@ -901,20 +913,20 @@ export default function LivestockProfile() {
 
                 {visibleRecords.length === 0 ? (
                   <div className="px-6 py-14 text-center">
-                    <FileText size={28} className="mx-auto text-slate-300 dark:text-slate-700 mb-3" />
-                    <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                    <FileText size={28} className="mx-auto mb-3 text-base-content/35" />
+                    <p className="text-sm font-semibold text-base-content/70">
                       {combinedRecords.length === 0
                         ? "No animal records have been entered yet."
                         : "No records match your search or filter."}
                     </p>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="mt-1 text-xs text-base-content/60">
                       {combinedRecords.length === 0
                         ? "Add a health record or record a breeding service to begin the history."
                         : "Try a different term or select all record types."}
                     </p>
                   </div>
                 ) : (
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="divide-y divide-base-300">
                     {visibleRecords.map((record) => {
                       const meta = getRecordMeta(record.recordKind);
                       return (
@@ -965,7 +977,7 @@ export default function LivestockProfile() {
                               details,
                             });
                           }}
-                          className="w-full px-5 py-4 flex items-center gap-4 text-left hover:bg-slate-50 dark:hover:bg-slate-900/40 transition-colors cursor-pointer border-none"
+                          className="flex w-full items-center gap-4 border-none px-5 py-4 text-left transition-colors hover:bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                         >
                           <span
                             className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${meta.bg}`}
@@ -974,36 +986,36 @@ export default function LivestockProfile() {
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                              <span className="text-sm font-semibold text-base-content">
                                 {record.recordTitle}
                               </span>
-                              <span className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                              <span className="badge badge-ghost badge-sm text-[9px] font-bold uppercase tracking-wide">
                                 {meta.label}
                               </span>
                               {record.isHistoricalEntry && (
-                                <span className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                                <span className="badge badge-warning badge-soft badge-sm text-[9px] font-bold uppercase tracking-wide">
                                   Past Record
                                 </span>
                               )}
                             </span>
-                            <span className="block text-xs text-slate-500 dark:text-slate-400 truncate mt-1">
+                            <span className="mt-1 block truncate text-xs text-base-content/70">
                               {record.recordSummary}
                             </span>
-                            <span className="block text-[10px] text-slate-400 mt-1">
+                            <span className="mt-1 block text-[10px] text-base-content/60">
                               Service date: {fmtDate(record.recordDate)}
                               {record.recordedBy ? `, recorded by ${record.recordedBy}` : ""}
                             </span>
                             {record.dateEntered && (
-                              <span className="block text-[10px] text-amber-700 dark:text-amber-400 mt-0.5">
+                              <span className="mt-0.5 block text-[10px] text-warning">
                                 Entered in BreedSmart: {fmtDate(record.dateEntered)}
                               </span>
                             )}
                           </span>
                           <span className="text-right shrink-0 hidden sm:block">
-                            <span className="block text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                            <span className="block text-[10px] font-semibold text-primary">
                               {record.recordStatus}
                             </span>
-                            <ChevronRight size={14} className="ml-auto mt-1 text-slate-300" />
+                            <ChevronRight size={14} className="ml-auto mt-1 text-base-content/35" />
                           </span>
                         </button>
                       );
@@ -1015,28 +1027,29 @@ export default function LivestockProfile() {
 
             {/* ── Tab: Reproduction ── */}
             {activeTab === "reproduction" && (
-              <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden animate-in fade-in duration-150">
-                <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-                  <h3 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <div className="card card-border overflow-hidden bg-base-100 shadow-sm animate-in fade-in duration-150">
+                <div className="border-b border-base-300 px-5 py-4">
+                  <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
                     <Syringe size={12} /> Historical breeding records
                   </h3>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs border-collapse">
+                  <table className="table table-sm w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-900/60 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                      <tr className="border-b border-base-300 bg-base-200 text-[10px] font-semibold uppercase tracking-wider text-base-content/60">
                         <th className="px-5 py-3">Attempt</th>
                         <th className="px-4 py-3">Sire lineage</th>
-                        <th className="px-4 py-3">Outcome</th>
+                        <th className="px-4 py-3">Service progress</th>
+                        <th className="px-4 py-3">Reproductive outcome</th>
                         <th className="px-4 py-3 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    <tbody className="divide-y divide-base-300">
                       {!animal.inseminations?.length ? (
                         <tr>
                           <td
-                            colSpan={4}
-                            className="px-5 py-10 text-center text-slate-400 dark:text-slate-500 italic"
+                            colSpan={5}
+                            className="px-5 py-10 text-center italic text-base-content/60"
                           >
                             No breeding records logged yet.
                           </td>
@@ -1045,31 +1058,36 @@ export default function LivestockProfile() {
                         animal.inseminations.map((ins) => (
                           <tr
                             key={ins._id}
-                            className="hover:bg-slate-50/60 dark:hover:bg-slate-900/30 transition-colors"
+                            className="transition-colors hover:bg-base-200/70"
                           >
                             <td className="px-5 py-3.5">
-                              <p className="font-semibold text-slate-800 dark:text-slate-200">
+                              <p className="font-semibold text-base-content">
                                 Attempt #{ins.attemptNumber}
                               </p>
-                              <p className="text-[10px] text-slate-400 mt-0.5">
+                              <p className="mt-0.5 text-[10px] text-base-content/60">
                                 {fmtDate(ins.inseminationDate)}
                               </p>
                             </td>
                             <td className="px-4 py-3.5">
-                              <p className="font-semibold text-slate-700 dark:text-slate-300">
+                              <p className="font-semibold text-base-content/80">
                                 {ins.sireBreed || "Crossbreed"}
                               </p>
-                              <p className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
+                              <p className="mt-0.5 font-mono text-[10px] text-primary">
                                 {ins.sireCode || "—"}
                               </p>
                             </td>
                             <td className="px-4 py-3.5">
                               <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${outcomeChip(
-                                  ins.status,
-                                )}`}
+                                className={`badge badge-sm badge-soft text-[10px] font-bold ${getBreedingAttemptPresentation(ins).serviceProgress.badgeClass}`}
                               >
-                                {ins.status || "Completed"}
+                                {getBreedingAttemptPresentation(ins).serviceProgress.label}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span
+                                className={`badge badge-sm badge-soft text-[10px] font-bold ${getBreedingAttemptPresentation(ins).reproductiveOutcome.badgeClass}`}
+                              >
+                                {getBreedingAttemptPresentation(ins).reproductiveOutcome.label}
                               </span>
                             </td>
                             <td className="px-4 py-3.5 text-right">
@@ -1095,7 +1113,9 @@ export default function LivestockProfile() {
                                     setSelectedInsemination(ins);
                                   }
                                 }}
-                                className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                                type="button"
+                                aria-label={`Open insemination attempt ${ins.attemptNumber}`}
+                                className="btn btn-ghost btn-xs btn-square text-base-content/60"
                               >
                                 <ChevronRight size={13} />
                               </button>
@@ -1113,36 +1133,37 @@ export default function LivestockProfile() {
             {activeTab === "clinical" && (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 animate-in fade-in duration-150">
                 {/* Treatment table */}
-                <div className="xl:col-span-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
-                  <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                    <h3 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <div className="card card-border overflow-hidden bg-base-100 shadow-sm xl:col-span-2">
+                  <div className="flex items-center justify-between border-b border-base-300 px-5 py-4">
+                    <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
                       <Stethoscope size={12} /> Treatment ledger
                     </h3>
                     {!isAdminPath && (
                       <button
                         onClick={() => setIsAddMedicalModalOpen(true)}
-                        className="btn btn-xs bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-[10px] font-bold rounded-lg cursor-pointer transition-all active:scale-95 shadow-xs"
+                        type="button"
+                        className="btn btn-primary btn-xs text-[10px] font-bold"
                       >
                         + Add Record
                       </button>
                     )}
                   </div>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
+                    <table className="table table-sm w-full text-left text-xs">
                       <thead>
-                        <tr className="bg-slate-50 dark:bg-slate-900/60 text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                        <tr className="border-b border-base-300 bg-base-200 text-[10px] font-semibold uppercase tracking-wider text-base-content/60">
                           <th className="px-5 py-3">Date</th>
                           <th className="px-4 py-3">Type</th>
                           <th className="px-4 py-3">Diagnosis / medicine</th>
                           <th className="px-4 py-3 text-right">Officer</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      <tbody className="divide-y divide-base-300">
                         {!medicalHistory.length ? (
                           <tr>
                             <td
                               colSpan={4}
-                              className="px-5 py-10 text-center text-slate-400 dark:text-slate-500 italic"
+                              className="px-5 py-10 text-center italic text-base-content/60"
                             >
                               No clinical records found.
                             </td>
@@ -1171,29 +1192,29 @@ export default function LivestockProfile() {
                                   },
                                 })
                               }
-                              className="hover:bg-slate-50/60 dark:hover:bg-slate-900/30 cursor-pointer transition-colors"
+                              className="cursor-pointer transition-colors hover:bg-base-200/70 focus-within:bg-base-200/70"
                             >
                               <td className="px-5 py-3.5">
-                                <p className="font-semibold text-slate-800 dark:text-slate-200">
+                                <p className="font-semibold text-base-content">
                                   {fmtDate(rec.date, "short")}
                                 </p>
-                                <p className="text-[10px] text-slate-400 mt-0.5">
+                                <p className="mt-0.5 text-[10px] text-base-content/60">
                                   {fmtTime(rec.date)}
                                 </p>
                               </td>
                               <td className="px-4 py-3.5">
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-800">
+                                <span className="badge badge-success badge-soft badge-sm text-[10px] font-bold">
                                   {rec.type || "Checkup"}
                                 </span>
                               </td>
                               <td className="px-4 py-3.5">
-                                <p className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[180px]">
+                                <p className="max-w-[180px] truncate font-semibold text-base-content/80">
                                   {rec.details?.diagnosis ||
                                     rec.details?.medicineName ||
                                     "Routine treatment"}
                                 </p>
                               </td>
-                              <td className="px-4 py-3.5 text-right text-slate-500 dark:text-slate-400">
+                              <td className="px-4 py-3.5 text-right text-base-content/70">
                                 {rec.technicianId?.name || "System"}
                               </td>
                             </tr>
@@ -1208,8 +1229,8 @@ export default function LivestockProfile() {
 
             {/* ── Tab: Bio ── */}
             {activeTab === "bio" && (
-              <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 animate-in fade-in duration-150">
-                <h3 className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
+              <div className="card card-border bg-base-100 p-5 shadow-sm animate-in fade-in duration-150">
+                <h3 className="mb-4 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-base-content/60">
                   <Info size={12} /> Technical biological record
                 </h3>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

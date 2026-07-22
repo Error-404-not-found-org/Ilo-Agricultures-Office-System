@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import { useToast } from "../../contexts/ToastContext";
 import Modal from "../../components/ui/Modal";
 

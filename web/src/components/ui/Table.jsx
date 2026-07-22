@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
-import Skeleton from "../Skeleton";
+import Skeleton from "./Skeleton";
 
 export default function Table({
   columns = [], // Array of { key, label, sortable, renderCell }

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, Database, ShieldCheck, Users, LifeBuoy, BarChart3, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
 import { ui } from "../../components/ui/uiClasses";
 

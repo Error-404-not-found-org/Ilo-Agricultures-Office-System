@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import { useToast } from "../../contexts/ToastContext";
 
 export default function TechMyProfile() {
@@ -64,15 +64,11 @@ export default function TechMyProfile() {
         name: dbUser.name || "",
         phone: dbUser.phoneNumber || "",
         email: dbUser.email || "",
-        barangay: dbUser.address?.barangay || "Oton Proper",
-        city: dbUser.address?.city || "Oton",
-        province: dbUser.address?.province || "Iloilo",
-        specialty:
-          localStorage.getItem(`tech_specialty_${dbUser._id}`) ||
-          "Bovine Insemination & Calving Support",
-        license:
-          localStorage.getItem(`tech_license_${dbUser._id}`) ||
-          "DOA Region VI Licensed (Lic #9420-VI)",
+        barangay: dbUser.address?.barangay || "",
+        city: dbUser.address?.city || "",
+        province: dbUser.address?.province || "",
+        specialty: dbUser.specialty || "",
+        license: dbUser.license || "",
         imageUrl: dbUser.imageUrl || "",
       }));
     }
@@ -96,10 +92,6 @@ export default function TechMyProfile() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["technician", "profile-me"] });
-      // Persist additional metadata fields locally
-      localStorage.setItem(`tech_specialty_${dbUser._id}`, editForm.specialty);
-      localStorage.setItem(`tech_license_${dbUser._id}`, editForm.license);
-
       toast.success("Profile credentials updated successfully!");
       setIsEditing(false);
     },
@@ -122,15 +114,11 @@ export default function TechMyProfile() {
         name: dbUser.name || "",
         phone: dbUser.phoneNumber || "",
         email: dbUser.email || "",
-        barangay: dbUser.address?.barangay || "Oton Proper",
-        city: dbUser.address?.city || "Oton",
-        province: dbUser.address?.province || "Iloilo",
-        specialty:
-          localStorage.getItem(`tech_specialty_${dbUser._id}`) ||
-          "Bovine Insemination & Calving Support",
-        license:
-          localStorage.getItem(`tech_license_${dbUser._id}`) ||
-          "DOA Region VI Licensed (Lic #9420-VI)",
+        barangay: dbUser.address?.barangay || "",
+        city: dbUser.address?.city || "",
+        province: dbUser.address?.province || "",
+        specialty: dbUser.specialty || "",
+        license: dbUser.license || "",
         imageUrl: dbUser.imageUrl || "",
       });
     }
@@ -158,12 +146,8 @@ export default function TechMyProfile() {
         .slice(0, 2)
     : "FI";
 
-  const specialty =
-    localStorage.getItem(`tech_specialty_${dbUser?._id}`) ||
-    "Bovine Insemination & Calving Support";
-  const license =
-    localStorage.getItem(`tech_license_${dbUser?._id}`) ||
-    "DOA Region VI Licensed (Lic #9420-VI)";
+  const specialty = dbUser?.specialty || "Unavailable";
+  const license = dbUser?.license || "Unavailable";
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300 font-sans">
@@ -444,11 +428,9 @@ export default function TechMyProfile() {
                   <input
                     type="text"
                     value={editForm.specialty}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, specialty: e.target.value })
-                    }
+                    placeholder="Unavailable"
+                    disabled
                     className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
-                    required
                   />
                 </div>
 
@@ -459,11 +441,9 @@ export default function TechMyProfile() {
                   <input
                     type="text"
                     value={editForm.license}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, license: e.target.value })
-                    }
+                    placeholder="Unavailable"
+                    disabled
                     className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
-                    required
                   />
                 </div>
 
@@ -507,8 +487,10 @@ export default function TechMyProfile() {
                   {
                     label: "Assigned Boundary District Office",
                     val: dbUser?.address
-                      ? `${dbUser.address.barangay}, ${dbUser.address.city}, ${dbUser.address.province}`
-                      : "Oton Proper, Oton, Iloilo",
+                      ? [dbUser.address.barangay, dbUser.address.city, dbUser.address.province]
+                          .filter(Boolean)
+                          .join(", ") || "Not provided"
+                      : "Not provided",
                     icon: <MapPin size={13} className="text-base-content/40" />,
                   },
                   {

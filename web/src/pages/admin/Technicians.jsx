@@ -15,7 +15,7 @@ import {
   Award,
   X,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 
 export default function Technicians() {
   const navigate = useNavigate();

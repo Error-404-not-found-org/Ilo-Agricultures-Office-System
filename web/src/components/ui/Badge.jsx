@@ -38,7 +38,7 @@ export default function Badge({ status, kind = "insemination", className = "" })
 
   return (
     <span
-      className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${resolved} ${className}`}
+      className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] border ${resolved} ${className}`}
     >
       {status || "UNKNOWN"}
     </span>

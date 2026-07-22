@@ -18,7 +18,7 @@ vi.mock("../../contexts/ToastContext", () => ({
   }),
 }));
 
-vi.mock("../../components/technician/TaskContextCard", () => ({
+vi.mock("../../features/technician/TaskContextCard", () => ({
   default: ({ taskContext }) => (
     <div data-testid="task-context-card">
       Task ID: {taskContext?.taskId} | Type: {taskContext?.taskType}
@@ -26,7 +26,7 @@ vi.mock("../../components/technician/TaskContextCard", () => ({
   ),
 }));
 
-vi.mock("../../components/technician/TaskContextErrorView", () => ({
+vi.mock("../../features/technician/TaskContextErrorView", () => ({
   default: ({ title, message }) => (
     <div data-testid="task-context-error">
       <h3>{title}</h3>

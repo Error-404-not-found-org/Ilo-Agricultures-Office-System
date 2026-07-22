@@ -14,9 +14,9 @@ import {
   User,
   Activity,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
-import UploadNoteModal from "../../components/modals/UploadNoteModal";
+import UploadNoteModal from "../../components/dialogs/UploadNoteModal";
 import { useToast } from "../../contexts/ToastContext";
 
 export default function FieldNotesGallery() {

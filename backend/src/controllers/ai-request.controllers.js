@@ -1796,6 +1796,7 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     let task;
     let nextAction;
     let pregnancyRecordCreated;
+    let alreadyRecorded = false;
 
     if (officialDiagnosis) {
       const confirmation = await confirmPregnancyDiagnosis({
@@ -1814,12 +1815,13 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
         Animal.findById(animal._id),
       ]);
       task = confirmation.completedTask;
+      alreadyRecorded = confirmation.alreadyRecorded;
       nextAction = verificationResult === "pregnant"
         ? confirmation.continuationTask
           ? "Pregnancy confirmed. A Day-60 continuation recheck is required."
           : "Pregnancy confirmed and recorded."
         : "Animal confirmed not pregnant. Status reset to Normal.";
-      pregnancyRecordCreated = true;
+      pregnancyRecordCreated = !alreadyRecorded;
     } else {
       const verification = await persistBreedingObservationVerification({
         animal,
@@ -1839,7 +1841,7 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       pregnancyRecordCreated = verification.pregnancyRecordCreated;
     }
 
-    if (verificationResult === "pregnant") {
+    if (verificationResult === "pregnant" && !alreadyRecorded) {
       try {
         await inngest.send({
           name: "pregnancy/confirmed",
@@ -1899,56 +1901,61 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     });
 
     // Notify Farmer
-    try {
-      const farmer = await User.findById(verifiedRequest.farmerId);
-      const title = `Pregnancy Check: ${verificationResult === "pregnant" ? "Pregnant 🍼" : verificationResult === "needs_recheck" ? "Recheck Scheduled ⏱️" : "Empty ❌"}`;
-      let body = `Technician ${req.user.name} checked ${verifiedAnimal.earTag || verifiedAnimal.animalId} and determined: ${verificationResult.replaceAll("_", " ").toUpperCase()}.`;
-      if (verificationResult === "needs_recheck" && nextCheckDate) {
-        body += ` A follow-up recheck is scheduled for ${new Date(nextCheckDate).toLocaleDateString()}.`;
-      }
+    if (!alreadyRecorded) {
+      try {
+        const farmer = await User.findById(verifiedRequest.farmerId);
+        const title = `Pregnancy Check: ${verificationResult === "pregnant" ? "Pregnant 🍼" : verificationResult === "needs_recheck" ? "Recheck Scheduled ⏱️" : "Empty ❌"}`;
+        let body = `Technician ${req.user.name} checked ${verifiedAnimal.earTag || verifiedAnimal.animalId} and determined: ${verificationResult.replaceAll("_", " ").toUpperCase()}.`;
+        if (verificationResult === "needs_recheck" && nextCheckDate) {
+          body += ` A follow-up recheck is scheduled for ${new Date(nextCheckDate).toLocaleDateString()}.`;
+        }
 
-      await Notification.create({
-        recipientId: verifiedRequest.farmerId,
-        senderId: req.user._id,
-        type: "system",
-        category: "pregnancy",
-        eventType:
-          verificationResult === "pregnant"
-            ? "pregnancy_confirmed"
-            : verificationResult === "needs_recheck"
-              ? "continuation_recheck_due"
-              : "pregnancy_not_confirmed",
-        relatedId: verifiedAnimal._id,
-        linkType: "animal",
-        title,
-        message: body,
-        metadata: {
-          animalId: verifiedAnimal._id,
-          animalTag: verifiedAnimal.earTag || verifiedAnimal.animalId,
-          technicianName: req.user.name,
-          requestId: verifiedRequest._id,
-          workflowStage:
-            verificationResult === "needs_recheck"
-              ? "diagnostic_follow_up"
-              : "initial_confirmation",
-        },
-      });
-
-      if (farmer?.pushToken) {
-        await sendPushNotification(farmer.pushToken, title, body, {
-          requestId: verifiedRequest._id,
-          type: "AI",
+        await Notification.create({
+          recipientId: verifiedRequest.farmerId,
+          senderId: req.user._id,
+          type: "system",
+          category: "pregnancy",
+          eventType:
+            verificationResult === "pregnant"
+              ? "pregnancy_confirmed"
+              : verificationResult === "needs_recheck"
+                ? "continuation_recheck_due"
+                : "pregnancy_not_confirmed",
+          relatedId: verifiedAnimal._id,
+          linkType: "animal",
+          title,
+          message: body,
+          metadata: {
+            animalId: verifiedAnimal._id,
+            animalTag: verifiedAnimal.earTag || verifiedAnimal.animalId,
+            technicianName: req.user.name,
+            requestId: verifiedRequest._id,
+            workflowStage:
+              verificationResult === "needs_recheck"
+                ? "diagnostic_follow_up"
+                : "initial_confirmation",
+          },
         });
+
+        if (farmer?.pushToken) {
+          await sendPushNotification(farmer.pushToken, title, body, {
+            requestId: verifiedRequest._id,
+            type: "AI",
+          });
+        }
+      } catch (notifErr) {
+        console.error(
+          "[verifyFarmerBreedingObservation Notification Error]",
+          notifErr.message,
+        );
       }
-    } catch (notifErr) {
-      console.error(
-        "[verifyFarmerBreedingObservation Notification Error]",
-        notifErr.message,
-      );
     }
 
     res.status(200).json({
-      message: "Breeding observation verified successfully.",
+      message: alreadyRecorded
+        ? "The pregnancy diagnosis was already recorded. The matching task has been completed."
+        : "Breeding observation verified successfully.",
+      code: alreadyRecorded ? "PREGNANCY_DIAGNOSIS_RECONCILED" : undefined,
       data: {
         request: verifiedRequest,
         animal: verifiedAnimal,

@@ -18,14 +18,14 @@ import {
   Sparkles,
   Plus,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
 
 // Modular tab imports
 import InseminationTab from "./tabs/InseminationTab";
 import PregnancyTab from "./tabs/PregnancyTab";
 import CalvingTab from "./tabs/CalvingTab";
-import PregnancyDiagnosisModal from "../../components/modals/PregnancyDiagnosisModal";
+import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 
 const cleanRecordText = (value, fallback) => {
   const text = String(value || "").trim();
@@ -301,6 +301,7 @@ export default function BreedingLedger() {
           }),
           rawDate: visitDate,
           farmer: cleanRecordText(ins.farmerId?.name, "Farmer not recorded"),
+          animalId: ins.animalId?._id || ins.animalId?.id || null,
           animal: cleanRecordText(
             ins.animalId?.earTag || ins.animalId?.animalId,
             "Tag not recorded",
@@ -313,13 +314,13 @@ export default function BreedingLedger() {
               ? `Sire: ${ins.sireBreed}`
               : "—",
           status: ins.status || "pending",
-          attemptNumber: ins.attemptNumber || 1,
+          attemptNumber: ins.attemptNumber ?? null,
           comment: ins.comment || "",
           technicianNote: ins.technicianNote || "",
           sireBreed: ins.sireBreed || "",
           sireCode: ins.sireCode || "",
-          estrus: ins.estrus || "Natural",
-          outcome: ins.outcome || "Pending",
+          estrus: ins.estrus || "Not recorded",
+          outcome: ins.outcome || "Not recorded",
           outcomeVerificationStatus: ins.outcomeVerificationStatus || "pending",
           previousAttempt: ins.previousAttemptId || null,
         };
@@ -336,6 +337,7 @@ export default function BreedingLedger() {
           }),
           rawDate: checkDate,
           farmer: cleanRecordText(preg.farmerId?.name, "Farmer not recorded"),
+          animalId: preg.animalId?._id || preg.animalId?.id || null,
           animal: cleanRecordText(
             preg.animalId?.earTag || preg.animalId?.animalId,
             "Tag not recorded",
@@ -371,16 +373,17 @@ export default function BreedingLedger() {
           }),
           rawDate: calvingDate,
           farmer: cleanRecordText(calv.farmerId?.name, "Farmer not recorded"),
+          animalId: calv.animalId?._id || calv.animalId?.id || null,
           animal: cleanRecordText(
             calv.animalId?.earTag || calv.animalId?.animalId,
             "Tag not recorded",
           ),
           barangay: getRecordLocation(calv.farmerId),
           type: "Calving",
-          numberOfCalves: calv.numberOfCalves || calv.calves?.length || 1,
-          calvingEase: calv.calvingEase || "Natural",
+          numberOfCalves: calv.numberOfCalves ?? calv.calves?.length ?? null,
+          calvingEase: calv.calvingEase || "Not recorded",
           calves: calv.calves || [],
-          locationAddress: calv.locationAddress || "Oton, Iloilo",
+          locationAddress: calv.locationAddress || "Not recorded",
           technicianNote: calv.technicianNote || "",
           status: "done",
         };
@@ -614,7 +617,7 @@ export default function BreedingLedger() {
         r.farmer,
         r.animal,
         r.barangay,
-        `Attempt #${r.attemptNumber}`,
+        r.attemptNumber == null ? "Not recorded" : `Attempt #${r.attemptNumber}`,
         r.sireCode || r.sireBreed || "N/A",
         r.estrus,
         getStatusLabel(r.status),
@@ -682,18 +685,18 @@ export default function BreedingLedger() {
         animalId: ins.animalId?.animalId || "—",
         earTag: ins.animalId?.earTag || "—",
         brand: ins.animalId?.brand || "—",
-        species: ins.animalId?.species || "Cattle",
-        breed: ins.animalId?.breed || "Crossbreed",
+        species: ins.animalId?.species || "Not recorded",
+        breed: ins.animalId?.breed || "Not recorded",
         color: ins.animalId?.color || "N/A",
-        address: `${ins.farmerId?.address?.barangay || "Oton"}, Oton, Iloilo`,
+        address: getRecordLocation(ins.farmerId),
         farmer: ins.farmerId?.name || "—",
         aiDate: new Date(visitDate).toLocaleDateString("en-US", {
           month: "2-digit",
           day: "2-digit",
           year: "numeric",
         }),
-        attempt: ins.attemptNumber || 1,
-        estrus: ins.estrus || "Natural",
+        attempt: ins.attemptNumber ?? "—",
+        estrus: ins.estrus || "—",
         sireBreed: ins.sireBreed || "—",
         sireCode: ins.sireCode || "—",
         pdDate: "—",
@@ -716,10 +719,10 @@ export default function BreedingLedger() {
         animalId: preg.animalId?.animalId || "—",
         earTag: preg.animalId?.earTag || "—",
         brand: preg.animalId?.brand || "—",
-        species: preg.animalId?.species || "Cattle",
-        breed: preg.animalId?.breed || "Crossbreed",
+        species: preg.animalId?.species || "Not recorded",
+        breed: preg.animalId?.breed || "Not recorded",
         color: preg.animalId?.color || "N/A",
-        address: `${preg.farmerId?.address?.barangay || "Oton"}, Oton, Iloilo`,
+        address: getRecordLocation(preg.farmerId),
         farmer: preg.farmerId?.name || "—",
         aiDate: "—",
         attempt: "—",
@@ -752,10 +755,10 @@ export default function BreedingLedger() {
         animalId: calv.animalId?.animalId || "—",
         earTag: calv.animalId?.earTag || "—",
         brand: calv.animalId?.brand || "—",
-        species: calv.animalId?.species || "Cattle",
-        breed: calv.animalId?.breed || "Crossbreed",
+        species: calv.animalId?.species || "Not recorded",
+        breed: calv.animalId?.breed || "Not recorded",
         color: calv.animalId?.color || "N/A",
-        address: `${calv.farmerId?.address?.barangay || "Oton"}, Oton, Iloilo`,
+        address: getRecordLocation(calv.farmerId),
         farmer: calv.farmerId?.name || "—",
         aiDate: "—",
         attempt: "—",
@@ -769,12 +772,12 @@ export default function BreedingLedger() {
           day: "2-digit",
           year: "numeric",
         }),
-        cdCount: calv.numberOfCalves || calv.calves?.length || 1,
+        cdCount: calv.numberOfCalves ?? calv.calves?.length ?? "—",
         calf1Id: calf1.earTag || "—",
         calf1Sex: calf1.sex || "—",
         calf2Id: calf2.earTag || "—",
         calf2Sex: calf2.sex || "—",
-        cdEase: calv.calvingEase || "Natural",
+        cdEase: calv.calvingEase || "—",
         rawDate: calvingDate,
       };
     });
@@ -961,8 +964,8 @@ export default function BreedingLedger() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Pregnancy Checks"
-        subtitle="Review pregnancy diagnoses and expected calving dates"
+        title="Breeding Ledger"
+        subtitle="Review inseminations, pregnancy checks, and calving history"
       />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
@@ -1110,20 +1113,6 @@ export default function BreedingLedger() {
               </select>
             )}
 
-            {activeTab === "pregnancy" && (
-              <select
-                className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-              >
-                <option value="">All Outcomes</option>
-                <option value="done">Pregnant</option>
-                <option value="rejected">Empty</option>
-              </select>
-            )}
 
             {/* Custom Premium Date Range Picker Dropdown */}
             <div className="relative ">
@@ -1488,8 +1477,10 @@ export default function BreedingLedger() {
               {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
               ledger items
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1" aria-label="Breeding ledger pagination">
               <button
+                type="button"
+                aria-label="Previous breeding ledger page"
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1 || isLoading}
                 className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
@@ -1499,6 +1490,9 @@ export default function BreedingLedger() {
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(
                 (pageNumber) => (
                   <button
+                    type="button"
+                    aria-label={`Go to breeding ledger page ${pageNumber}`}
+                    aria-current={currentPage === pageNumber ? "page" : undefined}
                     key={pageNumber}
                     disabled={isLoading}
                     onClick={() => setCurrentPage(pageNumber)}
@@ -1513,6 +1507,8 @@ export default function BreedingLedger() {
                 ),
               )}
               <button
+                type="button"
+                aria-label="Next breeding ledger page"
                 onClick={() =>
                   setCurrentPage((p) => Math.min(totalPages, p + 1))
                 }
@@ -1603,7 +1599,10 @@ export default function BreedingLedger() {
                     },
                     {
                       key: "Attempt Number",
-                      val: `#${selectedRecord.attemptNumber}`,
+                      val:
+                        selectedRecord.attemptNumber == null
+                          ? "Not recorded"
+                          : `#${selectedRecord.attemptNumber}`,
                     },
                     {
                       key: "Outcome",
@@ -1613,7 +1612,7 @@ export default function BreedingLedger() {
                       ? [
                           {
                             key: "Previous attempt",
-                            val: `Attempt #${selectedRecord.previousAttempt.attemptNumber || 1} · ${selectedRecord.previousAttempt.inseminationDate ? new Date(selectedRecord.previousAttempt.inseminationDate).toLocaleDateString() : "Date not recorded"} · ${selectedRecord.previousAttempt.outcome || "Pending"}`,
+                            val: `${selectedRecord.previousAttempt.attemptNumber == null ? "Attempt not recorded" : `Attempt #${selectedRecord.previousAttempt.attemptNumber}`} · ${selectedRecord.previousAttempt.inseminationDate ? new Date(selectedRecord.previousAttempt.inseminationDate).toLocaleDateString() : "Date not recorded"} · ${selectedRecord.previousAttempt.outcome || "Outcome not recorded"}`,
                           },
                         ]
                       : selectedRecord.attemptNumber > 1
@@ -1704,7 +1703,10 @@ export default function BreedingLedger() {
                     },
                     {
                       key: "Offspring Born Count",
-                      val: `${selectedRecord.numberOfCalves} calf / calves`,
+                      val:
+                        selectedRecord.numberOfCalves == null
+                          ? "Not recorded"
+                          : `${selectedRecord.numberOfCalves} calf / calves`,
                     },
                     {
                       key: "Delivery Address",

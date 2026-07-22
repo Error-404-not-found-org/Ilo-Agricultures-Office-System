@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,8 +6,8 @@ import WorkQueue from "./WorkQueue";
 import axiosInstance from "../../lib/axios";
 
 vi.mock("../../lib/axios", () => ({ default: { get: vi.fn(), put: vi.fn() } }));
-vi.mock("../../components/ui/Topbar", () => ({ default: ({ title, subtitle }) => <header><h1>{title}</h1><p>{subtitle}</p></header> }));
-vi.mock("../../components/modals/PregnancyDiagnosisModal", () => ({ default: ({ isOpen, taskData }) => isOpen ? <div>Pregnancy action for {taskData.raw.metadata.workflowStage}</div> : null }));
+vi.mock("../../components/layout/Topbar", () => ({ default: ({ title, subtitle }) => <header><h1>{title}</h1><p>{subtitle}</p></header> }));
+vi.mock("../../components/dialogs/PregnancyDiagnosisModal", () => ({ default: ({ isOpen, taskData }) => isOpen ? <div>Pregnancy action for {taskData.raw.metadata.workflowStage}</div> : null }));
 
 const renderQueue = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -116,5 +116,152 @@ describe("Technician Work Queue", () => {
     expect(scrollContainer.className).toContain("overflow-x-auto");
     const table = screen.getByRole("table", { name: "Technician work queue" });
     expect(scrollContainer).toContainElement(table);
+  });
+
+  it("renders backend priority and recorded identity fields without fabricated profile data", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [{
+      _id: "task-priority", taskType: "Health", category: "Urgent", priority: 1,
+      status: "Pending", dueDate: "2099-08-06T05:00:00.000Z",
+      farmerId: { name: "Elena Ramos" },
+      animalIds: [{ _id: "animal-priority", earTag: "ILO-204" }],
+      technicianId: "tech-1",
+    }] });
+
+    renderQueue();
+
+    await waitFor(() => expect(screen.getAllByText("Elena Ramos").length).toBeGreaterThan(0));
+    expect(screen.getByRole("table", { name: "Technician work queue" })).toHaveTextContent("High");
+    expect(screen.queryByText("Juan Dela Cruz")).not.toBeInTheDocument();
+    expect(document.querySelector('img[src*="dicebear"]')).not.toBeInTheDocument();
+  });
+
+  it("uses the farmer profile image and a round user-icon fallback when it is missing", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [
+      {
+        _id: "task-with-image", taskType: "Health", priority: 2, status: "Pending",
+        dueDate: "2099-08-06T05:00:00.000Z", technicianId: "tech-1",
+        farmerId: { _id: "farmer-image", name: "Image Farmer", imageUrl: "https://example.com/farmer.jpg" },
+        animalIds: [{ _id: "animal-image", earTag: "ILO-501" }],
+      },
+      {
+        _id: "task-without-image", taskType: "Health", priority: 2, status: "Pending",
+        dueDate: "2099-08-07T05:00:00.000Z", technicianId: "tech-1",
+        farmerId: { _id: "farmer-fallback", name: "Fallback Farmer", imageUrl: "" },
+        animalIds: [{ _id: "animal-fallback", earTag: "ILO-502" }],
+      },
+    ] });
+
+    renderQueue();
+
+    const image = await screen.findByAltText("Image Farmer profile");
+    expect(image).toHaveAttribute("src", "https://example.com/farmer.jpg");
+    expect(image).toHaveClass("rounded-full", "object-cover");
+
+    const fallback = screen.getByLabelText("Fallback Farmer profile image unavailable");
+    expect(fallback).toHaveClass("avatar-placeholder");
+    expect(fallback.firstElementChild).toHaveClass("rounded-full", "overflow-hidden");
+  });
+
+  it("claims an available task only through the explicit accessible action", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [{
+      _id: "task-available", taskType: "GeneralVisit", category: "Routine", priority: 2,
+      status: "Pending", dueDate: "2099-08-06T05:00:00.000Z",
+      farmerId: { name: "Available Farmer" },
+      animalIds: [{ _id: "animal-available", earTag: "ILO-305" }],
+      technicianId: null,
+    }] });
+    axiosInstance.put.mockResolvedValue({ data: { message: "claimed" } });
+
+    renderQueue();
+
+    const farmerName = await screen.findAllByText("Available Farmer");
+    fireEvent.click(farmerName[0]);
+    expect(axiosInstance.put).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Claim task/i })[0]);
+    await waitFor(() =>
+      expect(axiosInstance.put).toHaveBeenCalledWith("/tasks/task-available/claim"),
+    );
+  });
+
+  it("provides a labelled kebab menu for primary and related-record actions", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [{
+      _id: "task-actions", taskType: "Health", category: "Routine", priority: 2,
+      status: "Pending", dueDate: "2099-08-06T05:00:00.000Z",
+      farmerId: { _id: "farmer-actions", name: "Action Farmer" },
+      animalIds: [{ _id: "animal-actions", earTag: "ILO-406" }],
+      technicianId: "tech-1",
+    }] });
+
+    renderQueue();
+
+    const trigger = await screen.findByRole("button", {
+      name: "More actions for ILO-406",
+    });
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    const menu = document.querySelector("#task-actions-task-actions");
+    expect(menu).toHaveAttribute("role", "menu");
+    expect(menu).toHaveAttribute("aria-label", "Actions for ILO-406");
+    expect(within(menu).getByText("Record health assistance")).toBeInTheDocument();
+    expect(within(menu).getByText("Open animal")).toBeInTheDocument();
+    expect(within(menu).getByText("Open farmer")).toBeInTheDocument();
+  });
+
+  it("keeps completed work out of the default queue while preserving the completed filter", async () => {
+    axiosInstance.get.mockResolvedValue({ data: [
+      {
+        _id: "task-active", taskType: "GeneralVisit", status: "Pending",
+        farmerId: { name: "Active Farmer" }, animalIds: [], technicianId: "tech-1",
+      },
+      {
+        _id: "task-completed", taskType: "GeneralVisit", status: "Completed",
+        completedAt: new Date().toISOString(), farmerId: { name: "Completed Farmer" },
+        animalIds: [], technicianId: "tech-1",
+      },
+    ] });
+
+    renderQueue();
+
+    expect((await screen.findAllByText("Active Farmer")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Completed Farmer")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter by task status"), {
+      target: { value: "completed" },
+    });
+    expect((await screen.findAllByText("Completed Farmer")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Active Farmer")).not.toBeInTheDocument();
+  });
+
+  it("loads every backend page before calculating queue totals", async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      _id: `task-${index}`,
+      taskType: "GeneralVisit",
+      status: "Pending",
+      farmerId: { name: `Farmer ${index}` },
+      animalIds: [],
+      technicianId: "tech-1",
+    }));
+    const finalTask = {
+      _id: "task-100",
+      taskType: "GeneralVisit",
+      status: "Pending",
+      farmerId: { name: "Farmer 100" },
+      animalIds: [],
+      technicianId: "tech-1",
+    };
+    axiosInstance.get.mockImplementation((_url, config) =>
+      Promise.resolve({ data: config.params.page === 1 ? firstPage : [finalTask] }),
+    );
+
+    renderQueue();
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "All Tasks (101)" })).toBeInTheDocument());
+    expect(axiosInstance.get).toHaveBeenNthCalledWith(1, "/tasks", {
+      params: { scope: "mine", status: "all", page: 1, limit: 100 },
+    });
+    expect(axiosInstance.get).toHaveBeenNthCalledWith(2, "/tasks", {
+      params: { scope: "mine", status: "all", page: 2, limit: 100 },
+    });
   });
 });

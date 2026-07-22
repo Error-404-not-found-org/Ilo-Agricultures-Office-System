@@ -157,6 +157,9 @@ test("Breeding Verification: pregnant routes through the unified official diagno
   assert.match(source, /confirmPregnancyDiagnosis\(\{/);
   assert.match(source, /result: verificationResult/);
   assert.match(source, /methodCode: normalizedMethodCode/);
+  assert.match(source, /confirmation\.alreadyRecorded/);
+  assert.match(source, /verificationResult === "pregnant" && !alreadyRecorded/);
+  assert.match(source, /PREGNANCY_DIAGNOSIS_RECONCILED/);
 });
 
 test("Breeding Verification: negative diagnosis shares the official service and does not set heat", () => {

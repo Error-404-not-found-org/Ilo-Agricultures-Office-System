@@ -18,11 +18,14 @@ import {
   Search,
   SlidersHorizontal,
   UserRound,
+  MoreVertical,
   X,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import RegisterLivestockModal from "../../components/modals/RegisterLivestockModal";
-import Topbar from "../../components/ui/Topbar";
+import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+import Topbar from "../../components/layout/Topbar";
+import AnimalAvatar from "../../components/ui/AnimalAvatar";
+import TableNameLink from "../../components/ui/TableNameLink";
 import { ui } from "../../components/ui/uiClasses";
 import {
   ILOILO_CITY_DISTRICT_OPTIONS,
@@ -275,8 +278,101 @@ export default function AnimalRegistry() {
               <>
                 <div className="grid gap-3 lg:hidden">{animals.map((animal) => <AnimalCard key={animal.id} animal={animal} onOpen={openAnimal} onEdit={editAnimal} />)}</div>
                 <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
-                  <table className="table table-sm"><thead><tr><th>Animal</th><th>Farmer</th><th>Location</th><th>Species / breed</th><th>Sex</th><th>Reproductive status</th><th>Last AI</th><th><span className="sr-only">Actions</span></th></tr></thead>
-                    <tbody>{animals.map((animal) => <tr key={animal.id} className="hover:bg-base-200"><td><div className="font-bold text-primary">#{animal.tag}</div></td><td>{animal.farmer}</td><td>{animal.location}</td><td><div className="font-semibold">{animal.species}</div><div className="text-sm text-base-content/70">{animal.breed}</div></td><td>{animal.gender}</td><td><span className={`badge badge-sm badge-soft ${statusClass(animal.reproductiveStatus)}`}>{animal.reproductiveStatus}</span></td><td>{animal.lastAI}</td><td><div className="flex justify-end gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => openAnimal(animal)}><History size={14} /> History</button><button type="button" className="btn btn-ghost btn-sm btn-square" aria-label={`Edit animal ${animal.tag}`} onClick={() => editAnimal(animal)}><Edit size={14} /></button></div></td></tr>)}</tbody>
+                  <table className="table table-pin-rows w-full text-left min-w-[1000px]">
+                    <thead>
+                      <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="p-3.5 pl-6">Animal</th>
+                        <th className="p-3.5">Breed / Species</th>
+                        <th className="p-3.5">Location</th>
+                        <th className="p-3.5">Status</th>
+                        <th className="p-3.5">Last AI</th>
+                        <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-base-300">
+                      {animals.map((animal) => {
+                        return (
+                          <tr key={animal.id} className="hover:bg-base-200/50 transition-colors text-xs font-semibold text-base-content/85">
+
+                            {/* 1. ANIMAL (Icon + Tag ID + Farmer Name) */}
+                            <td className="p-3.5 pl-6">
+                              <div className="flex items-center gap-3">
+                                <AnimalAvatar
+                                  reference={animal.tag}
+                                  imageUrl={animal.imageUrl}
+                                />
+                                <div>
+                                  <TableNameLink
+                                    to={`/technician/animals/${animal.id}`}
+                                    ariaLabel={`Open livestock profile for animal ${animal.tag}`}
+                                  >
+                                    #{animal.tag}
+                                  </TableNameLink>
+                                  <span className="text-[10px] text-base-content/50 block mt-0.5 font-bold">
+                                    {animal.farmer}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* 2. BREED / SPECIES */}
+                            <td className="p-3.5">
+                              <span className="font-extrabold text-xs text-base-content block leading-tight">
+                                {animal.breed}
+                              </span>
+                              <span className="text-[10px] text-base-content/55 block mt-0.5">
+                                {animal.species}
+                              </span>
+                            </td>
+
+                            {/* 3. LOCATION */}
+                            <td className="p-3.5 font-medium text-base-content/75">
+                              {animal.location.split(",")[0] || "Unknown location"}
+                            </td>
+
+                            {/* 4. STATUS */}
+                            <td className="p-3.5">
+                              <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${statusClass(animal.reproductiveStatus)}`}>
+                                {animal.reproductiveStatus}
+                              </span>
+                            </td>
+
+                            {/* 5. LAST AI */}
+                            <td className="p-3.5 font-semibold text-base-content/70">
+                              {animal.lastAI}
+                            </td>
+
+                            {/* 6. ACTIONS (Kebab Dropdown) */}
+                            <td className="p-3.5 pr-6 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="dropdown dropdown-end">
+                                <button tabIndex={0} role="button" className="btn btn-ghost btn-circle btn-xs hover:bg-base-200" aria-label={`Actions for animal ${animal.tag}`}>
+                                  <MoreVertical size={16} className="text-base-content/60" />
+                                </button>
+                                <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-xl z-30 w-44 p-1.5 shadow-xl border border-base-200 mt-1">
+                                  <li>
+                                    <button
+                                      onClick={() => openAnimal(animal)}
+                                      className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                    >
+                                      <History size={13} className="mr-1" /> Open History
+                                    </button>
+                                  </li>
+                                  <li>
+                                    <button
+                                      onClick={() => editAnimal(animal)}
+                                      className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                    >
+                                      <Edit size={13} className="mr-1" /> Edit Details
+                                    </button>
+                                  </li>
+                                </ul>
+                              </div>
+                            </td>
+
+                          </tr>
+                        );
+                      })}
+                    </tbody>
                   </table>
                 </div>
               </>

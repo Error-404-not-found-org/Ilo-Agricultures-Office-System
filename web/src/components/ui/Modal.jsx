@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { X, CheckCircle, AlertTriangle, Info, AlertOctagon } from 'lucide-react';
 
 /**
@@ -16,8 +16,13 @@ export default function Modal({
   cancelText = 'Cancel',
   onConfirm,
   isConfirmLoading = false,
+  subtitle = "",
+  icon = null,
+  bodyClassName = "",
 }) {
   const dialogRef = useRef(null);
+  const titleId = `modal-title-${useId().replaceAll(":", "")}`;
+  const descriptionId = subtitle ? `${titleId}-description` : undefined;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -90,21 +95,24 @@ export default function Modal({
         event.preventDefault();
         onClose();
       }}
-      aria-labelledby="shared-modal-title"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
     >
       <div className={`modal-box w-full ${sizeClasses} max-h-[90vh] bg-base-100 border border-base-300 p-0 overflow-hidden`}>
         
         {/* Dynamic Type Header Banner */}
         <div className={`flex items-center gap-3 px-5 sm:px-6 py-4 border-b border-base-300 ${type !== 'default' ? typeConfig.bg : ''}`}>
-          {type !== 'default' && (
+          {icon || type !== 'default' ? (
             <div className="shrink-0">
-              {typeConfig.icon}
+              {icon || typeConfig.icon}
             </div>
-          )}
-          <h3 id="shared-modal-title" className="font-bold text-lg text-base-content flex-1">
-            {title}
-          </h3>
+          ) : null}
+          <div className="min-w-0 flex-1">
+            <h3 id={titleId} className="font-bold text-lg text-base-content">{title}</h3>
+            {subtitle && <p id={descriptionId} className="mt-1 text-xs font-medium text-base-content/70">{subtitle}</p>}
+          </div>
           <button 
+            type="button"
             onClick={onClose}
             className="btn btn-ghost btn-circle btn-sm text-base-content/60"
             aria-label="Close modal"
@@ -114,7 +122,7 @@ export default function Modal({
         </div>
 
         {/* Modal Body Content */}
-        <div className="px-5 sm:px-6 py-5 max-h-[65vh] overflow-y-auto text-base-content/80 text-sm leading-relaxed">
+        <div className={`px-5 sm:px-6 py-5 max-h-[65vh] overflow-y-auto text-base-content/80 text-sm leading-relaxed ${bodyClassName}`}>
           {children}
         </div>
 
@@ -146,7 +154,7 @@ export default function Modal({
         </div>
       </div>
       <form method="dialog" className="modal-backdrop bg-neutral/60">
-        <button type="button" onClick={onClose} aria-label="Close dialog">
+        <button type="submit" aria-label="Close dialog">
           close
         </button>
       </form>

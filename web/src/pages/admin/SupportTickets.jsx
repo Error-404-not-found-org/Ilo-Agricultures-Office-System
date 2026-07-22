@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LifeBuoy, Mail, Phone } from "lucide-react";
 import { useState } from "react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
 
 const STATUSES = ["pending", "in-progress", "resolved"];

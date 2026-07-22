@@ -291,6 +291,7 @@ export default function PregnancyCheckScreen() {
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
       queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "tasks"] });
       queryClient.invalidateQueries({ queryKey: ["animal-details", selectedAnimal._id] });
       queryClient.invalidateQueries({ queryKey: ["animalTimeline", selectedAnimal._id] });
       toast.success(`Diagnosis saved successfully: ${result}`);

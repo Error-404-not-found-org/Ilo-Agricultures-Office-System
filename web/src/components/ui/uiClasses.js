@@ -15,7 +15,7 @@ export const ui = {
   primaryButton: "btn btn-primary btn-sm",
   ghostButton: "btn btn-outline btn-sm",
   iconButton: "btn btn-ghost btn-sm btn-square text-base-content/70",
-  table: "w-full border-collapse text-xs",
+  table: "table w-full border-collapse text-xs",
   tableHead: "bg-base-200 border-b border-base-300 text-base-content/60 text-xs font-bold uppercase tracking-wide select-none",
   tableBody: "divide-y divide-base-300",
   tableRow: "hover:bg-base-200 transition-colors",

@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import RegisterLivestockModal from "../../components/modals/RegisterLivestockModal";
+import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
 
 const REPRODUCTIVE_STATUSES = ["Normal", "In Heat", "Inseminated", "Likely Pregnant", "Pregnant", "Dry", "Lactating", "Post-partum"];
 const CATTLE_SPECIES = new Set(["beef", "dairy", "beef cattle", "dairy cattle", "cattle", "bovine"]);

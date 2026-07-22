@@ -3,14 +3,14 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { SignedIn, SignedOut, useClerk, useAuth } from "@clerk/clerk-react";
 
 // Utilities
-import PageMeta from "./components/PageMeta";
+import PageMeta from "./components/layout/PageMeta";
 import { ToastProvider } from "./contexts/ToastContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
 
 // Components
-import Layout from "./components/ui/Layout";
-import ProtectedAdminRoute from "./components/ProtectedAdminRoute";
-import ProtectedTechnicianRoute from "./components/ProtectedTechnicianRoute";
+import Layout from "./components/layout/AppLayout";
+import ProtectedAdminRoute from "./components/layout/ProtectedAdminRoute";
+import ProtectedTechnicianRoute from "./components/layout/ProtectedTechnicianRoute";
 // Public Pages
 import Landing from "./pages/Landing";
 import DownloadApp from "./pages/DownloadApp";

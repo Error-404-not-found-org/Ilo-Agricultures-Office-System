@@ -165,6 +165,19 @@ test("Reproduction seeder: scenario identifiers, ear tags, and chronology are va
   }
 });
 
+test("Reproduction seeder: an existing pregnancy cannot retain an open initial diagnosis task", () => {
+  const plan = buildPlan();
+  const scenario = plan.scenarios.find((item) => item.scenario === "RC26-08-PREGNANT");
+  const initialDiagnosisTask = scenario.tasks.find((item) => item.taskType === "PD");
+  initialDiagnosisTask.status = "Pending";
+  initialDiagnosisTask.completedAt = null;
+
+  assert.throws(
+    () => validateSeedPlan(plan),
+    /existing pregnancy left an open initial diagnosis task/i,
+  );
+});
+
 test("Reproduction seeder: canonical next actions match key manual-test stages", () => {
   const table = new Map(buildPlan().table.map((row) => [row.Scenario, row]));
   assert.equal(table.get("RC26-04-AI-DAY10")["Next type"], "MONITOR_RETURN_TO_HEAT");

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { FileClock, Search } from "lucide-react";
 import { useState } from "react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
 
 const ENTITY_TYPES = ["all", "User", "Animal", "HealthRequest", "AIRequest", "Insemination"];

@@ -324,7 +324,11 @@ test("standard diagnosis creates no continuation task and negative diagnosis ret
 });
 
 test("duplicate diagnosis is rejected and cannot create another Pregnancy", async () => {
-  const existing = { _id: ids.pregnancy, inseminationId: ids.insemination };
+  const existing = {
+    _id: ids.pregnancy,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-07-01") },
+  };
   const stubs = installDiagnosisStubs({ daysPostAI: 60, existingPregnancy: existing });
   try {
     await assert.rejects(
@@ -340,6 +344,100 @@ test("duplicate diagnosis is rejected and cannot create another Pregnancy", asyn
       (error) => error.code === "PREGNANCY_DIAGNOSIS_EXISTS",
     );
     assert.equal(stubs.state.pregnancy, existing);
+  } finally {
+    stubs.restore();
+  }
+});
+
+test("same-result retry reconciles a matching stale diagnosis task without duplicate records or events", async () => {
+  const existing = {
+    _id: ids.pregnancy,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-07-01") },
+    confirmation: { methodCode: "ultrasound", policyVersion: activePolicy.version },
+  };
+  const stubs = installDiagnosisStubs({ daysPostAI: 60, existingPregnancy: existing });
+  try {
+    const result = await confirmPregnancyDiagnosis({
+      animalId: ids.animal,
+      inseminationId: ids.insemination,
+      result: "Pregnant",
+      diagnosisDate: stubs.now,
+      methodCode: "ultrasound",
+      policyVersion: activePolicy.version,
+      taskId: ids.task,
+      actor,
+    });
+
+    assert.equal(result.alreadyRecorded, true);
+    assert.equal(result.pregnancy, existing);
+    assert.equal(stubs.state.initialTask.status, "Completed");
+    assert.equal(stubs.state.initialTask.relatedRecordType, "pregnancy");
+    assert.equal(stubs.state.initialTask.relatedRecordId, ids.pregnancy);
+    assert.equal(stubs.state.timelineWrites, 0);
+    assert.equal(stubs.state.auditWrites, 0);
+    assert.equal(stubs.state.continuationTasks.length, 0);
+  } finally {
+    stubs.restore();
+  }
+});
+
+test("conflicting retry preserves the official diagnosis and leaves the task open", async () => {
+  const existing = {
+    _id: ids.pregnancy,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-07-01") },
+  };
+  const stubs = installDiagnosisStubs({ daysPostAI: 60, existingPregnancy: existing });
+  try {
+    await assert.rejects(
+      () => confirmPregnancyDiagnosis({
+        animalId: ids.animal,
+        inseminationId: ids.insemination,
+        result: "Empty",
+        diagnosisDate: stubs.now,
+        methodCode: "ultrasound",
+        policyVersion: activePolicy.version,
+        taskId: ids.task,
+        actor,
+      }),
+      (error) => error.code === "PREGNANCY_DIAGNOSIS_CONFLICT",
+    );
+    assert.equal(stubs.state.pregnancy, existing);
+    assert.equal(stubs.state.initialTask.status, "Pending");
+    assert.equal(stubs.state.timelineWrites, 0);
+    assert.equal(stubs.state.auditWrites, 0);
+  } finally {
+    stubs.restore();
+  }
+});
+
+test("completed matching task replay returns the existing diagnosis without new writes", async () => {
+  const existing = {
+    _id: ids.pregnancy,
+    inseminationId: ids.insemination,
+    pregnancyDiagnosis: { result: "Pregnant", date: new Date("2026-07-01") },
+  };
+  const stubs = installDiagnosisStubs({ daysPostAI: 60, existingPregnancy: existing });
+  stubs.state.initialTask.status = "Completed";
+  stubs.state.initialTask.relatedRecordType = "pregnancy";
+  stubs.state.initialTask.relatedRecordId = ids.pregnancy;
+  try {
+    const result = await confirmPregnancyDiagnosis({
+      animalId: ids.animal,
+      inseminationId: ids.insemination,
+      result: "Pregnant",
+      diagnosisDate: stubs.now,
+      methodCode: "ultrasound",
+      policyVersion: activePolicy.version,
+      taskId: ids.task,
+      actor,
+    });
+
+    assert.equal(result.alreadyRecorded, true);
+    assert.equal(result.completedTask, stubs.state.initialTask);
+    assert.equal(stubs.state.timelineWrites, 0);
+    assert.equal(stubs.state.auditWrites, 0);
   } finally {
     stubs.restore();
   }

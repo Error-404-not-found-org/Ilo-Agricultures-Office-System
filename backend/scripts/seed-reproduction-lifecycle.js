@@ -429,6 +429,17 @@ export const validateSeedPlan = (plan, models = MODELS) => {
     }
   }
   for (const scenario of plan.scenarios) {
+    const diagnosedInseminationIds = new Set(
+      scenario.pregnancies.map((pregnancy) => String(pregnancy.inseminationId)),
+    );
+    const staleInitialDiagnosisTask = scenario.tasks.find((task) =>
+      task.taskType === "PD" &&
+      ["Pending", "In Progress"].includes(task.status) &&
+      !["continuation_recheck", "diagnostic_follow_up"].includes(task.metadata?.workflowStage) &&
+      diagnosedInseminationIds.has(String(task.metadata?.inseminationId || "")));
+    if (staleInitialDiagnosisTask) {
+      throw new Error(`Existing pregnancy left an open initial diagnosis task in ${scenario.scenario}.`);
+    }
     for (const pregnancy of scenario.pregnancies) {
       if (String(pregnancy.animalId) !== String(scenario.motherId)) throw new Error(`Pregnancy/mother mismatch in ${scenario.scenario}.`);
       if (pregnancy.pregnancyDiagnosis?.date < scenario.inseminations[0]?.inseminationDate) throw new Error(`Invalid diagnosis chronology in ${scenario.scenario}.`);
@@ -545,6 +556,15 @@ const verifyInsertedPlan = async (plan) => {
   }
   const animalById = new Map(animals.map((item) => [String(item._id), item]));
   const pregnancyById = new Map(pregnancies.map((item) => [String(item._id), item]));
+  const diagnosedInseminationIds = new Set(pregnancies.map((item) => String(item.inseminationId)));
+  const staleInitialDiagnosisTask = tasks.find((task) =>
+    task.taskType === "PD" &&
+    ["Pending", "In Progress"].includes(task.status) &&
+    !["continuation_recheck", "diagnostic_follow_up"].includes(task.metadata?.workflowStage) &&
+    diagnosedInseminationIds.has(String(task.metadata?.inseminationId || "")));
+  if (staleInitialDiagnosisTask) {
+    throw new Error("Read-only verification found an open initial diagnosis task for an existing Pregnancy.");
+  }
   for (const pregnancy of pregnancies) {
     if (!animalById.has(String(pregnancy.animalId))) throw new Error("Read-only verification found a Pregnancy linked to the wrong mother.");
   }

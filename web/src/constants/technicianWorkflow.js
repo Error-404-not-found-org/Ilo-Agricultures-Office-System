@@ -38,8 +38,8 @@ export const TECHNICIAN_SERVICE_TYPES = {
 
 export const TECHNICIAN_STATUS = {
   pending: { label: "Pending", badgeClass: "badge-warning" },
-  assigned: { label: "Assigned", badgeClass: "badge-info" },
-  approved: { label: "Assigned", badgeClass: "badge-info" },
+  assigned: { label: "Claimed", badgeClass: "badge-info" },
+  approved: { label: "Claimed", badgeClass: "badge-info" },
   scheduled: { label: "Scheduled", badgeClass: "badge-info" },
   "in-progress": { label: "In Progress", badgeClass: "badge-primary" },
   in_progress: { label: "In Progress", badgeClass: "badge-primary" },

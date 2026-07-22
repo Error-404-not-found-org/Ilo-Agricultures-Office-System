@@ -11,7 +11,7 @@ import {
   RefreshCw,
   X,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 
 export default function Settings() {
   const toast = useToast();

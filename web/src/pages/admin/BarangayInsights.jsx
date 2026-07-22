@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { MapPin, Search, Users } from "lucide-react";
 import { useMemo, useState } from "react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
 import { MUNICIPALITY_BARANGAYS } from "../../constants/barangays";
 

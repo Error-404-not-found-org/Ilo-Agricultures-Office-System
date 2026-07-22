@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import axiosInstance from "../../lib/axios";
-import { TableRowSkeleton } from "../../components/Skeleton";
+import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import {
   PawPrint,
   SlidersHorizontal,
@@ -14,8 +14,9 @@ import {
   Baby,
   Tag,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import { Badge, ui } from "../../components/ui/uiClasses";
+import TableNameLink from "../../components/ui/TableNameLink";
 
 export default function Livestock() {
   const navigate = useNavigate();
@@ -26,7 +27,7 @@ export default function Livestock() {
   const itemsPerPage = 10;
 
   // ---- DYNAMIC DATA PIPELINE ----
-  const { data: animalPage = {}, isLoading} = useQuery({
+  const { data: animalPage = {}, isLoading, isError, refetch } = useQuery({
     queryKey: ["admin", "livestock-all", currentPage, searchQuery, speciesFilter, statusFilter],
     queryFn: async () => {
       const res = await axiosInstance.get("/animals/all", {
@@ -46,9 +47,9 @@ export default function Livestock() {
 
   // ---- DYNAMIC STATS RESOLVERS ----
   const stats = useMemo(() => {
-    const total = animals.length;
+    const total = animalPage.total ?? animals.length;
     const pregnant = animals.filter(a => a.reproductiveStatus?.toLowerCase() === "pregnant").length;
-    const female = animals.filter(a => a.gender?.toLowerCase() === "female" || !a.gender).length;
+    const female = animals.filter(a => a.gender?.toLowerCase() === "female").length;
     const recent = animals.filter(a => {
       if (!a.createdAt) return false;
       const days = (new Date() - new Date(a.createdAt)) / (1000 * 60 * 60 * 24);
@@ -60,7 +61,7 @@ export default function Livestock() {
       female,
       recent,
     };
-  }, [animals]);
+  }, [animalPage.total, animals]);
 
   // ---- MEMOIZED DATA FILTERING ----
   const filteredAnimals = useMemo(() => {
@@ -106,7 +107,7 @@ export default function Livestock() {
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : stats.pregnant}</div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                Active Pregnancies
+                Pregnant on This Page
               </div>
             </div>
           </div>
@@ -117,7 +118,7 @@ export default function Livestock() {
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : stats.female}</div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                Breeding Cows
+                Females on This Page
               </div>
             </div>
           </div>
@@ -128,7 +129,7 @@ export default function Livestock() {
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : stats.recent}</div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                Newly Registered (30d)
+                New on This Page (30d)
               </div>
             </div>
           </div>
@@ -145,6 +146,7 @@ export default function Livestock() {
             </div>
             <select
               className={ui.select}
+              aria-label="Filter livestock by species"
               value={speciesFilter}
               onChange={(e) => {
                 setSpeciesFilter(e.target.value);
@@ -159,6 +161,7 @@ export default function Livestock() {
             </select>
             <select
               className={ui.select}
+              aria-label="Filter livestock by reproductive status"
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
@@ -171,14 +174,14 @@ export default function Livestock() {
               <option value="inseminated">Inseminated</option>
               <option value="open">Open</option>
             </select>
-            <span className="text-xs text-slate-400 font-semibold ml-auto whitespace-nowrap px-1">
+            <span className="ml-auto whitespace-nowrap px-1 text-xs font-semibold text-base-content/60">
               {isLoading ? "Fetching ledger..." : `${filteredAnimals.length} animal${filteredAnimals.length !== 1 ? "s" : ""} cataloged`}
             </span>
           </div>
 
           {/* Database Grid Table */}
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className={ui.table}>
+            <table className={ui.table} aria-label="Municipal livestock registry">
               <thead>
                 <tr className={ui.tableHead}>
                   <th className="p-3.5 pl-5">Ear Tag</th>
@@ -194,6 +197,15 @@ export default function Livestock() {
               <tbody className={ui.tableBody}>
                 {isLoading ? (
                   [...Array(6)].map((_, idx) => <TableRowSkeleton key={idx} />)
+                ) : isError ? (
+                  <tr>
+                    <td colSpan={8} className="p-6">
+                      <div role="alert" className="alert alert-error">
+                        <span>Livestock records could not be loaded.</span>
+                        <button type="button" className="btn btn-sm" onClick={() => refetch()}>Retry</button>
+                      </div>
+                    </td>
+                  </tr>
                 ) : paginatedAnimals.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="p-6">
@@ -202,21 +214,22 @@ export default function Livestock() {
                   </tr>
                 ) : (
                   paginatedAnimals.map((a) => (
-                    <tr
-                      key={a._id}
-                      onClick={() => navigate(`/admin/livestock/${a._id}`)}
-                      className={`${ui.tableRow} cursor-pointer`}
-                    >
-                      <td className="p-3.5 pl-5 font-bold text-slate-500 flex items-center gap-1.5">
-                        <Tag size={12} className="text-slate-400 shrink-0" />
-                        <span>#{a.earTag || "N/A"}</span>
+                    <tr key={a._id} className={ui.tableRow}>
+                      <td className="flex items-center gap-1.5 p-3.5 pl-5 font-bold text-base-content/70">
+                        <Tag size={12} className="shrink-0 text-base-content/50" />
+                        <TableNameLink
+                          to={`/admin/livestock/${a._id}`}
+                          ariaLabel={`Open livestock profile for animal ${a.earTag || "without an ear tag"}`}
+                        >
+                          #{a.earTag || "Not recorded"}
+                        </TableNameLink>
                       </td>
-                      <td className="p-3.5 font-medium text-slate-600 dark:text-slate-400">{a.species || "Beef Cattle"}</td>
-                      <td className="p-3.5 font-bold text-slate-800 dark:text-slate-200">{a.breed || "Crossbreed"}</td>
-                      <td className="p-3.5 font-medium text-slate-500">{a.color || "—"}</td>
-                      <td className="p-3.5 font-semibold text-slate-600 dark:text-slate-400">{a.gender || "Female"}</td>
-                      <td className="p-3.5 font-bold text-[#00643b] dark:text-emerald-400">
-                        {a.farmerId?.name || "N/A"}
+                      <td className="p-3.5 font-medium text-base-content/70">{a.species || "Not recorded"}</td>
+                      <td className="p-3.5 font-bold text-base-content">{a.breed || "Not recorded"}</td>
+                      <td className="p-3.5 font-medium text-base-content/70">{a.color || "Not recorded"}</td>
+                      <td className="p-3.5 font-semibold text-base-content/70">{a.gender || "Not recorded"}</td>
+                      <td className="p-3.5 font-bold text-primary">
+                        {a.farmerId?.name || "Not recorded"}
                       </td>
                       <td className="p-3.5 text-center">
                         <Badge status={a.reproductiveStatus || "Normal"} />
@@ -226,8 +239,10 @@ export default function Livestock() {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
+                          type="button"
                           onClick={() => navigate(`/admin/livestock/${a._id}`)}
                           className={ui.ghostButton}
+                          aria-label={`Inspect animal ${a.earTag || a._id}`}
                         >
                           <Eye size={12} /> Inspect
                         </button>
@@ -241,36 +256,43 @@ export default function Livestock() {
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between mt-3">
-              <span className="text-[11px] font-medium text-slate-400">
+            <div className="mt-3 flex items-center justify-between border-t border-base-300 pt-4">
+              <span className="text-[11px] font-medium text-base-content/60">
                 Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filteredAnimals.length)} of {filteredAnimals.length} animals
               </span>
-              <div className="flex items-center gap-1">
+              <div className="join" aria-label="Livestock pagination">
                 <button
+                  type="button"
+                  aria-label="Previous livestock page"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1 || isLoading}
-                  className={ui.iconButton}
+                  className="btn btn-sm join-item"
                 >
                   <ChevronLeft size={12} />
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNumber) => (
                   <button
+                    type="button"
                     key={pageNumber}
+                    aria-label={`Go to livestock page ${pageNumber}`}
+                    aria-current={currentPage === pageNumber ? "page" : undefined}
                     disabled={isLoading}
                     onClick={() => setCurrentPage(pageNumber)}
-                    className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
+                    className={`btn btn-sm join-item text-[11px] font-bold ${
                       currentPage === pageNumber
-                        ? "bg-[#00643b] text-white shadow-xs"
-                        : "border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                        ? "btn-primary"
+                        : ""
                     }`}
                   >
                     {pageNumber}
                   </button>
                 ))}
                 <button
+                  type="button"
+                  aria-label="Next livestock page"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages || isLoading}
-                  className={ui.iconButton}
+                  className="btn btn-sm join-item"
                 >
                   <ChevronRight size={12} />
                 </button>

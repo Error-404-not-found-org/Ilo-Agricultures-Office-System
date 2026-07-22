@@ -16,7 +16,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { OTON_BARANGAYS } from "../../constants/barangays";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 
 export default function Reports() {
   const toast = useToast();

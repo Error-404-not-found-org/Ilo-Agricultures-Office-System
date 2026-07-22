@@ -16,9 +16,9 @@ import {
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import Topbar from "../../components/ui/Topbar";
-import DashboardChart from "../../components/data/DashboardChart";
-import AssignTaskModal from "../../components/modals/AssignTaskModal";
+import Topbar from "../../components/layout/Topbar";
+import DashboardChart from "../../features/analytics/DashboardChart";
+import AssignTaskModal from "../../components/dialogs/AssignTaskModal";
 import { ui } from "../../components/ui/uiClasses";
 import { getStoredTheme, isDarkTheme } from "../../lib/theme";
 

@@ -13,58 +13,77 @@ import {
   CheckCircle,
   AlertTriangle,
   MapPin,
+  ClipboardList,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import DashboardChart from "../../components/data/DashboardChart";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import { ui } from "../../components/ui/uiClasses";
-import { getStoredTheme, isDarkTheme } from "../../lib/theme";
-import { getTechnicianStatus } from "../../constants/technicianWorkflow";
+import {
+  getDashboardAgendaPresentation,
+  summarizeDashboardWork,
+} from "../../utils/dashboardWorkflow";
 
 // Import dedicated quick action modals
-import WalkInAIModal from "../../components/modals/WalkInAIModal";
-import WalkInHealthModal from "../../components/modals/WalkInHealthModal";
-import RegisterFarmerModal from "../../components/modals/RegisterFarmerModal";
-import RegisterLivestockModal from "../../components/modals/RegisterLivestockModal";
-import PregnancyDiagnosisModal from "../../components/modals/PregnancyDiagnosisModal";
-import RecordCalvingModal from "../../components/modals/RecordCalvingModal";
+import WalkInAIModal from "../../components/dialogs/WalkInAIModal";
+import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
+import RegisterFarmerModal from "../../components/dialogs/RegisterFarmerModal";
+import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
+import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 
-function OverviewMetric({ icon, label, value, helper, tone = "text-primary bg-primary/10" }) {
+function CowIcon({ size = 24, className = "" }) {
   return (
-    <div className="rounded-box border border-base-300 bg-base-100 p-4">
-      <div className={`mb-3 flex size-9 items-center justify-center rounded-box ${tone}`}>
-        {icon}
-      </div>
-      <p className="text-2xl font-bold">{value}</p>
-      <p className="mt-1 text-sm font-semibold">{label}</p>
-      <p className="mt-0.5 text-xs text-base-content/50">{helper}</p>
-    </div>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      {/* Head outline */}
+      <path d="M5 10c0-1.5 1.5-3 3-3h8c1.5 0 3 1.5 3 3v5c0 2.5-2 4.5-4.5 4.5h-5C7 19.5 5 17.5 5 15v-5z" />
+      {/* Snout */}
+      <path d="M8 15h8v2.5a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V15z" />
+      {/* Nostrils */}
+      <circle cx="10.5" cy="17.5" r="0.75" fill="currentColor" />
+      <circle cx="13.5" cy="17.5" r="0.75" fill="currentColor" />
+      {/* Eyes */}
+      <circle cx="9" cy="11" r="1" fill="currentColor" />
+      <circle cx="15" cy="11" r="1" fill="currentColor" />
+      {/* Horns */}
+      <path d="M7 7C6.5 5 5 4.5 5 4.5s2 .5 2.5 2.5" />
+      <path d="M17 7c.5-2 2-2.5 2-2.5s-2 .5-2.5 2.5" />
+      {/* Ears */}
+      <path d="M5 9.5C3.5 9 2.5 8 2.5 8s1.5 2 2.5 2.5" />
+      <path d="M19 9.5c1.5-.5 2.5-1.5 2.5-1.5s-1.5 2-2.5 2.5" />
+    </svg>
   );
 }
 
-function QuickAction({ icon, label, description, onClick }) {
+function QuickAction({ icon: IconComponent, label, bgClass, textClass, onClick }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-h-28 items-start gap-3 rounded-box border border-base-300 bg-base-100 p-4 text-left transition hover:border-primary/45 hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className="group flex min-w-0 flex-col items-center text-center cursor-pointer rounded-box focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-box bg-base-200 text-primary transition group-hover:bg-primary/10">
-        {icon}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-sm font-bold">{label}</span>
-        <span className="mt-1 block text-xs leading-5 text-base-content/55">{description}</span>
+      <div className={`size-16 rounded-full flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-md ${bgClass} ${textClass}`}>
+        <IconComponent size={28} className="stroke-[2]" />
+      </div>
+      <span className="mt-3 block text-xs font-bold text-base-content/85 group-hover:text-primary transition-colors leading-tight px-1 max-w-[120px]">
+        {label}
       </span>
     </button>
   );
 }
 
 export default function Dashboard() {
-  const [theme, setTheme] = useState(getStoredTheme);
-
   const [searchQuery, setSearchQuery] = useState("");
 
   // Query logged-in user profile to check for incomplete details
@@ -85,15 +104,9 @@ export default function Dashboard() {
     agendaItems: [],
     animalRegistry: [],
   });
-  const [analytics, setAnalytics] = useState({
-    totalAI_Week: 0,
-    totalHealth_Month: 0,
-    totalInsem: 0,
-  });
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardLoadState, setDashboardLoadState] = useState({
     dashboardData: { ok: true, label: "Dashboard schedule and requests", error: null },
-    analytics: { ok: true, label: "Technician analytics", error: null },
   });
 
   // Dedicated Modals Visibility States
@@ -107,18 +120,13 @@ export default function Dashboard() {
   // ---- FETCH INTEGRATED TELEMETRY DATA ----
   const fetchDashboardMetrics = async (showInitialLoading = false) => {
     if (showInitialLoading) setIsLoading(true);
-    const [dashRes, analyticsRes] = await Promise.allSettled([
-      axiosInstance.get("/technician/dashboard-data"),
-      axiosInstance.get("/technician/analytics"),
+    const [dashRes] = await Promise.allSettled([
+      axiosInstance.get("/technician/dashboard-data?fullAgenda=true"),
     ]);
 
     if (dashRes.status === "fulfilled" && dashRes.value.data) {
       setDashboardData(dashRes.value.data);
     }
-    if (analyticsRes.status === "fulfilled" && analyticsRes.value.data) {
-      setAnalytics(analyticsRes.value.data);
-    }
-
     setDashboardLoadState({
       dashboardData: {
         ok: dashRes.status === "fulfilled",
@@ -126,14 +134,6 @@ export default function Dashboard() {
         error:
           dashRes.reason?.response?.data?.message ||
           dashRes.reason?.message ||
-          null,
-      },
-      analytics: {
-        ok: analyticsRes.status === "fulfilled",
-        label: "Technician analytics",
-        error:
-          analyticsRes.reason?.response?.data?.message ||
-          analyticsRes.reason?.message ||
           null,
       },
     });
@@ -150,19 +150,6 @@ export default function Dashboard() {
     return () => clearInterval(telemetryInterval);
   }, []);
 
-  // Synchronize local theme state with global theme toggle attributes
-  useEffect(() => {
-    const syncTheme = () => {
-      setTheme(getStoredTheme());
-    };
-    window.addEventListener("theme-change", syncTheme);
-    window.addEventListener("storage", syncTheme);
-    return () => {
-      window.removeEventListener("theme-change", syncTheme);
-      window.removeEventListener("storage", syncTheme);
-    };
-  }, []);
-
   // ---- QUICK ACTION MODAL CONFIGURATION HANDLERS ----
   const handleRecordAI = () => setIsAIModalOpen(true);
   const handleHealthLog = () => setIsHealthModalOpen(true);
@@ -176,28 +163,25 @@ export default function Dashboard() {
     todayActivities: 0,
     completedToday: 0,
   };
-  const pendingRequests = dashboardData?.pendingRequests || [];
+  const pendingRequests = React.useMemo(
+    () => dashboardData?.pendingRequests || [],
+    [dashboardData?.pendingRequests],
+  );
   const agendaItems = React.useMemo(
     () => dashboardData?.agendaItems || [],
     [dashboardData?.agendaItems],
   );
 
-  const activePendingCount = pendingRequests.filter(
-    (r) => !["done", "resolved", "completed", "rejected", "cancelled"].includes(r.status),
-  ).length;
-  const inseminationPendingCount = pendingRequests.filter(
-    (r) => !["done", "resolved", "completed", "rejected", "cancelled"].includes(r.status) && r.type !== "health",
-  ).length;
-  const healthPendingCount = pendingRequests.filter(
-    (r) => !["done", "resolved", "completed", "rejected", "cancelled"].includes(r.status) && r.type === "health",
-  ).length;
-  const readyTodayCount = agendaItems.filter((item) => item.isReadyToday).length;
+  const workSummary = React.useMemo(
+    () => summarizeDashboardWork(pendingRequests, agendaItems),
+    [agendaItems, pendingRequests],
+  );
 
   // Render agenda lists using live backend deployments matrix
   const mappedVisits = React.useMemo(() => {
     if (!agendaItems || agendaItems.length === 0) return [];
     return agendaItems.map((item, index) => {
-      const statusConfig = getTechnicianStatus(item.status);
+      const presentation = getDashboardAgendaPresentation(item);
       return {
         id: item.id || index,
         farmer: item.farmer || "Unknown Farmer",
@@ -211,9 +195,13 @@ export default function Dashboard() {
           : "FI",
         location: item.farmLocationLabel || item.location || "Location not recorded",
         time: item.time || "Time not set",
-        status: item.displayStatus || statusConfig.label,
-        statusClass: item.isReadyToday ? "badge-warning" : statusConfig.badgeClass,
-        serviceType: item.serviceType || item.taskType || "Field visit",
+        status: presentation.statusLabel,
+        statusClass: presentation.statusClass,
+        serviceType: presentation.serviceLabel,
+        sourceLabel: presentation.sourceLabel,
+        nextActionLabel: presentation.nextActionLabel,
+        isDueToday: presentation.isDueToday,
+        isOverdue: presentation.isOverdue,
         animalTag: item.animalTag || "Animal not specified",
       };
     });
@@ -221,28 +209,25 @@ export default function Dashboard() {
 
   const filteredVisits = mappedVisits.filter(
     (v) =>
-      v.farmer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.location.toLowerCase().includes(searchQuery.toLowerCase()),
+      v.isDueToday &&
+      (v.farmer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.animalTag.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.serviceType.toLowerCase().includes(searchQuery.toLowerCase())),
   );
   const failedDashboardSources = Object.values(dashboardLoadState).filter((source) => !source.ok);
   const dashboardValue = (sourceKey, value) =>
-    dashboardLoadState[sourceKey]?.ok === false ? "Unavailable" : value;
-  const analyticsAvailable = dashboardLoadState.analytics.ok;
-  const monthlyTrendRows = analytics.monthlyTrends || [];
-  const chartLabels = analyticsAvailable
-    ? monthlyTrendRows.length > 0
-      ? monthlyTrendRows.map((m) => m.month)
-      : ["No records yet"]
-    : ["Unavailable"];
-
+    dashboardLoadState[sourceKey]?.ok === false || value == null
+      ? "Unavailable"
+      : value;
   return (
-    <div className={ui.page}>
+    <div className={`${ui.page} min-w-0 overflow-x-hidden`}>
       <Topbar
         title="Overview"
         subtitle="See today’s field work, active requests, and recorded services in one place"
       />
 
-      <main className={ui.main}>
+      <main className={`${ui.main} min-w-0 w-full max-w-full`}>
         {/* Profile Completion Alert Banner */}
         {isProfileIncomplete && (
           <div className="bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 p-4 rounded-2xl flex items-center justify-between shadow-xs mb-2 gap-4">
@@ -278,7 +263,7 @@ export default function Dashboard() {
                   Some dashboard data did not load
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold mt-1.5 leading-relaxed">
-                  Loaded widgets remain visible. Failed widgets show unavailable instead of fake zero counts.
+                  Loaded widgets remain visible. Failed widgets are marked unavailable.
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {failedDashboardSources.map((source) => (
@@ -302,359 +287,380 @@ export default function Dashboard() {
           </div>
         )}
 
-        <section className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.7fr)]">
-          <div className="card card-border bg-base-100 shadow-sm">
-            <div className="card-body p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h2 className="card-title">Today’s work</h2>
-                  <p className="mt-1 text-sm text-base-content/55">Current field workload in Philippine time</p>
-                </div>
-                <Link to="/technician/schedule" className="btn btn-ghost btn-sm">
-                  Open schedule <ArrowRight size={14} />
-                </Link>
-              </div>
-              <div className="mt-2 grid gap-3 sm:grid-cols-3">
-                <OverviewMetric
-                  icon={<CalendarCheck size={18} />}
-                  label="Scheduled"
-                  value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.todayActivities ?? 0)}
-                  helper="AI and health visits today"
-                />
-                <OverviewMetric
-                  icon={<Clock size={18} />}
-                  label="Ready"
-                  value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", readyTodayCount)}
-                  helper="Approved or scheduled for today"
-                  tone="bg-warning/10 text-warning"
-                />
-                <OverviewMetric
-                  icon={<CheckCircle size={18} />}
-                  label="Completed"
-                  value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.completedToday ?? 0)}
-                  helper="Finished today"
-                  tone="bg-success/10 text-success"
-                />
-              </div>
-            </div>
+        {/* Welcome Greeting Row */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-black text-base-content tracking-tight">
+              Good morning, {dbUser?.firstName || dbUser?.name?.split(" ")[0] || "Technician"}! 👋
+            </h1>
+            <p className="text-sm text-base-content/55 font-semibold mt-0.5">
+              Here's what's happening on your farms today.
+            </p>
           </div>
 
-          <div className="card card-border bg-base-100 shadow-sm">
-            <div className="card-body p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="card-title">Request queue</h2>
-                  <p className="mt-1 text-sm text-base-content/55">Cases still needing field action</p>
-                </div>
-                <span className="badge badge-warning badge-soft">{activePendingCount} active</span>
-              </div>
-              <dl className="mt-3 grid grid-cols-2 gap-3">
-                <div className="rounded-box bg-base-200 p-3">
-                  <dt className="text-xs text-base-content/55">AI requests</dt>
-                  <dd className="mt-1 text-xl font-bold">{inseminationPendingCount}</dd>
-                </div>
-                <div className="rounded-box bg-base-200 p-3">
-                  <dt className="text-xs text-base-content/55">Health cases</dt>
-                  <dd className="mt-1 text-xl font-bold">{healthPendingCount}</dd>
-                </div>
-              </dl>
-              <Link to="/technician/requests" className="btn btn-primary btn-sm mt-2 w-full">
-                Review requests <ArrowRight size={14} />
-              </Link>
-              <Link to="/technician/work-queue" className="btn btn-outline btn-sm mt-2 w-full">
-                Open work queue <ArrowRight size={14} />
-              </Link>
-            </div>
-          </div>
-        </section>
-
-        <section className="card card-border bg-base-100 shadow-sm">
-          <div className="card-body p-5">
-            <div>
-              <h2 className="card-title">Service summary</h2>
-              <p className="mt-1 text-sm text-base-content/55">Records created during the current month</p>
-            </div>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <OverviewMetric icon={<Syringe size={18} />} label="AI services" value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.totalInsemMonth ?? 0)} helper="Artificial insemination records" />
-              <OverviewMetric icon={<Stethoscope size={18} />} label="Health cases" value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("analytics", analytics?.totalHealth_Month ?? 0)} helper="Health assistance records" tone="bg-info/10 text-info" />
-              <OverviewMetric icon={<HeartPulse size={18} />} label="Pregnancy checks" value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.totalPregnancyCheckupMonth ?? 0)} helper="Recorded diagnoses" tone="bg-secondary/10 text-secondary" />
-              <OverviewMetric icon={<Baby size={18} />} label="Calvings" value={isLoading ? <span className="loading loading-dots loading-sm" /> : dashboardValue("dashboardData", stats?.totalCalvingMonth ?? 0)} helper="Recorded birth events" tone="bg-accent/10 text-accent" />
-            </div>
-          </div>
-        </section>
-
-        <section className="card card-border bg-base-100 shadow-sm">
-          <div className="card-body p-5">
-            <div>
-              <h2 className="card-title">Quick actions</h2>
-              <p className="mt-1 text-sm text-base-content/55">Use the same six record workflows available in the Technician mobile app</p>
-            </div>
-            <div className="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              <QuickAction icon={<Syringe size={18} />} label="Record AI Service" description="Save a completed or in-progress field insemination." onClick={handleRecordAI} />
-              <QuickAction icon={<Stethoscope size={18} />} label="Record Health Assistance" description="Document a health visit, treatment, medicine, and follow-up." onClick={handleHealthLog} />
-              <QuickAction icon={<UserPlus size={18} />} label="Register Farmer" description="Create a farmer profile with contact and Iloilo location." onClick={handleAddClient} />
-              <QuickAction icon={<Tractor size={18} />} label="Register Animal" description="Add an animal and connect it to the correct farmer." onClick={handleAddAnimal} />
-              <QuickAction icon={<HeartPulse size={18} />} label="Pregnancy Check" description="Record a diagnosis against an eligible AI attempt." onClick={handlePregnancyCheck} />
-              <QuickAction icon={<Baby size={18} />} label="Record Calving" description="Record birth details from a confirmed pregnancy." onClick={handleCalfDrop} />
-            </div>
-          </div>
-        </section>
-
-        {/* Charts Row Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card card-border bg-base-100 shadow-sm">
-            <div className="card-body p-5">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="card-title text-base">
-                  AI activity
-                </h3>
-                <p className="text-sm text-base-content/55">
-                  Recorded AI services by month
-                </p>
-              </div>
-            </div>
-            <DashboardChart
-              type="line"
-              labels={chartLabels}
-              datasets={[
-                {
-                  label: "AI service Cycle",
-                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => m.ai) : [0],
-                  borderColor: "#00643B",
-                  backgroundColor: "rgba(0, 100, 59, 0.06)",
-                  fill: true,
-                },
-                {
-                  label: "Clinical Ledger",
-                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => Math.max(0, Math.round(m.ai * 0.6))) : [0],
-                  borderColor: "#10b981",
-                  backgroundColor: "rgba(16, 185, 129, 0.03)",
-                  fill: true,
-                },
-              ]}
-              height={220}
-              darkTheme={isDarkTheme(theme)}
-            />
-            </div>
-          </div>
-
-          <div className="card card-border bg-base-100 shadow-sm">
-            <div className="card-body p-5">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="card-title text-base">
-                  Clinical activity
-                </h3>
-                <p className="text-sm text-base-content/55">
-                  Actual health, pregnancy, and calving records
-                </p>
-              </div>
-            </div>
-            <DashboardChart
-              type="bar"
-              labels={chartLabels}
-              datasets={[
-                {
-                  label: "Health",
-                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => m.health || 0) : [0],
-                  borderColor: "#2563eb",
-                  backgroundColor: "rgba(37, 99, 235, 0.72)",
-                  borderWidth: 0,
-                  fill: false,
-                },
-                {
-                  label: "Pregnancy checks",
-                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => m.pregnancy || 0) : [0],
-                  borderColor: "#db2777",
-                  backgroundColor: "rgba(219, 39, 119, 0.72)",
-                  borderWidth: 0,
-                  fill: false,
-                },
-                {
-                  label: "Calvings",
-                  data: analyticsAvailable && monthlyTrendRows.length > 0 ? monthlyTrendRows.map((m) => m.calving || 0) : [0],
-                  borderColor: "#0f766e",
-                  backgroundColor: "rgba(15, 118, 110, 0.72)",
-                  borderWidth: 0,
-                  fill: false,
-                },
-              ]}
-              height={220}
-              darkTheme={isDarkTheme(theme)}
-            />
-            </div>
-          </div>
-        </div>
-
-        {/* Bottom Panel Grid */}
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          {/* Today's Field Visits List */}
-          <div className="card card-border bg-base-100 shadow-sm lg:col-span-2">
-            <div className="card-body p-5">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3 border-b border-base-300 pb-4">
-              <div>
-                <h3 className="card-title text-base">
-                  Today’s visits
-                </h3>
-                <p className="mt-1 text-sm text-base-content/55">
-                  Farmer, service, animal, location, and scheduled time
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="input input-sm w-full sm:w-52">
-                  <Search size={14} className="text-base-content/45" />
-                  <input
-                    type="search"
-                    placeholder="Search visits..."
-                    className="grow text-sm"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </label>
-                <Link to="/technician/schedule" className="btn btn-ghost btn-sm">
-                  View all <ArrowRight size={12} />
-                </Link>
-              </div>
+          <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center md:w-auto">
+            {/* Header Search bar */}
+            <div className="relative min-w-0 w-full sm:w-60">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/40" size={14} />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search animals, farms, farmers..."
+                className="w-full pl-9 pr-4 py-2 bg-base-100 border border-base-300 rounded-xl text-xs font-bold focus:border-primary focus:outline-none placeholder:text-base-content/40 text-base-content"
+              />
             </div>
 
-            <div className="divide-y divide-base-300">
-              {isLoading ? (
-                [...Array(3)].map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="flex animate-pulse items-center justify-between py-3"
-                  >
-                    <div className="flex items-center gap-3 w-2/3">
-                      <div className="skeleton size-9 rounded-full" />
-                      <div className="space-y-2 flex-1">
-                        <div className="skeleton h-3 w-1/3" />
-                        <div className="skeleton h-2 w-1/2" />
-                      </div>
-                    </div>
-                    <div className="skeleton h-4 w-12" />
-                  </div>
-                ))
-              ) : filteredVisits.length === 0 ? (
-                <div className="rounded-box border border-dashed border-base-300 py-8 text-center">
-                  <CalendarCheck className="mx-auto mb-2 text-base-content/35" size={24} />
-                  <p className="text-sm font-semibold">No visits scheduled for today</p>
-                  <p className="mt-1 text-xs text-base-content/50">Scheduled and ready visits will appear here.</p>
-                </div>
-              ) : (
-                filteredVisits.map((v) => (
-                  <div
-                    key={v.id}
-                    className="flex flex-wrap items-center justify-between gap-3 py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="flex size-9 items-center justify-center rounded-full bg-base-200 text-xs font-bold text-primary"
-                      >
-                        {v.initials}
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-bold">
-                          {v.farmer}
-                        </h4>
-                        <p className="mt-0.5 text-xs text-base-content/55">{v.serviceType} · {v.animalTag}</p>
-                        <span className="mt-1 flex items-center gap-1 text-xs text-base-content/50"><MapPin size={11} /> {v.location}</span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-bold">
-                        {v.time}
-                      </div>
-                      <span
-                        className={`badge badge-sm badge-soft mt-1 ${v.statusClass}`}
-                      >
-                        {v.status}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-            </div>
-          </div>
-
-          {/* Alerts & Notifications Box */}
-          <div className="card card-border bg-base-100 shadow-sm">
-            <div className="card-body p-5">
-            <div>
-              <div className="mb-4 flex items-start justify-between gap-3 border-b border-base-300 pb-4">
-                <div>
-                  <h3 className="card-title text-base">
-                    Needs attention
-                  </h3>
-                  <p className="mt-1 text-sm text-base-content/55">
-                    Requests and follow-ups that need action
-                  </p>
-                </div>
-                <span className="badge badge-warning badge-soft">
-                  {activePendingCount} active
+            {/* Today Date Badge */}
+            <div className="flex items-center gap-2.5 px-3 py-2 bg-base-100 border border-base-300 rounded-xl shrink-0">
+              <CalendarCheck size={14} className="text-primary" />
+              <div className="flex flex-col text-left">
+                <span className="text-[10px] font-black text-base-content leading-none">
+                  {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                </span>
+                <span className="text-[8px] text-base-content/40 font-bold uppercase tracking-wider mt-0.5">
+                  {new Date().toLocaleDateString(undefined, { weekday: "long" })}
                 </span>
               </div>
-
-              <div className="space-y-3">
-                {inseminationPendingCount > 0 && (
-                  <div className="alert alert-warning alert-soft text-sm">
-                    <AlertTriangle
-                      className="shrink-0"
-                      size={14}
-                    />
-                    <div>
-                      <p className="font-semibold">{inseminationPendingCount} active AI request{inseminationPendingCount === 1 ? "" : "s"}</p>
-                      <p className="text-xs opacity-70">Review assignment, schedule, or service progress.</p>
-                    </div>
-                  </div>
-                )}
-
-                {healthPendingCount > 0 && (
-                  <div className="alert alert-info alert-soft text-sm">
-                    <Clock className="shrink-0" size={14} />
-                    <div>
-                      <p className="font-semibold">{healthPendingCount} active health case{healthPendingCount === 1 ? "" : "s"}</p>
-                      <p className="text-xs opacity-70">Check urgency, schedule, and follow-up needs.</p>
-                    </div>
-                  </div>
-                )}
-
-                {activePendingCount === 0 && (
-                  <div className="alert alert-success alert-soft text-sm"><CheckCircle size={16} /><span>No active requests need attention.</span></div>
-                )}
-              </div>
-            </div>
-
-            {/* Monthly Target Progress Calculation */}
-            <div className="mt-6 space-y-3 border-t border-base-300 pt-4">
-              <div>
-                <div className="mb-1 flex justify-between text-xs font-semibold text-base-content/55">
-                  <span>Monthly AI target</span>
-                  <span className="text-primary">
-                    {stats?.totalInsemMonth
-                      ? Math.min(
-                          100,
-                          Math.round((stats.totalInsemMonth / 30) * 100),
-                        )
-                      : 0}
-                    %
-                  </span>
-                </div>
-                <progress
-                  className="progress progress-primary h-1.5 w-full"
-                  value={
-                    stats?.totalInsemMonth
-                      ? Math.min(30, stats.totalInsemMonth)
-                      : 0
-                  }
-                  max="30"
-                />
-              </div>
-            </div>
             </div>
           </div>
         </div>
+
+        {/* 5 SaaS Dashboard Metric Cards */}
+        <div className="grid min-w-0 grid-cols-2 gap-4 mb-6 sm:grid-cols-3 xl:grid-cols-5">
+          {/* 1. Today's Visits */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+              <CalendarCheck size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.dueTodayCount)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Today's Visits</span>
+              <span className="block text-[10px] text-base-content/60 font-semibold mt-0.5">
+                Scheduled today
+              </span>
+            </div>
+          </div>
+
+          {/* 2. Active Work */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+              <Clock size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.activeWorkCount)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Active Work</span>
+              <span className="block text-[10px] text-warning font-semibold mt-0.5">
+                Needs your attention
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Animals to See */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+              <Tractor size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.animalsToSeeCount)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Animals to See</span>
+              <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
+                Across all farms
+              </span>
+            </div>
+          </div>
+
+          {/* 4. Requests */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
+              <ClipboardList size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.activeRequestCount)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Service Requests</span>
+              <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
+                Awaiting service completion
+              </span>
+            </div>
+          </div>
+
+          {/* 5. Completed */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
+              <CheckCircle size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", stats?.completedToday)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Completed</span>
+              <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
+                Today
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions Grid */}
+        <section className="card bg-base-100 border border-base-300 shadow-sm mb-6">
+          <div className="card-body p-6">
+            <div className="mb-6">
+              <h2 className="card-title text-base font-black tracking-tight">Quick Actions</h2>
+              <p className="mt-0.5 text-xs text-base-content/55 font-semibold">
+                Access the primary livestock workflows instantly
+              </p>
+            </div>
+
+            <div className="grid min-w-0 grid-cols-2 gap-6 py-2 sm:grid-cols-3 xl:grid-cols-6">
+              <QuickAction
+                icon={Syringe}
+                label="Record AI Service"
+                bgClass="bg-emerald-500/10 dark:bg-emerald-500/15"
+                textClass="text-emerald-600 dark:text-emerald-400"
+                onClick={handleRecordAI}
+              />
+              <QuickAction
+                icon={Stethoscope}
+                label="Record Health Assistance"
+                bgClass="bg-orange-500/10 dark:bg-orange-500/15"
+                textClass="text-orange-600 dark:text-orange-400"
+                onClick={handleHealthLog}
+              />
+              <QuickAction
+                icon={UserPlus}
+                label="Register Farmer"
+                bgClass="bg-blue-500/10 dark:bg-blue-500/15"
+                textClass="text-blue-600 dark:text-blue-400"
+                onClick={handleAddClient}
+              />
+              <QuickAction
+                icon={CowIcon}
+                label="Register Animal"
+                bgClass="bg-purple-500/10 dark:bg-purple-500/15"
+                textClass="text-purple-600 dark:text-purple-400"
+                onClick={handleAddAnimal}
+              />
+              <QuickAction
+                icon={HeartPulse}
+                label="Pregnancy Check"
+                bgClass="bg-pink-500/10 dark:bg-pink-500/15"
+                textClass="text-pink-600 dark:text-pink-400"
+                onClick={handlePregnancyCheck}
+              />
+              <QuickAction
+                icon={Baby}
+                label="Record Calving"
+                bgClass="bg-cyan-500/10 dark:bg-cyan-500/15"
+                textClass="text-cyan-600 dark:text-cyan-400"
+                onClick={handleCalfDrop}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Main Grid: Today's Schedule + Work Queue Overview */}
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.7fr)] pb-20">
+          {/* Today's Schedule */}
+          <div className="card bg-base-100 border border-base-300 shadow-sm">
+            <div className="card-body p-6">
+              <div className="flex items-center justify-between gap-3 border-b border-base-300 pb-4 mb-5">
+                <div>
+                  <h2 className="card-title text-base font-black tracking-tight">Today’s Schedule</h2>
+                  <p className="mt-0.5 text-xs text-base-content/55 font-semibold">Today’s services and lifecycle follow-ups</p>
+                </div>
+                <Link to="/technician/schedule" className="text-[10px] font-black uppercase tracking-wider text-primary hover:underline">
+                  View Calendar
+                </Link>
+              </div>
+
+              {/* Timeline Container */}
+              <div className="relative pl-4 border-l border-base-300/80 ml-2 space-y-6">
+                {isLoading ? (
+                  [...Array(3)].map((_, idx) => (
+                    <div key={idx} className="relative flex items-start gap-4 animate-pulse">
+                      <div className="absolute -left-[22px] top-1.5 size-2.5 rounded-full bg-base-300 border-4 border-base-100" />
+                      <div className="w-16 skeleton h-3 mt-1 shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="skeleton h-4 w-1/3" />
+                        <div className="skeleton h-3 w-1/2" />
+                      </div>
+                    </div>
+                  ))
+                ) : filteredVisits.length === 0 ? (
+                  <div className="rounded-box border border-dashed border-base-300 py-10 text-center -ml-4">
+                    <CalendarCheck className="mx-auto mb-2 text-base-content/30" size={24} />
+                    <p className="text-sm font-semibold">No visits scheduled for today</p>
+                    <p className="mt-1 text-xs text-base-content/50">Scheduled visits will appear in your timeline.</p>
+                  </div>
+                ) : (
+                  filteredVisits.slice(0, 3).map((v) => {
+                    const dotClass =
+                      v.statusClass === "badge-error"
+                        ? "bg-error"
+                        : v.statusClass === "badge-warning"
+                          ? "bg-warning"
+                          : v.statusClass === "badge-success"
+                            ? "bg-success"
+                            : v.statusClass === "badge-info"
+                              ? "bg-info"
+                              : "bg-primary";
+
+                    return (
+                      <div key={v.id} className="relative flex flex-col sm:flex-row items-start gap-4">
+                        {/* Timeline Bullet Point */}
+                        <div className={`absolute -left-[22px] top-1.5 size-3 rounded-full ${dotClass} border-4 border-base-100 ring-4 ring-base-100`} />
+
+                        {/* Time label */}
+                        <div className="w-20 shrink-0 text-xs font-black text-base-content/70 mt-1">
+                          {v.time}
+                        </div>
+
+                        {/* Details Card */}
+                        <div className="flex-1 flex items-center justify-between gap-4 p-3.5 bg-base-200/50 hover:bg-base-200 border border-base-300/60 rounded-2xl transition-all">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {/* Animal Avatar Initials */}
+                            <div className="size-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 font-black text-sm">
+                              {v.initials}
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-xs font-black text-base-content leading-none">
+                                {v.serviceType}
+                              </h4>
+                              <p className="text-[11px] text-base-content/75 font-semibold mt-1.5 truncate">
+                                {v.farmer} · {v.animalTag}
+                              </p>
+                              <p className="text-[10px] text-base-content/40 font-bold mt-1 flex items-center gap-1">
+                                <MapPin size={11} className="text-primary shrink-0" />
+                                {v.location}
+                              </p>
+                              <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-base-content/70">
+                                {v.sourceLabel}
+                                <span aria-hidden="true"> · </span>
+                                <span className="sr-only">. Next action: </span>
+                                {v.nextActionLabel}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Right side status badge */}
+                          <span className={`badge badge-sm badge-soft shrink-0 text-[9px] font-black uppercase tracking-wider ${v.statusClass}`}>
+                            {v.status}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {!isLoading && filteredVisits.length > 0 && (
+                <div className="border-t border-base-300 mt-5 pt-4 text-center">
+                  <Link to="/technician/schedule" className="text-xs font-bold text-primary inline-flex items-center gap-1.5 hover:underline">
+                    View full schedule <ArrowRight size={14} />
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Work Queue Overview */}
+          <div className="card bg-base-100 border border-base-300 shadow-sm">
+            <div className="card-body p-6 flex flex-col h-full">
+              <div className="flex items-center justify-between gap-3 border-b border-base-300 pb-4 mb-4">
+                <div>
+                  <h2 className="card-title text-base font-black tracking-tight">Work Queue Overview</h2>
+                  <p className="mt-0.5 text-xs text-base-content/55 font-semibold">Real active work by operational state</p>
+                </div>
+                <Link to="/technician/work-queue" className="text-[10px] font-black uppercase tracking-wider text-primary hover:underline">
+                  View all
+                </Link>
+              </div>
+
+              {/* Pie/Donut Chart Representation */}
+              <div className="flex-1 flex flex-col justify-center py-4">
+                <div className="relative size-36 mx-auto flex items-center justify-center mb-6">
+                  <div className="absolute inset-0 rounded-full border-10 border-base-300" />
+                  <div className="absolute inset-0 rounded-full border-10 border-primary border-t-warning border-r-info border-l-error animate-in spin-in duration-500" />
+                  <div className="text-center z-10">
+                    <span className="block text-3xl font-black text-base-content leading-none">
+                      {workSummary.activeWorkCount}
+                    </span>
+                    <span className="block text-[9px] text-base-content/50 font-black uppercase tracking-wider mt-1.5">
+                      Active Work
+                    </span>
+                  </div>
+                </div>
+
+                {/* Legend list */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-error" />
+                      <span className="text-base-content/70">Overdue</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.overdueCount} items</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-warning" />
+                      <span className="text-base-content/70">Due Today</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.dueTodayCount} items</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-info" />
+                      <span className="text-base-content/70">AI requests</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.aiRequestCount} cases</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-error" />
+                      <span className="text-base-content/70">Health requests</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.healthRequestCount} cases</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-secondary" />
+                      <span className="text-base-content/70">Pregnancy follow-ups</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.pregnancyFollowUpCount} tasks</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Overdue Alert Banner */}
+              {workSummary.activeWorkCount > 0 && (
+                <div className={`alert alert-soft mt-4 flex items-center justify-between gap-3 p-3 ${workSummary.overdueCount > 0 ? "alert-warning" : "alert-info"}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AlertTriangle className="shrink-0" size={16} />
+                    <span className="text-[11px] font-black text-base-content truncate">
+                      {workSummary.overdueCount > 0
+                        ? `${workSummary.overdueCount} work items are overdue`
+                        : `${workSummary.activeWorkCount} work items are active`}
+                    </span>
+                  </div>
+                  <Link to="/technician/work-queue" className="btn btn-xs h-7 font-black uppercase tracking-wider rounded-xl text-[9px] px-3 shrink-0">
+                    View Now
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Bottom spacing to ensure comfortable scrolling on all devices */}
+        <div className="h-12" />
       </main>
 
       {/* Dedicated Quick Action Modals */}
