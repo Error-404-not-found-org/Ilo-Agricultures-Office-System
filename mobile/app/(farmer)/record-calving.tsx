@@ -26,6 +26,7 @@ import {
 } from "lucide-react-native";
 import React, { useRef, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { toast } from "sonner-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/lib/theme";
@@ -145,42 +146,12 @@ export default function RecordCalving() {
     setCalves(newCalves);
   };
 
-  const pickCalfImage = async (index: number) => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-      base64: true,
-    });
-    if (!result.canceled && result.assets?.length > 0) {
+  const handleSelectCalfPhoto = async (index: number, source: "camera" | "library") => {
+    const result = await pickImageFromSource(source, { aspect: [4, 3] });
+    if (result) {
       const newCalves = [...calves];
-      newCalves[index].imageUri = result.assets[0].uri;
-      newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
-      setCalves(newCalves);
-      toast.success(`Photo attached to Calf #${index + 1}`);
-    }
-  };
-
-  const takeCalfPhoto = async (index: number) => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Permission to access camera was denied");
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets?.length > 0) {
-      const newCalves = [...calves];
-      newCalves[index].imageUri = result.assets[0].uri;
-      newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+      newCalves[index].imageUri = result.uri;
+      newCalves[index].imageBase64 = result.base64;
       setCalves(newCalves);
       toast.success(`Photo attached to Calf #${index + 1}`);
     }
@@ -495,11 +466,30 @@ export default function RecordCalving() {
                   Calf Image / Photo (Optional)
                 </Text>
                 {calf.imageUri ? (
-                  <View className="rounded-2xl overflow-hidden border shadow-sm relative" style={{ borderColor: colors.border }}>
-                    <Image source={{ uri: calf.imageUri }} className="w-full h-32" resizeMode="cover" />
+                  <View
+                    style={{
+                      borderRadius: 16,
+                      overflow: "hidden",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      position: "relative",
+                    }}
+                  >
+                    <Image
+                      source={{ uri: calf.imageUri }}
+                      style={{ width: "100%", height: 128 }}
+                      resizeMode="cover"
+                    />
                     <TouchableOpacity
                       onPress={() => removeCalfImage(index)}
-                      className="absolute top-2 right-2 p-2 bg-black/60 rounded-full"
+                      style={{
+                        position: "absolute",
+                        top: 8,
+                        right: 8,
+                        padding: 8,
+                        backgroundColor: "rgba(0,0,0,0.6)",
+                        borderRadius: 999,
+                      }}
                     >
                       <X size={14} color="white" />
                     </TouchableOpacity>
@@ -507,7 +497,7 @@ export default function RecordCalving() {
                 ) : (
                   <View className="flex-row gap-2">
                     <TouchableOpacity
-                      onPress={() => takeCalfPhoto(index)}
+                      onPress={() => handleSelectCalfPhoto(index, "camera")}
                       className="flex-1 py-3.5 rounded-xl border flex-row justify-center items-center gap-2"
                       style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
                     >
@@ -515,7 +505,7 @@ export default function RecordCalving() {
                       <Text className="text-[10px] font-black" style={{ color: primaryColor }}>Take Photo</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => pickCalfImage(index)}
+                      onPress={() => handleSelectCalfPhoto(index, "library")}
                       className="flex-1 py-3.5 rounded-xl border flex-row justify-center items-center gap-2"
                       style={{ backgroundColor: isDark ? colors.background : '#f8fafc', borderColor: colors.border }}
                     >

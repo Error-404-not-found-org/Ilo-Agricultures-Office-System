@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useClerk, useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import * as Location from "expo-location";
 import { useColorScheme } from "nativewind";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -386,28 +387,14 @@ export const useFarmerProfile = () => {
     } catch (e) {}
   };
 
-  const handleTakePhoto = async () => {
+  const handleSelectProfileImage = async (source: "camera" | "library") => {
     setPhotoModalVisible(false);
     if (!clerkUser) return;
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Permission denied", {
-        description: "Camera permission is required to take a photo.",
-      });
-      return;
-    }
     try {
-      let result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        base64: true,
-      });
-      if (!result.canceled && result.assets?.[0]?.base64) {
+      const result = await pickImageFromSource(source, { aspect: [1, 1], quality: 0.7 });
+      if (result) {
         setUploadingImage(true);
-        const base64Data = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        await clerkUser.setProfileImage({ file: base64Data });
+        await clerkUser.setProfileImage({ file: result.base64 });
         toast.success("Profile picture updated!");
       }
     } catch (err: any) {
@@ -419,38 +406,8 @@ export const useFarmerProfile = () => {
     }
   };
 
-  const handleChooseFromGallery = async () => {
-    setPhotoModalVisible(false);
-    if (!clerkUser) return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Permission denied", {
-        description: "Gallery permission is required to choose a photo.",
-      });
-      return;
-    }
-    try {
-      let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-        base64: true,
-      });
-      if (!result.canceled && result.assets?.[0]?.base64) {
-        setUploadingImage(true);
-        const base64Data = `data:image/jpeg;base64,${result.assets[0].base64}`;
-        await clerkUser.setProfileImage({ file: base64Data });
-        toast.success("Profile picture updated!");
-      }
-    } catch (err: any) {
-      toast.error("Upload failed", {
-        description: err.message || "Failed to update profile image.",
-      });
-    } finally {
-      setUploadingImage(false);
-    }
-  };
+  const handleTakePhoto = () => handleSelectProfileImage("camera");
+  const handleChooseFromGallery = () => handleSelectProfileImage("library");
 
   const handleChangeProfileImage = () => {
     if (!clerkUser) return;

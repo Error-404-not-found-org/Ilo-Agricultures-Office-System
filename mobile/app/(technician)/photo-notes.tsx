@@ -31,6 +31,7 @@ import {
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { toast } from "sonner-native";
 import * as ImagePicker from "expo-image-picker";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 
@@ -112,46 +113,13 @@ export default function PhotoNotesScreen() {
     fetchFarmers();
   }, []);
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.6,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets?.length > 0) {
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source, { aspect: [4, 3], quality: 0.6 });
+    if (result) {
       const coords = generateOtonCoordinates();
       setNewNote({
         ...newNote,
-        image: `data:image/jpeg;base64,${result.assets[0].base64}`,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-      });
-      toast.success("Location tagged at photo capture site!");
-    }
-  };
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Permission to access camera was denied");
-      return;
-    }
-
-    let result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.6,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets?.length > 0) {
-      const coords = generateOtonCoordinates();
-      setNewNote({
-        ...newNote,
-        image: `data:image/jpeg;base64,${result.assets[0].base64}`,
+        image: result.base64,
         latitude: coords.latitude,
         longitude: coords.longitude,
       });
@@ -580,7 +548,7 @@ export default function PhotoNotesScreen() {
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Image Selector */}
               <TouchableOpacity
-                onPress={pickImage}
+                onPress={() => handleSelectPhoto("library")}
                 style={{
                   height: 160,
                   backgroundColor: colors.background,
@@ -617,7 +585,7 @@ export default function PhotoNotesScreen() {
 
               <View style={{ flexDirection: "row", gap: 12, marginBottom: 24 }}>
                 <TouchableOpacity
-                  onPress={takePhoto}
+                  onPress={() => handleSelectPhoto("camera")}
                   style={{
                     flex: 1,
                     flexDirection: "row",
@@ -643,7 +611,7 @@ export default function PhotoNotesScreen() {
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={pickImage}
+                  onPress={() => handleSelectPhoto("library")}
                   style={{
                     flex: 1,
                     flexDirection: "row",

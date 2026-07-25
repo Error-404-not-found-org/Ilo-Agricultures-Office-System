@@ -5,6 +5,8 @@ import { toast } from 'sonner-native';
 import React, { useMemo, useState } from 'react';
 import { useApi } from '@/lib/api';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -64,18 +66,13 @@ export default function RegisterClient() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source, { aspect: [1, 1] });
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
     }
   };
 
@@ -199,7 +196,7 @@ export default function RegisterClient() {
           
           {/* Profile Upload Section */}
           <View style={{ alignItems: 'center', marginBottom: 32 }}>
-            <TouchableOpacity onPress={pickImage} style={{ width: 110, height: 110, borderRadius: 55, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#cbd5e1', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 }}>
+            <TouchableOpacity onPress={() => setShowPhotoModal(true)} style={{ width: 110, height: 110, borderRadius: 55, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed', borderWidth: 2, borderColor: '#cbd5e1', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 }}>
               {imageUri ? (
                 <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
               ) : (
@@ -429,6 +426,12 @@ export default function RegisterClient() {
           </View>
         </View>
       </Modal>
+      <PhotoOptionModal
+        visible={showPhotoModal}
+        onClose={() => setShowPhotoModal(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
     </View>
   );
 }

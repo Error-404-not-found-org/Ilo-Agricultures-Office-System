@@ -12,7 +12,13 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.breedsmart.mobile",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "BreedSmart allows you to upload livestock photos and farm records.",
+        "NSPhotoLibraryAddUsageDescription": "BreedSmart may save livestock photos to your photo library when requested.",
+        "NSCameraUsageDescription": "BreedSmart uses the camera to capture livestock photos and farm records.",
+        "NSMicrophoneUsageDescription": "BreedSmart records audio when required for farm documentation.",
+        "NSLocationWhenInUseUsageDescription": "BreedSmart uses your location to save your farm pin so technicians can locate your farm during scheduled visits.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "BreedSmart uses your location to support technician visits and navigation."
       }
     },
     "android": {
@@ -36,6 +42,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BreedSmart allows you to select livestock photos from your photo library.",
+          "cameraPermission": "BreedSmart uses your camera to capture livestock photos and farm records."
+        }
+      ],
       [
         "expo-splash-screen",
         {

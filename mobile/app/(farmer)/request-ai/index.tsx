@@ -33,6 +33,8 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { checkInseminationAgeEligibility } from "@/lib/cattleCore";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 import { safeBack } from "@/utils/navigation";
 import { useApi } from "@/lib/api";
 import {
@@ -353,39 +355,11 @@ export default function RequestAI() {
     }
   }, [animalsData, params.animalId, params.mode]);
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-      base64: true,
-    });
-    if (!result.canceled && result.assets?.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
-      toast.success("Photo attached!");
-    }
-  };
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Permission to access camera was denied");
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 0.5,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets?.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source, { aspect: [4, 3] });
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
       toast.success("Photo attached!");
     }
   };
@@ -1373,103 +1347,12 @@ export default function RequestAI() {
       </Modal>
 
       {/* Photo Selector Modal */}
-      <Modal visible={photoModalVisible} transparent animationType="slide">
-        <View className="flex-1 bg-black/50 justify-end">
-          <View
-            className="rounded-t-[32px] p-6 pb-10"
-            style={{ backgroundColor: colors.card }}
-          >
-            <View className="flex-row justify-between items-center mb-6">
-              <Text
-                className="text-lg font-bold"
-                style={{ color: colors.textPrimary }}
-              >
-                Select Photo Source
-              </Text>
-              <TouchableOpacity
-                onPress={() => setPhotoModalVisible(false)}
-                style={{ padding: 4 }}
-              >
-                <X size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <View className="flex-row justify-between">
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  takePhoto();
-                }}
-                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
-                style={{
-                  backgroundColor: isDark ? colors.background : "#f8fafc",
-                  borderColor: isDark ? colors.border : "#e2e8f0",
-                }}
-              >
-                <Camera
-                  size={24}
-                  color={primaryColor}
-                  style={{ marginBottom: 8 }}
-                />
-                <Text
-                  className="font-bold text-xs"
-                  style={{ color: colors.textPrimary }}
-                >
-                  Camera
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  pickImage();
-                }}
-                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
-                style={{
-                  backgroundColor: isDark ? colors.background : "#f8fafc",
-                  borderColor: isDark ? colors.border : "#e2e8f0",
-                }}
-              >
-                <MaterialCommunityIcons
-                  name="image-multiple"
-                  size={24}
-                  color={primaryColor}
-                  style={{ marginBottom: 8 }}
-                />
-                <Text
-                  className="font-bold text-xs"
-                  style={{ color: colors.textPrimary }}
-                >
-                  Albums / Gallery
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {imageUri && (
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  removeImage();
-                }}
-                className="mt-4 py-4 rounded-2xl items-center justify-center border flex-row gap-2"
-                style={{
-                  backgroundColor: isDark
-                    ? "rgba(239, 68, 68, 0.1)"
-                    : "#fef2f2",
-                  borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#fee2e2",
-                }}
-              >
-                <MaterialCommunityIcons
-                  name="trash-can-outline"
-                  size={20}
-                  color="#ef4444"
-                />
-                <Text className="font-bold text-sm text-red-500">
-                  Remove Photo
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <PhotoOptionModal
+        visible={photoModalVisible}
+        onClose={() => setPhotoModalVisible(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
 
       <ConfirmationModal
         visible={profileModalVisible}

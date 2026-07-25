@@ -7,6 +7,8 @@ import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { useTheme } from '@/lib/theme';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 import {
@@ -43,39 +45,11 @@ export default function RegisterClientScreen() {
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
-    }
-  };
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      toast.error('Permission to access camera was denied');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source, { aspect: [1, 1] });
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
     }
   };
 
@@ -463,64 +437,12 @@ export default function RegisterClientScreen() {
          </KeyboardAvoidingView>
        </Modal>
       {/* PHOTO SELECTION MODAL */}
-      <Modal visible={photoModalVisible} transparent={true} animationType="slide" onRequestClose={() => setPhotoModalVisible(false)}>
-        <View className="flex-1 bg-slate-900/40 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-6 pb-12 shadow-2xl">
-            <View className="flex-row justify-between items-center mb-6">
-              <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-xl text-slate-800 dark:text-white">
-                Select Photo Source
-              </Text>
-              <TouchableOpacity onPress={() => setPhotoModalVisible(false)} className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full">
-                <X size={22} color={isDark ? '#94a3b8' : '#64748b'} />
-              </TouchableOpacity>
-            </View>
-
-            <View className="flex-row justify-between">
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  takePhoto();
-                }}
-                className="w-[48%] py-5 rounded-2xl items-center justify-center border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
-              >
-                <Camera size={24} color="#059669" style={{ marginBottom: 8 }} />
-                <Text className="font-outfit-bold text-xs text-slate-700 dark:text-slate-200">
-                  Camera
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  pickImage();
-                }}
-                className="w-[48%] py-5 rounded-2xl items-center justify-center border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50"
-              >
-                <MaterialCommunityIcons name="image-multiple" size={24} color="#059669" style={{ marginBottom: 8 }} />
-                <Text className="font-outfit-bold text-xs text-slate-700 dark:text-slate-200">
-                  Albums / Gallery
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {imageUri && (
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  setImageUri(null);
-                  setImageBase64(null);
-                }}
-                className="mt-4 py-4 rounded-2xl items-center justify-center border border-red-100 dark:border-red-950/20 bg-red-50/50 dark:bg-red-950/10 flex-row gap-2"
-              >
-                <MaterialCommunityIcons name="trash-can-outline" size={20} color="#ef4444" />
-                <Text className="font-outfit-bold text-sm text-red-500">
-                  Remove Photo
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <PhotoOptionModal
+        visible={photoModalVisible}
+        onClose={() => setPhotoModalVisible(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
     </SafeAreaView>
   );
 }

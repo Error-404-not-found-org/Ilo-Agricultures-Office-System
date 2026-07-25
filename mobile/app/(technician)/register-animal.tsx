@@ -38,6 +38,8 @@ import {
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import {
@@ -68,13 +70,20 @@ export default function RegisterAnimalScreen() {
   const [showMunicipalityDropdown, setShowMunicipalityDropdown] = useState(false);
   const [searchMunicipality, setSearchMunicipality] = useState("");
 
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
   const [formData, setFormData] = useState({
     earTag: "",
     brand: "",
     species: CATTLE_SPECIES[0],
     breed: "",
     color: "",
-    dob: new Date().toISOString().split("T")[0],
+    dob: formatLocalDate(new Date()),
     gender: "Female",
   });
 
@@ -170,18 +179,13 @@ export default function RegisterAnimalScreen() {
     }
   }, [formData.species]);
 
-  const handlePickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+  const [showPhotoOptionModal, setShowPhotoOptionModal] = useState(false);
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source);
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
     }
   };
 
@@ -260,7 +264,7 @@ export default function RegisterAnimalScreen() {
           }}
         >
           Add Animal
-        </Text> 
+        </Text>
       </View>
 
       <KeyboardAvoidingView
@@ -335,7 +339,7 @@ export default function RegisterAnimalScreen() {
             {/* Photo upload */}
             <View className="items-center mb-2 mt-1">
               <TouchableOpacity
-                onPress={handlePickImage}
+                onPress={() => setShowPhotoOptionModal(true)}
                 className="w-24 h-24 rounded-full items-center justify-center border border-dashed border-slate-200 dark:border-slate-700 overflow-hidden relative shadow-inner bg-slate-50 dark:bg-slate-800"
               >
                 {imageUri ? (
@@ -502,7 +506,7 @@ export default function RegisterAnimalScreen() {
                   onPress={() =>
                     setFormData({
                       ...formData,
-                      dob: new Date().toISOString().split("T")[0],
+                      dob: formatLocalDate(new Date()),
                     })
                   }
                   className="active:opacity-50"
@@ -973,7 +977,7 @@ export default function RegisterAnimalScreen() {
 
       {showDatePicker && (
         <DateTimePicker
-          value={new Date(formData.dob)}
+          value={new Date(`${formData.dob}T00:00:00`)}
           mode="date"
           display={Platform.OS === "ios" ? "spinner" : "default"}
           onChange={(event, date) => {
@@ -981,12 +985,19 @@ export default function RegisterAnimalScreen() {
             if (date) {
               setFormData({
                 ...formData,
-                dob: date.toISOString().split("T")[0],
+                dob: formatLocalDate(date),
               });
             }
           }}
         />
       )}
+
+      <PhotoOptionModal
+        visible={showPhotoOptionModal}
+        onClose={() => setShowPhotoOptionModal(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
     </SafeAreaView>
   );
 }

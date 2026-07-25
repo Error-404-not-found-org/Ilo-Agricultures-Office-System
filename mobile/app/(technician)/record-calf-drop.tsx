@@ -10,6 +10,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import EarTagGenerator from '@/components/EarTagGenerator';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import {
     OfflineMutationLifecycleState,
     useOfflineMutation,
@@ -19,6 +20,7 @@ import { animalKeys, animalRecordKeys, breedingKeys, notificationKeys, technicia
 import { tasksQueryKeys } from '@/features/technician/hooks/useTechnicianTasks';
 import { recordsQueryKeys } from '@/features/technician/hooks/useTechnicianRecords';
 import { animalQueryKeys } from '@/features/technician/hooks/useTechnicianAnimal';
+import { Skeleton } from "@/components/ui/Skeleton";
 
 interface CalfEntry {
     sex: string;
@@ -120,6 +122,7 @@ export default function RecordCalfDropScreen() {
 
     const [farmerName, setFarmerName] = useState('');
     const [farmerAnimalCount, setFarmerAnimalCount] = useState(0);
+    const [loadingDetails, setLoadingDetails] = useState(!!initialMotherId);
 
     const selectActivePregnancy = (history: any, requestedPregnancyId?: string) => {
         const calvedIds = new Set(
@@ -144,6 +147,7 @@ export default function RecordCalfDropScreen() {
     useEffect(() => {
         const fetchDetailsForInitialMother = async () => {
             if (initialMotherId) {
+                setLoadingDetails(true);
                 try {
                     const animalRes = await api.get(`/animals/${initialMotherId}`);
                     const animalData = animalRes.data;
@@ -171,6 +175,8 @@ export default function RecordCalfDropScreen() {
                     }
                 } catch (err) {
                     console.error("Error fetching mother details:", err);
+                } finally {
+                    setLoadingDetails(false);
                 }
             }
         };
@@ -293,41 +299,12 @@ export default function RecordCalfDropScreen() {
         setCalves(newCalves);
     };
 
-    const pickCalfImage = async (index: number) => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ["images"],
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.5,
-            base64: true,
-        });
-        if (!result.canceled && result.assets?.length > 0) {
+    const handleSelectCalfPhoto = async (index: number, source: "camera" | "library") => {
+        const result = await pickImageFromSource(source, { aspect: [4, 3] });
+        if (result) {
             const newCalves = [...calves];
-            newCalves[index].imageUri = result.assets[0].uri;
-            newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
-            setCalves(newCalves);
-        }
-    };
-
-    const takeCalfPhoto = async (index: number) => {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-            toast.error("Permission to access camera was denied");
-            return;
-        }
-
-        const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ["images"],
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.5,
-            base64: true,
-        });
-
-        if (!result.canceled && result.assets?.length > 0) {
-            const newCalves = [...calves];
-            newCalves[index].imageUri = result.assets[0].uri;
-            newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+            newCalves[index].imageUri = result.uri;
+            newCalves[index].imageBase64 = result.base64;
             setCalves(newCalves);
         }
     };
@@ -482,6 +459,10 @@ export default function RecordCalfDropScreen() {
     const formatDate = (value: any) => value
         ? new Date(value).toLocaleDateString()
         : 'Not available';
+
+    if (loadingDetails) {
+        return <RecordCalfDropSkeleton onBack={() => router.back()} />;
+    }
 
     return (
         <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
@@ -760,11 +741,30 @@ export default function RecordCalfDropScreen() {
                                         {calf.isLiving !== false && <View className="mt-2">
                                             <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Calf Image / Photo (Optional)</Text>
                                             {calf.imageUri ? (
-                                                <View className="rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800 shadow-sm relative">
-                                                    <Image source={{ uri: calf.imageUri }} className="w-full h-32" resizeMode="cover" />
+                                                <View
+                                                    style={{
+                                                        borderRadius: 12,
+                                                        overflow: "hidden",
+                                                        borderWidth: 1,
+                                                        borderColor: isDark ? "#334155" : "#f1f5f9",
+                                                        position: "relative",
+                                                    }}
+                                                >
+                                                    <Image
+                                                        source={{ uri: calf.imageUri }}
+                                                        style={{ width: "100%", height: 128 }}
+                                                        resizeMode="cover"
+                                                    />
                                                     <TouchableOpacity
                                                         onPress={() => removeCalfImage(idx)}
-                                                        className="absolute top-2 right-2 p-2 bg-black/60 rounded-full"
+                                                        style={{
+                                                            position: "absolute",
+                                                            top: 8,
+                                                            right: 8,
+                                                            padding: 8,
+                                                            backgroundColor: "rgba(0,0,0,0.6)",
+                                                            borderRadius: 999,
+                                                        }}
                                                     >
                                                         <X size={14} color="white" />
                                                     </TouchableOpacity>
@@ -772,14 +772,14 @@ export default function RecordCalfDropScreen() {
                                             ) : (
                                                 <View className="flex-row gap-2">
                                                     <TouchableOpacity
-                                                        onPress={() => takeCalfPhoto(idx)}
+                                                        onPress={() => handleSelectCalfPhoto(idx, "camera")}
                                                         className="flex-1 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5 shadow-sm"
                                                     >
                                                         <Camera size={14} color={isDark ? '#34d399' : '#00643B'} />
                                                         <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-600 dark:text-slate-300 text-[10px]">Take Photo</Text>
                                                     </TouchableOpacity>
                                                     <TouchableOpacity
-                                                        onPress={() => pickCalfImage(idx)}
+                                                        onPress={() => handleSelectCalfPhoto(idx, "library")}
                                                         className="flex-1 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5 shadow-sm"
                                                     >
                                                         <ImageIcon size={14} color={isDark ? '#34d399' : '#00643B'} />
@@ -944,6 +944,46 @@ export default function RecordCalfDropScreen() {
               cancelText="Review"
               isDestructive={false}
             />
+        </SafeAreaView>
+    );
+}
+
+function RecordCalfDropSkeleton({ onBack }: { onBack: () => void }) {
+    const { isDark } = useTheme();
+
+    return (
+        <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
+            <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
+                <TouchableOpacity onPress={onBack} className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
+                    <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e2937'} />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                    <Skeleton width="60%" height={20} radius={6} />
+                    <Skeleton width="35%" height={12} radius={4} style={{ marginTop: 6 }} />
+                </View>
+            </View>
+
+            <ScrollView className="flex-1 px-6 pt-6" showsVerticalScrollIndicator={false}>
+                <View className="bg-emerald-50/50 dark:bg-emerald-900/10 p-6 rounded-[32px] mb-8 border border-emerald-100 dark:border-emerald-800/50">
+                    <Skeleton width="40%" height={16} radius={6} style={{ marginBottom: 16 }} />
+                    <View className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-5 border border-emerald-100 dark:border-slate-700">
+                        <Skeleton width="50%" height={16} radius={4} />
+                        <Skeleton width="35%" height={12} radius={4} style={{ marginTop: 8 }} />
+                        <Skeleton width="70%" height={12} radius={4} style={{ marginTop: 12 }} />
+                        <Skeleton width="65%" height={12} radius={4} style={{ marginTop: 6 }} />
+                        <Skeleton width="75%" height={12} radius={4} style={{ marginTop: 6 }} />
+                    </View>
+                    <Skeleton width="30%" height={12} radius={4} style={{ marginBottom: 8 }} />
+                    <Skeleton width="100%" height={48} radius={16} style={{ marginBottom: 16 }} />
+                    <Skeleton width="30%" height={12} radius={4} style={{ marginBottom: 8 }} />
+                    <Skeleton width="100%" height={48} radius={16} />
+                </View>
+
+                <View className="bg-white dark:bg-slate-900 p-6 rounded-[32px] mb-8 border border-slate-100 dark:border-slate-800">
+                    <Skeleton width="50%" height={18} radius={6} style={{ marginBottom: 16 }} />
+                    <Skeleton width="100%" height={140} radius={20} />
+                </View>
+            </ScrollView>
         </SafeAreaView>
     );
 }

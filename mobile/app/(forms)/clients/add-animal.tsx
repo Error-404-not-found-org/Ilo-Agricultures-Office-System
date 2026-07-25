@@ -41,6 +41,8 @@ import {
   CATTLE_SPECIES,
   BREED_OPTIONS_BY_SPECIES,
 } from "@/lib/constants";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 
 const PRIMARY = "#00643B";
 
@@ -160,18 +162,13 @@ export default function AddAIRecord() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+  const [showPhotoOptionModal, setShowPhotoOptionModal] = useState(false);
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source);
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
     }
   };
 
@@ -388,7 +385,7 @@ export default function AddAIRecord() {
             <View>
               <View style={{ alignItems: "center", marginBottom: 32 }}>
                 <TouchableOpacity
-                  onPress={pickImage}
+                  onPress={() => setShowPhotoOptionModal(true)}
                   style={{
                     width: 110,
                     height: 110,
@@ -791,6 +788,13 @@ export default function AddAIRecord() {
           onChange={handleNativeDateChange}
         />
       )}
+
+      <PhotoOptionModal
+        visible={showPhotoOptionModal}
+        onClose={() => setShowPhotoOptionModal(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
     </View>
   );
 }

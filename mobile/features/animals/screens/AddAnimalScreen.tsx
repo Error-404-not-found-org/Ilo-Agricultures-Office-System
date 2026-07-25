@@ -31,6 +31,8 @@ import {
   useMyAnimalsInfiniteQuery,
   useRegisterAnimalMutation,
 } from "../hooks/useMyAnimals";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 
 const SPECIES_OPTIONS = CATTLE_SPECIES;
 
@@ -149,38 +151,11 @@ export function AddAnimalScreen() {
     }
   };
 
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
-    if (!result.canceled && result.assets?.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
-    }
-  };
-
-  const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Permission to access camera was denied");
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
-
-    if (!result.canceled && result.assets?.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source);
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
     }
   };
 
@@ -410,7 +385,7 @@ export function AddAnimalScreen() {
             onPress={() => {
               setTempDate(
                 formData.birthDate
-                  ? new Date(formData.birthDate)
+                  ? new Date(`${formData.birthDate}T00:00:00`)
                   : new Date(),
               );
               setShowDatePicker(true);
@@ -456,7 +431,7 @@ export function AddAnimalScreen() {
             <DateTimePicker
               value={tempDate}
               mode="date"
-              display="default"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
               maximumDate={new Date()}
               onChange={(event, selectedDate) => {
                 if (Platform.OS === "android") {
@@ -464,10 +439,10 @@ export function AddAnimalScreen() {
                     setShowDatePicker(false);
                     if (selectedDate) {
                       setTempDate(selectedDate);
-                      setField(
-                        "birthDate",
-                        selectedDate.toISOString().split("T")[0],
-                      );
+                      const year = selectedDate.getFullYear();
+                      const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+                      const day = String(selectedDate.getDate()).padStart(2, "0");
+                      setField("birthDate", `${year}-${month}-${day}`);
                     }
                   } else if (event.type === "dismissed") {
                     setShowDatePicker(false);
@@ -475,10 +450,10 @@ export function AddAnimalScreen() {
                 } else {
                   if (selectedDate) {
                     setTempDate(selectedDate);
-                    setField(
-                      "birthDate",
-                      selectedDate.toISOString().split("T")[0],
-                    );
+                    const year = selectedDate.getFullYear();
+                    const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
+                    const day = String(selectedDate.getDate()).padStart(2, "0");
+                    setField("birthDate", `${year}-${month}-${day}`);
                   }
                   setShowDatePicker(false);
                 }
@@ -549,104 +524,12 @@ export function AddAnimalScreen() {
         </View>
       </Modal>
 
-      <Modal visible={photoModalVisible} transparent animationType="slide">
-        <View className="flex-1 bg-black/50 justify-end">
-          <View
-            className="rounded-t-[32px] p-6 pb-10"
-            style={{ backgroundColor: colors.card }}
-          >
-            <View className="flex-row justify-between items-center mb-6">
-              <Text
-                className="text-lg font-outfit-bold"
-                style={{ color: colors.textPrimary }}
-              >
-                Select Photo Source
-              </Text>
-              <TouchableOpacity
-                onPress={() => setPhotoModalVisible(false)}
-                style={{ padding: 4 }}
-              >
-                <X size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <View className="flex-row justify-between">
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  takePhoto();
-                }}
-                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
-                style={{
-                  backgroundColor: isDark ? colors.background : "#f8fafc",
-                  borderColor: isDark ? colors.border : "#e2e8f0",
-                }}
-              >
-                <Camera
-                  size={24}
-                  color={colors.primary}
-                  style={{ marginBottom: 8 }}
-                />
-                <Text
-                  className="font-outfit-bold text-xs"
-                  style={{ color: colors.textPrimary }}
-                >
-                  Camera
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  pickImage();
-                }}
-                className="w-[48%] py-5 rounded-2xl items-center justify-center border"
-                style={{
-                  backgroundColor: isDark ? colors.background : "#f8fafc",
-                  borderColor: isDark ? colors.border : "#e2e8f0",
-                }}
-              >
-                <MaterialCommunityIcons
-                  name="image-multiple"
-                  size={24}
-                  color={colors.primary}
-                  style={{ marginBottom: 8 }}
-                />
-                <Text
-                  className="font-outfit-bold text-xs"
-                  style={{ color: colors.textPrimary }}
-                >
-                  Albums / Gallery
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {imageUri && (
-              <TouchableOpacity
-                onPress={() => {
-                  setPhotoModalVisible(false);
-                  setImageUri(null);
-                  setImageBase64(null);
-                }}
-                className="mt-4 py-4 rounded-2xl items-center justify-center border flex-row gap-2"
-                style={{
-                  backgroundColor: isDark
-                    ? "rgba(239, 68, 68, 0.1)"
-                    : "#fef2f2",
-                  borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#fee2e2",
-                }}
-              >
-                <MaterialCommunityIcons
-                  name="trash-can-outline"
-                  size={20}
-                  color="#ef4444"
-                />
-                <Text className="font-outfit-bold text-sm text-red-500">
-                  Remove Photo
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-      </Modal>
+      <PhotoOptionModal
+        visible={photoModalVisible}
+        onClose={() => setPhotoModalVisible(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
     </View>
   );
 }

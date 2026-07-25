@@ -9,6 +9,8 @@ import React, { useState, useEffect } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { toast } from 'sonner-native';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromSource } from '@/lib/imagePickerHelper';
+import { PhotoOptionModal } from '@/components/PhotoOptionModal';
 import { useTheme } from '@/lib/theme';
 import { Text } from '@/components/ui/Text';
 import { Card } from '@/components/ui/Card';
@@ -131,18 +133,13 @@ export default function EditAnimalWizard() {
   }, [id, isLoaded, isSignedIn, api]);
 
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source);
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
     }
   };
 
@@ -294,7 +291,7 @@ export default function EditAnimalWizard() {
                     
                     <View className="items-center mb-6 mt-2">
                         <TouchableOpacity 
-                          onPress={pickImage} 
+                          onPress={() => setShowPhotoModal(true)} 
                           style={{ backgroundColor: colors.card, borderColor: colors.border }}
                           className="w-24 h-24 rounded-full items-center justify-center border border-dashed overflow-hidden active:opacity-75"
                         >
@@ -481,6 +478,12 @@ export default function EditAnimalWizard() {
             />
         )}
 
+      <PhotoOptionModal
+        visible={showPhotoModal}
+        onClose={() => setShowPhotoModal(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
       </View>
     </SafeScreen>
   );
