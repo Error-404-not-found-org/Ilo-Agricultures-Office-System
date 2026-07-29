@@ -99,7 +99,7 @@ export default function HelpCenter() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <AppPageHeader title="Help Center" subtitle="Support, common questions, and your submitted tickets" />
+      <AppPageHeader title="Help Center" />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, paddingBottom: 100 }}>
         <View style={{ gap: 24 }}>

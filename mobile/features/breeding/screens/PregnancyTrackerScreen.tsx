@@ -977,7 +977,7 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
             onPress={() =>
               latest?.technician?.phoneNumber
                 ? Linking.openURL(`tel:${latest.technician.phoneNumber}`)
-                : router.push("/(farmer)/my-requests")
+                : router.push("/(farmer)/(tabs)/service-requests")
             }
             activeOpacity={0.8}
             style={{

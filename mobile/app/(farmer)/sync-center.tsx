@@ -62,7 +62,7 @@ export default function FarmerSyncCenter() {
 
   return (
     <FarmerScreen scroll contentContainerStyle={{ paddingBottom: 48 }}>
-      <AppPageHeader title="Sync Center" subtitle="Offline changes and recent synchronization activity" />
+      <AppPageHeader title="Sync Center" />
 
       {loading ? (
         <AsyncState state="loading" />

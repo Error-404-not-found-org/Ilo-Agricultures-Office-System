@@ -163,7 +163,6 @@ export function AddAnimalScreen() {
     <View className="flex-1" style={{ backgroundColor: colors.background }}>
       <AppPageHeader
         title="Add Animal"
-        subtitle="Register an animal and keep its records connected"
       />
 
       <KeyboardAvoidingView

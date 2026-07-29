@@ -18,7 +18,6 @@ export default function FarmerLayout() {
       <Stack.Screen name="animal-details" />
       <Stack.Screen name="register-animal" />
       <Stack.Screen name="my-requests" />
-      <Stack.Screen name="heat-map" />
       <Stack.Screen name="ask-moowie" />
       <Stack.Screen name="settings" />
       <Stack.Screen name="record-calving" />

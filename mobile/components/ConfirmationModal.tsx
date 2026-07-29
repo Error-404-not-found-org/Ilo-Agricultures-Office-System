@@ -1,15 +1,15 @@
 import React from "react";
+import { View } from "react-native";
+import { AlertTriangle, Trash2 } from "lucide-react-native";
 import {
-  Modal,
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Dimensions,
-  ActivityIndicator,
-} from "react-native";
-import { useTheme } from "../lib/theme";
-import { AlertTriangle, Trash2, X } from "lucide-react-native";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/Dialog";
+import { Button } from "@/components/ui/Button";
 
 interface ConfirmationModalProps {
   visible: boolean;
@@ -36,7 +36,6 @@ export function ConfirmationModal({
   isDestructive = true,
   icon,
 }: ConfirmationModalProps) {
-  const { colors, isDark } = useTheme();
   const [confirming, setConfirming] = React.useState(false);
   const confirmLockRef = React.useRef(false);
 
@@ -72,197 +71,67 @@ export function ConfirmationModal({
   };
 
   return (
-    <Modal
-      animationType="fade"
-      transparent={true}
-      visible={visible}
-      onRequestClose={() => {
-        if (!confirmLockRef.current) onClose();
+    <Dialog
+      open={visible}
+      onOpenChange={(open) => {
+        if (!open && !confirming) onClose();
       }}
     >
-      <View style={styles.overlay}>
+      <DialogContent
+        hideCloseIcon
+        className="items-center text-center p-6 rounded-3xl"
+      >
+        {/* Icon Header */}
         <View
-          style={[
-            styles.modalContainer,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-            },
-          ]}
+          className={`w-14 h-14 rounded-2xl items-center justify-center mb-4 ${
+            isDestructive
+              ? "bg-rose-500/10 dark:bg-rose-500/20"
+              : "bg-amber-500/10 dark:bg-amber-500/20"
+          }`}
         >
-          {/* Close button */}
-          <TouchableOpacity
-            disabled={confirming}
-            onPress={onClose}
-            style={styles.closeButton}
-            activeOpacity={0.7}
-          >
-            <X size={20} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          {/* Icon Header */}
-          <View
-            style={[
-              styles.iconContainer,
-              {
-                backgroundColor: isDestructive
-                  ? isDark
-                    ? "rgba(239, 68, 68, 0.15)"
-                    : "#FEF2F2"
-                  : isDark
-                    ? "rgba(245, 158, 11, 0.15)"
-                    : "#FFFBEB",
-              },
-            ]}
-          >
-            {icon ? (
-              icon
-            ) : isDestructive ? (
-              <Trash2 size={26} color={colors.error} />
-            ) : (
-              <AlertTriangle size={26} color={colors.warning} />
-            )}
-          </View>
-
-          {/* Text Content */}
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
-            {title}
-          </Text>
-          <Text style={[styles.message, { color: colors.textSecondary }]}>
-            {message}
-          </Text>
-
-          {/* Buttons Row */}
-          <View style={styles.buttonRow}>
-            {showCancel && (
-              <TouchableOpacity
-                disabled={confirming}
-                onPress={handleCancel}
-                style={[
-                  styles.button,
-                  styles.cancelButton,
-                  {
-                    backgroundColor: isDark ? colors.background : "#f1f5f9",
-                    opacity: confirming ? 0.6 : 1,
-                  },
-                ]}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[styles.buttonText, { color: colors.textSecondary }]}
-                >
-                  {cancelText}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              disabled={confirming}
-              onPress={handleConfirm}
-              style={[
-                styles.button,
-                {
-                  backgroundColor: isDestructive
-                    ? colors.error
-                    : colors.primary,
-                  opacity: confirming ? 0.6 : 1,
-                },
-              ]}
-              activeOpacity={0.8}
-            >
-              {confirming ? (
-                <ActivityIndicator color="#ffffff" size="small" />
-              ) : (
-                <Text style={[styles.buttonText, styles.confirmButtonText]}>
-                  {confirmText}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          {icon ? (
+            icon
+          ) : isDestructive ? (
+            <Trash2 size={26} className="text-rose-600 dark:text-rose-400" />
+          ) : (
+            <AlertTriangle
+              size={26}
+              className="text-amber-600 dark:text-amber-400"
+            />
+          )}
         </View>
-      </View>
-    </Modal>
+
+        {/* Header & Body */}
+        <DialogHeader className="items-center text-center mb-2">
+          <DialogTitle className="text-center text-xl font-outfit-bold">
+            {title}
+          </DialogTitle>
+          <DialogDescription className="text-center font-outfit-medium leading-relaxed px-2">
+            {message}
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Footer Actions */}
+        <DialogFooter className="w-full flex-row gap-3 mt-4">
+          {showCancel && (
+            <Button
+              variant="outline"
+              label={cancelText || "Cancel"}
+              disabled={confirming}
+              onPress={handleCancel}
+              className="flex-1"
+            />
+          )}
+          <Button
+            variant={isDestructive ? "destructive" : "default"}
+            label={confirmText}
+            loading={confirming}
+            disabled={confirming}
+            onPress={handleConfirm}
+            className="flex-1"
+          />
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
-
-const { width } = Dimensions.get("window");
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 24,
-  },
-  modalContainer: {
-    width: width > 400 ? 360 : "100%",
-    borderRadius: 32,
-    borderWidth: 1,
-    padding: 24,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 5,
-    position: "relative",
-  },
-  closeButton: {
-    position: "absolute",
-    top: 20,
-    right: 20,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 20,
-    marginTop: 8,
-  },
-  title: {
-    fontSize: 18,
-    textAlign: "center",
-    marginBottom: 8,
-    fontFamily: "Outfit_700Bold",
-  },
-  message: {
-    fontSize: 14,
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 24,
-    paddingHorizontal: 8,
-    fontFamily: "Outfit_500Medium",
-  },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-  },
-  button: {
-    flex: 1,
-    height: 52,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelButton: {
-    borderWidth: 0,
-  },
-  buttonText: {
-    fontSize: 13,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-    fontFamily: "Outfit_700Bold",
-  },
-  confirmButtonText: {
-    color: "#ffffff",
-  },
-});

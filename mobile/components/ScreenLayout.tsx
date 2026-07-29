@@ -5,20 +5,27 @@ import {
   StatusBar,
   StyleSheet,
   type StyleProp,
+  type ScrollViewProps,
+  type ViewProps,
   type ViewStyle,
 } from "react-native";
 import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 
-type ScreenLayoutProps = {
+export type ScreenLayoutProps = Omit<ViewProps, "children" | "style"> & {
   children: React.ReactNode;
   statusBarColor?: string;
   statusBarStyle?: "light-content" | "dark-content" | "default";
   backgroundColor?: string;
   scrollable?: boolean;
   contentContainerStyle?: StyleProp<ViewStyle>;
+  style?: StyleProp<ViewStyle>;
+  contentStyle?: StyleProp<ViewStyle>;
+  bottomInset?: number;
   edges?: Edge[];
   refreshControl?: React.ReactElement<any>;
+  keyboardShouldPersistTaps?: ScrollViewProps["keyboardShouldPersistTaps"];
+  showsVerticalScrollIndicator?: boolean;
 };
 
 export function ScreenLayout({
@@ -28,8 +35,14 @@ export function ScreenLayout({
   backgroundColor,
   scrollable = false,
   contentContainerStyle,
+  style,
+  contentStyle,
+  bottomInset = 80,
   edges = ["top", "left", "right"],
   refreshControl,
+  keyboardShouldPersistTaps = "handled",
+  showsVerticalScrollIndicator = false,
+  ...containerProps
 }: ScreenLayoutProps) {
   const { colors, isDark } = useTheme();
 
@@ -41,22 +54,28 @@ export function ScreenLayout({
     <ScrollView
       style={styles.scroll}
       contentContainerStyle={[
-        { paddingBottom: 80 },
+        { paddingBottom: bottomInset },
         contentContainerStyle,
       ]}
-      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      showsVerticalScrollIndicator={showsVerticalScrollIndicator}
       refreshControl={refreshControl}
     >
       {children}
     </ScrollView>
   ) : (
-    <View style={styles.flex}>{children}</View>
+    <View style={[styles.flex, contentStyle]}>{children}</View>
   );
 
   return (
     <SafeAreaView
+      {...containerProps}
       edges={edges}
-      style={[styles.container, { backgroundColor: finalBackgroundColor }]}
+      style={[
+        styles.container,
+        { backgroundColor: finalBackgroundColor },
+        style,
+      ]}
     >
       <StatusBar barStyle={finalStatusBarStyle} backgroundColor={finalStatusBarColor} />
       {content}

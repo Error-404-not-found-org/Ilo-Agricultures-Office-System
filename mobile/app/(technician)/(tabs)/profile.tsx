@@ -211,7 +211,9 @@ const TechnicianProfile = () => {
       style={{ backgroundColor: colors.background }}
     >
       <StatusBar
-        barStyle={statusBarOnHeader || isDark ? "light-content" : "dark-content"}
+        barStyle={
+          statusBarOnHeader || isDark ? "light-content" : "dark-content"
+        }
         backgroundColor={statusBarOnHeader ? profileHeaderColor : colors.card}
       />
       <View
@@ -233,7 +235,8 @@ const TechnicianProfile = () => {
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
         onScroll={(event) => {
           const nextOnHeader =
-            event.nativeEvent.contentOffset.y < profileHeaderHeight - insets.top;
+            event.nativeEvent.contentOffset.y <
+            profileHeaderHeight - insets.top;
           if (nextOnHeader !== statusBarOnHeader) {
             setStatusBarOnHeader(nextOnHeader);
           }
@@ -382,7 +385,9 @@ const TechnicianProfile = () => {
                 backgroundColor: colors.card,
               }}
             >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
+              >
                 <View
                   style={{
                     width: 36,
@@ -452,7 +457,9 @@ const TechnicianProfile = () => {
             <ActionItem
               icon={<Briefcase size={18} color={colors.textSecondary} />}
               label="Service Schedule"
-              onPress={() => router.push("/(technician)/technician.calendar" as any)}
+              onPress={() =>
+                router.push("/(technician)/(tabs)/technician.calendar" as any)
+              }
             />
 
             <Divider />
@@ -500,7 +507,10 @@ const TechnicianProfile = () => {
           }}
         >
           <LogOut size={20} color="#ef4444" strokeWidth={2.5} />
-          <Text className="text-sm font-outfit-bold" style={{ color: "#ef4444" }}>
+          <Text
+            className="text-sm font-outfit-bold"
+            style={{ color: "#ef4444" }}
+          >
             Log Out Account
           </Text>
         </TouchableOpacity>
@@ -666,7 +676,8 @@ const TechnicianProfile = () => {
                             visible: true,
                             title: !formData.city
                               ? "Select Municipality / City First"
-                              : formData.city === ILOILO_CITY_NAME && !formData.district
+                              : formData.city === ILOILO_CITY_NAME &&
+                                  !formData.district
                                 ? "Select Iloilo City District First"
                                 : "Select Barangay",
                             options: barangayOptions,

@@ -1,6 +1,11 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
-import { getAnimalHealthHistory, getAnimalRecords, getAnimalTimeline } from "../services/animalRecords.service";
+import {
+  getAnimalHealthHistory,
+  getAnimalRecords,
+  getAnimalTimeline,
+} from "../services/animalRecords.service";
+import { deduplicateAnimalRecords } from "../utils/deduplicateAnimalRecords";
 
 type AnimalPagedRecordParams = {
   animalId?: string;
@@ -43,7 +48,14 @@ export function useAnimalHealthHistory(params: AnimalPagedRecordParams) {
   const { animalId, type = "All", search = "", limit = 10 } = params;
 
   return useInfiniteQuery({
-    queryKey: ["animal-records", "health-history", animalId, type, search, limit],
+    queryKey: [
+      "animal-records",
+      "health-history",
+      animalId,
+      type,
+      search,
+      limit,
+    ],
     enabled: !!animalId,
     initialPageParam: 1,
     queryFn: ({ pageParam }) =>
@@ -58,12 +70,17 @@ export function useAnimalHealthHistory(params: AnimalPagedRecordParams) {
     staleTime: 30_000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
-    select: (data) => ({
-      ...data,
-      records: data.pages.flatMap((page) => page.data),
-      total: data.pages[0]?.total || 0,
-      loaded: data.pages.reduce((count, page) => count + page.data.length, 0),
-    }),
+    select: (data) => {
+      const records = deduplicateAnimalRecords(
+        data.pages.flatMap((page) => page.data),
+      );
+      return {
+        ...data,
+        records,
+        total: data.pages[0]?.total || 0,
+        loaded: records.length,
+      };
+    },
   });
 }
 
@@ -87,11 +104,16 @@ export function useAnimalRecords(params: AnimalPagedRecordParams) {
     staleTime: 30_000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
-    select: (data) => ({
-      ...data,
-      records: data.pages.flatMap((page) => page.data),
-      total: data.pages[0]?.total || 0,
-      loaded: data.pages.reduce((count, page) => count + page.data.length, 0),
-    }),
+    select: (data) => {
+      const records = deduplicateAnimalRecords(
+        data.pages.flatMap((page) => page.data),
+      );
+      return {
+        ...data,
+        records,
+        total: data.pages[0]?.total || 0,
+        loaded: records.length,
+      };
+    },
   });
 }

@@ -13,7 +13,7 @@ export const getFarmerActivity = async (api: AxiosInstance) => {
 export const getFarmerOfficialRecords = async (
   api: AxiosInstance,
   page = 1,
-  limit = 25,
+  limit = 10,
   filters: {
     search?: string;
     type?: string;
@@ -25,9 +25,7 @@ export const getFarmerOfficialRecords = async (
       page,
       limit,
       ...(filters.search ? { search: filters.search } : {}),
-      ...(filters.type && filters.type !== "all"
-        ? { type: filters.type }
-        : {}),
+      ...(filters.type && filters.type !== "all" ? { type: filters.type } : {}),
       ...(filters.fromDate ? { fromDate: filters.fromDate } : {}),
     },
   });

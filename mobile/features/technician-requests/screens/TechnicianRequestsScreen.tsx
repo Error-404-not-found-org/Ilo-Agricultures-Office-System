@@ -7,7 +7,10 @@ import {
   ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
+import {
+  CalendarDays,
+  SlidersHorizontal,
+} from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "@/lib/theme";
@@ -15,6 +18,10 @@ import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { Text } from "@/components/ui/Text";
 import { ScreenLayout } from "@/components/ScreenLayout";
+import {
+  AppHeaderIconButton,
+  AppPageHeader,
+} from "@/components/AppPageHeader";
 import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -36,7 +43,13 @@ import {
 
 const NEAR_ME_PREFERENCE_KEY = "technician_request_board_near_me";
 
-export default function TechnicianRequestsScreen() {
+type TechnicianRequestsScreenProps = {
+  showBackButton?: boolean;
+};
+
+export default function TechnicianRequestsScreen({
+  showBackButton = true,
+}: TechnicianRequestsScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
@@ -99,6 +112,7 @@ export default function TechnicianRequestsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showBreedModal, setShowBreedModal] = useState(false);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
   const selectedItemTechId =
     selectedItem?.raw?.approvedBy?._id ||
@@ -125,16 +139,16 @@ export default function TechnicianRequestsScreen() {
 
   // Filter option arrays
   const typeOptions = [
-    { label: "All Types", value: "all" },
+    { label: "All", value: "all" },
     { label: "AI Service", value: "ai" },
-    { label: "Health Assistance", value: "health" },
-    { label: "Pregnancy Verification", value: "breeding_verification" },
+    { label: "Health", value: "health" },
+    { label: "Pregnancy Check", value: "breeding_verification" },
   ];
 
   const statusOptions = [
     { label: "All Statuses", value: "all" },
     { label: "Pending", value: "pending" },
-    { label: "Claimed — Awaiting Schedule", value: "approved" },
+    { label: "Claimed, Awaiting Schedule", value: "approved" },
     { label: "Scheduled", value: "scheduled" },
     { label: "In Progress", value: "in_progress" },
     { label: "Completed", value: "completed" },
@@ -467,320 +481,307 @@ export default function TechnicianRequestsScreen() {
 
   return (
     <ScreenLayout edges={[]}>
-      {/* Premium Header Bar */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 20,
-          paddingVertical: 14,
-          backgroundColor: isDark ? colors.card : "#fff",
-          borderBottomWidth: 1,
-          borderColor: colors.border,
-          paddingTop: insets.top + 14,
-          zIndex: 10,
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{
-            marginRight: 12,
-            padding: 8,
-            backgroundColor: isDark ? "#1e293b" : "#f8fafc",
-            borderRadius: 999,
+      <AppPageHeader
+        title="Requests"
+        showBackButton={showBackButton}
+        variant={showBackButton ? "detail" : "top-level"}
+        rightAction={
+          <AppHeaderIconButton
+            onPress={() =>
+              router.push(
+                (showBackButton
+                  ? "/(technician)/technician.calendar"
+                  : "/(technician)/(tabs)/technician.calendar") as any,
+              )
+            }
+            accessibilityLabel="Open visit schedule"
+          >
+            <CalendarDays size={19} color={colors.primary} />
+          </AppHeaderIconButton>
+        }
+      />
+
+      <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
+        {/* Requests Board List */}
+        <FlatList
+          style={{ flex: 1 }}
+          data={isLoading && !isRefetching ? [] : requests}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            paddingBottom: showBackButton ? 24 : insets.bottom + 96,
           }}
-        >
-          <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text
-            variant="black"
-            size={20}
-            style={{ color: colors.textPrimary, fontFamily: "Outfit_900Black" }}
-          >
-            Requests Board
-          </Text>
-          <Text
-            style={{
-              fontFamily: "Outfit_500Medium",
-              fontSize: 11,
-              color: colors.textSecondary,
-              marginTop: 1,
-            }}
-          >
-            Claim and manage farmer-submitted service requests
-          </Text>
-        </View>
-      </View>
-
-      {/* Main Content Feed */}
-      <View style={{ flex: 1, paddingHorizontal: 20, paddingTop: 16 }}>
-        {/* Search Input */}
-        <SearchBar
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search by farmer name or ear tag..."
-          variant="directory"
-        />
-
-        {/* Segmented Control for Assignment Filter */}
-        <View
-          style={{
-            flexDirection: "row",
-            backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9",
-            borderRadius: 12,
-            padding: 4,
-            marginBottom: 12,
-            marginTop: 12,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => setAssignment("unassigned")}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              alignItems: "center",
-              borderRadius: 8,
-              backgroundColor:
-                assignment === "unassigned"
-                  ? isDark
-                    ? "#1e293b"
-                    : "#fff"
-                  : "transparent",
-              shadowColor: assignment === "unassigned" ? "#000" : "transparent",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.1,
-              shadowRadius: 2,
-              elevation: assignment === "unassigned" ? 1 : 0,
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: "Outfit_700Bold",
-                color:
-                  assignment === "unassigned"
-                    ? colors.primary
-                    : isDark
-                      ? "#94a3b8"
-                      : "#64748b",
-                fontSize: 13,
-              }}
-            >
-              Available Requests
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setAssignment("mine")}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              alignItems: "center",
-              borderRadius: 8,
-              backgroundColor:
-                assignment === "mine"
-                  ? isDark
-                    ? "#1e293b"
-                    : "#fff"
-                  : "transparent",
-              shadowColor: assignment === "mine" ? "#000" : "transparent",
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.1,
-              shadowRadius: 2,
-              elevation: assignment === "mine" ? 1 : 0,
-            }}
-          >
-            <Text
-              style={{
-                fontFamily: "Outfit_700Bold",
-                color:
-                  assignment === "mine"
-                    ? colors.primary
-                    : isDark
-                      ? "#94a3b8"
-                      : "#64748b",
-                fontSize: 13,
-              }}
-            >
-              My Claimed Requests
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Filter Chip Bars Scroll Containers */}
-        <View style={{ marginBottom: 12, marginTop: -4 }}>
-          {/* Scrollable Filter Chips row 1: Type */}
-          <FilterChips
-            options={typeOptions}
-            value={type}
-            onChange={(val) => setType(val as any)}
-            containerStyle={{ paddingHorizontal: 0 }}
-          />
-
-          {/* Dropdown row for advanced filters (Status, Urgency) */}
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
-            <SelectDropdown
-              label="Status"
-              options={statusOptions}
-              value={status}
-              onChange={(val) => setStatus(val as any)}
-            />
-            <SelectDropdown
-              label="Urgency"
-              options={urgencyOptions}
-              value={urgency}
-              onChange={(val) => setUrgency(val as any)}
-            />
-          </View>
-
-          {/* Sort & Near Me Row */}
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 8,
-              marginTop: 8,
-              alignItems: "center",
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <SelectDropdown
-                label="Sort By"
-                options={sortOptions}
-                value={sortBy}
-                highlightSelection={false}
-                onChange={async (val) => {
-                  if (val === "distance") {
-                    await handleNearMeToggle(true);
-                  } else {
-                    if (nearLat) {
-                      await handleNearMeToggle(false);
-                    }
-                    setSortBy(val as any);
-                  }
-                }}
+          ListHeaderComponent={
+            <View style={{ paddingBottom: 4 }}>
+              <SearchBar
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search farmer or ear tag"
+                variant="directory"
               />
-            </View>
 
-            <TouchableOpacity
-              onPress={() => handleNearMeToggle(!nearLat)}
-              disabled={locationLoading}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 6,
-                backgroundColor: nearLat
-                  ? colors.primary
-                  : isDark
-                    ? "rgba(255,255,255,0.05)"
-                    : "#f3f4f6",
-                borderWidth: 1,
-                borderColor: nearLat ? colors.primary : colors.border,
-                paddingHorizontal: 12,
-                borderRadius: 12,
-                height: 42,
-              }}
-            >
-              <Text
+              {/* Segmented Control for Assignment Filter */}
+              <View
                 style={{
-                  fontFamily: "Outfit_700Bold",
-                  color: nearLat ? "#fff" : colors.textPrimary,
-                  fontSize: 12,
+                  flexDirection: "row",
+                  backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9",
+                  borderRadius: 12,
+                  padding: 4,
+                  marginBottom: 12,
+                  marginTop: 10,
                 }}
               >
-                {locationLoading
-                  ? "Acquiring..."
-                  : nearLat
-                    ? "Near Me: ON"
-                    : "Near Me"}
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <TouchableOpacity
+                  onPress={() => setAssignment("unassigned")}
+                  style={{
+                    flex: 1,
+                    minHeight: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 8,
+                    backgroundColor:
+                      assignment === "unassigned"
+                        ? isDark
+                          ? "#1e293b"
+                          : "#fff"
+                        : "transparent",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                      color:
+                        assignment === "unassigned"
+                          ? colors.primary
+                          : isDark
+                            ? "#94a3b8"
+                            : "#64748b",
+                      fontSize: 13,
+                    }}
+                  >
+                    Open Requests
+                    {assignment === "unassigned" && pagination.total > 0
+                      ? `  ${pagination.total}`
+                      : ""}
+                  </Text>
+                </TouchableOpacity>
 
-          {/* Iloilo location filters */}
-          <View
-            style={{
-              flexDirection: "row",
-              gap: 8,
-              marginTop: 8,
-              marginBottom: 12,
-            }}
-          >
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <SelectDropdown
-                label="Municipality"
-                options={municipalityOptions}
-                value={municipality}
-                onChange={(value) => {
-                  setMunicipality(value);
-                  setBarangay("");
+                <TouchableOpacity
+                  onPress={() => setAssignment("mine")}
+                  style={{
+                    flex: 1,
+                    minHeight: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 8,
+                    backgroundColor:
+                      assignment === "mine"
+                        ? isDark
+                          ? "#1e293b"
+                          : "#fff"
+                        : "transparent",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                      color:
+                        assignment === "mine"
+                          ? colors.primary
+                          : isDark
+                            ? "#94a3b8"
+                            : "#64748b",
+                      fontSize: 13,
+                    }}
+                  >
+                    My Work
+                    {assignment === "mine" && pagination.total > 0
+                      ? `  ${pagination.total}`
+                      : ""}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <FilterChips
+                options={typeOptions}
+                value={type}
+                onChange={(val) => setType(val as any)}
+                containerStyle={{ paddingHorizontal: 0, marginBottom: 8 }}
+              />
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 8,
                 }}
-                searchable
-              />
-            </View>
-            <View
-              style={{
-                flex: 1,
-                minWidth: 0,
-                opacity: municipality ? 1 : 0.5,
-              }}
-              pointerEvents={municipality ? "auto" : "none"}
-            >
-              <SelectDropdown
-                label="Barangay"
-                options={barangayOptions}
-                value={barangay}
-                onChange={setBarangay}
-                searchable
-              />
-            </View>
-          </View>
-        </View>
+              >
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 12,
+                  }}
+                >
+                  {showAdvancedFilters ? "Filter requests" : "All request types"}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowAdvancedFilters((current) => !current)}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    showAdvancedFilters
+                      ? "Hide request filters"
+                      : "Show request filters"
+                  }
+                  accessibilityState={{ expanded: showAdvancedFilters }}
+                  style={{
+                    minHeight: 44,
+                    paddingHorizontal: 12,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: showAdvancedFilters ? colors.primary : colors.border,
+                    backgroundColor: showAdvancedFilters
+                      ? isDark
+                        ? "rgba(16,185,129,0.14)"
+                        : colors.tint
+                      : colors.card,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 7,
+                  }}
+                >
+                  <SlidersHorizontal size={17} color={colors.primary} />
+                  <Text
+                    style={{
+                      color: colors.primary,
+                      fontFamily: "Outfit_700Bold",
+                      fontSize: 12,
+                    }}
+                  >
+                    Filters
+                  </Text>
+                </TouchableOpacity>
+              </View>
 
-        {/* Requests Board List */}
-        {isLoading && !isRefetching ? (
-          <AsyncState state="loading" />
-        ) : hasEmptyState ? (
-          <AsyncState
-            state="empty"
-            title="No Requests Found"
-            message="No service requests match your selected query filters."
-            onAction={handleRefresh}
-            actionLabel="Refresh Board"
-          />
-        ) : (
-          <FlatList
-            style={{ marginTop: 24 }}
-            data={requests}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <RequestListCard
-                item={item}
-                isUpdating={isUpdating}
-                onAccept={() => handleAcceptRequest(item)}
-                onDecline={() => handleDeclineRequest(item)}
-                onPress={() => handleActionPress(item)}
+              {showAdvancedFilters ? (
+                <View style={{ marginBottom: 12 }}>
+                  {/* Sort By Row */}
+                  <View style={{ marginTop: 4 }}>
+                    <SelectDropdown
+                      label="Sort By"
+                      options={sortOptions}
+                      value={sortBy}
+                      highlightSelection={false}
+                      onChange={async (val) => {
+                        if (val === "distance") {
+                          await handleNearMeToggle(true);
+                        } else {
+                          if (nearLat) {
+                            await handleNearMeToggle(false);
+                          }
+                          setSortBy(val as any);
+                        }
+                      }}
+                    />
+                  </View>
+
+                  {/* Location filters (Municipality & Barangay) */}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: 8,
+                      marginTop: 12,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <SelectDropdown
+                        label="Municipality"
+                        options={municipalityOptions}
+                        value={municipality}
+                        onChange={(value) => {
+                          setMunicipality(value);
+                          setBarangay("");
+                        }}
+                        searchable
+                        flex={1}
+                      />
+                    </View>
+                    <View
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        opacity: municipality ? 1 : 0.5,
+                      }}
+                      pointerEvents={municipality ? "auto" : "none"}
+                    >
+                      <SelectDropdown
+                        label="Barangay"
+                        options={barangayOptions}
+                        value={barangay}
+                        onChange={setBarangay}
+                        searchable
+                        flex={1}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ) : null}
+
+              {isLoading && !isRefetching ? <AsyncState state="loading" /> : null}
+            </View>
+          }
+          renderItem={({ item }) => (
+            <RequestListCard
+              item={item}
+              isUpdating={isUpdating}
+              onAccept={() => handleAcceptRequest(item)}
+              onDecline={() => handleDeclineRequest(item)}
+              onPress={() => handleActionPress(item)}
+            />
+          )}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefetching}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
+          ListEmptyComponent={
+            isLoading || isRefetching ? null : (
+              <AsyncState
+                state="empty"
+                title={
+                  assignment === "unassigned"
+                    ? "No open requests"
+                    : "No claimed requests yet"
+                }
+                message={
+                  assignment === "unassigned"
+                    ? "New farmer service requests will appear here."
+                    : "Requests you claim or accept will appear in My Work."
+                }
+                onAction={handleRefresh}
+                actionLabel="Refresh"
+                style={{ paddingVertical: 32 }}
               />
-            )}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 24 }}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefetching}
-                onRefresh={handleRefresh}
-                colors={[colors.primary]}
-                tintColor={colors.primary}
-              />
-            }
-            ListFooterComponent={
+            )
+          }
+          ListFooterComponent={
+            !isLoading && pagination.totalPages > 1 ? (
               <Pagination
                 page={page}
                 totalPages={pagination.totalPages}
                 onPrevious={() => setPage(page - 1)}
                 onNext={() => setPage(page + 1)}
               />
-            }
-          />
-        )}
+            ) : null
+          }
+        />
       </View>
     </ScreenLayout>
   );

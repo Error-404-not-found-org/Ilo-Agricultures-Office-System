@@ -12,6 +12,8 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen name="technician.dashboard" />
+      <Tabs.Screen name="technician.requests" />
+      <Tabs.Screen name="technician.calendar" />
       <Tabs.Screen name="technician.clients" />
       <Tabs.Screen name="technician.animals" />
       <Tabs.Screen name="technician.records" />

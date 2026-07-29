@@ -13,13 +13,13 @@ import {
 } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
+import { AppPageHeader } from "@/components/AppPageHeader";
+import { StatusBadge } from "@/components/shared";
 import { useTheme } from "@/lib/theme";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import {
-  ArrowLeft,
   Calendar,
   Clock,
   User,
@@ -71,18 +71,16 @@ function SkeletonBlock({
 function RequestDetailsSkeleton({
   colors,
   isDark,
-  topInset,
   onBack,
 }: {
   colors: any;
   isDark: boolean;
-  topInset: number;
   onBack: () => void;
 }) {
   const skeletonColor = isDark ? "#1f2937" : "#e8edf3";
   const cardStyle = {
     backgroundColor: colors.card,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
     padding: 16,
@@ -90,37 +88,7 @@ function RequestDetailsSkeleton({
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 20,
-          paddingTop: topInset + 10,
-          paddingBottom: 15,
-          backgroundColor: colors.card,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        }}
-      >
-        <TouchableOpacity
-          onPress={onBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-          style={{ padding: 8, marginLeft: -8 }}
-        >
-          <ArrowLeft size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text
-          style={{
-            fontFamily: "Outfit_700Bold",
-            fontSize: 18,
-            color: colors.textPrimary,
-            marginLeft: 8,
-          }}
-        >
-          Request details
-        </Text>
-      </View>
+      <AppPageHeader title="Request details" onBack={onBack} />
 
       <ScrollView
         contentContainerStyle={{
@@ -170,7 +138,6 @@ function RequestDetailsSkeleton({
 
 export default function RequestDetailsScreen() {
   const { colors, isDark } = useTheme();
-  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id, type } = useLocalSearchParams();
   const api = useApi();
@@ -269,16 +236,6 @@ export default function RequestDetailsScreen() {
     } finally {
       setUpdating(false);
     }
-  };
-
-  const getStatusColor = (status: string) => {
-    const s = status?.toLowerCase();
-    if (s === "pending") return { bg: isDark ? "rgba(245,158,11,0.14)" : "#fffbeb", text: isDark ? "#fbbf24" : "#b45309", border: isDark ? "rgba(245,158,11,0.25)" : "#fde68a" };
-    if (s === "approved" || s === "assigned" || s === "triaged") return { bg: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5", text: isDark ? "#34d399" : "#047857", border: isDark ? "rgba(16,185,129,0.25)" : "#a7f3d0" };
-    if (s === "scheduled") return { bg: isDark ? "rgba(59,130,246,0.14)" : "#eff6ff", text: isDark ? "#60a5fa" : "#2563eb", border: isDark ? "rgba(59,130,246,0.25)" : "#bfdbfe" };
-    if (s === "in-progress" || s === "in_progress") return { bg: isDark ? "rgba(168,85,247,0.14)" : "#faf5ff", text: isDark ? "#c084fc" : "#7e22ce", border: isDark ? "rgba(168,85,247,0.25)" : "#e9d5ff" };
-    if (s === "done" || s === "resolved" || s === "completed") return { bg: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5", text: isDark ? "#34d399" : "#047857", border: isDark ? "rgba(16,185,129,0.25)" : "#a7f3d0" };
-    return { bg: isDark ? "rgba(148,163,184,0.1)" : "#f1f5f9", text: colors.textSecondary, border: colors.border };
   };
 
   const formatDate = (dateString: string) => {
@@ -547,7 +504,6 @@ export default function RequestDetailsScreen() {
       <RequestDetailsSkeleton
         colors={colors}
         isDark={isDark}
-        topInset={insets.top}
         onBack={() => router.back()}
       />
     );
@@ -567,7 +523,6 @@ export default function RequestDetailsScreen() {
   }
 
   const isAI = type === "ai" || request.serviceType === "ai" || request.type === "ai" || request.sireBreed !== undefined;
-  const statusColor = getStatusColor(request.status);
   const animal = request.animalId;
   const farmer = request.farmerId;
   const technician = request.approvedBy || request.handledBy;
@@ -600,7 +555,7 @@ export default function RequestDetailsScreen() {
   const sectionCardStyle = {
     padding: 16,
     backgroundColor: colors.card,
-    borderRadius: 20,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.border,
   } as const;
@@ -610,26 +565,7 @@ export default function RequestDetailsScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={{ flex: 1, backgroundColor: colors.background }}
     >
-      {/* Top Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 20,
-          paddingTop: insets.top + 10,
-          paddingBottom: 15,
-          backgroundColor: colors.card,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        }}
-      >
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, marginLeft: -8 }}>
-          <ArrowLeft size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 18, color: colors.textPrimary, marginLeft: 8 }}>
-          Request details
-        </Text>
-      </View>
+      <AppPageHeader title="Request details" />
 
       <ScrollView
         contentContainerStyle={{
@@ -673,21 +609,12 @@ export default function RequestDetailsScreen() {
                 Submitted {formatDate(request.createdAt)}
               </Text>
             </View>
-            <View
-              style={{
-                backgroundColor: statusColor.bg,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 20,
-                borderWidth: 1,
-                borderColor: statusColor.border,
-                marginLeft: 8,
-              }}
-            >
-              <Text style={{ color: statusColor.text, fontSize: 11 }} variant="extrabold">
-                {formatServiceType(request.status)}
-              </Text>
-            </View>
+            <StatusBadge
+              label={formatServiceType(request.status)}
+              variant={request.status}
+              domain="request"
+              compact
+            />
           </View>
 
           <View

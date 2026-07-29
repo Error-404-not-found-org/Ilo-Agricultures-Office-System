@@ -4,6 +4,8 @@ import { useAuth } from "@clerk/clerk-expo";
 import { getTechnicianClients } from "../services/technicianClients.service";
 import { useClientFilters } from "./useClientFilters";
 
+export const TECHNICIAN_CLIENTS_PAGE_SIZE = 10;
+
 export function useTechnicianClients() {
   const api = useApi();
   const { isLoaded, isSignedIn } = useAuth();
@@ -11,12 +13,7 @@ export function useTechnicianClients() {
 
   const filters = useClientFilters();
 
-  const {
-    data,
-    isLoading,
-    isRefetching,
-    refetch,
-  } = useQuery({
+  const { data, isLoading, isRefetching, refetch } = useQuery({
     queryKey: [
       "technician",
       "clients",
@@ -30,7 +27,7 @@ export function useTechnicianClients() {
       getTechnicianClients(api, {
         role: "farmer",
         page: filters.page,
-        limit: 10,
+        limit: TECHNICIAN_CLIENTS_PAGE_SIZE,
         search: filters.debouncedSearch,
         city: filters.selectedMunicipality,
         barangay: filters.selectedBarangay,
@@ -58,6 +55,7 @@ export function useTechnicianClients() {
     clients,
     total,
     totalPages,
+    pageSize: TECHNICIAN_CLIENTS_PAGE_SIZE,
     isLoading,
     isRefetching,
     handleRefresh,

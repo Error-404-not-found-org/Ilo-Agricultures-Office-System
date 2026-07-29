@@ -3,5 +3,5 @@ import TechnicianRecordsScreen from "@/features/technician-records/screens/Techn
 
 export default function TechnicianRecordsRoute() {
   const { tab } = useLocalSearchParams<{ tab?: string }>();
-  return <TechnicianRecordsScreen defaultTab={tab} />;
+  return <TechnicianRecordsScreen defaultTab={tab} showBackButton={false} />;
 }

@@ -1,426 +1,245 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  TouchableWithoutFeedback,
-  StyleSheet,
-} from "react-native";
-import {
-  Home,
-  Users,
-  Plus,
-  FileText,
-  Dog,
-  X,
-  Camera,
-  Sparkles,
-  Calendar as CalendarIcon,
-  ClipboardList,
-} from "lucide-react-native";
+import React from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@clerk/clerk-expo";
+import {
+  ClipboardList,
+  FileText,
+  Home,
+  PawPrint,
+  Users,
+} from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useColorScheme } from "nativewind";
 
-const COLORS = {
-  primary: "#0f766e",
-  active: "#0d9488",
-  inactive: "#94a3b8",
-  background: "#ffffff",
-  darkBackground: "#0f172a",
-};
+import { useApi } from "@/lib/api";
+import { useTheme } from "@/lib/theme";
+import { getTechnicianRequests } from "@/features/technician-requests/services/technicianRequests.service";
 
-const BottomNavigator = ({
+const REQUEST_ROUTES = ["technician.requests", "technician.calendar"];
+
+export default function BottomNavigator({
   state,
   descriptors,
   navigation,
-}: BottomTabBarProps) => {
+}: BottomTabBarProps) {
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+
   const focusedRouteKey = state.routes[state.index].key;
   const focusedOptions = descriptors[focusedRouteKey].options;
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { colorScheme } = useColorScheme();
-
-  const isDark = colorScheme === "dark";
+  const { data: requestCountData } = useQuery({
+    queryKey: ["technician", "requests", "navigation-count"],
+    queryFn: () =>
+      getTechnicianRequests(api, {
+        assignment: "unassigned",
+        status: "pending",
+        page: 1,
+        limit: 1,
+      }),
+    enabled: Boolean(isLoaded && isSignedIn),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
 
   if ((focusedOptions.tabBarStyle as any)?.display === "none") return null;
 
-  const isFocused = (screenName: string) => {
-    const route = state.routes.find((r) => r.name === screenName);
-    return route ? state.index === state.routes.indexOf(route) : false;
-  };
+  const activeRoute = state.routes[state.index]?.name;
+  const availableCount = requestCountData?.pagination?.total || 0;
 
-  const handleModalAction = (path: string) => {
-    setModalVisible(false);
-    router.push(path as any);
+  const navigate = (screenName: string) => {
+    const route = state.routes.find((item) => item.name === screenName);
+    if (!route) return;
+
+    const event = navigation.emit({
+      type: "tabPress",
+      target: route.key,
+      canPreventDefault: true,
+    });
+
+    if (!event.defaultPrevented) navigation.navigate(screenName);
   };
 
   return (
-    <View style={styles.outerContainer}>
-      <Modal
-        animationType="fade"
-        transparent
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
+    <View
+      style={[
+        styles.container,
+        {
+          paddingBottom: Math.max(insets.bottom, 8),
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+        },
+      ]}
+    >
+      <TabItem
+        icon={Home}
+        label="Home"
+        focused={activeRoute === "technician.dashboard"}
+        onPress={() => navigate("technician.dashboard")}
+        colors={colors}
+        isDark={isDark}
+      />
+      <TabItem
+        icon={Users}
+        label="Farmers"
+        focused={activeRoute === "technician.clients"}
+        onPress={() => navigate("technician.clients")}
+        colors={colors}
+        isDark={isDark}
+      />
+      <TabItem
+        icon={ClipboardList}
+        label="Requests"
+        focused={REQUEST_ROUTES.includes(activeRoute)}
+        badge={availableCount}
+        onPress={() => navigate("technician.requests")}
+        colors={colors}
+        isDark={isDark}
+      />
+      <TabItem
+        icon={PawPrint}
+        label="Animals"
+        focused={activeRoute === "technician.animals"}
+        onPress={() => navigate("technician.animals")}
+        colors={colors}
+        isDark={isDark}
+      />
+      <TabItem
+        icon={FileText}
+        label="Records"
+        focused={activeRoute === "technician.records"}
+        onPress={() => navigate("technician.records")}
+        colors={colors}
+        isDark={isDark}
+      />
+    </View>
+  );
+}
+
+function TabItem({
+  icon: Icon,
+  label,
+  focused,
+  badge = 0,
+  onPress,
+  colors,
+  isDark,
+}: any) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.72}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: focused }}
+      style={styles.tab}
+    >
+      <View style={styles.iconSlot}>
+        <View
+          style={[
+            styles.iconCircle,
+            {
+              backgroundColor: focused
+                ? isDark
+                  ? "rgba(16,185,129,0.18)"
+                  : "rgba(0,100,59,0.10)"
+                : "transparent",
+            },
+          ]}
         >
-          <TouchableWithoutFeedback>
-            <View
-              style={[
-                styles.modalContent,
-                {
-                  backgroundColor: isDark
-                    ? COLORS.darkBackground
-                    : COLORS.background,
-                  paddingBottom: insets.bottom + 24,
-                },
-              ]}
-            >
-              <View
-                style={[
-                  styles.modalHandle,
-                  { backgroundColor: isDark ? "#334155" : "#e2e8f0" },
-                ]}
-              />
-
-              <View style={styles.modalHeader}>
-                <Text
-                  style={[
-                    styles.modalTitle,
-                    { color: isDark ? "#ffffff" : "#1e293b" },
-                  ]}
-                >
-                  Quick Actions
-                </Text>
-
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  style={[
-                    styles.closeButton,
-                    { backgroundColor: isDark ? "#1e293b" : "#f8fafc" },
-                  ]}
-                >
-                  <X size={18} color={isDark ? "#94a3b8" : "#64748b"} />
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.modalGrid}>
-                <ModalAction
-                  icon={<CalendarIcon size={24} color={COLORS.active} />}
-                  label="Visit Calendar"
-                  onPress={() =>
-                    handleModalAction("/(technician)/technician.calendar")
-                  }
-                  isDark={isDark}
-                />
-
-                <ModalAction
-                  icon={<ClipboardList size={24} color={COLORS.active} />}
-                  label="My Work Queue"
-                  onPress={() =>
-                    handleModalAction("/(technician)/technician.tasks")
-                  }
-                  isDark={isDark}
-                />
-
-                <ModalAction
-                  icon={<ClipboardList size={24} color={COLORS.active} />}
-                  label="Requests Board"
-                  onPress={() => handleModalAction("/(technician)/requests")}
-                  isDark={isDark}
-                />
-
-                <ModalAction
-                  icon={<FileText size={24} color={COLORS.active} />}
-                  label="Records & Reports"
-                  onPress={() =>
-                    handleModalAction("/(technician)/(tabs)/technician.records")
-                  }
-                  isDark={isDark}
-                />
-
-                <ModalAction
-                  icon={<Camera size={24} color={COLORS.active} />}
-                  label="Field Notes"
-                  onPress={() => handleModalAction("/(technician)/photo-notes")}
-                  isDark={isDark}
-                />
-
-                <ModalAction
-                  icon={<Sparkles size={24} color={COLORS.active} />}
-                  label="Ask Moowie"
-                  onPress={() => handleModalAction("/ask-moowie")}
-                  isDark={isDark}
-                />
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </TouchableOpacity>
-      </Modal>
-
-      <View
+          <Icon
+            size={22}
+            strokeWidth={focused ? 2.5 : 2}
+            color={focused ? colors.primary : colors.textMuted}
+          />
+        </View>
+        {badge > 0 ? (
+          <View style={[styles.badge, { borderColor: colors.card }]}>
+            <Text style={styles.badgeText}>{badge > 99 ? "99+" : badge}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.82}
         style={[
-          styles.tabContainer,
+          styles.label,
           {
-            paddingBottom: Math.max(insets.bottom, 12),
-            backgroundColor: isDark ? COLORS.darkBackground : COLORS.background,
-            borderTopColor: isDark ? "#1e293b" : "#f1f5f9",
+            color: focused ? colors.primary : colors.textMuted,
+            fontFamily: focused ? "Outfit_700Bold" : "Outfit_500Medium",
           },
         ]}
       >
-        <View style={styles.tabRow}>
-          <TabItem
-            icon={Home}
-            label="Home"
-            isFocused={isFocused("technician.dashboard")}
-            onPress={() => navigation.navigate("technician.dashboard")}
-            isDark={isDark}
-          />
-
-          <TabItem
-            icon={Users}
-            label="Farmers"
-            isFocused={isFocused("technician.clients")}
-            onPress={() => navigation.navigate("technician.clients")}
-            isDark={isDark}
-          />
-
-          <View style={styles.fabSlot}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setModalVisible(true)}
-              style={[
-                styles.fab,
-                {
-                  backgroundColor: COLORS.primary,
-                  borderColor: isDark ? COLORS.darkBackground : "#FFFFFF",
-                  shadowColor: COLORS.primary,
-                },
-              ]}
-            >
-              <Plus color="#fff" size={28} strokeWidth={3} />
-            </TouchableOpacity>
-          </View>
-          <TabItem
-            icon={Dog}
-            label="Animals"
-            isFocused={isFocused("technician.animals")}
-            onPress={() => navigation.navigate("technician.animals")}
-            isDark={isDark}
-          />
-
-          <TabItem
-            icon={ClipboardList}
-            label="Records"
-            isFocused={isFocused("technician.records")}
-            onPress={() => navigation.navigate("technician.records")}
-            isDark={isDark}
-          />
-        </View>
-      </View>
-    </View>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
-};
-
-const TabItem = ({ icon: Icon, label, isFocused, onPress, isDark }: any) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={styles.tabItem}
-    activeOpacity={0.75}
-  >
-    <View
-      style={[
-        styles.iconWrapper,
-        {
-          backgroundColor: isFocused
-            ? isDark
-              ? "rgba(16,185,129,0.15)"
-              : "rgba(0,100,59,0.08)"
-            : "transparent",
-        },
-      ]}
-    >
-      <Icon
-        color={isFocused ? COLORS.active : COLORS.inactive}
-        size={22}
-        strokeWidth={isFocused ? 2.6 : 2}
-      />
-    </View>
-
-    <Text
-      numberOfLines={1}
-      style={[
-        styles.tabLabel,
-        {
-          color: isFocused ? COLORS.active : COLORS.inactive,
-          fontFamily: isFocused ? "Outfit_800ExtraBold" : "Outfit_600SemiBold",
-        },
-      ]}
-    >
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
-
-const ModalAction = ({ icon, label, onPress, isDark }: any) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={[
-      styles.modalAction,
-      {
-        backgroundColor: isDark ? "#1e293b" : "#ffffff",
-        borderColor: isDark ? "#334155" : "#f1f5f9",
-      },
-    ]}
-    activeOpacity={0.75}
-  >
-    <View
-      style={[
-        styles.actionIcon,
-        {
-          backgroundColor: isDark ? "rgba(20,184,166,0.16)" : "#f0fdfa",
-        },
-      ]}
-    >
-      {icon}
-    </View>
-
-    <Text
-      style={[styles.actionLabel, { color: isDark ? "#e2e8f0" : "#334155" }]}
-    >
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
+}
 
 const styles = StyleSheet.create({
-  outerContainer: {
+  container: {
     position: "absolute",
+    right: 0,
     bottom: 0,
     left: 0,
-    right: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 7,
+    elevation: 12,
+    shadowColor: "#052e1d",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+  },
+  tab: {
+    flex: 1,
+    minHeight: 58,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "transparent",
   },
-  tabContainer: {
-    borderTopWidth: 1,
-    elevation: 16,
-    zIndex: 100,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 16,
-  },
-  tabRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    paddingTop: 8,
-  },
-  tabItem: {
-    flex: 1,
-    height: 62,
+  iconSlot: {
+    width: 42,
+    height: 38,
     alignItems: "center",
     justifyContent: "center",
   },
-  iconWrapper: {
+  iconCircle: {
     width: 38,
     height: 38,
     borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
     overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
   },
-  tabLabel: {
+  label: {
+    marginTop: 3,
     fontSize: 10,
-    marginTop: 2,
-  },
-  fabSlot: {
-    flex: 1,
-    height: 62,
-    alignItems: "center",
-    justifyContent: "flex-start",
-  },
-  fab: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 4,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15,23,42,0.6)",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    paddingHorizontal: 24,
-    paddingTop: 16,
-  },
-  modalHandle: {
-    width: 48,
-    height: 5,
-    borderRadius: 999,
-    alignSelf: "center",
-    marginBottom: 20,
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 22,
-    fontFamily: "Outfit_800ExtraBold",
-  },
-  closeButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  modalAction: {
-    width: "48%",
-    paddingVertical: 18,
-    paddingHorizontal: 14,
-    borderRadius: 22,
-    alignItems: "center",
-    borderWidth: 1,
-    marginBottom: 14,
-  },
-  actionIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  actionLabel: {
-    fontSize: 13,
-    fontFamily: "Outfit_700Bold",
+    lineHeight: 13,
     textAlign: "center",
   },
+  badge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#b45309",
+  },
+  badgeText: {
+    color: "#fff",
+    fontFamily: "Outfit_700Bold",
+    fontSize: 9,
+    lineHeight: 11,
+  },
 });
-
-export default BottomNavigator;

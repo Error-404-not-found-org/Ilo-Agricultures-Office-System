@@ -22,7 +22,7 @@ export function SearchBar({
   onFilterPress,
   filterActive = false,
 }: SearchBarProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const [isFocused, setIsFocused] = useState(false);
   const isDirectory = variant === "directory";
 
@@ -33,50 +33,43 @@ export function SearchBar({
 
   return (
     <View
-      style={{
-        backgroundColor: colors.card,
-        borderRadius: isDirectory ? 28 : 20,
-        paddingHorizontal: isDirectory ? 14 : 12,
-        paddingVertical: isDirectory ? 4 : 12,
-        flexDirection: "row",
-        alignItems: "center",
-        shadowColor: "#000",
-        shadowOpacity: isDark ? 0 : isDirectory ? 0.08 : 0.05,
-        shadowRadius: isDirectory ? 16 : 10,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: isDark ? 0 : isDirectory ? 4 : 3,
-        marginBottom: 16,
-        borderWidth: 1,
-        borderColor: isFocused ? colors.primary : colors.border,
-        minHeight: isDirectory ? 40 : 52,
-      }}
+      className="rounded-xl border border-gray-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900"
+      style={[
+        {
+          paddingHorizontal: 12,
+          paddingVertical: 4,
+          flexDirection: "row",
+          alignItems: "center",
+          marginBottom: 16,
+          minHeight: 48,
+        },
+        isFocused ? { borderColor: colors.primary } : null,
+      ]}
     >
       <View
         style={{
-          width: isDirectory ? 26 : 28,
-          height: isDirectory ? 26 : 28,
-          borderRadius: 13,
+          width: 24,
+          height: 24,
+          borderRadius: 12,
           backgroundColor: "transparent",
           alignItems: "center",
           justifyContent: "center",
-          marginLeft: isDirectory ? 0 : 2,
+          marginLeft: 0,
         }}
       >
-        <Search
-          size={isDirectory ? 18 : 20}
-          color={isDirectory ? colors.textPrimary : colors.textMuted}
-        />
+        <Search size={18} color={colors.textMuted} />
       </View>
       <TextInput
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         style={{
           flex: 1,
-          marginLeft: isDirectory ? 8 : 12,
-          fontFamily: "Outfit_500Medium",
+          marginLeft: 8,
+          fontFamily: "Outfit_400Regular",
           color: colors.textPrimary,
           fontSize: 14,
-          paddingVertical: 2,
+          lineHeight: 20,
+          paddingVertical: 8,
         }}
         value={value}
         onChangeText={onChangeText}
@@ -91,17 +84,13 @@ export function SearchBar({
           accessibilityRole="button"
           accessibilityLabel="Clear search"
           style={{
-            width: isDirectory ? 28 : 38,
-            height: isDirectory ? 28 : 38,
-            borderRadius: isDirectory ? 10 : 12,
-            backgroundColor: isDirectory
-              ? isDark
-                ? "rgba(148,163,184,0.08)"
-                : "#f8fafc"
-              : "transparent",
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            backgroundColor: "transparent",
             alignItems: "center",
             justifyContent: "center",
-            marginRight: isDirectory ? 0 : -6,
+            marginRight: -8,
           }}
         >
           <X size={16} color={colors.textMuted} />
@@ -114,23 +103,18 @@ export function SearchBar({
           accessibilityLabel="Show search filters"
           accessibilityState={{ selected: filterActive }}
           style={{
-            width: isDirectory ? 32 : 42,
-            height: isDirectory ? 32 : 42,
-            borderRadius: isDirectory ? 16 : 21,
-            backgroundColor: filterActive
-              ? isDark
-                ? "rgba(16,185,129,0.18)"
-                : "#dcfce7"
-              : isDark
-                ? "rgba(255,255,255,0.06)"
-                : "#f4f4f2",
+            width: 48,
+            height: 48,
+            borderRadius: 12,
+            backgroundColor: filterActive ? colors.tint : colors.surfaceSubtle,
             alignItems: "center",
             justifyContent: "center",
-            marginLeft: 6,
+            marginLeft: 4,
+            marginRight: -8,
           }}
         >
           <SlidersHorizontal
-            size={isDirectory ? 16 : 18}
+            size={18}
             color={filterActive ? colors.primary : colors.textPrimary}
           />
         </TouchableOpacity>

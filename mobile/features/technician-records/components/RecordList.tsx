@@ -1,11 +1,13 @@
 import React from "react";
-import { ScrollView, RefreshControl, View, TouchableOpacity, ActivityIndicator } from "react-native";
-import { Text } from "@/components/ui/Text";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { useTheme } from "@/lib/theme";
+import { FlatList, RefreshControl, View } from "react-native";
+import { ClipboardX } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { RecordSummaryCard } from "./RecordSummaryCard";
+
 import { AsyncState } from "@/components/shared";
+import { Button } from "@/components/ui/Button";
+import { Text } from "@/components/ui/Text";
+import { useTheme } from "@/lib/theme";
+import { RecordSummaryCard } from "./RecordSummaryCard";
 
 interface RecordListProps {
   isLoading: boolean;
@@ -30,99 +32,81 @@ export function RecordList({
   onLoadMore,
   recordsTotal,
 }: RecordListProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
-    <ScrollView
+    <FlatList
+      data={isLoading && !isRefetching ? [] : filteredRecords}
+      keyExtractor={(item, index) => `${item.type}-${item._id || index}`}
+      renderItem={({ item }) => (
+        <RecordSummaryCard item={item} onPress={() => openDetails(item)} />
+      )}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={{
-        paddingHorizontal: 20,
-        paddingBottom: insets.bottom + 100,
+        flexGrow: filteredRecords.length === 0 ? 1 : undefined,
+        paddingHorizontal: 16,
+        paddingBottom: insets.bottom + 96,
       }}
       refreshControl={
         <RefreshControl
           refreshing={isRefetching}
           onRefresh={onRefresh}
-          colors={[isDark ? colors.primary : "#059669"]}
+          colors={[colors.primary]}
+          tintColor={colors.primary}
         />
       }
-    >
-      {isLoading && !isRefetching ? (
-        <AsyncState state="loading" />
-      ) : filteredRecords.length === 0 ? (
-        <>
-          <AsyncState
-            state="empty"
-            title="No records matching search or filter"
-            icon={
-              <MaterialCommunityIcons
-                name="clipboard-text-off-outline"
-                size={32}
-                color={colors.primary}
-              />
-            }
-          />
-          {hasMoreRecords && (
-            <View style={{ alignItems: "center", paddingBottom: 16 }}>
-              <TouchableOpacity
-                onPress={onLoadMore}
-                disabled={isLoadingMore}
-                style={{ minHeight: 44, borderRadius: 14, paddingHorizontal: 18, alignItems: "center", justifyContent: "center", backgroundColor: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5" }}
-              >
-                {isLoadingMore ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 13, color: colors.primary }}>
-                    Search the next page
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </>
-      ) : (
-        <>
-          {filteredRecords.map((item, idx) => (
-            <RecordSummaryCard
-              key={`${item.type}-${item._id || idx}`}
-              item={item}
-              onPress={() => openDetails(item)}
+      ListEmptyComponent={
+        isLoading && !isRefetching ? (
+          <AsyncState state="loading" />
+        ) : (
+          <View>
+            <AsyncState
+              state="empty"
+              title="No matching records"
+              message="Adjust the search or filters to see more records."
+              icon={<ClipboardX size={24} color={colors.primary} />}
             />
-          ))}
-          <View style={{ alignItems: "center", paddingTop: 10, paddingBottom: 16 }}>
             {hasMoreRecords ? (
-              <TouchableOpacity
+              <View style={{ alignItems: "center" }}>
+                <Button
+                  label="Search the next page"
+                  variant="secondary"
+                  loading={isLoadingMore}
+                  onPress={onLoadMore}
+                />
+              </View>
+            ) : null}
+          </View>
+        )
+      }
+      ListFooterComponent={
+        filteredRecords.length > 0 ? (
+          <View
+            style={{
+              alignItems: "center",
+              paddingTop: 16,
+              paddingBottom: 16,
+            }}
+          >
+            {hasMoreRecords ? (
+              <Button
+                label="Load more records"
+                variant="secondary"
+                loading={isLoadingMore}
                 onPress={onLoadMore}
-                disabled={isLoadingMore}
-                style={{
-                  minHeight: 44,
-                  minWidth: 160,
-                  borderRadius: 14,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  paddingHorizontal: 18,
-                  backgroundColor: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5",
-                  borderWidth: 1,
-                  borderColor: isDark ? "rgba(52,211,153,0.3)" : "#a7f3d0",
-                }}
-              >
-                {isLoadingMore ? (
-                  <ActivityIndicator size="small" color={colors.primary} />
-                ) : (
-                  <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 13, color: colors.primary }}>
-                    Load more records
-                  </Text>
-                )}
-              </TouchableOpacity>
+              />
             ) : (
-              <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 11, color: colors.textMuted }}>
+              <Text
+                size={12}
+                style={{ color: colors.textSecondary }}
+              >
                 All {recordsTotal} records loaded
               </Text>
             )}
           </View>
-        </>
-      )}
-    </ScrollView>
+        ) : null
+      }
+    />
   );
 }

@@ -1,11 +1,11 @@
 import React from "react";
-import { View, TouchableOpacity, Modal } from "react-native";
-import { X, Calendar } from "lucide-react-native";
-import { Text } from "@/components/ui/Text";
+import { View, TouchableOpacity } from "react-native";
+import { Calendar } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
+import { Button } from "@/components/ui/Button";
+import { Text } from "@/components/ui/Text";
 import DateTimePicker from "@react-native-community/datetimepicker";
-
-const PRIMARY = "#00643B";
 
 interface DateRangeSelectorProps {
   visible: boolean;
@@ -37,223 +37,88 @@ export function DateRangeSelector({
   const { colors, isDark } = useTheme();
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.5)",
-          justifyContent: "flex-end",
-        }}
-      >
-        <TouchableOpacity style={{ flex: 1 }} onPress={onClose} />
-        <View
-          style={{
-            borderTopLeftRadius: 32,
-            borderTopRightRadius: 32,
-            padding: 24,
-            paddingBottom: 40,
-            backgroundColor: colors.card,
-          }}
-        >
-          <View
-            style={{
-              width: 40,
-              height: 4,
-              backgroundColor: colors.border,
-              borderRadius: 2,
-              alignSelf: "center",
-              marginBottom: 20,
-            }}
-          />
+    <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md rounded-3xl p-6">
+        <DialogHeader>
+          <DialogTitle>Filter by Date Range</DialogTitle>
+        </DialogHeader>
 
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 20,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 18,
-                fontFamily: "Outfit_900Black",
-                color: colors.textPrimary,
-              }}
-            >
-              Filter by Date Range
+        <View className="space-y-4 my-4">
+          {/* Start Date */}
+          <View>
+            <Text className="text-[10px] font-outfit-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 ml-1">
+              Start Date
             </Text>
-            <TouchableOpacity onPress={onClose}>
-              <X size={20} color={colors.textSecondary} />
+            <TouchableOpacity
+              onPress={() => setShowStartPicker(true)}
+              className="flex-row items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900"
+            >
+              <Text className="text-sm font-outfit-medium text-slate-900 dark:text-slate-100">
+                {startDate ? startDate.toLocaleDateString() : "Select start date"}
+              </Text>
+              <Calendar size={18} color={isDark ? "#34d399" : "#00643B"} />
             </TouchableOpacity>
           </View>
 
-          <View style={{ gap: 16, marginBottom: 24 }}>
-            {/* Start Date */}
-            <View>
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontFamily: "Outfit_800ExtraBold",
-                  color: colors.textSecondary,
-                  textTransform: "uppercase",
-                  marginBottom: 6,
-                  marginLeft: 2,
-                }}
-              >
-                Start Date
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowStartPicker(true)}
-                style={{
-                  backgroundColor: colors.background,
-                  borderStyle: "solid",
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  padding: 16,
-                  borderRadius: 16,
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontFamily: "Outfit_600SemiBold",
-                    color: startDate ? colors.textPrimary : colors.textMuted,
-                  }}
-                >
-                  {startDate
-                    ? startDate.toLocaleDateString()
-                    : "Select start date"}
-                </Text>
-                <Calendar size={18} color={isDark ? colors.primary : PRIMARY} />
-              </TouchableOpacity>
-            </View>
-
-            {/* End Date */}
-            <View>
-              <Text
-                style={{
-                  fontSize: 10,
-                  fontFamily: "Outfit_800ExtraBold",
-                  color: colors.textSecondary,
-                  textTransform: "uppercase",
-                  marginBottom: 6,
-                  marginLeft: 2,
-                }}
-              >
-                End Date
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowEndPicker(true)}
-                style={{
-                  backgroundColor: colors.background,
-                  borderStyle: "solid",
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  padding: 16,
-                  borderRadius: 16,
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 14,
-                    fontFamily: "Outfit_600SemiBold",
-                    color: endDate ? colors.textPrimary : colors.textMuted,
-                  }}
-                >
-                  {endDate ? endDate.toLocaleDateString() : "Select end date"}
-                </Text>
-                <Calendar size={18} color={isDark ? colors.primary : PRIMARY} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Date Picker Triggers */}
-          {showStartPicker && (
-            <DateTimePicker
-              value={startDate || new Date()}
-              mode="date"
-              display="default"
-              onChange={(e, date) => {
-                setShowStartPicker(false);
-                if (date) onSelectStart(date);
-              }}
-            />
-          )}
-
-          {showEndPicker && (
-            <DateTimePicker
-              value={endDate || new Date()}
-              mode="date"
-              display="default"
-              onChange={(e, date) => {
-                setShowEndPicker(false);
-                if (date) onSelectEnd(date);
-              }}
-            />
-          )}
-
-          <View style={{ flexDirection: "row", gap: 12 }}>
+          {/* End Date */}
+          <View>
+            <Text className="text-[10px] font-outfit-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 ml-1">
+              End Date
+            </Text>
             <TouchableOpacity
-              onPress={() => {
-                onClear();
-                onClose();
-              }}
-              style={{
-                flex: 1,
-                backgroundColor: colors.background,
-                paddingVertical: 16,
-                borderRadius: 20,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              onPress={() => setShowEndPicker(true)}
+              className="flex-row items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900"
             >
-              <Text
-                style={{
-                  color: colors.textSecondary,
-                  fontFamily: "Outfit_800ExtraBold",
-                  fontSize: 15,
-                }}
-              >
-                Clear Filters
+              <Text className="text-sm font-outfit-medium text-slate-900 dark:text-slate-100">
+                {endDate ? endDate.toLocaleDateString() : "Select end date"}
               </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={onClose}
-              style={{
-                flex: 1,
-                backgroundColor: isDark ? colors.primary : PRIMARY,
-                paddingVertical: 16,
-                borderRadius: 20,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Text
-                style={{
-                  color: "#fff",
-                  fontFamily: "Outfit_800ExtraBold",
-                  fontSize: 15,
-                }}
-              >
-                Apply Range
-              </Text>
+              <Calendar size={18} color={isDark ? "#34d399" : "#00643B"} />
             </TouchableOpacity>
           </View>
         </View>
-      </View>
-    </Modal>
+
+        {showStartPicker && (
+          <DateTimePicker
+            value={startDate || new Date()}
+            mode="date"
+            display="default"
+            onChange={(e, date) => {
+              setShowStartPicker(false);
+              if (date) onSelectStart(date);
+            }}
+          />
+        )}
+
+        {showEndPicker && (
+          <DateTimePicker
+            value={endDate || new Date()}
+            mode="date"
+            display="default"
+            onChange={(e, date) => {
+              setShowEndPicker(false);
+              if (date) onSelectEnd(date);
+            }}
+          />
+        )}
+
+        <View className="flex-row gap-3 mt-4">
+          <Button
+            variant="outline"
+            className="flex-1"
+            label="Clear Filters"
+            onPress={() => {
+              onClear();
+              onClose();
+            }}
+          />
+          <Button
+            variant="default"
+            className="flex-1"
+            label="Apply Range"
+            onPress={onClose}
+          />
+        </View>
+      </DialogContent>
+    </Dialog>
   );
 }

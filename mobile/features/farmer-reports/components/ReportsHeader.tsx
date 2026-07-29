@@ -16,13 +16,13 @@ const ReportsHeader = ({ onExport, children }: ReportsHeaderProps) => {
     <View style={{ marginHorizontal: -24, marginBottom: 24 }}>
       <AppPageHeader
         title="Records"
-        subtitle="Find recent activities and important animal records"
         rightAction={
           <TouchableOpacity
             onPress={onExport}
             accessibilityRole="button"
             accessibilityLabel="Export records"
             activeOpacity={0.8}
+            hitSlop={6}
             style={{
               flexDirection: "row",
               alignItems: "center",
@@ -33,8 +33,8 @@ const ReportsHeader = ({ onExport, children }: ReportsHeaderProps) => {
               backgroundColor: colors.primary,
             }}
           >
-            <Printer color="#fff" size={14} />
-            <Text style={{ color: "#fff", fontFamily: "Outfit_700Bold", fontSize: 11 }}>
+            <Printer color={colors.onPrimary} size={14} />
+            <Text style={{ color: colors.onPrimary, fontFamily: "Outfit_700Bold", fontSize: 11 }}>
               Export
             </Text>
           </TouchableOpacity>

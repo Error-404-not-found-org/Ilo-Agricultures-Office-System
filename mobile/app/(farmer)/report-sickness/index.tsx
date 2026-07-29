@@ -144,6 +144,7 @@ export default function ReportSickness() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [preferredDate, setPreferredDate] = useState<Date | null>(null);
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
 
   const { data: config } = useSystemConfigQuery();
   const mutation = useSubmitHealthRequestMutation();
@@ -253,6 +254,8 @@ export default function ReportSickness() {
       setSymptoms("");
       setImageUri(null);
       setImageBase64(null);
+      setPreferredDate(null);
+      setSelectedTimeSlot(null);
       router.back();
     } catch (error: any) {
       if (error?.response?.data?.code === "ACTIVE_HEALTH_CASE_EXISTS") {
@@ -312,7 +315,12 @@ export default function ReportSickness() {
       }
 
       if (!preferredDate) {
-        showSubmitError("Please select a preferred date and time slot.");
+        showSubmitError("Please select a preferred visit date.");
+        return;
+      }
+
+      if (!selectedTimeSlot) {
+        showSubmitError("Please select a preferred time slot.");
         return;
       }
 
@@ -341,27 +349,29 @@ export default function ReportSickness() {
   const onDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (event.type === "set" && selectedDate) {
-      const newDate = new Date(preferredDate || new Date());
-      newDate.setFullYear(
+      const baseDate = preferredDate ? new Date(preferredDate) : new Date(selectedDate);
+      baseDate.setFullYear(
         selectedDate.getFullYear(),
         selectedDate.getMonth(),
         selectedDate.getDate(),
       );
-      setPreferredDate(newDate);
+      setPreferredDate(baseDate);
     }
   };
 
   const handleSelectTime = (timeStr: string) => {
     setTimeModalVisible(false);
+    setSelectedTimeSlot(timeStr);
+
     const [time, modifier] = timeStr.split(" ");
     let [hours, minutes] = time.split(":").map(Number);
 
     if (modifier === "PM" && hours < 12) hours += 12;
     if (modifier === "AM" && hours === 12) hours = 0;
 
-    const newDate = new Date(preferredDate || new Date());
-    newDate.setHours(hours, minutes, 0, 0);
-    setPreferredDate(newDate);
+    const baseDate = preferredDate ? new Date(preferredDate) : new Date();
+    baseDate.setHours(hours, minutes, 0, 0);
+    setPreferredDate(baseDate);
   };
 
   const selectedType = REQUEST_TYPES.find((t) => t.value === requestType);
@@ -855,15 +865,10 @@ export default function ReportSickness() {
                   className="text-sm font-bold"
                   style={[
                     requestFormStyles.fieldValue,
-                    { color: preferredDate ? colors.textPrimary : colors.textMuted },
+                    { color: selectedTimeSlot ? colors.textPrimary : colors.textMuted },
                   ]}
                 >
-                  {preferredDate
-                    ? preferredDate.toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
-                    : "Select time"}
+                  {selectedTimeSlot || "Select time"}
                 </Text>
               </View>
               <Clock size={16} color={colors.textMuted} />
@@ -1229,12 +1234,7 @@ export default function ReportSickness() {
 
             <View className="flex-row flex-wrap gap-3 justify-between">
               {TIME_SLOTS.map((slot) => {
-                const isSelected = preferredDate
-                  ? preferredDate.toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }) === slot.replace(/^0/, "")
-                  : false;
+                const isSelected = selectedTimeSlot === slot;
                 return (
                   <TouchableOpacity
                     key={slot}

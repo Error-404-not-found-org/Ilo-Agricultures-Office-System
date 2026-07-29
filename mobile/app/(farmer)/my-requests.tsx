@@ -33,7 +33,13 @@ import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
 
-export default function MyRequests() {
+type MyRequestsProps = {
+  showBackButton?: boolean;
+};
+
+export default function MyRequests({
+  showBackButton = true,
+}: MyRequestsProps) {
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
@@ -267,7 +273,11 @@ export default function MyRequests() {
 
   return (
     <ScreenLayout>
-      <FarmerRequestHeader title="Service Requests" includeSafeTop={false} />
+      <FarmerRequestHeader
+        title="Service Requests"
+        includeSafeTop={false}
+        showBackButton={showBackButton}
+      />
 
       <ScrollView
         className="flex-1"

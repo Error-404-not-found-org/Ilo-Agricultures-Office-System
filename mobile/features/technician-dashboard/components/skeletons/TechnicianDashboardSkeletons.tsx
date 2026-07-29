@@ -1,18 +1,20 @@
 import React from "react";
 import { View } from "react-native";
-import { Card } from "@/components/ui/Card";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "../dashboardCardStyles";
 
 export function TechnicianRequestSkeleton({ count = 3 }: { count?: number }) {
   return (
     <View>
       {Array.from({ length: count }).map((_, index) => (
-        <Card
+        <View
           key={index}
+          className={TECHNICIAN_DASHBOARD_CARD_CLASSNAME}
           style={{
             marginBottom: 12,
             flexDirection: "row",
             alignItems: "center",
+            padding: 16,
           }}
         >
           <Skeleton shape="circle" height={52} />
@@ -21,7 +23,7 @@ export function TechnicianRequestSkeleton({ count = 3 }: { count?: number }) {
             <Skeleton width="70%" height={12} style={{ marginTop: 8 }} />
           </View>
           <Skeleton width={80} height={32} radius={12} />
-        </Card>
+        </View>
       ))}
     </View>
   );
@@ -31,8 +33,9 @@ export function TechnicianRouteSkeleton({ count = 3 }: { count?: number }) {
   return (
     <View>
       {Array.from({ length: count }).map((_, index) => (
-        <Card
+        <View
           key={index}
+          className={TECHNICIAN_DASHBOARD_CARD_CLASSNAME}
           style={{
             marginBottom: 12,
             flexDirection: "row",
@@ -49,7 +52,7 @@ export function TechnicianRouteSkeleton({ count = 3 }: { count?: number }) {
             <Skeleton width="76%" height={12} style={{ marginTop: 8 }} />
           </View>
           <Skeleton width={54} height={24} radius={12} />
-        </Card>
+        </View>
       ))}
     </View>
   );

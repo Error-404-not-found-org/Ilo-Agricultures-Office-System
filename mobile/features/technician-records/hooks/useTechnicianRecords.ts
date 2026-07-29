@@ -2,7 +2,13 @@ import { useState, useMemo } from "react";
 import { useTechnicianRecords as useQueries } from "@/features/technician/hooks/useTechnicianRecords";
 import { getDisplayDate, handleExportCSV } from "../utils/ledgerExport";
 
-export type FilterType = "All" | "AI" | "Pregnancy" | "Calving" | "Health" | "Notes";
+export type FilterType =
+  | "All"
+  | "AI"
+  | "Pregnancy"
+  | "Calving"
+  | "Health"
+  | "Notes";
 
 export function useTechnicianRecords() {
   const queryData = useQueries();
@@ -25,24 +31,38 @@ export function useTechnicianRecords() {
 
   const allRecords = useMemo(() => {
     const officialRecords =
-      queryData.officialRecordsQuery.data?.pages.flatMap((page) => page.data || []) || [];
-    return officialRecords.map((record: any) => ({
-      ...(record.source || {}),
-      ...record,
-      _id: record.id,
-      type:
-        record.recordKind === "medical_record"
-          ? "health-request"
-          : record.recordKind,
-      recordCategory: record.category,
-    })).sort(
-      (a: any, b: any) =>
-        new Date(getDisplayDate(b) || 0).getTime() -
-        new Date(getDisplayDate(a) || 0).getTime()
-    );
-  }, [
-    queryData.officialRecordsQuery.data?.pages,
-  ]);
+      queryData.officialRecordsQuery.data?.pages.flatMap(
+        (page) => page.data || [],
+      ) || [];
+    const uniqueRecords = new Map<string, any>();
+
+    officialRecords.forEach((record: any) => {
+      const id = String(record.id || record._id || "");
+      const kind = String(record.recordKind || record.type || "record");
+      const key = id
+        ? `${kind}:${id}`
+        : `${kind}:${record.recordDate || record.createdAt || uniqueRecords.size}`;
+
+      if (!uniqueRecords.has(key)) uniqueRecords.set(key, record);
+    });
+
+    return Array.from(uniqueRecords.values())
+      .map((record: any) => ({
+        ...(record.source || {}),
+        ...record,
+        _id: record.id,
+        type:
+          record.recordKind === "medical_record"
+            ? "health-request"
+            : record.recordKind,
+        recordCategory: record.category,
+      }))
+      .sort(
+        (a: any, b: any) =>
+          new Date(getDisplayDate(b) || 0).getTime() -
+          new Date(getDisplayDate(a) || 0).getTime(),
+      );
+  }, [queryData.officialRecordsQuery.data?.pages]);
 
   const recordsTotal =
     queryData.officialRecordsQuery.data?.pages[0]?.total || allRecords.length;
@@ -56,7 +76,8 @@ export function useTechnicianRecords() {
           (selectedFilter === "Pregnancy" && item.type === "pregnancy") ||
           (selectedFilter === "Calving" && item.type === "calving") ||
           (selectedFilter === "Health" && item.recordCategory === "Health") ||
-          (selectedFilter === "Notes" && item.recordCategory === "General Note");
+          (selectedFilter === "Notes" &&
+            item.recordCategory === "General Note");
         if (!matchesType) return false;
       }
 

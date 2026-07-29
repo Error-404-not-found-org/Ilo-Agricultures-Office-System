@@ -1,5 +1,6 @@
 import React from "react";
-import { ScrollView, TouchableOpacity, Text, ViewStyle } from "react-native";
+import { ScrollView, TouchableOpacity, ViewStyle } from "react-native";
+import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
 
 export interface FilterChipOption {
@@ -26,9 +27,11 @@ export function FilterChips({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={{ flexGrow: 0 }}
       contentContainerStyle={[
         {
           flexDirection: "row",
+          alignItems: "center",
           gap: 8,
           paddingHorizontal: 20,
         },
@@ -47,13 +50,12 @@ export function FilterChips({
             accessibilityRole="button"
             accessibilityState={{ selected: isActive }}
             accessibilityLabel={`Filter by ${optionLabel}`}
+            className="rounded-full border border-gray-100 bg-white dark:border-slate-800 dark:bg-slate-900"
             style={{
-              backgroundColor: isActive ? colors.primary : colors.card,
-              paddingHorizontal: 16,
-              paddingVertical: 9,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: isActive ? colors.primary : colors.border,
+              backgroundColor: isActive ? colors.tint : undefined,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 999,
               minHeight: 44,
               maxWidth: 160,
               alignItems: "center",
@@ -61,12 +63,11 @@ export function FilterChips({
             }}
           >
             <Text
+              textRole="label"
               numberOfLines={1}
               ellipsizeMode="tail"
               style={{
-                color: isActive ? "#fff" : colors.textSecondary,
-                fontFamily: "Outfit_700Bold",
-                fontSize: 12,
+                color: isActive ? colors.primary : colors.textSecondary,
                 textAlign: "center",
               }}
             >

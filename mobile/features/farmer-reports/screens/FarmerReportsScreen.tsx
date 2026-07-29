@@ -1,13 +1,31 @@
 import React from "react";
-import { View, FlatList, RefreshControl, ActivityIndicator, Text, TouchableOpacity, StatusBar } from "react-native";
+import {
+  View,
+  FlatList,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+  Text,
+  TouchableOpacity,
+  StatusBar,
+} from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFarmerReports } from "../hooks/useFarmerReports";
 import ReportsHeader from "../components/ReportsHeader";
-import ReportsBentoGrid from "../components/ReportsBentoGrid";
-import MonthlySummaryCard from "../components/MonthlySummaryCard";
-import RecordFilters from "../components/RecordFilters";
 import MilestoneCard from "../components/MilestoneCard";
 import ActivityCard from "../components/ActivityCard";
+import type { ActivityFeedItem } from "../types/farmerReports.types";
+
+const RECORD_TYPE_FILTERS: {
+  label: string;
+  value: "all" | ActivityFeedItem["type"];
+}[] = [
+  { label: "All", value: "all" },
+  { label: "AI services", value: "ai" },
+  { label: "Health", value: "health" },
+  { label: "Pregnancy", value: "pregnancy" },
+  { label: "Calving", value: "calving" },
+];
 
 export const FarmerReportsScreen = () => {
   const {
@@ -15,82 +33,86 @@ export const FarmerReportsScreen = () => {
     isDark,
     router,
     activeBento,
-    setActiveBento,
     milestones,
     records,
-    recordStats,
     isLoadingMilestones,
     isLoadingRecords,
-    isLoadingMoreRecords,
-    hasMoreRecords,
+    isChangingRecordsPage,
+    recordsPage,
+    recordsTotalPages,
     recordsTotal,
     isRefreshing,
-    recordSearch,
-    setRecordSearch,
     recordType,
     setRecordType,
-    recordPeriod,
-    setRecordPeriod,
-    resetFilters,
     filteredRecords,
     onRefresh,
-    loadMoreRecords,
+    goToRecordsPage,
     handleExportPDF,
   } = useFarmerReports();
+  const recordsListRef = React.useRef<FlatList<ActivityFeedItem>>(null);
+
+  const handleRecordsPageChange = async (page: number) => {
+    await goToRecordsPage(page);
+    recordsListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  };
 
   const renderHeader = () => {
+    const primaryColor = isDark ? colors.primary : "#00643B";
+
     return (
       <View style={{ paddingTop: 0 }}>
         <ReportsHeader onExport={handleExportPDF} />
-
-        <MonthlySummaryCard totalCount={recordStats.total} />
-
-        <ReportsBentoGrid
-          activeBento={activeBento}
-          onBentoPress={(bento, recordType) => {
-            setActiveBento(bento);
-            setRecordType(recordType);
-          }}
-          recordStats={recordStats}
-          milestonesCount={milestones.length}
-        />
-
-        <View style={{ marginBottom: 14 }}>
-          <Text
-            style={{
-              fontSize: 20,
-              fontFamily: "Outfit_800ExtraBold",
-              color: colors.textPrimary,
+        {activeBento !== "pregnancy" ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginHorizontal: -24, marginBottom: 20 }}
+            contentContainerStyle={{
+              paddingHorizontal: 24,
+              paddingRight: 32,
+              gap: 8,
             }}
           >
-            Find a record
-          </Text>
-          <Text
-            style={{
-              fontSize: 13,
-              lineHeight: 18,
-              fontFamily: "Outfit_500Medium",
-              color: colors.textSecondary,
-              marginTop: 3,
-            }}
-          >
-            Search by animal or narrow the list by date.
-          </Text>
-        </View>
+            {RECORD_TYPE_FILTERS.map((filter) => {
+              const selected = recordType === filter.value;
 
-        {activeBento !== "pregnancy" && (
-          <RecordFilters
-            recordSearch={recordSearch}
-            setRecordSearch={setRecordSearch}
-            recordPeriod={recordPeriod}
-            setRecordPeriod={setRecordPeriod}
-          />
-        )}
-
+              return (
+                <TouchableOpacity
+                  key={filter.value}
+                  onPress={() => setRecordType(filter.value)}
+                  activeOpacity={0.8}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`Filter records by ${filter.label}`}
+                  style={{
+                    minHeight: 40,
+                    justifyContent: "center",
+                    paddingHorizontal: 16,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: selected ? primaryColor : colors.border,
+                    backgroundColor: selected ? primaryColor : colors.card,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: selected ? "#fff" : colors.textSecondary,
+                      fontFamily: selected
+                        ? "Outfit_700Bold"
+                        : "Outfit_600SemiBold",
+                      fontSize: 12,
+                    }}
+                  >
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : null}
         <View
           style={{
             flexDirection: "row",
-            justifyContent: "space-between",
             alignItems: "center",
             marginBottom: 16,
           }}
@@ -104,36 +126,8 @@ export const FarmerReportsScreen = () => {
           >
             {activeBento === "pregnancy"
               ? "Breeding cycles"
-              : `${filteredRecords.length} ${filteredRecords.length === 1 ? "record" : "records"} found`}
+              : `${recordsTotal} ${recordsTotal === 1 ? "record" : "records"} found`}
           </Text>
-          {(activeBento !== "all" ||
-            recordType !== "all" ||
-            recordPeriod !== "all" ||
-            recordSearch.trim()) && (
-            <TouchableOpacity
-              onPress={resetFilters}
-              accessibilityRole="button"
-              accessibilityLabel="Reset all record filters"
-              style={{
-                minHeight: 40,
-                paddingVertical: 9,
-                paddingHorizontal: 14,
-                backgroundColor: isDark ? "rgba(0,100,59,0.15)" : "#ecfdf5",
-                borderRadius: 12,
-                justifyContent: "center",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 11,
-                  fontFamily: "Outfit_700Bold",
-                  color: isDark ? colors.primary : "#00643B",
-                }}
-              >
-                Reset filters
-              </Text>
-            </TouchableOpacity>
-          )}
         </View>
       </View>
     );
@@ -141,7 +135,10 @@ export const FarmerReportsScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? colors.card : "#fff"} />
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={isDark ? colors.card : "#fff"}
+      />
 
       <View style={{ flex: 1 }}>
         {activeBento === "pregnancy" ? (
@@ -218,6 +215,7 @@ export const FarmerReportsScreen = () => {
           />
         ) : (
           <FlatList
+            ref={recordsListRef}
             data={isLoadingRecords ? [] : filteredRecords}
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
@@ -293,43 +291,114 @@ export const FarmerReportsScreen = () => {
             }
             ListFooterComponent={
               records.length > 0 ? (
-                <View style={{ alignItems: "center", paddingTop: 14, paddingBottom: 10 }}>
-                  {hasMoreRecords ? (
-                    <TouchableOpacity
-                      onPress={loadMoreRecords}
-                      disabled={isLoadingMoreRecords}
-                      style={{
-                        minWidth: 150,
-                        minHeight: 44,
-                        borderRadius: 14,
-                        paddingHorizontal: 18,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: isDark ? "rgba(16,185,129,0.14)" : "#ecfdf5",
-                        borderWidth: 1,
-                        borderColor: isDark ? "rgba(52,211,153,0.3)" : "#a7f3d0",
-                      }}
-                    >
-                      {isLoadingMoreRecords ? (
-                        <ActivityIndicator size="small" color={isDark ? colors.primary : "#00643B"} />
-                      ) : (
-                        <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 13, color: isDark ? colors.primary : "#00643B" }}>
-                          Load more records
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingTop: 16,
+                    paddingBottom: 12,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={() => handleRecordsPageChange(recordsPage - 1)}
+                    disabled={recordsPage === 1 || isChangingRecordsPage}
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous records page"
+                    accessibilityState={{
+                      disabled: recordsPage === 1 || isChangingRecordsPage,
+                    }}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      opacity:
+                        recordsPage === 1 || isChangingRecordsPage ? 0.4 : 1,
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name="chevron-left"
+                      size={22}
+                      color={colors.textPrimary}
+                    />
+                  </TouchableOpacity>
+
+                  <View style={{ minWidth: 112, alignItems: "center" }}>
+                    {isChangingRecordsPage ? (
+                      <ActivityIndicator
+                        size="small"
+                        color={isDark ? colors.primary : "#00643B"}
+                      />
+                    ) : (
+                      <>
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 13,
+                            color: colors.textPrimary,
+                          }}
+                        >
+                          Page {recordsPage} of {recordsTotalPages}
                         </Text>
-                      )}
-                    </TouchableOpacity>
-                  ) : (
-                    <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 11, color: colors.textMuted }}>
-                      All {recordsTotal} records loaded
-                    </Text>
-                  )}
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_500Medium",
+                            fontSize: 11,
+                            color: colors.textSecondary,
+                            marginTop: 2,
+                          }}
+                        >
+                          10 records per page
+                        </Text>
+                      </>
+                    )}
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => handleRecordsPageChange(recordsPage + 1)}
+                    disabled={
+                      recordsPage === recordsTotalPages || isChangingRecordsPage
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="Next records page"
+                    accessibilityState={{
+                      disabled:
+                        recordsPage === recordsTotalPages ||
+                        isChangingRecordsPage,
+                    }}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      opacity:
+                        recordsPage === recordsTotalPages ||
+                        isChangingRecordsPage
+                          ? 0.4
+                          : 1,
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name="chevron-right"
+                      size={22}
+                      color={colors.textPrimary}
+                    />
+                  </TouchableOpacity>
                 </View>
               ) : null
             }
           />
         )}
       </View>
-
     </View>
   );
 };

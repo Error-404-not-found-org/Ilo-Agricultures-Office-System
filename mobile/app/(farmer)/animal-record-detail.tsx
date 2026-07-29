@@ -213,7 +213,6 @@ export default function AnimalRecordDetailScreen() {
       <FarmerScreen scroll={false}>
         <AppPageHeader
           title="Record Detail"
-          subtitle="Service information and recorded observations"
         />
         <View style={{ margin: 20, padding: 20, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -295,7 +294,6 @@ export default function AnimalRecordDetailScreen() {
     <FarmerScreen scroll={false}>
       <AppPageHeader
         title={foundRecord.title || "Record Detail"}
-        subtitle="Service information and recorded observations"
       />
 
       <ScrollView

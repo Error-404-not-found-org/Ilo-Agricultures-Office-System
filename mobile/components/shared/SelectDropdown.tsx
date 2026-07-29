@@ -18,25 +18,39 @@ interface SelectDropdownProps {
   searchable?: boolean;
   variant?: "default" | "pill";
   highlightSelection?: boolean;
+  error?: string;
+  required?: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+  onPress?: () => void;
 }
 
 export function SelectDropdown({
   label,
-  options,
+  options = [],
   value,
   onChange,
-  flex = 1,
+  flex,
   searchable = false,
   variant = "default",
   highlightSelection = true,
+  error,
+  required = false,
+  disabled = false,
+  placeholder,
+  onPress,
 }: SelectDropdownProps) {
   const { colors, isDark } = useTheme();
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
-  const selectedOption = options.find((opt) => opt.value === value) || options[0];
+  const selectedOption = options.find((opt) => opt.value === value);
 
   const handleOpen = () => {
+    if (onPress) {
+      onPress();
+      return;
+    }
     setSearchQuery("");
     setModalVisible(true);
   };
@@ -57,12 +71,30 @@ export function SelectDropdown({
   const isHighlighted = isSelected && highlightSelection;
   const isPill = variant === "pill";
 
+  const displayValue = selectedOption ? selectedOption.label : (placeholder || label);
+
   return (
-    <View style={{ flex }}>
+    <View style={{ flex, width: flex ? "100%" : undefined, minWidth: 0 }}>
+      {label && variant !== "pill" && (
+        <Text
+          style={{
+            color: colors.textSecondary,
+            fontFamily: "Outfit_700Bold",
+            fontSize: 13,
+            marginBottom: 8,
+          }}
+        >
+          {label}
+          {required ? <Text style={{ color: colors.error }}> *</Text> : null}
+        </Text>
+      )}
       <TouchableOpacity
         onPress={handleOpen}
+        disabled={disabled}
         activeOpacity={0.7}
         style={{
+          width: "100%",
+          minWidth: 0,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
@@ -73,12 +105,13 @@ export function SelectDropdown({
                 ? "rgba(255,255,255,0.07)"
                 : "#f1f2ef"
               : colors.card,
-          borderWidth: isPill ? 0 : 1.5,
-          borderColor: isHighlighted ? colors.primary : colors.border,
-          borderRadius: isPill ? 999 : 12,
-          paddingHorizontal: isPill ? 16 : 12,
-          paddingVertical: isPill ? 10 : 8,
-          minHeight: isPill ? 44 : 38,
+          borderWidth: error ? 2 : (isPill ? 0 : 1.5),
+          borderColor: error ? colors.error : (isHighlighted ? colors.primary : colors.border),
+          borderRadius: isPill ? 999 : 14,
+          paddingHorizontal: isPill ? 14 : 12,
+          paddingVertical: isPill ? 10 : 12,
+          minHeight: isPill ? 44 : 52,
+          opacity: disabled ? 0.5 : 1,
           shadowColor: isHighlighted ? colors.primary : "#000",
           shadowOffset: { width: 0, height: 2 },
           shadowOpacity: isHighlighted ? 0.15 : 0,
@@ -88,20 +121,38 @@ export function SelectDropdown({
       >
         <Text
           numberOfLines={1}
+          ellipsizeMode="tail"
           style={{
-            fontFamily: "Outfit_700Bold",
-            fontSize: isPill ? 12 : 11,
-            color: isHighlighted ? colors.primary : colors.textSecondary,
+            flex: 1,
+            flexShrink: 1,
+            fontFamily: "Outfit_500Medium",
+            fontSize: isPill ? 12 : 13,
+            color: selectedOption
+              ? (isHighlighted ? colors.primary : colors.textPrimary)
+              : colors.textMuted,
           }}
         >
-          {isSelected ? selectedOption.label : label}
+          {displayValue}
         </Text>
         <ChevronDown
-          size={12}
+          size={isPill ? 14 : 16}
           color={isHighlighted ? colors.primary : colors.textMuted}
-          style={{ marginLeft: 4 }}
+          style={{ marginLeft: 4, flexShrink: 0 }}
         />
       </TouchableOpacity>
+      {error ? (
+        <Text
+          style={{
+            color: colors.error,
+            fontFamily: "Outfit_600SemiBold",
+            fontSize: 12,
+            marginTop: 6,
+            marginLeft: 2,
+          }}
+        >
+          {error}
+        </Text>
+      ) : null}
 
       <Modal
         animationType="fade"

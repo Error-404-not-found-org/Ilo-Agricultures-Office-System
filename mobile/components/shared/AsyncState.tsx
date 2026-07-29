@@ -1,16 +1,19 @@
 import React from "react";
-import { Text, TouchableOpacity, View } from "react-native";
+import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { AlertCircle, Inbox, WifiOff } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
+import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 
-interface AsyncStateProps {
+export interface AsyncStateProps {
   state: "loading" | "empty" | "error" | "offline";
   title?: string;
   message?: string;
   actionLabel?: string;
   onAction?: () => void;
-  icon?: any;
+  icon?: React.ReactNode;
+  skeletonCount?: number;
+  style?: StyleProp<ViewStyle>;
 }
 
 export function AsyncState({
@@ -20,28 +23,22 @@ export function AsyncState({
   actionLabel = "Try again",
   onAction,
   icon: CustomIcon,
+  skeletonCount = 3,
+  style,
 }: AsyncStateProps) {
   const { colors } = useTheme();
 
   if (state === "loading") {
     return (
       <View
-        style={{
-          paddingVertical: 24,
-          gap: 12,
-        }}
+        style={[{ paddingVertical: 12, gap: 12 }, style]}
         accessibilityLabel="Loading"
+        accessibilityRole="progressbar"
       >
-        {[0, 1, 2].map((item) => (
+        {Array.from({ length: skeletonCount }, (_, item) => (
           <View
             key={item}
-            style={{
-              padding: 16,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: colors.border,
-              backgroundColor: colors.card,
-            }}
+            className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
               <Skeleton shape="circle" height={40} />
@@ -60,13 +57,14 @@ export function AsyncState({
 
   const FallbackIcon =
     state === "error" ? AlertCircle : state === "offline" ? WifiOff : Inbox;
-  const renderIcon = () => {
-    if (CustomIcon) return CustomIcon;
-    return <FallbackIcon size={22} color={colors.primary} />;
-  };
 
   return (
-    <View style={{ paddingVertical: 40, paddingHorizontal: 24, alignItems: "center" }}>
+    <View
+      style={[
+        { paddingVertical: 40, paddingHorizontal: 24, alignItems: "center" },
+        style,
+      ]}
+    >
       <View
         style={{
           width: 48,
@@ -77,7 +75,7 @@ export function AsyncState({
           backgroundColor: colors.tint,
         }}
       >
-        {renderIcon()}
+        {CustomIcon || <FallbackIcon size={22} color={colors.primary} />}
       </View>
       <Text
         style={{
@@ -85,7 +83,8 @@ export function AsyncState({
           textAlign: "center",
           color: colors.textPrimary,
           fontFamily: "Outfit_700Bold",
-          fontSize: 15,
+          fontSize: 18,
+          lineHeight: 24,
         }}
       >
         {title ||
@@ -101,41 +100,28 @@ export function AsyncState({
             marginTop: 4,
             textAlign: "center",
             color: colors.textSecondary,
-            fontFamily: "Outfit_500Medium",
-            fontSize: 12,
-            lineHeight: 18,
+            fontFamily: "Outfit_400Regular",
+            fontSize: 14,
+            lineHeight: 20,
+            maxWidth: 480,
           }}
         >
           {message}
         </Text>
       ) : null}
       {onAction ? (
-        <TouchableOpacity
+        <Button
+          label={actionLabel}
           onPress={onAction}
-          accessibilityRole="button"
-          accessibilityLabel={actionLabel}
-          style={{
-            marginTop: 16,
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            minHeight: 44,
-            borderRadius: 8,
-            backgroundColor: colors.primary,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <Text
-            style={{
-              color: "#fff",
-              fontFamily: "Outfit_700Bold",
-              fontSize: 12,
-            }}
-          >
-            {actionLabel}
-          </Text>
-        </TouchableOpacity>
+          className="mt-4 px-5"
+        />
       ) : null}
     </View>
   );
+}
+
+export type EmptyStateProps = Omit<AsyncStateProps, "state">;
+
+export function EmptyState(props: EmptyStateProps) {
+  return <AsyncState {...props} state="empty" />;
 }

@@ -44,7 +44,7 @@ import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { TimelineList } from "@/features/farmer-ui/components";
 import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
-import { SelectDropdown } from "@/components/shared";
+import { AsyncState, SelectDropdown } from "@/components/shared";
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { ReproductionNextActionCard } from "@/components/ReproductionNextActionCard";
 import {
@@ -108,6 +108,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
     isLoading: loadingAnimal,
     isError: isErrorAnimal,
     error: animalError,
+    refetch: refetchAnimal,
   } = useAnimalDetailsQuery(id);
   const { data: medicalRecords = [], isLoading: loadingMedical } =
     useAnimalMedicalRecordsQuery(id);
@@ -119,15 +120,21 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
     fetchNextPage: fetchNextTimelinePage,
     hasNextPage: hasNextTimelinePage,
     isFetchingNextPage: isFetchingNextTimelinePage,
-  } = useAnimalTimeline({ animalId: id, type: timelineFilter });
+  } = useAnimalTimeline({
+    animalId: activeTab === "Timeline" ? id : undefined,
+    type: timelineFilter,
+  });
 
   const {
     data: animalRecordsData,
     isLoading: loadingAnimalRecords,
     fetchNextPage: fetchNextRecordsPage,
     hasNextPage: hasNextRecordsPage,
-    isFetchingNextPage: isFetchingNextRecordsPage,
-  } = useAnimalRecords({ animalId: id, type: medicalFilter });
+    isFetchingNextPage: isFetchingNextRecordsPage
+  } = useAnimalRecords({
+    animalId: activeTab === "Medical" ? id : undefined,
+    type: medicalFilter,
+  });
   const displayRecord = selectedRecord
     ? {
         type:
@@ -255,7 +262,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
           };
         case "in-progress":
           return {
-            text: "In-Progress",
+            text: "In progress",
             bg: isDark ? "rgba(59, 130, 246, 0.15)" : "#eff6ff",
             color: isDark ? "#60a5fa" : "#1d4ed8",
           };
@@ -295,7 +302,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
       };
     } else if (isFailed) {
       return {
-        text: "Empty",
+        text: "Not pregnant",
         bg: isDark ? "rgba(239, 68, 68, 0.15)" : "#fef2f2",
         color: colors.error,
       };
@@ -341,64 +348,80 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   const handleConfirmDelete = async () => {
     try {
       await deleteAnimalMutation.mutateAsync(id);
-      toast.success("Animal deleted successfully");
+      toast.success("Animal profile deleted.");
       router.replace("/(farmer)/(tabs)/farmer.records");
     } catch (error: any) {
       console.error("Delete Error:", error);
-      toast.error(error.response?.data?.message || "Failed to delete animal");
+      toast.error(
+        error.response?.data?.message ||
+          "We couldn't delete this animal profile. Please try again.",
+      );
     }
   };
 
   if (loadingAnimal && !animal) {
-    return <AnimalProfileSkeleton />;
+    return (
+      <AnimalProfileSkeleton
+        onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
+      />
+    );
   }
 
   if (isErrorAnimal || !animal) {
-    // Check if error is 404
     const is404 = (animalError as any)?.response?.status === 404;
     return (
       <View
-        className="flex-1 items-center justify-center px-8"
+        className="flex-1"
         style={{ backgroundColor: colors.background }}
       >
-        <MaterialCommunityIcons
-          name="cow-off"
-          size={64}
-          color={colors.textMuted}
+        <AppPageHeader
+          title="Animal details"
+          onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
         />
-        <Text
-          style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary }}
-          className="text-lg mt-4 text-center"
-        >
-          {is404 ? "This animal record has been removed." : "Animal Not Found"}
-        </Text>
-        <TouchableOpacity
-          onPress={() => safeBack()}
-          className="mt-6 px-10 py-3.5 rounded-full shadow-lg"
-          style={{ backgroundColor: primaryColor }}
-        >
-          <Text style={{ fontFamily: "Outfit_700Bold" }} className="text-white">
-            Go Back
-          </Text>
-        </TouchableOpacity>
+        <View className="flex-1 items-center justify-center">
+          <AsyncState
+            state="error"
+            title={is404 ? "Animal profile removed" : "Animal profile unavailable"}
+            message={
+              is404
+                ? "This animal is no longer available in your active records."
+                : "We couldn't load this animal profile. Check your connection and try again."
+            }
+            actionLabel={is404 ? "Back to my animals" : "Try again"}
+            onAction={
+              is404
+                ? () => safeBack("/(farmer)/(tabs)/farmer.records")
+                : () => {
+                    void refetchAnimal();
+                  }
+            }
+            icon={
+              <MaterialCommunityIcons
+                name="cow-off"
+                size={24}
+                color={colors.primary}
+              />
+            }
+          />
+        </View>
       </View>
     );
   }
 
   // Extract proper formats
-  const farmerName = animal.farmerId?.name || "Unassigned";
+  const farmerName = animal.farmerId?.name || "No farmer assigned";
   const addr = animal.farmerId?.address;
   const farmerPhone =
     animal.farmerId?.phoneNumber ||
     animal.farmerId?.contact ||
     animal.farmerId?.phone ||
     addr?.phoneNumber ||
-    "No phone attached";
+    "Phone not provided";
   const farmerAddress = addr
     ? [addr.street, addr.barangay, addr.city, addr.province]
         .filter(Boolean)
         .join(", ")
-    : "Location Unregistered";
+    : "Location not provided";
   const animalSex = String(animal.sex || animal.gender || "").toLowerCase();
   const isMaleAnimal = ["male", "bull", "m"].includes(animalSex);
   const isFemaleAnimal = ["female", "cow", "heifer", "f"].includes(animalSex);
@@ -431,7 +454,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
   };
 
   // Compute dynamic age based on birthDate subtraction
-  let ageDisplay = "Unknown";
+  let ageDisplay = "Not recorded";
   if (animal.birthDate) {
     const birth = new Date(animal.birthDate);
     const now = new Date();
@@ -488,12 +511,14 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
     return endDate > new Date();
   });
 
-  const nextAction = isFemaleAnimal ? animal.nextAction ?? null : null;
+  const nextAction = isFemaleAnimal ? (animal.nextAction ?? null) : null;
   const aiUnavailableReason = isMaleAnimal
     ? "Artificial insemination is available only for female animals."
     : animal.reproductiveStatus === "Pregnant"
       ? "This animal already has an active pregnancy."
-      : ["Inseminated", "Likely Pregnant"].includes(animal.reproductiveStatus || "")
+      : ["Inseminated", "Likely Pregnant"].includes(
+            animal.reproductiveStatus || "",
+          )
         ? "This animal is currently under reproductive monitoring."
         : "";
 
@@ -503,8 +528,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
       style={{ backgroundColor: colors.background }}
     >
       <AppPageHeader
-        title="Animal Profile"
-        subtitle="Identity, lifecycle, health, and service history"
+        title="Animal details"
         onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
         rightAction={
           <TouchableOpacity
@@ -514,18 +538,18 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
             accessibilityLabel="Delete animal"
             activeOpacity={0.8}
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 18,
+              width: 48,
+              height: 48,
+              borderRadius: 24,
               alignItems: "center",
               justifyContent: "center",
-              backgroundColor: isDark ? "rgba(239,68,68,0.12)" : "#fef2f2",
+              backgroundColor: colors.errorContainer,
             }}
           >
             {deleting ? (
-              <ActivityIndicator size="small" color="#ef4444" />
+              <ActivityIndicator size="small" color={colors.errorForeground} />
             ) : (
-              <Trash2 size={18} color="#ef4444" />
+              <Trash2 size={18} color={colors.errorForeground} />
             )}
           </TouchableOpacity>
         }
@@ -542,9 +566,9 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
           <View className="px-6 pt-4">
             <View
               style={{
-                height: 220,
+                height: 192,
                 width: "100%",
-                borderRadius: 24,
+                borderRadius: 16,
                 overflow: "hidden",
                 position: "relative",
                 backgroundColor: colors.card,
@@ -593,7 +617,9 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     letterSpacing: 0.5,
                   }}
                 >
-                  Tag #{animal.earTag || animal.animalId || "N/A"}
+                  {animal.earTag || animal.animalId
+                    ? `Tag ${animal.earTag || animal.animalId}`
+                    : "Tag not assigned"}
                 </Text>
               </View>
             </View>
@@ -601,7 +627,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
 
           {/* Profile Content Container */}
           <Animated.View
-            className="px-6 pt-8"
+            className="px-6 pt-6"
             style={{
               opacity: fadeAnim,
               transform: [{ translateY: slideAnim }],
@@ -690,7 +716,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     fontSize: 16,
                   }}
                 >
-                  Basic Info
+                  Animal information
                 </Text>
                 {!isEditingBasicInfo && (
                   <TouchableOpacity
@@ -734,7 +760,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         label="Animal ID"
                         value={basicInfoForm.animalId}
                         onChangeText={(value) =>
-                          setBasicInfoForm({ ...basicInfoForm, animalId: value })
+                          setBasicInfoForm({
+                            ...basicInfoForm,
+                            animalId: value,
+                          })
                         }
                         placeholder="Animal ID"
                       />
@@ -855,7 +884,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                 year: "numeric",
                               },
                             )
-                          : "Unknown"
+                          : "Not recorded"
                       }
                     />
                     <BasicInfoCell
@@ -941,8 +970,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
               <View className="flex-col gap-3">
                 <View className="flex-row gap-3">
                   <ActionCard
-                    title="Health Concern"
-                    subtitle="Report illness / sickness"
+                    title="Report health concern"
+                    subtitle="Request help for illness or injury"
                     icon={<Stethoscope size={20} color={colors.error} />}
                     onPress={() =>
                       router.push({
@@ -954,8 +983,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     bg={isDark ? "rgba(239, 68, 68, 0.1)" : "#fef2f2"}
                   />
                   <ActionCard
-                    title="View Pregnancy"
-                    subtitle="Track gestation period"
+                    title="Track pregnancy"
+                    subtitle="View pregnancy progress"
                     disabled={animal.reproductiveStatus !== "Pregnant"}
                     icon={<Calendar size={20} color={primaryColor} />}
                     onPress={() =>
@@ -970,8 +999,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 </View>
                 <View className="flex-row gap-3">
                   <ActionCard
-                    title="Request A.I."
-                    subtitle={aiUnavailableReason || "Request breeding service"}
+                    title="Request AI service"
+                    subtitle={
+                      aiUnavailableReason || "Request insemination service"
+                    }
                     disabled={Boolean(aiUnavailableReason)}
                     disabledReason={aiUnavailableReason}
                     icon={<Syringe size={20} color={primaryColor} />}
@@ -1029,8 +1060,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     bg={isDark ? "rgba(16, 185, 129, 0.1)" : "#f0fdf4"}
                   />
                   <ActionCard
-                    title="View Timeline"
-                    subtitle="Full activity history"
+                    title="View activity timeline"
+                    subtitle="Review the complete history"
                     icon={<History size={20} color={colors.textSecondary} />}
                     onPress={() => setActiveTab("Timeline")}
                     color={colors.textSecondary}
@@ -1050,36 +1081,33 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                   fontSize: 16,
                 }}
               >
-                Animal Summary
+                At a glance
               </Text>
-              <View className="flex-row gap-2.5">
+              <View className="flex-row flex-wrap gap-3">
                 <View
-                  className="flex-1 p-3 rounded-2xl border items-center justify-center"
+                  className="min-h-20 rounded-2xl border p-3 items-center justify-center"
                   style={{
+                    width: "48%",
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   }}
                 >
                   <Text
                     style={{
-                      fontFamily: "Outfit_800ExtraBold",
-                      color: colors.textMuted,
-                      fontSize: 8,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.2,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: colors.textSecondary,
+                      fontSize: 11,
                     }}
                     numberOfLines={1}
-                    adjustsFontSizeToFit={true}
-                    minimumFontScale={0.7}
                   >
-                    AI Services
+                    AI attempts
                   </Text>
                   <Text
                     style={{
                       fontFamily: "Outfit_900Black",
                       color: colors.textPrimary,
-                      fontSize: 18,
-                      marginTop: 3,
+                      fontSize: 20,
+                      marginTop: 4,
                     }}
                   >
                     {totalAttempts}
@@ -1087,23 +1115,20 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 </View>
 
                 <View
-                  className="flex-1 p-3 rounded-2xl border items-center justify-center"
+                  className="min-h-20 rounded-2xl border p-3 items-center justify-center"
                   style={{
+                    width: "48%",
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   }}
                 >
                   <Text
                     style={{
-                      fontFamily: "Outfit_800ExtraBold",
-                      color: colors.textMuted,
-                      fontSize: 8,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.2,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: colors.textSecondary,
+                      fontSize: 11,
                     }}
                     numberOfLines={1}
-                    adjustsFontSizeToFit={true}
-                    minimumFontScale={0.7}
                   >
                     Pregnancies
                   </Text>
@@ -1111,8 +1136,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     style={{
                       fontFamily: "Outfit_900Black",
                       color: colors.textPrimary,
-                      fontSize: 18,
-                      marginTop: 3,
+                      fontSize: 20,
+                      marginTop: 4,
                     }}
                   >
                     {successfulAttempts}
@@ -1120,32 +1145,29 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 </View>
 
                 <View
-                  className="flex-1 p-3 rounded-2xl border items-center justify-center"
+                  className="min-h-20 rounded-2xl border p-3 items-center justify-center"
                   style={{
+                    width: "48%",
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   }}
                 >
                   <Text
                     style={{
-                      fontFamily: "Outfit_800ExtraBold",
-                      color: colors.textMuted,
-                      fontSize: 8,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.2,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: colors.textSecondary,
+                      fontSize: 11,
                     }}
                     numberOfLines={1}
-                    adjustsFontSizeToFit={true}
-                    minimumFontScale={0.7}
                   >
-                    Calvings
+                    Calving records
                   </Text>
                   <Text
                     style={{
                       fontFamily: "Outfit_900Black",
                       color: colors.textPrimary,
-                      fontSize: 18,
-                      marginTop: 3,
+                      fontSize: 20,
+                      marginTop: 4,
                     }}
                   >
                     {animal.parity || animal.calvings?.length || 0}
@@ -1153,32 +1175,29 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 </View>
 
                 <View
-                  className="flex-1 p-3 rounded-2xl border items-center justify-center"
+                  className="min-h-20 rounded-2xl border p-3 items-center justify-center"
                   style={{
+                    width: "48%",
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   }}
                 >
                   <Text
                     style={{
-                      fontFamily: "Outfit_800ExtraBold",
-                      color: colors.textMuted,
-                      fontSize: 8,
-                      textTransform: "uppercase",
-                      letterSpacing: 0.2,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: colors.textSecondary,
+                      fontSize: 11,
                     }}
                     numberOfLines={1}
-                    adjustsFontSizeToFit={true}
-                    minimumFontScale={0.7}
                   >
-                    Health Cases
+                    Health records
                   </Text>
                   <Text
                     style={{
                       fontFamily: "Outfit_900Black",
                       color: colors.textPrimary,
-                      fontSize: 18,
-                      marginTop: 3,
+                      fontSize: 20,
+                      marginTop: 4,
                     }}
                   >
                     {medicalRecords.length}
@@ -1194,7 +1213,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
             >
               <TouchableOpacity
                 onPress={() => setActiveTab("Info")}
-                className="flex-1 py-3.5 items-center flex-row justify-center gap-1.5"
+                className="min-h-11 flex-1 py-3 items-center flex-row justify-center gap-2"
                 style={{
                   borderBottomWidth: 3,
                   borderBottomColor:
@@ -1222,7 +1241,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
 
               <TouchableOpacity
                 onPress={() => setActiveTab("Timeline")}
-                className="flex-1 py-3.5 items-center flex-row justify-center gap-1.5"
+                className="min-h-11 flex-1 py-3 items-center flex-row justify-center gap-2"
                 style={{
                   borderBottomWidth: 3,
                   borderBottomColor:
@@ -1254,7 +1273,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
 
               <TouchableOpacity
                 onPress={() => setActiveTab("Medical")}
-                className="flex-1 py-3.5 items-center flex-row justify-center gap-1.5"
+                className="min-h-11 flex-1 py-3 items-center flex-row justify-center gap-2"
                 style={{
                   borderBottomWidth: 3,
                   borderBottomColor:
@@ -1295,12 +1314,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
               {/* Reproductive Status Section */}
               {animal.gender === "Female" && (
                 <View
-                  className="p-5 rounded-3xl border mb-2"
+                  className="p-5 rounded-2xl border"
                   style={{
-                    shadowColor: "#94a3b8",
-                    shadowOpacity: 0.05,
-                    shadowRadius: 8,
-                    elevation: 2,
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   }}
@@ -1318,7 +1333,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       }}
                       className="text-lg"
                     >
-                      Reproductive Health
+                      Breeding and pregnancy
                     </Text>
                   </View>
 
@@ -1336,7 +1351,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       }}
                       className="text-[10px] uppercase tracking-widest mb-1.5"
                     >
-                      Current Status
+                      Reproductive status
                     </Text>
                     <View className="flex-row items-center gap-2">
                       <View
@@ -1366,82 +1381,183 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     <View
                       className="p-4 rounded-2xl border mb-4"
                       style={{
-                        backgroundColor: isDark ? "rgba(139,92,246,0.08)" : "#f5f3ff",
-                        borderColor: isDark ? "rgba(167,139,250,0.25)" : "#ddd6fe",
+                        backgroundColor: isDark
+                          ? "rgba(139,92,246,0.08)"
+                          : "#f5f3ff",
+                        borderColor: isDark
+                          ? "rgba(167,139,250,0.25)"
+                          : "#ddd6fe",
                       }}
                     >
-                      <Text style={{ fontFamily: "Outfit_800ExtraBold", color: isDark ? "#c4b5fd" : "#6d28d9", fontSize: 14 }}>
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_800ExtraBold",
+                          color: isDark ? "#c4b5fd" : "#6d28d9",
+                          fontSize: 14,
+                        }}
+                      >
                         Farmer report submitted
                       </Text>
-                      <Text style={{ fontFamily: "Outfit_600SemiBold", color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_600SemiBold",
+                          color: colors.textSecondary,
+                          fontSize: 12,
+                          marginTop: 2,
+                        }}
+                      >
                         Awaiting technician verification
                       </Text>
                       <View className="mt-4 gap-2">
-                        <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_600SemiBold", fontSize: 12 }}>
-                          Reported outcome: {String(latestObservation.farmerOutcomeReport).replaceAll("_", " ")}
+                        <Text
+                          style={{
+                            color: colors.textPrimary,
+                            fontFamily: "Outfit_600SemiBold",
+                            fontSize: 12,
+                          }}
+                        >
+                          Reported outcome:{" "}
+                          {String(
+                            latestObservation.farmerOutcomeReport,
+                          ).replaceAll("_", " ")}
                         </Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                          Selected signs: {(latestObservation.farmerObservationSigns || []).join(", ") || "None selected"}
+                        <Text
+                          style={{ color: colors.textSecondary, fontSize: 12 }}
+                        >
+                          Selected signs:{" "}
+                          {(
+                            latestObservation.farmerObservationSigns || []
+                          ).join(", ") || "None selected"}
                         </Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                          Farmer notes: {latestObservation.farmerObservationNotes || "No notes provided"}
+                        <Text
+                          style={{ color: colors.textSecondary, fontSize: 12 }}
+                        >
+                          Farmer notes:{" "}
+                          {latestObservation.farmerObservationNotes ||
+                            "No notes provided"}
                         </Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                          Reported: {latestObservation.farmerOutcomeReportedAt
-                            ? new Date(latestObservation.farmerOutcomeReportedAt).toLocaleString("en-US")
+                        <Text
+                          style={{ color: colors.textSecondary, fontSize: 12 }}
+                        >
+                          Reported:{" "}
+                          {latestObservation.farmerOutcomeReportedAt
+                            ? new Date(
+                                latestObservation.farmerOutcomeReportedAt,
+                              ).toLocaleString("en-US")
                             : "Date unavailable"}
                         </Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                        <Text
+                          style={{ color: colors.textSecondary, fontSize: 12 }}
+                        >
                           Submitted by: {animal.farmerId?.name || "Farmer"}
                         </Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                          Verification status: {latestObservation.verificationStatus === "pending" || latestObservation.outcomeVerificationStatus === "reported" ? "Awaiting technician verification" : String(latestObservation.verificationStatus || latestObservation.outcomeVerificationStatus || "Not requested").replaceAll("_", " ")}
+                        <Text
+                          style={{ color: colors.textSecondary, fontSize: 12 }}
+                        >
+                          Verification status:{" "}
+                          {latestObservation.verificationStatus === "pending" ||
+                          latestObservation.outcomeVerificationStatus ===
+                            "reported"
+                            ? "Awaiting technician verification"
+                            : String(
+                                latestObservation.verificationStatus ||
+                                  latestObservation.outcomeVerificationStatus ||
+                                  "Not requested",
+                              ).replaceAll("_", " ")}
                         </Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                          Technician next action: Review this observation and perform pregnancy verification when eligible.
+                        <Text
+                          style={{ color: colors.textSecondary, fontSize: 12 }}
+                        >
+                          Technician next action: Review this observation and
+                          perform pregnancy verification when eligible.
                         </Text>
                       </View>
                     </View>
                   )}
 
-                  {reInsemination.isAvailable && reInsemination.latestAttempt && (
-                    <View
-                      className="p-4 rounded-2xl border mb-4"
-                      style={{
-                        backgroundColor: isDark ? "rgba(16,185,129,0.08)" : "#ecfdf5",
-                        borderColor: isDark ? "rgba(52,211,153,0.25)" : "#a7f3d0",
-                      }}
-                    >
-                      <Text style={{ fontFamily: "Outfit_800ExtraBold", color: primaryColor, fontSize: 15 }}>
-                        Re-insemination available
-                      </Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 6 }}>
-                        The previous attempt on {new Date(reInsemination.latestAttempt.inseminationDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} was marked unsuccessful because {String(reInsemination.latestAttempt.failureReason).replaceAll("_", " ")}.
-                      </Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 }}>
-                        This request creates Attempt #{(reInsemination.latestAttempt.attemptNumber || 1) + 1} and keeps it linked to the previous breeding series.
-                      </Text>
-                      <TouchableOpacity
-                        className="rounded-xl py-3 items-center mt-4"
-                        style={{ backgroundColor: primaryColor }}
-                        onPress={() =>
-                          router.push({
-                            pathname: "/(farmer)/request-ai",
-                            params: {
-                              requestId: reInsemination.latestAttempt._id,
-                              mode: "re-inseminate",
-                              animalId: animal._id,
-                              earTag: animal.earTag || animal.animalId,
-                            },
-                          } as any)
-                        }
+                  {reInsemination.isAvailable &&
+                    reInsemination.latestAttempt && (
+                      <View
+                        className="p-4 rounded-2xl border mb-4"
+                        style={{
+                          backgroundColor: isDark
+                            ? "rgba(16,185,129,0.08)"
+                            : "#ecfdf5",
+                          borderColor: isDark
+                            ? "rgba(52,211,153,0.25)"
+                            : "#a7f3d0",
+                        }}
                       >
-                        <Text style={{ color: "white", fontFamily: "Outfit_700Bold" }}>
-                          Request Re-insemination
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_800ExtraBold",
+                            color: primaryColor,
+                            fontSize: 15,
+                          }}
+                        >
+                          Re-insemination available
                         </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            fontSize: 12,
+                            lineHeight: 18,
+                            marginTop: 6,
+                          }}
+                        >
+                          The previous attempt on{" "}
+                          {new Date(
+                            reInsemination.latestAttempt.inseminationDate,
+                          ).toLocaleDateString("en-US", {
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric",
+                          })}{" "}
+                          was marked unsuccessful because{" "}
+                          {String(
+                            reInsemination.latestAttempt.failureReason,
+                          ).replaceAll("_", " ")}
+                          .
+                        </Text>
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            fontSize: 12,
+                            lineHeight: 18,
+                            marginTop: 4,
+                          }}
+                        >
+                          This request creates Attempt #
+                          {(reInsemination.latestAttempt.attemptNumber || 1) +
+                            1}{" "}
+                          and keeps it linked to the previous breeding series.
+                        </Text>
+                        <TouchableOpacity
+                          className="rounded-xl py-3 items-center mt-4"
+                          style={{ backgroundColor: primaryColor }}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/(farmer)/request-ai",
+                              params: {
+                                requestId: reInsemination.latestAttempt._id,
+                                mode: "re-inseminate",
+                                animalId: animal._id,
+                                earTag: animal.earTag || animal.animalId,
+                              },
+                            } as any)
+                          }
+                        >
+                          <Text
+                            style={{
+                              color: "white",
+                              fontFamily: "Outfit_700Bold",
+                            }}
+                          >
+                            Request Re-insemination
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
 
                   {/* Breeding outcome reporting */}
                   {animal.reproductiveStatus?.toLowerCase() === "inseminated" &&
@@ -1453,7 +1569,9 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         <View
                           className="p-4 rounded-2xl border mb-4"
                           style={{
-                            backgroundColor: isDark ? "rgba(59, 130, 246, 0.08)" : "#f8fafc",
+                            backgroundColor: isDark
+                              ? "rgba(59, 130, 246, 0.08)"
+                              : "#f8fafc",
                             borderColor: colors.border,
                           }}
                         >
@@ -1491,8 +1609,9 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                 }}
                                 className="text-[12px] leading-4 mt-1"
                               >
-                                Record return-to-heat or possible pregnancy observations.
-                                Pregnancy still requires technician confirmation.
+                                Record return-to-heat or possible pregnancy
+                                observations. Pregnancy still requires
+                                technician confirmation.
                               </Text>
                             </View>
                           </View>
@@ -1532,20 +1651,20 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                             </TouchableOpacity>
                           </View>
 
-                          {nextAction?.type === "PERFORM_PREGNANCY_DIAGNOSIS" ? (
+                          {nextAction?.type ===
+                          "PERFORM_PREGNANCY_DIAGNOSIS" ? (
                             <TouchableOpacity
                               onPress={() =>
-                                router.push(
-                                  {
-                                    pathname: "/(farmer)/report-breeding-observation",
-                                    params: {
-                                      animalId: id,
-                                      requestId: latestInsemination?._id,
-                                      defaultReport: "unsure",
-                                      requestVerification: "true",
-                                    },
-                                  } as any,
-                                )
+                                router.push({
+                                  pathname:
+                                    "/(farmer)/report-breeding-observation",
+                                  params: {
+                                    animalId: id,
+                                    requestId: latestInsemination?._id,
+                                    defaultReport: "unsure",
+                                    requestVerification: "true",
+                                  },
+                                } as any)
                               }
                               className="w-full py-3 mt-3 rounded-2xl items-center"
                               style={{ backgroundColor: colors.primary }}
@@ -1741,12 +1860,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
               {/* Breeding Statistics */}
               {animal.gender === "Female" && (
                 <View
-                  className="p-5 rounded-3xl border mb-2"
+                  className="p-5 rounded-2xl border"
                   style={{
-                    shadowColor: "#94a3b8",
-                    shadowOpacity: 0.05,
-                    shadowRadius: 8,
-                    elevation: 2,
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   }}
@@ -1901,12 +2016,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
               {(animal.motherId ||
                 (animal.offspring && animal.offspring.length > 0)) && (
                 <View
-                  className="p-5 rounded-3xl border mb-2"
+                  className="p-5 rounded-2xl border"
                   style={{
-                    shadowColor: "#94a3b8",
-                    shadowOpacity: 0.05,
-                    shadowRadius: 8,
-                    elevation: 2,
                     backgroundColor: colors.card,
                     borderColor: colors.border,
                   }}
@@ -1987,7 +2098,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                 }}
                                 className="text-sm"
                               >
-                                Tag #{animal.motherId.earTag || "Unknown"}
+                                Tag {animal.motherId.earTag || "not recorded"}
                               </Text>
                               <Text
                                 style={{
@@ -2077,7 +2188,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                     }}
                                     className="text-sm"
                                   >
-                                    Tag #{calf.earTag || "Unknown"}
+                                    Tag {calf.earTag || "not recorded"}
                                   </Text>
                                   <Text
                                     style={{
@@ -2120,12 +2231,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
 
               {/* Ownership Details */}
               <View
-                className="p-5 rounded-3xl border"
+                className="p-5 rounded-2xl border"
                 style={{
-                  shadowColor: "#94a3b8",
-                  shadowOpacity: 0.05,
-                  shadowRadius: 8,
-                  elevation: 2,
                   backgroundColor: colors.card,
                   borderColor: colors.border,
                 }}
@@ -2139,7 +2246,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     }}
                     className="text-lg"
                   >
-                    Ownership Details
+                    Owner details
                   </Text>
                 </View>
 
@@ -2274,7 +2381,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                   />
                   {timelineEvents.length === 0 ? (
                     <View
-                      className="rounded-[32px] p-8 items-center mt-4 border"
+                      className="rounded-2xl p-6 items-center mt-4 border"
                       style={{
                         backgroundColor: colors.card,
                         borderColor: colors.border,
@@ -2288,7 +2395,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         }}
                         className="text-lg mt-2 mb-1"
                       >
-                        No Timeline Events
+                        No matching timeline events
                       </Text>
                       <Text
                         style={{
@@ -2297,8 +2404,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         }}
                         className="text-center text-xs leading-5"
                       >
-                        This animal does not have any timeline events matching the
-                        filter.
+                        Choose another event type, or check again after a new
+                        activity is recorded.
                       </Text>
                     </View>
                   ) : null}
@@ -2414,26 +2521,23 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                             params: {
                               animalId: id,
                               recordId: record._id || record.id,
-                              recordType: record.recordKind || record.type || "",
+                              recordType:
+                                record.recordKind || record.type || "",
                             },
                           });
                         }}
                         activeOpacity={0.7}
                         accessibilityRole="button"
                         accessibilityLabel={`${presentation.title}. Full animal identifier ${presentation.fullAnimalReference}. ${presentation.badges.map((badge) => badge.label).join(". ")}.`}
-                        className="p-5 rounded-[24px] mb-4 flex-row border"
+                        className="p-4 rounded-2xl mb-3 flex-row border"
                         style={{
-                          minHeight: 124,
+                          minHeight: 108,
                           backgroundColor: colors.card,
                           borderColor: colors.border,
-                          shadowColor: "#94a3b8",
-                          shadowOpacity: isDark ? 0 : 0.05,
-                          shadowRadius: 6,
-                          elevation: isDark ? 0 : 2,
                         }}
                       >
                         <View
-                          className="w-12 h-12 rounded-full items-center justify-center mr-4"
+                          className="w-10 h-10 rounded-xl items-center justify-center mr-3"
                           style={{
                             backgroundColor: iconBg,
                           }}
@@ -2453,29 +2557,49 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                               color="#65A30D"
                             />
                           )}
-                          {!isAi && !isPregnancy && !isCalving && recType === "Vaccination" && (
-                            <Syringe size={22} color="#10B981" />
-                          )}
-                          {!isAi && !isPregnancy && !isCalving && recType === "Deworming" && (
-                            <MaterialCommunityIcons
-                              name="pill"
-                              size={22}
-                              color="#3B82F6"
-                            />
-                          )}
-                          {!isAi && !isPregnancy && !isCalving && (recType === "Treatment" || recType === "Health") && (
-                            <Stethoscope size={22} color="#F59E0B" />
-                          )}
-                          {!isAi && !isPregnancy && !isCalving && (recType === "Weight Log" ||
-                            recType === "Weight") && (
-                            <Scale size={22} color="#6366F1" />
-                          )}
-                          {!isAi && !isPregnancy && !isCalving && (recType === "Check-up" || recType === "Medical") && (
-                            <ClipboardList size={22} color="#64748B" />
-                          )}
-                          {!isAi && !isPregnancy && !isCalving && recType === "General Note" && (
-                            <ClipboardList size={22} color="#64748B" />
-                          )}
+                          {!isAi &&
+                            !isPregnancy &&
+                            !isCalving &&
+                            recType === "Vaccination" && (
+                              <Syringe size={22} color="#10B981" />
+                            )}
+                          {!isAi &&
+                            !isPregnancy &&
+                            !isCalving &&
+                            recType === "Deworming" && (
+                              <MaterialCommunityIcons
+                                name="pill"
+                                size={22}
+                                color="#3B82F6"
+                              />
+                            )}
+                          {!isAi &&
+                            !isPregnancy &&
+                            !isCalving &&
+                            (recType === "Treatment" ||
+                              recType === "Health") && (
+                              <Stethoscope size={22} color="#F59E0B" />
+                            )}
+                          {!isAi &&
+                            !isPregnancy &&
+                            !isCalving &&
+                            (recType === "Weight Log" ||
+                              recType === "Weight") && (
+                              <Scale size={22} color="#6366F1" />
+                            )}
+                          {!isAi &&
+                            !isPregnancy &&
+                            !isCalving &&
+                            (recType === "Check-up" ||
+                              recType === "Medical") && (
+                              <ClipboardList size={22} color="#64748B" />
+                            )}
+                          {!isAi &&
+                            !isPregnancy &&
+                            !isCalving &&
+                            recType === "General Note" && (
+                              <ClipboardList size={22} color="#64748B" />
+                            )}
                         </View>
 
                         <View className="flex-1 min-w-0">
@@ -2515,7 +2639,9 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                               className="text-xs"
                             >
                               {presentation.date
-                                ? new Date(presentation.date).toLocaleDateString()
+                                ? new Date(
+                                    presentation.date,
+                                  ).toLocaleDateString()
                                 : "Date unavailable"}
                             </Text>
                           </View>
@@ -2633,29 +2759,25 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                         className="text-xs"
                       >
                         {isFetchingNextRecordsPage
-                          ? "Loading more..."
-                          : "Load More Records"}
+                          ? "Loading more records..."
+                          : "Load more records"}
                       </Text>
                     </TouchableOpacity>
                   )}
                 </View>
               ) : (
                 <View
-                  className="rounded-[32px] p-8 items-center mt-4 border"
+                  className="rounded-2xl p-6 items-center mt-4 border"
                   style={{
                     backgroundColor: colors.card,
                     borderColor: colors.border,
-                    shadowColor: "#94a3b8",
-                    shadowOpacity: 0.05,
-                    shadowRadius: 8,
-                    elevation: 2,
                   }}
                 >
                   <View
-                    className="w-20 h-20 rounded-full items-center justify-center mb-4"
+                    className="w-16 h-16 rounded-full items-center justify-center mb-4"
                     style={{ backgroundColor: colors.background }}
                   >
-                    <History size={32} color={colors.textMuted} />
+                    <History size={28} color={colors.textMuted} />
                   </View>
                   <Text
                     style={{
@@ -2664,7 +2786,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     }}
                     className="text-lg mb-1"
                   >
-                    No Records Yet
+                    No matching records
                   </Text>
                   <Text
                     style={{
@@ -2673,8 +2795,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                     }}
                     className="text-center text-sm px-4 leading-5"
                   >
-                    This animal does not have any AI, pregnancy, calving, or
-                    health records matching the filter.
+                    Choose another record type, or check again after a service
+                    has been completed.
                   </Text>
                 </View>
               )}
@@ -2865,7 +2987,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                           }}
                           className="text-[14px] text-right flex-1 leading-5"
                         >
-                          {selectedRecord.sireBreed || "N/A"}
+                          {selectedRecord.sireBreed || "Not recorded"}
                         </Text>
                       </View>
                       <View
@@ -2890,7 +3012,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                           }}
                           className="text-[14px] text-right flex-1 leading-5"
                         >
-                          {selectedRecord.sireCode || "N/A"}
+                          {selectedRecord.sireCode || "Not recorded"}
                         </Text>
                       </View>
                       <View
@@ -3240,7 +3362,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                               }}
                               className="text-[14px] text-right flex-1 leading-5"
                             >
-                              {selectedRecord.calfId || "N/A"}
+                              {selectedRecord.calfId || "Not recorded"}
                             </Text>
                           </View>
                           <View
@@ -3268,7 +3390,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                                 ? "Male ♂"
                                 : selectedRecord.calfSex === "F"
                                   ? "Female ♀"
-                                  : selectedRecord.calfSex || "N/A"}
+                                  : selectedRecord.calfSex || "Not recorded"}
                             </Text>
                           </View>
                         </>
@@ -3622,7 +3744,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       }}
                       className="text-[12px] uppercase tracking-wider"
                     >
-                      Logged By
+                      Recorded by
                     </Text>
                     <Text
                       style={{
@@ -3648,7 +3770,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 style={{ fontFamily: "Outfit_800ExtraBold" }}
                 className="text-white text-base"
               >
-                Close Details
+                Close
               </Text>
             </TouchableOpacity>
           </View>
@@ -3659,10 +3781,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
         visible={deleteModalVisible}
         onClose={() => setDeleteModalVisible(false)}
         onConfirm={handleConfirmDelete}
-        title="Delete Animal?"
+        title={`Delete ${animal?.earTag || animal?.animalId || "animal"}?`}
         message={`Are you sure you want to permanently delete ${animal?.animalId || "this animal"} and all its history? This action cannot be undone.`}
-        confirmText="Yes, Delete"
-        cancelText="No, Keep it"
+        confirmText="Delete animal"
+        cancelText="Keep animal"
         isDestructive={true}
       />
 
@@ -3672,12 +3794,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
         onConfirm={() => setValidationModalVisible(false)}
         title={validationTitle}
         message={validationMessage}
-        confirmText="OK"
+        confirmText="Got it"
         cancelText=""
         isDestructive={false}
       />
-
-
 
       {/* Congrats Pregnancy Modal */}
       <Modal
@@ -3689,7 +3809,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
         <View className="flex-1 bg-black/60 justify-center items-center p-6">
           <View
             className="rounded-[30px] w-full p-6 items-center border shadow-2xl relative overflow-hidden"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            style={{
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            }}
           >
             <View className="absolute -top-12 -right-12 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full" />
             <View className="absolute -bottom-12 -left-12 w-28 h-28 bg-emerald-500/5 dark:bg-emerald-500/10 rounded-full" />
@@ -3740,7 +3863,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 className="text-sm font-outfit-medium text-center"
                 style={{ color: colors.textSecondary }}
               >
-                ? A technician must review this observation before pregnancy is confirmed.
+                ? A technician must review this observation before pregnancy is
+                confirmed.
               </Text>
             </View>
 
@@ -3830,7 +3954,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                   }}
                   className="text-xs"
                 >
-                  CANCEL
+                  Not now
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -3848,7 +3972,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       color="white"
                     />
                     <Text className="text-white font-outfit-bold text-xs tracking-wide">
-                      SUBMIT OBSERVATION
+                      Report observation
                     </Text>
                   </>
                 )}
@@ -3868,7 +3992,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
         <View className="flex-1 bg-black/60 justify-center items-center p-6">
           <View
             className="rounded-[30px] w-full p-6 items-center border shadow-2xl relative overflow-hidden"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            style={{
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            }}
           >
             <View className="absolute -top-12 -right-12 w-28 h-28 bg-orange-500/5 dark:bg-orange-500/10 rounded-full" />
             <View className="absolute -bottom-12 -left-12 w-28 h-28 bg-orange-500/5 dark:bg-orange-500/10 rounded-full" />
@@ -3883,7 +4010,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
               className="text-xl font-outfit-black text-center"
               style={{ color: colors.textPrimary }}
             >
-              Observe Reheat Signs?
+              Report return-to-heat signs?
             </Text>
 
             <View className="mt-3 px-1 items-center flex-row flex-wrap justify-center gap-1.5">
@@ -3905,7 +4032,8 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                 className="text-sm font-outfit-medium text-center"
                 style={{ color: colors.textSecondary }}
               >
-                ? This indicates the insemination failed.
+                ? This may indicate a return to heat and needs technician
+                review.
               </Text>
             </View>
 
@@ -3926,7 +4054,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                   }}
                   className="text-xs"
                 >
-                  CANCEL
+                  Not now
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -3944,7 +4072,7 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                       color="white"
                     />
                     <Text className="text-white font-outfit-bold text-xs tracking-wide">
-                      YES, REHEATED
+                      Report heat signs
                     </Text>
                   </>
                 )}
@@ -4002,7 +4130,7 @@ const BasicInfoCell = ({ label, value }: { label: string; value: string }) => {
           marginTop: 4,
         }}
       >
-        {value || "Unspecified"}
+        {value || "Not provided"}
       </Text>
     </View>
   );
@@ -4038,7 +4166,7 @@ const BasicInfoInput = ({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
-        className="rounded-2xl border px-4 py-3"
+        className="min-h-12 rounded-xl border px-4 py-3"
         style={{
           backgroundColor: isDark ? colors.background : "#f8fafc",
           borderColor: colors.border,
@@ -4094,20 +4222,15 @@ const ActionCard = ({
       style={{
         flex: 1,
         backgroundColor: bg,
-        borderRadius: 20,
+        borderRadius: 16,
         padding: 16,
         borderWidth: 1,
         borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.02)",
         opacity: disabled ? 0.45 : 1,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: isDark ? 0 : 0.02,
-        shadowRadius: 4,
-        elevation: 1,
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
-        minHeight: 72,
+        minHeight: 80,
       }}
     >
       <View
@@ -4138,10 +4261,11 @@ const ActionCard = ({
           style={{
             fontFamily: "Outfit_500Medium",
             color: isDark ? "#94a3b8" : "#64748b",
-            fontSize: 9,
-            marginTop: 1,
+            fontSize: 11,
+            lineHeight: 16,
+            marginTop: 4,
           }}
-          numberOfLines={3}
+          numberOfLines={2}
         >
           {subtitle}
         </Text>

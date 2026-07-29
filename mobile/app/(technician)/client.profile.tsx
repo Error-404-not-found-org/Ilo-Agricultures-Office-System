@@ -317,7 +317,6 @@ export default function ClientProfileScreen() {
     <View style={[{ flex: 1, backgroundColor: colors.background }]}>
       <AppPageHeader
         title="Farmer Profile"
-        subtitle="Contact details, animals, and service history"
         rightAction={
           <TouchableOpacity
             onPress={() =>

@@ -22,7 +22,7 @@ export default function PrivacyPolicyScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <AppPageHeader title="Privacy Policy" subtitle="Last updated June 2026" />
+      <AppPageHeader title="Privacy Policy" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

@@ -1,7 +1,7 @@
 export const getQuickActionGridMetrics = (width: number) => {
-  const screenPadding = width <= 320 ? 16 : width <= 360 ? 20 : 24;
+  const screenPadding = width >= 600 ? 24 : 16;
   const columns = width >= 900 ? 4 : width >= 600 ? 3 : 2;
-  const gap = width <= 320 ? 12 : 16;
+  const gap = width >= 600 ? 16 : 12;
   const containerWidth = Math.min(width - screenPadding * 2, 720);
   const cardPadding = 16;
   const itemWidth =

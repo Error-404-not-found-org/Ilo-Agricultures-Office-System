@@ -14,7 +14,7 @@ import {
 } from "../services/farmerReports.service";
 import { filterActivityRecords } from "../utils/reportFilters";
 import { mapRecordsToReportRows } from "../utils/reportPdfMapper";
-import type { Milestone, ActivityFeedItem, RecordStats } from "../types/farmerReports.types";
+import type { Milestone, ActivityFeedItem } from "../types/farmerReports.types";
 
 export const useFarmerReports = () => {
   const { colors, isDark } = useTheme();
@@ -35,16 +35,10 @@ export const useFarmerReports = () => {
 
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [records, setRecords] = useState<ActivityFeedItem[]>([]);
-  const [recordStats, setRecordStats] = useState<RecordStats>({
-    total: 0,
-    ai: 0,
-    health: 0,
-    calving: 0,
-  });
 
   const [isLoadingMilestones, setIsLoadingMilestones] = useState(true);
   const [isLoadingRecords, setIsLoadingRecords] = useState(true);
-  const [isLoadingMoreRecords, setIsLoadingMoreRecords] = useState(false);
+  const [isChangingRecordsPage, setIsChangingRecordsPage] = useState(false);
   const [recordsPage, setRecordsPage] = useState(1);
   const [recordsTotalPages, setRecordsTotalPages] = useState(1);
   const [recordsTotal, setRecordsTotal] = useState(0);
@@ -52,14 +46,13 @@ export const useFarmerReports = () => {
   const [shownSelectIds, setShownSelectIds] = useState<string[]>([]);
   const [recordSearch, setRecordSearch] = useState("");
   const [debouncedRecordSearch, setDebouncedRecordSearch] = useState("");
-  const [recordType, setRecordType] = useState<"all" | ActivityFeedItem["type"]>("all");
-  const [recordPeriod, setRecordPeriod] = useState<"all" | "30" | "90">("all");
-
+  const [recordType, setRecordType] = useState<
+    "all" | ActivityFeedItem["type"]
+  >("all");
   const resetFilters = useCallback(() => {
     setActiveBento("all");
     setRecordType("all");
     setRecordSearch("");
-    setRecordPeriod("all");
   }, []);
 
   useFocusEffect(
@@ -81,9 +74,8 @@ export const useFarmerReports = () => {
       records,
       recordSearch,
       recordType,
-      recordPeriod,
     });
-  }, [records, recordSearch, recordType, recordPeriod]);
+  }, [records, recordSearch, recordType]);
 
   useEffect(() => {
     if (tab === "records") {
@@ -146,34 +138,15 @@ export const useFarmerReports = () => {
 
       if (!isRefresh && page === 1) setIsLoadingRecords(true);
       try {
-        const fromDate =
-          recordPeriod === "all"
-            ? undefined
-            : new Date(
-                Date.now() - Number(recordPeriod) * 86400000,
-              ).toISOString();
-        const response = await getFarmerOfficialRecords(api, page, 25, {
+        const response = await getFarmerOfficialRecords(api, page, 10, {
           search: debouncedRecordSearch,
           type: recordType,
-          fromDate,
         });
         const data: ActivityFeedItem[] = response.data || [];
-        setRecords((current) => {
-          if (page === 1) return data;
-          const existingIds = new Set(current.map((record) => record.id));
-          return [...current, ...data.filter((record) => !existingIds.has(record.id))];
-        });
+        setRecords(data);
         setRecordsPage(response.page);
         setRecordsTotalPages(response.totalPages);
         setRecordsTotal(response.total);
-
-        if (
-          !debouncedRecordSearch &&
-          recordType === "all" &&
-          recordPeriod === "all"
-        ) {
-          setRecordStats((current) => ({ ...current, total: response.total }));
-        }
       } catch (e) {
         if (!isRefresh) toast.error("Records could not be loaded");
       } finally {
@@ -181,18 +154,29 @@ export const useFarmerReports = () => {
         if (isRefresh) setIsRefreshing(false);
       }
     },
-    [api, debouncedRecordSearch, recordPeriod, recordType],
+    [api, debouncedRecordSearch, recordType],
   );
 
-  const loadMoreRecords = useCallback(async () => {
-    if (isLoadingMoreRecords || recordsPage >= recordsTotalPages) return;
-    setIsLoadingMoreRecords(true);
-    try {
-      await fetchRecords(false, recordsPage + 1);
-    } finally {
-      setIsLoadingMoreRecords(false);
-    }
-  }, [fetchRecords, isLoadingMoreRecords, recordsPage, recordsTotalPages]);
+  const goToRecordsPage = useCallback(
+    async (targetPage: number) => {
+      if (
+        isChangingRecordsPage ||
+        targetPage < 1 ||
+        targetPage > recordsTotalPages ||
+        targetPage === recordsPage
+      ) {
+        return;
+      }
+
+      setIsChangingRecordsPage(true);
+      try {
+        await fetchRecords(false, targetPage);
+      } finally {
+        setIsChangingRecordsPage(false);
+      }
+    },
+    [fetchRecords, isChangingRecordsPage, recordsPage, recordsTotalPages],
+  );
 
   const onRefresh = useCallback(() => {
     setIsRefreshing(true);
@@ -207,25 +191,6 @@ export const useFarmerReports = () => {
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
-
-  useEffect(() => {
-    const ai = records.filter((record) => record.type === "ai").length;
-    const health = records.filter((record) => record.type === "health").length;
-    const calving = records.filter((record) => record.type === "calving").length;
-    if (
-      !debouncedRecordSearch &&
-      recordType === "all" &&
-      recordPeriod === "all"
-    ) {
-      setRecordStats({ total: recordsTotal, ai, health, calving });
-    }
-  }, [
-    records,
-    recordsTotal,
-    debouncedRecordSearch,
-    recordType,
-    recordPeriod,
-  ]);
 
   const handleExportPDF = async () => {
     if (records.length === 0) {
@@ -267,23 +232,21 @@ export const useFarmerReports = () => {
     activeTab,
     milestones,
     records,
-    recordStats,
     isLoadingMilestones,
     isLoadingRecords,
-    isLoadingMoreRecords,
-    hasMoreRecords: recordsPage < recordsTotalPages,
+    isChangingRecordsPage,
+    recordsPage,
+    recordsTotalPages,
     recordsTotal,
     isRefreshing,
     recordSearch,
     setRecordSearch,
     recordType,
     setRecordType,
-    recordPeriod,
-    setRecordPeriod,
     resetFilters,
     filteredRecords,
     onRefresh,
-    loadMoreRecords,
+    goToRecordsPage,
     handleExportPDF,
   };
 };

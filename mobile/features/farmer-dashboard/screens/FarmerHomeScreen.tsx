@@ -21,6 +21,11 @@ import {
   X,
   Info,
   Sparkles,
+  CalendarDays,
+  Calendar,
+  Clock,
+  User,
+  ChevronRight,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -171,7 +176,8 @@ export function FarmerHomeScreen() {
     [milestones],
   );
   const recentActivities = React.useMemo(
-    () => selectRecentActivities(Array.isArray(activityFeed) ? activityFeed : []),
+    () =>
+      selectRecentActivities(Array.isArray(activityFeed) ? activityFeed : []),
     [activityFeed],
   );
 
@@ -259,7 +265,9 @@ export function FarmerHomeScreen() {
         }}
       />
       <ScrollView
-        contentContainerStyle={{ paddingBottom: 150 }}
+        contentContainerStyle={{
+          paddingBottom: 150,
+        }}
         showsVerticalScrollIndicator={false}
         onScroll={(event) => {
           const nextOnHero =
@@ -555,7 +563,7 @@ export function FarmerHomeScreen() {
           style={{ paddingHorizontal: dashboardLayout.horizontalPadding }}
         >
           <View
-            className="bg-white dark:bg-slate-900 rounded-[32px] p-6 shadow-sm border border-gray-100 dark:border-slate-800"
+            className="bg-white dark:bg-slate-900 rounded-xl p-6 shadow-sm border border-gray-100 dark:border-slate-800"
             style={{ backgroundColor: colors.card, borderColor: colors.border }}
           >
             <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px] mb-6 ml-1">
@@ -677,102 +685,125 @@ export function FarmerHomeScreen() {
           className="mb-8"
           style={{ paddingHorizontal: dashboardLayout.horizontalPadding }}
         >
-          <View className="flex-row justify-between items-center mb-4 px-1">
-            <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px]">
+          {/* Section Header */}
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className="flex-1 font-outfit-bold text-[18px] text-slate-800 dark:text-white">
               {t("upcomingVisits")}
             </Text>
+
             <TouchableOpacity
-              onPress={() => router.push("/(farmer)/my-requests")}
+              onPress={() => router.push("/(farmer)/(tabs)/service-requests")}
               accessibilityRole="button"
-              className="justify-center"
-              style={{ minHeight: 44 }}
+              accessibilityLabel={t("viewAll")}
+              hitSlop={8}
+              className="ml-4 min-h-12 items-center justify-center"
             >
-              <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[13px]">
+              <Text className="font-outfit-bold text-[13px] text-emerald-600 dark:text-emerald-400">
                 {t("viewAll")}
               </Text>
             </TouchableOpacity>
           </View>
 
+          {/* Visits Card */}
           <View
-            className="bg-white dark:bg-blue-300-900 rounded-[32px] p-4 shadow-sm border border-gray-100 dark:border-slate-800"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+            className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-100 dark:border-slate-800"
+            style={{
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            }}
           >
             {visibleVisits.length > 0 ? (
-              visibleVisits.map((visit: any, idx: number) => (
-                <View key={visit._id}>
-                  <VisitItem
-                    title={`${visit.serviceType === "health" ? "Health Check" : "AI Service"} · ${formatAnimalReference(visit.animalId)}`}
-                    time={`Scheduled: ${format(
-                      new Date(visit.scheduledDate),
-                      "MMM d • h:mm a",
-                    )}`}
-                    technician={visit.technician || "Pending Assignment"}
-                    serviceStatus={
-                      visit.cancellationStatus === "requested"
-                        ? "CANCEL REQUESTED"
-                        : visit.status.toUpperCase()
-                    }
-                    reproductiveOutcome={
-                      visit.serviceType === "ai" && visit.outcome &&
-                      String(visit.outcome).toLowerCase() !== "pending"
-                        ? visit.outcome
-                        : undefined
-                    }
-                    accessibilityLabel={`${visit.serviceType === "health" ? "Health check" : "AI service"} for ${getFullAnimalReference(visit.animalId)}. Service status ${visit.status}.`}
-                    icon={
-                      visit.serviceType === "health" ? (
-                        <Stethoscope
-                          size={20}
-                          color={isDark ? "#f97316" : "#92400E"}
-                        />
-                      ) : (
-                        <Syringe
-                          size={20}
-                          color={isDark ? colors.primary : "#166534"}
-                        />
-                      )
-                    }
-                    iconBg={
-                      visit.serviceType === "health"
-                        ? isDark
-                          ? "rgba(249,115,22,0.15)"
-                          : "#FFFBEB"
-                        : isDark
-                          ? "rgba(16,185,129,0.15)"
-                          : "#F0FDF4"
-                    }
-                    onCancel={
-                      visit.status?.toLowerCase() === "scheduled" &&
-                      visit.cancellationStatus !== "requested"
-                        ? () =>
-                            handleCancelRequest(
-                              visit._id,
-                              visit.serviceType,
-                              getFullAnimalReference(visit.animalId),
-                            )
-                        : undefined
-                    }
-                    onPress={() => {
-                      router.push({
-                        pathname:
-                          visit.serviceType === "health"
+              visibleVisits.map((visit: any, idx: number) => {
+                const isHealthVisit = visit.serviceType === "health";
+                const isAIVisit = visit.serviceType === "ai";
+                const normalizedStatus = visit.status?.toLowerCase();
+
+                const statusLabel =
+                  visit.cancellationStatus === "requested"
+                    ? "CANCEL REQUESTED"
+                    : visit.status?.toUpperCase() || "UNKNOWN STATUS";
+
+                const reproductiveOutcome =
+                  isAIVisit &&
+                  visit.outcome &&
+                  String(visit.outcome).toLowerCase() !== "pending"
+                    ? visit.outcome
+                    : undefined;
+
+                const canCancel =
+                  normalizedStatus === "scheduled" &&
+                  visit.cancellationStatus !== "requested";
+
+                return (
+                  <View key={visit._id}>
+                    <VisitItem
+                      title={`${
+                        isHealthVisit ? "Health Check" : "AI Service"
+                      } · ${formatAnimalReference(visit.animalId)}`}
+                      dateStr={format(
+                        new Date(visit.scheduledDate),
+                        "EEE, MMM d, yyyy",
+                      )}
+                      timeStr={format(new Date(visit.scheduledDate), "h:mm a")}
+                      technician={visit.technician || "Pending Assignment"}
+                      serviceStatus={statusLabel}
+                      reproductiveOutcome={reproductiveOutcome}
+                      accessibilityLabel={`${
+                        isHealthVisit ? "Health check" : "AI service"
+                      } for ${getFullAnimalReference(
+                        visit.animalId,
+                      )}. Service status ${visit.status}.`}
+                      icon={
+                        isHealthVisit ? (
+                          <Stethoscope
+                            size={20}
+                            color={isDark ? "#f97316" : "#92400E"}
+                          />
+                        ) : (
+                          <Syringe
+                            size={20}
+                            color={isDark ? colors.primary : "#166534"}
+                          />
+                        )
+                      }
+                      iconBg={
+                        isHealthVisit
+                          ? isDark
+                            ? "rgba(249,115,22,0.15)"
+                            : "#FFFBEB"
+                          : isDark
+                            ? "rgba(16,185,129,0.15)"
+                            : "#F0FDF4"
+                      }
+                      onPress={() => {
+                        router.push({
+                          pathname: isHealthVisit
                             ? "/(farmer)/health-request-detail"
                             : "/(farmer)/ai-request-detail",
-                        params: { id: visit._id },
-                      });
-                    }}
-                  />
-                  {idx < visibleVisits.length - 1 && (
-                    <View
-                      className="h-[1px] bg-slate-50 dark:bg-slate-800 my-2 mx-4"
-                      style={{ backgroundColor: colors.border }}
+                          params: { id: visit._id },
+                        });
+                      }}
                     />
-                  )}
-                </View>
-              ))
+
+                    {idx < visibleVisits.length - 1 && (
+                      <View
+                        className="mx-4 h-px"
+                        style={{ backgroundColor: colors.border }}
+                      />
+                    )}
+                  </View>
+                );
+              })
             ) : (
-              <View className="py-8 items-center">
-                <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium">
+              <View className="items-center justify-center px-5 py-8">
+                <View
+                  className="mb-3 h-11 w-11 items-center justify-center rounded-full"
+                  style={{ backgroundColor: colors.tint }}
+                >
+                  <CalendarDays size={21} color={colors.primary} />
+                </View>
+
+                <Text className="text-center font-outfit-medium text-[14px] text-slate-400 dark:text-slate-500">
                   {t("noScheduledVisits")}
                 </Text>
               </View>
@@ -786,16 +817,10 @@ export function FarmerHomeScreen() {
             className="mb-8"
             style={{ paddingHorizontal: dashboardLayout.horizontalPadding }}
           >
-            <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px] mb-4 px-1">
+            <Text className="mb-3 font-outfit-bold text-[18px] text-slate-800 dark:text-white">
               Needs Attention
             </Text>
-            <View
-              className="bg-white dark:bg-slate-900 rounded-lg p-3 border border-gray-100 dark:border-slate-800"
-              style={{
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              }}
-            >
+            <View>
               {attentionItems.map((m, idx) => (
                 <View key={`${m.type}-${m.animal?._id || m.relatedId}-${idx}`}>
                   <AlertItem
@@ -805,20 +830,20 @@ export function FarmerHomeScreen() {
                     icon={
                       m.urgency === "awaiting" ? (
                         <MaterialCommunityIcons
-                          name="clock-outline"
-                          size={20}
+                          name="clock-time-four-outline"
+                          size={21}
                           color={colors.textMuted}
                         />
                       ) : m.type === "calving" ? (
                         <MaterialCommunityIcons
-                          name="baby-face-outline"
-                          size={20}
+                          name="cow"
+                          size={21}
                           color={isDark ? "#34d399" : "#166534"}
                         />
                       ) : (
                         <MaterialCommunityIcons
-                          name="alert-circle-outline"
-                          size={20}
+                          name="heart-pulse"
+                          size={21}
                           color={isDark ? "#f97316" : "#9A3412"}
                         />
                       )
@@ -829,30 +854,30 @@ export function FarmerHomeScreen() {
                           ? "rgba(148,163,184,0.10)"
                           : "#F8FAFC"
                         : m.type === "calving"
-                        ? isDark
-                          ? "rgba(52,211,153,0.12)"
-                          : "#F0FDF4"
-                        : isDark
-                          ? "rgba(249,115,22,0.12)"
-                          : "#FDF2E9"
+                          ? isDark
+                            ? "rgba(52,211,153,0.12)"
+                            : "#F0FDF4"
+                          : isDark
+                            ? "rgba(249,115,22,0.12)"
+                            : "#FDF2E9"
                     }
                     textColor={
                       m.urgency === "awaiting"
                         ? colors.textSecondary
                         : m.type === "calving"
-                        ? isDark
-                          ? "#34d399"
-                          : "#166534"
-                        : isDark
-                          ? "#f97316"
-                          : "#9A3412"
+                          ? isDark
+                            ? "#34d399"
+                            : "#166534"
+                          : isDark
+                            ? "#f97316"
+                            : "#9A3412"
                     }
                     onPress={() =>
                       m.animal?._id &&
                       router.push(`/(farmer)/animal-details?id=${m.animal._id}`)
                     }
                   />
-                  {idx < attentionItems.length - 1 && <View className="h-3" />}
+                  {idx < attentionItems.length - 1 && <View className="h-2" />}
                 </View>
               ))}
             </View>
@@ -872,7 +897,7 @@ export function FarmerHomeScreen() {
               onPress={() => router.push("/(farmer)/(tabs)/add-animal")}
               accessibilityRole="button"
               className="justify-center"
-              style={{ minHeight: 44 }}
+              style={{ minHeight: 35 }}
             >
               <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[13px]">
                 View all
@@ -884,8 +909,12 @@ export function FarmerHomeScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingRight: dashboardLayout.nextCardPreview }}
-              snapToInterval={dashboardLayout.animalCardWidth + dashboardLayout.cardGap}
+              contentContainerStyle={{
+                paddingRight: dashboardLayout.nextCardPreview,
+              }}
+              snapToInterval={
+                dashboardLayout.animalCardWidth + dashboardLayout.cardGap
+              }
               decelerationRate="fast"
             >
               {myAnimals.slice(0, 5).map((animal: any) => (
@@ -971,7 +1000,11 @@ export function FarmerHomeScreen() {
                   <RecordItem
                     title={item.title}
                     outcome={item.outcome}
-                    date={item.date ? format(new Date(item.date), "MMM d, h:mm a") : "Date unavailable"}
+                    date={
+                      item.date
+                        ? format(new Date(item.date), "MMM d, h:mm a")
+                        : "Date unavailable"
+                    }
                     icon={
                       item.type === "ai" ? (
                         <Syringe
@@ -1020,42 +1053,6 @@ export function FarmerHomeScreen() {
                 </Text>
               </View>
             )}
-          </View>
-        </View>
-
-        {/* --- LEARN WITH MOOWIE --- */}
-        <View className="px-6 mb-16 mt-6">
-          <View
-            className="bg-white dark:bg-slate-900 rounded-[32px] p-6 shadow-sm border border-gray-100 dark:border-slate-800"
-            style={{ backgroundColor: colors.card, borderColor: colors.border }}
-          >
-            <Text className="text-slate-800 dark:text-white font-outfit-bold text-[18px] mb-4 ml-1">
-              Learn with Moowie
-            </Text>
-            <View className="flex-row gap-3">
-              <LearnItem
-                title="Detecting heat signs"
-                icon={
-                  <MaterialCommunityIcons
-                    name="book-open-variant"
-                    size={20}
-                    color="#166534"
-                  />
-                }
-                bgColor="#FEF3C7"
-              />
-              <LearnItem
-                title="Calf nutrition basics"
-                icon={
-                  <MaterialCommunityIcons
-                    name="heart-outline"
-                    size={20}
-                    color="#166534"
-                  />
-                }
-                bgColor="#FEF3C7"
-              />
-            </View>
           </View>
         </View>
       </ScrollView>
@@ -2190,86 +2187,86 @@ const QuickActionItem = ({
 
 const VisitItem = ({
   title,
-  time,
+  dateStr,
+  timeStr,
   technician,
   serviceStatus,
   reproductiveOutcome,
   accessibilityLabel,
   icon,
   iconBg,
-  onCancel,
   onPress,
 }: any) => {
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={!onPress}
-      activeOpacity={0.7}
-      accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={accessibilityLabel}
-      className="flex-row items-start p-2"
-      style={{ minHeight: 84 }}
-    >
-      <View
-        className="w-12 h-12 rounded-full items-center justify-center"
-        style={{ backgroundColor: iconBg }}
+    <View>
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={!onPress}
+        activeOpacity={0.7}
+        accessibilityRole={onPress ? "button" : undefined}
+        accessibilityLabel={accessibilityLabel}
+        className="flex-row items-center px-4 py-3"
+        style={{ minHeight: 80 }}
       >
-        {icon}
-      </View>
-      <View className="flex-1 min-w-0 ml-3">
-        <View className="flex-row items-start gap-2">
+        <View
+          className="h-10 w-10 items-center justify-center rounded-full mr-4"
+          style={{ backgroundColor: iconBg }}
+        >
+          {icon}
+        </View>
+
+        <View className="ml-2.5 mr-2 min-w-0 flex-1">
           <Text
-            numberOfLines={2}
-            className="flex-1 min-w-0 text-slate-800 dark:text-white font-outfit-bold text-[14px]"
+            numberOfLines={1}
+            className="w-full font-outfit-bold text-[14px] leading-5 text-slate-800 dark:text-white"
           >
             {title}
           </Text>
-          <StatusBadge label={serviceStatus} domain="service" size={9} compact />
-        </View>
-        <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-[12px]">
-          {time}
-        </Text>
-        <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium text-[11px]">
-          {technician && technician !== "Pending Assignment"
-            ? `Technician: ${technician}`
-            : "Pending Assignment"}
-        </Text>
-        {reproductiveOutcome ? (
-          <Text
-            numberOfLines={1}
-            className="text-slate-500 dark:text-slate-400 font-outfit-medium text-[11px]"
-          >
-            Reproductive outcome: {reproductiveOutcome}
-          </Text>
-        ) : null}
-        {onCancel &&
-          ["PENDING", "APPROVED", "SCHEDULED"].includes(serviceStatus) && (
-            <TouchableOpacity
-              onPress={onCancel}
-              accessibilityRole="button"
-              accessibilityLabel={`Cancel ${title}`}
-              className="self-start justify-center"
-              style={{ minHeight: 44 }}
+
+          {/* Date & Time Row with Icons */}
+          <View className="flex-row items-center flex-wrap gap-x-3 gap-y-0.5 mt-1">
+            {dateStr ? (
+              <View className="flex-row items-center">
+                <Calendar size={12} color="#94a3b8" />
+                <Text className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400">
+                  {dateStr}
+                </Text>
+              </View>
+            ) : null}
+
+            {timeStr ? (
+              <View className="flex-row items-center">
+                <Clock size={12} color="#94a3b8" />
+                <Text className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400">
+                  {timeStr}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Technician Row */}
+          <View className="flex-row items-center mt-1">
+            <User size={12} color="#94a3b8" />
+            <Text
+              numberOfLines={1}
+              className="ml-1 font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400"
             >
-              <Text className="text-red-500 font-outfit-bold text-[10px]">
-                Cancel
-              </Text>
-            </TouchableOpacity>
-          )}
-      </View>
-      {onPress ? (
-        <View
-          className="items-center justify-center"
-          style={{ width: 24, minHeight: 44, marginLeft: 4 }}
-        >
-          <MaterialCommunityIcons
-            name="chevron-right"
-            size={20}
-            color="#94A3B8"
+              {technician || "Pending Assignment"}
+              {reproductiveOutcome ? ` · Outcome: ${reproductiveOutcome}` : ""}
+            </Text>
+          </View>
+        </View>
+
+        <View style={{ maxWidth: 96, alignItems: "flex-end" }}>
+          <StatusBadge
+            label={serviceStatus}
+            domain="service"
+            size={9}
+            compact
           />
         </View>
-      ) : null}
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -2288,33 +2285,32 @@ const AlertItem = ({
     activeOpacity={0.75}
     accessibilityRole={onPress ? "button" : undefined}
     accessibilityLabel={accessibilityLabel}
-    className="flex-row items-center p-3 rounded-lg"
-    style={{ backgroundColor: bgColor, minHeight: 68 }}
+    className="flex-row items-center rounded-xl p-3"
+    style={{ backgroundColor: bgColor, minHeight: 80 }}
   >
-    <View className="mr-3">{icon}</View>
+    <View
+      className="w-10 h-10 rounded-xl items-center justify-center mr-3"
+      style={{ backgroundColor: `${textColor}14` }}
+    >
+      {icon}
+    </View>
     <View className="flex-1 min-w-0">
       <Text
         numberOfLines={2}
-        className="font-outfit-bold text-[15px]"
+        className="font-outfit-bold text-[14px] leading-5"
         style={{ color: textColor }}
       >
         {title}
       </Text>
       <Text
         numberOfLines={2}
-        className="font-outfit-medium text-[12px] opacity-70"
-        style={{ color: textColor }}
+        className="mt-1 font-outfit-medium text-[12px]"
+        style={{ color: textColor, opacity: 0.82 }}
       >
         {subtitle}
       </Text>
     </View>
-    {onPress ? (
-      <MaterialCommunityIcons
-        name="chevron-right"
-        size={18}
-        color={textColor}
-      />
-    ) : null}
+    {onPress ? <ChevronRight size={18} color={textColor} /> : null}
   </TouchableOpacity>
 );
 
@@ -2327,35 +2323,18 @@ const RecordItem = ({ title, outcome, date, icon, iconBg }: any) => (
       {icon}
     </View>
     <View className="flex-1 min-w-0 ml-3">
-      <Text numberOfLines={2} className="text-slate-800 dark:text-white font-outfit-bold text-[14px]">
+      <Text
+        numberOfLines={2}
+        className="text-slate-800 dark:text-white font-outfit-bold text-[14px]"
+      >
         {title}
       </Text>
-      <Text numberOfLines={1} className="text-slate-500 dark:text-slate-400 font-outfit-medium text-[11px]">
+      <Text
+        numberOfLines={1}
+        className="text-slate-500 dark:text-slate-400 font-outfit-medium text-[11px]"
+      >
         {outcome} · {date}
       </Text>
     </View>
   </View>
 );
-
-const LearnItem = ({ title, icon, bgColor }: any) => {
-  return (
-    <TouchableOpacity
-      className="flex-1 p-4 rounded-3xl border"
-      style={{
-        backgroundColor: bgColor,
-        borderColor: "transparent",
-      }}
-      activeOpacity={0.7}
-    >
-      <View className="w-10 h-10 bg-white/50 rounded-full items-center justify-center mb-3">
-        {icon}
-      </View>
-      <Text
-        style={{ color: "#1e293b" }}
-        className="font-outfit-bold text-[13px] leading-4"
-      >
-        {title}
-      </Text>
-    </TouchableOpacity>
-  );
-};

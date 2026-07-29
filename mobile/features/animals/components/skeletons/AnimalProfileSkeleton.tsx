@@ -4,15 +4,19 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useTheme } from "@/lib/theme";
 import { AppPageHeader } from "@/components/AppPageHeader";
 
-export function AnimalProfileSkeleton() {
+type AnimalProfileSkeletonProps = {
+  onBack?: () => void;
+};
+
+export function AnimalProfileSkeleton({ onBack }: AnimalProfileSkeletonProps) {
   const { colors } = useTheme();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <AppPageHeader
-        title="Animal Profile"
-        subtitle="Loading identity, lifecycle, health, and service history"
-        rightAction={<Skeleton width={36} height={36} radius={18} />}
+        title="Animal details"
+        onBack={onBack}
+        rightAction={<Skeleton width={48} height={48} radius={24} />}
       />
       <ScrollView
         style={{ flex: 1 }}

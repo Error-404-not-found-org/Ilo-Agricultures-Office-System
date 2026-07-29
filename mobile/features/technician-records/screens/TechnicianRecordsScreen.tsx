@@ -1,9 +1,12 @@
 import React from "react";
-import { View, StatusBar, TouchableOpacity, TextInput, ScrollView, RefreshControl, ActivityIndicator, Modal } from "react-native";
+import { View, TouchableOpacity, TextInput, ScrollView, RefreshControl, ActivityIndicator, Modal } from "react-native";
 import { useRouter } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
+import {
+  AppHeaderIconButton,
+  AppPageHeader,
+} from "@/components/AppPageHeader";
 import {
   Download,
   Calendar,
@@ -12,8 +15,6 @@ import {
   ChevronRight,
   ChevronLeft,
   Filter,
-  ArrowLeft,
-  ChevronDown,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { format, startOfWeek, endOfWeek } from "date-fns";
@@ -21,7 +22,7 @@ import { generatePDF, generateExcel } from "@/lib/reportExporter";
 
 import { useTechnicianRecords } from "../hooks/useTechnicianRecords";
 import { useTechnicianReportData } from "../hooks/useTechnicianReportData";
-import { SearchBar } from "@/components/shared";
+import { FilterChips, SearchBar } from "@/components/shared";
 import { RecordList } from "../components/RecordList";
 import { DateRangeSelector } from "../components/DateRangeSelector";
 import { LedgerDetailModal } from "../components/LedgerDetailModal";
@@ -40,9 +41,14 @@ const DetailRow = ({ label, value, highlightColor }: { label: string; value?: st
   );
 };
 
-export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: string }) {
+export default function TechnicianRecordsScreen({
+  defaultTab,
+  showBackButton = true,
+}: {
+  defaultTab?: string;
+  showBackButton?: boolean;
+}) {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
 
   // Tab state switcher (Browse Records vs. Generate Report)
@@ -104,7 +110,6 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
   } = useTechnicianReportData(activeSegment === "reports");
 
   const [filterModalOpen, setFilterModalOpen] = React.useState(false);
-  const [showFilterDropdown, setShowFilterDropdown] = React.useState(false);
   // Temp filter states for report modal
   const [tempReportSearchQuery, setTempReportSearchQuery] = React.useState("");
   const [tempSelectedReportType, setTempSelectedReportType] = React.useState<"ALL" | "AI" | "PD" | "CD" | "HL">("ALL");
@@ -115,136 +120,62 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
   const [detailModalOpen, setDetailModalOpen] = React.useState(false);
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? colors.card : "#fff"} />
-
-      {/* Header Container */}
-      <View
-        style={{
-          paddingHorizontal: 20,
-          paddingVertical: 14,
-          backgroundColor: isDark ? colors.card : "#fff",
-          borderBottomWidth: 1,
-          borderColor: colors.border,
-          paddingTop: insets.top + 14,
-          zIndex: 10,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12, flex: 1, marginRight: 16 }}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={{
-                padding: 8,
-                backgroundColor: isDark ? "#1e293b" : "#f8fafc",
-                borderRadius: 999,
-              }}
-            >
-              <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
-            </TouchableOpacity>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  color: colors.textPrimary,
-                  fontFamily: "Outfit_900Black",
-                  fontSize: 20,
-                }}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-              >
-                Records & Reports
-              </Text>
-              <Text
-                style={{
-                  color: colors.textSecondary,
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 11,
-                  marginTop: 2,
-                }}
-                numberOfLines={1}
-              >
-                Browse field records or prepare exports
-              </Text>
-            </View>
-          </View>
-
-          {/* Export and filter buttons depending on tab */}
-          {activeSegment === "browse" ? (
+      <AppPageHeader
+        title="Records"
+        showBackButton={showBackButton}
+        variant={showBackButton ? "detail" : "top-level"}
+        rightAction={
+          activeSegment === "browse" ? (
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <TouchableOpacity
+              <AppHeaderIconButton
                 onPress={exportCSV}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
+                accessibilityLabel="Export records"
               >
-                <Download size={18} color={isDark ? "#fff" : "#1e293b"} />
-              </TouchableOpacity>
-              <TouchableOpacity
+                <Download size={18} color={colors.primary} />
+              </AppHeaderIconButton>
+              <AppHeaderIconButton
                 onPress={() => setShowCalendarModal(true)}
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  backgroundColor: startDate || endDate ? "#eab308" : (isDark ? "#1e293b" : "#f1f5f9"),
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
+                accessibilityLabel="Filter records by date"
+                selected={Boolean(startDate || endDate)}
               >
-                <Calendar size={18} color={startDate || endDate ? "#fff" : (isDark ? "#fff" : "#1e293b")} />
-              </TouchableOpacity>
+                <Calendar size={18} color={colors.primary} />
+              </AppHeaderIconButton>
             </View>
           ) : (
-            <TouchableOpacity
+            <AppHeaderIconButton
               onPress={() => {
                 setTempReportSearchQuery(reportSearchQuery);
                 setTempSelectedReportType(selectedReportType);
                 setTempSelectedReportBarangay(selectedReportBarangay);
                 setFilterModalOpen(true);
               }}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                backgroundColor: isDark ? "#1e293b" : "#f1f5f9",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              accessibilityLabel="Filter report data"
+              selected={
+                selectedReportType !== "ALL" ||
+                selectedReportBarangay !== "ALL" ||
+                reportSearchQuery !== ""
+              }
             >
-              <Filter size={18} color={isDark ? "#fff" : "#1e293b"} />
-              {(selectedReportType !== "ALL" || selectedReportBarangay !== "ALL" || reportSearchQuery !== "") && (
-                <View
-                  style={{
-                    position: "absolute",
-                    top: 6,
-                    right: 6,
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: "#EF4444",
-                  }}
-                />
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
+              <Filter size={18} color={colors.primary} />
+            </AppHeaderIconButton>
+          )
+        }
+      />
 
-        {/* Tab switch control */}
+      <View
+        style={{
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+          backgroundColor: colors.card,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
         <View
           style={{
             flexDirection: "row",
-            backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9",
-            borderRadius: 14,
+            backgroundColor: colors.surfaceSubtle,
+            borderRadius: 12,
             padding: 4,
           }}
         >
@@ -252,17 +183,22 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
             onPress={() => setActiveSegment("browse")}
             style={{
               flex: 1,
-              paddingVertical: 8,
-              borderRadius: 10,
+              minHeight: 44,
+              borderRadius: 8,
               alignItems: "center",
-              backgroundColor: activeSegment === "browse" ? (isDark ? colors.primary : "#ffffff") : "transparent",
+              justifyContent: "center",
+              backgroundColor:
+                activeSegment === "browse" ? colors.primary : "transparent",
             }}
           >
             <Text
               style={{
                 fontFamily: "Outfit_700Bold",
                 fontSize: 12,
-                color: activeSegment === "browse" ? (isDark ? "#ffffff" : PRIMARY) : (isDark ? "rgba(255,255,255,0.5)" : "rgba(30,41,59,0.6)"),
+                color:
+                  activeSegment === "browse"
+                    ? colors.onPrimary
+                    : colors.textSecondary,
               }}
             >
               Browse Records
@@ -272,17 +208,22 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
             onPress={() => setActiveSegment("reports")}
             style={{
               flex: 1,
-              paddingVertical: 8,
-              borderRadius: 10,
+              minHeight: 44,
+              borderRadius: 8,
               alignItems: "center",
-              backgroundColor: activeSegment === "reports" ? (isDark ? colors.primary : "#ffffff") : "transparent",
+              justifyContent: "center",
+              backgroundColor:
+                activeSegment === "reports" ? colors.primary : "transparent",
             }}
           >
             <Text
               style={{
                 fontFamily: "Outfit_700Bold",
                 fontSize: 12,
-                color: activeSegment === "reports" ? (isDark ? "#ffffff" : PRIMARY) : (isDark ? "rgba(255,255,255,0.5)" : "rgba(30,41,59,0.6)"),
+                color:
+                  activeSegment === "reports"
+                    ? colors.onPrimary
+                    : colors.textSecondary,
               }}
             >
               Generate Report
@@ -300,81 +241,11 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
       >
         {activeSegment === "browse" ? (
           <>
-            <View style={{ paddingHorizontal: 20, paddingTop: 24 }}>
-              <View
-                style={{
-                  backgroundColor: colors.card,
-                  borderRadius: 18,
-                  padding: 14,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 12,
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      color: colors.textPrimary,
-                      fontFamily: "Outfit_800ExtraBold",
-                      fontSize: 15,
-                    }}
-                  >
-                    Browse official records
-                  </Text>
-                  <Text
-                    style={{
-                      color: colors.textSecondary,
-                      fontFamily: "Outfit_500Medium",
-                      fontSize: 11,
-                      marginTop: 3,
-                      lineHeight: 15,
-                    }}
-                  >
-                    Search AI, pregnancy, calving, health assistance, and visit records.
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    backgroundColor: isDark ? "rgba(16,185,129,0.15)" : "#ecfdf5",
-                    borderRadius: 12,
-                    paddingHorizontal: 10,
-                    paddingVertical: 8,
-                    alignItems: "center",
-                    minWidth: 62,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: isDark ? colors.primary : "#059669",
-                      fontFamily: "Outfit_900Black",
-                      fontSize: 16,
-                    }}
-                  >
-                    {recordsTotal}
-                  </Text>
-                  <Text
-                    style={{
-                      color: colors.textSecondary,
-                      fontFamily: "Outfit_700Bold",
-                      fontSize: 9,
-                      marginTop: 1,
-                    }}
-                  >
-                    RECORDS
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {/* Search Bar */}
-            <View style={{ paddingHorizontal: 20, paddingTop: 14 }}>
+            <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
               <SearchBar
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder="Search farmer, animal tag, status..."
+                placeholder="Search farmer, animal tag, or status"
                 variant="directory"
               />
             </View>
@@ -383,13 +254,11 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
             {(startDate || endDate) && (
               <View
                 style={{
-                  marginHorizontal: 20,
-                  marginTop: 12,
-                  backgroundColor: isDark ? "#3f3f0e" : "#fef9c3",
-                  borderStyle: "solid",
+                  marginHorizontal: 16,
+                  marginBottom: 12,
+                  backgroundColor: colors.warningContainer,
                   borderWidth: 1,
-                  borderColor: isDark ? "#5e5e0d" : "#fef08a",
-                  paddingVertical: 8,
+                  borderColor: colors.warningBorder,
                   paddingHorizontal: 12,
                   borderRadius: 12,
                   flexDirection: "row",
@@ -400,157 +269,62 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
                 <View
                   style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
                 >
-                  <Calendar size={14} color={isDark ? "#eab308" : "#a16207"} />
+                  <Calendar size={16} color={colors.warningForeground} />
                   <Text
                     style={{
-                      fontSize: 11,
-                      fontFamily: "Outfit_700Bold",
-                      color: isDark ? "#eab308" : "#a16207",
+                      flex: 1,
+                      fontSize: 12,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: colors.warningForeground,
                     }}
                   >
-                    Range: {startDate ? startDate.toLocaleDateString() : "..."} -{" "}
-                    {endDate ? endDate.toLocaleDateString() : "..."}
+                    {startDate ? startDate.toLocaleDateString() : "Start date"} –{" "}
+                    {endDate ? endDate.toLocaleDateString() : "End date"}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={clearDateRange} style={{ padding: 2 }}>
-                  <X size={14} color={isDark ? "#eab308" : "#a16207"} />
+                <TouchableOpacity
+                  onPress={clearDateRange}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear date range"
+                  style={{
+                    width: 48,
+                    height: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <X size={18} color={colors.warningForeground} />
                 </TouchableOpacity>
               </View>
             )}
 
-            {/* Filter Dropdown */}
-            <View style={{ paddingHorizontal: 20, marginVertical: 12, zIndex: 50 }}>
-              <TouchableOpacity
-                onPress={() => setShowFilterDropdown(!showFilterDropdown)}
-                style={{
-                  backgroundColor: colors.card,
-                  borderRadius: 14,
-                  paddingVertical: 12,
-                  paddingHorizontal: 16,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 13 }}>
-                    Filter by:
-                  </Text>
-                  <Text style={{ fontFamily: "Outfit_800ExtraBold", color: colors.primary, fontSize: 13 }}>
-                    {selectedFilter === "All"
-                      ? "All Records"
-                      : selectedFilter === "AI"
-                        ? "A.I. Insemination"
-                        : selectedFilter === "Pregnancy"
-                          ? "Pregnancy Diagnosis"
-                          : selectedFilter === "Calving"
-                            ? "Calving / Delivery"
-                            : selectedFilter === "Health"
-                              ? "Health Records"
-                              : "General Notes"}
-                  </Text>
-                </View>
-                <ChevronDown size={18} color={colors.textSecondary} style={{ transform: [{ rotate: showFilterDropdown ? "180deg" : "0deg" }] }} />
-              </TouchableOpacity>
-
-              {showFilterDropdown && (
-                <View
-                  style={{
-                    backgroundColor: colors.card,
-                    borderRadius: 14,
-                    marginTop: 6,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    overflow: "hidden",
-                    elevation: 4,
-                    shadowColor: "#000",
-                    shadowOpacity: 0.08,
-                    shadowRadius: 8,
-                    shadowOffset: { width: 0, height: 4 },
-                    position: "absolute",
-                    top: "100%",
-                    left: 20,
-                    right: 20,
-                    zIndex: 100,
-                  }}
-                >
-                  {[
-                    { label: "All Records", value: "All" },
-                    { label: "A.I. Insemination", value: "AI" },
-                    { label: "Pregnancy Diagnosis", value: "Pregnancy" },
-                    { label: "Calving / Delivery", value: "Calving" },
-                    { label: "Health Records", value: "Health" },
-                    { label: "General Notes", value: "Notes" },
-                  ].map((option, idx) => (
-                    <TouchableOpacity
-                      key={option.value}
-                      onPress={() => {
-                        setSelectedFilter(option.value as any);
-                        setShowFilterDropdown(false);
-                      }}
-                      style={{
-                        paddingVertical: 12,
-                        paddingHorizontal: 16,
-                        borderBottomWidth: idx !== 5 ? 1 : 0,
-                        borderBottomColor: colors.border,
-                        backgroundColor: selectedFilter === option.value ? (isDark ? "rgba(16,185,129,0.08)" : "#f0fdf4") : "transparent",
-                      }}
-                    >
-                      <Text
-                        style={{
-                          fontFamily: selectedFilter === option.value ? "Outfit_800ExtraBold" : "Outfit_500Medium",
-                          color: selectedFilter === option.value ? (isDark ? colors.primary : "#059669") : colors.textPrimary,
-                          fontSize: 13,
-                        }}
-                      >
-                        {option.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-
-            {/* Ledger Counter Badge */}
-            <View
-              style={{
-                paddingHorizontal: 20,
-                marginBottom: 8,
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
+            <FilterChips
+              options={[
+                { label: "All", value: "All" },
+                { label: "AI", value: "AI" },
+                { label: "Pregnancy", value: "Pregnancy" },
+                { label: "Calving", value: "Calving" },
+                { label: "Health", value: "Health" },
+                { label: "Notes", value: "Notes" },
+              ]}
+              value={selectedFilter}
+              onChange={(value) => setSelectedFilter(value as any)}
+              containerStyle={{
+                paddingHorizontal: 16,
+                paddingBottom: 12,
               }}
-            >
+            />
+
+            <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
               <Text
                 style={{
-                  fontFamily: "Outfit_800ExtraBold",
+                  fontFamily: "Outfit_500Medium",
                   color: colors.textSecondary,
-                  fontSize: 11,
-                  textTransform: "uppercase",
-                  letterSpacing: 0.5,
+                  fontSize: 12,
                 }}
               >
-                Showing {filteredRecords.length} loaded of {recordsTotal} records
+                Showing {filteredRecords.length} of {recordsTotal} records
               </Text>
-              {filteredRecords.length > 0 && (
-                <TouchableOpacity
-                  onPress={exportCSV}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
-                >
-                  <Download size={12} color={isDark ? colors.primary : "#059669"} />
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_700Bold",
-                      color: isDark ? colors.primary : "#059669",
-                      fontSize: 11,
-                    }}
-                  >
-                    Export CSV
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
 
             {/* Timeline List */}
@@ -569,7 +343,11 @@ export default function TechnicianRecordsScreen({ defaultTab }: { defaultTab?: s
         ) : (
           <ScrollView
             style={{ flex: 1 }}
-            contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 25, paddingBottom: insets.bottom + 100 }}
+            contentContainerStyle={{
+              paddingHorizontal: 16,
+              paddingTop: 16,
+              paddingBottom: 96,
+            }}
             showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl

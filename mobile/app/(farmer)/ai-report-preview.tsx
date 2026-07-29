@@ -22,7 +22,7 @@ function AIReportPreviewSkeleton() {
 
   return (
     <FarmerScreen scroll={false}>
-      <AppPageHeader title="AI Service Report" subtitle="Loading service details and outcome" />
+      <AppPageHeader title="AI Service Report" />
 
       <ScrollView
         style={{ flex: 1 }}
@@ -182,7 +182,6 @@ export default function AIReportPreviewScreen() {
     <FarmerScreen scroll={false}>
       <AppPageHeader
         title="AI Service Report"
-        subtitle="Breeding service, technician, and outcome details"
         rightAction={
           <TouchableOpacity
             onPress={share}

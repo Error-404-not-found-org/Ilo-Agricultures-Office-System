@@ -1,8 +1,13 @@
 import React from "react";
 import { View, Text, TouchableOpacity, Image } from "react-native";
 import { format } from "date-fns";
-import { Syringe, Stethoscope } from "lucide-react-native";
-import { MaterialCommunityIcons } from "@expo/vector-icons";
+import {
+  Baby,
+  ChevronRight,
+  HeartPulse,
+  Stethoscope,
+  Syringe,
+} from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
 import { getAnimalImageSource } from "@/features/farmer-ui/utils/animalImage";
 import type { ActivityFeedItem } from "../types/farmerReports.types";
@@ -12,151 +17,226 @@ interface ActivityCardProps {
   onPress?: () => void;
 }
 
+const RECORD_TYPE_LABELS: Record<ActivityFeedItem["type"], string> = {
+  ai: "AI service",
+  health: "Health",
+  pregnancy: "Pregnancy",
+  calving: "Calving",
+};
+
+const getRecordTone = (type: ActivityFeedItem["type"], isDark: boolean) => {
+  switch (type) {
+    case "ai":
+      return {
+        color: isDark ? "#93c5fd" : "#1d4ed8",
+        background: isDark ? "rgba(59, 130, 246, 0.14)" : "#eff6ff",
+      };
+    case "health":
+      return {
+        color: isDark ? "#fdba74" : "#c2410c",
+        background: isDark ? "rgba(249, 115, 22, 0.14)" : "#fff7ed",
+      };
+    case "pregnancy":
+      return {
+        color: isDark ? "#f9a8d4" : "#be185d",
+        background: isDark ? "rgba(236, 72, 153, 0.14)" : "#fdf2f8",
+      };
+    case "calving":
+      return {
+        color: isDark ? "#6ee7b7" : "#047857",
+        background: isDark ? "rgba(16, 185, 129, 0.14)" : "#ecfdf5",
+      };
+  }
+};
+
+const RecordTypeIcon = ({
+  type,
+  color,
+}: {
+  type: ActivityFeedItem["type"];
+  color: string;
+}) => {
+  switch (type) {
+    case "ai":
+      return <Syringe size={20} color={color} />;
+    case "health":
+      return <Stethoscope size={20} color={color} />;
+    case "pregnancy":
+      return <HeartPulse size={20} color={color} />;
+    case "calving":
+      return <Baby size={20} color={color} />;
+  }
+};
+
 const ActivityCard = ({ item, onPress }: ActivityCardProps) => {
   const { colors, isDark } = useTheme();
-  const dateStr = item.date
-    ? format(new Date(item.date), "MMM d, yyyy, h:mm a")
-    : "No Date";
-
-  const isAI = item.type === "ai";
-  const isHealth = item.type === "health";
-
-  const cardColor = isDark
-    ? isHealth
-      ? "rgba(239, 68, 68, 0.05)"
-      : isAI
-        ? "rgba(59, 130, 246, 0.05)"
-        : "rgba(16, 185, 129, 0.05)"
-    : isHealth
-      ? "#fef2f2"
-      : isAI
-        ? "#eff6ff"
-        : "#f0fdf4";
-
-  const iconColor = isHealth ? "#dc2626" : isAI ? "#2563eb" : "#b45309";
-
-  const hasAnimal = !!item.animalId;
-  const imageSource = hasAnimal ? getAnimalImageSource(item.animalId!) : null;
+  const dateLabel = item.date
+    ? format(new Date(item.date), "MMM d, yyyy · h:mm a")
+    : "Date unavailable";
+  const tone = getRecordTone(item.type, isDark);
+  const animal = item.animalId;
+  const animalImage = animal ? getAnimalImageSource(animal) : null;
+  const animalLabel = animal?.earTag ? `Tag ${animal.earTag}` : "Animal record";
+  const animalDetails = [animal?.breed, animal?.species]
+    .filter(Boolean)
+    .join(" · ");
+  const primaryColor = isDark ? colors.primary : "#00643B";
 
   return (
     <TouchableOpacity
-      activeOpacity={0.8}
+      activeOpacity={0.78}
       onPress={onPress}
+      disabled={!onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${item.title} record from ${dateStr}`}
+      accessibilityLabel={`Open ${item.title} record from ${dateLabel}`}
       style={{
         backgroundColor: colors.card,
-        borderRadius: 18,
+        borderRadius: 16,
         padding: 16,
-        marginBottom: 12,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: isDark ? 0 : 0.05,
-        shadowRadius: 12,
-        elevation: isDark ? 0 : 3,
+        marginBottom: 10,
         borderWidth: 1,
         borderColor: colors.border,
       }}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          marginBottom: 12,
-        }}
-      >
-        <View style={{ flexDirection: "row", gap: 12, flex: 1 }}>
-          {imageSource ? (
-            <Image
-              source={imageSource}
-              style={{ width: 44, height: 44, borderRadius: 12 }}
-            />
-          ) : (
-            <View
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
-                backgroundColor: cardColor,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              {isAI ? (
-                <Syringe size={20} color={iconColor} />
-              ) : isHealth ? (
-                <Stethoscope size={20} color={iconColor} />
-              ) : (
-                <MaterialCommunityIcons
-                  name="cow"
-                  size={24}
-                  color={iconColor}
-                />
-              )}
-            </View>
-          )}
-          <View style={{ flex: 1 }}>
+      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: tone.background,
+          }}
+        >
+          <RecordTypeIcon type={item.type} color={tone.color} />
+        </View>
+
+        <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+            }}
+          >
             <Text
               style={{
-                fontSize: 12,
-                fontFamily: "Outfit_600SemiBold",
-                color: colors.textSecondary,
-              }}
-            >
-              {dateStr}
-            </Text>
-            <Text
-              style={{
-                fontSize: 16,
+                color: tone.color,
                 fontFamily: "Outfit_700Bold",
-                color: colors.textPrimary,
-                marginTop: 4,
+                fontSize: 12,
               }}
             >
-              {item.title}
+              {RECORD_TYPE_LABELS[item.type]}
             </Text>
             <Text
+              numberOfLines={1}
               style={{
-                fontSize: 13,
-                fontFamily: "Outfit_500Medium",
+                flexShrink: 1,
                 color: colors.textSecondary,
-                marginTop: 3,
-                lineHeight: 18,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 11,
+                textAlign: "right",
               }}
-              numberOfLines={2}
             >
-              {item.description}
+              {dateLabel}
             </Text>
           </View>
+
+          <Text
+            numberOfLines={2}
+            style={{
+              color: colors.textPrimary,
+              fontFamily: "Outfit_700Bold",
+              fontSize: 16,
+              lineHeight: 21,
+              marginTop: 5,
+            }}
+          >
+            {item.title}
+          </Text>
         </View>
       </View>
 
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-          paddingTop: 10,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          marginTop: 10,
-        }}
-      >
+      {item.description ? (
         <Text
+          numberOfLines={2}
           style={{
-            fontSize: 12,
-            fontFamily: "Outfit_700Bold",
-            color: isDark ? colors.primary : "#00643B",
+            color: colors.textSecondary,
+            fontFamily: "Outfit_400Regular",
+            fontSize: 14,
+            lineHeight: 20,
+            marginTop: 12,
           }}
         >
-          Open record
+          {item.description}
         </Text>
-        <MaterialCommunityIcons
-          name="chevron-right"
-          size={20}
-          color={isDark ? colors.primary : "#00643B"}
-        />
+      ) : null}
+
+      <View
+        style={{
+          minHeight: 44,
+          flexDirection: "row",
+          alignItems: "center",
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          marginTop: 14,
+          paddingTop: 12,
+        }}
+      >
+        {animalImage ? (
+          <Image
+            source={animalImage}
+            style={{ width: 36, height: 36, borderRadius: 10 }}
+          />
+        ) : null}
+
+        <View
+          style={{
+            flex: 1,
+            minWidth: 0,
+            marginLeft: animalImage ? 10 : 0,
+          }}
+        >
+          <Text
+            numberOfLines={1}
+            style={{
+              color: colors.textPrimary,
+              fontFamily: "Outfit_600SemiBold",
+              fontSize: 13,
+            }}
+          >
+            {animal ? animalLabel : "View record details"}
+          </Text>
+          {animalDetails ? (
+            <Text
+              numberOfLines={1}
+              style={{
+                color: colors.textSecondary,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 11,
+                marginTop: 2,
+              }}
+            >
+              {animalDetails}
+            </Text>
+          ) : null}
+        </View>
+
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: isDark ? "rgba(16, 185, 129, 0.12)" : "#ecfdf5",
+            marginLeft: 10,
+          }}
+        >
+          <ChevronRight size={18} color={primaryColor} />
+        </View>
       </View>
     </TouchableOpacity>
   );

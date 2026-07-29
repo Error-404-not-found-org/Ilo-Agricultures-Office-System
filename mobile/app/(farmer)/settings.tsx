@@ -144,7 +144,7 @@ export default function SettingsScreen() {
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-slate-950" style={{ backgroundColor: colors.background }}>
-      <AppPageHeader title={t('appSettings')} subtitle="Language, notifications, appearance, and application storage" />
+      <AppPageHeader title={t('appSettings')} />
 
       <ScrollView 
         showsVerticalScrollIndicator={false} 

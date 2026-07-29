@@ -1,5 +1,11 @@
 import React from "react";
-import { View, ScrollView, StatusBar, RefreshControl, useWindowDimensions } from "react-native";
+import {
+  View,
+  ScrollView,
+  StatusBar,
+  RefreshControl,
+  useWindowDimensions,
+} from "react-native";
 import { useTheme } from "@/lib/theme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
@@ -9,13 +15,12 @@ import { useRouter } from "expo-router";
 import { useTechnicianDashboardScreen } from "../hooks/useTechnicianDashboardScreen";
 import { TechnicianHeroHeader } from "../components/TechnicianHeroHeader";
 import { TechnicianStatsCard } from "../components/TechnicianStatsCard";
-import { TechnicianQuickActions, getQuickActionGridMetrics } from "../components/TechnicianQuickActions";
+import {
+  TechnicianQuickActions,
+  getQuickActionGridMetrics,
+} from "../components/TechnicianQuickActions";
 import { TechnicianRouteSection } from "../components/TechnicianRouteSection";
 import { TechnicianRequestsSection } from "../components/TechnicianRequestsSection";
-import { TechnicianPerformanceCard } from "../components/TechnicianPerformanceCard";
-import { TechnicianFarmerStandings } from "../components/TechnicianFarmerStandings";
-import { TechnicianMoowieHelpCard } from "../components/TechnicianMoowieHelpCard";
-
 
 export default function TechnicianDashboardScreen() {
   const router = useRouter();
@@ -32,47 +37,12 @@ export default function TechnicianDashboardScreen() {
     refreshing,
     onRefresh,
     stats,
-    analytics,
-    clientsData,
-    loadingClients,
-    farmerSearch,
-    setFarmerSearch,
     unreadCount,
     agendaItems,
     pendingRequests,
     profileWarningVisible,
     setProfileWarningVisible,
-    modalVisible,
-    setModalVisible,
-    selectedItem,
-    scheduledDate,
-    setScheduledDate,
-    note,
-    setNote,
-    diagnosis,
-    setDiagnosis,
-    treatment,
-    setTreatment,
-    advice,
-    setAdvice,
-    sireBreed,
-    setSireBreed,
-    sireCode,
-    setSireCode,
-    estrus,
-    setEstrus,
-    showDatePicker,
-    setShowDatePicker,
-    showTimePicker,
-    setShowTimePicker,
-    showBreedModal,
-    setShowBreedModal,
-    selectedItemTechName,
-    isSelectedAssignedToOther,
-    isReadOnly,
-    getAdditionalNotesOnly,
     handleAction,
-    confirmAction,
     isUpdating,
   } = useTechnicianDashboardScreen();
 
@@ -81,11 +51,7 @@ export default function TechnicianDashboardScreen() {
       <StatusBar
         barStyle={pastHeader && !isDark ? "dark-content" : "light-content"}
         backgroundColor={
-          pastHeader
-            ? colors.background
-            : isDark
-              ? "#064e3e"
-              : "#00643B"
+          pastHeader ? colors.background : isDark ? "#064e3e" : "#00643B"
         }
       />
 
@@ -106,8 +72,7 @@ export default function TechnicianDashboardScreen() {
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={16}
         onScroll={(event) => {
-          const shouldUsePageColor =
-            event.nativeEvent.contentOffset.y > 120;
+          const shouldUsePageColor = event.nativeEvent.contentOffset.y > 120;
           setPastHeader((current) =>
             current === shouldUsePageColor ? current : shouldUsePageColor,
           );
@@ -122,20 +87,21 @@ export default function TechnicianDashboardScreen() {
         }
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
       >
-        <TechnicianHeroHeader
-          clerkUser={clerkUser}
-          unreadCount={unreadCount}
-        />
+        <TechnicianHeroHeader clerkUser={clerkUser} unreadCount={unreadCount} />
 
-        <View style={{ paddingHorizontal: quickActionMetrics.screenPadding, marginTop: -105, width: "100%", maxWidth: 960, alignSelf: "center" }}>
-          <TechnicianStatsCard stats={stats} analytics={analytics} agendaItems={agendaItems} />
+        <View
+          style={{
+            paddingHorizontal: quickActionMetrics.screenPadding,
+            marginTop: -20,
+            zIndex: 1,
+            width: "100%",
+            maxWidth: 960,
+            alignSelf: "center",
+          }}
+        >
+          <TechnicianStatsCard stats={stats} agendaItems={agendaItems} />
 
-          <TechnicianQuickActions
-            pendingRequestCount={
-              pendingRequests.filter((request: any) => request.status === "pending").length
-            }
-            todayVisitCount={agendaItems.length}
-          />
+          <TechnicianQuickActions />
 
           <TechnicianRouteSection
             loading={loading}
@@ -151,15 +117,8 @@ export default function TechnicianDashboardScreen() {
             isUpdating={isUpdating}
             handleAction={handleAction}
           />
-
-
-          <TechnicianMoowieHelpCard />
         </View>
-
-        <View style={{ height: 100 }} />
       </ScrollView>
-
-
 
       <ConfirmationModal
         visible={profileWarningVisible}

@@ -32,11 +32,11 @@ export function TechnicianHeroHeader({
     <View
       style={{
         backgroundColor: isDark ? "#064e3e" : "#00643B",
-        paddingHorizontal: 20,
-        paddingTop: 14,
-        paddingBottom: 130,
-        borderBottomLeftRadius: 30,
-        borderBottomRightRadius: 30,
+        paddingHorizontal: 16,
+        paddingTop: 16,
+        paddingBottom: 32,
+        borderBottomLeftRadius: 20,
+        borderBottomRightRadius: 20,
       }}
     >
       <View
@@ -62,9 +62,9 @@ export function TechnicianHeroHeader({
         >
           <View
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
+              width: 48,
+              height: 48,
+              borderRadius: 24,
               borderWidth: 1,
               borderColor: "rgba(255,255,255,0.28)",
               overflow: "hidden",
@@ -90,14 +90,14 @@ export function TechnicianHeroHeader({
           <View style={{ flex: 1, minWidth: 0 }}>
             <Text
               variant="medium"
-              size={11}
+              size={12}
               style={{ color: "rgba(255,255,255,0.72)" }}
             >
               {greeting}
             </Text>
             <Text
               variant="extrabold"
-              size={19}
+              size={20}
               numberOfLines={1}
               style={{ color: "#fff", marginTop: 1 }}
             >
@@ -105,7 +105,7 @@ export function TechnicianHeroHeader({
             </Text>
             <Text
               variant="medium"
-              size={11}
+              size={12}
               numberOfLines={1}
               style={{ color: "rgba(255,255,255,0.68)", marginTop: 2 }}
             >
@@ -128,8 +128,8 @@ export function TechnicianHeroHeader({
               : "Notifications"
           }
           style={{
-            width: 44,
-            height: 44,
+            width: 48,
+            height: 48,
             borderRadius: 12,
             backgroundColor: "rgba(255,255,255,0.14)",
             borderWidth: 1,
@@ -145,9 +145,9 @@ export function TechnicianHeroHeader({
                 position: "absolute",
                 top: 5,
                 right: 5,
-                minWidth: 17,
-                height: 17,
-                borderRadius: 9,
+              minWidth: 20,
+              height: 20,
+              borderRadius: 10,
                 paddingHorizontal: 3,
                 backgroundColor: "#ef4444",
                 borderWidth: 1.5,
@@ -156,7 +156,7 @@ export function TechnicianHeroHeader({
                 justifyContent: "center",
               }}
             >
-              <Text variant="black" size={8} style={{ color: "#fff" }}>
+              <Text variant="black" size={12} style={{ color: "#fff" }}>
                 {unreadCount > 9 ? "9+" : unreadCount}
               </Text>
             </View>
