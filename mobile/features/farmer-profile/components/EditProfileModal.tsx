@@ -10,9 +10,10 @@ import {
   TextInput,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { Eye, EyeOff, ChevronDown } from "lucide-react-native";
+import { Eye, EyeOff } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
 import { useTranslation } from "../../../contexts/TranslationContext";
+import { PHONE_OTP_CODE_LENGTH } from "../constants";
 import type {
   EditMode,
   ProfileFormData,
@@ -32,10 +33,17 @@ interface EditProfileModalProps {
   phoneOtpCode?: string;
   setPhoneOtpCode?: (code: string) => void;
   phoneOtpCooldown?: number;
+  phoneOtpRemainingSeconds?: number;
+  phoneError?: string;
+  onClearPhoneError?: () => void;
+  hasPhoneNumber?: boolean;
+  hasVerifiedPhone?: boolean;
+  isChangingPhoneNumber?: boolean;
   isPhoneOtpSending?: boolean;
   isPhoneOtpVerifying?: boolean;
   onResendOtp?: () => void;
   onChangePhoneNumber?: () => void;
+  onStartPhoneNumberChange?: () => void;
   insets: { bottom: number };
 }
 
@@ -124,10 +132,17 @@ const EditProfileModal = ({
   phoneOtpCode = "",
   setPhoneOtpCode,
   phoneOtpCooldown = 0,
+  phoneOtpRemainingSeconds = 0,
+  phoneError = "",
+  onClearPhoneError,
+  hasPhoneNumber = false,
+  hasVerifiedPhone = false,
+  isChangingPhoneNumber = false,
   isPhoneOtpSending = false,
   isPhoneOtpVerifying = false,
   onResendOtp,
   onChangePhoneNumber,
+  onStartPhoneNumberChange,
   insets,
 }: EditProfileModalProps) => {
   const { colors, isDark } = useTheme();
@@ -141,7 +156,24 @@ const EditProfileModal = ({
     ? "Verify Phone Number"
     : phoneOtpCooldown > 0
       ? `Send again in ${phoneOtpCooldown}s`
-      : "Send OTP";
+      : "Send Verification Code";
+  const formattedOtpTime = `${Math.floor(phoneOtpRemainingSeconds / 60)}:${String(
+    phoneOtpRemainingSeconds % 60,
+  ).padStart(2, "0")}`;
+  const showVerifiedPhoneSummary =
+    isPhoneMode &&
+    hasVerifiedPhone &&
+    !isChangingPhoneNumber &&
+    !phoneOtpSent;
+  const phoneModalTitle = showVerifiedPhoneSummary
+    ? "Phone Number"
+    : phoneOtpSent
+      ? "Verify Phone Number"
+      : isChangingPhoneNumber
+        ? "Change Phone Number"
+        : hasPhoneNumber
+          ? "Verify Phone Number"
+          : "Add Phone Number";
 
   return (
     <Modal
@@ -191,9 +223,7 @@ const EditProfileModal = ({
                   color: colors.textPrimary,
                 }}
               >
-                {editMode === "phone"
-                  ? "Verify Phone Number"
-                  : t("changePassword")}
+                {editMode === "phone" ? phoneModalTitle : t("changePassword")}
               </Text>
               <TouchableOpacity onPress={onClose}>
                 <MaterialCommunityIcons
@@ -208,105 +238,209 @@ const EditProfileModal = ({
               {/* Phone Number Mode */}
               {editMode === "phone" && (
                 <View>
-                  <Text
-                    className="font-outfit-medium text-sm leading-5 mb-5"
-                    style={{ color: colors.textMuted }}
-                  >
-                    Enter your phone number, then verify it with the OTP code
-                    sent by SMS.
-                  </Text>
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "flex-end",
-                      gap: 12,
-                      marginBottom: 16,
-                    }}
-                  >
-                    <ProfileInputField
-                      label={t("phoneNumber")}
-                      value={formData.phoneNumber}
-                      onChangeText={(text: string) =>
-                        setFormData({
-                          ...formData,
-                          phoneNumber: text.replace(/\D/g, "").slice(0, 11),
-                        })
-                      }
-                      placeholder="09XXXXXXXXX"
-                      keyboardType="phone-pad"
-                      maxLength={11}
-                      large
-                      editable={!phoneOtpSent}
-                      containerStyle={{ marginBottom: 0 }}
-                    />
-                    {phoneOtpSent && (
+                  {showVerifiedPhoneSummary ? (
+                    <View>
+                      <View
+                        className="rounded-2xl border p-4 flex-row items-center gap-3"
+                        style={{
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                        }}
+                      >
+                        <MaterialCommunityIcons
+                          name="check-decagram"
+                          size={24}
+                          color={colors.primary}
+                        />
+                        <View className="flex-1">
+                          <Text
+                            className="font-outfit-bold text-[10px] uppercase tracking-widest"
+                            style={{ color: colors.textMuted }}
+                          >
+                            Verified phone number
+                          </Text>
+                          <Text
+                            className="font-outfit-bold text-base mt-1"
+                            style={{ color: colors.textPrimary }}
+                          >
+                            {formData.phoneNumber}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text
+                        className="font-outfit-medium text-sm leading-5 mt-4"
+                        style={{ color: colors.textMuted }}
+                      >
+                        Your current number will remain active until a new
+                        number is successfully verified.
+                      </Text>
                       <TouchableOpacity
-                        onPress={onChangePhoneNumber}
-                        className="px-4 rounded-2xl"
+                        onPress={onStartPhoneNumberChange}
+                        className="rounded-2xl mt-5"
                         style={{
                           height: 58,
-                          backgroundColor: colors.border,
+                          backgroundColor: isDark
+                            ? colors.primary
+                            : "#00643B",
                           justifyContent: "center",
                           alignItems: "center",
-                          marginBottom: 0,
                         }}
                       >
                         <Text
                           style={{
                             fontFamily: "Outfit_700Bold",
-                            fontSize: 14,
-                            color: colors.textPrimary,
+                            fontSize: 15,
+                            color: isDark ? colors.background : "#ffffff",
                           }}
                         >
-                          Change
+                          Change Phone Number
                         </Text>
                       </TouchableOpacity>
-                    )}
-                  </View>
+                    </View>
+                  ) : (
+                    <>
+                      <Text
+                        className="font-outfit-medium text-sm leading-5 mb-5"
+                        style={{ color: colors.textMuted }}
+                      >
+                        {isChangingPhoneNumber
+                          ? "Enter your new phone number, then verify it with the OTP code sent by SMS."
+                          : "Enter your phone number, then verify it with the OTP code sent by SMS."}
+                      </Text>
 
-                  {phoneOtpSent && (
-                    <View>
-                      <View className="flex-row">
+                      <Text
+                        className="text-[10px] font-outfit-black uppercase mb-1.5 ml-1 tracking-widest"
+                        style={{ color: colors.textMuted }}
+                      >
+                        {t("phoneNumber")}
+                      </Text>
+                      <View className="flex-row items-center gap-3 mb-4">
                         <ProfileInputField
-                          label="OTP Code"
-                          value={phoneOtpCode}
-                          onChangeText={(text: string) =>
-                            setPhoneOtpCode?.(
-                              text.replace(/\D/g, "").slice(0, 8),
-                            )
-                          }
-                          placeholder="Enter code"
-                          keyboardType="number-pad"
-                          maxLength={8}
+                          value={formData.phoneNumber}
+                          onChangeText={(text: string) => {
+                            onClearPhoneError?.();
+                            setFormData({
+                              ...formData,
+                              phoneNumber: text
+                                .replace(/\D/g, "")
+                                .slice(0, 11),
+                            });
+                          }}
+                          placeholder="09XXXXXXXXX"
+                          keyboardType="phone-pad"
+                          maxLength={11}
                           large
+                          editable={!phoneOtpSent}
+                          containerStyle={{ marginBottom: 0 }}
                         />
-                      </View>
-
-                      <View className="flex-row justify-end items-center -mt-2 mb-4 px-1">
-                        <TouchableOpacity
-                          onPress={onResendOtp}
-                          disabled={phoneOtpCooldown > 0 || isPhoneOtpSending}
-                        >
-                          <Text
+                        {phoneOtpSent && (
+                          <TouchableOpacity
+                            onPress={onChangePhoneNumber}
+                            className="px-4 rounded-2xl"
                             style={{
-                              fontFamily: "Outfit_700Bold",
-                              color:
-                                phoneOtpCooldown > 0 || isPhoneOtpSending
-                                  ? colors.textMuted
-                                  : isDark
-                                    ? colors.primary
-                                    : "#00643B",
-                              fontSize: 13,
+                              height: 58,
+                              backgroundColor: colors.border,
+                              justifyContent: "center",
+                              alignItems: "center",
                             }}
                           >
-                            {phoneOtpCooldown > 0
-                              ? `Resend code in ${phoneOtpCooldown}s`
-                              : "Resend Code"}
-                          </Text>
-                        </TouchableOpacity>
+                            <Text
+                              style={{
+                                fontFamily: "Outfit_700Bold",
+                                fontSize: 14,
+                                color: colors.textPrimary,
+                              }}
+                            >
+                              Change
+                            </Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
-                    </View>
+
+                      {phoneOtpSent && (
+                        <View>
+                          <View className="flex-row">
+                            <ProfileInputField
+                              label="OTP Code"
+                              value={phoneOtpCode}
+                              onChangeText={(text: string) => {
+                                onClearPhoneError?.();
+                                setPhoneOtpCode?.(
+                                  text
+                                    .replace(/\D/g, "")
+                                    .slice(0, PHONE_OTP_CODE_LENGTH),
+                                );
+                              }}
+                              placeholder={`${PHONE_OTP_CODE_LENGTH}-digit code`}
+                              keyboardType="number-pad"
+                              maxLength={PHONE_OTP_CODE_LENGTH}
+                              large
+                            />
+                          </View>
+
+                          <View className="flex-row justify-between items-center -mt-2 mb-4 px-1">
+                           <Text
+                              accessibilityLiveRegion="polite"
+                              style={{
+                                fontFamily: "Outfit_600SemiBold",
+                                color: colors.textMuted,
+                                fontSize: 13,
+                              }}
+                            >
+                              Code expires in {formattedOtpTime}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={onResendOtp}
+                              disabled={
+                                phoneOtpCooldown > 0 || isPhoneOtpSending
+                              }
+                            >
+                              <Text
+                                style={{
+                                  fontFamily: "Outfit_700Bold",
+                                  color:
+                                    phoneOtpCooldown > 0 || isPhoneOtpSending
+                                      ? colors.textMuted
+                                      : isDark
+                                        ? colors.primary
+                                        : "#00643B",
+                                  fontSize: 13,
+                                }}
+                              >
+                                {phoneOtpCooldown > 0
+                                  ? `Resend code in ${phoneOtpCooldown}s`
+                                  : "Resend Code"}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      )}
+
+                      {phoneError ? (
+                        <View
+                          accessibilityRole="alert"
+                          accessibilityLiveRegion="assertive"
+                          accessibilityLabel={`Phone verification error: ${phoneError}`}
+                          className="flex-row items-start gap-3 rounded-2xl border p-3 mb-4"
+                          style={{
+                            backgroundColor: `${colors.error}14`,
+                            borderColor: `${colors.error}66`,
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name="alert-circle-outline"
+                            size={20}
+                            color={colors.error}
+                          />
+                          <Text
+                            className="flex-1 font-outfit-semibold text-sm leading-5"
+                            style={{ color: colors.error }}
+                          >
+                            {phoneError}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </>
                   )}
                 </View>
               )}
@@ -357,7 +491,7 @@ const EditProfileModal = ({
               )}
 
               {/* Save Button */}
-              <TouchableOpacity
+              {!showVerifiedPhoneSummary && <TouchableOpacity
                 onPress={onSave}
                 disabled={
                   saving ||
@@ -390,7 +524,7 @@ const EditProfileModal = ({
                     {isPhoneMode ? phoneButtonLabel : t("saveChanges")}
                   </Text>
                 )}
-              </TouchableOpacity>
+              </TouchableOpacity>}
             </View>
           </TouchableOpacity>
         </View>

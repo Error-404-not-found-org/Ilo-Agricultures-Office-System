@@ -78,6 +78,14 @@ export interface AppUser {
   name: string;
   imageUrl?: string;
   phoneNumber?: string;
+  phoneVerification?: {
+    pendingPhoneNumber?: string;
+    pendingNormalizedPhoneNumber?: string;
+    isVerified?: boolean;
+    verifiedAt?: string | null;
+    lastOtpSentAt?: string | null;
+    failedAttempts?: number;
+  };
   address?: Address;
   farmLocation?: FarmLocation | null;
   role: UserRole;

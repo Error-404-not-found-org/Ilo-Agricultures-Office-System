@@ -46,6 +46,15 @@ const AccountDetailsCard = ({
     !isAddressPlaceholder(part) &&
     parts.indexOf(part) === index,
   );
+  const hasPhoneNumber = Boolean(dbUser?.phoneNumber);
+  const hasVerifiedPhone = Boolean(
+    hasPhoneNumber && dbUser?.phoneVerification?.isVerified,
+  );
+  const phoneLabel = hasVerifiedPhone
+    ? `${t("phoneNumber")} • Verified`
+    : hasPhoneNumber
+      ? `${t("phoneNumber")} • Verification required`
+      : t("phoneNumber");
 
   return (
     <View className="px-6 mt-8">
@@ -69,7 +78,7 @@ const AccountDetailsCard = ({
         <Divider />
         <DetailRow
           icon={<Phone size={18} color={colors.textMuted} />}
-          label={t("phoneNumber")}
+          label={phoneLabel}
           value={dbUser?.phoneNumber || t("notSet")}
           onPress={onEditPhone}
         />

@@ -38,6 +38,12 @@ export const FarmerProfileScreen = () => {
     phoneOtpCode,
     setPhoneOtpCode,
     phoneOtpCooldown,
+    phoneOtpRemainingSeconds,
+    phoneError,
+    setPhoneError,
+    hasPhoneNumber,
+    hasVerifiedPhone,
+    isChangingPhoneNumber,
     isPhoneOtpSending,
     isPhoneOtpVerifying,
     formData,
@@ -55,6 +61,9 @@ export const FarmerProfileScreen = () => {
     handleUseContactAddressForFarmLocation,
     handleResendOtp,
     handleChangePhoneNumber,
+    handleStartPhoneNumberChange,
+    handleOpenPhoneEditor,
+    handleCloseProfileEditor,
     colors,
     isDark,
     t,
@@ -107,7 +116,7 @@ export const FarmerProfileScreen = () => {
         <AccountDetailsCard
           clerkUser={clerkUser}
           dbUser={dbUser}
-          onEditPhone={() => setEditMode("phone")}
+          onEditPhone={handleOpenPhoneEditor}
           onUseCurrentContactAddress={handleUseCurrentContactAddress}
           isSavingLocation={isSavingContactAddressLocation}
           isLocationBusy={mutation.isPending || isSavingFarmLocation}
@@ -149,7 +158,7 @@ export const FarmerProfileScreen = () => {
       {/* Editing Modal */}
       <EditProfileModal
         editMode={editMode}
-        onClose={() => setEditMode(null)}
+        onClose={handleCloseProfileEditor}
         formData={formData}
         setFormData={setFormData}
         passwordForm={passwordForm}
@@ -160,10 +169,17 @@ export const FarmerProfileScreen = () => {
         phoneOtpCode={phoneOtpCode}
         setPhoneOtpCode={setPhoneOtpCode}
         phoneOtpCooldown={phoneOtpCooldown}
+        phoneOtpRemainingSeconds={phoneOtpRemainingSeconds}
+        phoneError={phoneError}
+        onClearPhoneError={() => setPhoneError("")}
+        hasPhoneNumber={hasPhoneNumber}
+        hasVerifiedPhone={hasVerifiedPhone}
+        isChangingPhoneNumber={isChangingPhoneNumber}
         isPhoneOtpSending={isPhoneOtpSending}
         isPhoneOtpVerifying={isPhoneOtpVerifying}
         onResendOtp={handleResendOtp}
         onChangePhoneNumber={handleChangePhoneNumber}
+        onStartPhoneNumberChange={handleStartPhoneNumberChange}
         insets={insets}
       />
 

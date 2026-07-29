@@ -17,6 +17,7 @@ import {
   updateFarmerProfile,
   verifyPhoneOtp,
 } from "../services/farmerProfile.service";
+import { PHONE_OTP_CODE_LENGTH } from "../constants";
 import type { EditMode, ProfileFormData, PasswordForm } from "../types/farmerProfile.types";
 import {
   findIloiloCityBarangay,
@@ -26,6 +27,8 @@ import {
 } from "@/constants/address";
 
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
+const DEFAULT_PHONE_OTP_EXPIRY_MINUTES = 5;
+
 export const useFarmerProfile = () => {
   const { signOut } = useClerk();
   const { user: clerkUser } = useUser();
@@ -55,6 +58,12 @@ export const useFarmerProfile = () => {
   const [phoneOtpSent, setPhoneOtpSent] = useState(false);
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
   const [phoneOtpCooldown, setPhoneOtpCooldown] = useState(0);
+  const [phoneOtpExpiresAt, setPhoneOtpExpiresAt] = useState<number | null>(
+    null,
+  );
+  const [phoneOtpRemainingSeconds, setPhoneOtpRemainingSeconds] = useState(0);
+  const [isChangingPhoneNumber, setIsChangingPhoneNumber] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
   const [sameAsHomeClicks, setSameAsHomeClicks] = useState(0);
   const [sameAsHomeCooldownEnd, setSameAsHomeCooldownEnd] = useState<number | null>(null);
   const lastClickRef = useRef(0);
@@ -70,14 +79,6 @@ export const useFarmerProfile = () => {
   }, [editMode]);
 
   useEffect(() => {
-    if (editMode !== "phone") {
-      setPhoneOtpSent(false);
-      setPhoneOtpCode("");
-      setPhoneOtpCooldown(0);
-    }
-  }, [editMode]);
-
-  useEffect(() => {
     if (phoneOtpCooldown <= 0) return;
     const timer = setTimeout(() => {
       setPhoneOtpCooldown((value) => Math.max(0, value - 1));
@@ -85,10 +86,42 @@ export const useFarmerProfile = () => {
     return () => clearTimeout(timer);
   }, [phoneOtpCooldown]);
 
+  useEffect(() => {
+    if (!phoneOtpSent || !phoneOtpExpiresAt) {
+      setPhoneOtpRemainingSeconds(0);
+      return;
+    }
+
+    const updateRemainingTime = () => {
+      const remainingSeconds = Math.max(
+        0,
+        Math.ceil((phoneOtpExpiresAt - Date.now()) / 1000),
+      );
+      setPhoneOtpRemainingSeconds(remainingSeconds);
+
+      if (remainingSeconds === 0) {
+        setPhoneOtpSent(false);
+        setPhoneOtpCode("");
+        setPhoneOtpExpiresAt(null);
+        setPhoneError(
+          "The verification code expired. Request a new code to continue.",
+        );
+      }
+    };
+
+    updateRemainingTime();
+    const timer = setInterval(updateRemainingTime, 1000);
+    return () => clearInterval(timer);
+  }, [phoneOtpExpiresAt, phoneOtpSent]);
+
   const { data: dbUser, isLoading } = useQuery({
     queryKey: ["user", "me"],
     queryFn: () => getFarmerProfile(api),
   });
+  const hasPhoneNumber = Boolean(dbUser?.phoneNumber);
+  const hasVerifiedPhone = Boolean(
+    hasPhoneNumber && dbUser?.phoneVerification?.isVerified,
+  );
 
   const [formData, setFormData] = useState<ProfileFormData>({
     phoneNumber: "",
@@ -331,8 +364,17 @@ export const useFarmerProfile = () => {
   const sendPhoneOtpMutation = useMutation({
     mutationFn: (phoneNumber: string) => sendPhoneOtp(api, phoneNumber),
     onSuccess: (result) => {
+      setPhoneError("");
+      const expiresInMinutes = Number(
+        result?.data?.expiresInMinutes || DEFAULT_PHONE_OTP_EXPIRY_MINUTES,
+      );
+      const expiryDurationMs =
+        Math.max(1, expiresInMinutes) * 60 * 1000;
+
       setPhoneOtpSent(true);
       setPhoneOtpCooldown(60);
+      setPhoneOtpExpiresAt(Date.now() + expiryDurationMs);
+      setPhoneOtpRemainingSeconds(Math.ceil(expiryDurationMs / 1000));
       toast.success(result?.message || "OTP sent successfully.", {
         description: result?.data?.phoneNumber
           ? `Sent to ${result.data.phoneNumber}`
@@ -342,7 +384,10 @@ export const useFarmerProfile = () => {
     onError: (error: any) => {
       const retryAfter = error.response?.data?.retryAfterSeconds;
       if (retryAfter) setPhoneOtpCooldown(Number(retryAfter));
-      toast.error(error.response?.data?.message || "Failed to send OTP.");
+      setPhoneError(
+        error.response?.data?.message ||
+          "The verification code could not be sent. Please try again.",
+      );
     },
   });
 
@@ -350,26 +395,72 @@ export const useFarmerProfile = () => {
     mutationFn: (payload: { phoneNumber: string; otpCode: string }) =>
       verifyPhoneOtp(api, payload.phoneNumber, payload.otpCode),
     onSuccess: (result) => {
+      setPhoneError("");
       toast.success(result?.message || "Phone number verified.");
       queryClient.invalidateQueries({ queryKey: ["user", "me"] });
       setPhoneOtpSent(false);
       setPhoneOtpCode("");
+      setPhoneOtpExpiresAt(null);
+      setPhoneOtpRemainingSeconds(0);
+      setIsChangingPhoneNumber(false);
       setEditMode(null);
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || "Invalid or expired OTP.");
+      setPhoneError(
+        error.response?.data?.message ||
+          "The verification code is invalid or has expired.",
+      );
     },
   });
 
   const handleResendOtp = () => {
     if (phoneOtpCooldown > 0 || sendPhoneOtpMutation.isPending) return;
+    setPhoneError("");
     sendPhoneOtpMutation.mutate(formData.phoneNumber);
   };
 
   const handleChangePhoneNumber = () => {
+    setPhoneError("");
     setPhoneOtpSent(false);
     setPhoneOtpCode("");
     setPhoneOtpCooldown(0);
+    setPhoneOtpExpiresAt(null);
+    setPhoneOtpRemainingSeconds(0);
+  };
+
+  const handleStartPhoneNumberChange = () => {
+    setPhoneError("");
+    setPhoneOtpSent(false);
+    setPhoneOtpCode("");
+    setPhoneOtpCooldown(0);
+    setPhoneOtpExpiresAt(null);
+    setPhoneOtpRemainingSeconds(0);
+    setIsChangingPhoneNumber(true);
+    setFormData((current) => ({ ...current, phoneNumber: "" }));
+  };
+
+  const handleOpenPhoneEditor = () => {
+    if (!phoneOtpSent) {
+      setPhoneError("");
+      setIsChangingPhoneNumber(false);
+      setFormData((current) => ({
+        ...current,
+        phoneNumber: dbUser?.phoneNumber || "",
+      }));
+    }
+    setEditMode("phone");
+  };
+
+  const handleCloseProfileEditor = () => {
+    setEditMode(null);
+    setPhoneError("");
+    if (!phoneOtpSent) {
+      setIsChangingPhoneNumber(false);
+      setFormData((current) => ({
+        ...current,
+        phoneNumber: dbUser?.phoneNumber || "",
+      }));
+    }
   };
 
   const handleSignOut = async () => {
@@ -426,15 +517,25 @@ export const useFarmerProfile = () => {
 
     if (editMode === "phone") {
       if (!/^09\d{9}$/.test(formData.phoneNumber)) {
-        return toast.error(t("invalidPhoneFormat"));
+        setPhoneError(t("invalidPhoneFormat"));
+        return;
       }
       if (!phoneOtpSent) {
+        setPhoneError("");
         sendPhoneOtpMutation.mutate(formData.phoneNumber);
         return;
       }
-      if (!/^\d{4,8}$/.test(phoneOtpCode.trim())) {
-        return toast.error("Please enter the OTP code sent to your phone.");
+      if (
+        !new RegExp(`^\\d{${PHONE_OTP_CODE_LENGTH}}$`).test(
+          phoneOtpCode.trim(),
+        )
+      ) {
+        setPhoneError(
+          `Enter the ${PHONE_OTP_CODE_LENGTH}-digit verification code sent to your phone.`,
+        );
+        return;
       }
+      setPhoneError("");
       verifyPhoneOtpMutation.mutate({
         phoneNumber: formData.phoneNumber,
         otpCode: phoneOtpCode.trim(),
@@ -771,6 +872,12 @@ export const useFarmerProfile = () => {
     phoneOtpCode,
     setPhoneOtpCode,
     phoneOtpCooldown,
+    phoneOtpRemainingSeconds,
+    phoneError,
+    setPhoneError,
+    hasPhoneNumber,
+    hasVerifiedPhone,
+    isChangingPhoneNumber,
     isPhoneOtpSending: sendPhoneOtpMutation.isPending,
     isPhoneOtpVerifying: verifyPhoneOtpMutation.isPending,
     formData,
@@ -788,6 +895,9 @@ export const useFarmerProfile = () => {
     handleUseContactAddressForFarmLocation,
     handleResendOtp,
     handleChangePhoneNumber,
+    handleStartPhoneNumberChange,
+    handleOpenPhoneEditor,
+    handleCloseProfileEditor,
     colors,
     isDark,
     t,
