@@ -29,6 +29,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
+    farmerId: "",
     farmerName: "",
     latitude: "",
     longitude: "",
@@ -58,6 +59,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
       setFormData({
         title: "",
         description: "",
+        farmerId: "",
         farmerName: "",
         latitude: "",
         longitude: "",
@@ -125,8 +127,9 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
 
   const handleUpload = () => {
     if (!formData.title) return toast.error("Note title is required.");
-    if (!formData.description) return toast.error("Description is required.");
-    if (!imagePreview) return toast.error("Please attach a photo note image.");
+    if (!formData.description && !imagePreview) {
+      return toast.error("Add an observation or attach a photo.");
+    }
 
     mutation.mutate({
       ...formData,
@@ -161,7 +164,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
                   Upload Field Note
                 </h3>
                 <p className="mt-1.5 text-[9px] font-black uppercase tracking-[0.3em] text-base-content/25 leading-none">
-                  Publish Photo Diagnoses & Specialized Annotations
+                  Save an observation with an optional photo and GPS location
                 </p>
               </div>
             </div>
@@ -184,7 +187,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
                   <div className="flex items-center gap-2 mb-3">
                     <Camera size={14} className="text-emerald-500" />
                     <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                      Photo Attachment
+                      Photo Attachment (Optional)
                     </h4>
                   </div>
 
@@ -205,7 +208,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
                         </div>
                         <div className="text-center px-4">
                           <p className="text-[9px] font-black text-base-content/40 uppercase tracking-widest leading-none">
-                            Upload Diagnostic Image
+                            Add Field Photo
                           </p>
                           <p className="text-[8px] font-bold text-base-content/20 uppercase mt-1.5 leading-none">
                             PNG / JPG / WEBP
@@ -229,7 +232,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
                 <div className="flex items-center gap-2 border-b border-base-300 pb-3 mb-1">
                   <ClipboardList size={14} className="text-emerald-500" />
                   <h4 className="text-[9px] font-black text-base-content/40 uppercase tracking-[0.2em] leading-none">
-                    Clinical Case Information
+                    Field Note Information
                   </h4>
                 </div>
 
@@ -249,6 +252,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
                         onChange={(e) => {
                           setFormData((prev) => ({
                             ...prev,
+                            farmerId: "",
                             farmerName: e.target.value,
                           }));
                           setSearchFarmer(e.target.value);
@@ -275,6 +279,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
                               onClick={() => {
                                 setFormData((prev) => ({
                                   ...prev,
+                                  farmerId: f._id,
                                   farmerName: f.name,
                                 }));
                                 setIsDropdownOpen(false);
@@ -294,7 +299,7 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
                     <label className={labelClass}>Note Title</label>
                     <input
                       type="text"
-                      placeholder="e.g. Unusual Fever, Foot Rot, AI Prep"
+                      placeholder="e.g. Fence condition follow-up"
                       value={formData.title}
                       onChange={(e) =>
                         setFormData((prev) => ({ ...prev, title: e.target.value }))
@@ -306,9 +311,9 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
 
                 {/* Description */}
                 <div className="space-y-1.5">
-                  <label className={labelClass}>Diagnostic Description / Clinical Annotations</label>
+                  <label className={labelClass}>Observation</label>
                   <textarea
-                    placeholder="Provide full description of symptoms, treatment, or technical annotations..."
+                    placeholder="Describe what you observed during field work..."
                     value={formData.description}
                     onChange={(e) =>
                       setFormData((prev) => ({
@@ -398,12 +403,12 @@ export default function UploadNoteModal({ isOpen, onClose, onSuccess }) {
               {mutation.isPending ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  Uploading Note...
+                  Saving Note...
                 </>
               ) : (
                 <>
                   <Upload size={14} />
-                  Upload Note
+                  Save Note
                 </>
               )}
             </button>

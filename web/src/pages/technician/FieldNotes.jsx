@@ -1,18 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   Image as ImageIcon,
-  Syringe,
-  HeartPulse,
   FileText,
   X,
   Trash2,
   Grid3X3,
   Calendar,
   AlertCircle,
-  Tag,
   Phone,
   User,
-  Activity,
+  MapPin,
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
@@ -57,9 +54,9 @@ export default function FieldNotesGallery() {
   const stats = useMemo(() => {
     return {
       total: notes.filter((n) => !n.isArchived).length,
-      ai: notes.filter((n) => !n.isArchived && n.type === "insemination").length,
-      health: notes.filter((n) => !n.isArchived && n.type === "health").length,
-      tech: notes.filter((n) => !n.isArchived && n.type === "technician-note").length,
+      photos: notes.filter((n) => !n.isArchived && n.imageUrl).length,
+      linked: notes.filter((n) => !n.isArchived && n.farmerName).length,
+      archived: notes.filter((n) => n.isArchived).length,
     };
   }, [notes]);
 
@@ -69,9 +66,8 @@ export default function FieldNotesGallery() {
       const q = searchQuery.toLowerCase();
       const farmerName = n.farmer || "";
       const noteText = n.note || "";
-      const tagNum = n.animalTag || "";
 
-      const matchesSearch = [farmerName, noteText, tagNum]
+      const matchesSearch = [farmerName, noteText]
         .join(" ")
         .toLowerCase()
         .includes(q);
@@ -79,7 +75,10 @@ export default function FieldNotesGallery() {
       if (activeTab === "archived") {
         return matchesSearch && n.isArchived;
       }
-      return matchesSearch && !n.isArchived && (activeTab === "all" || n.type === activeTab);
+      if (activeTab === "photos") {
+        return matchesSearch && !n.isArchived && Boolean(n.imageUrl);
+      }
+      return matchesSearch && !n.isArchived;
     });
   }, [searchQuery, activeTab, notes]);
 
@@ -141,35 +140,17 @@ export default function FieldNotesGallery() {
     });
   };
 
-  const getBadgeConfig = (type) => {
-    switch (type) {
-      case "insemination":
-        return {
-          label: "AI Req",
-          style:
-            "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400",
-        };
-      case "health":
-        return {
-          label: "Health Call",
-          style:
-            "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/30 dark:text-rose-400",
-        };
-      default:
-        return {
-          label: "Tech Note",
-          style:
-            "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400",
-        };
-    }
-  };
+  const getBadgeConfig = () => ({
+    label: "Field Note",
+    style: "badge badge-soft badge-success",
+  });
 
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Field Notes & Gallery"
-        subtitle="Media Ledger — explore symptoms, photos, and specialized annotations from the field"
-        searchPlaceholder="Search farmer, tag, symptoms..."
+        subtitle="Observations and optional photos recorded during field work"
+        searchPlaceholder="Search farmer or note..."
         searchValue={searchQuery}
         onSearchChange={(e) => setSearchQuery(e.target.value)}
       >
@@ -186,27 +167,27 @@ export default function FieldNotesGallery() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
             {
-              label: "Total Media",
+              label: "Active Notes",
               val: stats.total,
               color: "text-amber-600 bg-amber-500/10",
               icon: <ImageIcon size={16} />,
             },
             {
-              label: "AI Requests",
-              val: stats.ai,
-              color: "text-blue-600 bg-blue-500/10",
-              icon: <Syringe size={16} />,
+              label: "With Photos",
+              val: stats.photos,
+              color: "text-info bg-info/10",
+              icon: <ImageIcon size={16} />,
             },
             {
-              label: "Health Calls",
-              val: stats.health,
-              color: "text-rose-600 bg-rose-500/10",
-              icon: <HeartPulse size={16} />,
+              label: "Linked Farmers",
+              val: stats.linked,
+              color: "text-primary bg-primary/10",
+              icon: <User size={16} />,
             },
             {
-              label: "Tech Notes",
-              val: stats.tech,
-              color: "text-emerald-600 bg-emerald-500/10",
+              label: "Archived",
+              val: stats.archived,
+              color: "text-base-content/60 bg-base-200",
               icon: <FileText size={16} />,
             },
           ].map((stat, i) => (
@@ -233,10 +214,8 @@ export default function FieldNotesGallery() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="bg-base-100 border border-base-300 p-1 rounded-xl flex gap-1 shadow-xs">
             {[
-              { id: "all", label: "All Media" },
-              { id: "insemination", label: "AI Requests" },
-              { id: "health", label: "Health Calls" },
-              { id: "technician-note", label: "Tech Notes" },
+              { id: "all", label: "All Notes" },
+              { id: "photos", label: "With Photos" },
               { id: "archived", label: "Archived Notes" },
             ].map((tab) => (
               <button
@@ -278,8 +257,7 @@ export default function FieldNotesGallery() {
             <div className="card bg-base-100 border border-base-300 p-12 text-center text-base-content/40 rounded-2xl flex flex-col items-center justify-center gap-2">
               <AlertCircle size={24} className="text-base-content/30" />
               <span className="font-medium">
-                No diagnostic field notes or items located matching selection
-                metrics.
+                No field notes match the current search or filter.
               </span>
             </div>
           ) : (
@@ -292,17 +270,16 @@ export default function FieldNotesGallery() {
                     onClick={() => setSelectedNote(note)}
                     className="card bg-base-100 border border-base-300 rounded-2xl shadow-2xs hover:shadow-md hover:border-primary transition-all duration-200 overflow-hidden cursor-pointer flex flex-col group"
                   >
-                    <div className="w-full h-44 bg-base-200 relative overflow-hidden">
+                    <div className="w-full h-44 bg-base-200 relative overflow-hidden flex items-center justify-center">
+                      {note.imageUrl ? (
                       <img
                         src={note.imageUrl}
-                        alt="Livestock case documentation"
+                        alt="Field note attachment"
                         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src =
-                            "https://images.unsplash.com/photo-1547586696-ea22b4d4235d?auto=format&fit=crop&q=80&w=400";
-                        }}
                       />
+                      ) : (
+                        <FileText size={32} className="text-base-content/20" />
+                      )}
                     </div>
                     <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
                       <div className="space-y-2">
@@ -313,16 +290,14 @@ export default function FieldNotesGallery() {
                             {badge.label}
                           </span>
                           <span className="text-[10px] font-bold text-base-content/40 tracking-wide">
-                            {note.animalTag && note.animalTag !== "N/A"
-                              ? `#${note.animalTag.substring(0, 7)}`
-                              : "Tech File"}
+                            {note.imageUrl ? "Photo attached" : "Text note"}
                           </span>
                         </div>
                         <h4 className="text-sm font-bold text-base-content truncate">
-                          {note.farmer || "Unknown Case"}
+                          {note.farmer || "General note"}
                         </h4>
                         <p className="text-xs text-base-content/75 font-medium line-clamp-2 leading-relaxed">
-                          "{note.note || "No custom annotations provided."}"
+                          {note.note || "No additional observation provided."}
                         </p>
                       </div>
                       <div className="pt-2.5 border-t border-base-300 flex justify-between items-center text-[10.5px] font-bold text-base-content/40">
@@ -337,10 +312,10 @@ export default function FieldNotesGallery() {
                                   year: "numeric",
                                 },
                               )
-                            : "N/A"}
+                            : "Date unavailable"}
                         </span>
                         <span className="text-primary uppercase tracking-wider">
-                          {note.status || "Completed"}
+                          {note.status || "Recorded"}
                         </span>
                       </div>
                     </div>
@@ -363,17 +338,21 @@ export default function FieldNotesGallery() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Left Frame Display Panel */}
-            <div className="flex-[1.3] bg-black flex items-center justify-center relative p-2 min-h-[35vh] md:min-h-[50vh]">
+            <div className="flex-[1.3] bg-base-200 flex items-center justify-center relative p-2 min-h-[35vh] md:min-h-[50vh]">
+              {selectedNote.imageUrl ? (
               <img
                 src={selectedNote.imageUrl}
-                alt="Enlarged field report reference visual documentation"
+                alt="Enlarged field note attachment"
                 className="max-h-[50vh] md:max-h-[80vh] w-full object-contain"
-                onError={(e) => {
-                  e.target.onerror = null;
-                  e.target.src =
-                    "https://images.unsplash.com/photo-1547586696-ea22b4d4235d?auto=format&fit=crop&q=80&w=400";
-                }}
               />
+              ) : (
+                <div className="flex flex-col items-center gap-3 text-base-content/30">
+                  <FileText size={48} />
+                  <span className="text-sm font-semibold">
+                    No photo attached
+                  </span>
+                </div>
+              )}
               <button
                 onClick={() => setSelectedNote(null)}
                 className="absolute top-4 right-4 bg-black/60  text-white rounded-full p-1.5 transition-colors flex items-center justify-center cursor-pointer hover:bg-gray-600 hover:text-white"
@@ -391,11 +370,7 @@ export default function FieldNotesGallery() {
                     <span
                       className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider border ${getBadgeConfig(selectedNote.type).style}`}
                     >
-                      {selectedNote.type === "insemination"
-                        ? "AI REQUEST"
-                        : selectedNote.type === "health"
-                          ? "HEALTH CALL"
-                          : "TECHNICIAN NOTE"}
+                      FIELD NOTE
                     </span>
                     <span className="bg-base-200 text-base-content border border-base-300 text-[10px] font-black px-2 py-0.5 rounded-md">
                       {selectedNote.id
@@ -405,7 +380,7 @@ export default function FieldNotesGallery() {
                   </div>
                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />{" "}
-                    {selectedNote.status || "Completed"}
+                    {selectedNote.status || "Recorded"}
                   </span>
                 </div>
 
@@ -418,59 +393,26 @@ export default function FieldNotesGallery() {
                     <User size={18} className="text-base-content/40" />{" "}
                     {selectedNote.farmer || "Anonymous Entry"}
                   </h2>
-                  <p className="text-xs text-base-content/40 font-medium flex items-center gap-1 pt-0.5">
-                    <Phone size={12} className="text-base-content/40" /> Registry
-                    Line:{" "}
-                    <span className="font-mono font-bold text-base-content/70">
-                      {selectedNote.phone || "N/A"}
-                    </span>
-                  </p>
+                  {selectedNote.farmerPhone ? (
+                    <p className="text-xs text-base-content/40 font-medium flex items-center gap-1 pt-0.5">
+                      <Phone size={12} className="text-base-content/40" />
+                      <span className="font-mono font-bold text-base-content/70">
+                        {selectedNote.farmerPhone}
+                      </span>
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="divider my-0 opacity-40 border-base-300" />
 
-                {/* DETAILED LIVESTOCK PROFILE ATRIBUTES */}
-                <div className="space-y-2">
-                  <div className="text-[9px] font-black text-base-content/40 uppercase tracking-widest flex items-center gap-1">
-                    <Activity size={10} /> Livestock Resource Spec Sheets
+                {selectedNote.latitude && selectedNote.longitude ? (
+                  <div className="alert border border-base-300 bg-base-200 text-base-content">
+                    <MapPin size={16} className="text-primary" />
+                    <span className="text-xs font-semibold">
+                      GPS {selectedNote.latitude}, {selectedNote.longitude}
+                    </span>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-base-200 border border-base-300 p-3 rounded-xl">
-                      <div className="text-[9px] font-black text-base-content/40 uppercase tracking-wide">
-                        System Ear Tag
-                      </div>
-                      <p className="text-xs font-black text-primary mt-0.5 flex items-center gap-1">
-                        <Tag size={11} />{" "}
-                        {selectedNote.animalTag &&
-                        selectedNote.animalTag !== "N/A"
-                          ? `#${selectedNote.animalTag}`
-                          : "Unassigned Tag"}
-                      </p>
-                    </div>
-                    <div className="bg-base-200 border border-base-300 p-3 rounded-xl">
-                      <div className="text-[9px] font-black text-base-content/40 uppercase tracking-wide">
-                        Breed Registry
-                      </div>
-                      <p className="text-xs font-bold text-base-content mt-0.5 truncate">
-                        {selectedNote.animalBreed &&
-                        selectedNote.animalBreed !== "N/A"
-                          ? selectedNote.animalBreed
-                          : "N/A"}
-                      </p>
-                    </div>
-                    <div className="bg-base-200 border border-base-300 p-3 rounded-xl col-span-2">
-                      <div className="text-[9px] font-black text-base-content/40 uppercase tracking-wide">
-                        Biological Species
-                      </div>
-                      <p className="text-xs font-bold text-base-content mt-0.5">
-                        {selectedNote.animalSpecies &&
-                        selectedNote.animalSpecies !== "N/A"
-                          ? selectedNote.animalSpecies
-                          : "General Technical Entry"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                ) : null}
 
                 {/* ANNOTATION BLOCK */}
                 <div className="bg-base-200 border border-base-300 p-4 rounded-xl space-y-1">
@@ -478,10 +420,8 @@ export default function FieldNotesGallery() {
                     Annotation Case Notes
                   </span>
                   <p className="text-xs text-base-content/75 font-semibold italic leading-relaxed">
-                    "
                     {selectedNote.note ||
                       "No annotations captured for this record entry."}
-                    "
                   </p>
                 </div>
               </div>
@@ -496,7 +436,7 @@ export default function FieldNotesGallery() {
                           undefined,
                           { dateStyle: "long" },
                         )
-                      : "N/A"}
+                      : "Date unavailable"}
                   </span>
                 </div>
                 {selectedNote.isArchived ? (
