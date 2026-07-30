@@ -56,7 +56,7 @@ router.patch("/pregnancy-checks/:id/correct", requireRole(["admin"]), correctPre
 router.patch("/calvings/:id/correct", requireRole(["admin"]), correctCalving);
 router.patch("/calvings/:id/seen", markCalvingAsSeen);
 
-// Technician Photo Notes
+// Technician field notes (separate from official service evidence)
 router.post("/photo-notes", createFieldNote);
 router.get("/photo-notes", getTechnicianFieldNotes);
 router.delete("/photo-notes/:id", deleteFieldNote);

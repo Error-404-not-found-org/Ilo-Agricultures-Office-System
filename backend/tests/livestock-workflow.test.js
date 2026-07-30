@@ -6,6 +6,7 @@ import {
   AI_STATUS,
   HEALTH_STATUS,
   ANIMAL_REPRODUCTIVE_STATUS,
+  normalizeAIStatus,
   normalizeAnimalReproductiveStatus,
   normalizeHealthStatus,
   reproductiveStatusQuery,
@@ -19,6 +20,7 @@ test("Livestock workflow permits the intended scheduled service path", () => {
   assert.doesNotThrow(() => assertStatusTransition("ai", "approved", "scheduled"));
   assert.doesNotThrow(() => assertStatusTransition("ai", "scheduled", "in-progress"));
   assert.doesNotThrow(() => assertStatusTransition("ai", "in-progress", "done"));
+  assert.doesNotThrow(() => assertStatusTransition("health", "scheduled", "in-progress"));
   assert.doesNotThrow(() => assertStatusTransition("health", "in-progress", "resolved"));
 });
 
@@ -185,8 +187,10 @@ test("Legacy status spellings normalize without breaking existing clients", () =
   assert.equal(normalizeAnimalReproductiveStatus("Open"), ANIMAL_REPRODUCTIVE_STATUS.NORMAL);
   assert.equal(normalizeAnimalReproductiveStatus("Postpartum"), ANIMAL_REPRODUCTIVE_STATUS.POST_PARTUM);
   assert.equal(normalizeHealthStatus("in_progress"), HEALTH_STATUS.IN_PROGRESS);
+  assert.equal(normalizeAIStatus("in_progress"), AI_STATUS.IN_PROGRESS);
   assert.deepEqual(reproductiveStatusQuery("Open"), { $in: ["Normal", "Open"] });
   assert.doesNotThrow(() => assertStatusTransition("health", "in_progress", "resolved"));
+  assert.doesNotThrow(() => assertStatusTransition("ai", "in_progress", "done"));
 });
 
 test("Animal model converts legacy reproductive status on new writes", () => {

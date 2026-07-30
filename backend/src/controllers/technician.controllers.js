@@ -116,7 +116,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         deletedAt: null,
         ...hideDeclinedForMe,
       })
-        .populate("farmerId", "name address farmLocation")
+        .populate("farmerId", "name address farmLocation imageUrl")
         .populate("animalId", "animalId earTag imageUrl breed species")
         .populate("approvedBy", "name")
         .sort({ createdAt: -1 })
@@ -137,7 +137,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         deletedAt: null,
         ...hideDeclinedForMe,
       })
-        .populate("farmerId", "name address farmLocation")
+        .populate("farmerId", "name address farmLocation imageUrl")
         .populate("animalId", "animalId earTag imageUrl breed species")
         .populate("handledBy", "name")
         .sort({ urgency: -1, createdAt: -1 })
@@ -332,6 +332,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayDate: itemDisplayDate,
         farmer: ins.farmerId?.name || "Unknown Farmer",
         farmerName: ins.farmerId?.name || "Unknown Farmer",
+        farmerImageUrl: ins.farmerId?.imageUrl || "",
         location: formatAddress(ins.farmerId?.address),
         ...farmLocationDetails,
         animalTag:
@@ -400,6 +401,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayDate: itemDisplayDate,
         farmer: req.farmerId?.name || "Unknown Farmer",
         farmerName: req.farmerId?.name || "Unknown Farmer",
+        farmerImageUrl: req.farmerId?.imageUrl || "",
         location: formatAddress(req.farmerId?.address),
         ...farmLocationDetails,
         animalTag:
@@ -2051,84 +2053,39 @@ export const correctCalving = async (req, res) => {
 
 export const getFieldNotes = async (req, res) => {
   try {
-    const isTech = req.user?.role === "technician";
     const userId = req.user?._id;
+    const noteQuery =
+      req.user?.role === "admin" ? {} : { technicianId: userId };
+    const technicianNotes = await FieldNote.find(noteQuery)
+      .populate("technicianId", "name")
+      .populate("farmerId", "name phoneNumber address")
+      .populate("taskId", "taskType notes dueDate status")
+      .populate("animalId", "animalId earTag breed species")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const insemQuery = isTech
-      ? { technicianId: userId, imageUrl: { $exists: true, $ne: "" } }
-      : { imageUrl: { $exists: true, $ne: "" } };
-
-    const healthQuery = isTech
-      ? { handledBy: userId, imageUrl: { $exists: true, $ne: "" } }
-      : { imageUrl: { $exists: true, $ne: "" } };
-
-    const noteQuery = isTech ? { technicianId: userId } : {};
-
-    const [inseminations, healthRequests, technicianNotes] = await Promise.all([
-      Insemination.find(insemQuery)
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .lean(),
-      HealthRequest.find(healthQuery)
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .lean(),
-      FieldNote.find(noteQuery)
-        .populate("technicianId", "name")
-        .populate("farmerId", "name phoneNumber address")
-        .sort({ createdAt: -1 })
-        .lean(),
-    ]);
-
-    const notes = [
-      ...inseminations.map((ins) => ({
-        id: ins._id,
-        type: "insemination",
-        farmer: ins.farmerId?.name || "Unknown Farmer",
-        farmerPhone: ins.farmerId?.phoneNumber || "No Phone",
-        animalTag: ins.animalId?.animalId || ins.animalId?.earTag || "No Tag",
-        animalSpecies: ins.animalId?.species || "Cattle",
-        animalBreed: ins.animalId?.breed || "Crossbreed",
-        imageUrl: ins.imageUrl,
-        note: ins.comment || "No comment provided.",
-        date: ins.createdAt,
-        status: ins.status,
-        isArchived: !!ins.deletedAt,
-      })),
-      ...healthRequests.map((hr) => ({
-        id: hr._id,
-        type: "health",
-        farmer: hr.farmerId?.name || "Unknown Farmer",
-        farmerPhone: hr.farmerId?.phoneNumber || "No Phone",
-        animalTag: hr.animalId?.animalId || hr.animalId?.earTag || "No Tag",
-        animalSpecies: hr.animalId?.species || "Cattle",
-        animalBreed: hr.animalId?.breed || "Crossbreed",
-        imageUrl: hr.imageUrl,
-        note: hr.symptoms || "No symptoms/notes provided.",
-        date: hr.createdAt,
-        status: hr.status,
-        isArchived: !!hr.deletedAt,
-      })),
-      ...technicianNotes.map((tn) => ({
-        id: tn._id,
-        type: "technician-note",
-        farmer: tn.farmerName || tn.farmerId?.name || "General Note",
-        farmerPhone: tn.farmerId?.phoneNumber || "N/A",
-        animalTag: "N/A",
-        animalSpecies: "N/A",
-        animalBreed: "N/A",
-        imageUrl: tn.imageUrl,
-        note: `[${tn.title}] ${tn.description || "No description."}`,
-        date: tn.createdAt,
-        status: "recorded",
-        latitude: tn.latitude,
-        longitude: tn.longitude,
-        author: tn.technicianId?.name || "Technician",
-        isArchived: !!tn.deletedAt,
-      })),
-    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const notes = technicianNotes.map((note) => ({
+      id: note._id,
+      _id: note._id,
+      type: "technician-note",
+      farmer: note.farmerId?.name || note.farmerName || "General note",
+      farmerName: note.farmerId?.name || note.farmerName || "",
+      farmerPhone: note.farmerId?.phoneNumber || "",
+      taskId: note.taskId || null,
+      animalId: note.animalId || null,
+      imageUrl: note.imageUrl || "",
+      title: note.title,
+      description: note.description || "",
+      note: [note.title, note.description].filter(Boolean).join(": "),
+      date: note.createdAt,
+      createdAt: note.createdAt,
+      status: "recorded",
+      latitude: note.latitude || "",
+      longitude: note.longitude || "",
+      locationName: note.locationName || "",
+      author: note.technicianId?.name || "Technician",
+      isArchived: Boolean(note.deletedAt),
+    }));
 
     res.status(200).json(notes);
   } catch (error) {
@@ -2141,11 +2098,132 @@ export const getFieldNotes = async (req, res) => {
 export const createFieldNote = async (req, res) => {
   try {
     const technicianId = req.user._id;
-    const { title, description, imageUrl, farmerName, latitude, longitude } =
-      req.body;
+    const {
+      title,
+      description,
+      imageUrl,
+      farmerId: requestedFarmerId,
+      taskId: requestedTaskId,
+      animalId: requestedAnimalId,
+      farmerName,
+      latitude,
+      longitude,
+    } = req.body;
 
-    if (!title) {
+    const normalizedTitle = String(title || "").trim();
+    const normalizedDescription = String(description || "").trim();
+    if (!normalizedTitle) {
       return res.status(400).json({ message: "Note title is required" });
+    }
+    if (!normalizedDescription && !imageUrl) {
+      return res.status(400).json({
+        message: "Add an observation or attach a photo.",
+      });
+    }
+
+    let linkedTask = null;
+    if (requestedTaskId) {
+      if (!mongoose.isValidObjectId(requestedTaskId)) {
+        return res.status(400).json({ message: "Invalid field-work task." });
+      }
+      linkedTask = await Task.findOne({
+        _id: requestedTaskId,
+        technicianId,
+        taskType: {
+          $in: ["GeneralVisit", "FarmInspection", "Registration", "Other"],
+        },
+      }).select("_id farmerId animalIds taskType");
+      if (!linkedTask) {
+        return res.status(404).json({
+          message:
+            "Field-work task not found. Official service evidence belongs in its service record.",
+        });
+      }
+    }
+
+    const effectiveFarmerId =
+      requestedFarmerId || linkedTask?.farmerId?.toString() || "";
+    if (
+      requestedFarmerId &&
+      linkedTask &&
+      String(requestedFarmerId) !== String(linkedTask.farmerId)
+    ) {
+      return res.status(400).json({
+        message: "The selected farmer does not match this field-work task.",
+      });
+    }
+
+    let farmer = null;
+    if (effectiveFarmerId) {
+      if (!mongoose.isValidObjectId(effectiveFarmerId)) {
+        return res.status(400).json({ message: "Invalid farmer selection." });
+      }
+      farmer = await User.findOne({
+        _id: effectiveFarmerId,
+        role: "farmer",
+        deletedAt: null,
+      }).select("_id name");
+      if (!farmer) {
+        return res.status(404).json({ message: "Farmer not found." });
+      }
+    }
+
+    let linkedAnimal = null;
+    if (requestedAnimalId) {
+      if (!mongoose.isValidObjectId(requestedAnimalId)) {
+        return res.status(400).json({ message: "Invalid animal selection." });
+      }
+      if (
+        linkedTask &&
+        !(linkedTask.animalIds || []).some(
+          (animalId) => String(animalId) === String(requestedAnimalId),
+        )
+      ) {
+        return res.status(400).json({
+          message: "The selected animal is not part of this field-work task.",
+        });
+      }
+      linkedAnimal = await Animal.findOne({
+        _id: requestedAnimalId,
+        ...(farmer ? { farmerId: farmer._id } : {}),
+        deletedAt: null,
+      }).select("_id");
+      if (!linkedAnimal) {
+        return res.status(404).json({ message: "Animal not found." });
+      }
+    }
+
+    const normalizeCoordinate = (value, minimum, maximum, label) => {
+      if (value === undefined || value === null || value === "") return "";
+      const coordinate = Number(value);
+      if (
+        !Number.isFinite(coordinate) ||
+        coordinate < minimum ||
+        coordinate > maximum
+      ) {
+        const error = new Error(`Invalid ${label}.`);
+        error.status = 400;
+        throw error;
+      }
+      return coordinate.toFixed(6);
+    };
+
+    const normalizedLatitude = normalizeCoordinate(
+      latitude,
+      -90,
+      90,
+      "latitude",
+    );
+    const normalizedLongitude = normalizeCoordinate(
+      longitude,
+      -180,
+      180,
+      "longitude",
+    );
+    if (Boolean(normalizedLatitude) !== Boolean(normalizedLongitude)) {
+      return res.status(400).json({
+        message: "Latitude and longitude must be saved together.",
+      });
     }
 
     // Handle Image Upload if base64
@@ -2164,32 +2242,23 @@ export const createFieldNote = async (req, res) => {
       }
     }
 
-    // Attempt to resolve farmerId if farmerName matches an existing farmer
-    let farmerId = null;
-    if (farmerName) {
-      const farmer = await User.findOne({
-        name: { $regex: new RegExp(farmerName, "i") },
-        role: "farmer",
-      });
-      if (farmer) {
-        farmerId = farmer._id;
-      }
-    }
-
     const fieldNote = await FieldNote.create({
       technicianId,
-      farmerId,
-      farmerName: farmerName || "General Note",
-      title,
-      description,
+      farmerId: farmer?._id || null,
+      taskId: linkedTask?._id || null,
+      animalId: linkedAnimal?._id || null,
+      farmerName: farmer?.name || String(farmerName || "").trim(),
+      title: normalizedTitle,
+      description: normalizedDescription,
       imageUrl: finalImageUrl || "",
-      latitude: latitude || "",
-      longitude: longitude || "",
+      latitude: normalizedLatitude,
+      longitude: normalizedLongitude,
+      locationName: "",
     });
 
     req.app.get("io").emit("dashboardUpdate", {
       type: "FIELD_NOTE_CREATED",
-      message: `Technician ${req.user.name} uploaded a new field note: ${title}`,
+      message: `Technician ${req.user.name} added a field note: ${normalizedTitle}`,
     });
 
     res
@@ -2198,100 +2267,48 @@ export const createFieldNote = async (req, res) => {
   } catch (error) {
     console.error("[createFieldNote ERROR]", error);
     res
-      .status(500)
-      .json({ message: "Failed to save field note", error: error.message });
+      .status(error.status || 500)
+      .json({
+        message:
+          error.status === 400 ? error.message : "Failed to save field note",
+        error: error.message,
+      });
   }
 };
 
 export const getTechnicianFieldNotes = async (req, res) => {
   try {
     const technicianId = req.user._id;
+    const technicianNotes = await FieldNote.find({
+      technicianId,
+      deletedAt: null,
+    })
+      .populate("technicianId", "name")
+      .populate("farmerId", "name phoneNumber address")
+      .populate("taskId", "taskType notes dueDate status")
+      .populate("animalId", "animalId earTag breed species")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const [inseminations, healthRequests, technicianNotes] = await Promise.all([
-      Insemination.find({
-        technicianId,
-        imageUrl: { $exists: true, $ne: "" },
-        deletedAt: null,
-      })
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .lean(),
-      HealthRequest.find({
-        handledBy: technicianId,
-        imageUrl: { $exists: true, $ne: "" },
-        deletedAt: null,
-      })
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .lean(),
-      FieldNote.find({
-        technicianId,
-        deletedAt: null,
-      })
-        .populate("technicianId", "name")
-        .populate("farmerId", "name phoneNumber address")
-        .sort({ createdAt: -1 })
-        .lean(),
-    ]);
-
-    const notes = [
-      ...inseminations.map((ins) => ({
-        _id: ins._id,
-        id: ins._id,
-        type: "insemination",
-        farmerName: ins.farmerId?.name || "Unknown Farmer",
-        farmer: ins.farmerId?.name || "Unknown Farmer",
-        farmerPhone: ins.farmerId?.phoneNumber || "No Phone",
-        animalTag: ins.animalId?.animalId || ins.animalId?.earTag || "No Tag",
-        animalSpecies: ins.animalId?.species || "Cattle",
-        animalBreed: ins.animalId?.breed || "Crossbreed",
-        imageUrl: ins.imageUrl,
-        title: "Insemination Upload",
-        description: ins.comment || "No comment provided.",
-        createdAt: ins.createdAt,
-        status: ins.status,
-        isArchived: !!ins.deletedAt,
-      })),
-      ...healthRequests.map((hr) => ({
-        _id: hr._id,
-        id: hr._id,
-        type: "health",
-        farmerName: hr.farmerId?.name || "Unknown Farmer",
-        farmer: hr.farmerId?.name || "Unknown Farmer",
-        farmerPhone: hr.farmerId?.phoneNumber || "No Phone",
-        animalTag: hr.animalId?.animalId || hr.animalId?.earTag || "No Tag",
-        animalSpecies: hr.animalId?.species || "Cattle",
-        animalBreed: hr.animalId?.breed || "Crossbreed",
-        imageUrl: hr.imageUrl,
-        title: `${hr.requestType?.toUpperCase() || "HEALTH"} Request`,
-        description: hr.symptoms || "No symptoms/notes provided.",
-        createdAt: hr.createdAt,
-        status: hr.status,
-        isArchived: !!hr.deletedAt,
-      })),
-      ...technicianNotes.map((tn) => ({
-        _id: tn._id,
-        id: tn._id,
-        type: "technician-note",
-        farmerName: tn.farmerName || tn.farmerId?.name || "General Note",
-        farmer: tn.farmerId?.name || "General Note",
-        farmerPhone: tn.farmerId?.phoneNumber || "N/A",
-        animalTag: "N/A",
-        animalSpecies: "N/A",
-        animalBreed: "N/A",
-        imageUrl: tn.imageUrl,
-        title: tn.title,
-        description: tn.description || "No description.",
-        createdAt: tn.createdAt,
-        status: "recorded",
-        latitude: tn.latitude,
-        longitude: tn.longitude,
-        author: tn.technicianId?.name || "Technician",
-        isArchived: !!tn.deletedAt,
-      })),
-    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const notes = technicianNotes.map((note) => ({
+      ...note,
+      _id: note._id,
+      id: note._id,
+      type: "technician-note",
+      farmerName: note.farmerId?.name || note.farmerName || "",
+      farmer: note.farmerId?.name || note.farmerName || "General note",
+      farmerPhone: note.farmerId?.phoneNumber || "",
+      taskId: note.taskId || null,
+      animalId: note.animalId || null,
+      imageUrl: note.imageUrl || "",
+      description: note.description || "",
+      latitude: note.latitude || "",
+      longitude: note.longitude || "",
+      locationName: note.locationName || "",
+      author: note.technicianId?.name || "Technician",
+      status: "recorded",
+      isArchived: false,
+    }));
 
     res.status(200).json(notes);
   } catch (error) {
@@ -2305,62 +2322,22 @@ export const getTechnicianFieldNotes = async (req, res) => {
 export const deleteFieldNote = async (req, res) => {
   try {
     const { id } = req.params;
-    const { type } = req.query;
-
-    let targetType = type;
-    if (!targetType) {
-      const fn = await FieldNote.findById(id);
-      if (fn) {
-        targetType = "technician-note";
-      } else {
-        const ins = await Insemination.findById(id);
-        if (ins) {
-          targetType = "insemination";
-        } else {
-          const hr = await HealthRequest.findById(id);
-          if (hr) {
-            targetType = "health";
-          }
-        }
-      }
-    }
-
-    if (targetType === "insemination") {
-      const ins = await Insemination.findOne({
+    const fieldNote = await FieldNote.findOneAndUpdate(
+      {
         _id: id,
         technicianId: req.user._id,
-      });
-      if (!ins) {
-        return res
-          .status(404)
-          .json({ message: "Insemination record not found or unauthorized" });
-      }
-      await Insemination.findByIdAndDelete(id);
-    } else if (targetType === "health") {
-      const hr = await HealthRequest.findOne({
-        _id: id,
-        handledBy: req.user._id,
-      });
-      if (!hr) {
-        return res
-          .status(404)
-          .json({ message: "Health request record not found or unauthorized" });
-      }
-      await HealthRequest.findByIdAndDelete(id);
-    } else {
-      const fn = await FieldNote.findOne({
-        _id: id,
-        technicianId: req.user._id,
-      });
-      if (!fn) {
-        return res
-          .status(404)
-          .json({ message: "Field note not found or unauthorized" });
-      }
-      await FieldNote.findByIdAndDelete(id);
+        deletedAt: null,
+      },
+      { $set: { deletedAt: new Date() } },
+      { new: true },
+    );
+    if (!fieldNote) {
+      return res
+        .status(404)
+        .json({ message: "Field note not found or unauthorized" });
     }
 
-    res.status(200).json({ message: "Field note deleted successfully" });
+    res.status(200).json({ message: "Field note archived successfully" });
   } catch (error) {
     res
       .status(500)
@@ -2371,51 +2348,41 @@ export const deleteFieldNote = async (req, res) => {
 export const deleteFieldNoteRecord = async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, permanent } = req.query;
+    const { permanent, restore } = req.query;
     const isPermanent = permanent === "true";
+    const ownerFilter =
+      req.user.role === "admin" ? { _id: id } : { _id: id, technicianId: req.user._id };
 
-    if (type === "insemination") {
-      if (isPermanent) {
-        await Insemination.findByIdAndDelete(id);
-      } else {
-        await Insemination.findByIdAndUpdate(id, {
-          $set: { deletedAt: new Date() },
-          $unset: { activeRequestKey: 1 },
-        });
-      }
-      res
-        .status(200)
-        .json({
-          message: `Insemination field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
-        });
-    } else if (type === "health") {
-      if (isPermanent) {
-        await HealthRequest.findByIdAndDelete(id);
-      } else {
-        await HealthRequest.findByIdAndUpdate(id, {
-          $set: { deletedAt: new Date() },
-          $unset: { activeCaseKey: 1 },
-        });
-      }
-      res
-        .status(200)
-        .json({
-          message: `Health request field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
-        });
+    let fieldNote;
+    if (restore === "true") {
+      fieldNote = await FieldNote.findOneAndUpdate(
+        ownerFilter,
+        { $set: { deletedAt: null } },
+        { new: true },
+      );
+    } else if (isPermanent) {
+      fieldNote = await FieldNote.findOneAndDelete(ownerFilter);
     } else {
-      if (isPermanent) {
-        await FieldNote.findByIdAndDelete(id);
-      } else {
-        await FieldNote.findByIdAndUpdate(id, {
-          $set: { deletedAt: new Date() },
-        });
-      }
-      res
-        .status(200)
-        .json({
-          message: `Field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
-        });
+      fieldNote = await FieldNote.findOneAndUpdate(
+        ownerFilter,
+        { $set: { deletedAt: new Date() } },
+        { new: true },
+      );
     }
+
+    if (!fieldNote) {
+      return res
+        .status(404)
+        .json({ message: "Field note not found or unauthorized" });
+    }
+
+    const action =
+      restore === "true"
+        ? "restored"
+        : isPermanent
+          ? "permanently deleted"
+          : "archived";
+    res.status(200).json({ message: `Field note ${action} successfully` });
   } catch (error) {
     res.status(500).json({
       message: "Failed to delete field note record",
@@ -2739,51 +2706,30 @@ export const getTechnicianRequests = async (req, res) => {
     }
 
     // 1. Assignment & Visibility Filter
-    if (req.user.role !== "admin") {
-      if (assignment === "mine") {
-        aiQuery.approvedBy = req.user._id;
-        healthQuery.handledBy = req.user._id;
-        taskQuery.technicianId = req.user._id;
-      } else if (assignment === "unassigned" || assignment === "available") {
-        aiQuery.approvedBy = { $in: [null, undefined] };
-        healthQuery.handledBy = { $in: [null, undefined] };
-        taskQuery.technicianId = { $in: [null, undefined] };
-        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
-        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
-        
-        aiQuery.status = "pending";
-        healthQuery.status = { $in: ["pending", "triaged", "assigned"] };
-        taskQuery.status = "Pending";
-      } else if (assignment === "all") {
-        // No assignment filter
-      } else {
-        // Default: Show mine or unassigned
-        aiQuery.approvedBy = { $in: [req.user._id, null, undefined] };
-        healthQuery.handledBy = { $in: [req.user._id, null, undefined] };
-        taskQuery.technicianId = { $in: [req.user._id, null, undefined] };
+    if (assignment === "mine") {
+      aiQuery.$or = [{ approvedBy: req.user._id }, { technicianId: req.user._id }];
+      healthQuery.$or = [{ handledBy: req.user._id }, { assignedTechnicianId: req.user._id }];
+      taskQuery.technicianId = req.user._id;
+    } else if (assignment === "unassigned" || assignment === "available") {
+      aiQuery.approvedBy = { $in: [null, undefined] };
+      healthQuery.handledBy = { $in: [null, undefined] };
+      taskQuery.technicianId = { $in: [null, undefined] };
+      if (req.user.role !== "admin") {
         aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
         healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
       }
-
-      if (status !== "declined") {
-        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
-        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
-      }
+      aiQuery.status = { $in: ["pending", "approved", "unassigned", "triaged"] };
+      healthQuery.status = { $in: ["pending", "triaged", "assigned", "approved", "unassigned"] };
+      taskQuery.status = { $in: ["Pending", "unassigned"] };
+    } else if (assignment === "all") {
+      // No assignment filter
     } else {
-      if (assignment === "mine") {
-        aiQuery.approvedBy = req.user._id;
-        healthQuery.handledBy = req.user._id;
-        taskQuery.technicianId = req.user._id;
-      } else if (assignment === "unassigned" || assignment === "available") {
-        aiQuery.approvedBy = { $in: [null, undefined] };
-        healthQuery.handledBy = { $in: [null, undefined] };
-        taskQuery.technicianId = { $in: [null, undefined] };
-        
-        aiQuery.status = "pending";
-        healthQuery.status = { $in: ["pending", "triaged", "assigned"] };
-        taskQuery.status = "Pending";
-      } else if (assignment === "all") {
-        // No assignment filter
+      aiQuery.approvedBy = { $in: [req.user._id, null, undefined] };
+      healthQuery.handledBy = { $in: [req.user._id, null, undefined] };
+      taskQuery.technicianId = { $in: [req.user._id, null, undefined] };
+      if (req.user.role !== "admin") {
+        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
       }
     }
 

@@ -104,8 +104,8 @@ test("notification open behavior preserves mark-read and handles missing identif
   assert.match(listSource, /getNotificationTarget\(item, role\)/);
 });
 
-test("Technician Quick Actions use responsive columns without fixed 30 percent widths", () => {
-  const expected = [[320, 2, 16, 12], [360, 2, 20, 16], [390, 2, 24, 16], [768, 3, 24, 16], [1024, 4, 24, 16]];
+test("Technician dashboard padding remains responsive while Quick Actions scroll horizontally", () => {
+  const expected = [[320, 2, 16, 12], [360, 2, 16, 12], [390, 2, 16, 12], [768, 3, 24, 16], [1024, 4, 24, 16]];
   expected.forEach(([width, columns, padding, gap]) => {
     const metrics = getQuickActionGridMetrics(width);
     assert.equal(metrics.columns, columns);
@@ -115,14 +115,17 @@ test("Technician Quick Actions use responsive columns without fixed 30 percent w
   });
   const quickActions = source("mobile/features/technician-dashboard/components/TechnicianQuickActions.tsx");
   assert.doesNotMatch(quickActions, /width:\s*["']30%["']/);
-  assert.match(quickActions, /minHeight:\s*92/);
+  assert.match(quickActions, /<ScrollView[\s\S]*?horizontal/);
+  assert.match(quickActions, /width:\s*136/);
+  assert.match(quickActions, /minHeight:\s*112/);
 });
 
 test("Batch C screens preserve touch targets, safe-area padding, flexible text, and theme-aware details", () => {
-  const calendarSource = source("mobile/app/(technician)/technician.calendar.tsx");
+  const calendarSource = source("mobile/features/technician-dashboard/screens/TechnicianScheduleScreen.tsx");
   const listSource = source("mobile/app/notifications.tsx");
   const detailSource = source("mobile/app/notification-details.tsx");
-  assert.match(calendarSource, /insets\.bottom \+ 112/);
+  assert.match(calendarSource, /insets\.bottom \+ 92/);
+  assert.match(calendarSource, /insets\.bottom \+ 24/);
   assert.match(listSource, /insets\.bottom \+ 96/);
   assert.match(detailSource, /isDark \? "light-content" : "dark-content"/);
   assert.match(detailSource, /accessibilityLabel="Go back"/);
@@ -130,10 +133,13 @@ test("Batch C screens preserve touch targets, safe-area padding, flexible text, 
 });
 
 test("semantic badges retain distinct dark-mode surfaces instead of the page background", () => {
-  const badgeSource = source("mobile/components/shared/StatusBadge.tsx");
-  assert.match(badgeSource, /darkStatusTone/);
-  assert.match(badgeSource, /rgba\(239,68,68,0\.18\)/);
-  assert.match(badgeSource, /rgba\(245,158,11,0\.18\)/);
-  assert.match(badgeSource, /rgba\(16,185,129,0\.18\)/);
-  assert.doesNotMatch(badgeSource, /backgroundColor:\s*isDark \? colors\.background/);
+  const badgeSource = source("mobile/components/ui/Badge.tsx");
+  const themeSource = source("mobile/lib/theme.ts");
+  assert.match(badgeSource, /colors\.errorContainer/);
+  assert.match(badgeSource, /colors\.warningContainer/);
+  assert.match(badgeSource, /colors\.successContainer/);
+  assert.match(themeSource, /errorContainer: "#ef44442e"/);
+  assert.match(themeSource, /warningContainer: "#f59e0b2e"/);
+  assert.match(themeSource, /successContainer: "#10b9812e"/);
+  assert.doesNotMatch(badgeSource, /backgroundColor:\s*colors\.background/);
 });

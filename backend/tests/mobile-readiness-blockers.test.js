@@ -49,34 +49,69 @@ test("pregnancy readiness enables the current Day-60 policy", () => {
   assert.equal(getServerPregnancyReadiness({ insemination: attempt, at }).isEligible, true);
 });
 
-test("work queue, task details, animal details, and verification form share readiness guards", () => {
+test("work queue, task details, and verification form share readiness guards", () => {
   const queue = source("mobile/app/(technician)/technician.tasks.tsx");
   const task = source("mobile/app/(technician)/task-details.tsx");
-  const animal = source("mobile/app/(technician)/animal-details.tsx");
+  const animal = source(
+    "mobile/features/animals/screens/RoleAwareAnimalDetailsScreen.tsx",
+  );
   const form = source("mobile/app/(technician)/pregnancy-verification.tsx");
 
-  for (const code of [queue, task, animal, form]) {
+  for (const code of [queue, task, form]) {
     assert.match(code, /Pregnancy check not yet available/);
   }
   assert.match(task, /pregnancyReadiness && !pregnancyReadiness\.isEligible/);
   assert.match(form, /officialDiagnosisReady/);
   assert.match(form, /pregnancyReadiness\?\.methods/);
+  assert.match(animal, /official pregnancy diagnosis/);
+  assert.match(animal, /Review observation/);
 });
 
 test("farmer observation stays visible for Likely Pregnant without creating Pregnancy", () => {
-  const profile = source("mobile/features/animals/screens/AnimalDetailsScreen.tsx");
+  const profile = source(
+    "mobile/features/animals/screens/RoleAwareAnimalDetailsScreen.tsx",
+  );
   const controller = source("backend/src/controllers/ai-request.controllers.js");
   const start = controller.indexOf("export const submitFarmerBreedingObservation");
   const end = controller.indexOf("export const deleteRequest", start);
   const observationHandler = controller.slice(start, end);
 
-  assert.match(profile, /Farmer report submitted/);
+  assert.match(profile, /Farmer observation/);
   assert.match(profile, /Likely Pregnant/);
   assert.match(profile, /farmerObservationSigns/);
-  assert.match(profile, /farmerObservationNotes/);
+  assert.match(profile, /Update observation/);
   assert.doesNotMatch(observationHandler, /Pregnancy\.create/);
   assert.doesNotMatch(observationHandler, /request\.outcome = "Failed \(Re-heat\)"/);
   assert.match(observationHandler, /notifyTechniciansOfBreedingObservation/);
+});
+
+test("legacy farmer outcome route delegates to the canonical observation workflow", () => {
+  const controller = source("backend/src/controllers/ai-request.controllers.js");
+  const start = controller.indexOf("export const confirmAIOutcome");
+  const end = controller.indexOf(
+    "export const submitFarmerBreedingObservation",
+    start,
+  );
+  const adapter = controller.slice(start, end);
+
+  assert.match(adapter, /Deprecation/);
+  assert.match(adapter, /possible_pregnancy/);
+  assert.match(adapter, /return_to_heat/);
+  assert.match(adapter, /submitFarmerBreedingObservation\(req, res\)/);
+  assert.doesNotMatch(adapter, /outcomeVerificationStatus = "verified"/);
+});
+
+test("farmer-requested pregnancy checks remain visible in the technician queue", () => {
+  const tasks = source("backend/src/controllers/tasks.controllers.js");
+  const notification = source(
+    "backend/src/services/breeding-observation-notification.service.js",
+  );
+
+  assert.match(tasks, /sourceType: "farmer_requested_verification"/);
+  assert.match(tasks, /taskType: "PD"/);
+  assert.match(notification, /sendPushNotification/);
+  assert.match(notification, /technician_review_required/);
+  assert.match(notification, /Review the farmer observation/);
 });
 
 test("one technician receives one contextual notification for the same observation", async () => {

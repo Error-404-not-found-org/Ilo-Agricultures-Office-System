@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { Notification } from "../models/notification.model.js";
 import { User } from "../models/user.model.js";
+import { sendPushNotification } from "../lib/push-notifications.js";
 
 const reportLabel = (reportType) =>
   ({
@@ -34,11 +35,26 @@ export const notifyTechniciansOfBreedingObservation = async ({
   reportedAt,
   verificationRequested = false,
 }) => {
-  const technicians = await User.find({
+  const assignedTechnicianId =
+    insemination?.technicianId?._id ||
+    insemination?.technicianId ||
+    insemination?.approvedBy?._id ||
+    insemination?.approvedBy ||
+    null;
+  const technicianQuery = {
     role: { $in: ["technician", "veterinarian"] },
     status: { $ne: "suspended" },
     deletedAt: null,
-  }).select("_id");
+  };
+  const assignedTechnicians = assignedTechnicianId
+    ? await User.find({
+        ...technicianQuery,
+        _id: assignedTechnicianId,
+      }).select("_id pushToken")
+    : [];
+  const technicians = assignedTechnicians.length
+    ? assignedTechnicians
+    : await User.find(technicianQuery).select("_id pushToken");
   const farmerName = farmer?.name || "A farmer";
   const animalTag = animal?.earTag || animal?.animalId || "an animal";
   const aiDate = insemination?.inseminationDate
@@ -56,10 +72,12 @@ export const notifyTechniciansOfBreedingObservation = async ({
   });
 
   return Promise.all(
-    technicians.map((technician) => {
+    technicians.map(async (technician) => {
       const recipientId = technician._id || technician;
       const dedupeKey = `breeding-observation:${recipientId}:${insemination._id}:${fingerprint}`;
-      return Notification.findOneAndUpdate(
+      const title = `Breeding observation: ${animalTag}`;
+      const message = `${farmerName} reported ${reportLabel(reportType)} for ${animalTag} after the ${aiDate} insemination. Review the farmer observation and choose the appropriate technician follow-up.`;
+      const result = await Notification.findOneAndUpdate(
         { dedupeKey },
         {
           $setOnInsert: {
@@ -71,8 +89,8 @@ export const notifyTechniciansOfBreedingObservation = async ({
             relatedId: insemination._id,
             linkType: "request",
             dedupeKey,
-            title: `Breeding observation: ${animalTag}`,
-            message: `${farmerName} reported ${reportLabel(reportType)} for ${animalTag} after the ${aiDate} insemination. Review the observation and decide the appropriate technician follow-up.`,
+            title,
+            message,
             metadata: {
               animalId: animal._id,
               animalTag,
@@ -88,8 +106,28 @@ export const notifyTechniciansOfBreedingObservation = async ({
             },
           },
         },
-        { upsert: true, returnDocument: "after" },
+        {
+          upsert: true,
+          returnDocument: "after",
+          includeResultMetadata: true,
+        },
       );
+      const notification = result?.value || result;
+      const wasInserted = result?.lastErrorObject
+        ? !result.lastErrorObject.updatedExisting
+        : Boolean(notification);
+
+      if (wasInserted && technician.pushToken) {
+        await sendPushNotification(technician.pushToken, title, message, {
+          eventType: "technician_review_required",
+          type: "ai",
+          requestId: String(insemination._id),
+          animalId: String(animal._id),
+          taskId: task?._id ? String(task._id) : null,
+        });
+      }
+
+      return notification;
     }),
   );
 };

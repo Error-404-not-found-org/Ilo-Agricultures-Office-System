@@ -62,6 +62,11 @@ export const LEGACY_ACTIVE_AI_STATUS = Object.freeze({
   UNDER_MONITORING_SPACED: "under monitoring",
 });
 
+export const normalizeAIStatus = (value) =>
+  value === LEGACY_ACTIVE_AI_STATUS.IN_PROGRESS
+    ? AI_STATUS.IN_PROGRESS
+    : value;
+
 export const ACTIVE_AI_REQUEST_STATUSES = Object.freeze([
   AI_STATUS.PENDING,
   AI_STATUS.APPROVED,

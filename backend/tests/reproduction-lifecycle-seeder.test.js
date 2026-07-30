@@ -187,6 +187,69 @@ test("Reproduction seeder: canonical next actions match key manual-test stages",
   assert.equal(table.get("RC26-11-POSTPARTUM")["Next phase"], "RECOVERY_PERIOD");
 });
 
+test("Reproduction seeder: farmer observation scenarios cover the technician handoff states", () => {
+  const plan = buildPlan();
+  const day10 = plan.scenarios.find(
+    (item) => item.scenario === "RC26-04-AI-DAY10",
+  );
+  const day21 = plan.scenarios.find(
+    (item) => item.scenario === "RC26-05-AI-DAY21",
+  );
+  const likelyPregnant = plan.scenarios.find(
+    (item) => item.scenario === "RC26-06-LIKELY-PREGNANT",
+  );
+
+  assert.equal(day10.inseminations[0].farmerOutcomeReport, "unsure");
+  assert.equal(day10.inseminations[0].verificationRequested, false);
+  assert.equal(day10.inseminations[0].verificationStatus, "not_requested");
+  assert.equal(day10.inseminations[0].verificationTaskId, undefined);
+
+  assert.equal(day21.inseminations[0].farmerOutcomeReport, "return_to_heat");
+  assert.equal(day21.inseminations[0].outcome, "Pending");
+  assert.notEqual(day21.inseminations[0].isSuccess, false);
+  assert.equal(day21.inseminations[0].outcomeVerificationStatus, "reported");
+  assert.equal(day21.tasks[0].sourceType, "farmer_requested_verification");
+  assert.equal(day21.tasks[0].technicianId, undefined);
+  assert.equal(
+    String(day21.inseminations[0].verificationTaskId),
+    String(day21.tasks[0]._id),
+  );
+
+  assert.equal(
+    likelyPregnant.inseminations[0].farmerOutcomeReport,
+    "possible_pregnancy",
+  );
+  assert.equal(likelyPregnant.inseminations[0].verificationStatus, "pending");
+  assert.ok(likelyPregnant.inseminations[0].evidencePhotos.length > 0);
+  assert.equal(
+    String(likelyPregnant.tasks[0].technicianId),
+    String(plan.technician._id),
+  );
+
+  const observationNotifications = plan.collections.notifications.filter(
+    (item) => item.eventType === "technician_review_required",
+  );
+  assert.equal(observationNotifications.length, 3);
+  assert.ok(
+    observationNotifications.every(
+      (item) =>
+        String(item.recipientId) === String(plan.technician._id) &&
+        item.metadata?.seedBatch === plan.seedBatch,
+    ),
+  );
+  assert.equal(
+    observationNotifications.find(
+      (item) => item.metadata?.reportType === "unsure",
+    ).metadata.taskId,
+    null,
+  );
+  assert.ok(
+    observationNotifications.find(
+      (item) => item.metadata?.reportType === "return_to_heat",
+    ).metadata.taskId,
+  );
+});
+
 test("Reproduction seeder: re-insemination attempt series linkage is valid", () => {
   const scenario = buildPlan().scenarios.find((item) => item.scenario === "RC26-16-ATTEMPT-2");
   const [attempt1, attempt2] = scenario.inseminations;

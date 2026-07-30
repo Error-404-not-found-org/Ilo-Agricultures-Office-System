@@ -140,6 +140,9 @@ test("Farmer cattle cards show one status and preserve responsive 320, 360, and 
   );
   assert.match(screen, /cardWidth=\{dashboardLayout\.animalCardWidth\}/);
   assert.doesNotMatch(screen, /: animal\.reproductiveStatus \|\| "View profile"/);
-  assert.equal((previewCard.match(/<StatusBadge label=\{status\}/g) || []).length, 1);
+  assert.equal(
+    (previewCard.match(/<StatusBadge[\s\S]*?label=\{status\}/g) || []).length,
+    1,
+  );
   assert.match(card, /accessibilityLabel=\{`\$\{fullIdentifier\}/);
 });

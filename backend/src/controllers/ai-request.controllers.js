@@ -31,6 +31,7 @@ import {
   isVerifiedFailedAIAttempt,
 } from "../services/ai-request-creation.service.js";
 import { notifyTechniciansOfBreedingObservation } from "../services/breeding-observation-notification.service.js";
+import { getEarlyStartTiming } from "../domain/service-timing.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -447,6 +448,7 @@ export const updateRequestStatus = async (req, res) => {
       sireBreed,
       sireCode,
       estrus,
+      earlyStartConfirmed,
     } = req.body;
 
     const VALID_STATUSES = Object.values(AI_STATUS);
@@ -474,6 +476,20 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(400).json({
         message: "Schedule this visit before starting the service.",
         code: "VISIT_NOT_SCHEDULED",
+      });
+    }
+
+    const startTiming =
+      status === "in-progress"
+        ? getEarlyStartTiming(existing.scheduledDate)
+        : null;
+
+    if (startTiming?.isEarly && earlyStartConfirmed !== true) {
+      return res.status(409).json({
+        message: `This visit starts in about ${startTiming.earlyStartMinutes} minutes. Confirm that you want to start the service early.`,
+        code: "EARLY_START_CONFIRMATION_REQUIRED",
+        earlyStartMinutes: startTiming.earlyStartMinutes,
+        scheduledDate: existing.scheduledDate,
       });
     }
 
@@ -578,6 +594,11 @@ export const updateRequestStatus = async (req, res) => {
 
     if (status === "scheduled") {
       updateData.scheduledDate = new Date(scheduledDate);
+    }
+
+    if (status === "in-progress" && startTiming) {
+      updateData.serviceStartedAt = startTiming.startedAt;
+      updateData.earlyStartMinutes = startTiming.earlyStartMinutes;
     }
 
     if (status === "done") {
@@ -706,100 +727,29 @@ export const updateRequestStatus = async (req, res) => {
 };
 
 // PATCH /api/ai-request/:id/outcome
-// Farmer confirms if the AI was successful (pregnant) or not (re-heat)
+// Backward-compatible adapter for older mobile clients. Farmer input remains
+// an observation and follows the same protected technician-review workflow.
 export const confirmAIOutcome = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { isSuccess, note } = req.body;
-
-    const request = await Insemination.findById(id).populate("animalId");
-    if (!request) return res.status(404).json({ message: "Record not found." });
-
-    assertAIRequestAccess(req.user, request);
-    if (req.user.role !== "farmer") {
-      return res.status(403).json({
-        code: "FARMER_OUTCOME_ONLY",
-        message:
-          "Use the technician verification workflow to record a clinical outcome.",
-      });
-    }
-    if (request.status !== AI_STATUS.DONE || !request.inseminationDate) {
-      return res.status(409).json({
-        code: "AI_NOT_COMPLETED",
-        message:
-          "An outcome can only be reported after the AI procedure is completed.",
-      });
-    }
-
-    const animal = await Animal.findById(
-      request.animalId?._id || request.animalId,
-    );
-    if (!animal) return res.status(404).json({ message: "Animal not found." });
-
-    const now = new Date();
-    request.farmerOutcomeReport = isSuccess
-      ? "possible_pregnancy"
-      : "return_to_heat";
-    request.farmerOutcomeReportedAt = now;
-    request.farmerObservationNotes = note || "";
-    request.outcomeConfirmedBy = req.user._id;
-    request.outcomeConfirmedAt = now;
-
-    if (isSuccess) {
-      // A farmer can report signs, but only a clinical pregnancy diagnosis can
-      // create a pregnancy record or mark the animal confirmed pregnant.
-      request.isSuccess = null;
-      request.outcome = "Pending";
-      request.outcomeVerificationStatus = "reported";
-      request.outcomeConfirmationSource = "farmer_possible_pregnancy";
-      request.failureReason = null;
-      if (["Inseminated", "Normal"].includes(animal.reproductiveStatus)) {
-        animal.reproductiveStatus = "Likely Pregnant";
-      }
-    } else {
-      request.isSuccess = false;
-      request.outcome = "Failed (Re-heat)";
-      request.outcomeVerificationStatus = "verified";
-      request.outcomeConfirmationSource = "farmer_return_to_heat";
-      request.failureReason = "return_to_heat";
-      animal.reproductiveStatus = "In Heat";
-      animal.expectedCalvingDate = undefined;
-    }
-
-    request.statusHistory = request.statusHistory || [];
-    request.statusHistory.push({
-      status: "farmer_observation",
-      note: isSuccess
-        ? `Farmer reported possible pregnancy signs. ${note || ""}`.trim()
-        : `Farmer confirmed return to heat. ${note || ""}`.trim(),
-      actorId: req.user._id,
-      createdAt: now,
-    });
-    animal.activityLogs = animal.activityLogs || [];
-    animal.activityLogs.push({
-      event: "Breeding Observation Reported",
-      date: now,
-      description: isSuccess
-        ? `Farmer reported possible pregnancy signs. ${note || ""}`.trim()
-        : `Farmer confirmed return to heat after AI. ${note || ""}`.trim(),
-    });
-
-    await Promise.all([request.save(), animal.save()]);
-
-    res.status(200).json({
-      message: isSuccess
-        ? "Possible pregnancy signs recorded. A technician pregnancy check is still required for confirmation."
-        : "Return to heat recorded. You can now request re-insemination.",
-      request,
-      animal,
-    });
-  } catch (error) {
-    console.error("[confirmAIOutcome ERROR]", error.message);
-    res.status(error.status || 500).json({
-      message: error.message || "Failed to record breeding observation.",
-      code: error.code,
+  const { isSuccess, note = "" } = req.body;
+  if (typeof isSuccess !== "boolean") {
+    return res.status(400).json({
+      message: "Select the breeding observation you want to report.",
+      code: "OBSERVATION_TYPE_REQUIRED",
     });
   }
+  res.setHeader("Deprecation", "true");
+  res.setHeader(
+    "Link",
+    `</api/ai-request/${req.params.id}/farmer-observation>; rel="successor-version"`,
+  );
+  req.body = {
+    reportType: isSuccess ? "possible_pregnancy" : "return_to_heat",
+    signs: [],
+    notes: note,
+    evidencePhotos: [],
+    verificationRequested: false,
+  };
+  return submitFarmerBreedingObservation(req, res);
 };
 
 // POST /api/ai-request/:id/farmer-observation
@@ -947,6 +897,12 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         verificationTask = await Task.create({
           farmerId: req.user._id,
           animalIds: [animal._id],
+          technicianId:
+            request.technicianId?._id ||
+            request.technicianId ||
+            request.approvedBy?._id ||
+            request.approvedBy ||
+            undefined,
           taskType: "PD",
           category: "Follow-up",
           priority: reportType === "return_to_heat" ? 1 : 2,

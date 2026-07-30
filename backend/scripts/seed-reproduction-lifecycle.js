@@ -220,6 +220,39 @@ export const buildReproductionLifecyclePlan = ({ farmer, technician, now = new D
     const record = baseTask({ _id: id(), farmerId, technicianId, animalId: scenario.motherId, seedBatch, ...data });
     collections.tasks.push(record); scenario.tasks.push(record); return record;
   };
+  const addObservationNotification = (
+    scenario,
+    { insemination, task = null, reportType, message },
+  ) => {
+    const notification = {
+      _id: id(),
+      recipientId: technicianId,
+      senderId: farmerId,
+      type: "ai-request",
+      category: "observation",
+      eventType: "technician_review_required",
+      relatedId: insemination._id,
+      linkType: "request",
+      dedupeKey: `seed-breeding-observation:${technicianId}:${insemination._id}`,
+      title: `Breeding observation: ${scenario.earTag}`,
+      message,
+      isRead: false,
+      metadata: {
+        seedBatch,
+        animalId: scenario.motherId,
+        animalTag: scenario.earTag,
+        observationId: insemination._id,
+        requestId: insemination._id,
+        taskId: task?._id || null,
+        reportType,
+        deepLinkTarget: task?._id
+          ? "/(technician)/task-details"
+          : "/(technician)/request-details",
+      },
+    };
+    collections.notifications.push(notification);
+    return notification;
+  };
   const addPregnancy = (scenario, insemination, data) => {
     const record = confirmedPregnancy({ _id: id(), animalId: scenario.motherId, farmerId, inseminationId: insemination._id, ...data });
     collections.pregnancies.push(record); scenario.pregnancies.push(record); insemination.pregnancyId = record._id; return record;
@@ -320,23 +353,90 @@ export const buildReproductionLifecyclePlan = ({ farmer, technician, now = new D
     addTask(scenario, { type: "PD", dueDate: addDays(aiDate, 60), sourceType: "automatic_pd_followup", relatedRecordType: "insemination", relatedRecordId: insemination._id, inseminationId: insemination._id });
     return { scenario, insemination, aiDate };
   };
-  monitoring(4, "AI-DAY10", 10).scenario.expectedResult = "Monitor return to heat; PD blocked";
-  monitoring(5, "AI-DAY21", 21).scenario.expectedResult = "Return-to-heat milestone; farmer observation available";
+  const s4data = monitoring(4, "AI-DAY10", 10);
+  Object.assign(s4data.insemination, {
+    farmerOutcomeReport: "unsure",
+    farmerOutcomeReportedAt: now,
+    farmerObservationSigns: [],
+    farmerObservationNotes: "",
+    evidencePhotos: [],
+    verificationRequested: false,
+    verificationStatus: "not_requested",
+    outcomeVerificationStatus: "reported",
+  });
+  addObservationNotification(s4data.scenario, {
+    insemination: s4data.insemination,
+    reportType: "unsure",
+    message: `The farmer is unsure of the breeding outcome for ${s4data.scenario.earTag}. Review the observation and advise continued monitoring.`,
+  });
+  s4data.scenario.expectedResult =
+    "Unsure farmer observation; monitoring continues without a requested review task";
+
+  const s5data = monitoring(5, "AI-DAY21", 21);
+  s5data.scenario.animal.reproductiveStatus = "In Heat";
+  Object.assign(s5data.insemination, {
+    farmerOutcomeReport: "return_to_heat",
+    farmerOutcomeReportedAt: now,
+    farmerObservationSigns: ["standing_heat", "restlessness"],
+    farmerObservationNotes:
+      "The animal is standing to be mounted and appears restless.",
+    evidencePhotos: [],
+    verificationRequested: true,
+    verificationStatus: "pending",
+    outcomeVerificationStatus: "reported",
+    outcomeConfirmationSource: "farmer_return_to_heat",
+  });
+  const s5task = s5data.scenario.tasks[0];
+  Object.assign(s5task, {
+    technicianId: undefined,
+    sourceType: "farmer_requested_verification",
+    priority: 1,
+    notes: `Farmer reported a return to heat for ${s5data.scenario.earTag}. Technician review is required before the AI attempt can be marked unsuccessful.`,
+    metadata: {
+      ...s5task.metadata,
+      reportType: "return_to_heat",
+    },
+  });
+  s5data.insemination.verificationTaskId = s5task._id;
+  addObservationNotification(s5data.scenario, {
+    insemination: s5data.insemination,
+    task: s5task,
+    reportType: "return_to_heat",
+    message: `The farmer reported a return to heat for ${s5data.scenario.earTag}. Review the signs before recording the reproductive outcome.`,
+  });
+  s5data.scenario.expectedResult =
+    "Provisional return-to-heat report; unassigned technician review task available";
 
   const s6data = monitoring(6, "LIKELY-PREGNANT", 40);
   s6data.scenario.animal.reproductiveStatus = "Likely Pregnant";
   Object.assign(s6data.insemination, {
     farmerOutcomeReport: "possible_pregnancy", farmerOutcomeReportedAt: now,
     farmerObservationSigns: ["no_return_to_heat", "body_condition_change"],
-    farmerObservationNotes: "Seeded possible-pregnancy observation.", verificationRequested: true,
+    farmerObservationNotes: "No return to heat observed; appetite and body condition remain stable.",
+    evidencePhotos: [
+      "https://res.cloudinary.com/demo/image/upload/sample.jpg",
+    ],
+    verificationRequested: true,
     verificationStatus: "pending", outcomeVerificationStatus: "reported", outcomeConfirmationSource: "farmer_possible_pregnancy",
+    outcomeConfirmedBy: farmerId,
+    outcomeConfirmedAt: now,
   });
   const s6task = s6data.scenario.tasks[0];
   Object.assign(s6task, {
     sourceType: "farmer_requested_verification",
     notes: `Farmer-requested pregnancy verification (${seedBatch}).`,
+    metadata: {
+      ...s6task.metadata,
+      reportType: "possible_pregnancy",
+    },
   });
   s6data.insemination.verificationTaskId = s6task._id;
+  addObservationNotification(s6data.scenario, {
+    insemination: s6data.insemination,
+    task: s6task,
+    reportType: "possible_pregnancy",
+    message: `The farmer reported possible pregnancy signs for ${s6data.scenario.earTag}. Review the observation and complete the assigned pregnancy check when eligible.`,
+  });
   s6data.scenario.expectedResult = "Technician verification required; PD locked before Day 60";
 
   const s7data = monitoring(7, "PD-DUE", 60);

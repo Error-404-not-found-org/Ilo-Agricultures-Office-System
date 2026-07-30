@@ -89,6 +89,13 @@ const InseminationSchema = new mongoose.Schema(
     scheduledDate: {
       type: Date,
     },
+    serviceStartedAt: {
+      type: Date,
+    },
+    earlyStartMinutes: {
+      type: Number,
+      min: 0,
+    },
     // Supporting Data for UNIP Form No. 2
     technicianNote: {
       type: String,

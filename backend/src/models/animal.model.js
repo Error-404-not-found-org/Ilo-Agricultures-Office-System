@@ -19,7 +19,16 @@ const AnimalSchema = new mongoose.Schema(
 
     species: {
       type: String,
-      enum: ["Beef", "Dairy", "Beef Cattle", "Dairy Cattle", "Cattle", "Carabao", "Goat", "Swine"],
+      enum: [
+        "Beef",
+        "Dairy",
+        "Beef Cattle",
+        "Dairy Cattle",
+        "Cattle",
+        "Carabao",
+        "Goat",
+        "Swine",
+      ],
       required: true,
     },
 
@@ -42,7 +51,7 @@ const AnimalSchema = new mongoose.Schema(
       default: ANIMAL_REPRODUCTIVE_STATUS.NORMAL,
       set: normalizeAnimalReproductiveStatus,
     },
-    
+
     // Advanced Reproduction Tracking
     lastInseminationDate: { type: Date },
     expectedCalvingDate: { type: Date },
@@ -55,17 +64,21 @@ const AnimalSchema = new mongoose.Schema(
     },
 
     // Health & Performance History
-    bcsHistory: [{
-      score: { type: Number, min: 1, max: 9 }, // Body Condition Score
-      recordedAt: { type: Date, default: Date.now }
-    }],
+    bcsHistory: [
+      {
+        score: { type: Number, min: 1, max: 9 }, // Body Condition Score
+        recordedAt: { type: Date, default: Date.now },
+      },
+    ],
     geneticLineage: { type: String }, // Additional notes on breed purity/lineage
 
-    activityLogs: [{
-      event: { type: String },
-      date: { type: Date, default: Date.now },
-      description: { type: String }
-    }],
+    activityLogs: [
+      {
+        event: { type: String },
+        date: { type: Date, default: Date.now },
+        description: { type: String },
+      },
+    ],
 
     isVerified: {
       type: Boolean,
@@ -85,7 +98,9 @@ const AnimalSchema = new mongoose.Schema(
 );
 
 AnimalSchema.pre("validate", function normalizeEarTagForUniqueIndex() {
-  const normalized = String(this.earTag || "").trim().toLowerCase();
+  const normalized = String(this.earTag || "")
+    .trim()
+    .toLowerCase();
   this.normalizedEarTag = normalized || undefined;
 });
 

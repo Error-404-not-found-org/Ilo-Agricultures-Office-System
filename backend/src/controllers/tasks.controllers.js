@@ -52,6 +52,13 @@ const OFFICIAL_SERVICE_TASK_TYPES = new Set([
   "Treatment",
 ]);
 
+const MANUAL_FIELD_TASK_TYPES = new Set([
+  "GeneralVisit",
+  "FarmInspection",
+  "Registration",
+  "Other",
+]);
+
 const normalizeTaskType = (value = "GeneralVisit") => {
   const raw = String(value || "GeneralVisit").trim();
   const key = raw.toLowerCase().replace(/[_-]/g, " ");
@@ -94,11 +101,18 @@ export const getTasks = async (req, res) => {
         technicianId: req.user._id,
       };
     } else if (scope === "available") {
-      // Unassigned generic tasks only
+      // Unassigned generic tasks and farmer-requested pregnancy checks.
+      // Other official service work must still enter through its request flow.
       query = {
         technicianId: { $in: [null, undefined] },
         status: TASK_STATUS.PENDING,
-        taskType: { $nin: Array.from(OFFICIAL_SERVICE_TASK_TYPES) },
+        $or: [
+          { taskType: { $nin: Array.from(OFFICIAL_SERVICE_TASK_TYPES) } },
+          {
+            taskType: "PD",
+            sourceType: "farmer_requested_verification",
+          },
+        ],
       };
     } else if (scope === "all") {
       query = {};
@@ -221,6 +235,14 @@ export const createTask = async (req, res) => {
     }
 
     const normalizedTaskType = normalizeTaskType(taskType);
+    if (!MANUAL_FIELD_TASK_TYPES.has(normalizedTaskType)) {
+      return res.status(400).json({
+        message:
+          "Official services must be scheduled from their request or service workflow. Use field work for general visits, farm inspections, registration support, or other non-service work.",
+        code: "OFFICIAL_SERVICE_WORKFLOW_REQUIRED",
+      });
+    }
+
     const parsedDueDate = dueDate ? new Date(dueDate) : null;
     if (dueDate && Number.isNaN(parsedDueDate.getTime())) {
       return res.status(400).json({ message: "Invalid visit date." });

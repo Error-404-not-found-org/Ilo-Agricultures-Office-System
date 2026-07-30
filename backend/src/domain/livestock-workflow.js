@@ -4,6 +4,7 @@ import {
   ANIMAL_REPRODUCTIVE_STATUS,
   AI_STATUS,
   HEALTH_STATUS,
+  normalizeAIStatus,
   normalizeHealthStatus,
 } from "./status-vocabulary.js";
 
@@ -29,8 +30,10 @@ const transitions = {
 };
 
 export const assertStatusTransition = (workflow, currentStatus, nextStatus, { isAdmin = false } = {}) => {
-  const normalizedCurrent = workflow === "health" ? normalizeHealthStatus(currentStatus) : currentStatus;
-  const normalizedNext = workflow === "health" ? normalizeHealthStatus(nextStatus) : nextStatus;
+  const normalizeStatus =
+    workflow === "health" ? normalizeHealthStatus : normalizeAIStatus;
+  const normalizedCurrent = normalizeStatus(currentStatus);
+  const normalizedNext = normalizeStatus(nextStatus);
   if (normalizedCurrent === normalizedNext || isAdmin) return;
   const allowed = transitions[workflow]?.[normalizedCurrent] || [];
   if (!allowed.includes(normalizedNext)) {

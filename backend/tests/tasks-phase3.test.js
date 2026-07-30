@@ -97,7 +97,12 @@ test("Tasks Phase 3: getTasks queries by scope=available", async () => {
 
   assert.equal(capturedQuery.status, "Pending");
   assert.deepEqual(capturedQuery.technicianId, { $in: [null, undefined] });
-  assert.ok(capturedQuery.taskType && capturedQuery.taskType.$nin);
+  assert.ok(Array.isArray(capturedQuery.$or));
+  assert.ok(capturedQuery.$or[0].taskType.$nin.includes("AI"));
+  assert.deepEqual(capturedQuery.$or[1], {
+    taskType: "PD",
+    sourceType: "farmer_requested_verification"
+  });
 
   // Restore
   Task.find = originalFind;
