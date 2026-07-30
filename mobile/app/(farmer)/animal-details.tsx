@@ -1,9 +1,9 @@
 import React from "react";
 import { useLocalSearchParams } from "expo-router";
-import { AnimalDetailsScreen } from "@/features/animals/screens/AnimalDetailsScreen";
+import { RoleAwareAnimalDetailsScreen } from "@/features/animals/screens/RoleAwareAnimalDetailsScreen";
 
 export default function AnimalDetailsRoute() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  return <AnimalDetailsScreen id={id || ""} />;
+  return <RoleAwareAnimalDetailsScreen id={id || ""} role="farmer" />;
 }

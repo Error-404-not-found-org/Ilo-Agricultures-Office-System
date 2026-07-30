@@ -10,6 +10,7 @@ import {
   AppPageHeader,
 } from "@/components/AppPageHeader";
 
+import { safeBack } from "@/utils/navigation";
 import { useTechnicianAnimals } from "../hooks/useTechnicianAnimals";
 import {
   SearchBar,
@@ -39,7 +40,6 @@ type TechnicianAnimalsScreenProps = {
 export default function TechnicianAnimalsScreen({
   showBackButton = true,
 }: TechnicianAnimalsScreenProps) {
-  const [showFilters, setShowFilters] = React.useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
@@ -62,16 +62,13 @@ export default function TechnicianAnimalsScreen({
     handleRefresh,
     goToPage,
   } = useTechnicianAnimals();
-  const filtersActive =
-    selectedMunicipality !== "All" ||
-    selectedBarangay !== "All" ||
-    selectedStatus !== "All";
 
   return (
     <ScreenLayout edges={[]}>
       <AppPageHeader
         title="Animals"
         showBackButton={showBackButton}
+        onBack={() => safeBack("/(technician)/(tabs)/technician.dashboard")}
         variant={showBackButton ? "detail" : "top-level"}
         rightAction={
           <AppHeaderIconButton
@@ -83,45 +80,43 @@ export default function TechnicianAnimalsScreen({
         }
       />
 
-      <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
-        <SearchBar
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search tag, breed, or owner"
-          variant="directory"
-          onFilterPress={() => setShowFilters((current) => !current)}
-          filterActive={filtersActive}
-        />
-
-        {showFilters ? (
-          <View style={{ marginBottom: 16 }}>
-            <View style={{ width: "100%", marginBottom: 12 }}>
-              <BarangayFilter
-                selectedMunicipality={selectedMunicipality}
-                setSelectedMunicipality={setSelectedMunicipality}
-                selectedBarangay={selectedBarangay}
-                setSelectedBarangay={setSelectedBarangay}
-              />
-            </View>
-
-            <FilterChips
-              options={[...ANIMAL_STATUS_FILTERS]}
-              value={selectedStatus}
-              onChange={(value) =>
-                setSelectedStatus(value as typeof selectedStatus)
-              }
-              containerStyle={{ paddingHorizontal: 0 }}
-            />
-          </View>
-        ) : null}
-
+      <View style={{ flex: 1, paddingHorizontal: 16 }}>
         <FlatList
           data={animals}
           keyExtractor={(item) => item._id}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
+            paddingTop: 16,
             paddingBottom: insets.bottom + (showBackButton ? 24 : 96),
           }}
+          ListHeaderComponent={
+            <View style={{ paddingBottom: 8 }}>
+              <SearchBar
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search tag, breed, or owner"
+                variant="directory"
+              />
+
+              <View style={{ marginTop: 12, marginBottom: 12 }}>
+                <FilterChips
+                  options={[...ANIMAL_STATUS_FILTERS]}
+                  value={selectedStatus}
+                  onChange={(value) =>
+                    setSelectedStatus(value as typeof selectedStatus)
+                  }
+                  containerStyle={{ paddingHorizontal: 0, marginBottom: 10 }}
+                />
+
+                <BarangayFilter
+                  selectedMunicipality={selectedMunicipality}
+                  setSelectedMunicipality={setSelectedMunicipality}
+                  selectedBarangay={selectedBarangay}
+                  setSelectedBarangay={setSelectedBarangay}
+                />
+              </View>
+            </View>
+          }
           refreshControl={
             <RefreshControl
               refreshing={isRefetching}

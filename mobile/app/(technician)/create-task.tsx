@@ -40,13 +40,6 @@ const SERVICE_TYPES = [
     bg: "#f8fafc",
   },
   {
-    label: "Follow-up",
-    value: "FollowUp",
-    icon: "calendar-clock",
-    color: "#0f766e",
-    bg: "#ecfdf5",
-  },
-  {
     label: "Farm Inspection",
     value: "FarmInspection",
     icon: "barn",
@@ -54,35 +47,14 @@ const SERVICE_TYPES = [
     bg: "#f5f3ff",
   },
   {
-    label: "Artificial Insemination",
-    value: "AI",
-    icon: "needle",
-    color: "#10b981",
-    bg: "#f0fdf4",
-  },
-  {
-    label: "Health Assistance",
-    value: "Health",
-    icon: "stethoscope",
-    color: "#f59e0b",
-    bg: "#fffbeb",
-  },
-  {
-    label: "Pregnancy Check",
-    value: "PD",
-    icon: "heart-pulse",
-    color: "#ec4899",
-    bg: "#fdf2f8",
-  },
-  {
-    label: "Calving",
-    value: "CD",
-    icon: "baby-face-outline",
-    color: "#3b82f6",
+    label: "Registration Support",
+    value: "Registration",
+    icon: "clipboard-account-outline",
+    color: "#2563eb",
     bg: "#eff6ff",
   },
   {
-    label: "Other Operation",
+    label: "Other Field Work",
     value: "Other",
     icon: "cog-outline",
     color: "#475569",
@@ -165,7 +137,9 @@ export default function CreateTaskScreen() {
   const [loadingAnimals, setLoadingAnimals] = useState(false);
 
   const [serviceType, setServiceType] = useState(
-    (type as string) || "GeneralVisit",
+    SERVICE_TYPES.some((option) => option.value === type)
+      ? (type as string)
+      : "GeneralVisit",
   );
   const [category, setCategory] = useState("Routine");
   const [notes, setNotes] = useState("");
@@ -408,7 +382,7 @@ export default function CreateTaskScreen() {
           municipality,
         },
       });
-      toast.success("Farm visit scheduled successfully!");
+      toast.success("Field work scheduled successfully!");
       router.back();
     } catch (err) {
       console.error(err);
@@ -443,7 +417,7 @@ export default function CreateTaskScreen() {
             color: colors.textPrimary,
           }}
         >
-          Schedule Farm Visit
+          Schedule Field Work
         </Text>
       </View>
 
@@ -455,7 +429,7 @@ export default function CreateTaskScreen() {
         {/* SERVICE SELECTION */}
         <View className="mb-8">
           <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
-            Service Type
+            Field Work Type
           </Text>
           <View className="flex-row flex-wrap gap-3">
             {SERVICE_TYPES.map((type) => (
@@ -1097,7 +1071,7 @@ export default function CreateTaskScreen() {
                 style={{ fontFamily: "Outfit_800ExtraBold" }}
                 className="text-white text-base"
               >
-                Schedule Farm Visit
+                Schedule Field Work
               </Text>
             </>
           )}

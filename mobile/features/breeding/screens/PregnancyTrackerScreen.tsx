@@ -6,14 +6,14 @@ import {
   TouchableOpacity,
   View,
   ScrollView,
-  StatusBar,
 } from "react-native";
 import {
   AlertTriangle,
-  ArrowLeft,
   CalendarHeart,
   Check,
+  ChevronRight,
   Circle,
+  MessageSquareText,
   Phone,
   Stethoscope,
 } from "lucide-react-native";
@@ -31,6 +31,11 @@ import { calculateTargetCalvingDate } from "@/lib/cattleCore";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { usePregnancyTrackerQuery } from "../hooks/usePregnancyTracker";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { AppPageHeader } from "@/components/AppPageHeader";
+import {
+  getBreedingObservationLabel,
+  isBreedingObservationAwaitingReview,
+} from "../utils/breedingObservationPresentation";
 
 interface PregnancyTrackerScreenProps {
   id: string;
@@ -42,47 +47,10 @@ function PregnancyTrackerSkeleton() {
 
   return (
     <FarmerScreen scroll={false}>
-      <StatusBar barStyle="light-content" />
-
-      {/* Curved Header matching real screen */}
-      <View
-        style={{
-          paddingTop: insets.top + 16,
-          backgroundColor: "#00643B",
-          paddingBottom: 24,
-          paddingHorizontal: 24,
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-          flexDirection: "row",
-          alignItems: "center",
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => safeBack()}
-          activeOpacity={0.8}
-          className="w-10 h-10 items-center justify-center rounded-full"
-          style={{ backgroundColor: "rgba(255, 255, 255, 0.15)" }}
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View className="ml-4 flex-1">
-          <Text
-            className="text-white"
-            style={{ fontFamily: "Outfit_900Black", fontSize: 22 }}
-          >
-            Pregnancy Tracker
-          </Text>
-          <Text
-            style={{
-              color: "rgba(255, 255, 255, 0.7)",
-              fontFamily: "Outfit_500Medium",
-              fontSize: 12,
-            }}
-          >
-            Estimated milestones & progress
-          </Text>
-        </View>
-      </View>
+      <AppPageHeader
+        title="Pregnancy Tracker"
+        onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -325,18 +293,32 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
 
   if (query.isError || !query.data) {
     return (
-      <FarmerScreen style={{ justifyContent: "center", alignItems: "center" }}>
-        <AsyncState
-          state="error"
-          message="Pregnancy information could not be loaded."
-          onAction={() => query.refetch()}
+      <FarmerScreen scroll={false}>
+        <AppPageHeader
+          title="Pregnancy Tracker"
+          onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
         />
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <AsyncState
+            state="error"
+            message="Pregnancy information could not be loaded."
+            onAction={() => query.refetch()}
+          />
+        </View>
       </FarmerScreen>
     );
   }
 
   const animal = query.data;
   const latest = animal.inseminations?.[0];
+  const canReportObservation =
+    Boolean(latest?._id) &&
+    ["done", "completed", "resolved"].includes(
+      String(latest?.status || "").toLowerCase(),
+    ) &&
+    ["Inseminated", "Likely Pregnant", "In Heat"].includes(
+      animal.reproductiveStatus || "",
+    );
   const activePregnancy = animal.inseminations
     ?.map((item: any) => item.pregnancy)
     .find((item: any) =>
@@ -429,47 +411,10 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
 
   return (
     <FarmerScreen scroll={false}>
-      <StatusBar barStyle="light-content" />
-
-      {/* Curved Header matching Reports Center */}
-      <View
-        style={{
-          paddingTop: insets.top + 16,
-          backgroundColor: "#00643B",
-          paddingBottom: 24,
-          paddingHorizontal: 24,
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-          flexDirection: "row",
-          alignItems: "center",
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => safeBack()}
-          activeOpacity={0.8}
-          className="w-10 h-10 items-center justify-center rounded-full"
-          style={{ backgroundColor: "rgba(255, 255, 255, 0.15)" }}
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View className="ml-4 flex-1">
-          <Text
-            className="text-white"
-            style={{ fontFamily: "Outfit_900Black", fontSize: 22 }}
-          >
-            Pregnancy Tracker
-          </Text>
-          <Text
-            style={{
-              color: "rgba(255, 255, 255, 0.7)",
-              fontFamily: "Outfit_500Medium",
-              fontSize: 12,
-            }}
-          >
-            Estimated milestones & progress
-          </Text>
-        </View>
-      </View>
+      <AppPageHeader
+        title="Pregnancy Tracker"
+        onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
+      />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -536,6 +481,82 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
             </Text>
           </View>
         </View>
+
+        {canReportObservation || latest?.farmerOutcomeReport ? (
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() =>
+              router.push({
+                pathname: "/(farmer)/report-breeding-observation",
+                params: {
+                  animalId: animal._id,
+                  requestId: latest?._id,
+                  defaultReport: latest?.farmerOutcomeReport || "unsure",
+                },
+              } as never)
+            }
+            style={{
+              marginHorizontal: 24,
+              marginTop: 16,
+              padding: 16,
+              minHeight: 76,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              borderRadius: 20,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <View
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 15,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: isDark
+                  ? "rgba(16,185,129,0.14)"
+                  : "#ECFDF5",
+              }}
+            >
+              <MessageSquareText size={20} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 15,
+                }}
+              >
+                {latest?.farmerOutcomeReport
+                  ? getBreedingObservationLabel(latest.farmerOutcomeReport)
+                  : "Report a breeding observation"}
+              </Text>
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                  lineHeight: 16,
+                  marginTop: 3,
+                }}
+              >
+                {latest?.farmerOutcomeReport
+                  ? isBreedingObservationAwaitingReview(
+                      latest.verificationStatus ||
+                        latest.outcomeVerificationStatus,
+                    )
+                    ? "Farmer observation · Awaiting technician review"
+                    : "Farmer observation submitted"
+                  : "Share signs or a return to heat with the technician."}
+              </Text>
+            </View>
+            <ChevronRight size={18} color={colors.textMuted} />
+          </TouchableOpacity>
+        ) : null}
 
         {/* Gestation Progress Card */}
         <View

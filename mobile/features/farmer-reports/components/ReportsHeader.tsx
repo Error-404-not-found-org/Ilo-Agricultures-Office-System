@@ -13,9 +13,10 @@ const ReportsHeader = ({ onExport, children }: ReportsHeaderProps) => {
   const { colors } = useTheme();
 
   return (
-    <View style={{ marginHorizontal: -24, marginBottom: 24 }}>
+    <View>
       <AppPageHeader
         title="Records"
+        showBackButton={false}
         rightAction={
           <TouchableOpacity
             onPress={onExport}

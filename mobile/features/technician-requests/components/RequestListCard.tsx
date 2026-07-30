@@ -1,5 +1,5 @@
 import React from "react";
-import { Image, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
 import {
   CalendarDays,
   Link2,
@@ -11,10 +11,10 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
-import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/shared";
 import { RequestItem } from "../types/technicianRequests.types";
+import { getBreedingObservationLabel } from "@/features/breeding/utils/breedingObservationPresentation";
 
 interface RequestListCardProps {
   item: RequestItem;
@@ -128,11 +128,11 @@ export function RequestListCard({
       : colors.tint;
 
   return (
-    <Card
+    <Pressable
       onPress={onPress}
-      variant="outlined"
+      accessibilityRole="button"
       accessibilityLabel={`Open ${serviceLabel} request from ${item.farmer}`}
-      style={{ marginBottom: 12 }}
+      className="mb-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm active:opacity-80 dark:border-slate-800 dark:bg-slate-900"
     >
       <View
         style={{
@@ -251,20 +251,34 @@ export function RequestListCard({
             </View>
           ) : null}
           {isPregnancyCheck ? (
-            <Text
-              style={{
-                alignSelf: "center",
-                color: colors.textSecondary,
-                fontFamily: "Outfit_500Medium",
-                fontSize: 12,
-              }}
-            >
-              {item.raw?.sourceType === "farmer_requested_verification"
-                ? "Farmer requested"
-                : item.raw?.sourceType === "automatic_pd_followup"
-                  ? "Scheduled follow-up"
-                  : "Diagnostic follow-up"}
-            </Text>
+            <View style={{ gap: 2 }}>
+              <Text
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 12,
+                }}
+              >
+                {item.farmerObservation?.reportType
+                  ? getBreedingObservationLabel(
+                      item.farmerObservation.reportType,
+                    )
+                  : item.raw?.sourceType === "automatic_pd_followup"
+                    ? "Scheduled follow-up"
+                    : "Diagnostic follow-up"}
+              </Text>
+              {item.raw?.sourceType === "farmer_requested_verification" ? (
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 11,
+                  }}
+                >
+                  Farmer observation · Technician review required
+                </Text>
+              ) : null}
+            </View>
           ) : null}
         </View>
       )}
@@ -348,7 +362,7 @@ export function RequestListCard({
           )}
         </View>
       ) : null}
-    </Card>
+    </Pressable>
   );
 }
 

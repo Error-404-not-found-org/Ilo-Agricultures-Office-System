@@ -1,6 +1,8 @@
 import React from "react";
-import AdminAnimalDetailsScreen from "@/features/admin-animals/screens/AdminAnimalDetailsScreen";
+import { useLocalSearchParams } from "expo-router";
+import { RoleAwareAnimalDetailsScreen } from "@/features/animals/screens/RoleAwareAnimalDetailsScreen";
 
 export default function AnimalDetailsRoute() {
-  return <AdminAnimalDetailsScreen />;
+  const { id } = useLocalSearchParams<{ id: string }>();
+  return <RoleAwareAnimalDetailsScreen id={id || ""} role="admin" />;
 }

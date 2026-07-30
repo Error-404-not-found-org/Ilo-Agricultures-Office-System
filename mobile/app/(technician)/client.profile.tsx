@@ -897,7 +897,7 @@ export default function ClientProfileScreen() {
                           fontSize: 13,
                         }}
                       >
-                        Schedule Visit
+                        Add Field Work
                       </Text>
                       <Text
                         style={{
@@ -906,7 +906,7 @@ export default function ClientProfileScreen() {
                           fontSize: 9,
                         }}
                       >
-                        Create calendar task
+                        Schedule a non-service visit
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -1500,7 +1500,13 @@ export default function ClientProfileScreen() {
                   </Text>
                   <TouchableOpacity
                     onPress={() =>
-                      router.push(`/(technician)/photo-notes` as any)
+                      router.push({
+                        pathname: "/(technician)/photo-notes",
+                        params: {
+                          farmerId: client._id,
+                          farmerName: clientName,
+                        },
+                      } as any)
                     }
                   >
                     <Text
@@ -1642,7 +1648,7 @@ export default function ClientProfileScreen() {
                       }}
                     >
                       No custom client notes recorded. Tap &quot;Add Note&quot;
-                      to attach photo notes or field observations.
+                      to attach field observations or optional photos.
                     </Text>
                   </View>
                 )}

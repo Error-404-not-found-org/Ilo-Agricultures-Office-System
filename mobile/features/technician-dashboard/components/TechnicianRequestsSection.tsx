@@ -3,6 +3,7 @@ import { Image, View, TouchableOpacity } from "react-native";
 import {
   ChevronRight,
   ClipboardCheck,
+  Hand,
   LockKeyhole,
   MapPin,
   Send,
@@ -18,6 +19,7 @@ import { useTheme } from "@/lib/theme";
 import {
   formatDashboardLocation,
   formatSentAt,
+  getTechnicianRequestBadge,
 } from "../utils/dashboardPresentation";
 import { TechnicianRequestSkeleton } from "./skeletons/TechnicianDashboardSkeletons";
 import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
@@ -49,7 +51,7 @@ export function TechnicianRequestsSection({
         title="Farmer requests"
         subtitle={
           availableRequests.length > 0
-            ? `${availableRequests.length} new ${availableRequests.length === 1 ? "request" : "requests"}`
+            ? `${availableRequests.length} unclaimed ${availableRequests.length === 1 ? "request" : "requests"}`
             : undefined
         }
         actionLabel="View all"
@@ -115,7 +117,6 @@ function RequestRow({
   const { colors, isDark } = useTheme();
   const isHealth = item.type === "health";
   const isPregnancyCheck = item.type === "breeding_verification";
-  const urgent = item.urgency === "urgent";
   const serviceLabel = String(
     item.serviceType ||
       item.requestType ||
@@ -133,12 +134,13 @@ function RequestRow({
     item.locationLabel || item.location,
   );
   const sentAt =
-    item.sentTime ||
     item.createdAt ||
     item.requestedAt ||
     item.raw?.createdAt ||
-    item.raw?.requestedAt;
-  const statusLabel = isLocked ? "Assigned" : urgent ? "Urgent" : "New";
+    item.raw?.requestedAt ||
+    item.sentTime;
+
+  const badgeInfo = getTechnicianRequestBadge(item, isLocked);
   const ServiceIcon = isPregnancyCheck
     ? ClipboardCheck
     : isHealth
@@ -201,8 +203,8 @@ function RequestRow({
             {item.farmer || "Farmer"}
           </Text>
           <StatusBadge
-            label={statusLabel}
-            variant={isLocked ? "info" : urgent ? "danger" : "warning"}
+            label={badgeInfo.label}
+            variant={badgeInfo.variant}
             domain="request"
             compact
           />
@@ -259,7 +261,26 @@ function RequestRow({
           </Text>
         </View>
 
-        {isLocked ? (
+        {badgeInfo.isUnclaimed ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              marginTop: 4,
+            }}
+          >
+            <Hand size={13} color={colors.warning} />
+            <Text
+              variant="semibold"
+              size={12}
+              numberOfLines={1}
+              style={{ flex: 1, color: colors.warningForeground }}
+            >
+              Unclaimed — Tap to review & claim
+            </Text>
+          </View>
+        ) : isLocked ? (
           <View
             style={{
               flexDirection: "row",

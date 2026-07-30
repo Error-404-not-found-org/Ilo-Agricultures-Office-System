@@ -10,6 +10,7 @@ export interface UpdateStatusPayload {
   sireCode?: string;
   estrus?: string;
   scheduledDate?: string;
+  earlyStartConfirmed?: boolean;
 }
 
 export const getTechnicianDashboardData = async (

@@ -93,7 +93,7 @@ export function formatSentAt(value?: string | Date | null): string {
     typeof value === "string" &&
     /^\d{1,2}:\d{2}(?::\d{2})?\s*(AM|PM)$/i.test(value.trim())
   ) {
-    return `Sent ${value.trim()}`;
+    return `Sent at ${value.trim()}`;
   }
 
   const date = value instanceof Date ? value : new Date(value);
@@ -109,11 +109,101 @@ export function formatSentAt(value?: string | Date | null): string {
     minute: "2-digit",
   });
 
-  if (isToday) return `Sent ${time}`;
+  if (isToday) return `Sent Today at ${time}`;
 
+  const hasDifferentYear = date.getFullYear() !== now.getFullYear();
   const day = date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
+    year: hasDifferentYear ? "numeric" : undefined,
   });
-  return `Sent ${day}, ${time}`;
+  return `Sent ${day} at ${time}`;
+}
+
+export function getTechnicianRequestBadge(item: any, isLocked?: boolean) {
+  const status = String(
+    item?.status || item?.raw?.status || "pending",
+  ).toLowerCase();
+  const assignedTechnician =
+    item?.assignedTechnician ||
+    item?.raw?.approvedBy ||
+    item?.raw?.handledBy ||
+    item?.technician;
+  const isUnclaimed =
+    status === "pending" ||
+    (!assignedTechnician &&
+      status !== "completed" &&
+      status !== "resolved" &&
+      status !== "cancelled");
+
+  const createdDate =
+    item?.sentTime ||
+    item?.createdAt ||
+    item?.requestedAt ||
+    item?.raw?.createdAt ||
+    item?.raw?.requestedAt;
+  const now = new Date();
+  const created = createdDate ? new Date(createdDate) : null;
+  const diffHours =
+    created && !Number.isNaN(created.getTime())
+      ? Math.max(
+          0,
+          Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60)),
+        )
+      : 0;
+
+  if (isLocked) {
+    return {
+      label: "Assigned",
+      variant: "info",
+      isUnclaimed: false,
+    };
+  }
+
+  if (isUnclaimed) {
+    let label = "Unclaimed";
+    if (diffHours < 24) {
+      label = "Unclaimed (New)";
+    } else {
+      const daysAgo = Math.floor(diffHours / 24);
+      label = `Unclaimed (${daysAgo}d ago)`;
+    }
+    return {
+      label,
+      variant: "warning",
+      isUnclaimed: true,
+    };
+  }
+
+  const scheduledDate =
+    item?.scheduledDate || item?.activityDate || item?.raw?.scheduledDate;
+  if (
+    scheduledDate &&
+    (status === "scheduled" || status === "in-progress" || status === "in_progress")
+  ) {
+    const scheduled = new Date(scheduledDate);
+    if (
+      !Number.isNaN(scheduled.getTime()) &&
+      scheduled.getTime() < now.getTime()
+    ) {
+      return {
+        label: "Overdue",
+        variant: "danger",
+        isUnclaimed: false,
+      };
+    }
+  }
+
+  const formattedStatus = status
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+  return {
+    label: formattedStatus,
+    variant:
+      status === "approved" || status === "completed" || status === "resolved"
+        ? "success"
+        : "info",
+    isUnclaimed: false,
+  };
 }

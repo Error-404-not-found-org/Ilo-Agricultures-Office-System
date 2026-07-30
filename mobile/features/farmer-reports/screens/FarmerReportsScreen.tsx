@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Text,
   TouchableOpacity,
-  StatusBar,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFarmerReports } from "../hooks/useFarmerReports";
@@ -56,12 +55,11 @@ export const FarmerReportsScreen = () => {
     recordsListRef.current?.scrollToOffset({ offset: 0, animated: true });
   };
 
-  const renderHeader = () => {
+  const renderListHeader = () => {
     const primaryColor = isDark ? colors.primary : "#00643B";
 
     return (
-      <View style={{ paddingTop: 0 }}>
-        <ReportsHeader onExport={handleExportPDF} />
+      <View style={{ paddingTop: 16 }}>
         {activeBento !== "pregnancy" ? (
           <ScrollView
             horizontal
@@ -135,10 +133,7 @@ export const FarmerReportsScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={isDark ? colors.card : "#fff"}
-      />
+      <ReportsHeader onExport={handleExportPDF} />
 
       <View style={{ flex: 1 }}>
         {activeBento === "pregnancy" ? (
@@ -151,7 +146,7 @@ export const FarmerReportsScreen = () => {
               paddingBottom: 140,
               flexGrow: 1,
             }}
-            ListHeaderComponent={renderHeader}
+            ListHeaderComponent={renderListHeader}
             renderItem={({ item }) => (
               <MilestoneCard
                 item={item}
@@ -224,7 +219,7 @@ export const FarmerReportsScreen = () => {
               paddingBottom: 140,
               flexGrow: 1,
             }}
-            ListHeaderComponent={renderHeader}
+            ListHeaderComponent={renderListHeader}
             renderItem={({ item }) => (
               <ActivityCard
                 item={item}

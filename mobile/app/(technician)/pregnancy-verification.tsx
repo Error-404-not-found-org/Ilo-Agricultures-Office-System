@@ -27,6 +27,10 @@ import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { generatePregnancyTimeline, TimelineMilestones } from "@/lib/cattleCore";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  getBreedingObservationLabel,
+  getBreedingObservationSignLabel,
+} from "@/features/breeding/utils/breedingObservationPresentation";
 
 export default function PregnancyVerificationScreen() {
   const { id } = useLocalSearchParams();
@@ -235,7 +239,8 @@ export default function PregnancyVerificationScreen() {
             </View>
           </View>
 
-          {/* Farmer Observation details */}
+          {/* Farmer observation is supportive context, not a diagnosis. */}
+          {insem.farmerOutcomeReport ? (
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.cardHeader}>
               <FileText size={20} color={isDark ? "#34d399" : "#00643B"} />
@@ -246,7 +251,7 @@ export default function PregnancyVerificationScreen() {
               <Text style={[styles.label, { color: colors.textSecondary }]}>Reported Condition</Text>
               <View style={[styles.badge, { backgroundColor: isDark ? "rgba(139, 92, 246, 0.15)" : "#f5f3ff" }]}>
                 <Text style={[styles.badgeText, { color: isDark ? "#c4b5fd" : "#7c3aed" }]}>
-                  {(insem.farmerOutcomeReport || "N/A").replaceAll("_", " ").toUpperCase()}
+                  {getBreedingObservationLabel(insem.farmerOutcomeReport)}
                 </Text>
               </View>
             </View>
@@ -255,9 +260,11 @@ export default function PregnancyVerificationScreen() {
               <View style={styles.obsSection}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>Observed Signs</Text>
                 <View style={styles.signsRow}>
-                  {insem.farmerObservationSigns.map((sign: string, idx: number) => (
-                    <View key={idx} style={[styles.signPill, { backgroundColor: colors.border }]}>
-                      <Text style={[styles.signText, { color: colors.textPrimary }]}>{sign}</Text>
+                  {insem.farmerObservationSigns.map((sign: string) => (
+                    <View key={sign} style={[styles.signPill, { backgroundColor: colors.border }]}>
+                      <Text style={[styles.signText, { color: colors.textPrimary }]}>
+                        {getBreedingObservationSignLabel(sign)}
+                      </Text>
                     </View>
                   ))}
                 </View>
@@ -272,7 +279,31 @@ export default function PregnancyVerificationScreen() {
                 </Text>
               </View>
             ) : null}
+            <View
+              style={[
+                styles.obsSection,
+                {
+                  borderRadius: 12,
+                  padding: 12,
+                  backgroundColor: isDark
+                    ? "rgba(245,158,11,0.1)"
+                    : "#FFFBEB",
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: isDark ? "#FCD34D" : "#92400E",
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 12,
+                  lineHeight: 17,
+                }}
+              >
+                Farmer observation only. Record your official diagnosis below.
+              </Text>
+            </View>
           </View>
+          ) : null}
 
           {/* Scientific Milestones Checklist */}
           {milestones && !methodBased && (

@@ -12,6 +12,7 @@ import { useTheme } from "@/lib/theme";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { Text } from "@/components/ui/Text";
 import { AppHeaderIconButton, AppPageHeader } from "@/components/AppPageHeader";
+import { safeBack } from "@/utils/navigation";
 import { useTechnicianClients } from "../hooks/useTechnicianClients";
 import {
   SearchBar,
@@ -70,6 +71,7 @@ export default function TechnicianClientsScreen({
       <AppPageHeader
         title="Farmers"
         showBackButton={showBackButton}
+        onBack={() => safeBack("/(technician)/(tabs)/technician.dashboard")}
         variant={showBackButton ? "detail" : "top-level"}
         rightAction={
           <AppHeaderIconButton

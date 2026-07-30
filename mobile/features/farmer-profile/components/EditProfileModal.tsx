@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
+  Animated,
   Modal,
   View,
   Text,
@@ -7,6 +9,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
   TextInput,
 } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -44,7 +47,7 @@ interface EditProfileModalProps {
   onResendOtp?: () => void;
   onChangePhoneNumber?: () => void;
   onStartPhoneNumberChange?: () => void;
-  insets: { bottom: number };
+  insets: { top: number; bottom: number };
 }
 
 // Reusable input field matching the add-animal.tsx style
@@ -147,6 +150,28 @@ const EditProfileModal = ({
 }: EditProfileModalProps) => {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
+  const feedbackOpacity = useRef(new Animated.Value(1)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReduceMotion,
+    );
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    feedbackOpacity.setValue(0);
+    const animation = Animated.timing(feedbackOpacity, {
+      toValue: 1,
+      duration: reduceMotion ? 0 : 180,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [feedbackOpacity, phoneError, phoneOtpSent, reduceMotion]);
 
   if (editMode === null) return null;
 
@@ -160,6 +185,10 @@ const EditProfileModal = ({
   const formattedOtpTime = `${Math.floor(phoneOtpRemainingSeconds / 60)}:${String(
     phoneOtpRemainingSeconds % 60,
   ).padStart(2, "0")}`;
+  const maskedPhoneNumber =
+    formData.phoneNumber.length >= 7
+      ? `${formData.phoneNumber.slice(0, 4)}••••${formData.phoneNumber.slice(-3)}`
+      : formData.phoneNumber;
   const showVerifiedPhoneSummary =
     isPhoneMode &&
     hasVerifiedPhone &&
@@ -179,7 +208,9 @@ const EditProfileModal = ({
     <Modal
       visible={editMode !== null}
       transparent
-      animationType="slide"
+      animationType={reduceMotion ? "none" : "fade"}
+      statusBarTranslucent
+      navigationBarTranslucent
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
@@ -189,25 +220,33 @@ const EditProfileModal = ({
         <View
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
+            backgroundColor: colors.modalBackdrop,
             justifyContent: "center",
             paddingHorizontal: 22,
+            paddingTop: Math.max(insets.top + 12, 24),
+            paddingBottom: Math.max(insets.bottom + 12, 24),
           }}
         >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={(e) => e.stopPropagation()}
+          <View
             style={{
               backgroundColor: colors.card,
-              borderRadius: 28,
-              padding: 24,
-              paddingBottom: Math.max(insets.bottom, 24),
+              borderRadius: 16,
+              maxHeight: "100%",
               shadowColor: "#000",
               shadowOpacity: 0.18,
               shadowRadius: 20,
               elevation: 10,
+              overflow: "hidden",
             }}
           >
+            <ScrollView
+              bounces={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
+                padding: 24,
+                paddingBottom: Math.max(insets.bottom, 24),
+              }}
+            >
             <View
               style={{
                 flexDirection: "row",
@@ -225,7 +264,19 @@ const EditProfileModal = ({
               >
                 {editMode === "phone" ? phoneModalTitle : t("changePassword")}
               </Text>
-              <TouchableOpacity onPress={onClose}>
+              <TouchableOpacity
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginRight: -12,
+                }}
+              >
                 <MaterialCommunityIcons
                   name="close"
                   size={24}
@@ -357,6 +408,73 @@ const EditProfileModal = ({
                         )}
                       </View>
 
+                      {(phoneOtpSent || phoneError) && (
+                        <Animated.View
+                          accessibilityRole="alert"
+                          accessibilityLiveRegion={
+                            phoneError ? "assertive" : "polite"
+                          }
+                          accessibilityLabel={
+                            phoneError
+                              ? `Phone verification error: ${phoneError}`
+                              : `Verification code sent to ${formData.phoneNumber}`
+                          }
+                          className="flex-row items-start gap-3 rounded-xl border p-3 mb-4"
+                          style={{
+                            opacity: feedbackOpacity,
+                            backgroundColor: phoneError
+                              ? colors.errorContainer
+                              : colors.infoContainer,
+                            borderColor: phoneError
+                              ? colors.errorBorder
+                              : colors.infoBorder,
+                          }}
+                        >
+                          <MaterialCommunityIcons
+                            name={
+                              phoneError
+                                ? "alert-circle-outline"
+                                : "message-check-outline"
+                            }
+                            size={20}
+                            color={
+                              phoneError
+                                ? colors.errorForeground
+                                : colors.infoForeground
+                            }
+                          />
+                          <View className="flex-1">
+                            <Text
+                              style={{
+                                fontFamily: "Outfit_600SemiBold",
+                                color: phoneError
+                                  ? colors.errorForeground
+                                  : colors.infoForeground,
+                                fontSize: 14,
+                                lineHeight: 20,
+                              }}
+                            >
+                              {phoneError
+                                ? "Phone verification unsuccessful"
+                                : "Verification code sent"}
+                            </Text>
+                            <Text
+                              style={{
+                                fontFamily: "Outfit_400Regular",
+                                color: phoneError
+                                  ? colors.errorForeground
+                                  : colors.textSecondary,
+                                fontSize: 13,
+                                lineHeight: 18,
+                              }}
+                            >
+                              {phoneError ||
+                                `Enter the code sent to ${maskedPhoneNumber}.`}
+                            </Text>
+                          </View>
+                        </Animated.View>
+                      )}
+
                       {phoneOtpSent && (
                         <View>
                           <View className="flex-row">
@@ -416,30 +534,6 @@ const EditProfileModal = ({
                         </View>
                       )}
 
-                      {phoneError ? (
-                        <View
-                          accessibilityRole="alert"
-                          accessibilityLiveRegion="assertive"
-                          accessibilityLabel={`Phone verification error: ${phoneError}`}
-                          className="flex-row items-start gap-3 rounded-2xl border p-3 mb-4"
-                          style={{
-                            backgroundColor: `${colors.error}14`,
-                            borderColor: `${colors.error}66`,
-                          }}
-                        >
-                          <MaterialCommunityIcons
-                            name="alert-circle-outline"
-                            size={20}
-                            color={colors.error}
-                          />
-                          <Text
-                            className="flex-1 font-outfit-semibold text-sm leading-5"
-                            style={{ color: colors.error }}
-                          >
-                            {phoneError}
-                          </Text>
-                        </View>
-                      ) : null}
                     </>
                   )}
                 </View>
@@ -526,7 +620,8 @@ const EditProfileModal = ({
                 )}
               </TouchableOpacity>}
             </View>
-          </TouchableOpacity>
+            </ScrollView>
+          </View>
         </View>
       </KeyboardAvoidingView>
     </Modal>

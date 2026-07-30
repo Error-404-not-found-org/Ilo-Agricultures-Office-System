@@ -19,11 +19,17 @@ import {
   Info,
   Navigation,
   Lock,
+  FileText,
+  MessageSquareText,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
+import {
+  getBreedingObservationLabel,
+  getBreedingObservationSignLabel,
+} from "@/features/breeding/utils/breedingObservationPresentation";
 
 export default function TaskDetailsScreen() {
   const { id } = useLocalSearchParams();
@@ -34,11 +40,14 @@ export default function TaskDetailsScreen() {
   const { data: task, isLoading, refetch } = taskDetailsQuery;
   const pregnancyWorkflowStage =
     task?.metadata?.workflowStage || task?.workflowStage || "initial_confirmation";
+  const isReturnToHeatReview =
+    task?.insemination?.farmerOutcomeReport === "return_to_heat";
   const initialPregnancyCheckLocked = Boolean(
     task?.taskType === "PD" &&
       pregnancyWorkflowStage === "initial_confirmation" &&
       task?.pregnancyReadiness &&
-      !task.pregnancyReadiness.isEligible,
+      !task.pregnancyReadiness.isEligible &&
+      !isReturnToHeatReview,
   );
 
   const [completing, setCompleting] = useState(false);
@@ -65,7 +74,7 @@ export default function TaskDetailsScreen() {
       await completeTaskMutation.mutateAsync(String(id));
       toast.success("Visit marked as completed!");
       router.back();
-    } catch (err) {
+    } catch {
       toast.error("Update failed");
     } finally {
       setCompleting(false);
@@ -164,24 +173,16 @@ export default function TaskDetailsScreen() {
   }
 
   const isClaimed = !!task.technicianId;
+  const isFieldWorkTask = [
+    "GeneralVisit",
+    "FarmInspection",
+    "Registration",
+    "Other",
+  ].includes(task.taskType);
   const pregnancyReadiness =
     task.taskType === "PD" ? task.pregnancyReadiness : null;
 
   const farmLocation = task.farmerId?.farmLocation;
-  const farmerCoords =
-    typeof farmLocation?.latitude === "number" &&
-    typeof farmLocation?.longitude === "number"
-      ? {
-          lat: farmLocation.latitude,
-          lng: farmLocation.longitude,
-          isExact: true,
-        }
-      : {
-          lat: task.farmerId?.address?.coordinates?.lat || 10.693,
-          lng: task.farmerId?.address?.coordinates?.lng || 122.474,
-          isExact: false,
-        };
-
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header */}
@@ -346,6 +347,157 @@ export default function TaskDetailsScreen() {
             </Text>
           </View>
 
+          {task.taskType === "PD" &&
+          task.insemination?.farmerOutcomeReport ? (
+            <View
+              style={[
+                styles.section,
+                styles.cardContainer,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <View style={styles.sectionHeader}>
+                <MessageSquareText
+                  size={18}
+                  color={isDark ? "#34d399" : "#00643B"}
+                />
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: isDark ? "#34d399" : "#00643B" },
+                  ]}
+                >
+                  Farmer Observation
+                </Text>
+              </View>
+              <Text
+                style={{
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 15,
+                  marginTop: 8,
+                }}
+              >
+                {getBreedingObservationLabel(
+                  task.insemination.farmerOutcomeReport,
+                )}
+              </Text>
+              {task.insemination.farmerOutcomeReportedAt ? (
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 12,
+                    marginTop: 3,
+                  }}
+                >
+                  Reported{" "}
+                  {new Date(
+                    task.insemination.farmerOutcomeReportedAt,
+                  ).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </Text>
+              ) : null}
+              {task.insemination.farmerObservationSigns?.length ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    marginTop: 12,
+                  }}
+                >
+                  {task.insemination.farmerObservationSigns.map(
+                    (sign: string) => (
+                      <View
+                        key={sign}
+                        style={{
+                          borderRadius: 999,
+                          borderWidth: 1,
+                          borderColor: colors.border,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: colors.textSecondary,
+                            fontFamily: "Outfit_600SemiBold",
+                            fontSize: 11,
+                          }}
+                        >
+                          {getBreedingObservationSignLabel(sign)}
+                        </Text>
+                      </View>
+                    ),
+                  )}
+                </View>
+              ) : null}
+              {task.insemination.farmerObservationNotes ? (
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 13,
+                    lineHeight: 19,
+                    marginTop: 12,
+                  }}
+                >
+                  {task.insemination.farmerObservationNotes}
+                </Text>
+              ) : null}
+              {task.insemination.evidencePhotos?.length ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 8, paddingTop: 12 }}
+                >
+                  {task.insemination.evidencePhotos.map(
+                    (photo: string, index: number) => (
+                      <Image
+                        key={`${photo}-${index}`}
+                        source={{ uri: photo }}
+                        style={{
+                          width: 76,
+                          height: 76,
+                          borderRadius: 12,
+                        }}
+                      />
+                    ),
+                  )}
+                </ScrollView>
+              ) : null}
+              <View
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: isDark
+                    ? "rgba(245,158,11,0.1)"
+                    : "#FFFBEB",
+                }}
+              >
+                <Text
+                  style={{
+                    color: isDark ? "#FCD34D" : "#92400E",
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 12,
+                    lineHeight: 17,
+                  }}
+                >
+                  Review only. An official pregnancy diagnosis must be recorded
+                  through the pregnancy-check action below.
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
           {/* Associated Animals section */}
           {task.animalIds && task.animalIds.length > 0 && (
             <View style={styles.section}>
@@ -431,6 +583,54 @@ export default function TaskDetailsScreen() {
               </Text>
             </View>
           )}
+
+          {isClaimed && isFieldWorkTask && task.status !== "Completed" ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Add an optional field note"
+              onPress={() => {
+                const animal = task.animalIds?.[0];
+                router.push({
+                  pathname: "/(technician)/photo-notes",
+                  params: {
+                    taskId: String(task._id),
+                    taskType: String(task.taskType),
+                    farmerId: String(task.farmerId?._id || ""),
+                    farmerName: String(task.farmerId?.name || ""),
+                    animalId: animal?._id ? String(animal._id) : "",
+                    openEditor: "true",
+                  },
+                } as any);
+              }}
+              style={[
+                styles.fieldNoteBtn,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <FileText size={18} color={isDark ? "#34d399" : "#00643B"} />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={[
+                    styles.fieldNoteBtnTitle,
+                    { color: colors.textPrimary },
+                  ]}
+                >
+                  Add Field Note
+                </Text>
+                <Text
+                  style={[
+                    styles.fieldNoteBtnDescription,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  Optional observation, photo, or GPS context
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Save/Action Button */}
           {!isClaimed ? (
@@ -639,6 +839,26 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_500Medium",
     fontSize: 12,
     color: "#64748b",
+  },
+  fieldNoteBtn: {
+    minHeight: 68,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    marginBottom: 4,
+  },
+  fieldNoteBtnTitle: {
+    fontFamily: "Outfit_700Bold",
+    fontSize: 14,
+  },
+  fieldNoteBtnDescription: {
+    fontFamily: "Outfit_500Medium",
+    fontSize: 12,
+    marginTop: 2,
   },
   completeBtn: {
     backgroundColor: "#00643B",

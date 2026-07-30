@@ -9,7 +9,7 @@ import { useTheme } from '@/lib/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { AppPageHeader } from '@/components/AppPageHeader';
 import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 import {
   formatBarangayWithDistrict,
@@ -207,14 +207,11 @@ export default function RegisterClientScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
-      <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
-        <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
-          <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e293b'} />
-        </TouchableOpacity>
-        <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 20, color: colors.textPrimary }}>
-          Walk-in Registration
-        </Text>
-      </View>
+      <AppPageHeader
+        title="Walk-in Registration"
+        onBack={() => router.back()}
+        includeSafeTop={false}
+      />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView className="flex-1 px-6 pt-6" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>

@@ -16,7 +16,7 @@ import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { getTechnicianRequests } from "@/features/technician-requests/services/technicianRequests.service";
 
-const REQUEST_ROUTES = ["technician.requests", "technician.calendar"];
+const REQUEST_ROUTES = ["technician.requests"];
 
 export default function BottomNavigator({
   state,

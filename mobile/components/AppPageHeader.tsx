@@ -117,12 +117,13 @@ export function AppPageHeader({
             accessibilityLabel="Go back"
             hitSlop={4}
             style={({ pressed }) => ({
-              width: 48,
-              height: 48,
-              borderRadius: 24,
+              width: 40,
+              height: 40,
+              borderRadius: 20,
               alignItems: "center",
               justifyContent: "center",
               backgroundColor: "transparent",
+              marginLeft: -6,
               opacity: pressed ? 0.72 : 1,
             })}
           >
@@ -138,7 +139,7 @@ export function AppPageHeader({
           style={{
             flex: 1,
             minWidth: 0,
-            marginLeft: showBackButton ? 12 : 0,
+            marginLeft: showBackButton ? 4 : 0,
           }}
         >
           <Text

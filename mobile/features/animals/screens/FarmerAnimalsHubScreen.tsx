@@ -8,7 +8,6 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
-  StatusBar,
   Image,
   ActivityIndicator,
   RefreshControl,
@@ -38,6 +37,7 @@ import {
 } from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
+import { AppPageHeader } from "@/components/AppPageHeader";
 import EarTagGenerator from "@/components/EarTagGenerator";
 import { useTranslation } from "../../../contexts/TranslationContext";
 import {
@@ -257,95 +257,37 @@ export function FarmerAnimalsHubScreen() {
       className="flex-1 bg-[#F9FAFB] dark:bg-slate-950"
       style={{ backgroundColor: colors.background }}
     >
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={isDark ? colors.card : "#fff"}
+      <AppPageHeader
+        title="My Animals"
+        showBackButton={false}
+        rightAction={
+          !showAddForm && (
+            <TouchableOpacity
+              onPress={() => router.push("/(farmer)/register-animal")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 12,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: colors.primary,
+              }}
+            >
+              <Plus size={14} color="#fff" />
+              <Text
+                style={{
+                  color: "#fff",
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 11,
+                }}
+              >
+                Register
+              </Text>
+            </TouchableOpacity>
+          )
+        }
       />
-
-      {/* --- HEADER --- */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: 20,
-          paddingVertical: 14,
-          backgroundColor: isDark ? colors.card : "#fff",
-          borderBottomWidth: 1,
-          borderColor: colors.border,
-          paddingTop: insets.top + 14,
-          zIndex: 10,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-            flex: 1,
-            marginRight: 16,
-          }}
-        >
-          <TouchableOpacity
-            onPress={() => safeBack()}
-            style={{
-              padding: 8,
-              backgroundColor: isDark ? "#1e293b" : "#f8fafc",
-              borderRadius: 999,
-            }}
-          >
-            <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{
-                color: colors.textPrimary,
-                fontFamily: "Outfit_900Black",
-                fontSize: 20,
-              }}
-              numberOfLines={1}
-            >
-              My Animals
-            </Text>
-            <Text
-              style={{
-                color: colors.textSecondary,
-                fontFamily: "Outfit_500Medium",
-                fontSize: 11,
-                marginTop: 2,
-              }}
-              numberOfLines={1}
-            >
-              Herd management & registry
-            </Text>
-          </View>
-        </View>
-        {!showAddForm && (
-          <TouchableOpacity
-            onPress={() => router.push("/(farmer)/register-animal")}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              borderRadius: 20,
-              backgroundColor: colors.primary,
-            }}
-          >
-            <Plus size={14} color="#fff" />
-            <Text
-              style={{
-                fontFamily: "Outfit_700Bold",
-                fontSize: 11,
-                color: "#fff",
-              }}
-            >
-              Add Animal
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
 
       <View
         className="flex-1"
@@ -597,8 +539,13 @@ export function FarmerAnimalsHubScreen() {
                         if (selectedDate) {
                           setTempDate(selectedDate);
                           const year = selectedDate.getFullYear();
-                          const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
-                          const day = String(selectedDate.getDate()).padStart(2, "0");
+                          const month = String(
+                            selectedDate.getMonth() + 1,
+                          ).padStart(2, "0");
+                          const day = String(selectedDate.getDate()).padStart(
+                            2,
+                            "0",
+                          );
                           setFormData({
                             ...formData,
                             birthDate: `${year}-${month}-${day}`,
@@ -611,8 +558,13 @@ export function FarmerAnimalsHubScreen() {
                       if (selectedDate) {
                         setTempDate(selectedDate);
                         const year = selectedDate.getFullYear();
-                        const month = String(selectedDate.getMonth() + 1).padStart(2, "0");
-                        const day = String(selectedDate.getDate()).padStart(2, "0");
+                        const month = String(
+                          selectedDate.getMonth() + 1,
+                        ).padStart(2, "0");
+                        const day = String(selectedDate.getDate()).padStart(
+                          2,
+                          "0",
+                        );
                         setFormData({
                           ...formData,
                           birthDate: `${year}-${month}-${day}`,

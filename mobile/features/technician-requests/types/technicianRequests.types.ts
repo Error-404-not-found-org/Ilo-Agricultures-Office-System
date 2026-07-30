@@ -22,6 +22,15 @@ export interface RequestItem {
   scheduledDate: string | null;
   assignedTechnician: string;
   createdAt: string;
+  farmerObservation?: {
+    reportType?: string | null;
+    reportedAt?: string | null;
+    signs?: string[];
+    notes?: string;
+    evidencePhotos?: string[];
+    verificationRequested?: boolean;
+    verificationStatus?: string;
+  } | null;
   raw: any;
 }
 

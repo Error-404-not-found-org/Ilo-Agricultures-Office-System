@@ -1,11 +1,9 @@
 import React, { useState } from "react";
 import {
-  ActivityIndicator,
   Image,
   Text,
   TouchableOpacity,
   View,
-  Alert,
   Modal,
   TextInput,
   KeyboardAvoidingView,
@@ -22,12 +20,11 @@ import {
   Ban,
 } from "lucide-react-native";
 import { toast } from "sonner-native";
-import { useLocalSearchParams } from "expo-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
-import { recordAiOutcome } from "@/features/farmer-dashboard/services/farmerDashboard.service";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   FarmerScreen,
@@ -49,6 +46,10 @@ import {
   getRequestText,
 } from "@/features/farmer-requests/utils/requestDetailPresentation";
 import { ReproductionNextActionCard } from "@/components/ReproductionNextActionCard";
+import {
+  getBreedingObservationLabel,
+  getBreedingObservationSignLabel,
+} from "@/features/breeding/utils/breedingObservationPresentation";
 import type { AIRequest } from "@/types";
 
 const stages = [
@@ -251,6 +252,7 @@ function AiRequestDetailSkeleton() {
 
 export default function AiRequestDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const api = useApi();
   const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
@@ -265,30 +267,6 @@ export default function AiRequestDetailScreen() {
     queryFn: async () => {
       const res = await api.get(`/ai-request/${id}`);
       return res.data.data;
-    },
-  });
-
-  const outcomeMutation = useMutation({
-    mutationFn: async ({ isSuccess }: { isSuccess: boolean }) => {
-      if (!id) throw new Error("Missing request ID");
-      return await recordAiOutcome(api, id, isSuccess);
-    },
-    onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["ai-request", id] });
-      queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["ai-requests"] });
-      Alert.alert(
-        "Observation saved",
-        variables.isSuccess
-          ? "Possible pregnancy signs were recorded. A technician pregnancy check is still required for confirmation."
-          : "Return to heat was recorded. You can now request re-insemination.",
-      );
-    },
-    onError: (err: any) => {
-      Alert.alert(
-        "Error",
-        err.response?.data?.message || "Failed to record outcome.",
-      );
     },
   });
 
@@ -356,9 +334,13 @@ export default function AiRequestDetailScreen() {
     (date) => format(date, "MMM d, yyyy 'at' h:mm a"),
   );
   const technicianNote = getRequestText(request.technicianNote);
-  const outcome = getRequestText(request.outcome);
-  const hasRecordedObservation =
-    outcome !== null && outcome.toLowerCase() !== "pending";
+  const hasRecordedObservation = Boolean(request.farmerOutcomeReport);
+  const observationLabel = getBreedingObservationLabel(
+    request.farmerOutcomeReport,
+  );
+  const observationSigns = (request.farmerObservationSigns || []).map(
+    getBreedingObservationSignLabel,
+  );
   const hasBreedingDetails = Boolean(estrus || sireBreed || sireCode);
   const showProgress =
     status !== "unknown" && status !== "cancelled" && status !== "rejected";
@@ -615,10 +597,17 @@ export default function AiRequestDetailScreen() {
                   value={technicianNote}
                 />
               ) : null}
-              {hasRecordedObservation && outcome ? (
+              {hasRecordedObservation ? (
                 <RequestDetailField
                   label="Farmer observation"
-                  value={outcome}
+                  value={[
+                    observationLabel,
+                    observationSigns.length
+                      ? observationSigns.join(", ")
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 />
               ) : null}
               {hasRecordedObservation ? (
@@ -632,7 +621,7 @@ export default function AiRequestDetailScreen() {
           )}
         </RequestDetailCard>
 
-        {/* Outcome Confirmation Box for Farmer */}
+        {/* Canonical farmer-observation entry point */}
         {request.status === "done" && request.isSuccess === null && (
           <View
             className="mx-5 mt-5 p-4 border"
@@ -649,47 +638,44 @@ export default function AiRequestDetailScreen() {
                   className="text-[13px] font-bold text-slate-800 dark:text-slate-100"
                   style={{ color: isDark ? "#a7f3d0" : "#14532d" }}
                 >
-                  Breeding observation needed
+                  {hasRecordedObservation
+                    ? "Farmer observation submitted"
+                    : "Breeding follow-up"}
                 </Text>
                 <Text
                   className="text-[11px] mt-0.5"
                   style={{ color: isDark ? "#6ee7b7" : "#166534" }}
                 >
-                  Report what you have observed. Pregnancy is only confirmed
-                  after a technician pregnancy check.
+                  {hasRecordedObservation
+                    ? "Your report is visible to the technician. It does not confirm pregnancy until an official pregnancy check is completed."
+                    : "Report what you observe after insemination. A technician pregnancy check is still required to confirm pregnancy."}
                 </Text>
               </View>
             </View>
 
-            <View className="flex-row gap-3 mt-3">
-              <TouchableOpacity
-                disabled={outcomeMutation.isPending}
-                onPress={() => outcomeMutation.mutate({ isSuccess: true })}
-                className="flex-1 py-2.5 rounded-xl items-center justify-center bg-emerald-600 active:bg-emerald-700"
-              >
-                {outcomeMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text className="text-white text-xs font-bold">
-                    Possible pregnancy
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                disabled={outcomeMutation.isPending}
-                onPress={() => outcomeMutation.mutate({ isSuccess: false })}
-                className="flex-1 py-2.5 rounded-xl items-center justify-center border border-red-200 bg-red-50 dark:bg-red-950/20 active:bg-red-100 dark:active:bg-red-950/40"
-              >
-                {outcomeMutation.isPending ? (
-                  <ActivityIndicator size="small" color="#ef4444" />
-                ) : (
-                  <Text className="text-red-600 text-xs font-bold">
-                    Returned to heat
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: "/(farmer)/report-breeding-observation",
+                  params: {
+                    animalId:
+                      typeof request.animalId === "object"
+                        ? request.animalId?._id
+                        : request.animalId,
+                    requestId: id,
+                    defaultReport:
+                      request.farmerOutcomeReport || "unsure",
+                  },
+                } as never)
+              }
+              className="mt-3 py-3 rounded-xl items-center justify-center bg-emerald-700 active:bg-emerald-800"
+            >
+              <Text className="text-white text-xs font-bold">
+                {hasRecordedObservation
+                  ? "Update observation"
+                  : "Report an observation"}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
 

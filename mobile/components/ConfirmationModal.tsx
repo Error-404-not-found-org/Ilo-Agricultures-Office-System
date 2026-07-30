@@ -1,20 +1,15 @@
 import React from "react";
-import { View } from "react-native";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { AlertTriangle, Trash2 } from "lucide-react-native";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
+import { Text } from "@/components/ui/Text";
+import { useTheme } from "@/lib/theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface ConfirmationModalProps {
   visible: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel?: () => void;
   title: string;
   message: string;
@@ -36,6 +31,8 @@ export function ConfirmationModal({
   isDestructive = true,
   icon,
 }: ConfirmationModalProps) {
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [confirming, setConfirming] = React.useState(false);
   const confirmLockRef = React.useRef(false);
 
@@ -71,67 +68,117 @@ export function ConfirmationModal({
   };
 
   return (
-    <Dialog
-      open={visible}
-      onOpenChange={(open) => {
-        if (!open && !confirming) onClose();
-      }}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={handleCancel}
     >
-      <DialogContent
-        hideCloseIcon
-        className="items-center text-center p-6 rounded-3xl"
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 16,
+          paddingTop: Math.max(insets.top, 16),
+          paddingBottom: Math.max(insets.bottom, 16),
+          backgroundColor: colors.modalBackdrop,
+        }}
       >
-        {/* Icon Header */}
+        <Pressable
+          accessible={false}
+          disabled={confirming}
+          onPress={handleCancel}
+          style={StyleSheet.absoluteFill}
+        />
+
         <View
-          className={`w-14 h-14 rounded-2xl items-center justify-center mb-4 ${
-            isDestructive
-              ? "bg-rose-500/10 dark:bg-rose-500/20"
-              : "bg-amber-500/10 dark:bg-amber-500/20"
-          }`}
+          accessibilityViewIsModal
+          style={{
+            width: "100%",
+            maxWidth: 420,
+            alignItems: "center",
+            padding: 24,
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            shadowColor: "#0f172a",
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.16,
+            shadowRadius: 8,
+            elevation: 6,
+          }}
         >
-          {icon ? (
-            icon
-          ) : isDestructive ? (
-            <Trash2 size={26} className="text-rose-600 dark:text-rose-400" />
-          ) : (
-            <AlertTriangle
-              size={26}
-              className="text-amber-600 dark:text-amber-400"
-            />
-          )}
-        </View>
+          <View
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: 16,
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: 16,
+              backgroundColor: isDestructive
+                ? colors.errorContainer
+                : colors.warningContainer,
+            }}
+          >
+            {icon ? (
+              icon
+            ) : isDestructive ? (
+              <Trash2 size={26} color={colors.errorForeground} />
+            ) : (
+              <AlertTriangle size={26} color={colors.warningForeground} />
+            )}
+          </View>
 
-        {/* Header & Body */}
-        <DialogHeader className="items-center text-center mb-2">
-          <DialogTitle className="text-center text-xl font-outfit-bold">
+          <Text
+            textRole="title"
+            style={{ color: colors.textPrimary, textAlign: "center" }}
+          >
             {title}
-          </DialogTitle>
-          <DialogDescription className="text-center font-outfit-medium leading-relaxed px-2">
+          </Text>
+          <Text
+            textRole="body"
+            style={{
+              color: colors.textSecondary,
+              textAlign: "center",
+              marginTop: 8,
+              paddingHorizontal: 8,
+            }}
+          >
             {message}
-          </DialogDescription>
-        </DialogHeader>
+          </Text>
 
-        {/* Footer Actions */}
-        <DialogFooter className="w-full flex-row gap-3 mt-4">
-          {showCancel && (
+          <View
+            style={{
+              width: "100%",
+              flexDirection: "row",
+              gap: 12,
+              marginTop: 24,
+            }}
+          >
+            {showCancel && (
+              <Button
+                variant="outline"
+                label={cancelText || "Cancel"}
+                disabled={confirming}
+                onPress={handleCancel}
+                className="flex-1"
+              />
+            )}
             <Button
-              variant="outline"
-              label={cancelText || "Cancel"}
+              variant={isDestructive ? "destructive" : "default"}
+              label={confirmText}
+              loading={confirming}
               disabled={confirming}
-              onPress={handleCancel}
+              onPress={handleConfirm}
               className="flex-1"
             />
-          )}
-          <Button
-            variant={isDestructive ? "destructive" : "default"}
-            label={confirmText}
-            loading={confirming}
-            disabled={confirming}
-            onPress={handleConfirm}
-            className="flex-1"
-          />
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          </View>
+        </View>
+      </View>
+    </Modal>
   );
 }

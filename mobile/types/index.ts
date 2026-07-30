@@ -227,6 +227,12 @@ export interface AIRequest extends ServiceRequest {
     | "unsure"
     | null;
   farmerOutcomeReportedAt?: string;
+  farmerObservationSigns?: string[];
+  farmerObservationNotes?: string | null;
+  evidencePhotos?: string[];
+  verificationRequested?: boolean;
+  verificationStatus?: "not_requested" | "pending" | "verified" | "rejected";
+  verificationTaskId?: string;
   approvedBy?: string | Technician;
   technicianId?: string | Technician;
   nextAction?: ReproductionNextAction | null;

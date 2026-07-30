@@ -613,7 +613,7 @@ export function FarmerHomeScreen() {
           </View>
         </View>
 
-        {/* --- MOOWIE ASSISTANT CTA --- */}
+        {/* --- MOOWIE ASSISTANT CTA ---
         <View className="px-6 mb-8">
           <TouchableOpacity
             activeOpacity={0.9}
@@ -678,7 +678,7 @@ export function FarmerHomeScreen() {
               />
             </View>
           </TouchableOpacity>
-        </View>
+        </View> */}
 
         {/* --- UPCOMING VISITS --- */}
         <View

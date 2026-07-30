@@ -1,11 +1,11 @@
 import React from "react";
-import { View, TouchableOpacity } from "react-native";
+import { Modal, Pressable, StyleSheet, View, TouchableOpacity } from "react-native";
 import { Calendar } from "lucide-react-native";
 import { useTheme } from "@/lib/theme";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { Text } from "@/components/ui/Text";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface DateRangeSelectorProps {
   visible: boolean;
@@ -34,91 +34,150 @@ export function DateRangeSelector({
   setShowStartPicker,
   setShowEndPicker,
 }: DateRangeSelectorProps) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
   return (
-    <Dialog open={visible} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md rounded-3xl p-6">
-        <DialogHeader>
-          <DialogTitle>Filter by Date Range</DialogTitle>
-        </DialogHeader>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      presentationStyle="overFullScreen"
+      statusBarTranslucent
+      navigationBarTranslucent
+      onRequestClose={onClose}
+    >
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          paddingHorizontal: 16,
+          paddingTop: Math.max(insets.top, 16),
+          paddingBottom: Math.max(insets.bottom, 16),
+          backgroundColor: colors.modalBackdrop,
+        }}
+      >
+        <Pressable
+          accessible={false}
+          onPress={onClose}
+          style={StyleSheet.absoluteFill}
+        />
 
-        <View className="space-y-4 my-4">
-          {/* Start Date */}
-          <View>
-            <Text className="text-[10px] font-outfit-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 ml-1">
-              Start Date
-            </Text>
-            <TouchableOpacity
-              onPress={() => setShowStartPicker(true)}
-              className="flex-row items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900"
-            >
-              <Text className="text-sm font-outfit-medium text-slate-900 dark:text-slate-100">
-                {startDate ? startDate.toLocaleDateString() : "Select start date"}
+        <View
+          accessibilityViewIsModal
+          style={{
+            width: "100%",
+            maxWidth: 420,
+            padding: 24,
+            borderRadius: 16,
+            backgroundColor: colors.card,
+            shadowColor: "#0f172a",
+            shadowOffset: { width: 0, height: 8 },
+            shadowOpacity: 0.16,
+            shadowRadius: 8,
+            elevation: 6,
+          }}
+        >
+          <Text textRole="title" style={{ color: colors.textPrimary }}>
+            Filter by date range
+          </Text>
+
+          <View style={{ gap: 16, marginVertical: 20 }}>
+            <View>
+              <Text textRole="label" style={{ color: colors.textSecondary, marginBottom: 8 }}>
+                Start date
               </Text>
-              <Calendar size={18} color={isDark ? "#34d399" : "#00643B"} />
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowStartPicker(true)}
+                style={{
+                  minHeight: 48,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surfaceSubtle,
+                }}
+              >
+                <Text textRole="body" style={{ color: colors.textPrimary }}>
+                  {startDate ? startDate.toLocaleDateString() : "Select start date"}
+                </Text>
+                <Calendar size={18} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <View>
+              <Text textRole="label" style={{ color: colors.textSecondary, marginBottom: 8 }}>
+                End date
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowEndPicker(true)}
+                style={{
+                  minHeight: 48,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surfaceSubtle,
+                }}
+              >
+                <Text textRole="body" style={{ color: colors.textPrimary }}>
+                  {endDate ? endDate.toLocaleDateString() : "Select end date"}
+                </Text>
+                <Calendar size={18} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* End Date */}
-          <View>
-            <Text className="text-[10px] font-outfit-bold text-slate-500 dark:text-slate-400 uppercase mb-1.5 ml-1">
-              End Date
-            </Text>
-            <TouchableOpacity
-              onPress={() => setShowEndPicker(true)}
-              className="flex-row items-center justify-between p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900"
-            >
-              <Text className="text-sm font-outfit-medium text-slate-900 dark:text-slate-100">
-                {endDate ? endDate.toLocaleDateString() : "Select end date"}
-              </Text>
-              <Calendar size={18} color={isDark ? "#34d399" : "#00643B"} />
-            </TouchableOpacity>
+          {showStartPicker && (
+            <DateTimePicker
+              value={startDate || new Date()}
+              mode="date"
+              display="default"
+              onChange={(_event, date) => {
+                setShowStartPicker(false);
+                if (date) onSelectStart(date);
+              }}
+            />
+          )}
+
+          {showEndPicker && (
+            <DateTimePicker
+              value={endDate || new Date()}
+              mode="date"
+              display="default"
+              onChange={(_event, date) => {
+                setShowEndPicker(false);
+                if (date) onSelectEnd(date);
+              }}
+            />
+          )}
+
+          <View style={{ flexDirection: "row", gap: 12, marginTop: 4 }}>
+            <Button
+              variant="outline"
+              className="flex-1"
+              label="Clear filters"
+              onPress={() => {
+                onClear();
+                onClose();
+              }}
+            />
+            <Button
+              variant="default"
+              className="flex-1"
+              label="Apply range"
+              onPress={onClose}
+            />
           </View>
         </View>
-
-        {showStartPicker && (
-          <DateTimePicker
-            value={startDate || new Date()}
-            mode="date"
-            display="default"
-            onChange={(e, date) => {
-              setShowStartPicker(false);
-              if (date) onSelectStart(date);
-            }}
-          />
-        )}
-
-        {showEndPicker && (
-          <DateTimePicker
-            value={endDate || new Date()}
-            mode="date"
-            display="default"
-            onChange={(e, date) => {
-              setShowEndPicker(false);
-              if (date) onSelectEnd(date);
-            }}
-          />
-        )}
-
-        <View className="flex-row gap-3 mt-4">
-          <Button
-            variant="outline"
-            className="flex-1"
-            label="Clear Filters"
-            onPress={() => {
-              onClear();
-              onClose();
-            }}
-          />
-          <Button
-            variant="default"
-            className="flex-1"
-            label="Apply Range"
-            onPress={onClose}
-          />
-        </View>
-      </DialogContent>
-    </Dialog>
+      </View>
+    </Modal>
   );
 }

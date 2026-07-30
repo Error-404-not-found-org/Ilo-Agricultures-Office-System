@@ -6,7 +6,8 @@ import {
   RefreshControl,
   ScrollView,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { safeBack } from "@/utils/navigation";
 import {
   CalendarDays,
   SlidersHorizontal,
@@ -355,24 +356,13 @@ export default function TechnicianRequestsScreen({
       return;
     }
 
-    let nextStatus = "";
     if (currentStatus === "scheduled") {
-      nextStatus = "in-progress"; // Start
-    } else {
-      // For approved (Schedule) or in-progress (Complete/Resolve), open modal
       handleActionPress(item);
       return;
     }
 
-    try {
-      await handleUpdateStatus(item.id, item.type, nextStatus, {
-        status: nextStatus,
-        technicianNote: `Started by technician ${dbUser?.name || ""}.`,
-      });
-      toast.success("Request started");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update status");
-    }
+    // Scheduling and completion require their full forms and confirmations.
+    handleActionPress(item);
   };
 
   const handleConfirmAction = async () => {
@@ -484,15 +474,12 @@ export default function TechnicianRequestsScreen({
       <AppPageHeader
         title="Requests"
         showBackButton={showBackButton}
+        onBack={() => safeBack("/(technician)/(tabs)/technician.dashboard")}
         variant={showBackButton ? "detail" : "top-level"}
         rightAction={
           <AppHeaderIconButton
             onPress={() =>
-              router.push(
-                (showBackButton
-                  ? "/(technician)/technician.calendar"
-                  : "/(technician)/(tabs)/technician.calendar") as any,
-              )
+              router.push("/(technician)/technician.calendar" as any)
             }
             accessibilityLabel="Open visit schedule"
           >

@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Linking,
   Modal,
@@ -31,6 +32,7 @@ import {
   HeartPulse,
   Check,
   X,
+  AlertCircle,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import DateTimePicker, {
@@ -44,6 +46,12 @@ import {
   respondToCancellationRequest,
   updateRequestStatus,
 } from "@/features/technician/services/technician.service";
+import { getEarlyStartMinutes } from "@/features/technician-requests/utils/serviceTiming";
+import {
+  getBreedingObservationLabel,
+  getBreedingObservationSignLabel,
+  isBreedingObservationAwaitingReview,
+} from "@/features/breeding/utils/breedingObservationPresentation";
 
 function SkeletonBlock({
   width = "100%",
@@ -60,10 +68,7 @@ function SkeletonBlock({
 }) {
   return (
     <View
-      style={[
-        { width, height, borderRadius, backgroundColor: color },
-        style,
-      ]}
+      style={[{ width, height, borderRadius, backgroundColor: color }, style]}
     />
   );
 }
@@ -101,18 +106,39 @@ function RequestDetailsSkeleton({
       >
         <View style={cardStyle}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <SkeletonBlock width={48} height={48} borderRadius={15} color={skeletonColor} />
+            <SkeletonBlock
+              width={48}
+              height={48}
+              borderRadius={15}
+              color={skeletonColor}
+            />
             <View style={{ flex: 1, marginLeft: 12, gap: 8 }}>
               <SkeletonBlock width="62%" height={17} color={skeletonColor} />
               <SkeletonBlock width="42%" height={12} color={skeletonColor} />
             </View>
-            <SkeletonBlock width={70} height={26} borderRadius={13} color={skeletonColor} />
+            <SkeletonBlock
+              width={70}
+              height={26}
+              borderRadius={13}
+              color={skeletonColor}
+            />
           </View>
           <View style={{ marginTop: 18, gap: 12 }}>
             {["92%", "78%", "86%"].map((width, index) => (
-              <View key={index} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <View
+                key={index}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                }}
+              >
                 <SkeletonBlock width={82} height={12} color={skeletonColor} />
-                <SkeletonBlock width={width} height={12} color={skeletonColor} style={{ maxWidth: 150 }} />
+                <SkeletonBlock
+                  width={width}
+                  height={12}
+                  color={skeletonColor}
+                  style={{ maxWidth: 150 }}
+                />
               </View>
             ))}
           </View>
@@ -122,7 +148,12 @@ function RequestDetailsSkeleton({
           <View key={item} style={cardStyle}>
             <SkeletonBlock width="38%" height={16} color={skeletonColor} />
             <View style={{ flexDirection: "row", marginTop: 16 }}>
-              <SkeletonBlock width={64} height={64} borderRadius={16} color={skeletonColor} />
+              <SkeletonBlock
+                width={64}
+                height={64}
+                borderRadius={16}
+                color={skeletonColor}
+              />
               <View style={{ flex: 1, marginLeft: 12, gap: 9 }}>
                 <SkeletonBlock width="72%" height={14} color={skeletonColor} />
                 <SkeletonBlock width="88%" height={12} color={skeletonColor} />
@@ -147,6 +178,7 @@ export default function RequestDetailsScreen() {
   const [request, setRequest] = useState<any>(null);
   const [timeline, setTimeline] = useState<any[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(true);
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   // Action input states
   const [scheduledDate, setScheduledDate] = useState(new Date());
@@ -185,7 +217,7 @@ export default function RequestDetailsScreen() {
       const requestData = await getTechnicianRequestDetail(
         api,
         isHealth ? "health" : "ai",
-        String(id)
+        String(id),
       );
       setRequest(requestData);
 
@@ -203,7 +235,10 @@ export default function RequestDetailsScreen() {
       setEstrus(requestData.estrus || "Natural");
 
       if (requestData.animalId?._id) {
-        const historyTimeline = await getTechnicianAnimalHistory(api, requestData.animalId._id);
+        const historyTimeline = await getTechnicianAnimalHistory(
+          api,
+          requestData.animalId._id,
+        );
         setTimeline(historyTimeline);
       }
     } catch (err: any) {
@@ -225,14 +260,29 @@ export default function RequestDetailsScreen() {
   const handleUpdateStatus = async (nextStatus: string, payload: any) => {
     try {
       setUpdating(true);
-      await updateRequestStatus(api, type === "health" ? "health" : "ai", String(id), {
-        status: nextStatus,
-        ...payload,
-      });
+      setActionNotice(null);
+      const result = await updateRequestStatus(
+        api,
+        type === "health" ? "health" : "ai",
+        String(id),
+        {
+          status: nextStatus,
+          ...payload,
+        },
+      );
+      if (result?.request) {
+        setRequest(result.request);
+      }
       toast.success("Status updated successfully");
-      fetchRequestDetails();
+      void fetchRequestDetails();
+      return true;
     } catch (err: any) {
-      toast.error(err.message || "Failed to update request status");
+      const message =
+        err.response?.data?.message ||
+        err.message ||
+        "Failed to update request status";
+      setActionNotice(message);
+      return false;
     } finally {
       setUpdating(false);
     }
@@ -262,7 +312,9 @@ export default function RequestDetailsScreen() {
     if (diffMonths < 12) return `${diffMonths} months`;
     const diffYears = Math.floor(diffMonths / 12);
     const remainingMonths = diffMonths % 12;
-    return remainingMonths > 0 ? `${diffYears}y ${remainingMonths}m` : `${diffYears} years`;
+    return remainingMonths > 0
+      ? `${diffYears}y ${remainingMonths}m`
+      : `${diffYears} years`;
   };
 
   const getAdditionalNotesOnly = (fullComment: string) => {
@@ -273,9 +325,14 @@ export default function RequestDetailsScreen() {
     return fullComment;
   };
 
-  const isTerminal = ["done", "resolved", "completed", "rejected", "cancelled", "declined"].includes(
-    request?.status?.toLowerCase()
-  );
+  const isTerminal = [
+    "done",
+    "resolved",
+    "completed",
+    "rejected",
+    "cancelled",
+    "declined",
+  ].includes(request?.status?.toLowerCase());
 
   const isReadyToday = (() => {
     if (!request) return false;
@@ -285,7 +342,9 @@ export default function RequestDetailsScreen() {
 
     const offset = 8 * 60 * 60 * 1000;
     const nowLocal = new Date(Date.now() + offset);
-    const dateLocal = new Date(new Date(request.scheduledDate).getTime() + offset);
+    const dateLocal = new Date(
+      new Date(request.scheduledDate).getTime() + offset,
+    );
 
     return (
       nowLocal.getUTCFullYear() === dateLocal.getUTCFullYear() &&
@@ -296,42 +355,69 @@ export default function RequestDetailsScreen() {
 
   const handleAction = async () => {
     if (!request) return;
+    setActionNotice(null);
     const status = request.status?.toLowerCase();
-    const isAI = type === "ai" || request.serviceType === "ai" || request.type === "ai";
+    const isAI =
+      type === "ai" || request.serviceType === "ai" || request.type === "ai";
 
     if (status === "pending") {
       // Assign to Me
       await handleUpdateStatus("approved", {
         technicianNote: "Assigned to technician.",
       });
-    } else if (status === "approved" || status === "assigned" || status === "triaged") {
+    } else if (
+      status === "approved" ||
+      status === "assigned" ||
+      status === "triaged"
+    ) {
       // Schedule Visit
       await handleUpdateStatus("scheduled", {
         scheduledDate: scheduledDate.toISOString(),
         technicianNote: "Scheduled visit.",
       });
     } else if (status === "scheduled") {
-      // Start Service
-      await handleUpdateStatus("in-progress", {
-        technicianNote: "Started service.",
-      });
+      const earlyStartMinutes = getEarlyStartMinutes(request.scheduledDate);
+      const startService = async () => {
+        await handleUpdateStatus("in-progress", {
+          technicianNote:
+            earlyStartMinutes > 0
+              ? `Started ${earlyStartMinutes} minutes before the scheduled visit.`
+              : "Started service.",
+          earlyStartConfirmed: earlyStartMinutes > 0,
+        });
+      };
+
+      if (earlyStartMinutes > 0) {
+        setConfirmAction({
+          title: "Start service early?",
+          message: `This visit is scheduled for ${formatDate(request.scheduledDate)}, about ${earlyStartMinutes} minutes from now. Start the ${isAI ? "AI service" : "health visit"} anyway?`,
+          cancelText: "Wait",
+          confirmText: "Start early",
+          isDestructive: false,
+          onConfirm: startService,
+        });
+      } else {
+        await startService();
+      }
     } else if (status === "in-progress" || status === "in_progress") {
       // Complete/Resolve
       if (isAI) {
         if (!sireBreed || !sireBreed.trim()) {
-          toast.error("Please select a Sire Breed.");
+          const message =
+            "Select the sire breed before completing the AI service.";
+          setActionNotice(message);
           return;
         }
         if (!sireCode || !sireCode.trim()) {
-          toast.error("Please provide a Sire Code.");
+          const message =
+            "Provide the sire code before completing the AI service.";
+          setActionNotice(message);
           return;
         }
         if (!estrus || !estrus.trim()) {
-          toast.error("Please select an Estrus Type.");
-          return;
-        }
-        if (!note || !note.trim()) {
-          toast.error("Please add technician notes.");
+          const message =
+            "Select the estrus type before completing the AI service.";
+          setActionNotice(message);
           return;
         }
 
@@ -340,11 +426,16 @@ export default function RequestDetailsScreen() {
             sireBreed,
             sireCode,
             estrus,
-            technicianNote: note,
+            technicianNote:
+              note.trim() || "AI service completed by technician.",
           });
         };
 
-        const isTooEarly = request.scheduledDate && (new Date(request.scheduledDate).getTime() - Date.now() > 2 * 60 * 60 * 1000);
+        Keyboard.dismiss();
+        const isTooEarly =
+          request.scheduledDate &&
+          new Date(request.scheduledDate).getTime() - Date.now() >
+            2 * 60 * 60 * 1000;
         if (isTooEarly) {
           setConfirmAction({
             title: "Complete Early?",
@@ -357,7 +448,8 @@ export default function RequestDetailsScreen() {
         } else {
           setConfirmAction({
             title: "Complete AI Service?",
-            message: "This will create the official AI service record and update the animal breeding history. Please confirm the sire details and notes are correct.",
+            message:
+              "This will create the official AI service record and update the animal breeding history. Please confirm the sire details and notes are correct.",
             cancelText: "Review",
             confirmText: "Complete",
             isDestructive: false,
@@ -366,23 +458,29 @@ export default function RequestDetailsScreen() {
         }
       } else {
         if (!diagnosis || !diagnosis.trim()) {
-          toast.error("Please enter a diagnosis / findings.");
+          const message =
+            "Enter the diagnosis or findings before resolving this request.";
+          setActionNotice(message);
           return;
         }
         if (!treatment || !treatment.trim()) {
-          toast.error("Please log treatment or medicine given.");
+          const message =
+            "Record the treatment or medicine given before resolving this request.";
+          setActionNotice(message);
           return;
         }
         if (!advice || !advice.trim()) {
-          toast.error("Please enter advice or resolution notes.");
+          const message =
+            "Enter advice for the farmer before resolving this request.";
+          setActionNotice(message);
           return;
         }
 
         const payload: any = {
-          diagnosis,
-          treatment,
-          advice,
-          technicianNote: note || "Resolved by technician.",
+          diagnosis: diagnosis.trim(),
+          treatment: treatment.trim(),
+          advice: advice.trim(),
+          technicianNote: note.trim() || "Resolved by technician.",
         };
         if (followUpDate) {
           payload.followUpDate = followUpDate.toISOString();
@@ -392,7 +490,11 @@ export default function RequestDetailsScreen() {
           await handleUpdateStatus("resolved", payload);
         };
 
-        const isTooEarly = request.scheduledDate && (new Date(request.scheduledDate).getTime() - Date.now() > 2 * 60 * 60 * 1000);
+        Keyboard.dismiss();
+        const isTooEarly =
+          request.scheduledDate &&
+          new Date(request.scheduledDate).getTime() - Date.now() >
+            2 * 60 * 60 * 1000;
         if (isTooEarly) {
           setConfirmAction({
             title: "Complete Early?",
@@ -405,7 +507,8 @@ export default function RequestDetailsScreen() {
         } else {
           setConfirmAction({
             title: "Resolve Health Request?",
-            message: "This will save the findings, treatment, and resolution notes as the official health assistance record.",
+            message:
+              "This will save the findings, treatment, and resolution notes as the official health assistance record.",
             cancelText: "Review",
             confirmText: "Resolve",
             isDestructive: false,
@@ -416,21 +519,38 @@ export default function RequestDetailsScreen() {
     }
   };
 
-  const handleRespondCancellation = async (approved: boolean, customReason?: string) => {
+  const handleRespondCancellation = async (
+    approved: boolean,
+    customReason?: string,
+  ) => {
     try {
       setCancelResponding(true);
       const payload = {
         approved,
-        reason: customReason || note || (approved ? "Approved by technician." : "Declined by technician."),
+        reason:
+          customReason ||
+          note ||
+          (approved ? "Approved by technician." : "Declined by technician."),
       };
 
-      await respondToCancellationRequest(api, type === "health" ? "health" : "ai", String(id), payload);
-      toast.success(approved ? "Cancellation approved" : "Cancellation request rejected");
+      await respondToCancellationRequest(
+        api,
+        type === "health" ? "health" : "ai",
+        String(id),
+        payload,
+      );
+      toast.success(
+        approved ? "Cancellation approved" : "Cancellation request rejected",
+      );
       setNote("");
       setRescheduleMode(false);
       fetchRequestDetails();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || err.message || "Failed to respond to cancellation request");
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          "Failed to respond to cancellation request",
+      );
     } finally {
       setCancelResponding(false);
     }
@@ -440,24 +560,38 @@ export default function RequestDetailsScreen() {
     try {
       setCancelResponding(true);
       // Step 1: Reject the cancellation request with a reschedule note
-      await respondToCancellationRequest(api, type === "health" ? "health" : "ai", String(id), {
-        approved: false,
-        reason: "Rescheduled by technician",
-      });
+      await respondToCancellationRequest(
+        api,
+        type === "health" ? "health" : "ai",
+        String(id),
+        {
+          approved: false,
+          reason: "Rescheduled by technician",
+        },
+      );
 
       // Step 2: Set status back to scheduled with new date
-      await updateRequestStatus(api, type === "health" ? "health" : "ai", String(id), {
-        status: "scheduled",
-        scheduledDate: scheduledDate.toISOString(),
-        technicianNote: note || "Rescheduled by technician.",
-      });
+      await updateRequestStatus(
+        api,
+        type === "health" ? "health" : "ai",
+        String(id),
+        {
+          status: "scheduled",
+          scheduledDate: scheduledDate.toISOString(),
+          technicianNote: note || "Rescheduled by technician.",
+        },
+      );
 
       toast.success("Request rescheduled successfully");
       setRescheduleMode(false);
       setNote("");
       fetchRequestDetails();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || err.message || "Failed to reschedule request");
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          "Failed to reschedule request",
+      );
     } finally {
       setCancelResponding(false);
     }
@@ -471,14 +605,21 @@ export default function RequestDetailsScreen() {
 
     try {
       setUpdating(true);
-      const endpoint = type === "health" ? `/health-request/${id}/cancel` : `/ai-request/${id}/cancel`;
+      const endpoint =
+        type === "health"
+          ? `/health-request/${id}/cancel`
+          : `/ai-request/${id}/cancel`;
       await api.patch(endpoint, { reason: declineReason.trim() });
       toast.success("Request declined and farmer notified");
       setDeclineReason("");
       setDeclineModalVisible(false);
       router.back();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || err.message || "Failed to decline request");
+      toast.error(
+        err.response?.data?.message ||
+          err.message ||
+          "Failed to decline request",
+      );
     } finally {
       setUpdating(false);
     }
@@ -491,7 +632,13 @@ export default function RequestDetailsScreen() {
       case "HeartPulse":
         return <HeartPulse size={16} color="#ec4899" />;
       case "CheckCircle2":
-        return <MaterialCommunityIcons name="check-circle" size={18} color="#10b981" />;
+        return (
+          <MaterialCommunityIcons
+            name="check-circle"
+            size={18}
+            color="#10b981"
+          />
+        );
       case "FileText":
         return <FileText size={16} color={colors.textMuted} />;
       default:
@@ -511,18 +658,44 @@ export default function RequestDetailsScreen() {
 
   if (!request) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: "center", alignItems: "center", padding: 24 }}>
-        <Text style={{ color: colors.error, textAlign: "center", marginBottom: 16 }} variant="bold" size={16}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.background,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 24,
+        }}
+      >
+        <Text
+          style={{ color: colors.error, textAlign: "center", marginBottom: 16 }}
+          variant="bold"
+          size={16}
+        >
           Request Details not found.
         </Text>
-        <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: colors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 }}>
-          <Text style={{ color: "#fff" }} variant="bold">Go Back</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{
+            backgroundColor: colors.primary,
+            paddingHorizontal: 20,
+            paddingVertical: 10,
+            borderRadius: 12,
+          }}
+        >
+          <Text style={{ color: "#fff" }} variant="bold">
+            Go Back
+          </Text>
         </TouchableOpacity>
       </View>
     );
   }
 
-  const isAI = type === "ai" || request.serviceType === "ai" || request.type === "ai" || request.sireBreed !== undefined;
+  const isAI =
+    type === "ai" ||
+    request.serviceType === "ai" ||
+    request.type === "ai" ||
+    request.sireBreed !== undefined;
   const animal = request.animalId;
   const farmer = request.farmerId;
   const technician = request.approvedBy || request.handledBy;
@@ -532,7 +705,9 @@ export default function RequestDetailsScreen() {
       .replace(/[_-]/g, " ")
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
-  const serviceTypeLabel = formatServiceType(request.serviceType || request.requestType);
+  const serviceTypeLabel = formatServiceType(
+    request.serviceType || request.requestType,
+  );
   const normalizedStatus = request.status?.toLowerCase() || "";
   const primaryActionLabel =
     normalizedStatus === "pending"
@@ -568,6 +743,8 @@ export default function RequestDetailsScreen() {
       <AppPageHeader title="Request details" />
 
       <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 16,
@@ -578,7 +755,13 @@ export default function RequestDetailsScreen() {
       >
         {/* Request Summary Section */}
         <View style={sectionCardStyle}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
             <View
               style={{
                 width: 48,
@@ -602,10 +785,23 @@ export default function RequestDetailsScreen() {
               )}
             </View>
             <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
-              <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 18, color: colors.textPrimary }}>
+              <Text
+                style={{
+                  fontFamily: "Outfit_800ExtraBold",
+                  fontSize: 18,
+                  color: colors.textPrimary,
+                }}
+              >
                 {serviceTypeLabel}
               </Text>
-              <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
+              <Text
+                style={{
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 12,
+                  color: colors.textMuted,
+                  marginTop: 2,
+                }}
+              >
                 Submitted {formatDate(request.createdAt)}
               </Text>
             </View>
@@ -627,38 +823,130 @@ export default function RequestDetailsScreen() {
               gap: 11,
             }}
           >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
-              <Text style={{ color: colors.textMuted }} variant="medium">Priority</Text>
-              <Text style={{ color: request.urgency === "urgent" ? colors.error : colors.textPrimary }} variant="bold">
-                {formatServiceType(request.urgency || request.priority || "Normal")}
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 16,
+              }}
+            >
+              <Text style={{ color: colors.textMuted }} variant="medium">
+                Priority
+              </Text>
+              <Text
+                style={{
+                  color:
+                    request.urgency === "urgent"
+                      ? colors.error
+                      : colors.textPrimary,
+                }}
+                variant="bold"
+              >
+                {formatServiceType(
+                  request.urgency || request.priority || "Normal",
+                )}
               </Text>
             </View>
             {!isAI && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
-                <Text style={{ color: colors.textMuted }} variant="medium">Service Type</Text>
-                <Text numberOfLines={2} style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }} variant="bold">{serviceTypeLabel}</Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  gap: 16,
+                }}
+              >
+                <Text style={{ color: colors.textMuted }} variant="medium">
+                  Service Type
+                </Text>
+                <Text
+                  numberOfLines={2}
+                  style={{
+                    color: colors.textPrimary,
+                    flex: 1,
+                    textAlign: "right",
+                  }}
+                  variant="bold"
+                >
+                  {serviceTypeLabel}
+                </Text>
               </View>
             )}
-            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
-              <Text style={{ color: colors.textMuted }} variant="medium">Preferred Date</Text>
-              <Text numberOfLines={2} style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }} variant="bold">{formatDate(request.preferredDate)}</Text>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 16,
+              }}
+            >
+              <Text style={{ color: colors.textMuted }} variant="medium">
+                Preferred Date
+              </Text>
+              <Text
+                numberOfLines={2}
+                style={{
+                  color: colors.textPrimary,
+                  flex: 1,
+                  textAlign: "right",
+                }}
+                variant="bold"
+              >
+                {formatDate(request.preferredDate)}
+              </Text>
             </View>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
-              <Text style={{ color: colors.textMuted }} variant="medium">Scheduled Date</Text>
-              <Text numberOfLines={2} style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }} variant="bold">
-                {request.scheduledDate ? formatDate(request.scheduledDate) : "Not Scheduled Yet"}
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                gap: 16,
+              }}
+            >
+              <Text style={{ color: colors.textMuted }} variant="medium">
+                Scheduled Date
+              </Text>
+              <Text
+                numberOfLines={2}
+                style={{
+                  color: colors.textPrimary,
+                  flex: 1,
+                  textAlign: "right",
+                }}
+                variant="bold"
+              >
+                {request.scheduledDate
+                  ? formatDate(request.scheduledDate)
+                  : "Not Scheduled Yet"}
               </Text>
             </View>
             {technician && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 16 }}>
-                <Text style={{ color: colors.textMuted }} variant="medium">Assigned Tech</Text>
-                <Text numberOfLines={2} style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }} variant="bold">{technician.name}</Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  gap: 16,
+                }}
+              >
+                <Text style={{ color: colors.textMuted }} variant="medium">
+                  Assigned Tech
+                </Text>
+                <Text
+                  numberOfLines={2}
+                  style={{
+                    color: colors.textPrimary,
+                    flex: 1,
+                    textAlign: "right",
+                  }}
+                  variant="bold"
+                >
+                  {technician.name}
+                </Text>
               </View>
             )}
             {isReadyToday && (
               <View
                 style={{
-                  backgroundColor: isDark ? "rgba(16, 185, 129, 0.2)" : "#d1fae5",
+                  backgroundColor: isDark
+                    ? "rgba(16, 185, 129, 0.2)"
+                    : "#d1fae5",
                   paddingHorizontal: 12,
                   paddingVertical: 6,
                   borderRadius: 12,
@@ -668,7 +956,11 @@ export default function RequestDetailsScreen() {
                   marginTop: 4,
                 }}
               >
-                <Text variant="black" size={10} style={{ color: isDark ? "#34d399" : "#065f46" }}>
+                <Text
+                  variant="black"
+                  size={10}
+                  style={{ color: isDark ? "#34d399" : "#065f46" }}
+                >
                   READY TODAY
                 </Text>
               </View>
@@ -683,34 +975,261 @@ export default function RequestDetailsScreen() {
           />
         ) : null}
 
+        {isAI && request.farmerOutcomeReport ? (
+          <View style={sectionCardStyle}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 12,
+              }}
+            >
+              <View
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: isDark
+                    ? "rgba(16,185,129,0.14)"
+                    : "#ECFDF5",
+                }}
+              >
+                <Activity size={20} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 16,
+                  }}
+                >
+                  Farmer observation
+                </Text>
+                <Text
+                  style={{
+                    color: colors.primary,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 14,
+                    marginTop: 4,
+                  }}
+                >
+                  {getBreedingObservationLabel(request.farmerOutcomeReport)}
+                </Text>
+                {request.farmerOutcomeReportedAt ? (
+                  <Text
+                    style={{
+                      color: colors.textMuted,
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 12,
+                      marginTop: 2,
+                    }}
+                  >
+                    Reported {formatDate(request.farmerOutcomeReportedAt)}
+                  </Text>
+                ) : null}
+              </View>
+              {isBreedingObservationAwaitingReview(
+                request.verificationStatus ||
+                  request.outcomeVerificationStatus,
+              ) ? (
+                <StatusBadge
+                  label="Needs review"
+                  variant="warning"
+                  compact
+                />
+              ) : null}
+            </View>
+
+            {request.farmerObservationSigns?.length ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  marginTop: 14,
+                }}
+              >
+                {request.farmerObservationSigns.map((sign: string) => (
+                  <View
+                    key={sign}
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 6,
+                      borderRadius: 999,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.card,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 11,
+                      }}
+                    >
+                      {getBreedingObservationSignLabel(sign)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+
+            {request.farmerObservationNotes ? (
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 13,
+                  lineHeight: 19,
+                  marginTop: 12,
+                }}
+              >
+                {request.farmerObservationNotes}
+              </Text>
+            ) : null}
+
+            {request.evidencePhotos?.length ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8, paddingTop: 12 }}
+              >
+                {request.evidencePhotos.map((photo: string, index: number) => (
+                  <Image
+                    key={`${photo}-${index}`}
+                    source={{ uri: photo }}
+                    style={{ width: 72, height: 72, borderRadius: 12 }}
+                    resizeMode="cover"
+                  />
+                ))}
+              </ScrollView>
+            ) : null}
+
+            <View
+              style={{
+                marginTop: 14,
+                padding: 12,
+                borderRadius: 12,
+                backgroundColor: isDark
+                  ? "rgba(245,158,11,0.1)"
+                  : "#FFFBEB",
+              }}
+            >
+              <Text
+                style={{
+                  color: isDark ? "#FCD34D" : "#92400E",
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 12,
+                  lineHeight: 17,
+                }}
+              >
+                This is a farmer observation, not an official pregnancy
+                diagnosis. Review it before changing the reproductive outcome.
+              </Text>
+            </View>
+
+            {request.verificationTaskId ? (
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({
+                    pathname: "/(technician)/task-details",
+                    params: {
+                      id:
+                        request.verificationTaskId?._id ||
+                        request.verificationTaskId,
+                    },
+                  } as never)
+                }
+                style={{
+                  marginTop: 14,
+                  minHeight: 44,
+                  borderRadius: 12,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: colors.primary,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#FFFFFF",
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 14,
+                  }}
+                >
+                  Open pregnancy check
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* Animal Information Section */}
         <View style={sectionCardStyle}>
-          <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 14 }}>
+          <Text
+            style={{
+              fontFamily: "Outfit_800ExtraBold",
+              fontSize: 16,
+              color: colors.textPrimary,
+              marginBottom: 14,
+            }}
+          >
             Animal Profile
           </Text>
           <View style={{ flexDirection: "row", gap: 16 }}>
             {animal?.imageUrl ? (
-              <Image source={{ uri: animal.imageUrl }} style={{ width: 80, height: 80, borderRadius: 16 }} />
+              <Image
+                source={{ uri: animal.imageUrl }}
+                style={{ width: 80, height: 80, borderRadius: 16 }}
+              />
             ) : (
-              <View style={{ width: 80, height: 80, borderRadius: 16, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" }}>
-                <MaterialCommunityIcons name="cow" size={40} color={colors.textMuted} />
+              <View
+                style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: 16,
+                  backgroundColor: colors.card,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="cow"
+                  size={40}
+                  color={colors.textMuted}
+                />
               </View>
             )}
             <View style={{ flex: 1, gap: 4 }}>
-              <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 16, color: colors.textPrimary }}>
+              <Text
+                style={{
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 16,
+                  color: colors.textPrimary,
+                }}
+              >
                 Ear Tag: #{animal?.earTag || "N/A"}
               </Text>
               <Text style={{ color: colors.textSecondary }} variant="medium">
                 Breed: {animal?.breed || "N/A"}
               </Text>
               <Text style={{ color: colors.textSecondary }} variant="medium">
-                Species/Sex: {animal?.species || "Cattle"} • {animal?.gender || "Female"}
+                Species/Sex: {animal?.species || "Cattle"} •{" "}
+                {animal?.gender || "Female"}
               </Text>
               <Text style={{ color: colors.textSecondary }} variant="medium">
                 Age: {getAge(animal?.birthDate)}
               </Text>
               <Text style={{ color: colors.textSecondary }} variant="medium">
-                Reproductive Status: <Text style={{ color: colors.primary }} variant="bold">{animal?.reproductiveStatus || "N/A"}</Text>
+                Reproductive Status:{" "}
+                <Text style={{ color: colors.primary }} variant="bold">
+                  {animal?.reproductiveStatus || "N/A"}
+                </Text>
               </Text>
             </View>
           </View>
@@ -718,32 +1237,74 @@ export default function RequestDetailsScreen() {
 
         {/* Farmer Information Section */}
         <View style={sectionCardStyle}>
-          <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 14 }}>
+          <Text
+            style={{
+              fontFamily: "Outfit_800ExtraBold",
+              fontSize: 16,
+              color: colors.textPrimary,
+              marginBottom: 14,
+            }}
+          >
             Farmer Information
           </Text>
           <View style={{ flexDirection: "row", gap: 16, alignItems: "center" }}>
             {farmer?.imageUrl ? (
-              <Image source={{ uri: farmer.imageUrl }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+              <Image
+                source={{ uri: farmer.imageUrl }}
+                style={{ width: 48, height: 48, borderRadius: 24 }}
+              />
             ) : (
-              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.border, alignItems: "center", justifyContent: "center" }}>
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: colors.border,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <User size={24} color={colors.textMuted} />
               </View>
             )}
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 15, color: colors.textPrimary }}>
+              <Text
+                style={{
+                  fontFamily: "Outfit_700Bold",
+                  fontSize: 15,
+                  color: colors.textPrimary,
+                }}
+              >
                 {farmer?.name || "N/A"}
               </Text>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 2,
+                }}
+              >
                 <Phone size={12} color={colors.textMuted} />
                 <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
-                  {(isAI ? request.approvedBy : request.handledBy) ? (farmer?.phoneNumber || "N/A") : "Claim request to view contact"}
+                  {(isAI ? request.approvedBy : request.handledBy)
+                    ? farmer?.phoneNumber || "N/A"
+                    : "Claim request to view contact"}
                 </Text>
               </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 2,
+                }}
+              >
                 <MapPin size={12} color={colors.textMuted} />
                 <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
                   {(isAI ? request.approvedBy : request.handledBy)
-                    ? `${farmer?.address?.houseNumber || ""} ${farmer?.address?.street || ""} ${farmer?.address?.barangay || ""}, ${farmer?.address?.city || farmer?.address?.municipality || "Iloilo"}`.trim() || "N/A"
+                    ? `${farmer?.address?.houseNumber || ""} ${farmer?.address?.street || ""} ${farmer?.address?.barangay || ""}, ${farmer?.address?.city || farmer?.address?.municipality || "Iloilo"}`.trim() ||
+                      "N/A"
                     : `${farmer?.address?.barangay || "N/A"}, ${farmer?.address?.city || farmer?.address?.municipality || "Iloilo"}`}
                 </Text>
               </View>
@@ -754,21 +1315,41 @@ export default function RequestDetailsScreen() {
         {/* Farm Location & Directions Section */}
         {(isAI ? request.approvedBy : request.handledBy) ? (
           <View style={sectionCardStyle}>
-            <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 10 }}>
+            <Text
+              style={{
+                fontFamily: "Outfit_800ExtraBold",
+                fontSize: 16,
+                color: colors.textPrimary,
+                marginBottom: 10,
+              }}
+            >
               Farm Location & Directions
             </Text>
             <View style={{ gap: 8 }}>
-              <Text style={{ color: colors.textSecondary, fontSize: 13 }} variant="medium">
-                Landmark: {farmer?.farmLocation?.landmark || farmer?.address?.landmark || "None listed"}
+              <Text
+                style={{ color: colors.textSecondary, fontSize: 13 }}
+                variant="medium"
+              >
+                Landmark:{" "}
+                {farmer?.farmLocation?.landmark ||
+                  farmer?.address?.landmark ||
+                  "None listed"}
               </Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 13 }} variant="medium">
-                Directions Note: {farmer?.farmLocation?.directionsNote || "None listed"}
+              <Text
+                style={{ color: colors.textSecondary, fontSize: 13 }}
+                variant="medium"
+              >
+                Directions Note:{" "}
+                {farmer?.farmLocation?.directionsNote || "None listed"}
               </Text>
-              {farmer?.farmLocation?.latitude && farmer?.farmLocation?.longitude ? (
+              {farmer?.farmLocation?.latitude &&
+              farmer?.farmLocation?.longitude ? (
                 <TouchableOpacity
                   onPress={() => {
                     const url = `https://www.google.com/maps/dir/?api=1&destination=${farmer.farmLocation.latitude},${farmer.farmLocation.longitude}&travelmode=driving`;
-                    Linking.openURL(url).catch(err => console.error("Maps error", err));
+                    Linking.openURL(url).catch((err) =>
+                      console.error("Maps error", err),
+                    );
                   }}
                   style={{
                     flexDirection: "row",
@@ -778,16 +1359,28 @@ export default function RequestDetailsScreen() {
                     padding: 12,
                     borderRadius: 12,
                     justifyContent: "center",
-                    marginTop: 8
+                    marginTop: 8,
                   }}
                 >
                   <MapPin size={16} color="#fff" />
-                  <Text style={{ fontFamily: "Outfit_700Bold", color: "#fff", fontSize: 14 }}>
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                      color: "#fff",
+                      fontSize: 14,
+                    }}
+                  >
                     Get directions to farm
                   </Text>
                 </TouchableOpacity>
               ) : (
-                <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 4 }}>
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 13,
+                    marginTop: 4,
+                  }}
+                >
                   Exact farm location is not set.
                 </Text>
               )}
@@ -795,55 +1388,167 @@ export default function RequestDetailsScreen() {
           </View>
         ) : (
           <View style={sectionCardStyle}>
-            <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 10 }}>
+            <Text
+              style={{
+                fontFamily: "Outfit_800ExtraBold",
+                fontSize: 16,
+                color: colors.textPrimary,
+                marginBottom: 10,
+              }}
+            >
               Farm Location
             </Text>
-            <Text style={{ color: colors.textMuted, fontSize: 13 }} variant="medium">
-              Detailed landmark, directions, and exact GPS navigation are locked. Claim this request to view them.
+            <Text
+              style={{ color: colors.textMuted, fontSize: 13 }}
+              variant="medium"
+            >
+              Detailed landmark, directions, and exact GPS navigation are
+              locked. Claim this request to view them.
             </Text>
           </View>
         )}
 
         {/* Request Information Section */}
         <View style={sectionCardStyle}>
-          <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 10 }}>
+          <Text
+            style={{
+              fontFamily: "Outfit_800ExtraBold",
+              fontSize: 16,
+              color: colors.textPrimary,
+              marginBottom: 10,
+            }}
+          >
             Request Details
           </Text>
           {isAI ? (
             <View style={{ gap: 8 }}>
-              <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.textMuted, fontSize: 11, textTransform: "uppercase" }} variant="extrabold">
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  padding: 14,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                  }}
+                  variant="extrabold"
+                >
                   Observed Heat Signs
                 </Text>
-                <Text style={{ color: colors.textPrimary, marginTop: 4, fontSize: 14 }} variant="bold">
-                  {request.heatSigns?.join(", ") || request.raw?.heatSigns?.join(", ") || "No specific heat signs listed"}
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    marginTop: 4,
+                    fontSize: 14,
+                  }}
+                  variant="bold"
+                >
+                  {request.heatSigns?.join(", ") ||
+                    request.raw?.heatSigns?.join(", ") ||
+                    "No specific heat signs listed"}
                 </Text>
               </View>
-              <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.textMuted, fontSize: 11, textTransform: "uppercase" }} variant="extrabold">
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  padding: 14,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                  }}
+                  variant="extrabold"
+                >
                   Farmer Comments
                 </Text>
-                <Text style={{ color: colors.textPrimary, marginTop: 4, fontSize: 14 }} variant="medium">
-                  {getAdditionalNotesOnly(request.technicianNote || request.comments) || "No additional comments"}
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    marginTop: 4,
+                    fontSize: 14,
+                  }}
+                  variant="medium"
+                >
+                  {getAdditionalNotesOnly(
+                    request.technicianNote || request.comments,
+                  ) || "No additional comments"}
                 </Text>
               </View>
             </View>
           ) : (
             <View style={{ gap: 8 }}>
-              <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.textMuted, fontSize: 11, textTransform: "uppercase" }} variant="extrabold">
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  padding: 14,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                  }}
+                  variant="extrabold"
+                >
                   Symptoms Reported
                 </Text>
-                <Text style={{ color: colors.textPrimary, marginTop: 4, fontSize: 14 }} variant="bold">
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    marginTop: 4,
+                    fontSize: 14,
+                  }}
+                  variant="bold"
+                >
                   {request.symptoms || "No specific symptoms described"}
                 </Text>
               </View>
-              <View style={{ backgroundColor: colors.card, padding: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ color: colors.textMuted, fontSize: 11, textTransform: "uppercase" }} variant="extrabold">
+              <View
+                style={{
+                  backgroundColor: colors.card,
+                  padding: 14,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    textTransform: "uppercase",
+                  }}
+                  variant="extrabold"
+                >
                   Farmer Notes
                 </Text>
-                <Text style={{ color: colors.textPrimary, marginTop: 4, fontSize: 14 }} variant="medium">
-                  {getAdditionalNotesOnly(request.technicianNote || request.comments) || "No additional notes"}
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    marginTop: 4,
+                    fontSize: 14,
+                  }}
+                  variant="medium"
+                >
+                  {getAdditionalNotesOnly(
+                    request.technicianNote || request.comments,
+                  ) || "No additional notes"}
                 </Text>
               </View>
             </View>
@@ -853,31 +1558,70 @@ export default function RequestDetailsScreen() {
         {/* Action / Input Section */}
         {!isTerminal && (
           <View style={sectionCardStyle}>
-            
             {request.cancellationStatus === "requested" ? (
               // Cancellation Requested Review Panel
               <View style={{ gap: 14 }}>
                 <View
                   style={{
-                    backgroundColor: isDark ? "rgba(239, 68, 68, 0.08)" : "#FEF2F2",
+                    backgroundColor: isDark
+                      ? "rgba(239, 68, 68, 0.08)"
+                      : "#FEF2F2",
                     borderColor: isDark ? "rgba(239, 68, 68, 0.2)" : "#FEE2E2",
                     borderWidth: 1,
                     borderRadius: 16,
                     padding: 16,
                   }}
                 >
-                  <Text style={{ fontFamily: "Outfit_800ExtraBold", color: colors.error, fontSize: 15, marginBottom: 4 }}>
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_800ExtraBold",
+                      color: colors.error,
+                      fontSize: 15,
+                      marginBottom: 4,
+                    }}
+                  >
                     Farmer Requested Cancellation
                   </Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 18 }} variant="medium">
+                  <Text
+                    style={{
+                      color: colors.textSecondary,
+                      fontSize: 13,
+                      lineHeight: 18,
+                    }}
+                    variant="medium"
+                  >
                     The farmer has requested to cancel this scheduled visit.
                   </Text>
                   {request.cancellationReason ? (
-                    <View style={{ marginTop: 10, backgroundColor: isDark ? "rgba(0,0,0,0.2)" : "#fff", padding: 10, borderRadius: 10, borderWidth: 1, borderColor: colors.border }}>
-                      <Text style={{ color: colors.textMuted, fontSize: 10, fontFamily: "Outfit_700Bold", textTransform: "uppercase" }}>
+                    <View
+                      style={{
+                        marginTop: 10,
+                        backgroundColor: isDark ? "rgba(0,0,0,0.2)" : "#fff",
+                        padding: 10,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: colors.textMuted,
+                          fontSize: 10,
+                          fontFamily: "Outfit_700Bold",
+                          textTransform: "uppercase",
+                        }}
+                      >
                         Reason Provided
                       </Text>
-                      <Text style={{ color: colors.textPrimary, fontSize: 13, marginTop: 2, fontStyle: "italic" }} variant="medium">
+                      <Text
+                        style={{
+                          color: colors.textPrimary,
+                          fontSize: 13,
+                          marginTop: 2,
+                          fontStyle: "italic",
+                        }}
+                        variant="medium"
+                      >
                         &quot;{request.cancellationReason}&quot;
                       </Text>
                     </View>
@@ -886,8 +1630,16 @@ export default function RequestDetailsScreen() {
 
                 {!rescheduleMode ? (
                   <View style={{ gap: 10 }}>
-                    <Text style={{ color: colors.textMuted, fontSize: 10, marginBottom: 2 }}>CANCELLATION RESPONSE</Text>
-                    
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 10,
+                        marginBottom: 2,
+                      }}
+                    >
+                      CANCELLATION RESPONSE
+                    </Text>
+
                     <TextInput
                       placeholder="Add response note (optional for approval, required for rejection)..."
                       placeholderTextColor={colors.textMuted}
@@ -906,7 +1658,9 @@ export default function RequestDetailsScreen() {
                       onChangeText={setNote}
                     />
 
-                    <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                    <View
+                      style={{ flexDirection: "row", gap: 10, marginTop: 4 }}
+                    >
                       <TouchableOpacity
                         onPress={() => handleRespondCancellation(true)}
                         disabled={cancelResponding}
@@ -926,7 +1680,12 @@ export default function RequestDetailsScreen() {
                         ) : (
                           <>
                             <Check size={16} color="#fff" />
-                            <Text style={{ color: "#fff", fontSize: 13 }} variant="bold">Approve Cancel</Text>
+                            <Text
+                              style={{ color: "#fff", fontSize: 13 }}
+                              variant="bold"
+                            >
+                              Approve Cancel
+                            </Text>
                           </>
                         )}
                       </TouchableOpacity>
@@ -934,7 +1693,9 @@ export default function RequestDetailsScreen() {
                       <TouchableOpacity
                         onPress={() => {
                           if (!note.trim()) {
-                            toast.error("Please add a note to reject the cancellation request.");
+                            toast.error(
+                              "Please add a note to reject the cancellation request.",
+                            );
                             return;
                           }
                           handleRespondCancellation(false);
@@ -952,11 +1713,22 @@ export default function RequestDetailsScreen() {
                         }}
                       >
                         {cancelResponding ? (
-                          <ActivityIndicator color={colors.textPrimary} size="small" />
+                          <ActivityIndicator
+                            color={colors.textPrimary}
+                            size="small"
+                          />
                         ) : (
                           <>
                             <X size={16} color={colors.textPrimary} />
-                            <Text style={{ color: colors.textPrimary, fontSize: 13 }} variant="bold">Reject Cancel</Text>
+                            <Text
+                              style={{
+                                color: colors.textPrimary,
+                                fontSize: 13,
+                              }}
+                              variant="bold"
+                            >
+                              Reject Cancel
+                            </Text>
                           </>
                         )}
                       </TouchableOpacity>
@@ -976,13 +1748,22 @@ export default function RequestDetailsScreen() {
                       }}
                     >
                       <Calendar size={16} color="#fff" />
-                      <Text style={{ color: "#fff", fontSize: 13 }} variant="bold">Reschedule Visit</Text>
+                      <Text
+                        style={{ color: "#fff", fontSize: 13 }}
+                        variant="bold"
+                      >
+                        Reschedule Visit
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
                   // Reschedule mode within cancellation review
                   <View style={{ gap: 12 }}>
-                    <Text style={{ color: colors.textMuted }} variant="bold" size={12}>
+                    <Text
+                      style={{ color: colors.textMuted }}
+                      variant="bold"
+                      size={12}
+                    >
                       SELECT NEW VISIT SCHEDULE
                     </Text>
                     <View style={{ flexDirection: "row", gap: 10 }}>
@@ -999,7 +1780,10 @@ export default function RequestDetailsScreen() {
                         }}
                       >
                         <Calendar size={16} color={colors.textPrimary} />
-                        <Text style={{ color: colors.textPrimary }} variant="bold">
+                        <Text
+                          style={{ color: colors.textPrimary }}
+                          variant="bold"
+                        >
                           {scheduledDate.toLocaleDateString()}
                         </Text>
                       </TouchableOpacity>
@@ -1017,13 +1801,27 @@ export default function RequestDetailsScreen() {
                         }}
                       >
                         <Clock size={16} color={colors.textPrimary} />
-                        <Text style={{ color: colors.textPrimary }} variant="bold">
-                          {scheduledDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        <Text
+                          style={{ color: colors.textPrimary }}
+                          variant="bold"
+                        >
+                          {scheduledDate.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </Text>
                       </TouchableOpacity>
                     </View>
 
-                    <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 4 }}>RESCHEDULE NOTES</Text>
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 10,
+                        marginTop: 4,
+                      }}
+                    >
+                      RESCHEDULE NOTES
+                    </Text>
                     <TextInput
                       placeholder="Add rescheduling reason or instructions for farmer..."
                       placeholderTextColor={colors.textMuted}
@@ -1042,7 +1840,9 @@ export default function RequestDetailsScreen() {
                       onChangeText={setNote}
                     />
 
-                    <View style={{ flexDirection: "row", gap: 10, marginTop: 4 }}>
+                    <View
+                      style={{ flexDirection: "row", gap: 10, marginTop: 4 }}
+                    >
                       <TouchableOpacity
                         onPress={handleRescheduleConfirm}
                         disabled={cancelResponding}
@@ -1058,7 +1858,12 @@ export default function RequestDetailsScreen() {
                         {cancelResponding ? (
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
-                          <Text style={{ color: "#fff", fontSize: 13 }} variant="bold">Confirm Reschedule</Text>
+                          <Text
+                            style={{ color: "#fff", fontSize: 13 }}
+                            variant="bold"
+                          >
+                            Confirm Reschedule
+                          </Text>
                         )}
                       </TouchableOpacity>
 
@@ -1073,7 +1878,12 @@ export default function RequestDetailsScreen() {
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ color: colors.textPrimary, fontSize: 13 }} variant="bold">Cancel</Text>
+                        <Text
+                          style={{ color: colors.textPrimary, fontSize: 13 }}
+                          variant="bold"
+                        >
+                          Cancel
+                        </Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1083,7 +1893,13 @@ export default function RequestDetailsScreen() {
               // Normal action execution section
               <>
                 <View style={{ marginBottom: 16 }}>
-                  <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary }}>
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_800ExtraBold",
+                      fontSize: 16,
+                      color: colors.textPrimary,
+                    }}
+                  >
                     Next action
                   </Text>
                   <Text
@@ -1099,186 +1915,45 @@ export default function RequestDetailsScreen() {
                   </Text>
                 </View>
 
-            {/* Inline scheduling date/time picker */}
-            {(request.status?.toLowerCase() === "approved" ||
-              request.status?.toLowerCase() === "assigned" ||
-              request.status?.toLowerCase() === "triaged") && (
-              <View style={{ gap: 10, marginBottom: 16 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <Text style={{ color: colors.textMuted }} variant="bold" size={12}>
-                    SELECT VISIT SCHEDULE
-                  </Text>
-                  {request.preferredDate && (
-                    <TouchableOpacity
-                      onPress={() => setScheduledDate(new Date(request.preferredDate))}
-                    >
-                      <Text style={{ color: colors.primary, fontSize: 11 }} variant="semibold">
-                        Farmer Prefers: {formatDate(request.preferredDate)}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <View style={{ flexDirection: "row", gap: 10 }}>
-                  <TouchableOpacity
-                    onPress={() => setShowDatePicker(true)}
-                    style={{
-                      flex: 1,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      backgroundColor: colors.border,
-                      padding: 12,
-                      borderRadius: 12,
-                    }}
-                  >
-                    <Calendar size={16} color={colors.textPrimary} />
-                    <Text style={{ color: colors.textPrimary }} variant="bold">
-                      {scheduledDate.toLocaleDateString()}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => setShowTimePicker(true)}
-                    style={{
-                      flex: 1,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 8,
-                      backgroundColor: colors.border,
-                      padding: 12,
-                      borderRadius: 12,
-                    }}
-                  >
-                    <Clock size={16} color={colors.textPrimary} />
-                    <Text style={{ color: colors.textPrimary }} variant="bold">
-                      {scheduledDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {/* Inline completed forms */}
-            {(request.status?.toLowerCase() === "in-progress" ||
-              request.status?.toLowerCase() === "in_progress") && (
-              <View style={{ gap: 14, marginBottom: 16 }}>
-                <Text style={{ color: colors.textMuted }} variant="bold" size={12}>
-                  RECORD WORK DETAILS
-                </Text>
-
-                {isAI ? (
-                  <>
-                    <TouchableOpacity
-                      onPress={() => setShowBreedModal(true)}
+                {/* Inline scheduling date/time picker */}
+                {(request.status?.toLowerCase() === "approved" ||
+                  request.status?.toLowerCase() === "assigned" ||
+                  request.status?.toLowerCase() === "triaged") && (
+                  <View style={{ gap: 10, marginBottom: 16 }}>
+                    <View
                       style={{
                         flexDirection: "row",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        backgroundColor: colors.border,
-                        padding: 14,
-                        borderRadius: 12,
                       }}
                     >
-                      <View>
-                        <Text style={{ color: colors.textMuted, fontSize: 10 }}>SIRE BREED</Text>
-                        <Text style={{ color: colors.textPrimary, fontSize: 15 }} variant="bold">
-                          {sireBreed || "Select Breed"}
-                        </Text>
-                      </View>
-                      <MaterialCommunityIcons name="chevron-down" size={20} color={colors.textMuted} />
-                    </TouchableOpacity>
-
-                    <View style={{ backgroundColor: colors.border, padding: 14, borderRadius: 12 }}>
-                      <Text style={{ color: colors.textMuted, fontSize: 10 }}>SIRE CODE</Text>
-                      <Text style={{ color: colors.textPrimary, fontSize: 15 }} variant="bold">
-                        {sireCode || "Select Sire Breed to set Code"}
+                      <Text
+                        style={{ color: colors.textMuted }}
+                        variant="bold"
+                        size={12}
+                      >
+                        SELECT VISIT SCHEDULE
                       </Text>
-                    </View>
-
-                    <View>
-                      <Text style={{ color: colors.textMuted, fontSize: 10, marginBottom: 6 }}>ESTRUS TYPE</Text>
-                      <View style={{ flexDirection: "row", gap: 8 }}>
-                        {["Natural", "Synchronized", "Induced"].map((item) => (
-                          <TouchableOpacity
-                            key={item}
-                            onPress={() => setEstrus(item)}
-                            style={{
-                              flex: 1,
-                              paddingVertical: 10,
-                              borderRadius: 10,
-                              alignItems: "center",
-                              backgroundColor: estrus === item ? colors.primary : colors.border,
-                            }}
+                      {request.preferredDate && (
+                        <TouchableOpacity
+                          onPress={() =>
+                            setScheduledDate(new Date(request.preferredDate))
+                          }
+                        >
+                          <Text
+                            style={{ color: colors.primary, fontSize: 11 }}
+                            variant="semibold"
                           >
-                            <Text style={{ color: estrus === item ? "#fff" : colors.textPrimary }} variant="bold">
-                              {item}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
+                            Farmer Prefers: {formatDate(request.preferredDate)}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
-                  </>
-                ) : (
-                  <>
-                    <View>
-                      <Text style={{ color: colors.textMuted, fontSize: 10, marginBottom: 4 }}>DIAGNOSIS</Text>
-                      <TextInput
-                        placeholder="Enter diagnosis..."
-                        placeholderTextColor={colors.textMuted}
-                        style={{
-                          backgroundColor: colors.border,
-                          padding: 12,
-                          borderRadius: 12,
-                          color: colors.textPrimary,
-                          fontFamily: "Outfit_600SemiBold",
-                        }}
-                        value={diagnosis}
-                        onChangeText={setDiagnosis}
-                      />
-                    </View>
-
-                    <View>
-                      <Text style={{ color: colors.textMuted, fontSize: 10, marginBottom: 4 }}>TREATMENT</Text>
-                      <TextInput
-                        placeholder="Enter treatment given..."
-                        placeholderTextColor={colors.textMuted}
-                        style={{
-                          backgroundColor: colors.border,
-                          padding: 12,
-                          borderRadius: 12,
-                          color: colors.textPrimary,
-                          fontFamily: "Outfit_600SemiBold",
-                        }}
-                        value={treatment}
-                        onChangeText={setTreatment}
-                      />
-                    </View>
-
-                    <View>
-                      <Text style={{ color: colors.textMuted, fontSize: 10, marginBottom: 4 }}>ADVICE FOR FARMER</Text>
-                      <TextInput
-                        placeholder="Enter advice..."
-                        placeholderTextColor={colors.textMuted}
-                        style={{
-                          backgroundColor: colors.border,
-                          padding: 12,
-                          borderRadius: 12,
-                          color: colors.textPrimary,
-                          fontFamily: "Outfit_600SemiBold",
-                        }}
-                        value={advice}
-                        onChangeText={setAdvice}
-                      />
-                    </View>
-
-                    {/* Follow up date */}
-                    <View>
-                      <Text style={{ color: colors.textMuted, fontSize: 10, marginBottom: 4 }}>
-                        FOLLOW-UP DATE (OPTIONAL)
-                      </Text>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
                       <TouchableOpacity
-                        onPress={() => setShowFollowUpDatePicker(true)}
+                        onPress={() => setShowDatePicker(true)}
                         style={{
+                          flex: 1,
                           flexDirection: "row",
                           alignItems: "center",
                           gap: 8,
@@ -1288,140 +1963,526 @@ export default function RequestDetailsScreen() {
                         }}
                       >
                         <Calendar size={16} color={colors.textPrimary} />
-                        <Text style={{ color: colors.textPrimary }} variant="bold">
-                          {followUpDate ? followUpDate.toLocaleDateString() : "Set Follow-up Date"}
+                        <Text
+                          style={{ color: colors.textPrimary }}
+                          variant="bold"
+                        >
+                          {scheduledDate.toLocaleDateString()}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => setShowTimePicker(true)}
+                        style={{
+                          flex: 1,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          backgroundColor: colors.border,
+                          padding: 12,
+                          borderRadius: 12,
+                        }}
+                      >
+                        <Clock size={16} color={colors.textPrimary} />
+                        <Text
+                          style={{ color: colors.textPrimary }}
+                          variant="bold"
+                        >
+                          {scheduledDate.toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </Text>
                       </TouchableOpacity>
                     </View>
-                  </>
+                  </View>
                 )}
 
-                <View>
-                  <Text style={{ color: colors.textMuted, fontSize: 10, marginBottom: 4 }}>FIELD NOTES / COMMENTS</Text>
-                  <TextInput
-                    placeholder="Enter technician notes..."
-                    placeholderTextColor={colors.textMuted}
-                    multiline
-                    numberOfLines={3}
+                {/* Inline completed forms */}
+                {(request.status?.toLowerCase() === "in-progress" ||
+                  request.status?.toLowerCase() === "in_progress") && (
+                  <View style={{ gap: 14, marginBottom: 16 }}>
+                    <Text
+                      style={{ color: colors.textMuted }}
+                      variant="bold"
+                      size={12}
+                    >
+                      RECORD WORK DETAILS
+                    </Text>
+
+                    {isAI ? (
+                      <>
+                        <TouchableOpacity
+                          onPress={() => setShowBreedModal(true)}
+                          style={{
+                            flexDirection: "row",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            backgroundColor: colors.border,
+                            padding: 14,
+                            borderRadius: 12,
+                          }}
+                        >
+                          <View>
+                            <Text
+                              style={{ color: colors.textMuted, fontSize: 10 }}
+                            >
+                              SIRE BREED
+                            </Text>
+                            <Text
+                              style={{
+                                color: colors.textPrimary,
+                                fontSize: 15,
+                              }}
+                              variant="bold"
+                            >
+                              {sireBreed || "Select Breed"}
+                            </Text>
+                          </View>
+                          <MaterialCommunityIcons
+                            name="chevron-down"
+                            size={20}
+                            color={colors.textMuted}
+                          />
+                        </TouchableOpacity>
+
+                        <View
+                          style={{
+                            backgroundColor: colors.border,
+                            padding: 14,
+                            borderRadius: 12,
+                          }}
+                        >
+                          <Text
+                            style={{ color: colors.textMuted, fontSize: 10 }}
+                          >
+                            SIRE CODE
+                          </Text>
+                          <Text
+                            style={{ color: colors.textPrimary, fontSize: 15 }}
+                            variant="bold"
+                          >
+                            {sireCode || "Select Sire Breed to set Code"}
+                          </Text>
+                        </View>
+
+                        <View>
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 10,
+                              marginBottom: 6,
+                            }}
+                          >
+                            ESTRUS TYPE
+                          </Text>
+                          <View style={{ flexDirection: "row", gap: 8 }}>
+                            {["Natural", "Synchronized", "Induced"].map(
+                              (item) => (
+                                <TouchableOpacity
+                                  key={item}
+                                  onPress={() => setEstrus(item)}
+                                  style={{
+                                    flex: 1,
+                                    paddingVertical: 10,
+                                    borderRadius: 10,
+                                    alignItems: "center",
+                                    backgroundColor:
+                                      estrus === item
+                                        ? colors.primary
+                                        : colors.border,
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color:
+                                        estrus === item
+                                          ? "#fff"
+                                          : colors.textPrimary,
+                                    }}
+                                    variant="bold"
+                                  >
+                                    {item}
+                                  </Text>
+                                </TouchableOpacity>
+                              ),
+                            )}
+                          </View>
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <View>
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 10,
+                              marginBottom: 4,
+                            }}
+                          >
+                            DIAGNOSIS
+                          </Text>
+                          <TextInput
+                            placeholder="Enter diagnosis..."
+                            placeholderTextColor={colors.textMuted}
+                            style={{
+                              backgroundColor: colors.border,
+                              padding: 12,
+                              borderRadius: 12,
+                              color: colors.textPrimary,
+                              fontFamily: "Outfit_600SemiBold",
+                            }}
+                            value={diagnosis}
+                            onChangeText={setDiagnosis}
+                          />
+                        </View>
+
+                        <View>
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 10,
+                              marginBottom: 4,
+                            }}
+                          >
+                            TREATMENT
+                          </Text>
+                          <TextInput
+                            placeholder="Enter treatment given..."
+                            placeholderTextColor={colors.textMuted}
+                            style={{
+                              backgroundColor: colors.border,
+                              padding: 12,
+                              borderRadius: 12,
+                              color: colors.textPrimary,
+                              fontFamily: "Outfit_600SemiBold",
+                            }}
+                            value={treatment}
+                            onChangeText={setTreatment}
+                          />
+                        </View>
+
+                        <View>
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 10,
+                              marginBottom: 4,
+                            }}
+                          >
+                            ADVICE FOR FARMER
+                          </Text>
+                          <TextInput
+                            placeholder="Enter advice..."
+                            placeholderTextColor={colors.textMuted}
+                            style={{
+                              backgroundColor: colors.border,
+                              padding: 12,
+                              borderRadius: 12,
+                              color: colors.textPrimary,
+                              fontFamily: "Outfit_600SemiBold",
+                            }}
+                            value={advice}
+                            onChangeText={setAdvice}
+                          />
+                        </View>
+
+                        {/* Follow up date */}
+                        <View>
+                          <Text
+                            style={{
+                              color: colors.textMuted,
+                              fontSize: 10,
+                              marginBottom: 4,
+                            }}
+                          >
+                            FOLLOW-UP DATE (OPTIONAL)
+                          </Text>
+                          <TouchableOpacity
+                            onPress={() => setShowFollowUpDatePicker(true)}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: 8,
+                              backgroundColor: colors.border,
+                              padding: 12,
+                              borderRadius: 12,
+                            }}
+                          >
+                            <Calendar size={16} color={colors.textPrimary} />
+                            <Text
+                              style={{ color: colors.textPrimary }}
+                              variant="bold"
+                            >
+                              {followUpDate
+                                ? followUpDate.toLocaleDateString()
+                                : "Set Follow-up Date"}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+                      </>
+                    )}
+
+                    <View>
+                      <Text
+                        style={{
+                          color: colors.textMuted,
+                          fontSize: 10,
+                          marginBottom: 4,
+                        }}
+                      >
+                        FIELD NOTES / COMMENTS
+                      </Text>
+                      <TextInput
+                        placeholder="Enter technician notes..."
+                        placeholderTextColor={colors.textMuted}
+                        multiline
+                        numberOfLines={3}
+                        style={{
+                          backgroundColor: colors.border,
+                          padding: 12,
+                          borderRadius: 12,
+                          color: colors.textPrimary,
+                          fontFamily: "Outfit_600SemiBold",
+                          height: 70,
+                          textAlignVertical: "top",
+                        }}
+                        value={note}
+                        onChangeText={setNote}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                {actionNotice && (
+                  <View
+                    accessibilityRole="alert"
                     style={{
-                      backgroundColor: colors.border,
+                      flexDirection: "row",
+                      alignItems: "flex-start",
+                      gap: 10,
                       padding: 12,
+                      marginBottom: 12,
                       borderRadius: 12,
-                      color: colors.textPrimary,
-                      fontFamily: "Outfit_600SemiBold",
-                      height: 70,
-                      textAlignVertical: "top",
+                      borderWidth: 1,
+                      borderColor: isDark ? "rgba(248,113,113,0.4)" : "#fecaca",
+                      backgroundColor: isDark
+                        ? "rgba(239,68,68,0.12)"
+                        : "#fef2f2",
                     }}
-                    value={note}
-                    onChangeText={setNote}
-                  />
-                </View>
-              </View>
-            )}
+                  >
+                    <AlertCircle
+                      size={19}
+                      color={isDark ? "#f87171" : "#dc2626"}
+                      style={{ marginTop: 1 }}
+                    />
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: isDark ? "#fca5a5" : "#b91c1c",
+                        fontSize: 13,
+                        lineHeight: 19,
+                      }}
+                      variant="semibold"
+                    >
+                      {actionNotice}
+                    </Text>
+                  </View>
+                )}
 
-            <TouchableOpacity
-              onPress={handleAction}
-              disabled={updating}
-              accessibilityRole="button"
-              accessibilityLabel={primaryActionLabel}
-              style={{
-                backgroundColor: colors.primary,
-                minHeight: 50,
-                paddingHorizontal: 16,
-                borderRadius: 14,
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: updating ? 0.65 : 1,
-              }}
-            >
-              {updating ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={{ color: "#fff", fontSize: 16 }} variant="extrabold">
-                  {primaryActionLabel}
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            {["approved", "assigned", "triaged", "scheduled"].includes(
-              request.status?.toLowerCase(),
-            ) && (
-              <TouchableOpacity
-                onPress={() => setDeclineModalVisible(true)}
-                disabled={updating}
-                style={{
-                  marginTop: 10,
-                  backgroundColor: isDark ? "rgba(239, 68, 68, 0.12)" : "#fef2f2",
-                  borderWidth: 1,
-                  borderColor: isDark ? "rgba(248, 113, 113, 0.25)" : "#fecaca",
-                  paddingVertical: 14,
-                  borderRadius: 12,
-                  alignItems: "center",
-                }}
-              >
-                <Text
-                  style={{ color: isDark ? "#f87171" : "#dc2626", fontSize: 14 }}
-                  variant="extrabold"
+                <TouchableOpacity
+                  onPress={handleAction}
+                  disabled={updating}
+                  accessibilityRole="button"
+                  accessibilityLabel={primaryActionLabel}
+                  style={{
+                    backgroundColor: colors.primary,
+                    minHeight: 50,
+                    paddingHorizontal: 16,
+                    borderRadius: 14,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: updating ? 0.65 : 1,
+                  }}
                 >
-                  Decline / Cancel With Reason
-                </Text>
-              </TouchableOpacity>
+                  {updating ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text
+                      style={{ color: "#fff", fontSize: 16 }}
+                      variant="extrabold"
+                    >
+                      {primaryActionLabel}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+                {["approved", "assigned", "triaged", "scheduled"].includes(
+                  request.status?.toLowerCase(),
+                ) && (
+                  <TouchableOpacity
+                    onPress={() => setDeclineModalVisible(true)}
+                    disabled={updating}
+                    style={{
+                      marginTop: 10,
+                      backgroundColor: isDark
+                        ? "rgba(239, 68, 68, 0.12)"
+                        : "#fef2f2",
+                      borderWidth: 1,
+                      borderColor: isDark
+                        ? "rgba(248, 113, 113, 0.25)"
+                        : "#fecaca",
+                      paddingVertical: 14,
+                      borderRadius: 12,
+                      alignItems: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isDark ? "#f87171" : "#dc2626",
+                        fontSize: 14,
+                      }}
+                      variant="extrabold"
+                    >
+                      Decline / Cancel With Reason
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
-          </>
-        )}
           </View>
         )}
 
         {/* View Record (If completed/resolved) */}
         {isTerminal && (
           <View style={sectionCardStyle}>
-            <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 12 }}>
+            <Text
+              style={{
+                fontFamily: "Outfit_800ExtraBold",
+                fontSize: 16,
+                color: colors.textPrimary,
+                marginBottom: 12,
+              }}
+            >
               Service Record (Completed)
             </Text>
             {isAI ? (
               <View style={{ gap: 8 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">Sire Breed</Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">{request.sireBreed || "N/A"}</Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted }} variant="medium">
+                    Sire Breed
+                  </Text>
+                  <Text style={{ color: colors.textPrimary }} variant="bold">
+                    {request.sireBreed || "N/A"}
+                  </Text>
                 </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">Sire Code</Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">{request.sireCode || "N/A"}</Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted }} variant="medium">
+                    Sire Code
+                  </Text>
+                  <Text style={{ color: colors.textPrimary }} variant="bold">
+                    {request.sireCode || "N/A"}
+                  </Text>
                 </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">Estrus Type</Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">{request.estrus || "N/A"}</Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted }} variant="medium">
+                    Estrus Type
+                  </Text>
+                  <Text style={{ color: colors.textPrimary }} variant="bold">
+                    {request.estrus || "N/A"}
+                  </Text>
                 </View>
                 <View style={{ marginTop: 4 }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">Notes / Remarks</Text>
-                  <Text style={{ color: colors.textPrimary, marginTop: 2 }} variant="medium">
+                  <Text style={{ color: colors.textMuted }} variant="medium">
+                    Notes / Remarks
+                  </Text>
+                  <Text
+                    style={{ color: colors.textPrimary, marginTop: 2 }}
+                    variant="medium"
+                  >
                     {request.technicianNote || "No notes recorded."}
                   </Text>
                 </View>
               </View>
             ) : (
               <View style={{ gap: 8 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">Diagnosis</Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">{request.diagnosis || "N/A"}</Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted }} variant="medium">
+                    Diagnosis
+                  </Text>
+                  <Text style={{ color: colors.textPrimary }} variant="bold">
+                    {request.diagnosis || "N/A"}
+                  </Text>
                 </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">Treatment</Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">{request.treatment || "N/A"}</Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted }} variant="medium">
+                    Treatment
+                  </Text>
+                  <Text style={{ color: colors.textPrimary }} variant="bold">
+                    {request.treatment || "N/A"}
+                  </Text>
                 </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">Advice</Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">{request.advice || "N/A"}</Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Text style={{ color: colors.textMuted }} variant="medium">
+                    Advice
+                  </Text>
+                  <Text style={{ color: colors.textPrimary }} variant="bold">
+                    {request.advice || "N/A"}
+                  </Text>
                 </View>
                 {request.followUpDate && (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ color: colors.textMuted }} variant="medium">Follow-Up Date</Text>
-                    <Text style={{ color: colors.textPrimary }} variant="bold">{formatDate(request.followUpDate)}</Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <Text style={{ color: colors.textMuted }} variant="medium">
+                      Follow-Up Date
+                    </Text>
+                    <Text style={{ color: colors.textPrimary }} variant="bold">
+                      {formatDate(request.followUpDate)}
+                    </Text>
                   </View>
                 )}
                 <View style={{ marginTop: 4 }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">Notes / Remarks</Text>
-                  <Text style={{ color: colors.textPrimary, marginTop: 2 }} variant="medium">
+                  <Text style={{ color: colors.textMuted }} variant="medium">
+                    Notes / Remarks
+                  </Text>
+                  <Text
+                    style={{ color: colors.textPrimary, marginTop: 2 }}
+                    variant="medium"
+                  >
                     {request.technicianNote || "No notes recorded."}
                   </Text>
                 </View>
@@ -1432,14 +2493,24 @@ export default function RequestDetailsScreen() {
 
         {/* Animal History Section */}
         <View style={sectionCardStyle}>
-          <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 16, color: colors.textPrimary, marginBottom: 14 }}>
+          <Text
+            style={{
+              fontFamily: "Outfit_800ExtraBold",
+              fontSize: 16,
+              color: colors.textPrimary,
+              marginBottom: 14,
+            }}
+          >
             Animal History Timeline
           </Text>
 
           {timelineLoading ? (
             <View style={{ gap: 12 }}>
               {[1, 2, 3].map((item) => (
-                <View key={item} style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                <View
+                  key={item}
+                  style={{ flexDirection: "row", alignItems: "flex-start" }}
+                >
                   <SkeletonBlock
                     width={28}
                     height={28}
@@ -1447,8 +2518,16 @@ export default function RequestDetailsScreen() {
                     color={isDark ? "#1f2937" : "#e8edf3"}
                   />
                   <View style={{ flex: 1, marginLeft: 12, gap: 7 }}>
-                    <SkeletonBlock width="58%" height={13} color={isDark ? "#1f2937" : "#e8edf3"} />
-                    <SkeletonBlock width="86%" height={11} color={isDark ? "#1f2937" : "#e8edf3"} />
+                    <SkeletonBlock
+                      width="58%"
+                      height={13}
+                      color={isDark ? "#1f2937" : "#e8edf3"}
+                    />
+                    <SkeletonBlock
+                      width="86%"
+                      height={11}
+                      color={isDark ? "#1f2937" : "#e8edf3"}
+                    />
                   </View>
                 </View>
               ))}
@@ -1460,9 +2539,19 @@ export default function RequestDetailsScreen() {
               </Text>
             </View>
           ) : (
-            <View style={{ paddingLeft: 10, borderLeftWidth: 1.5, borderLeftColor: colors.border, marginLeft: 6 }}>
+            <View
+              style={{
+                paddingLeft: 10,
+                borderLeftWidth: 1.5,
+                borderLeftColor: colors.border,
+                marginLeft: 6,
+              }}
+            >
               {timeline.map((event, index) => (
-                <View key={event._id || index} style={{ marginBottom: 20, position: "relative" }}>
+                <View
+                  key={event._id || index}
+                  style={{ marginBottom: 20, position: "relative" }}
+                >
                   {/* Timeline dot */}
                   <View
                     style={{
@@ -1483,8 +2572,20 @@ export default function RequestDetailsScreen() {
                   </View>
 
                   <View style={{ marginLeft: 10 }}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 14, color: colors.textPrimary }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_700Bold",
+                          fontSize: 14,
+                          color: colors.textPrimary,
+                        }}
+                      >
                         {event.title}
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 11 }}>
@@ -1492,11 +2593,25 @@ export default function RequestDetailsScreen() {
                       </Text>
                     </View>
 
-                    <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 2 }} variant="medium">
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontSize: 13,
+                        marginTop: 2,
+                      }}
+                      variant="medium"
+                    >
                       {event.description}
                     </Text>
 
-                    <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }} variant="medium">
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontSize: 11,
+                        marginTop: 2,
+                      }}
+                      variant="medium"
+                    >
                       Actor: {event.technicianName}
                     </Text>
                   </View>
@@ -1517,7 +2632,11 @@ export default function RequestDetailsScreen() {
             setShowDatePicker(false);
             if (date) {
               const newDate = new Date(scheduledDate);
-              newDate.setFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+              newDate.setFullYear(
+                date.getFullYear(),
+                date.getMonth(),
+                date.getDate(),
+              );
               setScheduledDate(newDate);
             }
           }}
@@ -1610,9 +2729,14 @@ export default function RequestDetailsScreen() {
             <Text
               variant="medium"
               size={13}
-              style={{ color: colors.textSecondary, lineHeight: 18, marginBottom: 14 }}
+              style={{
+                color: colors.textSecondary,
+                lineHeight: 18,
+                marginBottom: 14,
+              }}
             >
-              This will cancel the claimed service and notify the farmer. Add a clear reason so the farmer knows what happened.
+              This will cancel the claimed service and notify the farmer. Add a
+              clear reason so the farmer knows what happened.
             </Text>
             <TextInput
               placeholder="Reason, e.g. schedule conflict or duplicate request..."
@@ -1642,7 +2766,11 @@ export default function RequestDetailsScreen() {
                   alignItems: "center",
                 }}
               >
-                <Text variant="bold" size={13} style={{ color: colors.textPrimary }}>
+                <Text
+                  variant="bold"
+                  size={13}
+                  style={{ color: colors.textPrimary }}
+                >
                   Keep Request
                 </Text>
               </TouchableOpacity>
@@ -1653,7 +2781,9 @@ export default function RequestDetailsScreen() {
                   flex: 1,
                   paddingVertical: 14,
                   borderRadius: 12,
-                  backgroundColor: !declineReason.trim() ? colors.textMuted : "#dc2626",
+                  backgroundColor: !declineReason.trim()
+                    ? colors.textMuted
+                    : "#dc2626",
                   alignItems: "center",
                   opacity: updating ? 0.7 : 1,
                 }}

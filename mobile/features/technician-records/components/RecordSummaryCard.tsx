@@ -1,5 +1,5 @@
 import React from "react";
-import { View } from "react-native";
+import { View, Pressable } from "react-native";
 import { ChevronRight } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 
@@ -38,13 +38,12 @@ export function RecordSummaryCard({
   const statusLabel = titleCase(item.status || "Completed");
 
   return (
-    <Card
+    <Pressable
       onPress={onPress}
-      variant="outlined"
+      accessibilityRole="button"
       accessibilityLabel={`Open ${presentation.title} record for ${animalTag}`}
+      className="mb-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm active:opacity-80 dark:border-slate-800 dark:bg-slate-900"
       style={{
-        marginBottom: 8,
-        padding: 12,
         flexDirection: "row",
         alignItems: "center",
       }}
@@ -113,7 +112,7 @@ export function RecordSummaryCard({
         color={colors.textMuted}
         style={{ marginLeft: 8 }}
       />
-    </Card>
+    </Pressable>
   );
 }
 

@@ -131,7 +131,7 @@ export function StatusBadge({
         maxWidth: 220,
         flexShrink: 1,
       }}
-      textStyle={{ fontSize: Math.max(12, size), flexShrink: 1 }}
+      textStyle={{ fontSize: size, flexShrink: 1 }}
     />
   );
 }

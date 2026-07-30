@@ -112,6 +112,7 @@ export default function TasksScreen() {
           className="w-10 h-10 rounded-full items-center justify-center shadow-sm"
           style={{ backgroundColor: isDark ? "#10b981" : "#00643B" }}
           onPress={() => router.push('/(technician)/create-task')}
+          accessibilityLabel="Add field work"
         >
           <Plus size={24} color="white" />
         </TouchableOpacity>

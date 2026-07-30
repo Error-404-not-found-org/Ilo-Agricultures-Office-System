@@ -338,10 +338,10 @@ export const useFarmerProfile = () => {
   }, [dbUser]);
 
   useEffect(() => {
-    if (editMode === null && dbUser) {
+    if (editMode === null && dbUser && !phoneOtpSent) {
       setFormData(buildProfileFormData(dbUser));
     }
-  }, [editMode, dbUser]);
+  }, [editMode, dbUser, phoneOtpSent]);
 
   const mutation = useMutation({
     mutationFn: (updatedData: any) => {
@@ -375,11 +375,6 @@ export const useFarmerProfile = () => {
       setPhoneOtpCooldown(60);
       setPhoneOtpExpiresAt(Date.now() + expiryDurationMs);
       setPhoneOtpRemainingSeconds(Math.ceil(expiryDurationMs / 1000));
-      toast.success(result?.message || "OTP sent successfully.", {
-        description: result?.data?.phoneNumber
-          ? `Sent to ${result.data.phoneNumber}`
-          : undefined,
-      });
     },
     onError: (error: any) => {
       const retryAfter = error.response?.data?.retryAfterSeconds;

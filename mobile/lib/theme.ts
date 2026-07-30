@@ -6,7 +6,7 @@ export const COLORS = {
     onPrimary: "#ffffff",
     background: "#f8fafc",
     card: "#ffffff",
-    border: "#f1f5f9",
+    border: "#e2e8f0",
     outline: "#cbd5e1",
     surfaceSubtle: "#f1f5f9",
     textPrimary: "#1e293b",
@@ -31,6 +31,7 @@ export const COLORS = {
     neutralContainer: "#f1f5f9",
     neutralBorder: "#cbd5e1",
     tint: "#f0fdf4",
+    modalBackdrop: "rgba(15, 23, 42, 0.36)",
   },
   dark: {
     primary: "#10b981", // Vibrant green for dark mode visibility
@@ -62,6 +63,7 @@ export const COLORS = {
     neutralContainer: "#94a3b829",
     neutralBorder: "#94a3b852",
     tint: "#064e3b", // Dark green tint for accents
+    modalBackdrop: "rgba(2, 6, 23, 0.48)",
   },
 };
 

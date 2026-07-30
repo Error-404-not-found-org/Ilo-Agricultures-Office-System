@@ -109,7 +109,7 @@ export function TechnicianRouteSection({
         rightAction={
           <TouchableOpacity
             onPress={() =>
-              router.push("/(technician)/(tabs)/technician.calendar" as any)
+              router.push("/(technician)/technician.calendar" as any)
             }
             activeOpacity={0.7}
             accessibilityRole="button"

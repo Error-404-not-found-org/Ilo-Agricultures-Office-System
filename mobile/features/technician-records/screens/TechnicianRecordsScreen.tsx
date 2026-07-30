@@ -17,6 +17,7 @@ import {
   Filter,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { format, startOfWeek, endOfWeek } from "date-fns";
 import { generatePDF, generateExcel } from "@/lib/reportExporter";
 
@@ -26,6 +27,8 @@ import { FilterChips, SearchBar } from "@/components/shared";
 import { RecordList } from "../components/RecordList";
 import { DateRangeSelector } from "../components/DateRangeSelector";
 import { LedgerDetailModal } from "../components/LedgerDetailModal";
+
+import { safeBack } from "@/utils/navigation";
 
 const PRIMARY = "#00643B";
 
@@ -49,6 +52,7 @@ export default function TechnicianRecordsScreen({
   showBackButton?: boolean;
 }) {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
 
   // Tab state switcher (Browse Records vs. Generate Report)
@@ -123,6 +127,7 @@ export default function TechnicianRecordsScreen({
       <AppPageHeader
         title="Records"
         showBackButton={showBackButton}
+        onBack={() => safeBack("/(technician)/(tabs)/technician.dashboard")}
         variant={showBackButton ? "detail" : "top-level"}
         rightAction={
           activeSegment === "browse" ? (
@@ -333,7 +338,11 @@ export default function TechnicianRecordsScreen({
               isRefetching={isRefetching}
               onRefresh={refetchAll}
               filteredRecords={filteredRecords}
-              openDetails={openDetails}
+              openDetails={(item: any) =>
+                router.push(
+                  `/(technician)/record-details?recordData=${encodeURIComponent(JSON.stringify(item))}` as any
+                )
+              }
               isLoadingMore={isLoadingMore}
               hasMoreRecords={Boolean(hasMoreRecords)}
               onLoadMore={() => loadMoreRecords()}
@@ -346,333 +355,277 @@ export default function TechnicianRecordsScreen({
             contentContainerStyle={{
               paddingHorizontal: 16,
               paddingTop: 16,
-              paddingBottom: 96,
+              paddingBottom: insets.bottom + 96,
             }}
             showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={reportLoading}
-                onRefresh={refetchReportData}
-                tintColor={isDark ? colors.primary : PRIMARY}
-              />
-            }
           >
+            {/* Unified Report Studio Hero Card */}
             <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 18,
-                padding: 16,
-                borderWidth: 1,
-                borderColor: colors.border,
-                marginBottom: 16,
-              }}
+              className="mb-4 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900"
             >
-              <Text
-                style={{
-                  color: colors.textPrimary,
-                  fontFamily: "Outfit_800ExtraBold",
-                  fontSize: 15,
-                }}
-              >
-                Generate an activity report
-              </Text>
-              <Text
-                style={{
-                  color: colors.textSecondary,
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 11,
-                  marginTop: 4,
-                  lineHeight: 16,
-                }}
-              >
-                Pick a period, filter the records, then export a PDF or Excel file.
-              </Text>
-            </View>
+              {/* Header */}
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 12,
+                      backgroundColor: isDark ? "rgba(16,185,129,0.15)" : "#F0FDF4",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Printer size={20} color={isDark ? colors.primary : PRIMARY} />
+                  </View>
+                  <View>
+                    <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 17, color: colors.textPrimary }}>
+                      Report Studio
+                    </Text>
+                    <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 11, color: colors.textSecondary, marginTop: 1 }}>
+                      Select period and export official summaries
+                    </Text>
+                  </View>
+                </View>
+                <View
+                  style={{
+                    backgroundColor: isDark ? "rgba(16,185,129,0.15)" : "#ecfdf5",
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: 10,
+                  }}
+                >
+                  <Text style={{ fontFamily: "Outfit_800ExtraBold", fontSize: 11, color: isDark ? colors.primary : "#059669" }}>
+                    {filteredReportData.length} records
+                  </Text>
+                </View>
+              </View>
 
-            {/* Period Selector Card */}
-            <View
-              style={{
-                backgroundColor: colors.card,
-                borderRadius: 20,
-                padding: 16,
-                shadowColor: "#000",
-                shadowOpacity: 0.03,
-                shadowRadius: 8,
-                elevation: 2,
-                marginBottom: 16,
-                borderWidth: 1,
-                borderColor: colors.border,
-              }}
-            >
-              <View style={{ flexDirection: "row", backgroundColor: colors.background, borderRadius: 16, padding: 4, marginBottom: 16 }}>
+              {/* Period Selector (Monthly / Weekly) */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "#f1f5f9",
+                  borderRadius: 12,
+                  padding: 3,
+                  marginBottom: 14,
+                }}
+              >
                 <TouchableOpacity
                   onPress={() => setActiveReportTab("monthly")}
                   style={{
                     flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 12,
+                    paddingVertical: 9,
+                    borderRadius: 9,
                     alignItems: "center",
-                    backgroundColor: activeReportTab === "monthly" ? (isDark ? colors.primary : "#00643B") : "transparent",
+                    backgroundColor: activeReportTab === "monthly" ? (isDark ? colors.primary : PRIMARY) : "transparent",
                   }}
                 >
-                  <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 12, color: activeReportTab === "monthly" ? "#fff" : colors.textSecondary }}>Monthly</Text>
+                  <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 12, color: activeReportTab === "monthly" ? "#fff" : colors.textSecondary }}>
+                    Monthly Report
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setActiveReportTab("weekly")}
                   style={{
                     flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 12,
+                    paddingVertical: 9,
+                    borderRadius: 9,
                     alignItems: "center",
-                    backgroundColor: activeReportTab === "weekly" ? (isDark ? colors.primary : "#00643B") : "transparent",
+                    backgroundColor: activeReportTab === "weekly" ? (isDark ? colors.primary : PRIMARY) : "transparent",
                   }}
                 >
-                  <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 12, color: activeReportTab === "weekly" ? "#fff" : colors.textSecondary }}>Weekly</Text>
+                  <Text style={{ fontFamily: "Outfit_700Bold", fontSize: 12, color: activeReportTab === "weekly" ? "#fff" : colors.textSecondary }}>
+                    Weekly Report
+                  </Text>
                 </TouchableOpacity>
               </View>
 
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              {/* Date Navigator Bar */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "#f8fafc",
+                  borderRadius: 14,
+                  paddingHorizontal: 12,
+                  paddingVertical: 10,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  marginBottom: 18,
+                }}
+              >
                 <TouchableOpacity
                   onPress={() => changeReportDate(-1)}
-                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.background, alignItems: "center", justifyContent: "center" }}
-                >
-                  <ChevronLeft size={20} color={isDark ? colors.primary : PRIMARY} />
-                </TouchableOpacity>
-                <View style={{ alignItems: "center" }}>
-                  <Text style={{ fontSize: 18, fontFamily: "Outfit_900Black", color: colors.textPrimary }}>
-                    {activeReportTab === "monthly"
-                      ? format(selectedReportDate, "MMMM yyyy")
-                      : `${format(startOfWeek(selectedReportDate), "MMM d")} - ${format(endOfWeek(selectedReportDate), "MMM d")}`}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => changeReportDate(1)}
-                  style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.background, alignItems: "center", justifyContent: "center" }}
-                >
-                  <ChevronRight size={20} color={isDark ? colors.primary : PRIMARY} />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Metric Summary Chips */}
-            <View style={{ flexDirection: "row", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 70,
-                  backgroundColor: isDark ? "rgba(16,185,129,0.15)" : "#ecfdf5",
-                  borderRadius: 16,
-                  padding: 10,
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: isDark ? "rgba(16,185,129,0.1)" : "#d1fae5",
-                  shadowColor: "#000",
-                  shadowOpacity: 0.02,
-                  shadowRadius: 5,
-                  elevation: 1,
-                }}
-              >
-                <Text style={{ fontFamily: "Outfit_900Black", color: isDark ? colors.primary : "#059669", fontSize: 16 }}>
-                  {filteredReportData.filter((r) => r.type === "AI").length}
-                </Text>
-                <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>AI</Text>
-              </View>
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 70,
-                  backgroundColor: isDark ? "rgba(37,99,235,0.15)" : "#eff6ff",
-                  borderRadius: 16,
-                  padding: 10,
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: isDark ? "rgba(37,99,235,0.1)" : "#dbeafe",
-                  shadowColor: "#000",
-                  shadowOpacity: 0.02,
-                  shadowRadius: 5,
-                  elevation: 1,
-                }}
-              >
-                <Text style={{ fontFamily: "Outfit_900Black", color: "#2563EB", fontSize: 16 }}>{filteredReportData.filter((r) => r.type === "PD").length}</Text>
-                <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>PD</Text>
-              </View>
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 70,
-                  backgroundColor: isDark ? "rgba(217,119,6,0.15)" : "#fffbeb",
-                  borderRadius: 16,
-                  padding: 10,
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: isDark ? "rgba(217,119,6,0.1)" : "#fef3c7",
-                  shadowColor: "#000",
-                  shadowOpacity: 0.02,
-                  shadowRadius: 5,
-                  elevation: 1,
-                }}
-              >
-                <Text style={{ fontFamily: "Outfit_900Black", color: "#D97706", fontSize: 16 }}>{filteredReportData.filter((r) => r.type === "CD").length}</Text>
-                <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>CD</Text>
-              </View>
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 70,
-                  backgroundColor: isDark ? "rgba(239,68,68,0.15)" : "#fef2f2",
-                  borderRadius: 16,
-                  padding: 10,
-                  alignItems: "center",
-                  borderWidth: 1,
-                  borderColor: isDark ? "rgba(239,68,68,0.1)" : "#fee2e2",
-                  shadowColor: "#000",
-                  shadowOpacity: 0.02,
-                  shadowRadius: 5,
-                  elevation: 1,
-                }}
-              >
-                <Text style={{ fontFamily: "Outfit_900Black", color: "#ef4444", fontSize: 16 }}>{filteredReportData.filter((r) => r.type === "HL").length}</Text>
-                <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>HL</Text>
-              </View>
-            </View>
-
-            {/* Export Actions */}
-            <View style={{ flexDirection: "row", gap: 12, marginBottom: 24 }}>
-              <TouchableOpacity
-                onPress={() => generatePDF(filteredReportData, format(selectedReportDate, "MMMM"), format(selectedReportDate, "yyyy"))}
-                style={{
-                  flex: 1,
-                  backgroundColor: colors.card,
-                  borderRadius: 20,
-                  padding: 16,
-                  alignItems: "center",
-                  flexDirection: "row",
-                  justifyContent: "center",
-                  gap: 8,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Printer size={18} color={isDark ? colors.primary : PRIMARY} />
-                <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textPrimary, fontSize: 13 }}>PDF Report</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => generateExcel(filteredReportData, `Report_${format(selectedReportDate, "MMM_yyyy")}`)}
-                style={{
-                  flex: 1,
-                  backgroundColor: colors.card,
-                  borderRadius: 20,
-                  padding: 16,
-                  alignItems: "center",
-                  flexDirection: "row",
-                  justifyContent: "center",
-                  gap: 8,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <Download size={18} color={isDark ? colors.primary : "#2563EB"} />
-                <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textPrimary, fontSize: 13 }}>Excel Sheet</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Record List */}
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <Text style={{ fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary, fontSize: 18 }}>Activity Records</Text>
-              <View style={{ backgroundColor: isDark ? "rgba(16, 185, 129, 0.15)" : "#ecfdf5", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 }}>
-                <Text style={{ fontFamily: "Outfit_800ExtraBold", color: isDark ? colors.primary : "#059669", fontSize: 10 }}>{filteredReportData.length} TOTAL</Text>
-              </View>
-            </View>
-
-            {reportLoading && filteredReportData.length === 0 ? (
-              <ActivityIndicator color={isDark ? colors.primary : PRIMARY} style={{ marginTop: 40 }} />
-            ) : filteredReportData.length === 0 ? (
-              <View style={{ backgroundColor: colors.card, borderRadius: 24, padding: 48, alignItems: "center", borderWidth: 1, borderColor: colors.border }}>
-                <MaterialCommunityIcons name="file-search-outline" size={60} color={isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.15)"} />
-                <Text style={{ fontFamily: "Outfit_500Medium", color: isDark ? "rgba(255,255,255,0.35)" : "rgba(0,0,0,0.3)", marginTop: 16, fontSize: 14 }}>No records found</Text>
-              </View>
-            ) : (
-              filteredReportData.map((row, idx) => (
-                <TouchableOpacity
-                  key={idx}
-                  onPress={() => {
-                    setSelectedRow(row);
-                    setDetailModalOpen(true);
-                  }}
                   style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
                     backgroundColor: colors.card,
-                    borderRadius: 24,
-                    padding: 16,
-                    marginBottom: 12,
-                    flexDirection: "row",
                     alignItems: "center",
-                    shadowColor: "#000",
-                    shadowOpacity: 0.02,
-                    shadowRadius: 10,
-                    elevation: 2,
+                    justifyContent: "center",
                     borderWidth: 1,
                     borderColor: colors.border,
                   }}
                 >
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      backgroundColor:
-                        row.type === "AI"
-                          ? isDark
-                            ? "rgba(16,185,129,0.15)"
-                            : "#ecfdf5"
-                          : row.type === "PD"
-                            ? isDark
-                              ? "rgba(37,99,235,0.15)"
-                              : "#eff6ff"
-                            : row.type === "HL"
-                              ? isDark
-                                ? "rgba(239,68,68,0.15)"
-                                : "#fef2f2"
-                              : isDark
-                                ? "rgba(217,119,6,0.15)"
-                                : "#fffbeb",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: "Outfit_900Black",
-                        color:
-                          row.type === "AI" ? (isDark ? colors.primary : "#059669") : row.type === "PD" ? "#2563EB" : row.type === "HL" ? "#ef4444" : "#D97706",
-                        fontSize: 14,
-                      }}
-                    >
-                      {row.type}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 16 }}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ fontSize: 15, fontFamily: "Outfit_700Bold", color: colors.textPrimary }}>{row.animalId}</Text>
-                      <Text style={{ fontSize: 10, fontFamily: "Outfit_800ExtraBold", color: colors.textMuted }}>{row.date}</Text>
-                    </View>
-                    <Text style={{ fontSize: 12, fontFamily: "Outfit_500Medium", color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
-                      {row.farmer} · {row.address}
-                    </Text>
-                    <View style={{ marginTop: 6, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: colors.background, alignSelf: "flex-start", borderRadius: 6 }}>
-                      <Text style={{ fontSize: 9, fontFamily: "Outfit_800ExtraBold", color: colors.textSecondary, textTransform: "uppercase" }}>
-                        {row.type === "AI"
-                          ? `Sire: ${row.sireCode} (${row.breed})`
-                          : row.type === "PD"
-                            ? `Result: ${row.pdResult}`
-                            : row.type === "HL"
-                              ? `Health: ${row.sireBreed}`
-                              : `Calving: ${row.cdNum} (${row.cdEase})`}
-                      </Text>
-                    </View>
-                  </View>
+                  <ChevronLeft size={18} color={colors.textPrimary} />
                 </TouchableOpacity>
-              ))
-            )}
+
+                <View style={{ alignItems: "center" }}>
+                  <Text style={{ fontSize: 16, fontFamily: "Outfit_800ExtraBold", color: colors.textPrimary }}>
+                    {activeReportTab === "monthly"
+                      ? format(selectedReportDate, "MMMM yyyy")
+                      : `${format(startOfWeek(selectedReportDate), "MMM d")} – ${format(endOfWeek(selectedReportDate), "MMM d, yyyy")}`}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => changeReportDate(1)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: colors.card,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <ChevronRight size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Metric Breakdown Grid */}
+              <Text style={{ fontSize: 12, fontFamily: "Outfit_700Bold", color: colors.textSecondary, marginBottom: 10 }}>
+                Period Breakdown
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8, marginBottom: 20 }}>
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "#ecfdf5",
+                    borderRadius: 12,
+                    padding: 10,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: isDark ? "rgba(16,185,129,0.2)" : "#a7f3d0",
+                  }}
+                >
+                  <Text style={{ fontFamily: "Outfit_900Black", color: isDark ? colors.primary : "#047857", fontSize: 17 }}>
+                    {filteredReportData.filter((r) => r.type === "AI").length}
+                  </Text>
+                  <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>
+                    AI Services
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: isDark ? "rgba(37,99,235,0.12)" : "#eff6ff",
+                    borderRadius: 12,
+                    padding: 10,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: isDark ? "rgba(37,99,235,0.2)" : "#bfdbfe",
+                  }}
+                >
+                  <Text style={{ fontFamily: "Outfit_900Black", color: "#1d4ed8", fontSize: 17 }}>
+                    {filteredReportData.filter((r) => r.type === "PD").length}
+                  </Text>
+                  <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>
+                    Pregnancy (PD)
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: isDark ? "rgba(217,119,6,0.12)" : "#fffbeb",
+                    borderRadius: 12,
+                    padding: 10,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: isDark ? "rgba(217,119,6,0.2)" : "#fde68a",
+                  }}
+                >
+                  <Text style={{ fontFamily: "Outfit_900Black", color: "#b45309", fontSize: 17 }}>
+                    {filteredReportData.filter((r) => r.type === "CD").length}
+                  </Text>
+                  <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>
+                    Calving (CD)
+                  </Text>
+                </View>
+
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: isDark ? "rgba(239,68,68,0.12)" : "#fef2f2",
+                    borderRadius: 12,
+                    padding: 10,
+                    alignItems: "center",
+                    borderWidth: 1,
+                    borderColor: isDark ? "rgba(239,68,68,0.2)" : "#fecaca",
+                  }}
+                >
+                  <Text style={{ fontFamily: "Outfit_900Black", color: "#b91c1c", fontSize: 17 }}>
+                    {filteredReportData.filter((r) => r.type === "HL").length}
+                  </Text>
+                  <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary, fontSize: 10, marginTop: 2 }}>
+                    Health (HL)
+                  </Text>
+                </View>
+              </View>
+
+              {/* Export Action Buttons */}
+              <View style={{ gap: 10 }}>
+                <TouchableOpacity
+                  onPress={() => generatePDF(filteredReportData, format(selectedReportDate, "MMMM"), format(selectedReportDate, "yyyy"))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Download PDF report"
+                  style={{
+                    backgroundColor: isDark ? colors.primary : PRIMARY,
+                    borderRadius: 14,
+                    paddingVertical: 14,
+                    paddingHorizontal: 16,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  <Printer size={18} color="#ffffff" />
+                  <Text style={{ fontFamily: "Outfit_700Bold", color: "#ffffff", fontSize: 14 }}>
+                    Download PDF Summary
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => generateExcel(filteredReportData, `Report_${format(selectedReportDate, "MMM_yyyy")}`)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Export Excel sheet"
+                  style={{
+                    backgroundColor: isDark ? "rgba(37,99,235,0.15)" : "#eff6ff",
+                    borderRadius: 14,
+                    paddingVertical: 14,
+                    paddingHorizontal: 16,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    borderWidth: 1,
+                    borderColor: isDark ? "rgba(37,99,235,0.3)" : "#bfdbfe",
+                  }}
+                >
+                  <Download size={18} color={isDark ? "#60a5fa" : "#1d4ed8"} />
+                  <Text style={{ fontFamily: "Outfit_700Bold", color: isDark ? "#60a5fa" : "#1d4ed8", fontSize: 14 }}>
+                    Export Full Excel Sheet
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </ScrollView>
         )}
       </View>

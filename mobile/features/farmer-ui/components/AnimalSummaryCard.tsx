@@ -68,7 +68,12 @@ export function AnimalSummaryCard({
             >
               {name}
             </Text>
-            <StatusBadge label={status} domain="reproduction" compact />
+            <StatusBadge
+              label={status}
+              domain="reproduction"
+              compact
+              size={10}
+            />
           </View>
           <Text
             numberOfLines={1}
@@ -150,7 +155,7 @@ export function AnimalSummaryCard({
                 "Livestock"}
             </Text>
           </View>
-          <StatusBadge label={status} domain="reproduction" />
+          <StatusBadge label={status} domain="reproduction" compact size={9} />
         </View>
         {nextAction ? (
           <View className="flex-row items-center mt-2">
