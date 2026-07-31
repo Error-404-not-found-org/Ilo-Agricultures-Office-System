@@ -27,7 +27,6 @@ const PAGES = [
   ['technician', 'BreedingLedger.jsx',    'Breeding Ledger'],
   ['technician', 'FarmerProfile.jsx',     'Farmer Profile'],
   ['technician', 'FarmersDirectory.jsx',  'Farmer Registry'],
-  ['technician', 'FieldNotes.jsx',        'Field Notes'],
   ['technician', 'Health.jsx',            'Health Ledger'],
   ['technician', 'HealthMap.jsx',         'GIS Field Hub'],
   ['technician', 'Inseminations.jsx',     'Inseminations Log'],
@@ -44,7 +43,7 @@ const stub = (title, folder, file) => {
   const fnName = file.replace('.jsx', '');
   return `const ${fnName} = () => (
   <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50">
-    <header className="bg-white border-b border-slate-200 px-8 h-16 flex items-center flex-shrink-0">
+    <header className="bg-white border-b border-slate-200 px-8 h-16 flex items-center shrink-0">
       <div>
         <h1 className="text-lg font-black text-slate-900 leading-none">${title}</h1>
         <p className="text-[11px] text-slate-400 mt-0.5 font-medium">This page is ready to be designed.</p>

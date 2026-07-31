@@ -81,17 +81,23 @@ const outcomeClass = (value) => {
 
 const statusClass = (value) => {
   const normalized = String(value || "pending").toLowerCase();
-  if (["done", "completed", "resolved"].includes(normalized)) return "badge-success";
-  if (["cancelled", "canceled", "declined", "rejected"].includes(normalized)) return "badge-ghost";
-  if (["scheduled", "approved"].includes(normalized)) return "badge-info";
+  if (["done", "completed", "approved", "resolved", "yes", "inseminated"].includes(normalized)) return "badge-success";
+  if (["no", "failed", "rejected", "declined"].includes(normalized)) return "badge-error";
+  if (["cancelled", "canceled"].includes(normalized)) return "badge-ghost";
   return "badge-warning";
 };
 
-const friendlyStatus = (value) =>
-  String(value || "Pending")
+const friendlyStatus = (value) => {
+  const normalized = String(value || "pending").toLowerCase();
+  if (["done", "completed", "approved", "resolved", "yes", "inseminated"].includes(normalized)) return "Yes";
+  if (["no", "failed", "rejected", "declined"].includes(normalized)) return "No";
+  if (["cancelled", "canceled"].includes(normalized)) return "Cancelled";
+  if (["pending", "scheduled"].includes(normalized)) return "Pending";
+  return String(value || "Pending")
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+};
 
 const formatSire = (breed, code) => {
   if (breed === "Not recorded" && code === "Not recorded") return "Not recorded";
@@ -136,7 +142,7 @@ function RecordCard({ record, onOpen }) {
             <dd className="font-semibold">{record.date}</dd>
           </div>
           <div>
-            <dt className="text-xs text-base-content/55">Request status</dt>
+            <dt className="text-xs text-base-content/55">Inseminated</dt>
             <dd><span className={`badge badge-xs badge-soft ${statusClass(record.status)}`}>{friendlyStatus(record.status)}</span></dd>
           </div>
           <div>
@@ -241,7 +247,7 @@ export default function InseminationLog() {
   };
 
   const handleExportCSV = () => {
-    const headers = ["Record ID", "AI Date", "Animal Tag", "Farmer", "Sire Breed", "Sire Code", "Estrus", "Attempt", "Outcome", "Status"];
+    const headers = ["Record ID", "AI Date", "Animal Tag", "Farmer", "Sire Breed", "Sire Code", "Estrus", "Attempt", "Outcome", "Inseminated"];
     const rows = records.map((record) => [
       record.id,
       record.date,
@@ -363,7 +369,7 @@ export default function InseminationLog() {
                         <th>Sire</th>
                         <th>Attempt</th>
                         <th>Outcome</th>
-                        <th>Status</th>
+                        <th>Inseminated</th>
                         <th className="text-right">Actions</th>
                       </tr>
                     </thead>
@@ -408,7 +414,7 @@ export default function InseminationLog() {
                         <th className="p-3.5">Visit</th>
                         <th className="p-3.5">Schedule</th>
                         <th className="p-3.5">Outcome</th>
-                        <th className="p-3.5">Status</th>
+                        <th className="p-3.5">Inseminated</th>
                         <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
                       </tr>
                     </thead>
@@ -550,52 +556,119 @@ export default function InseminationLog() {
         isOpen={Boolean(selectedLog)}
         onClose={() => setSelectedLog(null)}
         title={selectedLog ? `AI attempt #${selectedLog.attempt} · ${selectedLog.tag}` : "AI service record"}
-        size="lg"
-        actions={<button type="button" className="btn btn-sm" onClick={() => setSelectedLog(null)}>Close record</button>}
+        size="4xl"
+        actions={<button type="button" className="btn btn-md btn-primary text-white font-bold rounded-2xl px-6" onClick={() => setSelectedLog(null)}>Close record</button>}
       >
         {selectedLog && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <span className={`badge badge-soft ${outcomeClass(selectedLog.outcome)}`}>{selectedLog.outcome}</span>
-              <span className={`badge badge-soft ${statusClass(selectedLog.status)}`}>{friendlyStatus(selectedLog.status)}</span>
-              <span className="badge badge-outline">Verification: {friendlyStatus(selectedLog.verificationStatus)}</span>
+          <div className="space-y-5 p-1 sm:p-2">
+            <div className="flex flex-wrap gap-2.5">
+              <span className={`badge badge-lg font-bold ${outcomeClass(selectedLog.outcome)}`}>Outcome: {selectedLog.outcome}</span>
+              <span className={`badge badge-lg font-bold ${statusClass(selectedLog.status)}`}>Inseminated: {friendlyStatus(selectedLog.status)}</span>
+              <span className="badge badge-lg badge-outline font-semibold">Verification: {friendlyStatus(selectedLog.verificationStatus)}</span>
             </div>
 
-            <dl className="grid gap-3 rounded-box border border-base-300 bg-base-200 p-4 sm:grid-cols-2">
-              {[
-                ["AI performed", selectedLog.date],
-                ["Farmer", selectedLog.farmer],
-                ["Farmer phone", selectedLog.farmerPhone],
-                ["Animal", selectedLog.tag],
-                ["Sire genetics", formatSire(selectedLog.sireBreed, selectedLog.sireCode)],
-                ["Estrus method", selectedLog.estrus],
-                ["Attending technician", selectedLog.technician],
-                ["Record ID", selectedLog.id],
-              ].map(([label, value]) => (
-                <div key={label} className="min-w-0">
-                  <dt className="text-xs text-base-content/55">{label}</dt>
-                  <dd className="wrap-break-word font-semibold text-base-content">{value}</dd>
+            {/* Expanded Single Container Box with 2 Columns */}
+            <div className="rounded-3xl border border-base-300 bg-base-200/50 p-6 sm:p-8 space-y-5 shadow-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Column 1: Animal & Farmer Details */}
+                <div className="space-y-4.5 pr-0 md:pr-6 md:border-r md:border-base-300">
+                  <div className="flex items-center gap-3 pb-3 border-b border-base-300/70">
+                    <UserAvatar name={selectedLog.farmer} imageUrl={selectedLog.farmerImageUrl} size={36} sizeClass="h-9 w-9" />
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-wider text-base-content/70">
+                        Animal & Farmer Data
+                      </h4>
+                      <p className="text-xs text-base-content/50 font-medium">Livestock unit & owner details</p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Animal Unit Tag</dt>
+                    <dd className="text-base sm:text-lg font-black text-primary mt-1">{selectedLog.tag}</dd>
+                  </div>
+
+                  <div>
+                    <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Livestock Owner</dt>
+                    <dd className="text-base font-bold text-base-content mt-1">{selectedLog.farmer}</dd>
+                  </div>
+
+                  <div>
+                    <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Farmer Phone</dt>
+                    <dd className="text-sm sm:text-base font-semibold text-base-content/85 mt-1">{selectedLog.farmerPhone}</dd>
+                  </div>
                 </div>
-              ))}
-            </dl>
+
+                {/* Column 2: Other Details (Service & Technical) */}
+                <div className="space-y-4.5 pt-5 md:pt-0 border-t md:border-t-0 border-base-300">
+                  <div className="flex items-center gap-3 pb-3 border-b border-base-300/70">
+                    <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                      <Syringe size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-wider text-base-content/70">
+                        Service & Technical Details
+                      </h4>
+                      <p className="text-xs text-base-content/50 font-medium">Genetics, date & technician info</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">AI Performed Date</dt>
+                      <dd className="text-sm font-bold text-base-content mt-1">{selectedLog.date}</dd>
+                    </div>
+
+                    <div>
+                      <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Estrus Method</dt>
+                      <dd className="text-sm font-bold text-base-content mt-1">{selectedLog.estrus}</dd>
+                    </div>
+                  </div>
+
+                  <div>
+                    <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Sire Genetics</dt>
+                    <dd className="text-sm sm:text-base font-bold text-base-content mt-1">{formatSire(selectedLog.sireBreed, selectedLog.sireCode)}</dd>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Attending Technician</dt>
+                      <dd className="text-sm font-semibold text-base-content/85 mt-1">{selectedLog.technician}</dd>
+                    </div>
+
+                    <div>
+                      <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Record ID</dt>
+                      <dd className="text-xs font-mono font-semibold text-base-content/65 truncate mt-1" title={selectedLog.id}>{selectedLog.id}</dd>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             {selectedLog.previousAttempt && (
-              <section className="rounded-box border border-info/25 bg-info/10 p-4">
-                <h4 className="font-bold text-base-content">Linked previous attempt</h4>
-                <p className="mt-1 text-sm text-base-content/70">
+              <section className="rounded-2xl border border-info/25 bg-info/10 p-4.5">
+                <h4 className="font-bold text-base-content text-sm">Linked previous attempt</h4>
+                <p className="mt-1 text-xs sm:text-sm text-base-content/75 leading-relaxed">
                   Attempt #{selectedLog.previousAttempt.attemptNumber || selectedLog.attempt - 1} was performed on {formatDate(selectedLog.previousAttempt.inseminationDate)}. Its verified outcome is {selectedLog.previousAttempt.outcome || "not recorded"}.
                 </p>
               </section>
             )}
 
-            <section className="space-y-2">
-              <h4 className="font-bold text-base-content">Field notes</h4>
-              <p className="rounded-box bg-base-200 p-3 text-sm">Farmer: {selectedLog.comment || "No farmer note recorded."}</p>
-              <p className="rounded-box bg-base-200 p-3 text-sm">Technician: {selectedLog.technicianNote || "No technician observation recorded."}</p>
+            <section className="space-y-2.5">
+              <h4 className="font-bold text-xs uppercase tracking-wider text-base-content/60">Field Notes</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-2xl bg-base-200 p-4 leading-relaxed border border-base-300/50">
+                  <span className="font-extrabold block text-xs uppercase tracking-wider text-base-content/50 mb-1">Farmer Note</span>
+                  <p className="text-xs sm:text-sm text-base-content/80 font-medium">{selectedLog.comment || "No farmer note recorded."}</p>
+                </div>
+                <div className="rounded-2xl bg-base-200 p-4 leading-relaxed border border-base-300/50">
+                  <span className="font-extrabold block text-xs uppercase tracking-wider text-base-content/50 mb-1">Technician Observation</span>
+                  <p className="text-xs sm:text-sm text-base-content/80 font-medium">{selectedLog.technicianNote || "No technician observation recorded."}</p>
+                </div>
+              </div>
             </section>
 
-            <div role="note" className="alert">
-              <Info size={17} />
+            <div role="note" className="alert text-xs sm:text-sm rounded-2xl p-4">
+              <Info size={18} className="text-primary shrink-0" />
               <span>AI history is preserved so later pregnancy checks and re-insemination attempts remain traceable.</span>
             </div>
           </div>

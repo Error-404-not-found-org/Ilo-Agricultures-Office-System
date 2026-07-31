@@ -52,10 +52,12 @@ const TechMyProfile = lazy(() => import("./pages/technician/Profile"));
 const TechnicianAnalytics = lazy(() => import("./pages/technician/Analytics"));
 const TechnicianReports = lazy(() => import("./pages/technician/Reports"));
 const TechnicianSchedule = lazy(() => import("./pages/technician/Schedule"));
+const TechnicianRequestDetails = lazy(
+  () => import("./pages/technician/RequestDetails"),
+);
 const TechnicianRequests = lazy(() => import("./pages/technician/Requests"));
 const TechnicianWorkQueue = lazy(() => import("./pages/technician/WorkQueue"));
 const BreedingLedger = lazy(() => import("./pages/technician/BreedingLedger"));
-const FieldNotes = lazy(() => import("./pages/technician/FieldNotes"));
 const TechSettings = lazy(() => import("./pages/technician/Settings"));
 const Moowie = lazy(() => import("./pages/technician/Moowie"));
 const Newborns = lazy(() => import("./pages/technician/Newborns"));
@@ -226,9 +228,12 @@ function App() {
               <Route path="analytics" element={<TechnicianAnalytics />} />
               <Route path="reports" element={<TechnicianReports />} />
               <Route path="schedule" element={<TechnicianSchedule />} />
+              <Route
+                path="schedule/details"
+                element={<TechnicianRequestDetails />}
+              />
               <Route path="requests" element={<TechnicianRequests />} />
               <Route path="work-queue" element={<TechnicianWorkQueue />} />
-              <Route path="field-notes" element={<FieldNotes />} />
               <Route path="moowie" element={<Moowie />} />
               <Route path="settings" element={<TechSettings />} />
             </Route>

@@ -1827,7 +1827,7 @@ export const verifyPhoneOtp = async (req, res) => {
 export const updateFarmerProfileByTechnician = async (req, res) => {
   try {
     const { id } = req.params;
-    const { address, phoneNumber, farmLocation } = req.body;
+    const { name, email, phoneNumber, rsbsaNumber, address, farmLocation } = req.body;
 
     const user = await User.findById(id);
     if (!user || user.deletedAt) {
@@ -1840,14 +1840,34 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
         .json({ message: "Technicians can only update farmer profiles." });
     }
 
-    const allowedKeys = ["address", "phoneNumber", "farmLocation"];
+    const allowedKeys = [
+      "name",
+      "email",
+      "phoneNumber",
+      "rsbsaNumber",
+      "address",
+      "farmLocation",
+    ];
     const extraKeys = Object.keys(req.body).filter(
       (k) => !allowedKeys.includes(k),
     );
     if (extraKeys.length > 0) {
       return res.status(400).json({
-        message: `Forbidden updates detected: ${extraKeys.join(", ")}. Only address and phoneNumber can be updated by technicians.`,
+        message: `Forbidden updates detected: ${extraKeys.join(", ")}. Technicians can only update farmer personal information, contact address, and farm location.`,
       });
+    }
+
+    if (name !== undefined && typeof name === "string") {
+      const trimmedName = name.trim();
+      if (trimmedName) user.name = trimmedName;
+    }
+
+    if (email !== undefined && typeof email === "string") {
+      user.email = email.trim().toLowerCase();
+    }
+
+    if (rsbsaNumber !== undefined && typeof rsbsaNumber === "string") {
+      user.rsbsaNumber = rsbsaNumber.trim();
     }
 
     if (phoneNumber) {
@@ -1863,6 +1883,20 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
           "Contact address location",
         );
       }
+      const targetBarangay =
+        address.barangay !== undefined
+          ? address.barangay
+          : user.address?.barangay;
+      if (
+        !targetBarangay ||
+        !targetBarangay.trim() ||
+        ["na", "n/a", "notset", "not set"].includes(targetBarangay.trim().toLowerCase())
+      ) {
+        return res.status(400).json({
+          message:
+            "Barangay is required to update contact address. Please select or enter your barangay.",
+        });
+      }
       user.address = {
         ...(user.address?.toObject?.() || user.address || {}),
         street:
@@ -1872,6 +1906,10 @@ export const updateFarmerProfileByTechnician = async (req, res) => {
             ? address.barangay
             : user.address?.barangay,
         city: address.city !== undefined ? address.city : user.address?.city,
+        district:
+          address.district !== undefined
+            ? address.district
+            : user.address?.district,
         province:
           address.province !== undefined
             ? address.province

@@ -543,143 +543,169 @@ export default function HealthLog() {
           </div>
 
           {/* Pagination */}
-          <div className="pt-4 border-t border-base-300 flex items-center justify-between mt-3">
-            <span className="text-[11px] font-medium text-base-content/40">
-              Showing {totalItems === 0 ? 0 : startIndex + 1}–
-              {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
-              health dispatches
-            </span>
-            <div className="flex items-center gap-1" aria-label="Health records pagination">
-              <button
-                type="button"
-                aria-label="Previous health records page"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1 || isLoading}
-                className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
-              >
-                <ChevronLeft size={12} />
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                (pageNumber) => (
-                  <button
-                    type="button"
-                    aria-label={`Go to health records page ${pageNumber}`}
-                    aria-current={currentPage === pageNumber ? "page" : undefined}
-                    key={pageNumber}
-                    disabled={isLoading}
-                    onClick={() => setCurrentPage(pageNumber)}
-                    className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
-                      currentPage === pageNumber
-                        ? "bg-primary text-white shadow-xs"
-                        : "border border-base-300 text-base-content/60 hover:bg-base-200"
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                ),
-              )}
-              <button
-                type="button"
-                aria-label="Next health records page"
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(totalPages, p + 1))
-                }
-                disabled={currentPage === totalPages || isLoading}
-                className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
-              >
-                <ChevronRight size={12} />
-              </button>
+          {!isLoading && totalPages > 1 && (
+            <div className="flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between mt-3">
+              <span className="text-sm text-base-content/55">
+                Showing {totalItems === 0 ? 0 : startIndex + 1}–
+                {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
+                health dispatches
+              </span>
+              <div className="join self-end sm:self-auto" aria-label="Health records pagination">
+                <button
+                  type="button"
+                  aria-label="Previous health records page"
+                  disabled={currentPage === 1 || isLoading}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="btn btn-sm join-item"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm join-item pointer-events-none"
+                  aria-current="page"
+                >
+                  Page {currentPage} of {totalPages}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next health records page"
+                  disabled={currentPage === totalPages || isLoading}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="btn btn-sm join-item"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </main>
 
       {/* Case Assessment Inspection Modal */}
       {selectedCase && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 sm:p-6"
           onClick={() => setSelectedCase(null)}
         >
           <div
-            className="card w-full max-w-md bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
+            className="card w-full max-w-2xl bg-base-100 border border-base-300 p-6 sm:p-7 rounded-3xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-base-300 pb-3">
-              <h3 className="text-xs font-black uppercase text-base-content/40">
-                Clinical Incident profile
-              </h3>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-base-300 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-primary/10 text-primary">
+                  <Stethoscope size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-base-content leading-tight">
+                    Clinical Incident Profile
+                  </h3>
+                  <p className="text-xs font-semibold text-base-content/60 mt-0.5">
+                    Case #{selectedCase.id} • {selectedCase.date}
+                  </p>
+                </div>
+              </div>
               <button
+                type="button"
                 onClick={() => setSelectedCase(null)}
-                className="btn btn-xs btn-ghost btn-circle text-base-content/40 hover:text-rose-500"
+                className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-rose-500"
               >
-                <X size={16} />
+                <X size={18} />
               </button>
             </div>
-            
-            <div className="divide-y divide-base-300 text-xs">
-              {[
-                { k: "Incident Case #", v: selectedCase.id },
-                { k: "Dispatch Date", v: selectedCase.date },
-                {
-                  k: "Animal Unit Tag",
-                  v: selectedCase.tag,
-                  s: "text-primary font-black",
-                },
-                { k: "Livestock Owner", v: selectedCase.farmer },
-                {
-                  k: "Symptom Presentation",
-                  v: selectedCase.symptoms,
-                  s: "text-base-content/70 font-medium",
-                },
-                {
-                  k: "Primary Medical Verdict",
-                  v: selectedCase.diagnosis,
-                  s: "text-amber-700 dark:text-amber-400 font-bold",
-                },
-                {
-                  k: "Treatment Regimen Plan",
-                  v: selectedCase.treatment,
-                  s: "text-primary font-bold",
-                },
-                {
-                  k: "Urgency Classification",
-                  v: selectedCase.urgency,
-                  s: "font-extrabold uppercase",
-                },
-                {
-                  k: "Current Incident Status",
-                  v: selectedCase.status,
-                  s: "font-extrabold uppercase",
-                },
-                {
-                  k: "Technician Field Remarks",
-                  v: selectedCase.technicianNote || "None",
-                  s: "italic text-base-content/60",
-                },
-              ].map((row, index) => (
-                <div key={index} className="flex justify-between py-2.5 gap-4">
-                  <span className="text-base-content/40 font-semibold shrink-0">
-                    {row.k}
-                  </span>
-                  <span
-                    className={`text-right text-base-content ${row.s || ""}`}
-                  >
-                    {row.v}
-                  </span>
-                </div>
-              ))}
+
+            {/* Quick Metadata Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-base-200/50 p-4 rounded-2xl border border-base-200">
+              <div>
+                <span className="block text-[11px] font-black uppercase tracking-wider text-base-content/50">
+                  Animal Unit Tag
+                </span>
+                <span className="text-sm font-black text-primary truncate block mt-1">
+                  {selectedCase.tag}
+                </span>
+              </div>
+              <div>
+                <span className="block text-[11px] font-black uppercase tracking-wider text-base-content/50">
+                  Livestock Owner
+                </span>
+                <span className="text-sm font-bold text-base-content truncate block mt-1">
+                  {selectedCase.farmer}
+                </span>
+              </div>
+              <div>
+                <span className="block text-[11px] font-black uppercase tracking-wider text-base-content/50">
+                  Urgency Level
+                </span>
+                <span className="text-sm font-extrabold text-base-content uppercase truncate block mt-1">
+                  {selectedCase.urgency}
+                </span>
+              </div>
+              <div>
+                <span className="block text-[11px] font-black uppercase tracking-wider text-base-content/50">
+                  Incident Status
+                </span>
+                <span className="text-sm font-extrabold text-base-content uppercase truncate block mt-1">
+                  {selectedCase.status}
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 bg-base-200 p-3 rounded-xl border border-base-300">
-              <Info size={14} className="text-primary shrink-0" />
-              <p className="text-[10px] text-base-content/40 font-bold uppercase tracking-wider">
+            {/* Clinical Information Sections */}
+            <div className="space-y-3">
+              <div className="p-4 rounded-2xl bg-base-100 border border-base-200 space-y-1.5">
+                <span className="text-[11px] font-black uppercase tracking-wider text-base-content/50">
+                  Symptom Presentation
+                </span>
+                <p className="text-sm text-base-content/85 font-medium leading-relaxed">
+                  {selectedCase.symptoms}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/20 space-y-1.5">
+                <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                  Primary Medical Verdict
+                </span>
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-300 leading-relaxed">
+                  {selectedCase.diagnosis}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-primary/5 border border-primary/20 space-y-1.5">
+                <span className="text-[11px] font-black uppercase tracking-wider text-primary">
+                  Treatment Regimen Plan
+                </span>
+                <p className="text-sm font-bold text-primary leading-relaxed">
+                  {selectedCase.treatment}
+                </p>
+              </div>
+
+              {selectedCase.technicianNote && (
+                <div className="p-4 rounded-2xl bg-base-200/50 border border-base-200 space-y-1.5">
+                  <span className="text-[11px] font-black uppercase tracking-wider text-base-content/50">
+                    Technician Field Remarks
+                  </span>
+                  <p className="text-sm italic text-base-content/75 leading-relaxed">
+                    {selectedCase.technicianNote}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Compliance Footer Banner */}
+            <div className="flex items-center gap-2.5 bg-base-200/60 p-3 rounded-2xl border border-base-200">
+              <Info size={16} className="text-primary shrink-0" />
+              <p className="text-xs text-base-content/60 font-bold uppercase tracking-wider">
                 Clinical records managed under safety guidelines.
               </p>
             </div>
 
+            {/* Actions */}
             <button
+              type="button"
               onClick={() => setSelectedCase(null)}
-              className="btn btn-sm w-full btn-primary border-none text-white rounded-xl text-xs font-bold mt-2"
+              className="btn btn-md w-full btn-primary border-none text-white rounded-2xl text-sm font-bold shadow-md cursor-pointer"
             >
               Dismiss Diagnosis Panel
             </button>

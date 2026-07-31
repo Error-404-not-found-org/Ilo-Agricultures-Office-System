@@ -13,7 +13,6 @@ import {
   Tractor,
   CalendarDays,
   MapPin,
-  Image,
   FileText,
   BarChart3,
   Settings as SettingsIcon,
@@ -205,7 +204,6 @@ export default function Sidebar() {
       paths: [
         "/technician/schedule",
         "/technician/health-map",
-        "/technician/field-notes",
       ],
       items: [
         {
@@ -217,11 +215,6 @@ export default function Sidebar() {
           path: "/technician/health-map",
           icon: <MapPin size={14} />,
           label: "Map & Locations",
-        },
-        {
-          path: "/technician/field-notes",
-          icon: <Image size={14} />,
-          label: "Notes & Photos",
         },
       ],
     },
@@ -452,7 +445,7 @@ export default function Sidebar() {
                               <span className="truncate">{sub.label}</span>
                             </div>
                             {sub.badge && (
-                              <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse shrink-0">
+                              <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-4.5 text-center animate-pulse shrink-0">
                                 {sub.badge}
                               </span>
                             )}
@@ -482,7 +475,7 @@ export default function Sidebar() {
                 </span>
                 <span className="flex-1 text-left">{item.label}</span>
                 {item.badge && (
-                  <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse">
+                  <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-4.5 text-center animate-pulse">
                     {item.badge}
                   </span>
                 )}

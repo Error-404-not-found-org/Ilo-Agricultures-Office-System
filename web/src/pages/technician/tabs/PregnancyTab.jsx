@@ -56,7 +56,7 @@ export default function PregnancyTab({
 
   return (
     <div className="overflow-x-auto">
-      <table className="table w-full min-w-[760px] border-collapse text-xs" aria-label="Pregnancy ledger records">
+      <table className="table w-full min-w-190 border-collapse text-xs" aria-label="Pregnancy ledger records">
         <thead>
           <tr className="bg-base-200 border-b border-base-300 text-base-content/40 text-[11px] font-bold uppercase tracking-wider select-none">
             {columns.map((col) => (
@@ -65,7 +65,7 @@ export default function PregnancyTab({
                 aria-sort={sortConfig.key === col.key ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
                 className="p-0"
               >
-                <button type="button" onClick={() => onSort(col.key)} className="flex w-full items-center gap-1 p-3.5 pl-5 text-left hover:text-base-content focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary">
+                <button type="button" onClick={() => onSort(col.key)} className="flex w-full items-center gap-1 p-3.5 pl-5 text-left hover:text-base-content focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary">
                   <span>{col.label}</span>
                   {sortConfig.key === col.key && (
                     <span className="text-[10px] text-primary">
@@ -75,7 +75,7 @@ export default function PregnancyTab({
                 </button>
               </th>
             ))}
-            <th className="p-3.5 pr-5 text-right w-[100px]">Actions</th>
+            <th className="p-3.5 pr-5 text-right w-25">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-base-300">

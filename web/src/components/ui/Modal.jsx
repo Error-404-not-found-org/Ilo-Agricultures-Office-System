@@ -19,6 +19,7 @@ export default function Modal({
   subtitle = "",
   icon = null,
   bodyClassName = "",
+  closeOnBackdropClick = false,
 }) {
   const dialogRef = useRef(null);
   const titleId = `modal-title-${useId().replaceAll(":", "")}`;
@@ -50,6 +51,10 @@ export default function Modal({
     lg: 'max-w-lg',
     xl: 'max-w-2xl',
     '4xl': 'max-w-4xl',
+    '5xl': 'max-w-5xl',
+    '6xl': 'max-w-6xl',
+    '7xl': 'max-w-7xl',
+    full: 'max-w-[92vw]',
   }[size] || 'max-w-md';
 
   // Type styling details
@@ -93,7 +98,6 @@ export default function Modal({
       className="modal modal-bottom sm:modal-middle"
       onCancel={(event) => {
         event.preventDefault();
-        onClose();
       }}
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
@@ -153,11 +157,15 @@ export default function Modal({
           )}
         </div>
       </div>
-      <form method="dialog" className="modal-backdrop bg-neutral/60">
-        <button type="submit" aria-label="Close dialog">
-          close
-        </button>
-      </form>
+      {closeOnBackdropClick ? (
+        <form method="dialog" className="modal-backdrop bg-neutral/60">
+          <button type="submit" aria-label="Close dialog">
+            close
+          </button>
+        </form>
+      ) : (
+        <div className="modal-backdrop bg-neutral/60 cursor-default" />
+      )}
     </dialog>
   );
 }

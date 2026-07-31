@@ -17,6 +17,7 @@ import {
   SlidersHorizontal,
   UserPlus,
   Users,
+  MoreVertical,
   X,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
@@ -299,7 +300,18 @@ export default function ClientRegistry() {
               <>
                 <div className="grid gap-3 lg:hidden">{[0, 1, 2].map((item) => <div key={item} className="skeleton h-60 w-full" />)}</div>
                 <div className="hidden overflow-hidden rounded-box border border-base-300 lg:block" aria-label="Loading farmer records">
-                  <table className="table table-sm"><thead><tr><th>Farmer</th><th>Contact</th><th>Location</th><th>Animals</th><th>App access</th><th>Verification</th><th className="text-right">Actions</th></tr></thead>
+                  <table className="table table-pin-rows w-full text-left min-w-[1000px]">
+                    <thead>
+                      <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="p-3.5 pl-6">Farmer</th>
+                        <th className="p-3.5">Contact</th>
+                        <th className="p-3.5">Location</th>
+                        <th className="p-3.5">Animals</th>
+                        <th className="p-3.5">App access</th>
+                        <th className="p-3.5">Verification</th>
+                        <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
+                      </tr>
+                    </thead>
                     <tbody>{[0, 1, 2, 3, 4].map((row) => <tr key={row}><td colSpan={7}><div className="grid grid-cols-[1.4fr_1fr_1.2fr_.5fr_1fr_1fr_.8fr] gap-5 py-1"><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /></div></td></tr>)}</tbody>
                   </table>
                 </div>
@@ -310,38 +322,117 @@ export default function ClientRegistry() {
               <>
                 <div className="grid gap-3 lg:hidden">{farmers.map((farmer) => <FarmerCard key={farmer.id} farmer={farmer} onOpen={openFarmer} onEdit={editFarmer} />)}</div>
                 <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
-                  <table className="table table-sm">
-                    <thead><tr><th>Farmer</th><th>Contact</th><th>Location</th><th>Animals</th><th>App access</th><th>Verification</th><th className="text-right">Actions</th></tr></thead>
-                    <tbody>{farmers.map((farmer) => {
-                      const appStatus = APP_STATUS[farmer.appStatus] || APP_STATUS.profile_only;
-                      return <tr key={farmer.id} className="hover:bg-base-200/50 transition-colors text-xs font-semibold text-base-content/85">
-                        <td className="p-3.5 pl-6">
-                          <div className="flex items-center gap-3">
-                            <UserAvatar
-                              name={farmer.name}
-                              imageUrl={farmer.imageUrl}
-                            />
-                            <div>
-                              <TableNameLink
-                                to={`/technician/farmers/${farmer.id}`}
-                                ariaLabel={`Open profile for ${farmer.name}`}
-                              >
-                                {farmer.name}
-                              </TableNameLink>
-                              <div className="text-[10px] text-base-content/50 block mt-0.5 font-bold">
-                                Registered {farmer.registered}
+                  <table className="table table-pin-rows w-full text-left min-w-[1000px]">
+                    <thead>
+                      <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="p-3.5 pl-6">Farmer</th>
+                        <th className="p-3.5">Contact</th>
+                        <th className="p-3.5">Location</th>
+                        <th className="p-3.5">Animals</th>
+                        <th className="p-3.5">App access</th>
+                        <th className="p-3.5">Verification</th>
+                        <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-base-300">
+                      {farmers.map((farmer) => {
+                        const appStatus = APP_STATUS[farmer.appStatus] || APP_STATUS.profile_only;
+                        return (
+                          <tr key={farmer.id} className="hover:bg-base-200/50 transition-colors text-xs font-semibold text-base-content/85">
+                            {/* 1. FARMER */}
+                            <td className="p-3.5 pl-6">
+                              <div className="flex items-center gap-3">
+                                <UserAvatar
+                                  name={farmer.name}
+                                  imageUrl={farmer.imageUrl}
+                                  size={36}
+                                  sizeClass="h-9 w-9"
+                                />
+                                <div>
+                                  <TableNameLink
+                                    to={`/technician/farmers/${farmer.id}`}
+                                    ariaLabel={`Open profile for ${farmer.name}`}
+                                  >
+                                    {farmer.name}
+                                  </TableNameLink>
+                                  <span className="text-[10px] text-base-content/50 block mt-0.5 font-bold">
+                                    Registered {farmer.registered}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td>{farmer.contact}</td>
-                        <td>{farmer.location}</td>
-                        <td><span className="font-extrabold text-xs text-primary">{farmer.animals}</span></td>
-                        <td><span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${appStatus.className}`}>{appStatus.label}</span></td>
-                        <td><span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${farmer.verified ? "badge-success" : "badge-warning"}`}>{farmer.verified ? "Verified" : "Needs verification"}</span></td>
-                        <td><div className="flex justify-end gap-1"><button type="button" className="btn btn-ghost btn-sm" onClick={() => openFarmer(farmer)}><Beef size={14} /> Animals</button><button type="button" className="btn btn-ghost btn-sm btn-square" aria-label={`Edit ${farmer.name}`} onClick={() => editFarmer(farmer)}><Edit size={14} /></button>{farmer.contact !== "Phone not provided" && <a className="btn btn-ghost btn-sm btn-square" aria-label={`Call ${farmer.name}`} href={`tel:${farmer.contact}`}><Phone size={14} /></a>}</div></td>
-                      </tr>;
-                    })}</tbody>
+                            </td>
+
+                            {/* 2. CONTACT */}
+                            <td className="p-3.5 font-semibold text-base-content/75">
+                              {farmer.contact}
+                            </td>
+
+                            {/* 3. LOCATION */}
+                            <td className="p-3.5 font-medium text-base-content/75">
+                              {farmer.location}
+                            </td>
+
+                            {/* 4. ANIMALS */}
+                            <td className="p-3.5">
+                              <span className="font-extrabold text-xs text-primary">
+                                {farmer.animals}
+                              </span>
+                            </td>
+
+                            {/* 5. APP ACCESS */}
+                            <td className="p-3.5">
+                              <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${appStatus.className}`}>
+                                {appStatus.label}
+                              </span>
+                            </td>
+
+                            {/* 6. VERIFICATION */}
+                            <td className="p-3.5">
+                              <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${farmer.verified ? "badge-success" : "badge-warning"}`}>
+                                {farmer.verified ? "Verified" : "Needs verification"}
+                              </span>
+                            </td>
+
+                            {/* 7. ACTIONS (Kebab Dropdown) */}
+                            <td className="p-3.5 pr-6 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="dropdown dropdown-end">
+                                <button tabIndex={0} role="button" className="btn btn-ghost btn-circle btn-xs hover:bg-base-200" aria-label={`Actions for farmer ${farmer.name}`}>
+                                  <MoreVertical size={16} className="text-base-content/60" />
+                                </button>
+                                <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-xl z-30 w-44 p-1.5 shadow-xl border border-base-200 mt-1">
+                                  <li>
+                                    <button
+                                      onClick={() => openFarmer(farmer)}
+                                      className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                    >
+                                      <Beef size={13} className="mr-1" /> View Animals
+                                    </button>
+                                  </li>
+                                  <li>
+                                    <button
+                                      onClick={() => editFarmer(farmer)}
+                                      className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                    >
+                                      <Edit size={13} className="mr-1" /> Edit Profile
+                                    </button>
+                                  </li>
+                                  {farmer.contact && farmer.contact !== "Phone not provided" && (
+                                    <li>
+                                      <a
+                                        href={`tel:${farmer.contact}`}
+                                        className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                      >
+                                        <Phone size={13} className="mr-1" /> Call Client
+                                      </a>
+                                    </li>
+                                  )}
+                                </ul>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
                   </table>
                 </div>
               </>

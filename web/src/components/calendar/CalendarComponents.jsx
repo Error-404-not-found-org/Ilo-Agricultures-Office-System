@@ -7,6 +7,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ArrowRight,
+  Syringe,
+  HeartPulse,
 } from "lucide-react";
 
 // 1. Top Controls & Filters
@@ -21,7 +23,34 @@ export function VisitCalendarFilters({
   farmOptions = [],
   typeOptions = [],
   onNewVisitClick,
+  isAppointmentMenuOpen,
+  setIsAppointmentMenuOpen,
+  onOpenAIModal,
+  onOpenHealthModal,
 }) {
+  const [internalMenuOpen, setInternalMenuOpen] = useState(false);
+
+  const isMenuOpen =
+    isAppointmentMenuOpen !== undefined
+      ? isAppointmentMenuOpen
+      : internalMenuOpen;
+
+  const toggleMenu = () => {
+    if (setIsAppointmentMenuOpen) {
+      setIsAppointmentMenuOpen(!isAppointmentMenuOpen);
+    } else {
+      setInternalMenuOpen((prev) => !prev);
+    }
+  };
+
+  const closeMenu = () => {
+    if (setIsAppointmentMenuOpen) {
+      setIsAppointmentMenuOpen(false);
+    } else {
+      setInternalMenuOpen(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6 flex-wrap">
       {/* Filters Left Section */}
@@ -74,15 +103,60 @@ export function VisitCalendarFilters({
         </div>
       </div>
 
-      {/* New Visit Button */}
-      <button
-        type="button"
-        onClick={onNewVisitClick}
-        className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-primary-content bg-primary hover:opacity-90 border-none rounded-xl shadow-sm transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-      >
-        <Plus size={15} />
-        <span>New Appointment</span>
-      </button>
+      {/* New Visit Button & Dropdown */}
+      <div className="relative w-full sm:w-auto">
+        <button
+          type="button"
+          aria-expanded={isMenuOpen}
+          aria-haspopup="menu"
+          onClick={toggleMenu}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-primary-content bg-primary hover:opacity-90 border-none rounded-xl shadow-sm transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <Plus size={15} />
+          <span>New Appointment</span>
+        </button>
+
+        {isMenuOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40 cursor-default"
+              onClick={closeMenu}
+              aria-hidden="true"
+            />
+            <div
+              role="menu"
+              className="absolute right-0 mt-2 w-48 bg-base-100 border border-base-300 rounded-xl shadow-xl z-50 overflow-hidden py-1"
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  if (onOpenAIModal) onOpenAIModal();
+                  else if (onNewVisitClick) onNewVisitClick();
+                  closeMenu();
+                }}
+                className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-base-200 text-base-content flex items-center gap-2 cursor-pointer"
+              >
+                <Syringe size={14} className="text-blue-500" />
+                <span>AI visit</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  if (onOpenHealthModal) onOpenHealthModal();
+                  else if (onNewVisitClick) onNewVisitClick();
+                  closeMenu();
+                }}
+                className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-base-200 text-base-content flex items-center gap-2 cursor-pointer"
+              >
+                <HeartPulse size={14} className="text-rose-500" />
+                <span>Health visit</span>
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

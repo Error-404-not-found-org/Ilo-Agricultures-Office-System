@@ -219,12 +219,16 @@ const TaskActionModal = ({
     if (!prefVal) return null;
     const d = new Date(prefVal);
     if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleDateString("en-US", {
-      weekday: "short",
-      year: "numeric",
+    const dateStr = d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
+      year: "numeric",
     });
+    const timeStr = d.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `${dateStr}, ${timeStr}`;
   }, [taskData?.preferredDate, taskData?.raw?.preferredDate]);
 
   const formattedScheduledDate = useMemo(() => {

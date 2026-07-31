@@ -13,7 +13,6 @@ const getTitleForPath = (path) => {
   if (path.startsWith('/technician/newborns')) return 'Calving Records | Technician Portal';
   if (path.startsWith('/technician/health-map')) return 'Map and Locations | Technician Portal';
   if (path.startsWith('/technician/health')) return 'Health Records | Technician Portal';
-  if (path.startsWith('/technician/field-notes')) return 'Notes and Photos | Technician Portal';
   if (path.startsWith('/technician/reports')) return 'Reports and Exports | Technician Portal';
   if (path.startsWith('/technician/analytics')) return 'My Performance | Technician Portal';
   if (path.startsWith('/technician/moowie')) return 'Ask Moowie | Technician Portal';
