@@ -752,9 +752,17 @@ export const recordTechnicianAIService = async ({
           senderId: actorId,
           type: "ai-request",
           relatedId: insemination._id,
-          title: "Field AI Recorded",
+          category: "ai",
+          eventType: "field_ai_recorded",
+          title: "AI service recorded",
           message: `A field insemination has been recorded for your animal (${animal.earTag || animal.animalId}) by the technician.`,
           linkType: "record",
+          metadata: {
+            animalId: animal._id,
+            animalTag: animal.earTag || animal.animalId,
+            recordId: insemination._id,
+            serviceType: "ai",
+          },
         },
       ],
       { session }

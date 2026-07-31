@@ -33,6 +33,7 @@ import Constants from "expo-constants";
 import * as Notifications from 'expo-notifications';
 import { useTheme } from "@/lib/theme";
 import { TranslationProvider } from "../contexts/TranslationContext";
+import { getPushNotificationTarget } from "@/features/notifications/utils/notificationPresentation";
 
 
 // Polyfills for crypto and auth libraries
@@ -77,6 +78,40 @@ function AppContent({
 }) {
   const segments = useSegments();
   const navigationState = useRootNavigationState();
+  const handledNotificationResponseId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const role = user?.publicMetadata?.role as string | undefined;
+    if (!isSignedIn || !navigationState?.key || !role) return;
+
+    const openNotificationResponse = (
+      response: Notifications.NotificationResponse | null,
+    ) => {
+      if (!response) return;
+      const responseId = response.notification.request.identifier;
+      if (handledNotificationResponseId.current === responseId) return;
+
+      handledNotificationResponseId.current = responseId;
+      const data = response.notification.request.content.data as
+        | Record<string, unknown>
+        | undefined;
+      const target = getPushNotificationTarget(data, role);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      router.push(target as never);
+    };
+
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener(
+        openNotificationResponse,
+      );
+    Notifications.getLastNotificationResponseAsync()
+      .then(openNotificationResponse)
+      .catch((error) =>
+        console.error("Failed to open notification response", error),
+      );
+
+    return () => subscription.remove();
+  }, [isSignedIn, navigationState?.key, user?.publicMetadata?.role]);
 
   // Clear query cache on sign-out to prevent data leakage between different accounts
   useEffect(() => {

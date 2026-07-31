@@ -37,6 +37,11 @@ import {
   checkInseminationAgeEligibility,
 } from "../utils/cattleCore.js";
 import { recordTechnicianAIService } from "../services/livestock-transaction.service.js";
+import {
+  notifyUser,
+  sendNotificationPush,
+} from "../services/notification-delivery.service.js";
+import { presentNotificationDocument } from "../domain/notification-presentation.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
@@ -760,7 +765,7 @@ export const getMyNotifications = async (req, res) => {
     ]);
 
     res.status(200).json({
-      data: records,
+      data: records.map(presentNotificationDocument),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
@@ -915,6 +920,23 @@ export const walkInInsemination = async (req, res) => {
       estrus: inseminationDetails?.estrus,
       actorId: req.user._id,
       isAdmin: req.user.role === "admin",
+    });
+
+    await sendNotificationPush({
+      recipient: farmer,
+      type: "ai-request",
+      eventType: "field_ai_recorded",
+      relatedId: result.insemination._id,
+      linkType: "record",
+      title: "AI service recorded",
+      message: `The completed AI service for ${animal.earTag || animal.animalId} was recorded.`,
+      metadata: {
+        animalId: animal._id,
+        animalTag: animal.earTag || animal.animalId,
+        recordId: result.insemination._id,
+        serviceType: "ai",
+        technicianName: req.user.name,
+      },
     });
 
     // Trigger Socket Update
@@ -1234,22 +1256,30 @@ export const recordPregnancyCheck = async (req, res) => {
 
     if (animal.farmerId && !alreadyRecorded) {
       try {
-        const title =
-          result === "Pregnant"
-            ? "🎉 Pregnancy Confirmed!"
-            : "Pregnancy Check Outcome";
-        const message =
-          result === "Pregnant"
-            ? `Great news! Animal Tag #${animal.earTag || animal.animalId} has been confirmed pregnant by technician ${req.user.name}. Expected calving date is around ${pregnancy.targetCalvingDate ? new Date(pregnancy.targetCalvingDate).toLocaleDateString() : "the calculated target"}.`
-            : `The pregnancy check for animal Tag #${animal.earTag || animal.animalId} resulted in: Empty. We recommend monitoring her for signs of heat and scheduling another A.I. attempt when appropriate.`;
-
-        await Notification.create({
+        const farmer = await User.findById(animal.farmerId);
+        await notifyUser({
+          recipient: farmer,
           recipientId: animal.farmerId,
           senderId: req.user._id,
           type: "ai-request",
-          relatedId: inseminationId,
-          title,
-          message,
+          relatedId: animal._id,
+          category: "pregnancy",
+          eventType:
+            result === "Pregnant"
+              ? "pregnancy_confirmed"
+              : "pregnancy_not_confirmed",
+          linkType: "animal",
+          dedupeKey: `pregnancy-result:${pregnancy._id}:${animal.farmerId}`,
+          title: "Pregnancy check updated",
+          message: `The pregnancy check for ${animal.earTag || animal.animalId} has been recorded.`,
+          metadata: {
+            animalId: animal._id,
+            animalTag: animal.earTag || animal.animalId,
+            pregnancyId: pregnancy._id,
+            requestId: inseminationId,
+            technicianName: req.user.name,
+            targetCalvingDate: pregnancy.targetCalvingDate,
+          },
         });
       } catch (notifErr) {
         console.error("[recordPregnancyCheck NOTIF ERROR]", notifErr.message);
@@ -1345,6 +1375,7 @@ export const recordCalving = async (req, res) => {
           data: {
             animalId,
             farmerId: mother.farmerId,
+            calvingId: calving._id,
             numberOfCalves: registeredCalves.length,
             offspringIds: registeredCalves.map((c) => c._id),
             outcome,
@@ -1632,13 +1663,21 @@ export const walkInLivestock = async (req, res) => {
       isVerified: true,
     });
 
-    await Notification.create({
-      recipientId: farmer._id,
+    await notifyUser({
+      recipient: farmer,
       senderId: req.user._id,
       type: "system",
       relatedId: animal._id,
-      title: "New Animal Registered",
+      category: "animal",
+      eventType: "animal_registered",
+      linkType: "animal",
+      title: "New animal registered",
       message: `A new ${species} (${breed}) with Tag #${earTag} has been added by technician ${req.user.name}.`,
+      metadata: {
+        animalId: animal._id,
+        animalTag: earTag,
+        technicianName: req.user.name,
+      },
     });
 
     req.app.get("io").emit("dashboardUpdate", { type: "LIVESTOCK_REGISTERED" });
