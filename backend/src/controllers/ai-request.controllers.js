@@ -7,7 +7,6 @@ import {
 } from "../domain/status-vocabulary.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
-import { Notification } from "../models/notification.model.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { inngest } from "../config/inngest.js";
 import { checkInseminationAgeEligibility } from "../utils/cattleCore.js";
@@ -32,6 +31,7 @@ import {
 } from "../services/ai-request-creation.service.js";
 import { notifyTechniciansOfBreedingObservation } from "../services/breeding-observation-notification.service.js";
 import { getEarlyStartTiming } from "../domain/service-timing.js";
+import { notifyUser } from "../services/notification-delivery.service.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -230,40 +230,41 @@ export const createAIRequest = async (req, res) => {
         ? `Brgy. ${farmerBarangay}, ${farmerMunicipality}`
         : farmerMunicipality;
 
-      const techNotifs = technicians.map((t) =>
-        Notification.create({
-          recipientId: t._id,
-          senderId: farmerId,
-          type: "ai-request",
-          relatedId: request._id,
-          title: `📋 AI Request: Tag #${animal.earTag || animal.animalId}`,
-          message: `New AI service request for Tag #${animal.earTag || animal.animalId} in ${generalLocation}. Claim the request to view the farmer's contact details and exact farm location.`,
-        }),
-      );
-
-      const adminNotifs = admins.map((a) =>
-        Notification.create({
-          recipientId: a._id,
-          senderId: farmerId,
-          type: "ai-request",
-          relatedId: request._id,
-          title: `[Summary] AI Request: Tag #${animal.earTag || animal.animalId}`,
-          message: `Farmer ${req.user.name} submitted an AI request for a ${animal.species} (${animal.breed}).`,
-        }),
-      );
-
-      await Promise.all([...techNotifs, ...adminNotifs]);
-
-      // --- MOBILE PUSH NOTIFICATIONS TO TECHNICIANS ---
-      for (const t of technicians) {
-        if (t.pushToken) {
-          await sendPushNotification(
-            t.pushToken,
-            `📋 AI Request: Tag #${animal.earTag || animal.animalId}`,
-            `New AI service request for Tag #${animal.earTag || animal.animalId} in ${generalLocation}. Claim the request to view the farmer's contact details and exact farm location.`,
-          );
-        }
-      }
+      const metadata = {
+        requestId: request._id,
+        animalId: animal._id,
+        animalTag: animal.earTag || animal.animalId,
+        farmerName: req.user.name,
+        serviceType: "ai",
+        location: generalLocation,
+      };
+      await Promise.all([
+        ...technicians.map((technician) =>
+          notifyUser({
+            recipient: technician,
+            senderId: farmerId,
+            type: "ai-request",
+            relatedId: request._id,
+            category: "ai",
+            eventType: "service_request_submitted",
+            linkType: "request",
+            metadata,
+          }),
+        ),
+        ...admins.map((admin) =>
+          notifyUser({
+            recipient: admin,
+            senderId: farmerId,
+            type: "ai-request",
+            relatedId: request._id,
+            category: "ai",
+            eventType: "service_request_submitted",
+            linkType: "request",
+            metadata,
+            sendPush: false,
+          }),
+        ),
+      ]);
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
@@ -434,7 +435,6 @@ export const getAllRequests = async (req, res) => {
   }
 };
 
-import { sendPushNotification } from "../lib/push-notifications.js";
 
 // PATCH /api/ai-request/:id/status
 export const updateRequestStatus = async (req, res) => {
@@ -638,45 +638,40 @@ export const updateRequestStatus = async (req, res) => {
     // --- TRIGGER NOTIFICATION TO FARMER ---
     try {
       if (request.farmerId && request.farmerId._id) {
-        const title = "AI Request Update";
-        let message = `Your AI request for animal ${request.animalId.earTag || request.animalId.animalId} status has been updated to: ${status}.`;
-
-        if (status === "done") {
-          message = `The artificial insemination for animal ${request.animalId.earTag || request.animalId.animalId} was completed today. Please monitor the animal and wait for pregnancy confirmation from a technician.`;
-        } else if (status === "approved") {
-          message = `Your artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} was accepted by technician ${req.user.name} and is awaiting a visit schedule.`;
-        } else if (status === "in-progress" || status === "scheduled") {
-          const schedDateStr = request.scheduledDate
-            ? new Date(request.scheduledDate).toLocaleDateString()
-            : "today";
-          if (isRescheduled) {
-            message = `your artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} is rescheduled to ${schedDateStr} by technician : ${req.user.name}`;
-          } else if (status === "scheduled") {
-            message = `your artificial insemination request for animal ${request.animalId.earTag || request.animalId.animalId} is scheduled for ${schedDateStr} by technician : ${req.user.name}`;
-          }
-        } else if (status === "rejected") {
-          message = `Your AI request for animal ${request.animalId.earTag || request.animalId.animalId} was not approved. Note: ${technicianNote || "No details provided"}.`;
-        }
-
-        // 1. Database Notification (In-app)
-        await Notification.create({
-          recipientId: request.farmerId._id,
+        const eventType =
+          status === "done"
+            ? "service_completed"
+            : status === "approved"
+              ? "service_request_accepted"
+              : status === "in-progress"
+                ? "service_started"
+                : status === "scheduled"
+                  ? isRescheduled
+                    ? "service_visit_rescheduled"
+                    : "service_visit_scheduled"
+                  : status === "rejected"
+                    ? "service_request_declined"
+                    : "service_status_updated";
+        await notifyUser({
+          recipient: request.farmerId,
           senderId: req.user._id,
           type: "ai-request",
           relatedId: request._id,
-          title,
-          message,
+          category: "ai",
+          eventType,
+          linkType: "request",
+          title: "AI service update",
+          message: `The AI service request for ${request.animalId.earTag || request.animalId.animalId} is now ${status}.`,
+          metadata: {
+            requestId: request._id,
+            animalId: request.animalId?._id,
+            animalTag: request.animalId.earTag || request.animalId.animalId,
+            serviceType: "ai",
+            technicianName: req.user.name,
+            scheduledDate: request.scheduledDate,
+            reason: technicianNote || "",
+          },
         });
-
-        // 2. Mobile Push Notification
-        if (request.farmerId.pushToken) {
-          await sendPushNotification(
-            request.farmerId.pushToken,
-            title,
-            message,
-            { requestId: request._id, type: "ai-request" },
-          );
-        }
       }
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
@@ -1025,7 +1020,7 @@ export const deleteRequest = async (req, res) => {
       });
     }
 
-    // --- SEND CANCELLED PUSH NOTIFICATION TO TECHNICIANS ---
+    // Notify technicians in-app and by push when the farmer removes an active request.
     try {
       if (
         isOwner &&
@@ -1033,13 +1028,26 @@ export const deleteRequest = async (req, res) => {
       ) {
         const technicians = await User.find({ role: "technician" });
         for (const t of technicians) {
-          if (t.pushToken) {
-            await sendPushNotification(
-              t.pushToken,
-              "❌ AI Request Cancelled",
-              `${request.farmerId?.name} has cancelled the AI request for animal ${request.animalId?.earTag || request.animalId?.animalId}.`,
-            );
-          }
+          await notifyUser({
+            recipient: t,
+            senderId: req.user._id,
+            type: "ai-request",
+            relatedId: request._id,
+            category: "cancellation",
+            eventType: "request_cancelled",
+            linkType: "request",
+            dedupeKey: `ai-request-removed:${request._id}:${t._id}`,
+            title: "AI service request cancelled",
+            message: `${request.farmerId?.name} cancelled the AI service request for ${request.animalId?.earTag || request.animalId?.animalId}.`,
+            metadata: {
+              requestId: request._id,
+              animalId: request.animalId?._id,
+              animalTag: request.animalId?.earTag || request.animalId?.animalId,
+              farmerName: request.farmerId?.name,
+              actorName: request.farmerId?.name,
+              serviceType: "ai",
+            },
+          });
         }
       }
     } catch (notifyErr) {
@@ -1383,37 +1391,48 @@ export const cancelAIRequest = async (req, res) => {
           metadata: { role, reason: reason.trim(), isReadyToday },
         });
 
-        // Notify assigned tech
+        // Notify assigned technician and administrators through the same
+        // durable in-app + push path.
         try {
           if (assignedTech?._id) {
-            await Notification.create({
-              userId: assignedTech._id,
-              title: "AI Cancellation Request",
-              message: `${farmer?.name} requested cancellation of AI insemination visit for ${animalTag}${isReadyToday ? " (TODAY)" : ""}. Reason: ${reason.trim()}`,
-              type: "cancellation_request",
+            await notifyUser({
+              recipient: assignedTech,
+              senderId: actor._id,
+              type: "ai-request",
               relatedId: request._id,
+              category: "cancellations",
+              eventType: "cancellation_requested",
+              linkType: "request",
+              metadata: {
+                requestId: request._id,
+                animalId: animal?._id,
+                animalTag,
+                serviceType: "ai",
+                farmerName: farmer?.name,
+                reason: reason.trim(),
+                isToday: Boolean(isReadyToday),
+              },
             });
           }
-          if (assignedTech?.pushToken) {
-            await sendPushNotification(
-              assignedTech.pushToken,
-              "⚠️ Cancellation Requested",
-              `${farmer?.name} has requested to cancel the AI insemination visit for ${animalTag}.${isReadyToday ? " This visit is scheduled for TODAY." : ""} Reason: ${reason.trim()}`,
-              { requestId: id, type: "AI" },
-            );
-          }
-          // Notify admins
-          const admins = await User.find({
-            role: "admin",
-            pushToken: { $exists: true, $ne: "" },
-          });
+          const admins = await User.find({ role: "admin" });
           for (const admin of admins) {
-            await Notification.create({
-              userId: admin._id,
-              title: "AI Cancellation Request",
-              message: `${farmer?.name} requested cancellation of AI insemination visit for ${animalTag}${isReadyToday ? " (TODAY)" : ""}. Reason: ${reason.trim()}`,
-              type: "cancellation_request",
+            await notifyUser({
+              recipient: admin,
+              senderId: actor._id,
+              type: "ai-request",
               relatedId: request._id,
+              category: "cancellations",
+              eventType: "cancellation_requested",
+              linkType: "request",
+              metadata: {
+                requestId: request._id,
+                animalId: animal?._id,
+                animalTag,
+                serviceType: "ai",
+                farmerName: farmer?.name,
+                reason: reason.trim(),
+                isToday: Boolean(isReadyToday),
+              },
             });
           }
         } catch (notifyErr) {
@@ -1477,29 +1496,47 @@ export const cancelAIRequest = async (req, res) => {
 
     // Notifications
     try {
-      if (isFarmer && assignedTech?.pushToken) {
-        // Farmer cancelled pending/approved → notify assigned tech
-        await sendPushNotification(
-          assignedTech.pushToken,
-          "❌ AI Request Cancelled",
-          `${farmer?.name} cancelled the AI insemination request for ${animalTag}.`,
-          { requestId: id, type: "AI" },
-        );
-      } else if (!isFarmer && farmer?.pushToken) {
-        // Tech/Admin cancelled → notify farmer
-        await sendPushNotification(
-          farmer.pushToken,
-          "❌ AI Request Cancelled",
-          `Your AI insemination request for ${animalTag} was cancelled by the ${role}. ${reason?.trim() ? `Reason: ${reason.trim()}` : ""}`,
-          { requestId: id, type: "AI" },
-        );
-        if (isAdmin && assignedTech?.pushToken) {
-          await sendPushNotification(
-            assignedTech.pushToken,
-            "❌ AI Request Cancelled (Admin Override)",
-            `Admin cancelled the AI insemination for ${animalTag}. ${reason?.trim() ? `Reason: ${reason.trim()}` : ""}`,
-            { requestId: id, type: "AI" },
-          );
+      const cancellationMetadata = {
+        requestId: request._id,
+        animalId: animal?._id,
+        animalTag,
+        serviceType: "ai",
+        actorName: isFarmer ? farmer?.name : actor.name || role,
+        reason: reason?.trim() || "",
+      };
+      if (isFarmer && assignedTech?._id) {
+        await notifyUser({
+          recipient: assignedTech,
+          senderId: actor._id,
+          type: "ai-request",
+          relatedId: request._id,
+          category: "cancellations",
+          eventType: "request_cancelled",
+          linkType: "request",
+          metadata: cancellationMetadata,
+        });
+      } else if (!isFarmer && farmer?._id) {
+        await notifyUser({
+          recipient: farmer,
+          senderId: actor._id,
+          type: "ai-request",
+          relatedId: request._id,
+          category: "cancellations",
+          eventType: "request_cancelled",
+          linkType: "request",
+          metadata: cancellationMetadata,
+        });
+        if (isAdmin && assignedTech?._id) {
+          await notifyUser({
+            recipient: assignedTech,
+            senderId: actor._id,
+            type: "ai-request",
+            relatedId: request._id,
+            category: "cancellations",
+            eventType: "request_cancelled",
+            linkType: "request",
+            metadata: cancellationMetadata,
+          });
         }
       }
     } catch (notifyErr) {
@@ -1586,14 +1623,22 @@ export const respondAICancellation = async (req, res) => {
         metadata: { role, reason: reason?.trim() || "" },
       });
 
-      // Notify farmer
-      if (farmer?.pushToken) {
-        await sendPushNotification(
-          farmer.pushToken,
-          "✅ Cancellation Approved",
-          `Your cancellation request for the AI insemination of ${animalTag} has been approved.`,
-          { requestId: id, type: "AI" },
-        );
+      if (farmer?._id) {
+        await notifyUser({
+          recipient: farmer,
+          senderId: actor._id,
+          type: "ai-request",
+          relatedId: request._id,
+          category: "cancellations",
+          eventType: "cancellation_approved",
+          linkType: "request",
+          metadata: {
+            requestId: request._id,
+            animalId: animal?._id,
+            animalTag,
+            serviceType: "ai",
+          },
+        });
       }
 
       // Socket calendar sync
@@ -1629,14 +1674,23 @@ export const respondAICancellation = async (req, res) => {
         metadata: { role, reason: reason?.trim() || "" },
       });
 
-      // Notify farmer
-      if (farmer?.pushToken) {
-        await sendPushNotification(
-          farmer.pushToken,
-          "❌ Cancellation Request Rejected",
-          `Your cancellation request for the AI insemination of ${animalTag} was not approved.${reason?.trim() ? ` Reason: ${reason.trim()}` : ""}`,
-          { requestId: id, type: "AI" },
-        );
+      if (farmer?._id) {
+        await notifyUser({
+          recipient: farmer,
+          senderId: actor._id,
+          type: "ai-request",
+          relatedId: request._id,
+          category: "cancellations",
+          eventType: "cancellation_rejected",
+          linkType: "request",
+          metadata: {
+            requestId: request._id,
+            animalId: animal?._id,
+            animalTag,
+            serviceType: "ai",
+            reason: reason?.trim() || "",
+          },
+        });
       }
 
       return res.status(200).json({
@@ -1860,45 +1914,36 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     if (!alreadyRecorded) {
       try {
         const farmer = await User.findById(verifiedRequest.farmerId);
-        const title = `Pregnancy Check: ${verificationResult === "pregnant" ? "Pregnant 🍼" : verificationResult === "needs_recheck" ? "Recheck Scheduled ⏱️" : "Empty ❌"}`;
-        let body = `Technician ${req.user.name} checked ${verifiedAnimal.earTag || verifiedAnimal.animalId} and determined: ${verificationResult.replaceAll("_", " ").toUpperCase()}.`;
-        if (verificationResult === "needs_recheck" && nextCheckDate) {
-          body += ` A follow-up recheck is scheduled for ${new Date(nextCheckDate).toLocaleDateString()}.`;
-        }
-
-        await Notification.create({
+        const eventType =
+          verificationResult === "pregnant"
+            ? "pregnancy_confirmed"
+            : verificationResult === "needs_recheck"
+              ? "continuation_recheck_due"
+              : "pregnancy_not_confirmed";
+        await notifyUser({
+          recipient: farmer,
           recipientId: verifiedRequest.farmerId,
           senderId: req.user._id,
-          type: "system",
+          type: "ai-request",
           category: "pregnancy",
-          eventType:
-            verificationResult === "pregnant"
-              ? "pregnancy_confirmed"
-              : verificationResult === "needs_recheck"
-                ? "continuation_recheck_due"
-                : "pregnancy_not_confirmed",
+          eventType,
           relatedId: verifiedAnimal._id,
           linkType: "animal",
-          title,
-          message: body,
+          dedupeKey: `breeding-verification:${verifiedRequest._id}:${eventType}`,
+          title: "Pregnancy check updated",
+          message: `The pregnancy check for ${verifiedAnimal.earTag || verifiedAnimal.animalId} has been recorded.`,
           metadata: {
             animalId: verifiedAnimal._id,
             animalTag: verifiedAnimal.earTag || verifiedAnimal.animalId,
             technicianName: req.user.name,
             requestId: verifiedRequest._id,
+            nextCheckDate,
             workflowStage:
               verificationResult === "needs_recheck"
                 ? "diagnostic_follow_up"
                 : "initial_confirmation",
           },
         });
-
-        if (farmer?.pushToken) {
-          await sendPushNotification(farmer.pushToken, title, body, {
-            requestId: verifiedRequest._id,
-            type: "AI",
-          });
-        }
       } catch (notifErr) {
         console.error(
           "[verifyFarmerBreedingObservation Notification Error]",

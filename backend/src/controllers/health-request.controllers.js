@@ -1,7 +1,6 @@
 import { HealthRequest } from "../models/health-request.model.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
-import { Notification } from "../models/notification.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { Insemination } from "../models/insemination.model.js";
 import cloudinary from "../config/cloudinary.js";
@@ -20,6 +19,7 @@ import {
   createHealthRequestWithGuard,
   findActiveHealthCase,
 } from "../services/health-request-creation.service.js";
+import { notifyUser } from "../services/notification-delivery.service.js";
 
 
 // POST /api/health-request
@@ -83,42 +83,42 @@ export const createHealthRequest = async (req, res) => {
       const generalLocation = farmerBarangay
         ? `Brgy. ${farmerBarangay}, ${farmerMunicipality}`
         : farmerMunicipality;
-      const requestLabel = ["high", "emergency"].includes(normalizedUrgency)
-        ? "Urgent health request"
-        : "New health request";
-
-      const techNotifs = technicians.map(t =>
-        Notification.create({
-          recipientId: t._id,
-          senderId: farmerId,
-          type: "health-request",
-          relatedId: request._id,
-          title: ["high", "emergency"].includes(normalizedUrgency) ? `🚨 Emergency: Tag #${animal.earTag || animal.animalId}` : `📋 Health Request: Tag #${animal.earTag || animal.animalId}`,
-          message: `${requestLabel} for Tag #${animal.earTag || animal.animalId} in ${generalLocation}. Claim the request to view the farmer's contact details, reported symptoms, and exact farm location.`,
-        })
-      );
-
-      const adminNotifs = admins.map(a =>
-        Notification.create({
-          recipientId: a._id,
-          senderId: farmerId,
-          type: "health-request",
-          relatedId: request._id,
-          title: ["high", "emergency"].includes(normalizedUrgency) ? "[Summary] 🚨 Urgent Animal Issue" : "[Summary] Health Request Submitted",
-          message: `Farmer ${req.user.name} reported a ${normalizedUrgency} urgency health issue for animal ${animal.earTag || animal.animalId}.`,
-        })
-      );
-
-      await Promise.all([...techNotifs, ...adminNotifs]);
-
-      // --- MOBILE PUSH NOTIFICATIONS TO TECHNICIANS ---
-      for (const t of technicians) {
-        if (t.pushToken) {
-          const title = ["high", "emergency"].includes(normalizedUrgency) ? `🚨 Emergency: Tag #${animal.earTag || animal.animalId}` : `📋 Health Request: Tag #${animal.earTag || animal.animalId}`;
-          const body = `${requestLabel} for Tag #${animal.earTag || animal.animalId} in ${generalLocation}. Claim the request to view the farmer's contact details, reported symptoms, and exact farm location.`;
-          await sendPushNotification(t.pushToken, title, body);
-        }
-      }
+      const metadata = {
+        requestId: request._id,
+        animalId: animal._id,
+        animalTag: animal.earTag || animal.animalId,
+        farmerName: req.user.name,
+        serviceType: "health",
+        urgency: normalizedUrgency,
+        location: generalLocation,
+      };
+      await Promise.all([
+        ...technicians.map((technician) =>
+          notifyUser({
+            recipient: technician,
+            senderId: farmerId,
+            type: "health-request",
+            relatedId: request._id,
+            category: "health",
+            eventType: "service_request_submitted",
+            linkType: "request",
+            metadata,
+          }),
+        ),
+        ...admins.map((admin) =>
+          notifyUser({
+            recipient: admin,
+            senderId: farmerId,
+            type: "health-request",
+            relatedId: request._id,
+            category: "health",
+            eventType: "service_request_submitted",
+            linkType: "request",
+            metadata,
+            sendPush: false,
+          }),
+        ),
+      ]);
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
     }
@@ -288,7 +288,6 @@ export const getAllHealthRequests = async (req, res) => {
   }
 };
 
-import { sendPushNotification } from "../lib/push-notifications.js";
 import { createAuditLog } from "../services/audit.service.js";
 
 // PATCH /api/health-request/:id/status  — technician/admin updates
@@ -309,6 +308,14 @@ export const updateHealthRequestStatus = async (req, res) => {
     if (!existing) {
       return res.status(404).json({ message: "Request not found." });
     }
+
+    const isRescheduled =
+      status === "scheduled" &&
+      existing.status === "scheduled" &&
+      existing.scheduledDate &&
+      req.body.scheduledDate &&
+      new Date(existing.scheduledDate).getTime() !==
+        new Date(req.body.scheduledDate).getTime();
 
     if (status === "scheduled" && !req.body.scheduledDate) {
       return res.status(400).json({
@@ -454,21 +461,27 @@ export const updateHealthRequestStatus = async (req, res) => {
             day: "numeric",
             year: "numeric",
           });
-          const warningTitle = "⚠️ Active Withdrawal Warning";
+          const warningTitle = "Active withdrawal warning";
           const warningBody = `Meat and milk from animal Tag #${request.animalId.earTag || request.animalId.animalId} are unsafe for consumption or sale until ${formattedDate} due to treatment with ${request.treatment || 'medicine'}.`;
 
-          await Notification.create({
+          await notifyUser({
+            recipient: request.farmerId,
             recipientId: farmerId,
             senderId: req.user._id,
             type: "system",
             relatedId: animalId,
+            category: "health",
+            eventType: "withdrawal_safety_active",
+            linkType: "animal",
             title: warningTitle,
             message: warningBody,
+            metadata: {
+              animalId,
+              animalTag: request.animalId.earTag || request.animalId.animalId,
+              withdrawalEndDate,
+              medicineName: request.treatment || "medicine",
+            },
           });
-
-          if (request.farmerId.pushToken) {
-            await sendPushNotification(request.farmerId.pushToken, warningTitle, warningBody);
-          }
         }
       } catch (withdrawalNotifyErr) {
         console.error("[Withdrawal Notification Error]", withdrawalNotifyErr.message);
@@ -478,41 +491,42 @@ export const updateHealthRequestStatus = async (req, res) => {
     // --- TRIGGER NOTIFICATION TO FARMER ---
     try {
       if (request.farmerId && request.farmerId._id) {
-        const title = "Health Request Update";
-        let message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} status has been updated to: ${status}.`;
-
-        if (status === "resolved") {
-          message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} was successfully resolved by technician ${req.user.name}. Diagnosis: ${request.diagnosis || "N/A"}. Treatment: ${request.treatment || "N/A"}.`;
-        } else if (status === "approved") {
-          message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} was accepted by technician ${req.user.name} and is awaiting a visit schedule.`;
-        } else if (status === "scheduled" || status === "in-progress") {
-          const schedDateStr = request.scheduledDate
-            ? new Date(request.scheduledDate).toLocaleDateString()
-            : "the assigned time";
-          message = `Your health visit for animal ${request.animalId.earTag || request.animalId.animalId} is scheduled for ${schedDateStr}. Technician: ${req.user.name}.`;
-        } else if (status === "rejected") {
-          message = `Your health request for animal ${request.animalId.earTag || request.animalId.animalId} was not approved. Note: ${technicianNote || "No details provided"}.`;
-        }
-
-        // 1. Database Notification
-        await Notification.create({
-          recipientId: request.farmerId._id,
+        const eventType =
+          status === "resolved"
+            ? "service_completed"
+            : status === "approved"
+              ? "service_request_accepted"
+              : status === "in-progress"
+                ? "service_started"
+                : status === "scheduled"
+                  ? isRescheduled
+                    ? "service_visit_rescheduled"
+                    : "service_visit_scheduled"
+                  : status === "rejected"
+                    ? "service_request_declined"
+                    : "service_status_updated";
+        await notifyUser({
+          recipient: request.farmerId,
           senderId: req.user._id,
           type: "health-request",
           relatedId: request._id,
-          title,
-          message,
+          category: "health",
+          eventType,
+          linkType: "request",
+          title: "Health assistance update",
+          message: `The health assistance request for ${request.animalId.earTag || request.animalId.animalId} is now ${status}.`,
+          metadata: {
+            requestId: request._id,
+            animalId: request.animalId?._id,
+            animalTag: request.animalId.earTag || request.animalId.animalId,
+            serviceType: "health",
+            technicianName: req.user.name,
+            scheduledDate: request.scheduledDate,
+            reason: technicianNote || "",
+            diagnosis: request.diagnosis || "",
+            treatment: request.treatment || "",
+          },
         });
-
-        // 2. Mobile Push
-        if (request.farmerId.pushToken) {
-          await sendPushNotification(
-            request.farmerId.pushToken,
-            title,
-            message,
-            { requestId: request._id, type: 'health-request' }
-          );
-        }
       }
     } catch (notifyErr) {
       console.error("[Notification Trigger Error]", notifyErr.message);
@@ -720,21 +734,26 @@ export const walkInHealthRequest = async (req, res) => {
             day: "numeric",
             year: "numeric",
           });
-          const warningTitle = "⚠️ Active Withdrawal Warning";
+          const warningTitle = "Active withdrawal warning";
           const warningBody = `Meat and milk from animal Tag #${animal.earTag} are unsafe for consumption or sale until ${formattedDate} due to treatment with ${treatment || 'medicine'}.`;
 
-          await Notification.create({
-            recipientId: farmer._id,
+          await notifyUser({
+            recipient: farmer,
             senderId: req.user._id,
             type: "system",
             relatedId: animal._id,
+            category: "health",
+            eventType: "withdrawal_safety_active",
+            linkType: "animal",
             title: warningTitle,
             message: warningBody,
+            metadata: {
+              animalId: animal._id,
+              animalTag: animal.earTag,
+              withdrawalEndDate,
+              medicineName: treatment || "medicine",
+            },
           });
-
-          if (farmer.pushToken) {
-            await sendPushNotification(farmer.pushToken, warningTitle, warningBody);
-          }
         }
       } catch (medErr) {
         console.error("[Medical Record Cascade Walk-in Error]", medErr.message);
@@ -746,25 +765,28 @@ export const walkInHealthRequest = async (req, res) => {
       ? `A walk-in health service for your animal (${animal.earTag}) has been recorded by technician ${req.user.name}.`
       : `A health visit for your animal (${animal.earTag}) has been scheduled for ${pDate.toLocaleDateString()} at ${pDate.toLocaleTimeString()}.`;
 
-    // 1. Database Notification
-    await Notification.create({
-      recipientId: farmer._id,
+    await notifyUser({
+      recipient: farmer,
       senderId: req.user._id,
       type: "health-request",
       relatedId: request._id,
+      category: "health",
+      eventType:
+        requestedStatus === "resolved"
+          ? "service_completed"
+          : "service_visit_scheduled",
+      linkType: "request",
       title,
       message,
+      metadata: {
+        requestId: request._id,
+        animalId: animal._id,
+        animalTag: animal.earTag || animal.animalId,
+        serviceType: "health",
+        technicianName: req.user.name,
+        scheduledDate: request.scheduledDate || pDate,
+      },
     });
-
-    // 2. Mobile Push
-    if (farmer.pushToken) {
-      await sendPushNotification(
-        farmer.pushToken,
-        title,
-        message,
-        { requestId: request._id, type: 'health-request' }
-      );
-    }
 
     // Trigger Socket
     req.app.get("io").emit("dashboardUpdate", { 
@@ -810,18 +832,31 @@ export const deleteHealthRequest = async (req, res) => {
       return res.status(400).json({ message: "Completed requests cannot be cancelled." });
     }
 
-    // --- SEND CANCELLED PUSH NOTIFICATION TO TECHNICIANS ---
+    // Notify technicians in-app and by push when the farmer removes an active request.
     try {
       if (isOwner && ["pending", "approved", "in-progress"].includes(request.status)) {
         const technicians = await User.find({ role: "technician" });
         for (const t of technicians) {
-          if (t.pushToken) {
-            await sendPushNotification(
-              t.pushToken,
-              "❌ Health Request Cancelled",
-              `${request.farmerId?.name} has cancelled the health request for animal ${request.animalId?.earTag || request.animalId?.animalId}.`
-            );
-          }
+          await notifyUser({
+            recipient: t,
+            senderId: req.user._id,
+            type: "health-request",
+            relatedId: request._id,
+            category: "cancellation",
+            eventType: "request_cancelled",
+            linkType: "request",
+            dedupeKey: `health-request-removed:${request._id}:${t._id}`,
+            title: "Health assistance request cancelled",
+            message: `${request.farmerId?.name} cancelled the health assistance request for ${request.animalId?.earTag || request.animalId?.animalId}.`,
+            metadata: {
+              requestId: request._id,
+              animalId: request.animalId?._id,
+              animalTag: request.animalId?.earTag || request.animalId?.animalId,
+              farmerName: request.farmerId?.name,
+              actorName: request.farmerId?.name,
+              serviceType: "health",
+            },
+          });
         }
       }
     } catch (notifyErr) {
@@ -929,30 +964,44 @@ export const cancelHealthRequest = async (req, res) => {
 
         try {
           if (assignedTech?._id) {
-            await Notification.create({
-              userId: assignedTech._id,
-              title: "Health Cancellation Request",
-              message: `${farmer?.name} requested cancellation of health checkup for ${animalTag}${isReadyToday ? " (TODAY)" : ""}. Reason: ${reason.trim()}`,
-              type: "cancellation_request",
+            await notifyUser({
+              recipient: assignedTech,
+              senderId: actor._id,
+              type: "health-request",
               relatedId: request._id,
+              category: "cancellations",
+              eventType: "cancellation_requested",
+              linkType: "request",
+              metadata: {
+                requestId: request._id,
+                animalId: animal?._id,
+                animalTag,
+                serviceType: "health",
+                farmerName: farmer?.name,
+                reason: reason.trim(),
+                isToday: Boolean(isReadyToday),
+              },
             });
           }
-          if (assignedTech?.pushToken) {
-            await sendPushNotification(
-              assignedTech.pushToken,
-              "⚠️ Cancellation Requested",
-              `${farmer?.name} has requested to cancel the health checkup visit for ${animalTag}.${isReadyToday ? " This visit is scheduled for TODAY." : ""} Reason: ${reason.trim()}`,
-              { requestId: id, type: "HEALTH" }
-            );
-          }
-          const admins = await User.find({ role: "admin", pushToken: { $exists: true, $ne: "" } });
+          const admins = await User.find({ role: "admin" });
           for (const admin of admins) {
-            await Notification.create({
-              userId: admin._id,
-              title: "Health Cancellation Request",
-              message: `${farmer?.name} requested cancellation of health checkup for ${animalTag}${isReadyToday ? " (TODAY)" : ""}. Reason: ${reason.trim()}`,
-              type: "cancellation_request",
+            await notifyUser({
+              recipient: admin,
+              senderId: actor._id,
+              type: "health-request",
               relatedId: request._id,
+              category: "cancellations",
+              eventType: "cancellation_requested",
+              linkType: "request",
+              metadata: {
+                requestId: request._id,
+                animalId: animal?._id,
+                animalTag,
+                serviceType: "health",
+                farmerName: farmer?.name,
+                reason: reason.trim(),
+                isToday: Boolean(isReadyToday),
+              },
             });
           }
         } catch (notifyErr) {
@@ -1003,27 +1052,47 @@ export const cancelHealthRequest = async (req, res) => {
     });
 
     try {
-      if (isFarmer && assignedTech?.pushToken) {
-        await sendPushNotification(
-          assignedTech.pushToken,
-          "❌ Health Request Cancelled",
-          `${farmer?.name} cancelled the health checkup request for ${animalTag}.`,
-          { requestId: id, type: "HEALTH" }
-        );
-      } else if (!isFarmer && farmer?.pushToken) {
-        await sendPushNotification(
-          farmer.pushToken,
-          "❌ Health Request Cancelled",
-          `Your health checkup request for ${animalTag} was cancelled by the ${role}.${reason?.trim() ? ` Reason: ${reason.trim()}` : ""}`,
-          { requestId: id, type: "HEALTH" }
-        );
-        if (isAdmin && assignedTech?.pushToken) {
-          await sendPushNotification(
-            assignedTech.pushToken,
-            "❌ Health Request Cancelled (Admin Override)",
-            `Admin cancelled the health checkup for ${animalTag}.${reason?.trim() ? ` Reason: ${reason.trim()}` : ""}`,
-            { requestId: id, type: "HEALTH" }
-          );
+      const cancellationMetadata = {
+        requestId: request._id,
+        animalId: animal?._id,
+        animalTag,
+        serviceType: "health",
+        actorName: isFarmer ? farmer?.name : actor.name || role,
+        reason: reason?.trim() || "",
+      };
+      if (isFarmer && assignedTech?._id) {
+        await notifyUser({
+          recipient: assignedTech,
+          senderId: actor._id,
+          type: "health-request",
+          relatedId: request._id,
+          category: "cancellations",
+          eventType: "request_cancelled",
+          linkType: "request",
+          metadata: cancellationMetadata,
+        });
+      } else if (!isFarmer && farmer?._id) {
+        await notifyUser({
+          recipient: farmer,
+          senderId: actor._id,
+          type: "health-request",
+          relatedId: request._id,
+          category: "cancellations",
+          eventType: "request_cancelled",
+          linkType: "request",
+          metadata: cancellationMetadata,
+        });
+        if (isAdmin && assignedTech?._id) {
+          await notifyUser({
+            recipient: assignedTech,
+            senderId: actor._id,
+            type: "health-request",
+            relatedId: request._id,
+            category: "cancellations",
+            eventType: "request_cancelled",
+            linkType: "request",
+            metadata: cancellationMetadata,
+          });
         }
       }
     } catch (notifyErr) {
@@ -1101,13 +1170,22 @@ export const respondHealthCancellation = async (req, res) => {
         metadata: { role, reason: reason?.trim() || "" },
       });
 
-      if (farmer?.pushToken) {
-        await sendPushNotification(
-          farmer.pushToken,
-          "✅ Cancellation Approved",
-          `Your cancellation request for the health checkup of ${animalTag} has been approved.`,
-          { requestId: id, type: "HEALTH" }
-        );
+      if (farmer?._id) {
+        await notifyUser({
+          recipient: farmer,
+          senderId: actor._id,
+          type: "health-request",
+          relatedId: request._id,
+          category: "cancellations",
+          eventType: "cancellation_approved",
+          linkType: "request",
+          metadata: {
+            requestId: request._id,
+            animalId: animal?._id,
+            animalTag,
+            serviceType: "health",
+          },
+        });
       }
 
       req.app.get("io").emit("requestCancelled", {
@@ -1141,13 +1219,23 @@ export const respondHealthCancellation = async (req, res) => {
         metadata: { role, reason: reason?.trim() || "" },
       });
 
-      if (farmer?.pushToken) {
-        await sendPushNotification(
-          farmer.pushToken,
-          "❌ Cancellation Request Rejected",
-          `Your cancellation request for the health checkup of ${animalTag} was not approved.${reason?.trim() ? ` Reason: ${reason.trim()}` : ""}`,
-          { requestId: id, type: "HEALTH" }
-        );
+      if (farmer?._id) {
+        await notifyUser({
+          recipient: farmer,
+          senderId: actor._id,
+          type: "health-request",
+          relatedId: request._id,
+          category: "cancellations",
+          eventType: "cancellation_rejected",
+          linkType: "request",
+          metadata: {
+            requestId: request._id,
+            animalId: animal?._id,
+            animalTag,
+            serviceType: "health",
+            reason: reason?.trim() || "",
+          },
+        });
       }
 
       return res.status(200).json({

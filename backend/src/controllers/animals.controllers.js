@@ -618,6 +618,7 @@ export const recordCalving = async (req, res) => {
           data: {
             animalId,
             farmerId: mother.farmerId,
+            calvingId: calving._id,
             numberOfCalves: offspring.length,
             offspringIds: offspring.map(c => c._id),
             outcome,

@@ -1,4 +1,8 @@
 import axios from 'axios';
+import {
+  normalizePushNotificationData,
+  presentNotificationCopy,
+} from "../domain/notification-presentation.js";
 
 const EXPO_PUSH_TOKEN_PATTERN = /^(ExponentPushToken|ExpoPushToken)\[[^\]]+\]$/;
 
@@ -18,12 +22,18 @@ export const sendPushNotification = async (pushToken, title, body, data = {}) =>
     return;
   }
 
+  const copy = presentNotificationCopy({
+    title,
+    message: body,
+    eventType: data?.eventType,
+    metadata: data,
+  });
   const message = {
     to: pushToken,
     sound: 'default',
-    title,
-    body,
-    data,
+    title: copy.title,
+    body: copy.message,
+    data: normalizePushNotificationData(data),
   };
 
   try {

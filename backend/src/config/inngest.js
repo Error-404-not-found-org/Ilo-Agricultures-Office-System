@@ -115,8 +115,8 @@ const onInseminationApproved = inngest.createFunction(
     if (stillRelevant18) {
       await step.run("send-heat-reminder", async () => {
         const animal = await Animal.findById(animalId);
-        const title = "🔥 Heat Detection Reminder";
-        const body = `It has been 18 days since the insemination of ${animal?.earTag || 'your animal'}. Please observe for signs of heat (estrus) over the next 3 days.`;
+        const title = "Watch for signs of heat";
+        const body = `It has been 18 days since the AI service for ${animal?.earTag || 'your animal'}. For the next 3 days, watch for standing heat, mounting behavior, or unusual restlessness.`;
 
         await Notification.create({
           recipientId: farmerId,
@@ -145,8 +145,8 @@ const onInseminationApproved = inngest.createFunction(
     if (stillRelevant21) {
       await step.run("ask-farmer-success", async () => {
         const animal = await Animal.findById(animalId);
-        const title = "🐮 AI Outcome Confirmation";
-        const body = `It has been 21 days since the insemination of ${animal?.earTag || 'your animal'}. Is she still in heat, or do you think she conceived? Click to confirm.`;
+        const title = "Share a breeding observation";
+        const body = `It has been 21 days since the AI service for ${animal?.earTag || 'your animal'}. Report any signs of heat or possible pregnancy for technician review.`;
 
         await Notification.create({
           recipientId: farmerId,
@@ -171,8 +171,8 @@ const onInseminationApproved = inngest.createFunction(
       await step.run("nudge-technician", async () => {
         const ins = await Insemination.findById(inseminationId).populate("farmerId", "name");
         const technicians = await User.find({ role: "technician" });
-        const title = "📞 Follow-up Required";
-        const body = `Farmer ${ins.farmerId?.name} has not confirmed the outcome for AI attempt #${ins.attemptNumber}. Please contact them for an update.`;
+        const title = "Farmer observation follow-up";
+        const body = `${ins.farmerId?.name || "A farmer"} has not yet submitted an observation for AI attempt ${ins.attemptNumber}. Contact the farmer if an update is needed.`;
         
         await Promise.all(technicians.map(async (tech) => {
           await Notification.create({
@@ -202,8 +202,8 @@ const onInseminationApproved = inngest.createFunction(
       await step.run("send-pd-reminder", async () => {
         const ins = await Insemination.findById(inseminationId).populate("animalId", "earTag");
         const technicians = await User.find({ role: "technician" });
-        const title = "🧪 Pregnancy Diagnosis Due";
-        const body = `Animal ${ins.animalId?.earTag || 'the animal'} is now at Day 60 post-AI. Rectal palpation or PD is recommended.`;
+        const title = "Pregnancy diagnosis is due";
+        const body = `${ins.animalId?.earTag || 'The animal'} reached 60 days after AI service. Schedule an appropriate pregnancy diagnosis.`;
 
         await Promise.all(technicians.map(async (tech) => {
           await Notification.create({
@@ -232,8 +232,8 @@ const onInseminationApproved = inngest.createFunction(
     if (stillRelevant75) {
       await step.run("send-missed-pd-nudge", async () => {
         const ins = await Insemination.findById(inseminationId).populate("animalId", "earTag");
-        const title = "🧪 Missed Pregnancy Diagnosis";
-        const body = `Animal Tag #${ins.animalId?.earTag || 'your animal'} was inseminated 75 days ago, but no pregnancy check diagnostic outcome has been logged yet. Please schedule a checkup immediately.`;
+        const title = "Pregnancy diagnosis is overdue";
+        const body = `${ins.animalId?.earTag || 'Your animal'} reached 75 days after AI service without an official pregnancy diagnosis. Please arrange a technician visit.`;
 
         // Notify Farmer
         await Notification.create({
@@ -259,10 +259,10 @@ const onInseminationApproved = inngest.createFunction(
             type: "system",
             relatedId: inseminationId,
             title,
-            message: `Farmer ${farmer?.name || 'Farmer'}'s animal (Tag #${ins.animalId?.earTag || 'animal'}) is at Day 75 post-AI without a logged outcome.`,
+            message: `${farmer?.name || 'A farmer'}'s animal (${ins.animalId?.earTag || 'tag not recorded'}) reached 75 days after AI service without an official pregnancy diagnosis.`,
           });
           if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, `Farmer ${farmer?.name || 'Farmer'}'s animal (Tag #${ins.animalId?.earTag || 'animal'}) is at Day 75 post-AI without a logged outcome.`);
+            await sendPushNotification(tech.pushToken, title, `${farmer?.name || 'A farmer'}'s animal (${ins.animalId?.earTag || 'tag not recorded'}) reached 75 days after AI service without an official pregnancy diagnosis.`);
           }
         }));
       });
@@ -289,8 +289,8 @@ const onPregnancyConfirmed = inngest.createFunction(
       const animal = await Animal.findById(animalId);
       const farmer = await User.findById(farmerId);
 
-      const farmerTitle = "🍼 Calving Imminent";
-      const farmerBody = `Reminder: ${animal?.earTag || 'Your animal'} is approaching the 280-day gestation mark. Please prepare the calving area.`;
+      const farmerTitle = "Prepare for expected calving";
+      const farmerBody = `${animal?.earTag || 'Your animal'} is approaching the expected calving period. Prepare a clean, safe calving area and monitor the animal closely.`;
 
       // Notify Farmer (In-app)
       await Notification.create({
@@ -309,7 +309,7 @@ const onPregnancyConfirmed = inngest.createFunction(
 
       // Notify all technicians
       const technicians = await User.find({ role: "technician" });
-      const techTitle = "⚠️ Upcoming Calving";
+      const techTitle = "Expected calving approaching";
       const techBody = `Farmer ${farmer?.name || 'Farmer'}'s animal (${animal?.earTag || 'animal'}) is due for calving soon.`;
 
       await Promise.all(technicians.map(async (tech) => {
@@ -340,8 +340,8 @@ const onPregnancyConfirmed = inngest.createFunction(
       await step.run("send-overdue-calving-alert", async () => {
         const animal = await Animal.findById(animalId);
         const farmer = await User.findById(farmerId);
-        const title = "🚨 Overdue Calving Alert";
-        const body = `Warning: Animal Tag #${animal?.earTag || 'your animal'} is now 10+ days overdue for calving. Please inspect the animal immediately for signs of distress or difficulty (dystocia) and contact a technician.`;
+        const title = "Expected calving date has passed";
+        const body = `${animal?.earTag || 'Your animal'} is more than 10 days past the expected calving date. Check for distress or difficulty giving birth and contact a technician promptly.`;
 
         // Notify Farmer
         await Notification.create({
@@ -366,10 +366,10 @@ const onPregnancyConfirmed = inngest.createFunction(
             type: "system",
             relatedId: animalId,
             title,
-            message: `Farmer ${farmer?.name || 'Farmer'}'s animal (Tag #${animal?.earTag || 'animal'}) is overdue for calving. Dystocia risk.`,
+            message: `${farmer?.name || 'A farmer'}'s animal (${animal?.earTag || 'tag not recorded'}) is past the expected calving date and may need assistance.`,
           });
           if (tech.pushToken) {
-            await sendPushNotification(tech.pushToken, title, `Farmer ${farmer?.name || 'Farmer'}'s animal (Tag #${animal?.earTag || 'animal'}) is overdue for calving. Dystocia risk.`);
+            await sendPushNotification(tech.pushToken, title, `${farmer?.name || 'A farmer'}'s animal (${animal?.earTag || 'tag not recorded'}) is past the expected calving date and may need assistance.`);
           }
         }));
       });
@@ -386,7 +386,45 @@ const onCalvingRecorded = inngest.createFunction(
   { event: "livestock/calving-recorded" },
   async ({ event, step }) => {
     await connectDB();
-    const { animalId, farmerId, outcome = "live_birth" } = event.data;
+    const {
+      animalId,
+      farmerId,
+      calvingId,
+      outcome = "live_birth",
+    } = event.data;
+
+    await step.run("send-calving-recorded-push", async () => {
+      const [animal, farmer] = await Promise.all([
+        Animal.findById(animalId),
+        User.findById(farmerId),
+      ]);
+      if (!farmer?.pushToken) return;
+
+      const animalTag = animal?.earTag || animal?.animalId || "the animal";
+      const eventType = outcome === "abortion" ? "pregnancy_loss" : "calving_recorded";
+      const outcomeSummary =
+        outcome === "abortion"
+          ? `A pregnancy loss was recorded for ${animalTag}. Open the record for follow-up details.`
+          : outcome === "stillbirth"
+            ? `A stillbirth was recorded for ${animalTag}. Open the record for details and follow-up guidance.`
+            : `A calving outcome was recorded for ${animalTag}. Open the record to review the delivery details.`;
+
+      await sendPushNotification(
+        farmer.pushToken,
+        outcome === "abortion" ? "Pregnancy loss recorded" : "Calving recorded",
+        outcomeSummary,
+        {
+          type: "system",
+          eventType,
+          relatedId: calvingId || animalId,
+          linkType: calvingId ? "record" : "animal",
+          recordId: calvingId,
+          animalId,
+          animalTag,
+          outcomeSummary,
+        },
+      );
+    });
 
     // Wait for VWP period (typically 60 days)
     await step.sleep("wait-for-vwp-window", "60 days");
@@ -405,7 +443,7 @@ const onCalvingRecorded = inngest.createFunction(
     if (readyForBreeding) {
       await step.run("send-vwp-reminder", async () => {
         const animal = await Animal.findById(animalId);
-        const title = "🐮 Optimal Breeding Window Open";
+        const title = "Breeding review is available";
         const recoveryEvent = outcome === "abortion"
           ? "pregnancy loss"
           : outcome === "stillbirth"
@@ -453,7 +491,7 @@ const automatedGestationLifecycle = inngest.createFunction(
       });
 
       const technicians = await User.find({ role: "technician" });
-      const title = "⏱️ Pregnancy Diagnosis Due";
+      const title = "Pregnancy diagnosis is due";
 
       let reminders = 0;
       for (const animal of animals) {
@@ -468,7 +506,7 @@ const automatedGestationLifecycle = inngest.createFunction(
         });
         if (!relevance.isRelevant) continue;
 
-        const body = `Animal ${animal.earTag || 'the animal'} was inseminated 60+ days ago. PD is now due.`;
+        const body = `${animal.earTag || 'The animal'} reached 60 days after AI service. Schedule an appropriate pregnancy diagnosis.`;
 
         // Notify technicians
         await Promise.all(technicians.map(async (tech) => {
@@ -503,7 +541,7 @@ const automatedGestationLifecycle = inngest.createFunction(
 
       for (const animal of animals) {
         const farmer = animal.farmerId;
-        const farmerTitle = "🍼 Calving within 7 days";
+        const farmerTitle = "Expected calving within 7 days";
         const farmerBody = `Your animal (${animal.earTag || 'your animal'}) is expected to calve around ${new Date(animal.expectedCalvingDate).toLocaleDateString()}.`;
 
         if (farmer) {
@@ -524,8 +562,8 @@ const automatedGestationLifecycle = inngest.createFunction(
         }
 
         // Notify Technicians (In-app & Push)
-        const techTitle = "⚠️ Upcoming Calving";
-        const techBody = `Farmer ${farmer?.name || 'Farmer'}'s cow (${animal.earTag || 'animal'}) is expected to calve around ${new Date(animal.expectedCalvingDate).toLocaleDateString()}.`;
+        const techTitle = "Expected calving approaching";
+        const techBody = `${farmer?.name || 'A farmer'}'s animal (${animal.earTag || 'tag not recorded'}) is expected to calve around ${new Date(animal.expectedCalvingDate).toLocaleDateString()}.`;
         
         for (const tech of technicians) {
           await Notification.create({
@@ -604,8 +642,8 @@ const remindPendingServices = inngest.createFunction(
       for (const request of pendingAI) {
         const tech = request.approvedBy;
         if (tech) {
-          const title = "⏰ Pending AI Service Log";
-          const body = `Your AI visit today for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is pending. Please log the results.`;
+          const title = "AI service record needed";
+          const body = `Today's AI visit for ${request.farmerId?.name || 'the farmer'} and ${request.animalId?.earTag || request.animalId?.animalId || 'the animal'} does not have a completed service record. Open the visit to finish it.`;
           
           await Notification.create({
             recipientId: tech._id,
@@ -626,8 +664,8 @@ const remindPendingServices = inngest.createFunction(
       for (const request of pendingHealth) {
         const tech = request.handledBy;
         if (tech) {
-          const title = "⏰ Pending Health Visit Log";
-          const body = `Your health visit today for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is pending. Please log the results.`;
+          const title = "Health service record needed";
+          const body = `Today's health visit for ${request.farmerId?.name || 'the farmer'} and ${request.animalId?.earTag || request.animalId?.animalId || 'the animal'} does not have a completed service record. Open the visit to finish it.`;
           
           await Notification.create({
             recipientId: tech._id,
