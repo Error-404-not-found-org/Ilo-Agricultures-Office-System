@@ -19,6 +19,7 @@ import {
   Plus,
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
+import UserAvatar from "../../components/ui/UserAvatar";
 import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
 
 // Modular tab imports
@@ -1471,397 +1472,362 @@ export default function BreedingLedger() {
           </div>
 
           {/* Pagination */}
-          <div className="pt-4 border-t border-base-300 flex items-center justify-between mt-3">
-            <span className="text-[11px] font-medium text-base-content/40">
-              Showing {totalItems === 0 ? 0 : startIndex + 1}–
-              {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
-              ledger items
-            </span>
-            <div className="flex items-center gap-1" aria-label="Breeding ledger pagination">
-              <button
-                type="button"
-                aria-label="Previous breeding ledger page"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1 || isLoading}
-                className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
-              >
-                <ChevronLeft size={12} />
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                (pageNumber) => (
-                  <button
-                    type="button"
-                    aria-label={`Go to breeding ledger page ${pageNumber}`}
-                    aria-current={currentPage === pageNumber ? "page" : undefined}
-                    key={pageNumber}
-                    disabled={isLoading}
-                    onClick={() => setCurrentPage(pageNumber)}
-                    className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
-                      currentPage === pageNumber
-                        ? "bg-primary text-white shadow-xs"
-                        : "border border-base-300 text-base-content/60 hover:bg-base-200"
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                ),
-              )}
-              <button
-                type="button"
-                aria-label="Next breeding ledger page"
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(totalPages, p + 1))
-                }
-                disabled={currentPage === totalPages || isLoading}
-                className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
-              >
-                <ChevronRight size={12} />
-              </button>
+          {!isLoading && totalPages > 1 && (
+            <div className="flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between mt-3">
+              <span className="text-sm text-base-content/55">
+                Showing {totalItems === 0 ? 0 : startIndex + 1}–
+                {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
+                ledger items
+              </span>
+              <div className="join self-end sm:self-auto" aria-label="Breeding ledger pagination">
+                <button
+                  type="button"
+                  aria-label="Previous breeding ledger page"
+                  disabled={currentPage === 1 || isLoading}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="btn btn-sm join-item"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-sm join-item pointer-events-none"
+                  aria-current="page"
+                >
+                  Page {currentPage} of {totalPages}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next breeding ledger page"
+                  disabled={currentPage === totalPages || isLoading}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="btn btn-sm join-item"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </main>
 
       {/* ===== DETAILED INSPECTION MODAL ===== */}
       {isModalOpen && selectedRecord && (
         <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 animate-fade-in"
+          className="fixed inset-0 bg-black/50 backdrop-blur-xs z-50 flex items-center justify-center p-4 sm:p-6 animate-fade-in"
           onClick={() => setIsModalOpen(false)}
         >
           <div
-            className="card w-full max-w-md bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-4 max-h-[90vh] overflow-y-auto"
+            className="card w-full max-w-4xl bg-base-100 border border-base-300 p-6 sm:p-8 rounded-3xl shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-base-300 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-base-content/40 uppercase">
-                  {activeTab === "insemination"
-                    ? "AI Insemination"
-                    : activeTab === "pregnancy"
-                      ? "Pregnancy Diagnosis"
-                      : "Calving Event"}{" "}
-                  Details
-                </span>
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-base-300 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 rounded-2xl bg-primary/10 text-primary">
+                  <Layers size={22} />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-black text-base-content leading-tight">
+                    {activeTab === "insemination"
+                      ? "AI Insemination Record"
+                      : activeTab === "pregnancy"
+                        ? "Pregnancy Diagnosis Record"
+                        : "Calving Event Record"}
+                  </h3>
+                  <p className="text-xs font-semibold text-base-content/60 mt-0.5">
+                    Registered on {selectedRecord.date}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
                 <span
-                  className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${getStatusBadgeClass(selectedRecord.status)}`}
+                  className={`inline-block text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider border ${getStatusBadgeClass(selectedRecord.status)}`}
                 >
                   {getStatusLabel(selectedRecord.status)}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="btn btn-sm btn-ghost btn-circle text-base-content/40 hover:text-rose-500"
+                >
+                  <X size={18} />
+                </button>
               </div>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="btn btn-xs btn-ghost btn-circle text-slate-400 hover:text-rose-500"
-              >
-                <X size={16} />
-              </button>
             </div>
 
-            <div className="divide-y divide-base-300 text-xs">
-              {[
-                { key: "Date Registered", val: selectedRecord.date },
-                { key: "Farmer Client Name", val: selectedRecord.farmer },
-                {
-                  key: "Ear Tag Reference ID",
-                  val: selectedRecord.animal,
-                  customStyle: "text-primary font-black",
-                },
-                {
-                  key: "Farmer location",
-                  val: selectedRecord.barangay,
-                },
-              ].map((row, index) => (
-                <div
-                  key={index}
-                  className="flex justify-between items-center py-2.5"
-                >
-                  <span className="text-base-content/40 font-semibold text-left">
-                    {row.key}
-                  </span>
-                  <span
-                    className={`font-bold text-base-content/90 text-right ${row.customStyle || ""}`}
-                  >
-                    {row.val}
-                  </span>
+            {/* Expanded Single Container Box with 2 Columns */}
+            <div className="rounded-3xl border border-base-300 bg-base-200/50 p-6 sm:p-8 space-y-5 shadow-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Column 1: Animal & Farmer Data */}
+                <div className="space-y-4.5 pr-0 md:pr-6 md:border-r md:border-base-300">
+                  <div className="flex items-center gap-3 pb-3 border-b border-base-300/70">
+                    <UserAvatar name={selectedRecord.farmer} size={36} sizeClass="h-9 w-9" />
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-wider text-base-content/70">
+                        Animal & Farmer Data
+                      </h4>
+                      <p className="text-xs text-base-content/50 font-medium">Livestock unit & owner details</p>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Ear Tag Reference ID</dt>
+                    <dd className="text-base sm:text-lg font-black text-primary mt-1">{selectedRecord.animal}</dd>
+                  </div>
+
+                  <div>
+                    <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Farmer Client Name</dt>
+                    <dd className="text-base font-bold text-base-content mt-1">{selectedRecord.farmer}</dd>
+                  </div>
+
+                  <div>
+                    <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Farmer Location / Barangay</dt>
+                    <dd className="text-sm sm:text-base font-semibold text-base-content/85 mt-1">{selectedRecord.barangay || "Not recorded"}</dd>
+                  </div>
                 </div>
-              ))}
 
-              {/* DYNAMIC TAB FIELDS FOR INSEMINATION */}
-              {activeTab === "insemination" && (
-                <>
-                  {[
-                    {
-                      key: "Sire Breed",
-                      val: selectedRecord.sireBreed || "Not recorded",
-                    },
-                    {
-                      key: "Sire Code Reference",
-                      val: selectedRecord.sireCode || "Not recorded",
-                    },
-                    {
-                      key: "Attempt Number",
-                      val:
-                        selectedRecord.attemptNumber == null
-                          ? "Not recorded"
-                          : `#${selectedRecord.attemptNumber}`,
-                    },
-                    {
-                      key: "Outcome",
-                      val: `${selectedRecord.outcome} (${selectedRecord.outcomeVerificationStatus})`,
-                    },
-                    ...(selectedRecord.previousAttempt
-                      ? [
-                          {
-                            key: "Previous attempt",
-                            val: `${selectedRecord.previousAttempt.attemptNumber == null ? "Attempt not recorded" : `Attempt #${selectedRecord.previousAttempt.attemptNumber}`} · ${selectedRecord.previousAttempt.inseminationDate ? new Date(selectedRecord.previousAttempt.inseminationDate).toLocaleDateString() : "Date not recorded"} · ${selectedRecord.previousAttempt.outcome || "Outcome not recorded"}`,
-                          },
-                        ]
-                      : selectedRecord.attemptNumber > 1
-                        ? [
-                            {
-                              key: "Previous attempt",
-                              val: "Legacy record is not linked to its earlier attempt",
-                              customStyle: "text-warning",
-                            },
-                          ]
-                        : []),
-                    { key: "Estrus Detection", val: selectedRecord.estrus },
-                    {
-                      key: "Farmer Observations",
-                      val: selectedRecord.comment || "None",
-                      customStyle: "italic text-slate-500",
-                    },
-                    {
-                      key: "Technician Observations",
-                      val: selectedRecord.technicianNote || "None",
-                      customStyle: "italic text-primary dark:text-accent",
-                    },
-                  ].map((row, index) => (
-                    <div
-                      key={index}
-                      className="flex justify-between items-center py-2.5"
-                    >
-                      <span className="text-slate-400 font-semibold text-left">
-                        {row.key}
-                      </span>
-                      <span
-                        className={`font-bold text-slate-800 dark:text-slate-200 text-right ${row.customStyle || ""}`}
-                      >
-                        {row.val}
-                      </span>
+                {/* Column 2: Service & Technical Details */}
+                <div className="space-y-4.5 pt-5 md:pt-0 border-t md:border-t-0 border-base-300">
+                  <div className="flex items-center gap-3 pb-3 border-b border-base-300/70">
+                    <div className="p-2 rounded-xl bg-primary/10 text-primary">
+                      <Sparkles size={20} />
                     </div>
-                  ))}
-                </>
-              )}
-
-              {/* DYNAMIC TAB FIELDS FOR PREGNANCY CHECK */}
-              {activeTab === "pregnancy" && (
-                <>
-                  {[
-                    {
-                      key: "Pregnancy Diagnostic",
-                      val: selectedRecord.result,
-                      customStyle:
-                        "text-purple-600 dark:text-purple-400 font-black",
-                    },
-                    {
-                      key: "Estimated Calving Date",
-                      val: selectedRecord.targetCalvingDate,
-                      customStyle:
-                        "text-primary dark:text-accent font-extrabold",
-                    },
-                    {
-                      key: "Technician Remarks",
-                      val: selectedRecord.technicianNote || "None",
-                      customStyle: "italic text-slate-500",
-                    },
-                  ].map((row, index) => (
-                    <div
-                      key={index}
-                      className="flex justify-between items-center py-2.5"
-                    >
-                      <span className="text-slate-400 font-semibold text-left">
-                        {row.key}
-                      </span>
-                      <span
-                        className={`font-bold text-slate-800 dark:text-slate-200 text-right ${row.customStyle || ""}`}
-                      >
-                        {row.val}
-                      </span>
+                    <div>
+                      <h4 className="text-sm font-black uppercase tracking-wider text-base-content/70">
+                        {activeTab === "insemination"
+                          ? "AI Service & Technical Details"
+                          : activeTab === "pregnancy"
+                            ? "Pregnancy Check Details"
+                            : "Calving Event Details"}
+                      </h4>
+                      <p className="text-xs text-base-content/50 font-medium">Technical record specifics</p>
                     </div>
-                  ))}
-                </>
-              )}
+                  </div>
 
-              {/* DYNAMIC TAB FIELDS FOR CALVING */}
-              {activeTab === "calving" && (
-                <>
-                  {[
-                    {
-                      key: "Calving Ease Tier",
-                      val: selectedRecord.calvingEase,
-                      customStyle: "font-black",
-                    },
-                    {
-                      key: "Offspring Born Count",
-                      val:
-                        selectedRecord.numberOfCalves == null
-                          ? "Not recorded"
-                          : `${selectedRecord.numberOfCalves} calf / calves`,
-                    },
-                    {
-                      key: "Delivery Address",
-                      val: selectedRecord.locationAddress,
-                    },
-                    {
-                      key: "Technician Comments",
-                      val: selectedRecord.technicianNote || "None",
-                      customStyle: "italic text-slate-500",
-                    },
-                  ].map((row, index) => (
-                    <div
-                      key={index}
-                      className="flex justify-between items-center py-2.5"
-                    >
-                      <span className="text-slate-400 font-semibold text-left">
-                        {row.key}
-                      </span>
-                      <span
-                        className={`font-bold text-slate-800 dark:text-slate-200 text-right ${row.customStyle || ""}`}
-                      >
-                        {row.val}
-                      </span>
-                    </div>
-                  ))}
+                  {activeTab === "insemination" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Attempt Number</dt>
+                          <dd className="text-sm font-bold text-primary mt-1">
+                            {selectedRecord.attemptNumber == null ? "Not recorded" : `#${selectedRecord.attemptNumber}`}
+                          </dd>
+                        </div>
 
-                  {/* Newborn Details Render Cards */}
-                  {selectedRecord.calves &&
-                    selectedRecord.calves.length > 0 && (
-                      <div className="py-3 space-y-2">
-                        <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-                          Registered Offspring
-                        </p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          {selectedRecord.calves.map((calf, index) => {
-                            const calfId = calf.animalId?._id || calf.animalId;
-                            const cColor = calf.animalId?.color || "";
-                            const cBrand = calf.animalId?.brand || "";
-
-                            const isColorEmpty =
-                              !cColor || cColor === "Not Provided";
-                            const isBrandEmpty = !cBrand;
-
-                            return (
-                              <div
-                                key={index}
-                                className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-850 rounded-xl flex flex-col gap-1.5"
-                              >
-                                <span className="font-extrabold text-primary dark:text-accent text-[11px]">
-                                  Tag: {calf.earTag || "Pending Assign"}
-                                </span>
-                                <span className="text-slate-400 text-[10px] font-bold mt-0.5 uppercase tracking-wide">
-                                  Sex: {calf.sex === "M" ? "Male" : "Female"}
-                                </span>
-
-                                <div className="border-t border-slate-100 dark:border-slate-800/60 pt-1.5 mt-0.5 space-y-1.5 text-[10px]">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-slate-400">
-                                      Color:
-                                    </span>
-                                    {!isColorEmpty ? (
-                                      <span className="font-bold text-slate-700 dark:text-slate-350">
-                                        {cColor}
-                                      </span>
-                                    ) : (
-                                      <input
-                                        type="text"
-                                        placeholder="Fill color..."
-                                        className="input input-xs bg-base-200/50 text-[10px] rounded px-1.5 py-0.5 focus:outline-emerald-500 border border-slate-200 dark:border-slate-800 w-24 font-bold"
-                                        value={calfEdits[calfId]?.color ?? ""}
-                                        onChange={(e) => {
-                                          setCalfEdits((prev) => ({
-                                            ...prev,
-                                            [calfId]: {
-                                              ...prev[calfId],
-                                              color: e.target.value,
-                                            },
-                                          }));
-                                        }}
-                                      />
-                                    )}
-                                  </div>
-
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-slate-400">
-                                      Brand:
-                                    </span>
-                                    {!isBrandEmpty ? (
-                                      <span className="font-bold text-slate-700 dark:text-slate-350">
-                                        {cBrand}
-                                      </span>
-                                    ) : (
-                                      <input
-                                        type="text"
-                                        placeholder="Fill brand..."
-                                        className="input input-xs bg-base-200/50 text-[10px] rounded px-1.5 py-0.5 focus:outline-emerald-500 border border-slate-200 dark:border-slate-800 w-24 font-bold"
-                                        value={calfEdits[calfId]?.brand ?? ""}
-                                        onChange={(e) => {
-                                          setCalfEdits((prev) => ({
-                                            ...prev,
-                                            [calfId]: {
-                                              ...prev[calfId],
-                                              brand: e.target.value,
-                                            },
-                                          }));
-                                        }}
-                                      />
-                                    )}
-                                  </div>
-
-                                  {(isColorEmpty || isBrandEmpty) && calfId && (
-                                    <div className="flex justify-end pt-0.5">
-                                      <button
-                                        disabled={
-                                          savingCalfId === calfId ||
-                                          (!calfEdits[calfId]?.color?.trim() &&
-                                            !calfEdits[calfId]?.brand?.trim())
-                                        }
-                                        onClick={() =>
-                                          handleSaveCalfDetails(calfId)
-                                        }
-                                        className="btn btn-xs bg-primary hover:bg-primary-focus disabled:opacity-40 text-white border-none rounded px-2 py-0.5 font-bold text-[8px] uppercase tracking-wider cursor-pointer"
-                                      >
-                                        {savingCalfId === calfId
-                                          ? "Saving..."
-                                          : "Save"}
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+                        <div>
+                          <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Estrus Detection</dt>
+                          <dd className="text-sm font-bold text-base-content mt-1">{selectedRecord.estrus || "Not recorded"}</dd>
                         </div>
                       </div>
-                    )}
-                </>
-              )}
+
+                      <div>
+                        <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Sire Genetics</dt>
+                        <dd className="text-sm sm:text-base font-bold text-base-content mt-1">
+                          {selectedRecord.sireBreed || "Not recorded"} · {selectedRecord.sireCode || "Not recorded"}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Outcome & Verification</dt>
+                        <dd className="text-sm font-bold text-base-content mt-1">
+                          {selectedRecord.outcome} ({selectedRecord.outcomeVerificationStatus})
+                        </dd>
+                      </div>
+
+                      {selectedRecord.previousAttempt && (
+                        <div className="p-3 rounded-2xl bg-info/10 border border-info/20">
+                          <dt className="text-xs font-black uppercase tracking-wider text-info">Linked Previous Attempt</dt>
+                          <dd className="text-xs font-medium text-base-content/85 mt-1">
+                            {selectedRecord.previousAttempt.attemptNumber == null ? "Attempt not recorded" : `Attempt #${selectedRecord.previousAttempt.attemptNumber}`} · {selectedRecord.previousAttempt.inseminationDate ? new Date(selectedRecord.previousAttempt.inseminationDate).toLocaleDateString() : "Date not recorded"} · {selectedRecord.previousAttempt.outcome || "Outcome not recorded"}
+                          </dd>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {activeTab === "pregnancy" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Pregnancy Diagnostic</dt>
+                          <dd className="text-base font-black text-purple-600 dark:text-purple-400 mt-1">{selectedRecord.result}</dd>
+                        </div>
+
+                        <div>
+                          <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Estimated Calving Date</dt>
+                          <dd className="text-sm font-extrabold text-primary dark:text-accent mt-1">{selectedRecord.targetCalvingDate}</dd>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {activeTab === "calving" && (
+                    <>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Calving Ease Tier</dt>
+                          <dd className="text-sm font-black text-base-content mt-1">{selectedRecord.calvingEase}</dd>
+                        </div>
+
+                        <div>
+                          <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Offspring Born Count</dt>
+                          <dd className="text-sm font-bold text-primary mt-1">
+                            {selectedRecord.numberOfCalves == null ? "Not recorded" : `${selectedRecord.numberOfCalves} calf / calves`}
+                          </dd>
+                        </div>
+                      </div>
+
+                      <div>
+                        <dt className="text-xs font-black uppercase tracking-wider text-base-content/50">Delivery Address</dt>
+                        <dd className="text-sm font-semibold text-base-content/85 mt-1">{selectedRecord.locationAddress || "Not recorded"}</dd>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800/80">
-              <Info size={14} className="text-primary shrink-0" />
-              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            {/* Observations & Field Notes */}
+            <section className="space-y-2.5">
+              <h4 className="font-bold text-xs uppercase tracking-wider text-base-content/60">Observations & Field Notes</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div className="rounded-2xl bg-base-200 p-4 leading-relaxed border border-base-300/50">
+                  <span className="font-extrabold block text-xs uppercase tracking-wider text-base-content/50 mb-1">Farmer Observation</span>
+                  <p className="text-xs sm:text-sm text-base-content/80 font-medium italic">{selectedRecord.comment || "None recorded."}</p>
+                </div>
+                <div className="rounded-2xl bg-base-200 p-4 leading-relaxed border border-base-300/50">
+                  <span className="font-extrabold block text-xs uppercase tracking-wider text-base-content/50 mb-1">Technician Remarks</span>
+                  <p className="text-xs sm:text-sm text-primary dark:text-accent font-medium italic">{selectedRecord.technicianNote || "None recorded."}</p>
+                </div>
+              </div>
+            </section>
+
+            {/* Registered Offspring (Calving Tab) */}
+            {activeTab === "calving" && selectedRecord.calves && selectedRecord.calves.length > 0 && (
+              <div className="p-4 rounded-2xl bg-base-200/50 border border-base-300/60 space-y-3">
+                <p className="text-xs font-black uppercase text-base-content/60 tracking-wider">
+                  Registered Offspring
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {selectedRecord.calves.map((calf, index) => {
+                    const calfId = calf.animalId?._id || calf.animalId;
+                    const cColor = calf.animalId?.color || "";
+                    const cBrand = calf.animalId?.brand || "";
+
+                    const isColorEmpty = !cColor || cColor === "Not Provided";
+                    const isBrandEmpty = !cBrand;
+
+                    return (
+                      <div
+                        key={index}
+                        className="p-3.5 bg-base-100 border border-base-300 rounded-2xl flex flex-col gap-2 shadow-xs"
+                      >
+                        <span className="font-extrabold text-primary dark:text-accent text-xs">
+                          Tag: {calf.earTag || "Pending Assign"}
+                        </span>
+                        <span className="text-base-content/60 text-xs font-bold uppercase tracking-wide">
+                          Sex: {calf.sex === "M" ? "Male" : "Female"}
+                        </span>
+
+                        <div className="border-t border-base-200 pt-2 space-y-2 text-xs">
+                          <div className="flex justify-between items-center">
+                            <span className="text-base-content/50 font-medium">
+                              Color:
+                            </span>
+                            {!isColorEmpty ? (
+                              <span className="font-bold text-base-content">
+                                {cColor}
+                              </span>
+                            ) : (
+                              <input
+                                type="text"
+                                placeholder="Fill color..."
+                                className="input input-xs bg-base-200 text-xs rounded-lg px-2 py-1 border border-base-300 w-28 font-bold"
+                                value={calfEdits[calfId]?.color ?? ""}
+                                onChange={(e) => {
+                                  setCalfEdits((prev) => ({
+                                    ...prev,
+                                    [calfId]: {
+                                      ...prev[calfId],
+                                      color: e.target.value,
+                                    },
+                                  }));
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          <div className="flex justify-between items-center">
+                            <span className="text-base-content/50 font-medium">
+                              Brand:
+                            </span>
+                            {!isBrandEmpty ? (
+                              <span className="font-bold text-base-content">
+                                {cBrand}
+                              </span>
+                            ) : (
+                              <input
+                                type="text"
+                                placeholder="Fill brand..."
+                                className="input input-xs bg-base-200 text-xs rounded-lg px-2 py-1 border border-base-300 w-28 font-bold"
+                                value={calfEdits[calfId]?.brand ?? ""}
+                                onChange={(e) => {
+                                  setCalfEdits((prev) => ({
+                                    ...prev,
+                                    [calfId]: {
+                                      ...prev[calfId],
+                                      brand: e.target.value,
+                                    },
+                                  }));
+                                }}
+                              />
+                            )}
+                          </div>
+
+                          {(isColorEmpty || isBrandEmpty) && calfId && (
+                            <div className="flex justify-end pt-1">
+                              <button
+                                disabled={
+                                  savingCalfId === calfId ||
+                                  (!calfEdits[calfId]?.color?.trim() &&
+                                    !calfEdits[calfId]?.brand?.trim())
+                                }
+                                onClick={() =>
+                                  handleSaveCalfDetails(calfId)
+                                }
+                                className="btn btn-xs bg-primary hover:bg-primary-focus disabled:opacity-40 text-white border-none rounded-lg px-3 py-1 font-bold text-[10px] uppercase tracking-wider cursor-pointer"
+                              >
+                                {savingCalfId === calfId
+                                  ? "Saving..."
+                                  : "Save"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Compliance Footer Banner */}
+            <div className="flex items-center gap-2.5 bg-base-200/60 p-3.5 rounded-2xl border border-base-200">
+              <Info size={18} className="text-primary shrink-0" />
+              <p className="text-xs text-base-content/60 font-bold uppercase tracking-wider">
                 Historical breeding records immutable unless authorized.
               </p>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-900">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 rounded-xl px-4 text-xs font-bold cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
+            {/* Actions */}
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="btn btn-md w-full btn-primary border-none text-white rounded-2xl text-sm font-bold shadow-md cursor-pointer"
+            >
+              Dismiss Details Panel
+            </button>
           </div>
         </div>
       )}

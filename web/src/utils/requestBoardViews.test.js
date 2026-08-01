@@ -28,11 +28,11 @@ describe("request board primary views", () => {
       { status: "pending", assignment: "unassigned" },
     );
     expect(getRequestBoardViewSelection(REQUEST_BOARD_VIEWS.MINE)).toEqual({
-      status: "all",
+      status: "active",
       assignment: "mine",
     });
     expect(getRequestBoardViewSelection(REQUEST_BOARD_VIEWS.HISTORY)).toEqual({
-      status: "completed",
+      status: "history",
       assignment: "mine",
     });
   });

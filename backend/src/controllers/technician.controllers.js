@@ -121,7 +121,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         deletedAt: null,
         ...hideDeclinedForMe,
       })
-        .populate("farmerId", "name address farmLocation imageUrl")
+        .populate("farmerId", "name phoneNumber phone address farmLocation imageUrl")
         .populate("animalId", "animalId earTag imageUrl breed species")
         .populate("approvedBy", "name")
         .sort({ createdAt: -1 })
@@ -142,7 +142,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         deletedAt: null,
         ...hideDeclinedForMe,
       })
-        .populate("farmerId", "name address farmLocation imageUrl")
+        .populate("farmerId", "name phoneNumber phone address farmLocation imageUrl")
         .populate("animalId", "animalId earTag imageUrl breed species")
         .populate("handledBy", "name")
         .sort({ urgency: -1, createdAt: -1 })
@@ -226,7 +226,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         dueDate: { $ne: null },
         ...(req.user.role !== "admin" ? { technicianId: req.user._id } : {}),
       })
-        .populate("farmerId", "name address farmLocation")
+        .populate("farmerId", "name phoneNumber phone address farmLocation")
         .populate("animalIds", "animalId earTag imageUrl breed species")
         .sort({ dueDate: 1, createdAt: -1 })
         .lean(),
@@ -337,7 +337,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayDate: itemDisplayDate,
         farmer: ins.farmerId?.name || "Unknown Farmer",
         farmerName: ins.farmerId?.name || "Unknown Farmer",
-        farmerImageUrl: ins.farmerId?.imageUrl || "",
+        farmerPhone: ins.farmerId?.phoneNumber || ins.farmerId?.phone || null,
+        farmerImageUrl: ins.farmerId?.imageUrl || ins.farmerId?.avatarUrl || ins.farmerId?.profilePicture || ins.farmerId?.avatar || "",
         location: formatAddress(ins.farmerId?.address),
         ...farmLocationDetails,
         animalTag:
@@ -406,7 +407,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayDate: itemDisplayDate,
         farmer: req.farmerId?.name || "Unknown Farmer",
         farmerName: req.farmerId?.name || "Unknown Farmer",
-        farmerImageUrl: req.farmerId?.imageUrl || "",
+        farmerPhone: req.farmerId?.phoneNumber || req.farmerId?.phone || null,
+        farmerImageUrl: req.farmerId?.imageUrl || req.farmerId?.avatarUrl || req.farmerId?.profilePicture || req.farmerId?.avatar || "",
         location: formatAddress(req.farmerId?.address),
         ...farmLocationDetails,
         animalTag:
@@ -475,6 +477,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayDate: itemDisplayDate,
         farmer: taskDoc.farmerId?.name || "Unknown Farmer",
         farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerPhone: taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
+        farmerImageUrl: taskDoc.farmerId?.avatarUrl || taskDoc.farmerId?.profilePicture || taskDoc.farmerId?.avatar || null,
         location: formatAddress(taskDoc.farmerId?.address),
         farmLocationLabel:
           taskDoc.farmerId?.farmLocation?.detectedAddress?.trim() ||
@@ -2800,6 +2804,14 @@ export const getTechnicianRequests = async (req, res) => {
         aiQuery.status = "rejected";
         healthQuery.status = { $in: ["rejected", "cancelled"] };
         taskQuery.status = "Cancelled";
+      } else if (status === "active") {
+        aiQuery.status = { $in: ["pending", "approved", "scheduled", "in-progress"] };
+        healthQuery.status = { $in: ["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress"] };
+        taskQuery.status = { $in: ["Pending", "In Progress"] };
+      } else if (status === "history") {
+        aiQuery.status = { $in: ["done", "rejected", "cancelled"] };
+        healthQuery.status = { $in: ["resolved", "rejected", "cancelled"] };
+        taskQuery.status = { $in: ["Completed", "Cancelled"] };
       }
     }
 

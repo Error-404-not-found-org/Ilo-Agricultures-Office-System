@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { UserButton, useUser, useClerk } from "@clerk/clerk-react";
 import { useQuery } from "@tanstack/react-query";
@@ -13,7 +13,6 @@ import {
   Tractor,
   CalendarDays,
   MapPin,
-  Image,
   FileText,
   BarChart3,
   Settings as SettingsIcon,
@@ -153,6 +152,11 @@ export default function Sidebar() {
       },
       { type: "label", label: "Workspace" },
       {
+        path: "/technician/farmers",
+        icon: <Users size={16} />,
+        label: "Farmers",
+      },
+      {
         path: "/technician/animals",
         icon: <Tractor size={16} />,
         label: "Animals",
@@ -163,15 +167,20 @@ export default function Sidebar() {
         label: "Work-queue",
       },
       {
-        path: "/technician/field-notes",
-        icon: <Image size={16} />,
-        label: "Notes & Photos",
+        path: "/technician/reports",
+        icon: <FileText size={16} />,
+        label: "Reports",
       },
       { type: "label", label: "Records" },
       {
-        path: "/technician/farmers",
-        icon: <Users size={16} />,
-        label: "Farmers",
+        path: "/technician/analytics",
+        icon: <BarChart3 size={16} />,
+        label: "Performance",
+      },
+      {
+        path: "/technician/health",
+        icon: <HeartPulse size={16} />,
+        label: "Animal Health",
       },
       {
         path: "/technician/inseminations",
@@ -184,25 +193,10 @@ export default function Sidebar() {
         label: "Pregnancy",
       },
       {
-        path: "/technician/health",
-        icon: <HeartPulse size={16} />,
-        label: "Animal Health",
-      },
-      {
         path: "/technician/newborns",
         icon: <Tractor size={16} />,
         label: "Calving",
         badge: unseenCalvingsCount > 0 ? String(unseenCalvingsCount) : null,
-      },
-      {
-        path: "/technician/reports",
-        icon: <FileText size={16} />,
-        label: "Reports",
-      },
-      {
-        path: "/technician/analytics",
-        icon: <BarChart3 size={16} />,
-        label: "Performance",
       },
       { type: "label", label: "System" },
       {
@@ -416,7 +410,7 @@ export default function Sidebar() {
                   </span>
                 )}
                 {!isCollapsed && item.badge && (
-                  <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-[18px] text-center animate-pulse shrink-0">
+                  <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full min-w-4.5 text-center animate-pulse shrink-0">
                     {item.badge}
                   </span>
                 )}

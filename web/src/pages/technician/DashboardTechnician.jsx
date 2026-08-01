@@ -74,9 +74,9 @@ function QuickAction({ icon: IconComponent, label, bgClass, textClass, onClick }
       className="group flex min-w-0 flex-col items-center text-center cursor-pointer rounded-box focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
     >
       <div className={`size-16 rounded-full flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-md ${bgClass} ${textClass}`}>
-        <IconComponent size={28} className="stroke-[2]" />
+        <IconComponent size={28} className="stroke-2" />
       </div>
-      <span className="mt-3 block text-xs font-bold text-base-content/85 group-hover:text-primary transition-colors leading-tight px-1 max-w-[120px]">
+      <span className="mt-3 block text-xs font-bold text-base-content/85 group-hover:text-primary transition-colors leading-tight px-1 max-w-30">
         {label}
       </span>
     </button>
@@ -486,7 +486,7 @@ export default function Dashboard() {
                 {isLoading ? (
                   [...Array(3)].map((_, idx) => (
                     <div key={idx} className="relative flex items-start gap-4 animate-pulse">
-                      <div className="absolute -left-[22px] top-1.5 size-2.5 rounded-full bg-base-300 border-4 border-base-100" />
+                      <div className="absolute -left-5.5 top-1.5 size-2.5 rounded-full bg-base-300 border-4 border-base-100" />
                       <div className="w-16 skeleton h-3 mt-1 shrink-0" />
                       <div className="flex-1 space-y-2">
                         <div className="skeleton h-4 w-1/3" />
@@ -516,7 +516,7 @@ export default function Dashboard() {
                     return (
                       <div key={v.id} className="relative flex flex-col sm:flex-row items-start gap-4">
                         {/* Timeline Bullet Point */}
-                        <div className={`absolute -left-[22px] top-1.5 size-3 rounded-full ${dotClass} border-4 border-base-100 ring-4 ring-base-100`} />
+                        <div className={`absolute -left-5.5 top-1.5 size-3 rounded-full ${dotClass} border-4 border-base-100 ring-4 ring-base-100`} />
 
                         {/* Time label */}
                         <div className="w-20 shrink-0 text-xs font-black text-base-content/70 mt-1">

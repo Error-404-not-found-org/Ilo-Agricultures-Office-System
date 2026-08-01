@@ -405,7 +405,7 @@ export default function WorkQueue() {
         subtitle="Complete assigned field tasks and lifecycle follow-ups"
       />
 
-      <main className="max-w-[1600px] mx-auto p-4 lg:p-6 space-y-6 w-full">
+      <main className="max-w-500 mx-auto p-4 lg:p-6 space-y-6 w-full">
         {/* ================= 1. DOCK OF STATISTICS CARDS ================= */}
         <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {/* Card: Total Tasks */}
@@ -802,12 +802,12 @@ export default function WorkQueue() {
                                         animal.animalId ||
                                         "Not recorded";
                                       const slicedTag =
-                                        rawTag.length > 12
-                                          ? rawTag.slice(0, 12) + "..."
+                                        rawTag.length > 14
+                                          ? rawTag.slice(0, 14) + "..."
                                           : rawTag;
                                       return (
                                         <span
-                                          className="font-extrabold text-[11px] text-base-content block leading-tight break-all max-w-[150px]"
+                                          className="font-extrabold text-sm text-base-content block leading-tight break-all max-w-[170px]"
                                           title={
                                             animal.name || `Tag #${rawTag}`
                                           }
@@ -816,7 +816,7 @@ export default function WorkQueue() {
                                         </span>
                                       );
                                     })()}
-                                    <span className="text-[10px] text-base-content/50 block mt-0.5 font-bold">
+                                    <span className="text-xs text-base-content/65 block mt-0.5 font-bold">
                                       {task.farmerId?.name
                                         ? toTitleCase(task.farmerId.name)
                                         : "Farmer not recorded"}
@@ -829,24 +829,24 @@ export default function WorkQueue() {
                               <td className="p-4">
                                 <div className="flex items-center gap-2">
                                   <div
-                                    className={`w-6 h-6 rounded-lg flex items-center justify-center border text-xs shrink-0 ${typeMeta.color}`}
+                                    className={`w-7 h-7 rounded-lg flex items-center justify-center border text-xs shrink-0 ${typeMeta.color}`}
                                   >
                                     {typeMeta.icon}
                                   </div>
                                   <div>
-                                    <span className="font-bold text-base-content/90 text-xs block leading-tight">
+                                    <span className="font-black text-sm text-base-content block leading-tight">
                                       {typeMeta.label}
                                     </span>
-                                    <span className={`badge badge-xs mt-1 font-black uppercase ${priorityClass}`}>
+                                    <span className={`badge badge-sm mt-1 font-black uppercase text-[10px] ${priorityClass}`}>
                                       {priorityLabel}
                                     </span>
-                                    <span className="mt-1 block max-w-48 text-[9px] font-bold text-base-content/60">
+                                    <span className="mt-1 block max-w-48 text-xs font-bold text-base-content/70">
                                       {getWorkflowStageLabel(task)}
                                     </span>
-                                    <span className="mt-0.5 block max-w-48 text-[9px] font-semibold text-base-content/60">
+                                    <span className="mt-0.5 block max-w-48 text-[11px] font-semibold text-base-content/65">
                                       Source: {workflowSummary.sourceLabel}
                                     </span>
-                                    <span className="mt-0.5 block max-w-48 text-[9px] font-semibold text-base-content/70">
+                                    <span className="mt-0.5 block max-w-48 text-[11px] font-semibold text-base-content/75">
                                       Next: {workflowSummary.nextActionLabel}
                                     </span>
                                   </div>
@@ -859,8 +859,8 @@ export default function WorkQueue() {
                                   const sched = formatRelativeSchedule(task.dueDate);
                                   return (
                                     <>
-                                      <span className="block font-bold text-xs">{sched.date}</span>
-                                      <span className="text-[10px] text-base-content/60 block mt-0.5 font-bold">
+                                      <span className="block font-bold text-sm text-base-content">{sched.date}</span>
+                                      <span className="text-xs text-base-content/65 block mt-0.5 font-bold">
                                         {sched.time}
                                       </span>
                                     </>
@@ -871,7 +871,7 @@ export default function WorkQueue() {
                               {/* 4. STATUS */}
                               <td className="p-4">
                                 <span
-                                  className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${status.badgeClass}`}
+                                  className={`badge badge-md rounded-full font-extrabold uppercase tracking-wider text-xs ${status.badgeClass}`}
                                 >
                                   {status.label}
                                 </span>
@@ -881,7 +881,7 @@ export default function WorkQueue() {
                               <td className="p-4 pr-6 text-right">
                                 <div className="flex items-center justify-end gap-2">
                                   <span
-                                    className={`badge badge-sm whitespace-nowrap ${
+                                    className={`badge badge-md font-bold text-xs whitespace-nowrap ${
                                       complete
                                         ? "badge-success"
                                         : readiness.ready

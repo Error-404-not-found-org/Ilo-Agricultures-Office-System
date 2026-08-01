@@ -193,6 +193,8 @@ export default function UpdateClientProfileScreen() {
     try {
       setSaving(true);
       const payload = {
+        name: formData.name.trim(),
+        email: formData.email.trim(),
         phoneNumber: formData.phoneNumber.trim(),
         address: {
           phoneNumber: formData.phoneNumber.trim(), // Syncing backwards to support legacy nested schema

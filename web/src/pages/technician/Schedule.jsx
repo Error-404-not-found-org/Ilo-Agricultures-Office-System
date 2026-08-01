@@ -1,18 +1,21 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Syringe,
-  HeartPulse,
-  Plus,
-} from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import {
+  Calendar,
+  MapPin,
+  Phone,
+  ExternalLink,
+} from "lucide-react";
 
 import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/layout/Topbar";
+import Modal from "../../components/ui/Modal";
+import UserAvatar from "../../components/ui/UserAvatar";
 import WalkInAIModal from "../../components/dialogs/WalkInAIModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
 import { getCalendarTarget } from "../../utils/taskNavigation";
@@ -23,7 +26,6 @@ import {
 import PageMeta from "../../components/layout/PageMeta";
 import {
   VisitCalendarFilters,
-  MiniCalendarCard,
   VisitLegendCard,
   UpcomingVisitsCard,
 } from "../../components/calendar/CalendarComponents";
@@ -89,6 +91,42 @@ const getAgendaServiceLabel = (item = {}) => {
   return item.taskType ? String(item.taskType).replaceAll("_", " ") : "Other Services";
 };
 
+const getShortServiceBadge = (serviceLabel = "") => {
+  const s = String(serviceLabel).toLowerCase();
+  if (s.includes("artificial insemination") || s.includes("ai")) return "AI";
+  if (s.includes("health")) return "HEALTH";
+  if (s.includes("pregnancy")) return "PREGNANCY";
+  if (s.includes("vaccin")) return "VACCINATION";
+  if (s.includes("deworm")) return "DEWORMING";
+  if (s.includes("calv")) return "CALVING";
+  return "SERVICE";
+};
+
+const getCleanTaskTitle = (item = {}, serviceType = "") => {
+  const type = String(item.type || item.taskType || "").toLowerCase();
+  const rawTask = String(item.task || "");
+  if (
+    type.includes("insemination") ||
+    type === "ai" ||
+    serviceType.includes("Artificial Insemination") ||
+    serviceType.includes("AI")
+  ) {
+    const attempt = item.raw?.attemptNumber || 1;
+    return `Artificial Insemination · Attempt ${attempt}`;
+  }
+  if (type.includes("health") || serviceType.includes("Health")) {
+    return "Health Assistance";
+  }
+  if (
+    type.includes("pregnancy") ||
+    type === "pd" ||
+    serviceType.includes("Pregnancy")
+  ) {
+    return "Pregnancy Diagnosis";
+  }
+  return rawTask.split("-")[0]?.trim() || serviceType;
+};
+
 const getAgendaWorkflowSummary = (item = {}) =>
   item.type === "task"
     ? getTaskWorkflowSummary(item.raw || item)
@@ -102,6 +140,15 @@ export default function DeploymentSchedule() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  // ---- FETCH LOGGED-IN TECHNICIAN USER PROFILE ----
+  const { data: dbUser } = useQuery({
+    queryKey: ["user", "me"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/user/me");
+      return res.data;
+    },
+  });
+
   // ---- FILTERS STATES ----
   const [selectedRange, setSelectedRange] = useState("all");
   const [selectedFarm, setSelectedFarm] = useState("all");
@@ -111,6 +158,13 @@ export default function DeploymentSchedule() {
   const [isAppointmentMenuOpen, setIsAppointmentMenuOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
+
+  // ---- DATE POPUP MODAL STATE ----
+  const [selectedDayModal, setSelectedDayModal] = useState({
+    isOpen: false,
+    formattedDate: "",
+    requests: [],
+  });
 
   // ---- FETCH INTEGRATED SCHEDULE DATA ----
   const { data: rawAgenda = [], isLoading, isError } = useQuery({
@@ -123,32 +177,109 @@ export default function DeploymentSchedule() {
     },
   });
 
-  // ---- MAP TO EVENTS FOR FULLCALENDAR ----
-  const events = useMemo(() => {
-    return (rawAgenda || []).map((item) => {
+  // ---- FILTER AGENDA TO ONLY DISPLAY REQUESTS CLAIMED BY THIS SPECIFIC TECHNICIAN ----
+  const claimedAgenda = useMemo(() => {
+    const list = Array.isArray(rawAgenda) ? rawAgenda : [];
+    const myId = dbUser?._id || dbUser?.id;
+
+    return list.filter((item) => {
+      const raw = item.raw || item;
+      const status = String(item.status || raw.status || "").toLowerCase();
+
+      // Exclude unclaimed / pending requests
+      if (status === "pending" || status === "unassigned") return false;
+
+      // Admins view full claimed schedule
+      if (dbUser?.role === "admin") return true;
+
+      // If user profile not loaded yet, default to active non-pending
+      if (!myId) return true;
+
+      const techIds = [
+        raw.approvedBy?._id,
+        raw.approvedBy,
+        raw.handledBy?._id,
+        raw.handledBy,
+        raw.technicianId?._id,
+        raw.technicianId,
+        raw.assignedTechnicianId?._id,
+        raw.assignedTechnicianId,
+        raw.createdBy?._id,
+        raw.createdBy,
+        item.approvedBy,
+        item.handledBy,
+        item.technicianId,
+      ]
+        .filter(Boolean)
+        .map((id) => String(id));
+
+      if (techIds.length === 0) return true;
+      return techIds.includes(String(myId));
+    });
+  }, [rawAgenda, dbUser]);
+
+  // ---- GROUP SCHEDULED REQUESTS BY DAY (YYYY-MM-DD) ----
+  const dayGroupedRequests = useMemo(() => {
+    const map = new Map();
+    (claimedAgenda || []).forEach((item) => {
       const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
+      if (!itemDateVal) return;
+      const d = new Date(itemDateVal);
+      if (Number.isNaN(d.getTime())) return;
+
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const serviceType = getAgendaServiceLabel(item);
-      const workflowSummary = getAgendaWorkflowSummary(item);
       const farm = item.farmLocationLabel || item.location || "Location unavailable";
+
+      // Apply Filter constraints
+      if (selectedFarm !== "all" && farm !== selectedFarm) return;
+      if (selectedType !== "all" && serviceType !== selectedType) return;
+      if (selectedRange !== "all") {
+        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        if (monthKey !== selectedRange) return;
+      }
+
+      if (!map.has(dateKey)) {
+        map.set(dateKey, {
+          dateKey,
+          dateObj: d,
+          requests: [],
+        });
+      }
+      map.get(dateKey).requests.push(item);
+    });
+    return map;
+  }, [claimedAgenda, selectedFarm, selectedType, selectedRange]);
+
+  // ---- MAP TO SUMMARY COUNT EVENTS FOR FULLCALENDAR ----
+  const events = useMemo(() => {
+    return [...dayGroupedRequests.values()].map(({ dateKey, requests, dateObj }) => {
+      const formattedDate = dateObj.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+      const count = requests.length;
       return {
-        id: String(item.id || item._id),
-        title: `${item.task || serviceType} · ${farm}`,
-        start: itemDateVal,
+        id: `summary-${dateKey}`,
+        start: dateKey,
+        title: `${count} ${count === 1 ? "request" : "requests"}`,
+        allDay: true,
         extendedProps: {
-          visitType: serviceType,
-          time: item.time || "Time unavailable",
-          farm,
-          workflowSummary,
-          raw: item,
+          isSummaryCount: true,
+          dateKey,
+          formattedDate,
+          requests,
         },
       };
     });
-  }, [rawAgenda]);
+  }, [dayGroupedRequests]);
 
   const rangeOptions = useMemo(() => {
     const months = new Map();
-    events.forEach((event) => {
-      const date = event.start ? new Date(event.start) : null;
+    (claimedAgenda || []).forEach((item) => {
+      const dateVal = item.scheduledDate || item.preferredDate || item.displayDate;
+      const date = dateVal ? new Date(dateVal) : null;
       if (!date || Number.isNaN(date.getTime())) return;
       const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
       months.set(
@@ -157,38 +288,25 @@ export default function DeploymentSchedule() {
       );
     });
     return [...months.entries()].map(([value, label]) => ({ value, label }));
-  }, [events]);
+  }, [claimedAgenda]);
 
-  const farmOptions = useMemo(
-    () => [...new Set(events.map((event) => event.extendedProps.farm).filter(Boolean))].sort(),
-    [events],
-  );
+  const farmOptions = useMemo(() => {
+    const farms = (claimedAgenda || []).map(
+      (item) => item.farmLocationLabel || item.location
+    ).filter(Boolean);
+    return [...new Set(farms)].sort();
+  }, [claimedAgenda]);
 
-  const typeOptions = useMemo(
-    () => [...new Set(events.map((event) => event.extendedProps.visitType).filter(Boolean))].sort(),
-    [events],
-  );
+  const typeOptions = useMemo(() => {
+    const types = (claimedAgenda || []).map((item) => getAgendaServiceLabel(item)).filter(Boolean);
+    return [...new Set(types)].sort();
+  }, [claimedAgenda]);
 
-  // ---- FILTER DYNAMIC EVENTS ----
-  const filteredEvents = useMemo(() => {
-    return events.filter((e) => {
-      if (selectedFarm !== "all" && e.extendedProps.farm !== selectedFarm) return false;
-      if (selectedType !== "all" && e.extendedProps.visitType !== selectedType) return false;
-      if (selectedRange !== "all") {
-        const date = e.start ? new Date(e.start) : null;
-        if (!date || Number.isNaN(date.getTime())) return false;
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-        if (monthKey !== selectedRange) return false;
-      }
-      return true;
-    });
-  }, [events, selectedFarm, selectedRange, selectedType]);
-
-  // ---- FILTER UPCOMING VISITS LIST ----
+  // ---- FILTER UPCOMING VISITS LIST FOR SIDEBAR ----
   const upcomingVisits = useMemo(() => {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
-    return (rawAgenda || [])
+    return (claimedAgenda || [])
       .filter((item) => {
         const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
         if (!itemDateVal) return false;
@@ -209,31 +327,62 @@ export default function DeploymentSchedule() {
         }),
         contextLabel: `${getAgendaWorkflowSummary(item).sourceLabel} · ${getAgendaWorkflowSummary(item).nextActionLabel}`,
       }));
-  }, [rawAgenda]);
+  }, [claimedAgenda]);
 
+  // ---- CALENDAR CLICK HANDLERS ----
   const handleEventClick = (clickInfo) => {
-    const task = clickInfo.event.extendedProps.raw;
-    if (task) {
-      const target = getCalendarTarget(task);
-      if (target.path) navigate(`${target.path}${target.search}`);
+    clickInfo.jsEvent.preventDefault();
+    const extProps = clickInfo.event.extendedProps;
+    if (extProps.requests) {
+      setSelectedDayModal({
+        isOpen: true,
+        formattedDate: extProps.formattedDate,
+        requests: extProps.requests,
+      });
     }
   };
 
+  const handleDateClick = (arg) => {
+    const dateKey = arg.dateStr;
+    const group = dayGroupedRequests.get(dateKey);
+    const dateObj = new Date(dateKey);
+    const formattedDate = !Number.isNaN(dateObj.getTime())
+      ? dateObj.toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
+      : dateKey;
+    setSelectedDayModal({
+      isOpen: true,
+      formattedDate,
+      requests: group ? group.requests : [],
+    });
+  };
+
   const renderEventContent = (eventInfo) => {
-    const visitType = eventInfo.event.extendedProps.visitType || "Other Services";
-    const time = eventInfo.event.extendedProps.time || "";
-    const farm = eventInfo.event.extendedProps.farm || "";
-    const styles = getVisitStyles(visitType);
+    const count = eventInfo.event.extendedProps.requests?.length || 1;
+    const requests = eventInfo.event.extendedProps.requests || [];
+    const formattedDate = eventInfo.event.extendedProps.formattedDate || "";
 
     return (
-      <div className={`flex flex-col p-1.5 rounded-lg border leading-normal w-full overflow-hidden ${styles.bg} ${styles.text}`}>
-        <div className="flex items-center gap-1.5">
-          <span className={`size-1.5 rounded-full shrink-0 ${styles.dot}`} />
-          <span className="text-[10px] font-black tracking-tight leading-none uppercase">{time}</span>
-        </div>
-        <div className="font-black text-[10px] tracking-tight mt-1 truncate">{visitType}</div>
-        <div className="text-[9px] font-semibold opacity-85 mt-0.5 truncate">{farm}</div>
-      </div>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedDayModal({
+            isOpen: true,
+            formattedDate,
+            requests,
+          });
+        }}
+        className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-xs font-black bg-primary text-primary-content rounded-xl shadow-xs hover:opacity-90 transition-all cursor-pointer border-none"
+      >
+        <Calendar size={13} className="shrink-0" />
+        <span>
+          {count} {count === 1 ? "request" : "requests"}
+        </span>
+      </button>
     );
   };
 
@@ -248,55 +397,7 @@ export default function DeploymentSchedule() {
       <Topbar
         title="Deployment Schedule"
         subtitle="Operational Timeline — manage and track field service deployments"
-      >
-        <div className="relative">
-          <button
-            type="button"
-            aria-expanded={isAppointmentMenuOpen}
-            aria-haspopup="menu"
-            onClick={() => setIsAppointmentMenuOpen(!isAppointmentMenuOpen)}
-            className="btn btn-primary btn-sm text-white font-bold gap-1.5 rounded-xl px-4"
-          >
-            <Plus size={13} /> Add Appointment
-          </button>
-
-          {isAppointmentMenuOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setIsAppointmentMenuOpen(false)}
-                aria-hidden="true"
-              />
-              <div role="menu" className="absolute right-0 mt-2 w-48 bg-base-100 border border-base-300 rounded-xl shadow-xl z-50 overflow-hidden py-1">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setIsAIModalOpen(true);
-                    setIsAppointmentMenuOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-base-200 text-base-content flex items-center gap-2"
-                >
-                  <Syringe size={14} className="text-blue-500" />
-                  <span>AI visit</span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setIsHealthModalOpen(true);
-                    setIsAppointmentMenuOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-base-200 text-base-content flex items-center gap-2"
-                >
-                  <HeartPulse size={14} className="text-rose-500" />
-                  <span>Health visit</span>
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </Topbar>
+      />
 
       {/* Main Workspace */}
       <main className="p-6 space-y-6">
@@ -310,7 +411,10 @@ export default function DeploymentSchedule() {
           rangeOptions={rangeOptions}
           farmOptions={farmOptions}
           typeOptions={typeOptions}
-          onNewVisitClick={() => setIsAppointmentMenuOpen(true)}
+          isAppointmentMenuOpen={isAppointmentMenuOpen}
+          setIsAppointmentMenuOpen={setIsAppointmentMenuOpen}
+          onOpenAIModal={() => setIsAIModalOpen(true)}
+          onOpenHealthModal={() => setIsHealthModalOpen(true)}
         />
 
         {/* 2-Column Responsive Layout */}
@@ -319,7 +423,7 @@ export default function DeploymentSchedule() {
           <div className="col-span-12 xl:col-span-8">
             <div id="deployment-calendar" className="rounded-2xl border border-base-300 bg-base-100 p-5 shadow-xs">
               {isLoading ? (
-                <div className="h-[400px] flex items-center justify-center">
+                <div className="h-100 flex items-center justify-center">
                   <span className="loading loading-spinner loading-md text-primary"></span>
                 </div>
               ) : isError ? (
@@ -341,8 +445,9 @@ export default function DeploymentSchedule() {
                       month: "Month",
                       week: "Week",
                     }}
-                    events={filteredEvents}
+                    events={events}
                     selectable={true}
+                    dateClick={handleDateClick}
                     eventClick={handleEventClick}
                     eventContent={renderEventContent}
                   />
@@ -351,11 +456,8 @@ export default function DeploymentSchedule() {
             </div>
           </div>
 
-          {/* Sidebar Cards Panel (Right side) */}
+          {/* Sidebar Cards Panel (Right side - Mini Calendar Widget Removed) */}
           <div className="col-span-12 xl:col-span-4 space-y-6">
-            {/* Mini Calendar Widget */}
-            <MiniCalendarCard />
-
             {/* Color Legend Widget */}
             <VisitLegendCard />
 
@@ -373,7 +475,193 @@ export default function DeploymentSchedule() {
         </div>
       </main>
 
-      {/* Modals */}
+      {/* ===== POPUP LISTING MODAL FOR SPECIFIC DATE ===== */}
+      <Modal
+        isOpen={selectedDayModal.isOpen}
+        onClose={() => setSelectedDayModal({ isOpen: false, formattedDate: "", requests: [] })}
+        title={`Scheduled Requests — ${selectedDayModal.formattedDate}`}
+        subtitle={
+          selectedDayModal.requests.length === 0
+            ? "No service requests scheduled for this date"
+            : `${selectedDayModal.requests.length} request${selectedDayModal.requests.length !== 1 ? "s" : ""} scheduled`
+        }
+        size="6xl"
+      >
+        <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-2 py-2">
+          {selectedDayModal.requests.length === 0 ? (
+            <div className="text-center py-16 text-base-content/60 text-xs font-semibold">
+              There are no service requests scheduled on this date.
+            </div>
+          ) : (
+            selectedDayModal.requests.map((item) => {
+              const serviceType = getAgendaServiceLabel(item);
+              const shortBadge = getShortServiceBadge(serviceType);
+              const cleanTitle = getCleanTaskTitle(item, serviceType);
+              const styles = getVisitStyles(serviceType);
+
+              const earTag =
+                item.animalTag ||
+                item.raw?.animalId?.earTag ||
+                item.raw?.animalId?.animalId ||
+                item.raw?.animalIds?.[0]?.earTag ||
+                item.raw?.animalIds?.[0]?.animalId ||
+                "Not recorded";
+
+              const breed =
+                item.raw?.animalId?.breed ||
+                item.breed ||
+                item.raw?.animalIds?.[0]?.breed ||
+                "Livestock";
+
+              const farmerName =
+                item.farmerName ||
+                item.farmer ||
+                item.raw?.farmerId?.name ||
+                item.raw?.farmer?.name ||
+                "Farmer unavailable";
+
+              const farmerPhone =
+                item.farmerPhone ||
+                item.phone ||
+                item.raw?.farmerId?.phoneNumber ||
+                item.raw?.farmerId?.phone ||
+                item.raw?.farmer?.phoneNumber ||
+                item.raw?.farmer?.phone ||
+                item.raw?.farmerPhone ||
+                item.raw?.phone ||
+                "No phone listed";
+
+              const farmerImageUrl =
+                item.farmerImageUrl ||
+                item.raw?.farmerId?.avatarUrl ||
+                item.raw?.farmerId?.profilePicture ||
+                item.raw?.farmerId?.avatar ||
+                null;
+
+              const taskDetails =
+                item.raw?.symptoms ||
+                item.raw?.issueDescription ||
+                item.raw?.diagnosis ||
+                item.raw?.treatment ||
+                item.raw?.farmerObservation ||
+                item.raw?.observationNotes ||
+                item.raw?.notes ||
+                item.raw?.remarks ||
+                item.raw?.taskDescription ||
+                item.raw?.description ||
+                item.task ||
+                serviceType;
+
+              const isReInsemination =
+                (serviceType.toLowerCase().includes("insemination") || serviceType.toLowerCase().includes("ai")) &&
+                Boolean(item.raw?.previousAttemptId);
+
+              const location =
+                item.farmLocationLabel || item.location || "Location unavailable";
+              const time = item.time || "Time unavailable";
+              const dateVal =
+                item.scheduledDate || item.preferredDate || item.displayDate;
+              const formattedDate = dateVal
+                ? new Date(dateVal).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : selectedDayModal.formattedDate;
+
+              return (
+                <div
+                  key={item.id || item._id}
+                  className="grid grid-cols-12 gap-5 items-center p-5 sm:p-6 rounded-2xl border border-base-300 bg-base-100 shadow-xs hover:border-primary/50 hover:shadow-md transition-all text-xs"
+                >
+                  {/* 1. FARMER & CONTACT */}
+                  <div className="col-span-12 md:col-span-3 min-w-0 flex items-center gap-3">
+                    <UserAvatar
+                      src={farmerImageUrl}
+                      name={farmerName}
+                      size="md"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[10px] font-black text-base-content/40 uppercase tracking-widest block">
+                        Farmer
+                      </span>
+                      <h4 className="font-bold text-base text-base-content leading-snug truncate" title={farmerName}>
+                        {farmerName}
+                      </h4>
+                      <p className="text-sm font-bold text-primary flex items-center gap-1.5 mt-0.5 truncate">
+                        <Phone size={13} className="shrink-0 text-primary" />
+                        <span className="truncate">{farmerPhone}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 2. SERVICE DETAILS & ANIMAL */}
+                  <div className="col-span-12 md:col-span-4 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-xs font-black uppercase tracking-wider border shrink-0 ${styles.bg} ${styles.text}`}
+                      >
+                        {shortBadge}
+                      </span>
+                      <span className="font-black text-base text-base-content leading-tight truncate">
+                        {cleanTitle}
+                      </span>
+                      {isReInsemination && (
+                        <span className="badge badge-sm badge-soft badge-info font-bold text-xs shrink-0">
+                          Re-insemination
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-base-content/90 mt-1 truncate">
+                      Animal: <span className="text-base-content font-black">{breed}</span> (Tag #{earTag})
+                    </p>
+                    <p className="text-sm font-medium text-base-content/65 mt-0.5 leading-relaxed line-clamp-2">
+                      Details: {taskDetails}
+                    </p>
+                  </div>
+
+                  {/* 3. LOCATION & DATE/TIME */}
+                  <div className="col-span-12 md:col-span-3 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2 font-bold text-sm text-base-content/90">
+                      <Calendar size={14} className="text-base-content/40 shrink-0" />
+                      <span>{formattedDate}</span>
+                      <span className="text-primary font-black">· {time}</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-sm font-semibold text-base-content/70 leading-relaxed whitespace-normal wrap-break-word">
+                      <MapPin size={14} className="text-primary shrink-0 mt-0.5" />
+                      <span>Brgy. {location}</span>
+                    </div>
+                  </div>
+
+                  {/* 4. ACTION (Far Right) */}
+                  <div className="col-span-12 md:col-span-2 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reqId = item.id || item._id || item.raw?._id;
+                        setSelectedDayModal({
+                          isOpen: false,
+                          formattedDate: "",
+                          requests: [],
+                        });
+                        navigate(
+                          `/technician/schedule/details?requestId=${encodeURIComponent(reqId)}`
+                        );
+                      }}
+                      className="btn btn-sm btn-primary px-4 gap-2 font-black uppercase tracking-wider shadow-xs cursor-pointer w-full md:w-auto"
+                    >
+                      <span>View Details</span>
+                      <ExternalLink size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Modal>
+
+      {/* Appointment Modals */}
       <WalkInAIModal
         isOpen={isAIModalOpen}
         onClose={() => {

@@ -5,11 +5,11 @@ export const REQUEST_BOARD_VIEWS = {
 };
 
 export function getInitialRequestBoardView(status = "pending") {
-  if (["completed", "declined"].includes(status)) {
+  if (["completed", "declined", "history"].includes(status)) {
     return REQUEST_BOARD_VIEWS.HISTORY;
   }
 
-  if (["scheduled", "in-progress", "in_progress", "all"].includes(status)) {
+  if (["scheduled", "in-progress", "in_progress", "active", "all"].includes(status)) {
     return REQUEST_BOARD_VIEWS.MINE;
   }
 
@@ -19,14 +19,14 @@ export function getInitialRequestBoardView(status = "pending") {
 export function getRequestBoardViewSelection(view, { isAdmin = false } = {}) {
   if (view === REQUEST_BOARD_VIEWS.HISTORY) {
     return {
-      status: "completed",
+      status: "history",
       assignment: isAdmin ? "all" : "mine",
     };
   }
 
   if (view === REQUEST_BOARD_VIEWS.MINE) {
     return {
-      status: isAdmin ? "in-progress" : "all",
+      status: isAdmin ? "in-progress" : "active",
       assignment: isAdmin ? "all" : "mine",
     };
   }

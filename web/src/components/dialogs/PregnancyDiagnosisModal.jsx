@@ -284,7 +284,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                 {recentAIs.length > 0 ? (
                                     recentAIs.map((record, idx) => (
                                         <div key={idx} className="relative pl-6 pb-4 last:pb-0 border-l border-base-300">
-                                            <div className="absolute left-[-5px] top-1 w-2.5 h-2.5 rounded-full bg-base-300" />
+                                            <div className="absolute -left-1.25 top-1 w-2.5 h-2.5 rounded-full bg-base-300" />
                                             <p className="text-[9px] font-black text-base-content/40 uppercase tracking-tighter leading-none mb-1">
                                                 Attempt #{record.attemptNumber || (recentAIs.length - idx)}
                                             </p>
@@ -362,43 +362,63 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                                     value={searchFarmer}
                                                     onChange={(e) => {
                                                         setSearchFarmer(e.target.value);
+                                                        setSelectedFarmerId("");
+                                                        setSelectedAnimalId("");
                                                         setIsDropdownOpen(true);
                                                     }}
+                                                    onFocus={() => setIsDropdownOpen(true)}
+                                                    onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
                                                     placeholder="Type farmer name..."
                                                     className={`${inputClass} pl-11`}
                                                 />
                                                 <AnimatePresence>
-                                                    {isDropdownOpen && searchFarmer && (
+                                                    {isDropdownOpen && (
                                                         <motion.div
                                                             initial={{ opacity: 0, y: -5 }}
                                                             animate={{ opacity: 1, y: 0 }}
                                                             exit={{ opacity: 0, y: -5 }}
-                                                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto border border-base-300 bg-base-100 shadow-xl rounded-xl custom-scrollbar"
+                                                            role="listbox"
+                                                            aria-label="Matching farmers"
+                                                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl custom-scrollbar"
                                                         >
                                                             {farmers.filter((f) =>
-                                                                f.name.toLowerCase().includes(searchFarmer.toLowerCase())
+                                                                (f.name || "").toLowerCase().includes(searchFarmer.toLowerCase()) ||
+                                                                (f.phoneNumber || "").toLowerCase().includes(searchFarmer.toLowerCase()) ||
+                                                                (typeof f.address === "string" ? f.address : f.address?.barangay || "").toLowerCase().includes(searchFarmer.toLowerCase())
                                                             ).length > 0 ? (
                                                                 farmers
-                                                                    .filter((f) => f.name.toLowerCase().includes(searchFarmer.toLowerCase()))
+                                                                    .filter((f) =>
+                                                                        (f.name || "").toLowerCase().includes(searchFarmer.toLowerCase()) ||
+                                                                        (f.phoneNumber || "").toLowerCase().includes(searchFarmer.toLowerCase()) ||
+                                                                        (typeof f.address === "string" ? f.address : f.address?.barangay || "").toLowerCase().includes(searchFarmer.toLowerCase())
+                                                                    )
                                                                     .map((farmer) => (
                                                                         <button
                                                                             key={farmer._id}
+                                                                            type="button"
+                                                                            role="option"
+                                                                            aria-selected={selectedFarmerId === farmer._id}
                                                                             onClick={() => {
                                                                                 setSelectedFarmerId(farmer._id);
                                                                                 setSelectedAnimalId("");
                                                                                 setSearchFarmer(farmer.name);
                                                                                 setIsDropdownOpen(false);
                                                                             }}
-                                                                            className="w-full px-4 py-3 text-left transition-colors hover:bg-emerald-500/10 flex flex-col gap-1 border-b border-base-200/50 last:border-0 cursor-pointer"
+                                                                            className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary cursor-pointer"
                                                                         >
-                                                                            <span className="text-xs font-bold text-base-content block">{farmer.name}</span>
-                                                                            <span className="text-[9px] font-black tracking-widest text-base-content/40 uppercase mt-0.5">
-                                                                                {farmer.phoneNumber || "No Contact"} • {farmer.address?.barangay || "No Barangay"}
+                                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                                                                                {(farmer.name || "Farmer").substring(0, 2).toUpperCase()}
+                                                                            </span>
+                                                                            <span className="min-w-0">
+                                                                                <span className="block truncate text-sm font-bold text-base-content">{farmer.name}</span>
+                                                                                <span className="block text-xs font-medium text-base-content/60">
+                                                                                    {farmer.phoneNumber || "No Contact"} • {typeof farmer.address === "string" ? farmer.address : (farmer.address?.barangay || "No Barangay")}
+                                                                                </span>
                                                                             </span>
                                                                         </button>
                                                                     ))
                                                             ) : (
-                                                                <div className="py-10 text-center text-[10px] font-black text-base-content/20 uppercase tracking-widest">No clients found</div>
+                                                                <p className="px-4 py-8 text-center text-sm font-medium text-base-content/60">No farmers found</p>
                                                             )}
                                                         </motion.div>
                                                     )}
@@ -571,7 +591,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                             placeholder="Optional notes..."
                                             value={note}
                                             onChange={(e) => setNote(e.target.value)}
-                                            className="w-full bg-base-200 border border-base-300 rounded-2xl p-4 text-xs font-bold text-base-content placeholder:text-base-content/30 focus:border-purple-600 focus:outline-none transition-all min-h-[80px] resize-none"
+                                            className="w-full bg-base-200 border border-base-300 rounded-2xl p-4 text-xs font-bold text-base-content placeholder:text-base-content/30 focus:border-purple-600 focus:outline-none transition-all min-h-20 resize-none"
                                         />
                                     </div>
 
