@@ -347,7 +347,7 @@ export const getMyRequests = async (req, res) => {
     const { page = 1, limit = 10, status } = req.query;
     const farmerId = req.user._id;
 
-    const query = { farmerId, deletedAt: null };
+    const query = { farmerId, deletedAt: null, farmerDismissedAt: null };
     if (status && status !== "all") query.status = status;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -376,6 +376,57 @@ export const getMyRequests = async (req, res) => {
   } catch (error) {
     console.error("[getMyRequests ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch your AI requests." });
+  }
+};
+
+// PATCH /api/ai-request/:id/dismiss
+// Removes a terminal request from the farmer's personal history only. The
+// official request and its links remain available to operational roles.
+export const dismissAIRequestForFarmer = async (req, res) => {
+  try {
+    if (req.user.role !== "farmer") {
+      return res.status(403).json({
+        message:
+          "Only the farmer who submitted this request can remove it from their history.",
+      });
+    }
+
+    const request = await Insemination.findOne({
+      _id: req.params.id,
+      farmerId: req.user._id,
+      deletedAt: null,
+    }).select("status farmerDismissedAt");
+
+    if (!request) {
+      return res.status(404).json({ message: "AI service request not found." });
+    }
+    if (!["cancelled", "rejected"].includes(request.status)) {
+      return res.status(409).json({
+        message:
+          "Only cancelled or rejected requests can be removed from your history.",
+      });
+    }
+
+    if (!request.farmerDismissedAt) {
+      await Insemination.updateOne(
+        {
+          _id: request._id,
+          farmerId: req.user._id,
+          status: { $in: ["cancelled", "rejected"] },
+          farmerDismissedAt: null,
+        },
+        { $set: { farmerDismissedAt: new Date() } },
+      );
+    }
+
+    return res.status(200).json({
+      message: "Request removed from your history.",
+    });
+  } catch (error) {
+    console.error("[dismissAIRequestForFarmer ERROR]", error.message);
+    return res.status(500).json({
+      message: "Failed to remove the request from your history.",
+    });
   }
 };
 
@@ -434,7 +485,6 @@ export const getAllRequests = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch AI requests." });
   }
 };
-
 
 // PATCH /api/ai-request/:id/status
 export const updateRequestStatus = async (req, res) => {
@@ -845,7 +895,8 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     request.farmerObservationSigns = Array.isArray(signs) ? signs : [];
     request.farmerObservationNotes = notes || "";
     request.evidencePhotos = photos;
-    const technicianVerificationRequired = reportType === "return_to_heat" || Boolean(verificationRequested);
+    const technicianVerificationRequired =
+      reportType === "return_to_heat" || Boolean(verificationRequested);
     request.verificationRequested = technicianVerificationRequired;
     request.verificationStatus = technicianVerificationRequired
       ? "pending"
@@ -873,7 +924,8 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       animal.reproductiveStatus = "In Heat";
       request.outcomeVerificationStatus = "reported";
       request.outcomeConfirmationSource = "farmer_return_to_heat";
-      nextAction = "Return-to-heat observation saved. A technician must verify the failed attempt before re-insemination.";
+      nextAction =
+        "Return-to-heat observation saved. A technician must verify the failed attempt before re-insemination.";
     }
 
     if (reportType === "unsure") {
@@ -1793,7 +1845,9 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       animalStatus: animal.reproductiveStatus,
     };
 
-    const officialDiagnosis = ["pregnant", "not_pregnant"].includes(verificationResult);
+    const officialDiagnosis = ["pregnant", "not_pregnant"].includes(
+      verificationResult,
+    );
     const methodAliases = {
       palpation: "rectal_palpation",
       visual_observation: "clinical_examination",
@@ -1826,11 +1880,12 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
       ]);
       task = confirmation.completedTask;
       alreadyRecorded = confirmation.alreadyRecorded;
-      nextAction = verificationResult === "pregnant"
-        ? confirmation.continuationTask
-          ? "Pregnancy confirmed. A Day-60 continuation recheck is required."
-          : "Pregnancy confirmed and recorded."
-        : "Animal confirmed not pregnant. Status reset to Normal.";
+      nextAction =
+        verificationResult === "pregnant"
+          ? confirmation.continuationTask
+            ? "Pregnancy confirmed. A Day-60 continuation recheck is required."
+            : "Pregnancy confirmed and recorded."
+          : "Animal confirmed not pregnant. Status reset to Normal.";
       pregnancyRecordCreated = !alreadyRecorded;
     } else {
       const verification = await persistBreedingObservationVerification({
@@ -1870,45 +1925,47 @@ export const verifyFarmerBreedingObservation = async (req, res) => {
     }
 
     // Official diagnoses write their timeline and audit entries in the shared transaction.
-    if (!officialDiagnosis) await createTimelineEvent({
-      animalId: verifiedAnimal._id,
-      eventType: "technician_breeding_verification_recorded",
-      occurredAt: checkedAt ? new Date(checkedAt) : new Date(),
-      actorId: req.user._id,
-      sourceType: "Insemination",
-      sourceId: verifiedRequest._id,
-      title: "Pregnancy Verification Completed",
-      summary:
-        `Verified as ${verificationResult.replaceAll("_", " ")} via ${checkMethod}. ${technicianNotes}`.trim(),
-      attachments: evidencePhotos || [],
-      metadata: {
-        verificationResult,
-        checkMethod,
-        pregnancyRecordCreated,
-        verificationTaskId: task?._id,
-        nextCheckDate,
-      },
-    });
+    if (!officialDiagnosis)
+      await createTimelineEvent({
+        animalId: verifiedAnimal._id,
+        eventType: "technician_breeding_verification_recorded",
+        occurredAt: checkedAt ? new Date(checkedAt) : new Date(),
+        actorId: req.user._id,
+        sourceType: "Insemination",
+        sourceId: verifiedRequest._id,
+        title: "Pregnancy Verification Completed",
+        summary:
+          `Verified as ${verificationResult.replaceAll("_", " ")} via ${checkMethod}. ${technicianNotes}`.trim(),
+        attachments: evidencePhotos || [],
+        metadata: {
+          verificationResult,
+          checkMethod,
+          pregnancyRecordCreated,
+          verificationTaskId: task?._id,
+          nextCheckDate,
+        },
+      });
 
     // Create Audit Log
-    if (!officialDiagnosis) await createAuditLog({
-      entityType: "Insemination",
-      entityId: verifiedRequest._id,
-      action: "verify_breeding_observation",
-      actorId: req.user._id,
-      before: beforeState,
-      after: {
-        verificationStatus: verifiedRequest.verificationStatus,
-        isSuccess: verifiedRequest.isSuccess,
-        outcome: verifiedRequest.outcome,
-        animalStatus: verifiedAnimal.reproductiveStatus,
-        verificationResult,
-      },
-      metadata: {
-        checkMethod,
-        technicianNotes,
-      },
-    });
+    if (!officialDiagnosis)
+      await createAuditLog({
+        entityType: "Insemination",
+        entityId: verifiedRequest._id,
+        action: "verify_breeding_observation",
+        actorId: req.user._id,
+        before: beforeState,
+        after: {
+          verificationStatus: verifiedRequest.verificationStatus,
+          isSuccess: verifiedRequest.isSuccess,
+          outcome: verifiedRequest.outcome,
+          animalStatus: verifiedAnimal.reproductiveStatus,
+          verificationResult,
+        },
+        metadata: {
+          checkMethod,
+          technicianNotes,
+        },
+      });
 
     // Notify Farmer
     if (!alreadyRecorded) {

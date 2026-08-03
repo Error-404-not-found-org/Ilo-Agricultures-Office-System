@@ -21,15 +21,24 @@ export default function TasksScreen() {
   // Filters State
   const [scope, setScope] = useState<"mine" | "available">("mine");
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState<"All" | "Urgent" | "Routine" | "Follow-up" | "Emergency">("All");
-
+  const [activeCategory, setActiveCategory] = useState<"All" | "Urgent" | "Routine" | "Follow-up" | "Completed">("All");
   const { tasksQuery } = useTechnicianTasks(undefined, { scope });
   const { data: tasks = [], isLoading, refetch, isRefetching } = tasksQuery;
 
   // Local filter logic
   const filteredTasks = (tasks || []).filter((t: any) => {
-    // Category match
-    const categoryMatch = activeCategory === "All" || t.category === activeCategory;
+    const statusStr = String(t.status || "pending").toLowerCase().trim();
+    const isTerminal = ["completed", "done", "cancelled"].includes(statusStr);
+
+    // If 'Completed' is selected, only show terminal tasks
+    if (activeCategory === "Completed") {
+      if (!isTerminal) return false;
+    } else {
+      // For any other category (All, Urgent, etc.), hide terminal tasks
+      if (isTerminal) return false;
+      // Category match
+      if (activeCategory !== "All" && t.category !== activeCategory) return false;
+    }
 
     // Search query match (farmer name or ear tag or notes)
     const text = searchQuery.toLowerCase();
@@ -42,7 +51,7 @@ export default function TasksScreen() {
       notes.includes(text) ||
       animalTags.some((tag: string) => tag.includes(text));
 
-    return categoryMatch && searchMatch;
+    return searchMatch;
   });
 
   const getTaskBadgeStyle = (taskType: string) => {
@@ -177,7 +186,7 @@ export default function TasksScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ paddingHorizontal: 16, gap: 8 }}
         >
-          {["All", "Urgent", "Routine", "Follow-up", "Emergency"].map((cat) => {
+          {["All", "Urgent", "Routine", "Follow-up", "Completed"].map((cat) => {
             const isActive = activeCategory === cat;
             return (
               <TouchableOpacity

@@ -686,13 +686,11 @@ export default function HealthLogScreen() {
                 {["low", "medium", "high"].map((u) => {
                   const isSel = urgency === u;
                   const activeBg =
-                    u === "emergency"
-                      ? "bg-red-600 border-red-600"
-                      : u === "high"
-                        ? "bg-rose-500 border-rose-500"
-                        : u === "medium"
-                          ? "bg-amber-600 border-amber-600"
-                          : "bg-emerald-600 border-emerald-600";
+                    u === "high"
+                      ? "bg-rose-500 border-rose-500"
+                      : u === "medium"
+                        ? "bg-amber-600 border-amber-600"
+                        : "bg-emerald-600 border-emerald-600";
 
                   return (
                     <TouchableOpacity

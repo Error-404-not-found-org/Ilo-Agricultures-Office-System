@@ -90,12 +90,7 @@ body {
 /* Custom scrollbar utility for navigation panels */
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(
-      in srgb,
-      var(--color-neutral-content) 15%,
-      transparent
-    )
-    transparent;
+  scrollbar-color: color-mix(in srgb, var(--color-neutral-content) 15%, transparent) transparent;
   scroll-behavior: smooth;
 }
 
@@ -111,37 +106,24 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background-color: color-mix(
-    in srgb,
-    var(--color-neutral-content) 15%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--color-neutral-content) 15%, transparent);
   border-radius: 9999px;
   transition: background-color 0.2s ease;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--color-neutral-content) 30%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--color-neutral-content) 30%, transparent);
 }
 
 /* FullCalendar Layout Overrides */
 .fc .fc-view-harness {
   @apply max-w-full overflow-x-auto;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(
-      in srgb,
-      var(--color-neutral-content) 15%,
-      transparent
-    )
-    transparent;
+  scrollbar-color: color-mix(in srgb, var(--color-neutral-content) 15%, transparent) transparent;
   scroll-behavior: smooth;
 }
 .fc-dayGridMonth-view.fc-view.fc-daygrid {
-  @apply min-w-[718px];
+  @apply min-w-179.5;
 }
 .fc .fc-scrollgrid-section > * {
   border-right-width: 0;
@@ -157,7 +139,7 @@ body {
   @apply gap-2;
 }
 .fc-button-group .fc-button {
-  @apply flex h-10 w-10 items-center justify-center !rounded-lg border border-base-300 bg-transparent hover:border-base-300 hover:bg-base-200 focus:shadow-none active:!border-base-300 active:!bg-transparent active:!shadow-none;
+  @apply flex h-10 w-10 items-center justify-center rounded-lg! border border-base-300 bg-transparent hover:border-base-300 hover:bg-base-200 focus:shadow-none active:border-base-300! active:bg-transparent! active:shadow-none!;
 }
 
 .fc-button-group .fc-button.fc-prev-button:before {
@@ -178,31 +160,31 @@ body {
   @apply hidden;
 }
 .fc-addEventButton-button {
-  @apply !rounded-lg !border-0 !bg-primary !px-4 !py-2.5 !text-sm !font-medium hover:opacity-90 focus:!shadow-none text-white;
+  @apply rounded-lg! border-0! bg-primary! px-4! py-2.5! text-sm! font-medium! hover:opacity-90 focus:shadow-none! text-white;
 }
 .fc-toolbar-title {
-  @apply !text-lg !font-medium text-base-content;
+  @apply text-lg! font-medium! text-base-content;
 }
 .fc-header-toolbar.fc-toolbar .fc-toolbar-chunk:last-child {
   @apply rounded-lg bg-base-200 p-0.5;
 }
 .fc-header-toolbar.fc-toolbar .fc-toolbar-chunk:last-child .fc-button {
-  @apply !h-auto !w-auto rounded-md !border-0 bg-transparent !px-5 !py-2 text-sm font-medium text-base-content/60 hover:text-base-content focus:!shadow-none;
+  @apply h-auto! w-auto! rounded-md border-0! bg-transparent px-5! py-2! text-sm font-medium text-base-content/60 hover:text-base-content focus:shadow-none!;
 }
 .fc-header-toolbar.fc-toolbar
   .fc-toolbar-chunk:last-child
   .fc-button.fc-button-active {
-  @apply !text-primary !bg-primary/10 font-bold;
+  @apply text-primary! bg-primary/10! font-bold;
 }
 .fc-theme-standard th {
-  @apply !border-x-0 border-t !border-base-300 bg-base-200 !text-left;
+  @apply border-x-0! border-t border-base-300! bg-base-200 text-left!;
 }
 .fc-theme-standard td,
 .fc-theme-standard .fc-scrollgrid {
-  @apply !border-base-300;
+  @apply border-base-300!;
 }
 .fc .fc-col-header-cell-cushion {
-  @apply !px-5 !py-4 text-sm font-medium uppercase text-base-content/40;
+  @apply px-5! py-4! text-sm font-medium uppercase text-base-content/40;
 }
 .fc .fc-daygrid-day.fc-day-today {
   @apply bg-transparent;
@@ -217,10 +199,10 @@ body {
   @apply font-black text-primary;
 }
 .fc .fc-daygrid-day-number {
-  @apply !p-3 text-sm font-medium text-base-content/80;
+  @apply p-3! text-sm font-medium text-base-content/80;
 }
 .fc .fc-daygrid-day-top {
-  @apply !flex-row;
+  @apply flex-row!;
 }
 .fc .fc-day-other .fc-daygrid-day-top {
   opacity: 1;
@@ -241,7 +223,7 @@ body {
   @apply focus:shadow-none;
 }
 .fc-daygrid-event.fc-event-start {
-  @apply !ml-3;
+  @apply ml-3!;
 }
 
 .event-fc-color.fc-bg-success {
@@ -281,5 +263,5 @@ body {
   color: inherit;
 }
 .fc.fc-media-screen {
-  @apply min-h-[500px];
+  @apply min-h-125;
 }

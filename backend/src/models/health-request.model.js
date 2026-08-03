@@ -115,6 +115,9 @@ const HealthRequestSchema = new mongoose.Schema(
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     cancellationRequestedAt: { type: Date },
     cancellationRespondedAt: { type: Date },
+    // Hides a terminal request from its farmer without deleting the official
+    // service history used by technicians and administrators.
+    farmerDismissedAt: { type: Date, default: null },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
@@ -123,6 +126,7 @@ const HealthRequestSchema = new mongoose.Schema(
 // Indexes for scalability
 HealthRequestSchema.index({ animalId: 1, createdAt: -1 });
 HealthRequestSchema.index({ farmerId: 1 });
+HealthRequestSchema.index({ farmerId: 1, farmerDismissedAt: 1, createdAt: -1 });
 HealthRequestSchema.index({ status: 1 });
 HealthRequestSchema.index({ urgency: -1, createdAt: -1 });
 HealthRequestSchema.index({ scheduledDate: 1 });

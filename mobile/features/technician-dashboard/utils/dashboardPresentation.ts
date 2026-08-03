@@ -1,3 +1,5 @@
+import { getTechnicianRequestStatusPresentation } from "@/features/technician-requests/utils/requestPresentation";
+
 const EMPTY_LOCATION_LABEL = "Location not provided";
 
 function firstText(...values: unknown[]): string | undefined {
@@ -124,54 +126,23 @@ export function getTechnicianRequestBadge(item: any, isLocked?: boolean) {
   const status = String(
     item?.status || item?.raw?.status || "pending",
   ).toLowerCase();
-  const assignedTechnician =
-    item?.assignedTechnician ||
-    item?.raw?.approvedBy ||
-    item?.raw?.handledBy ||
-    item?.technician;
-  const isUnclaimed =
-    status === "pending" ||
-    (!assignedTechnician &&
-      status !== "completed" &&
-      status !== "resolved" &&
-      status !== "cancelled");
-
-  const createdDate =
-    item?.sentTime ||
-    item?.createdAt ||
-    item?.requestedAt ||
-    item?.raw?.createdAt ||
-    item?.raw?.requestedAt;
+  const statusPresentation =
+    getTechnicianRequestStatusPresentation(item);
   const now = new Date();
-  const created = createdDate ? new Date(createdDate) : null;
-  const diffHours =
-    created && !Number.isNaN(created.getTime())
-      ? Math.max(
-          0,
-          Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60)),
-        )
-      : 0;
 
   if (isLocked) {
     return {
       label: "Assigned",
       variant: "info",
-      isUnclaimed: false,
+      isAvailable: false,
     };
   }
 
-  if (isUnclaimed) {
-    let label = "Unclaimed";
-    if (diffHours < 24) {
-      label = "Unclaimed (New)";
-    } else {
-      const daysAgo = Math.floor(diffHours / 24);
-      label = `Unclaimed (${daysAgo}d ago)`;
-    }
+  if (statusPresentation) {
     return {
-      label,
-      variant: "warning",
-      isUnclaimed: true,
+      label: statusPresentation.label,
+      variant: statusPresentation.variant,
+      isAvailable: statusPresentation.label === "Available",
     };
   }
 
@@ -189,7 +160,7 @@ export function getTechnicianRequestBadge(item: any, isLocked?: boolean) {
       return {
         label: "Overdue",
         variant: "danger",
-        isUnclaimed: false,
+        isAvailable: false,
       };
     }
   }
@@ -204,6 +175,6 @@ export function getTechnicianRequestBadge(item: any, isLocked?: boolean) {
       status === "approved" || status === "completed" || status === "resolved"
         ? "success"
         : "info",
-    isUnclaimed: false,
+    isAvailable: false,
   };
 }

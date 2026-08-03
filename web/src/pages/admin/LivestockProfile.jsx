@@ -27,7 +27,7 @@ import axiosInstance from "../../lib/axios";
 import EditInseminationModal from "../../components/dialogs/EditInseminationModal";
 import AddMedicalRecordModal from "../../components/dialogs/AddMedicalRecordModal";
 import ActivityDetailsModal from "../../components/dialogs/ActivityDetailsModal";
-import WalkInAIModal from "../../components/dialogs/WalkInAIModal";
+import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 import RecordCalfDropModal from "../../components/dialogs/RecordCalvingModal";
 import { getBreedingAttemptPresentation } from "../../utils/reproductionWorkflow";
@@ -1309,7 +1309,7 @@ export default function LivestockProfile() {
           queryClient.invalidateQueries({ queryKey: ["medical", id] });
         }}
       />
-      <WalkInAIModal
+      <AIServiceModal
         isOpen={isAIModalOpen}
         onClose={() => setIsAIModalOpen(false)}
         preSelectedFarmer={animal?.farmerId}

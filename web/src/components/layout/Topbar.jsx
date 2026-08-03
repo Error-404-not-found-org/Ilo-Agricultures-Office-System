@@ -94,7 +94,7 @@ export default function Topbar({
   };
 
   return (
-    <header className="navbar min-h-18 bg-base-100 border-b border-base-300 px-4 md:px-6 shrink-0 z-20 gap-3">
+    <header className="navbar sticky top-0 min-h-18 bg-base-100 border-b border-base-300 px-4 md:px-6 shrink-0 z-30 gap-3">
       {/* Hamburger button for mobile */}
       <button
         onClick={toggle}

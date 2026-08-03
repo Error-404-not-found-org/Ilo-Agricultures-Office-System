@@ -76,7 +76,7 @@ const RegisterLivestockModal = ({
       const response = await axiosInstance.post("/technician/walk-in-livestock", data);
       return response.data;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast.success(
         livestock
           ? "Livestock profile updated successfully!"
@@ -84,7 +84,8 @@ const RegisterLivestockModal = ({
       );
       queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["animals"] });
-      onSuccess?.();
+      queryClient.invalidateQueries({ queryKey: ["farmer-animals"] });
+      onSuccess?.(result?.animal || result?.data || result);
       onClose();
     },
     onError: (error) => {

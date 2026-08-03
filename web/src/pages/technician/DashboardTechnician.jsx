@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   MapPin,
   ClipboardList,
+  PawPrint,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -26,45 +27,12 @@ import {
 } from "../../utils/dashboardWorkflow";
 
 // Import dedicated quick action modals
-import WalkInAIModal from "../../components/dialogs/WalkInAIModal";
+import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
 import RegisterFarmerModal from "../../components/dialogs/RegisterFarmerModal";
 import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
-
-function CowIcon({ size = 24, className = "" }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      {/* Head outline */}
-      <path d="M5 10c0-1.5 1.5-3 3-3h8c1.5 0 3 1.5 3 3v5c0 2.5-2 4.5-4.5 4.5h-5C7 19.5 5 17.5 5 15v-5z" />
-      {/* Snout */}
-      <path d="M8 15h8v2.5a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V15z" />
-      {/* Nostrils */}
-      <circle cx="10.5" cy="17.5" r="0.75" fill="currentColor" />
-      <circle cx="13.5" cy="17.5" r="0.75" fill="currentColor" />
-      {/* Eyes */}
-      <circle cx="9" cy="11" r="1" fill="currentColor" />
-      <circle cx="15" cy="11" r="1" fill="currentColor" />
-      {/* Horns */}
-      <path d="M7 7C6.5 5 5 4.5 5 4.5s2 .5 2.5 2.5" />
-      <path d="M17 7c.5-2 2-2.5 2-2.5s-2 .5-2.5 2.5" />
-      {/* Ears */}
-      <path d="M5 9.5C3.5 9 2.5 8 2.5 8s1.5 2 2.5 2.5" />
-      <path d="M19 9.5c1.5-.5 2.5-1.5 2.5-1.5s-1.5 2-2.5 2.5" />
-    </svg>
-  );
-}
 
 function QuickAction({ icon: IconComponent, label, bgClass, textClass, onClick }) {
   return (
@@ -220,11 +188,14 @@ export default function Dashboard() {
     dashboardLoadState[sourceKey]?.ok === false || value == null
       ? "Unavailable"
       : value;
+  const currentHour = new Date().getHours();
+  const timeBasedGreeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
+
   return (
     <div className={`${ui.page} min-w-0 overflow-x-hidden`}>
       <Topbar
-        title="Overview"
-        subtitle="See today’s field work, active requests, and recorded services in one place"
+        title={`${timeBasedGreeting}, ${dbUser?.firstName || dbUser?.name?.split(" ")[0] || "Technician"}! 👋`}
+        subtitle="Here's what's happening on your farms today."
       />
 
       <main className={`${ui.main} min-w-0 w-full max-w-full`}>
@@ -287,44 +258,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Welcome Greeting Row */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-black text-base-content tracking-tight">
-              Good morning, {dbUser?.firstName || dbUser?.name?.split(" ")[0] || "Technician"}! 👋
-            </h1>
-            <p className="text-sm text-base-content/55 font-semibold mt-0.5">
-              Here's what's happening on your farms today.
-            </p>
-          </div>
 
-          <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center md:w-auto">
-            {/* Header Search bar */}
-            <div className="relative min-w-0 w-full sm:w-60">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-base-content/40" size={14} />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search animals, farms, farmers..."
-                className="w-full pl-9 pr-4 py-2 bg-base-100 border border-base-300 rounded-xl text-xs font-bold focus:border-primary focus:outline-none placeholder:text-base-content/40 text-base-content"
-              />
-            </div>
-
-            {/* Today Date Badge */}
-            <div className="flex items-center gap-2.5 px-3 py-2 bg-base-100 border border-base-300 rounded-xl shrink-0">
-              <CalendarCheck size={14} className="text-primary" />
-              <div className="flex flex-col text-left">
-                <span className="text-[10px] font-black text-base-content leading-none">
-                  {new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                </span>
-                <span className="text-[8px] text-base-content/40 font-bold uppercase tracking-wider mt-0.5">
-                  {new Date().toLocaleDateString(undefined, { weekday: "long" })}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* 5 SaaS Dashboard Metric Cards */}
         <div className="grid min-w-0 grid-cols-2 gap-4 mb-6 sm:grid-cols-3 xl:grid-cols-5">
@@ -442,7 +376,7 @@ export default function Dashboard() {
                 onClick={handleAddClient}
               />
               <QuickAction
-                icon={CowIcon}
+                icon={PawPrint}
                 label="Register Animal"
                 bgClass="bg-purple-500/10 dark:bg-purple-500/15"
                 textClass="text-purple-600 dark:text-purple-400"
@@ -663,8 +597,8 @@ export default function Dashboard() {
         <div className="h-12" />
       </main>
 
-      {/* Dedicated Quick Action Modals */}
-      <WalkInAIModal
+      {/* Dedicated Quick Action Modals */} 
+      <AIServiceModal
         existingOnly
         isOpen={isAIModalOpen}
         onClose={() => {

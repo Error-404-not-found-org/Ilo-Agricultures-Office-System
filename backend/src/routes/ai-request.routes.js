@@ -12,6 +12,7 @@ import {
   getAIRequestDetail,
   cancelAIRequest,
   respondAICancellation,
+  dismissAIRequestForFarmer,
 } from "../controllers/ai-request.controllers.js";
 import { protectedRoute, AdminOnly } from "../middleware/auth.middleware.js";
 import { requestLimiter } from "../middleware/rateLimit.middleware.js";
@@ -48,6 +49,9 @@ router.patch("/:id/cancel", protectedRoute, cancelAIRequest);
 
 // Technician/Admin approves or rejects a farmer cancellation request
 router.patch("/:id/cancel-respond", protectedRoute, respondAICancellation);
+
+// Farmer hides a cancelled/rejected request from personal history only.
+router.patch("/:id/dismiss", protectedRoute, dismissAIRequestForFarmer);
 
 // Admin-only emergency cleanup (soft-delete)
 router.delete("/:id", protectedRoute, AdminOnly, deleteRequest);

@@ -208,6 +208,9 @@ const InseminationSchema = new mongoose.Schema(
     cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     cancellationRequestedAt: { type: Date },
     cancellationRespondedAt: { type: Date },
+    // Farmer-only presentation preference. The official request remains
+    // available to technicians, administrators, records, and audits.
+    farmerDismissedAt: { type: Date, default: null },
 
     // Status history (mirrors HealthRequest)
     statusHistory: [{
@@ -225,6 +228,7 @@ const InseminationSchema = new mongoose.Schema(
 // Indexes for scalability
 InseminationSchema.index({ animalId: 1, createdAt: -1 });
 InseminationSchema.index({ farmerId: 1 });
+InseminationSchema.index({ farmerId: 1, farmerDismissedAt: 1, createdAt: -1 });
 InseminationSchema.index({ status: 1 });
 InseminationSchema.index({ scheduledDate: 1 });
 InseminationSchema.index({ inseminationDate: -1 });

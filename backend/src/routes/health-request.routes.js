@@ -8,6 +8,7 @@ import {
   deleteHealthRequest,
   cancelHealthRequest,
   respondHealthCancellation,
+  dismissHealthRequestForFarmer,
 } from "../controllers/health-request.controllers.js";
 import {
   getHealthRequestDetail,
@@ -33,6 +34,9 @@ router.patch("/:id/cancel", protectedRoute, cancelHealthRequest);
 
 // Technician/Admin approves or rejects a farmer cancellation request
 router.patch("/:id/cancel-respond", protectedRoute, respondHealthCancellation);
+
+// Farmer hides a cancelled/rejected request from personal history only.
+router.patch("/:id/dismiss", protectedRoute, dismissHealthRequestForFarmer);
 
 // Admin-only emergency cleanup (soft-delete)
 router.delete("/:id", protectedRoute, AdminOnly, deleteHealthRequest);

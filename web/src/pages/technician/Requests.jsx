@@ -2,7 +2,6 @@ import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Search,
-  ClipboardList,
   MapPin,
   CheckCircle,
   Trash2,
@@ -14,7 +13,6 @@ import {
   Calendar,
   Clock,
   AlertCircle,
-  Activity,
   Filter,
   Eye,
   CirclePlus,
@@ -25,7 +23,7 @@ import { useToast } from "../../contexts/ToastContext";
 import Topbar from "../../components/layout/Topbar";
 import UserAvatar from "../../components/ui/UserAvatar";
 import { TableRowSkeleton } from "../../components/ui/Skeleton";
-import TaskActionModal from "../../components/dialogs/TaskActionModal";
+import RequestActionModal from "../../components/dialogs/RequestActionModal";
 import { ui } from "../../components/ui/uiClasses";
 import Modal from "../../components/ui/Modal";
 import {
@@ -43,6 +41,7 @@ import {
   getInitialRequestBoardView,
   getRequestAssigneeId,
   getRequestBoardViewSelection,
+  getRequestStatusPresentation,
   isActiveRequestAssignedTo,
 } from "../../utils/requestBoardViews";
 
@@ -252,6 +251,7 @@ export default function OperationalInbox() {
       nearCoords?.longitude,
       searchQuery,
       currentPage,
+      requestedId,
     ],
     queryFn: async () => {
       const res = await axiosInstance.get("/technician/requests", {
@@ -269,6 +269,7 @@ export default function OperationalInbox() {
           includeOperationalTasks: true,
           page: currentPage,
           limit: itemsPerPage,
+          requestId: requestedId || undefined,
         },
       });
       return res.data;
@@ -327,6 +328,17 @@ export default function OperationalInbox() {
       const formattedSchedule = isValidDate
         ? `${formattedDateOnly}, ${formattedTimeOnly}`
         : "Date unavailable";
+      const sentDate = req.createdAt ? new Date(req.createdAt) : null;
+      const isValidSentDate = sentDate && !Number.isNaN(sentDate.getTime());
+      const formattedSentAt = isValidSentDate
+        ? sentDate.toLocaleString("en-PH", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+          })
+        : null;
 
       return {
         id: req.id,
@@ -385,6 +397,7 @@ export default function OperationalInbox() {
         date: formattedSchedule,
         formattedDateOnly,
         formattedTimeOnly,
+        formattedSentAt,
         status: normalizedStatus === "resolved" ? "done" : normalizedStatus,
         createdAt: req.createdAt,
         updatedAt: req.updatedAt || req.raw?.updatedAt || req.createdAt || null,
@@ -402,13 +415,31 @@ export default function OperationalInbox() {
 
     if (primaryView === REQUEST_BOARD_VIEWS.MINE) {
       mapped = mapped.filter((req) => {
-        const s = String(req.status || "").toLowerCase().replaceAll("_", "-");
-        return !["completed", "done", "resolved", "declined", "cancelled", "rejected"].includes(s);
+        const s = String(req.status || "")
+          .toLowerCase()
+          .replaceAll("_", "-");
+        return ![
+          "completed",
+          "done",
+          "resolved",
+          "declined",
+          "cancelled",
+          "rejected",
+        ].includes(s);
       });
     } else if (primaryView === REQUEST_BOARD_VIEWS.HISTORY) {
       mapped = mapped.filter((req) => {
-        const s = String(req.status || "").toLowerCase().replaceAll("_", "-");
-        return ["completed", "done", "resolved", "declined", "cancelled", "rejected"].includes(s);
+        const s = String(req.status || "")
+          .toLowerCase()
+          .replaceAll("_", "-");
+        return [
+          "completed",
+          "done",
+          "resolved",
+          "declined",
+          "cancelled",
+          "rejected",
+        ].includes(s);
       });
     }
 
@@ -423,31 +454,6 @@ export default function OperationalInbox() {
   const isActiveTaskModalOpen =
     isTaskModalOpen ||
     Boolean(deepLinkedTask && dismissedDeepLink !== requestedId);
-
-  // Dynamic statistics calculations
-  const totalStats = statsRequests.length;
-  const pendingStats = statsRequests.filter((r) => {
-    const isPendingStatus = ["pending", "triaged", "approved"].includes(
-      String(r.status || "").toLowerCase(),
-    );
-    const assignee = getRequestAssigneeId(r);
-    return isPendingStatus && !assignee;
-  }).length;
-
-  const inProgressStats = statsRequests.filter((r) => {
-    const status = String(r.status || "").toLowerCase();
-    return ["in-progress", "in_progress"].includes(status);
-  }).length;
-
-  const completedStats = statsRequests.filter((r) =>
-    ["completed", "resolved", "done"].includes(
-      String(r.status || "").toLowerCase(),
-    ),
-  ).length;
-
-  const cancelledStats = statsRequests.filter((r) =>
-    ["cancelled", "rejected"].includes(String(r.status || "").toLowerCase()),
-  ).length;
 
   // Dynamic request type summary calculations
   const pregnancyCount = statsRequests.filter((r) => {
@@ -574,14 +580,6 @@ export default function OperationalInbox() {
   const defaultViewSelection = getRequestBoardViewSelection(primaryView, {
     isAdmin,
   });
-
-  const handlePrimaryViewChange = (view) => {
-    const selection = getRequestBoardViewSelection(view, { isAdmin });
-    setPrimaryView(view);
-    setStatusFilter(selection.status);
-    setAssignmentFilter(selection.assignment);
-    setCurrentPage(1);
-  };
 
   const clearAdvancedFilters = () => {
     setStatusFilter(defaultViewSelection.status);
@@ -745,142 +743,19 @@ export default function OperationalInbox() {
       <main
         className={`${ui.main} w-full max-w-500 mx-auto p-4 lg:p-6 space-y-6`}
       >
-        {/* ================= 1. DOCK OF STATISTICS CARDS ================= */}
-        <section className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          {/* Card: Total Requests */}
-          <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-4 flex flex-row items-center gap-4">
-            <div className="w-12 h-12 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-600 shrink-0">
-              <ClipboardList size={22} />
-            </div>
-            <div>
-              <p className="text-4xl font-black text-base-content leading-none">
-                {isMasterLoading ? "..." : totalStats}
-              </p>
-              <h4 className="text-base font-black text-base-content/80 mt-1">
-                Total Requests
-              </h4>
-              <p className="text-sm font-bold text-base-content/50 uppercase tracking-wider">
-                All time
-              </p>
-            </div>
-          </div>
-
-          {/* Card: Pending */}
-          <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-4 flex flex-row items-center gap-4">
-            <div className="w-12 h-12 bg-amber-500/10 rounded-xl flex items-center justify-center text-amber-600 shrink-0">
-              <Clock size={22} />
-            </div>
-            <div>
-              <p className="text-4xl font-black text-base-content leading-none">
-                {isMasterLoading ? "..." : pendingStats}
-              </p>
-              <h4 className="text-base font-black text-base-content/80 mt-1">
-                Pending
-              </h4>
-              <p className="text-sm font-bold text-base-content/50 uppercase tracking-wider">
-                Waiting to claim
-              </p>
-            </div>
-          </div>
-
-          {/* Card: In Progress */}
-          <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-4 flex flex-row items-center gap-4">
-            <div className="w-12 h-12 bg-blue-500/10 rounded-xl flex items-center justify-center text-blue-600 shrink-0">
-              <Activity size={22} />
-            </div>
-            <div>
-              <p className="text-4xl font-black text-base-content leading-none">
-                {isMasterLoading ? "..." : inProgressStats}
-              </p>
-              <h4 className="text-base font-black text-base-content/80 mt-1">
-                In Progress
-              </h4>
-              <p className="text-sm font-bold text-base-content/50 uppercase tracking-wider">
-                Visit underway
-              </p>
-            </div>
-          </div>
-
-          {/* Card: Completed */}
-          <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-4 flex flex-row items-center gap-4">
-            <div className="w-12 h-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-600 shrink-0">
-              <CheckCircle size={22} />
-            </div>
-            <div>
-              <p className="text-4xl font-black text-base-content leading-none">
-                {isMasterLoading ? "..." : completedStats}
-              </p>
-              <h4 className="text-base font-black text-base-content/80 mt-1">
-                Completed
-              </h4>
-              <p className="text-sm font-bold text-base-content/50 uppercase tracking-wider">
-                This month
-              </p>
-            </div>
-          </div>
-
-          {/* Card: Cancelled */}
-          <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-4 flex flex-row items-center gap-4 col-span-2 md:col-span-1">
-            <div className="w-12 h-12 bg-rose-500/10 rounded-xl flex items-center justify-center text-rose-600 shrink-0">
-              <AlertCircle size={22} />
-            </div>
-            <div>
-              <p className="text-4xl font-black text-base-content leading-none">
-                {isMasterLoading ? "..." : cancelledStats}
-              </p>
-              <h4 className="text-base font-black text-base-content/80 mt-1">
-                Cancelled
-              </h4>
-              <p className="text-sm font-bold text-base-content/50 uppercase tracking-wider">
-                This month
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* ================= 2. PRIMARY SPLIT LAYOUT ================= */}
+        {/* ================= 1. PRIMARY SPLIT LAYOUT ================= */}
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_280px] gap-6 items-start">
           {/* LEFT COLUMN: FILTERS, REQUEST LIST, PAGINATION */}
           <div className="space-y-6">
             {/* Filter toolbar */}
             <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-4 space-y-2">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div
-                  role="tablist"
-                  aria-label="Request views"
-                  className="tabs tabs-box tabs-sm bg-base-100/60 p-1 max-w-full overflow-x-auto"
-                >
-                  {[
-                    {
-                      value: REQUEST_BOARD_VIEWS.AVAILABLE,
-                      label: isAdmin ? "Needs review" : "Queue",
-                    },
-                    {
-                      value: REQUEST_BOARD_VIEWS.MINE,
-                      label: isAdmin ? "In progress" : "My requests",
-                    },
-                    { value: REQUEST_BOARD_VIEWS.HISTORY, label: "History" },
-                  ].map((view) => (
-                    <button
-                      key={view.value}
-                      type="button"
-                      role="tab"
-                      aria-selected={primaryView === view.value}
-                      aria-controls="request-board-results"
-                      onClick={() => handlePrimaryViewChange(view.value)}
-                      className={`tab whitespace-nowrap text-base font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
-                        primaryView === view.value
-                          ? "tab-active bg-primary text-primary-content"
-                          : "text-base-content/60 hover:text-base-content"
-                      }`}
-                    >
-                      {view.label}
-                    </button>
-                  ))}
-                </div>
+                <h2 className="text-lg font-semibold text-base-content tracking-tight">
+                  {isAdmin ? "Needs review" : "Available Requests"}
+                </h2>
 
                 <p
-                  className="text-base font-bold text-base-content/60 whitespace-nowrap"
+                  className="text-sm font-medium text-base-content/60 whitespace-nowrap"
                   aria-live="polite"
                 >
                   {isMasterLoading
@@ -926,7 +801,7 @@ export default function OperationalInbox() {
                   <div className="dropdown-content z-30 mt-2 w-[min(26rem,calc(100vw-2rem))] rounded-box border border-base-300 bg-base-100 p-4 shadow-lg">
                     <div className="flex items-center justify-between gap-4 mb-4">
                       <div>
-                        <h3 className="font-bold text-lg text-base-content">
+                        <h3 className="font-semibold text-lg text-base-content">
                           Filter requests
                         </h3>
                         <p className="text-base text-base-content/60 mt-0.5">
@@ -946,7 +821,7 @@ export default function OperationalInbox() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <label className="form-control">
-                        <span className="label text-base font-bold text-base-content/60">
+                        <span className="label text-sm font-semibold text-base-content/60">
                           Request status
                         </span>
                         <select
@@ -967,7 +842,9 @@ export default function OperationalInbox() {
                           ) : primaryView === REQUEST_BOARD_VIEWS.MINE ? (
                             <>
                               {!isAdmin && (
-                                <option value="active">All active requests</option>
+                                <option value="active">
+                                  All active requests
+                                </option>
                               )}
                               <option value="scheduled">Scheduled</option>
                               <option value="in-progress">In progress</option>
@@ -985,7 +862,7 @@ export default function OperationalInbox() {
                       </label>
 
                       <label className="form-control">
-                        <span className="label text-base font-bold text-base-content/60">
+                        <span className="label text-sm font-semibold text-base-content/60">
                           Service type
                         </span>
                         <select
@@ -1004,7 +881,7 @@ export default function OperationalInbox() {
                       </label>
 
                       <label className="form-control">
-                        <span className="label text-base font-bold text-base-content/60">
+                        <span className="label text-sm font-semibold text-base-content/60">
                           Urgency
                         </span>
                         <select
@@ -1022,7 +899,7 @@ export default function OperationalInbox() {
                       </label>
 
                       <label className="form-control">
-                        <span className="label text-base font-bold text-base-content/60">
+                        <span className="label text-sm font-semibold text-base-content/60">
                           Municipality
                         </span>
                         <select
@@ -1047,7 +924,7 @@ export default function OperationalInbox() {
 
                       {municipality === ILOILO_CITY_NAME && (
                         <label className="form-control">
-                          <span className="label text-base font-bold text-base-content/60">
+                          <span className="label text-sm font-semibold text-base-content/60">
                             District
                           </span>
                           <select
@@ -1071,7 +948,7 @@ export default function OperationalInbox() {
                       )}
 
                       <label className="form-control">
-                        <span className="label text-base font-bold text-base-content/60">
+                        <span className="label text-sm font-semibold text-base-content/60">
                           Barangay
                         </span>
                         <select
@@ -1097,7 +974,7 @@ export default function OperationalInbox() {
                       </label>
 
                       <label className="form-control">
-                        <span className="label text-base font-bold text-base-content/60">
+                        <span className="label text-sm font-semibold text-base-content/60">
                           Sort order
                         </span>
                         <select
@@ -1183,16 +1060,16 @@ export default function OperationalInbox() {
               <div className="card bg-base-100 border border-base-300/60 rounded-2xl shadow-sm overflow-hidden flex flex-col min-h-145 xl:h-150">
                 {/* Scrollable table viewport with table-fixed layout */}
                 <div className="overflow-x-auto overflow-y-auto flex-1">
-                  <table className="table table-pin-rows table-fixed w-full min-w-237.5 text-left">
+                  <table className="table table-pin-rows table-fixed w-full min-w-155 text-left">
                     <colgroup>
-                      <col className="w-[22%] min-w-52.5"/>
-                      <col className="w-[32%] min-w-70" />
-                      <col className="w-[22%] min-w-50" />
-                      <col className="w-[14%] min-w-35" />
-                      <col className="w-[10%] min-w-30" />
+                      <col className="w-[22%] min-w-32.5" />
+                      <col className="w-[32%] min-w-45" />
+                      <col className="w-[22%] min-w-32.5" />
+                      <col className="w-[14%] min-w-25" />
+                      <col className="w-[10%] min-w-20" />
                     </colgroup>
                     <thead>
-                      <tr className="bg-base-200/70 text-sm font-black text-base-content/70 border-b border-base-300 uppercase tracking-wider">
+                      <tr className="bg-base-200/70 text-xs font-semibold text-base-content/70 border-b border-base-300 uppercase tracking-wider">
                         <th scope="col" className="p-4 pl-6">
                           Farmer / Contact
                         </th>
@@ -1224,7 +1101,7 @@ export default function OperationalInbox() {
                             >
                               <AlertCircle size={24} aria-hidden="true" />
                               <div className="text-center">
-                                <h3 className="font-bold">
+                                <h3 className="font-semibold">
                                   Requests are unavailable
                                 </h3>
                                 <p className="text-sm">
@@ -1250,7 +1127,7 @@ export default function OperationalInbox() {
                                 size={40}
                                 className="text-base-content/20"
                               />
-                              <h3 className="text-base font-black text-base-content/75 uppercase tracking-widest mt-1">
+                              <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider mt-1">
                                 No matches found
                               </h3>
                               <p className="text-sm font-semibold text-base-content/40 max-w-sm leading-relaxed">
@@ -1264,6 +1141,9 @@ export default function OperationalInbox() {
                       ) : (
                         requests.map((req) => {
                           const reqTechId = getRequestAssigneeId(req);
+                          const statusPresentation =
+                            getRequestStatusPresentation(req, { isAdmin }) ||
+                            getTechnicianStatus(req.status);
 
                           const isAssignedToOther =
                             reqTechId &&
@@ -1286,7 +1166,10 @@ export default function OperationalInbox() {
                               key={req.id}
                               onClick={() => openRequest(req)}
                               onKeyDown={(event) => {
-                                if (event.key === "Enter" || event.key === " ") {
+                                if (
+                                  event.key === "Enter" ||
+                                  event.key === " "
+                                ) {
                                   event.preventDefault();
                                   openRequest(req);
                                 }
@@ -1297,7 +1180,7 @@ export default function OperationalInbox() {
                               className="hover:bg-base-200/40 transition-colors cursor-pointer relative text-base font-semibold text-base-content/85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                             >
                               {/* COLUMN 1: FARMER INFO */}
-                              <td className="p-4 pl-6 align-top overflow-hidden">
+                              <td className="p-4 pl-6 align-top">
                                 <div className="flex items-start gap-3 min-w-0">
                                   {isOverdue && (
                                     <div
@@ -1313,23 +1196,27 @@ export default function OperationalInbox() {
                                     className="shadow-sm shrink-0"
                                   />
                                   <div className="min-w-0 grow">
-                                    <h4 className="font-black text-lg text-base-content tracking-tight truncate">
+                                    <h4 className="text-sm font-semibold text-base-content tracking-tight truncate">
                                       {toTitleCase(req.farmer)}
                                     </h4>
-                                    <p className="text-base font-semibold text-base-content/65 mt-0.5 truncate">
+                                    <p className="text-xs font-medium text-base-content/70 mt-0.5 truncate">
                                       Brgy. {toTitleCase(req.location)}
                                     </p>
                                     <p
-                                      className="text-sm font-bold text-primary mt-1 flex items-center gap-1.5 truncate"
+                                      className="text-xs font-medium text-primary mt-1 flex items-center gap-1.5 truncate"
                                       aria-label={`Farmer contact: ${req.farmerPhone}`}
                                     >
-                                      <Phone size={15} aria-hidden="true" className="shrink-0" />
+                                      <Phone
+                                        size={15}
+                                        aria-hidden="true"
+                                        className="shrink-0"
+                                      />
                                       <span className="truncate">
                                         {req.farmerPhone}
                                       </span>
                                     </p>
                                     {req.farmerBadge && (
-                                      <span className="badge badge-md badge-ghost mt-1 font-black uppercase text-xs">
+                                      <span className="badge badge-sm badge-ghost mt-1 font-semibold uppercase text-[10px]">
                                         {String(req.farmerBadge).replaceAll(
                                           "_",
                                           " ",
@@ -1341,62 +1228,71 @@ export default function OperationalInbox() {
                               </td>
 
                               {/* COLUMN 2: SERVICE DETAILS */}
-                              <td className="p-4 align-top overflow-hidden">
+                              <td className="p-4 align-top">
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <span
-                                      className={`px-2 py-0.5 rounded-md text-sm font-black uppercase tracking-wider border shrink-0 ${req.iconColor}`}
+                                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider border shrink-0 ${req.iconColor}`}
                                     >
                                       {req.serviceBadge}
                                     </span>
-                                    <span className="font-black text-lg text-base-content leading-tight truncate">
+                                    <span className="font-semibold text-sm text-base-content truncate">
                                       {req.serviceLabel}
                                     </span>
 
                                     {req.previousTechnician && (
-                                      <span className="badge badge-sm badge-soft badge-info font-bold text-sm shrink-0">
+                                      <span className="badge badge-sm badge-soft badge-info font-medium text-[10px] shrink-0">
                                         Re-insemination
                                       </span>
                                     )}
                                   </div>
-                                  <p className="text-base font-bold text-base-content/90 mt-2 truncate">
+                                  <p className="text-xs font-medium text-base-content/90 mt-1 truncate">
                                     Animal:{" "}
                                     {req.breed
                                       ? toTitleCase(req.breed)
                                       : "Livestock"}{" "}
                                     (Tag #{req.animalTag})
                                   </p>
-                                  <p className="text-base font-medium text-base-content/65 mt-1 leading-relaxed line-clamp-2">
+                                  <p className="text-xs text-base-content/65 mt-1 leading-relaxed line-clamp-2">
                                     Details: {req.taskDetails}
                                   </p>
+                                  {req.formattedSentAt ? (
+                                    <p className="text-xs text-base-content/60 mt-1.5 flex items-center gap-1.5">
+                                      <Clock
+                                        size={13}
+                                        aria-hidden="true"
+                                        className="shrink-0"
+                                      />
+                                      <time
+                                        dateTime={req.createdAt}
+                                        className="truncate"
+                                      >
+                                        Sent {req.formattedSentAt}
+                                      </time>
+                                    </p>
+                                  ) : null}
                                 </div>
                               </td>
 
                               {/* COLUMN 3: GEOGRAPHIC AND DATETIME */}
-                              <td className="p-4 align-top overflow-hidden">
+                              <td className="p-4 align-top">
                                 <div className="flex flex-col gap-1 min-w-0">
                                   <div>
-                                    <span className="font-bold text-base text-base-content block truncate">
-                                      Brgy. {toTitleCase(req.location.split(",")[0])}
-                                    </span>
-                                    <span className="text-sm font-bold text-base-content/65 flex items-center gap-1 mt-0.5 truncate">
-                                      <MapPin
-                                        size={14}
-                                        className="text-primary shrink-0"
-                                      />
-                                      {req.distanceText}
+                                    <span className="font-medium text-sm text-base-content block truncate">
+                                      Brgy.{" "}
+                                      {toTitleCase(req.location.split(",")[0])}
                                     </span>
                                   </div>
 
                                   <div className="mt-1">
-                                    <span className="text-base font-bold text-base-content/80 flex items-center gap-1.5 truncate">
+                                    <span className="text-xs font-medium text-base-content/80 flex items-center gap-1.5 truncate">
                                       <Calendar
                                         size={15}
                                         className="text-base-content/40 shrink-0"
                                       />
                                       {req.formattedDateOnly}
                                     </span>
-                                    <span className="text-sm font-bold text-base-content/65 flex items-center gap-1.5 mt-0.5 truncate">
+                                    <span className="text-xs text-base-content/65 flex items-center gap-1.5 mt-0.5 truncate">
                                       <Clock
                                         size={14}
                                         className="text-base-content/40 shrink-0"
@@ -1408,26 +1304,31 @@ export default function OperationalInbox() {
                               </td>
 
                               {/* COLUMN 4: STATUS */}
-                              <td className="p-4 align-top text-center overflow-hidden">
+                              <td className="p-4 align-top text-center">
                                 <div className="flex flex-col items-center justify-center gap-1.5 pt-0.5">
                                   <span
-                                    className={`badge badge-md text-sm font-black shadow-2xs ${getTechnicianStatus(req.status).badgeClass}`}
+                                    className={`badge text-xs font-semibold shadow-2xs ${statusPresentation.badgeClass}`}
                                   >
-                                    {getTechnicianStatus(req.status).label}
+                                    {statusPresentation.label}
                                   </span>
                                   {["approved", "assigned"].includes(
                                     req.status,
                                   ) && (
-                                    <span className="inline-flex items-center gap-1.5 text-sm font-black text-amber-700 dark:text-amber-300 bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/25 tracking-wide max-w-full truncate">
-                                      <AlertCircle size={15} className="shrink-0 text-amber-600 dark:text-amber-400" />
-                                      <span className="truncate">Review date</span>
+                                    <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/25 tracking-wide max-w-full truncate">
+                                      <AlertCircle
+                                        size={15}
+                                        className="shrink-0 text-amber-600 dark:text-amber-400"
+                                      />
+                                      <span className="truncate">
+                                        Review date
+                                      </span>
                                     </span>
                                   )}
                                 </div>
                               </td>
 
                               {/* COLUMN 5: ACTIONS */}
-                              <td className="p-4 pr-6 align-top text-right overflow-hidden">
+                              <td className="p-4 pr-6 align-top text-right">
                                 <div className="flex items-center justify-end gap-2 pt-0.5">
                                   <div
                                     onClick={(e) => e.stopPropagation()}
@@ -1442,18 +1343,23 @@ export default function OperationalInbox() {
                                         title="Claim Request"
                                         aria-label={`Claim request for ${req.farmer}`}
                                       >
-                                        <CirclePlus size={18} aria-hidden="true" />
+                                        <CirclePlus
+                                          size={18}
+                                          aria-hidden="true"
+                                        />
                                       </button>
                                     )}
 
                                     {(req.type === "breeding_verification" ||
-                                      primaryView === REQUEST_BOARD_VIEWS.HISTORY) && (
+                                      primaryView ===
+                                        REQUEST_BOARD_VIEWS.HISTORY) && (
                                       <button
                                         type="button"
                                         onClick={() => openRequest(req)}
                                         className="btn btn-sm btn-square btn-ghost text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer"
                                         title={
-                                          primaryView === REQUEST_BOARD_VIEWS.HISTORY
+                                          primaryView ===
+                                          REQUEST_BOARD_VIEWS.HISTORY
                                             ? "View request details"
                                             : "View farmer observation"
                                         }
@@ -1482,7 +1388,10 @@ export default function OperationalInbox() {
                                               : `Complete ${req.serviceLabel} for ${req.farmer}`
                                           }
                                         >
-                                          <CheckCircle size={18} aria-hidden="true" />
+                                          <CheckCircle
+                                            size={18}
+                                            aria-hidden="true"
+                                          />
                                         </button>
                                       )}
 
@@ -1494,18 +1403,24 @@ export default function OperationalInbox() {
                                           type="button"
                                           disabled={isUpdating}
                                           onClick={() =>
-                                            handleDeleteRequest(req.id, req.type)
+                                            handleDeleteRequest(
+                                              req.id,
+                                              req.type,
+                                            )
                                           }
                                           className="btn btn-sm btn-circle btn-ghost text-rose-500 hover:bg-rose-500/10 cursor-pointer"
                                           title="Cancel Request"
                                           aria-label={`Cancel request for ${req.farmer}`}
                                         >
-                                          <Trash2 size={18} aria-hidden="true" />
+                                          <Trash2
+                                            size={18}
+                                            aria-hidden="true"
+                                          />
                                         </button>
                                       )}
 
                                     {isAssignedToOther && (
-                                      <div className="flex items-center gap-1 text-sm font-black text-amber-600 uppercase tracking-wider select-none bg-amber-500/5 px-2.5 py-1 rounded-lg border border-amber-500/10 shrink-0">
+                                      <div className="flex items-center gap-1 text-sm font-semibold text-amber-600 uppercase tracking-wider select-none bg-amber-500/5 px-2.5 py-1 rounded-lg border border-amber-500/10 shrink-0">
                                         <Lock size={15} /> Locked
                                       </div>
                                     )}
@@ -1528,13 +1443,18 @@ export default function OperationalInbox() {
                       {Math.min(startIndex + itemsPerPage, totalItems)} of{" "}
                       {totalItems} service requests
                     </span>
-                    <div className="join self-end sm:self-auto" aria-label="Service requests pagination">
+                    <div
+                      className="join self-end sm:self-auto"
+                      aria-label="Service requests pagination"
+                    >
                       <button
                         type="button"
                         className="btn btn-sm join-item"
                         aria-label="Previous service requests page"
                         disabled={currentPage === 1 || isMasterLoading}
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        onClick={() =>
+                          setCurrentPage((p) => Math.max(1, p - 1))
+                        }
                       >
                         <ChevronLeft size={16} />
                       </button>
@@ -1550,7 +1470,9 @@ export default function OperationalInbox() {
                         className="btn btn-sm join-item"
                         aria-label="Next service requests page"
                         disabled={currentPage === totalPages || isMasterLoading}
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages, p + 1))
+                        }
                       >
                         <ChevronRight size={16} />
                       </button>
@@ -1566,66 +1488,76 @@ export default function OperationalInbox() {
             {/* 2. REQUEST TYPE SUMMARY COUNTS */}
             <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-black text-base-content uppercase tracking-wider">
+                <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
                   Request Summary
                 </h3>
               </div>
 
               <div className="space-y-3 pt-1">
                 {/* Pregnancy Check */}
-                <div className="flex items-center justify-between text-base font-bold text-base-content/85">
+                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
                   <span className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />{" "}
                     Pregnancy Check
                   </span>
-                  <span className="text-base-content/60 font-black">{pregnancyCount}</span>
+                  <span className="text-base-content/60 font-semibold">
+                    {pregnancyCount}
+                  </span>
                 </div>
 
                 {/* Vaccination */}
-                <div className="flex items-center justify-between text-base font-bold text-base-content/85">
+                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
                   <span className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />{" "}
                     Vaccination
                   </span>
-                  <span className="text-base-content/60 font-black">
+                  <span className="text-base-content/60 font-semibold">
                     {vaccinationCount}
                   </span>
                 </div>
 
                 {/* AI Service */}
-                <div className="flex items-center justify-between text-base font-bold text-base-content/85">
+                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
                   <span className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> AI
-                    Service
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />{" "}
+                    AI Service
                   </span>
-                  <span className="text-base-content/60 font-black">{aiCount}</span>
+                  <span className="text-base-content/60 font-semibold">
+                    {aiCount}
+                  </span>
                 </div>
 
                 {/* Health Assistance */}
-                <div className="flex items-center justify-between text-base font-bold text-base-content/85">
+                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
                   <span className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />{" "}
                     Health Assistance
                   </span>
-                  <span className="text-base-content/60 font-black">{healthCount}</span>
+                  <span className="text-base-content/60 font-semibold">
+                    {healthCount}
+                  </span>
                 </div>
 
                 {/* Calving Assistance */}
-                <div className="flex items-center justify-between text-base font-bold text-base-content/85">
+                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
                   <span className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-pink-500" />{" "}
                     Calving Assistance
                   </span>
-                  <span className="text-base-content/60 font-black">{calvingCount}</span>
+                  <span className="text-base-content/60 font-semibold">
+                    {calvingCount}
+                  </span>
                 </div>
 
                 {/* General Check-up */}
-                <div className="flex items-center justify-between text-base font-bold text-base-content/85">
+                <div className="flex items-center justify-between text-sm font-semibold text-base-content/85">
                   <span className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />{" "}
                     General Check-up
                   </span>
-                  <span className="text-base-content/60 font-black">{generalCount}</span>
+                  <span className="text-base-content/60 font-semibold">
+                    {generalCount}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1634,12 +1566,9 @@ export default function OperationalInbox() {
             <div className="card bg-base-100 border border-base-300/60 shadow-sm rounded-2xl p-5 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-base font-black text-base-content uppercase tracking-wider">
+                  <h3 className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
                     Claimed Requests
                   </h3>
-                  <p className="text-base-content/60 text-sm mt-1">
-                    Active requests assigned to you
-                  </p>
                 </div>
                 <button
                   onClick={() => {
@@ -1648,7 +1577,7 @@ export default function OperationalInbox() {
                     setAssignmentFilter("mine");
                     setCurrentPage(1);
                   }}
-                  className="btn btn-sm btn-ghost text-primary text-xs uppercase font-bold"
+                  className="btn btn-sm btn-ghost text-primary text-[10px] uppercase font-semibold"
                 >
                   View all
                 </button>
@@ -1666,7 +1595,7 @@ export default function OperationalInbox() {
                       className="list-row items-center gap-3 rounded-xl bg-base-200/60 p-3"
                     >
                       <div className="list-col-grow min-w-0">
-                        <span className="text-base font-bold text-base-content block leading-tight truncate">
+                        <span className="text-sm font-semibold text-base-content block leading-tight truncate">
                           {claimed.label}
                         </span>
                         <span className="text-sm text-base-content/65 block mt-1 truncate">
@@ -1709,7 +1638,7 @@ export default function OperationalInbox() {
           <>
             <button
               type="button"
-              className="btn btn-ghost text-xs font-bold"
+              className="btn btn-ghost text-xs font-semibold"
               onClick={() =>
                 setConfirmModal({
                   isOpen: false,
@@ -1723,7 +1652,7 @@ export default function OperationalInbox() {
             </button>
             <button
               type="button"
-              className={`btn text-xs font-bold ${confirmModal.title.toLowerCase().includes("cancel") ? "btn-error" : "btn-primary"}`}
+              className={`btn text-xs font-semibold ${confirmModal.title.toLowerCase().includes("cancel") ? "btn-error" : "btn-primary"}`}
               onClick={() => {
                 confirmModal.onConfirm?.();
                 setConfirmModal({
@@ -1745,7 +1674,7 @@ export default function OperationalInbox() {
       </Modal>
 
       {/* ===== TASK ACTION DIALOG MODAL ===== */}
-      <TaskActionModal
+      <RequestActionModal
         isOpen={isActiveTaskModalOpen}
         onClose={() => {
           setIsTaskModalOpen(false);

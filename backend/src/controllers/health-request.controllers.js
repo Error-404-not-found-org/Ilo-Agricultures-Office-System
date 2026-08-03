@@ -147,7 +147,7 @@ export const getMyHealthRequests = async (req, res) => {
     const { page = 1, limit = 10, status } = req.query;
     const farmerId = req.user._id;
 
-    const query = { farmerId, deletedAt: null };
+    const query = { farmerId, deletedAt: null, farmerDismissedAt: null };
     if (status && status !== 'all') query.status = status;
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -171,6 +171,55 @@ export const getMyHealthRequests = async (req, res) => {
   } catch (error) {
     console.error("[getMyHealthRequests ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch your requests." });
+  }
+};
+
+// PATCH /api/health-request/:id/dismiss
+// Hides a terminal request for its farmer without deleting the official
+// clinical and service history.
+export const dismissHealthRequestForFarmer = async (req, res) => {
+  try {
+    if (req.user.role !== "farmer") {
+      return res.status(403).json({
+        message: "Only the farmer who submitted this request can remove it from their history.",
+      });
+    }
+
+    const request = await HealthRequest.findOne({
+      _id: req.params.id,
+      farmerId: req.user._id,
+      deletedAt: null,
+    }).select("status farmerDismissedAt");
+
+    if (!request) {
+      return res.status(404).json({ message: "Health assistance request not found." });
+    }
+    if (!["cancelled", "rejected"].includes(request.status)) {
+      return res.status(409).json({
+        message: "Only cancelled or rejected requests can be removed from your history.",
+      });
+    }
+
+    if (!request.farmerDismissedAt) {
+      await HealthRequest.updateOne(
+        {
+          _id: request._id,
+          farmerId: req.user._id,
+          status: { $in: ["cancelled", "rejected"] },
+          farmerDismissedAt: null,
+        },
+        { $set: { farmerDismissedAt: new Date() } },
+      );
+    }
+
+    return res.status(200).json({
+      message: "Request removed from your history.",
+    });
+  } catch (error) {
+    console.error("[dismissHealthRequestForFarmer ERROR]", error.message);
+    return res.status(500).json({
+      message: "Failed to remove the request from your history.",
+    });
   }
 };
 

@@ -16,6 +16,7 @@ import { useRouter } from "expo-router";
 import { AsyncState, SectionHeader, StatusBadge } from "@/components/shared";
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
+import { hasTechnicianRequestAssignee } from "@/features/technician-requests/utils/requestPresentation";
 import {
   formatDashboardLocation,
   formatSentAt,
@@ -41,7 +42,9 @@ export function TechnicianRequestsSection({
 }: TechnicianRequestsSectionProps) {
   const router = useRouter();
   const availableRequests = pendingRequests.filter(
-    (request: any) => request.status === "pending",
+    (request: any) =>
+      String(request.status || request.raw?.status || "").toLowerCase() ===
+        "pending" && !hasTechnicianRequestAssignee(request),
   );
   const previewRequests = availableRequests.slice(0, 3);
 
@@ -51,7 +54,7 @@ export function TechnicianRequestsSection({
         title="Farmer requests"
         subtitle={
           availableRequests.length > 0
-            ? `${availableRequests.length} unclaimed ${availableRequests.length === 1 ? "request" : "requests"}`
+            ? `${availableRequests.length} available ${availableRequests.length === 1 ? "request" : "requests"}`
             : undefined
         }
         actionLabel="View all"
@@ -261,7 +264,7 @@ function RequestRow({
           </Text>
         </View>
 
-        {badgeInfo.isUnclaimed ? (
+        {badgeInfo.isAvailable ? (
           <View
             style={{
               flexDirection: "row",
@@ -277,7 +280,7 @@ function RequestRow({
               numberOfLines={1}
               style={{ flex: 1, color: colors.warningForeground }}
             >
-              Unclaimed — Tap to review & claim
+              Tap to review and claim
             </Text>
           </View>
         ) : isLocked ? (

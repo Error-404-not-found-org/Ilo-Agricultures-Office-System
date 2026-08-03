@@ -1,17 +1,35 @@
-import { PREGNANCY_WORKFLOW_STAGE, getWorkflowStage } from "../constants/technicianWorkflow";
+import {
+  PREGNANCY_WORKFLOW_STAGE,
+  getWorkflowStage,
+} from "../constants/technicianWorkflow";
 
-const idOf = (value) => value?._id || value?.id || (typeof value === "string" ? value : null);
+const idOf = (value) =>
+  value?._id || value?.id || (typeof value === "string" ? value : null);
 
 export const getTaskRelationship = (item = {}) => {
   const raw = item.raw || item;
   const metadata = raw.metadata || item.metadata || {};
   return {
-    taskId: idOf(item.taskId) || idOf(raw.taskId) || (raw.taskType ? idOf(raw) : null),
-    requestId: idOf(item.requestId) || idOf(raw.requestId) || (!raw.taskType ? idOf(raw) : null),
-    sourceType: item.sourceType || raw.sourceType || metadata.sourceType || null,
-    sourceId: idOf(item.sourceId) || idOf(raw.sourceId) || idOf(metadata.sourceId),
-    animalId: idOf(item.animalId) || idOf(raw.animalId) || idOf(metadata.animalId) || idOf(raw.animalIds?.[0]),
-    pregnancyId: idOf(item.pregnancyId) || idOf(raw.pregnancyId) || idOf(metadata.pregnancyId) || idOf(raw.relatedRecordId),
+    taskId: idOf(item.taskId) || idOf(raw.taskId) || null,
+    workflowId: idOf(item._id) || idOf(raw._id) || idOf(item.id) || idOf(raw.id) || null,
+    requestId:
+      idOf(item.requestId) ||
+      idOf(raw.requestId) ||
+      (!raw.workflowType ? idOf(raw) : null),
+    sourceType:
+      item.sourceType || raw.sourceType || metadata.sourceType || null,
+    sourceId:
+      idOf(item.sourceId) || idOf(raw.sourceId) || idOf(metadata.sourceId),
+    animalId:
+      idOf(item.animalId) ||
+      idOf(raw.animalId) ||
+      idOf(metadata.animalId) ||
+      idOf(raw.animalIds?.[0]),
+    pregnancyId:
+      idOf(item.pregnancyId) ||
+      idOf(raw.pregnancyId) ||
+      idOf(metadata.pregnancyId) ||
+      idOf(raw.relatedRecordId),
     workflowStage: getWorkflowStage(raw),
   };
 };
@@ -37,16 +55,36 @@ export const getCalendarTarget = (item = {}) => {
 };
 
 export const getTaskPrimaryActionLabel = (task = {}) => {
-  if (task.taskType === "PD") {
-    const stage = getWorkflowStage(task);
-    if (stage === PREGNANCY_WORKFLOW_STAGE.CONTINUATION) return "Record continuation recheck";
-    if (stage === PREGNANCY_WORKFLOW_STAGE.FOLLOW_UP) return "Record diagnostic follow-up";
-    return "Record pregnancy diagnosis";
+  const { allowedAction, workflowType } = task;
+
+  switch (allowedAction) {
+    case "CLAIM":
+      return "Claim Task";
+    case "SCHEDULE_VISIT":
+      return "Schedule Visit";
+    case "START_SERVICE":
+      return "Start Service";
+    case "RECORD_SERVICE": {
+      if (workflowType === "PD") {
+        const stage = getWorkflowStage(task);
+        if (stage === PREGNANCY_WORKFLOW_STAGE.CONTINUATION)
+          return "Record Recheck";
+        if (stage === PREGNANCY_WORKFLOW_STAGE.FOLLOW_UP) return "Record Follow-up";
+        return "Record Diagnosis";
+      }
+      if (workflowType === "AI") return "Record AI";
+      if (
+        ["Health", "Treatment", "Vaccination", "Deworming"].includes(workflowType)
+      )
+        return "Record Health";
+      if (["CD", "Calving"].includes(workflowType)) return "Record Calving";
+      return "Record Service";
+    }
+    case "VIEW_RECORD":
+      return "View Record";
+    default:
+      return "Complete";
   }
-  if (task.taskType === "AI") return "Record AI service";
-  if (["Health", "Treatment", "Vaccination", "Deworming"].includes(task.taskType)) return "Record health assistance";
-  if (["CD", "Calving"].includes(task.taskType)) return "Record calving";
-  return "Complete task";
 };
 
 export const buildPregnancyActionRequest = ({
@@ -61,16 +99,25 @@ export const buildPregnancyActionRequest = ({
   diagnosticMethod,
 }) => {
   const stage = getWorkflowStage(task);
-  const resolvedTaskId = taskId || task._id || task.id;
-  if ([PREGNANCY_WORKFLOW_STAGE.CONTINUATION, PREGNANCY_WORKFLOW_STAGE.FOLLOW_UP].includes(stage)) {
-    const pregnancyId = task.metadata?.pregnancyId || task.relatedRecordId?._id || task.relatedRecordId;
+  const resolvedTaskId = taskId || task.taskId;
+  if (
+    [
+      PREGNANCY_WORKFLOW_STAGE.CONTINUATION,
+      PREGNANCY_WORKFLOW_STAGE.FOLLOW_UP,
+    ].includes(stage)
+  ) {
+    const pregnancyId =
+      task.metadata?.pregnancyId ||
+      task.relatedRecordId?._id ||
+      task.relatedRecordId;
     return {
       url: `/technician/pregnancy-checks/${pregnancyId}/continuation-recheck`,
       payload: {
         result,
         checkedAt: diagnosisDate,
         notes: note,
-        followUpDate: result === "follow_up_required" ? followUpDate : undefined,
+        followUpDate:
+          result === "follow_up_required" ? followUpDate : undefined,
         taskId: resolvedTaskId,
       },
     };
@@ -96,11 +143,18 @@ export const normalizeTaskContext = (task = {}) => {
   const metadata = raw.metadata || task.metadata || {};
 
   const animal = raw.animalIds?.[0] || raw.animalId || {};
-  const animalReference = animal.earTag || animal.animalId || (typeof animal === "string" ? animal : null) || raw.animalReference || null;
+  const animalReference =
+    animal.earTag ||
+    animal.animalId ||
+    (typeof animal === "string" ? animal : null) ||
+    raw.animalReference ||
+    null;
 
   return {
-    taskId: idOf(raw._id || raw.id || raw.taskId),
-    taskType: raw.taskType || null,
+    taskId: idOf(raw.taskId),
+    workflowId: idOf(raw._id || raw.id),
+    workflowType: raw.workflowType || null,
+    allowedAction: raw.allowedAction || null,
     workflowStage: getWorkflowStage(raw),
     taskStatus: raw.status || null,
     requestId: idOf(raw.requestId || metadata.requestId),
@@ -114,20 +168,20 @@ export const normalizeTaskContext = (task = {}) => {
     pregnancyId: idOf(
       metadata.pregnancyId ||
         raw.pregnancyId ||
-        (["PD", "CD", "Calving"].includes(raw.taskType)
+        (["PD", "CD", "Calving"].includes(raw.workflowType)
           ? raw.relatedRecordId
           : null),
     ),
     inseminationId: idOf(
       metadata.inseminationId ||
         raw.inseminationId ||
-        (raw.taskType === "PD" ? raw.relatedRecordId : null),
+        (raw.workflowType === "PD" ? raw.relatedRecordId : null),
     ),
     healthRequestId: idOf(
       metadata.healthRequestId ||
         raw.healthRequestId ||
         (["Health", "Treatment", "Vaccination", "Deworming"].includes(
-          raw.taskType,
+          raw.workflowType,
         )
           ? raw.relatedRecordId
           : null),
@@ -139,39 +193,20 @@ export const normalizeTaskContext = (task = {}) => {
 };
 
 export const getTaskActionTarget = (taskContext) => {
-  const type = taskContext?.taskType;
-  if (type === "PD") {
+  const { allowedAction, workflowType } = taskContext || {};
+  
+  if (!allowedAction) {
     return {
-      type: "modal",
+      type: "none",
       path: null,
-      label: getTaskPrimaryActionLabel(taskContext),
+      label: "Complete task",
     };
   }
-  if (type === "AI") {
-    return {
-      type: "route",
-      path: "/technician/walk-in",
-      label: "Record AI Service",
-    };
-  }
-  if (["Health", "Treatment", "Vaccination", "Deworming"].includes(type)) {
-    return {
-      type: "route",
-      path: "/technician/health",
-      label: "Complete Health Assistance",
-    };
-  }
-  if (["CD", "Calving"].includes(type)) {
-    return {
-      type: "route",
-      path: "/technician/newborns",
-      label: "Record Calving",
-    };
-  }
+
   return {
-    type: "none",
-    path: null,
-    label: "Complete task",
+    type: allowedAction,
+    workflow: workflowType,
+    label: getTaskPrimaryActionLabel(taskContext),
   };
 };
 
@@ -180,35 +215,40 @@ export const validateTaskContextForAction = (taskContext) => {
     return {
       valid: false,
       errorType: "missing_info",
-      message: "This task does not contain enough information to open the service form."
+      message:
+        "This task does not contain enough information to open the service form.",
     };
   }
-  const { taskId, taskType, animalId, farmerId } = taskContext;
+  const { allowedAction, workflowType, animalId, farmerId } = taskContext;
 
-  if (!taskId || !taskType) {
-    return {
-      valid: false,
-      errorType: "missing_info",
-      message: "This task does not contain enough information to open the service form."
-    };
-  }
-
-  const target = getTaskActionTarget(taskContext);
-  if (target.type === "none") {
+  if (!allowedAction) {
     return {
       valid: false,
       errorType: "unavailable",
-      message: "The requested service workflow could not be opened."
+      message: "The requested service workflow could not be opened.",
     };
   }
 
-  if (["AI", "Health", "Treatment", "Vaccination", "Deworming", "CD", "Calving"].includes(taskType)) {
-    if (!animalId || !farmerId) {
-      return {
-        valid: false,
-        errorType: "missing_info",
-        message: "This task does not contain enough information to open the service form."
-      };
+  if (allowedAction === "RECORD_SERVICE") {
+    if (
+      [
+        "AI",
+        "Health",
+        "Treatment",
+        "Vaccination",
+        "Deworming",
+        "CD",
+        "Calving",
+      ].includes(workflowType)
+    ) {
+      if (!animalId || !farmerId) {
+        return {
+          valid: false,
+          errorType: "missing_info",
+          message:
+            "This task does not contain enough information to open the service form.",
+        };
+      }
     }
   }
 
@@ -218,7 +258,7 @@ export const validateTaskContextForAction = (taskContext) => {
 const SAFE_RETURN_PATHS = [
   "/technician/work-queue",
   "/technician/schedule",
-  "/technician/requests"
+  "/technician/requests",
 ];
 
 export const sanitizeReturnTo = (path) => {
@@ -230,10 +270,14 @@ export const sanitizeReturnTo = (path) => {
   return "/technician/work-queue";
 };
 
-export const buildTaskNavigationState = (taskContext, returnTo = "/technician/work-queue") => {
+export const buildTaskNavigationState = (
+  taskContext,
+  returnTo = "/technician/work-queue",
+) => {
   return {
     taskContext,
     taskId: taskContext?.taskId || null,
+    workflowId: taskContext?.workflowId || null,
     animalId: taskContext?.animalId || null,
     farmerId: taskContext?.farmerId || null,
     requestId: taskContext?.requestId || null,

@@ -16,6 +16,7 @@ import { Text } from "@/components/ui/Text";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { StatusBadge } from "@/components/shared";
+import { getTechnicianRequestStatusPresentation } from "@/features/technician-requests/utils/requestPresentation";
 import { useTheme } from "@/lib/theme";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useApi } from "@/lib/api";
@@ -709,6 +710,7 @@ export default function RequestDetailsScreen() {
     request.serviceType || request.requestType,
   );
   const normalizedStatus = request.status?.toLowerCase() || "";
+  const statusPresentation = getTechnicianRequestStatusPresentation(request);
   const primaryActionLabel =
     normalizedStatus === "pending"
       ? "Claim request"
@@ -806,8 +808,10 @@ export default function RequestDetailsScreen() {
               </Text>
             </View>
             <StatusBadge
-              label={formatServiceType(request.status)}
-              variant={request.status}
+              label={
+                statusPresentation?.label || formatServiceType(request.status)
+              }
+              variant={statusPresentation?.variant || request.status}
               domain="request"
               compact
             />
@@ -991,9 +995,7 @@ export default function RequestDetailsScreen() {
                   borderRadius: 14,
                   alignItems: "center",
                   justifyContent: "center",
-                  backgroundColor: isDark
-                    ? "rgba(16,185,129,0.14)"
-                    : "#ECFDF5",
+                  backgroundColor: isDark ? "rgba(16,185,129,0.14)" : "#ECFDF5",
                 }}
               >
                 <Activity size={20} color={colors.primary} />
@@ -1032,14 +1034,9 @@ export default function RequestDetailsScreen() {
                 ) : null}
               </View>
               {isBreedingObservationAwaitingReview(
-                request.verificationStatus ||
-                  request.outcomeVerificationStatus,
+                request.verificationStatus || request.outcomeVerificationStatus,
               ) ? (
-                <StatusBadge
-                  label="Needs review"
-                  variant="warning"
-                  compact
-                />
+                <StatusBadge label="Needs review" variant="warning" compact />
               ) : null}
             </View>
 
@@ -1114,9 +1111,7 @@ export default function RequestDetailsScreen() {
                 marginTop: 14,
                 padding: 12,
                 borderRadius: 12,
-                backgroundColor: isDark
-                  ? "rgba(245,158,11,0.1)"
-                  : "#FFFBEB",
+                backgroundColor: isDark ? "rgba(245,158,11,0.1)" : "#FFFBEB",
               }}
             >
               <Text

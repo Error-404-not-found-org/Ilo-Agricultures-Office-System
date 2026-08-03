@@ -147,10 +147,15 @@ export default function Sidebar() {
       {
         path: "/technician/requests",
         icon: <ClipboardList size={16} />,
-        label: "Service Requests",
+        label: "Requests",
         badge: livePendingCount > 0 ? String(livePendingCount) : null,
       },
-      { type: "label", label: "Workspace" },
+      {
+        path: "/technician/work-queue",
+        icon: <ListChecks size={16} />,
+        label: "My Work",
+      },
+      { type: "label", label: "Records" },
       {
         path: "/technician/farmers",
         icon: <Users size={16} />,
@@ -161,22 +166,7 @@ export default function Sidebar() {
         icon: <Tractor size={16} />,
         label: "Animals",
       },
-      {
-        path: "/technician/work-queue",
-        icon: <ListChecks size={16} />,
-        label: "Work-queue",
-      },
-      {
-        path: "/technician/reports",
-        icon: <FileText size={16} />,
-        label: "Reports",
-      },
-      { type: "label", label: "Records" },
-      {
-        path: "/technician/analytics",
-        icon: <BarChart3 size={16} />,
-        label: "Performance",
-      },
+
       {
         path: "/technician/health",
         icon: <HeartPulse size={16} />,
@@ -208,11 +198,6 @@ export default function Sidebar() {
         path: "/technician/settings",
         icon: <SettingsIcon size={16} />,
         label: "Settings",
-      },
-      {
-        path: "/technician/moowie",
-        icon: <MessageSquare size={16} />,
-        label: "Ask Moowie",
       },
     ],
     [livePendingCount, unseenCalvingsCount],

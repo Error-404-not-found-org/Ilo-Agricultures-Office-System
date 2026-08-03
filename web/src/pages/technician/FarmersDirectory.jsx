@@ -322,7 +322,7 @@ export default function ClientRegistry() {
               <>
                 <div className="grid gap-3 lg:hidden">{farmers.map((farmer) => <FarmerCard key={farmer.id} farmer={farmer} onOpen={openFarmer} onEdit={editFarmer} />)}</div>
                 <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
-                  <table className="table table-pin-rows w-full text-left min-w-[1000px]">
+                  <table className="table table-pin-rows w-full text-left min-w-250">
                     <thead>
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                         <th className="p-3.5 pl-6">Farmer</th>
@@ -331,7 +331,7 @@ export default function ClientRegistry() {
                         <th className="p-3.5">Animals</th>
                         <th className="p-3.5">App access</th>
                         <th className="p-3.5">Verification</th>
-                        <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
+                        <th className="p-3.5 pr-6 text-right w-25">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-base-300">

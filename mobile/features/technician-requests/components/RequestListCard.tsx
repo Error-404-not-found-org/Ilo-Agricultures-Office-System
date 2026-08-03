@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/shared";
 import { RequestItem } from "../types/technicianRequests.types";
 import { getBreedingObservationLabel } from "@/features/breeding/utils/breedingObservationPresentation";
+import { getTechnicianRequestStatusPresentation } from "../utils/requestPresentation";
 
 interface RequestListCardProps {
   item: RequestItem;
@@ -70,6 +71,7 @@ export function RequestListCard({
     "cancelled",
     "declined",
   ].includes(normalizedStatus);
+  const statusPresentation = getTechnicianRequestStatusPresentation(item);
 
   const serviceLabel = item.serviceType || item.requestType
     ? titleCase(item.serviceType || item.requestType || "")
@@ -81,8 +83,8 @@ export function RequestListCard({
 
   const statusLabel = cancellationRequested
     ? "Cancellation review"
-    : normalizedStatus === "approved"
-      ? "Claimed"
+    : statusPresentation?.label
+      ? statusPresentation.label
       : normalizedStatus === "in_progress" ||
           normalizedStatus === "in-progress"
         ? "In Progress"
@@ -203,7 +205,11 @@ export function RequestListCard({
 
         <StatusBadge
           label={statusLabel}
-          variant={cancellationRequested ? "danger" : item.status}
+          variant={
+            cancellationRequested
+              ? "danger"
+              : statusPresentation?.variant || item.status
+          }
           domain="request"
           compact
         />

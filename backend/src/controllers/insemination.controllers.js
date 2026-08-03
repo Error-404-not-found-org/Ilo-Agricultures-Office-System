@@ -36,7 +36,9 @@ export const createInsemination = async (req, res) => {
       return res.status(404).json({ message: "Animal not found" });
     }
     if (String(animal.farmerId) !== String(farmerId)) {
-      return res.status(400).json({ message: "Animal does not belong to the selected farmer." });
+      return res
+        .status(400)
+        .json({ message: "Animal does not belong to the selected farmer." });
     }
 
     const eligibility = await getAnimalAIEligibility({
@@ -100,12 +102,16 @@ export const updateInsemination = async (req, res) => {
           estrus,
           status: nextStatus,
           ...(activeStatus
-            ? { activeRequestKey: activeRequestKeyForAnimal(existingRecord.animalId) }
+            ? {
+                activeRequestKey: activeRequestKeyForAnimal(
+                  existingRecord.animalId,
+                ),
+              }
             : {}),
         },
         ...(!activeStatus ? { $unset: { activeRequestKey: 1 } } : {}),
       },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     if (!insemination) {
@@ -115,9 +121,11 @@ export const updateInsemination = async (req, res) => {
     // Sync Animal Status if marked as 'done'
     if (nextStatus === "done") {
       await Animal.findByIdAndUpdate(insemination.animalId, {
-        reproductiveStatus: "Inseminated"
+        reproductiveStatus: "Inseminated",
       });
-      console.log(`[Status Sync] Animal ${insemination.animalId} set to Inseminated via updateInsemination.`);
+      console.log(
+        `[Status Sync] Animal ${insemination.animalId} set to Inseminated via updateInsemination.`,
+      );
     }
 
     res.status(200).json({
@@ -167,8 +175,16 @@ export const getMyInseminations = async (req, res) => {
         .limit(limitNum)
         .lean(),
       Insemination.countDocuments({ farmerId, deletedAt: null }),
-      Insemination.countDocuments({ farmerId, status: "approved", deletedAt: null }),
-      Insemination.countDocuments({ farmerId, status: "pending", deletedAt: null }),
+      Insemination.countDocuments({
+        farmerId,
+        status: "approved",
+        deletedAt: null,
+      }),
+      Insemination.countDocuments({
+        farmerId,
+        status: "pending",
+        deletedAt: null,
+      }),
     ]);
 
     res.status(200).json({
@@ -176,7 +192,7 @@ export const getMyInseminations = async (req, res) => {
       total,
       stats: { total, approved, pending },
       page: pageNum,
-      totalPages: Math.ceil(total / limitNum)
+      totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
     console.error("[getMyInseminations ERROR]", error.message);
@@ -189,7 +205,9 @@ export const deleteInsemination = async (req, res) => {
   const session = await mongoose.startSession();
   try {
     const { id } = req.params;
-    const reason = String(req.body?.reason || "Administrative record correction").trim();
+    const reason = String(
+      req.body?.reason || "Administrative record correction",
+    ).trim();
     const deleteTime = new Date();
 
     let record;
@@ -249,7 +267,12 @@ export const deleteInsemination = async (req, res) => {
     });
 
     console.log(`[Insemination & Cascade Soft-Deleted] ${id}`);
-    res.status(200).json({ message: "Insemination and all linked breeding data soft-deleted successfully." });
+    res
+      .status(200)
+      .json({
+        message:
+          "Insemination and all linked breeding data soft-deleted successfully.",
+      });
   } catch (error) {
     console.error("[deleteInsemination ERROR]", error.message);
     res.status(error.status || 500).json({

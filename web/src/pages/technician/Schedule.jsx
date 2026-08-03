@@ -16,7 +16,7 @@ import axiosInstance from "../../lib/axios";
 import Topbar from "../../components/layout/Topbar";
 import Modal from "../../components/ui/Modal";
 import UserAvatar from "../../components/ui/UserAvatar";
-import WalkInAIModal from "../../components/dialogs/WalkInAIModal";
+import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
 import { getCalendarTarget } from "../../utils/taskNavigation";
 import {
@@ -662,7 +662,7 @@ export default function DeploymentSchedule() {
       </Modal>
 
       {/* Appointment Modals */}
-      <WalkInAIModal
+      <AIServiceModal
         isOpen={isAIModalOpen}
         onClose={() => {
           setIsAIModalOpen(false);

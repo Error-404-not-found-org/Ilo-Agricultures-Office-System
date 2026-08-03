@@ -124,7 +124,6 @@ export default function RecordAIScreen() {
   const [sireCode, setSireCode] = useState(
     `SIRE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
   );
-  const [semenBatch, setSemenBatch] = useState("");
   const [estrus, setEstrus] = useState("Natural");
   const [notes, setNotes] = useState("");
   const saving = walkInInseminationMutation.isPending;
@@ -268,7 +267,7 @@ export default function RecordAIScreen() {
           sireBreed,
           sireCode,
           estrus,
-          notes: semenBatch.trim() ? `[Semen Batch: ${semenBatch.trim()}]\n${notes}` : notes,
+          notes,
           status,
           inseminationDate: getFormattedDate(inseminationDate),
           time: getFormattedTime(inseminationTime),
@@ -581,7 +580,7 @@ export default function RecordAIScreen() {
 
             <View>
               <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
-                Sire Code / Bull ID
+                Sire Code
               </Text>
               <TextInput
                 className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/60 rounded-2xl p-4 text-slate-400 dark:text-slate-500 font-outfit-medium shadow-sm"
@@ -592,19 +591,7 @@ export default function RecordAIScreen() {
               />
             </View>
 
-            <View>
-              <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
-                Semen Batch / Lot (Optional)
-              </Text>
-              <TextInput
-                className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-medium shadow-sm"
-                placeholder="e.g. LOT-2026-A"
-                placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                value={semenBatch}
-                onChangeText={setSemenBatch}
-                editable={!saving}
-              />
-            </View>
+
 
             {/* Dynamic Date & Time Selectors */}
             <View className="flex-row gap-3">

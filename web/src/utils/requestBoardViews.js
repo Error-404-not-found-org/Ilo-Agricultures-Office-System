@@ -9,7 +9,17 @@ export function getInitialRequestBoardView(status = "pending") {
     return REQUEST_BOARD_VIEWS.HISTORY;
   }
 
-  if (["scheduled", "in-progress", "in_progress", "active", "all"].includes(status)) {
+  if (
+    [
+      "approved",
+      "assigned",
+      "scheduled",
+      "in-progress",
+      "in_progress",
+      "active",
+      "all",
+    ].includes(status)
+  ) {
     return REQUEST_BOARD_VIEWS.MINE;
   }
 
@@ -39,11 +49,41 @@ export function getRequestBoardViewSelection(view, { isAdmin = false } = {}) {
 
 export function getRequestAssigneeId(request = {}) {
   const raw = request.raw || request;
-  const assignee = raw.approvedBy || raw.handledBy || raw.technicianId || null;
+  const assignee =
+    raw.approvedBy ||
+    raw.handledBy ||
+    raw.assignedTechnicianId ||
+    raw.technicianId ||
+    null;
 
   return assignee && typeof assignee === "object"
     ? assignee._id || null
     : assignee;
+}
+
+export function getRequestStatusPresentation(
+  request = {},
+  { isAdmin = false } = {},
+) {
+  const raw = request.raw || request;
+  const normalizedStatus = String(request.status || raw.status || "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("_", "-");
+  const hasAssignment = Boolean(
+    getRequestAssigneeId(request) ||
+      request.assignedTechnician ||
+      raw.claimedAt,
+  );
+
+  if (normalizedStatus === "pending" && !hasAssignment) {
+    return {
+      label: isAdmin ? "Unclaimed" : "Available",
+      badgeClass: "badge-primary badge-soft",
+    };
+  }
+
+  return null;
 }
 
 export function isActiveRequestAssignedTo(request, technicianId) {

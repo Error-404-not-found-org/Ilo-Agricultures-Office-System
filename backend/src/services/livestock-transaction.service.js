@@ -8,21 +8,35 @@ import { Task } from "../models/task.model.js";
 import { AuditLog } from "../models/audit-log.model.js";
 import { Notification } from "../models/notification.model.js";
 import { AppError } from "../utils/app-error.js";
-import { ANIMAL_REPRODUCTIVE_STATUS, reproductiveStatusForPregnancyResult } from "../domain/livestock-workflow.js";
+import {
+  ANIMAL_REPRODUCTIVE_STATUS,
+  reproductiveStatusForPregnancyResult,
+} from "../domain/livestock-workflow.js";
 import { assertPregnancyDiagnosisWindow } from "../domain/pregnancy-readiness.js";
 import { PREGNANCY_TASK_STAGE } from "../domain/pregnancy-task-workflow.js";
 import { loadPregnancyConfirmationPolicy } from "./pregnancy-policy.service.js";
-import { getMethodThresholdForSpecies, LEGACY_PREGNANCY_POLICY_VERSION } from "../domain/pregnancy-confirmation-policy.js";
+import {
+  getMethodThresholdForSpecies,
+  LEGACY_PREGNANCY_POLICY_VERSION,
+} from "../domain/pregnancy-confirmation-policy.js";
 import { getAnimalAIEligibility } from "./ai-eligibility.service.js";
-import { createAIRequestWithGuard, isVerifiedFailedAIAttempt } from "./ai-request-creation.service.js";
-import { checkInseminationAgeEligibility, verifyPostpartumWindow } from "../utils/cattleCore.js";
+import {
+  createAIRequestWithGuard,
+  isVerifiedFailedAIAttempt,
+} from "./ai-request-creation.service.js";
+import {
+  checkInseminationAgeEligibility,
+  verifyPostpartumWindow,
+} from "../utils/cattleCore.js";
 import { createAuditLog } from "./audit.service.js";
 
 const runTransaction = async (work) => {
   const session = await mongoose.startSession();
   try {
     let result;
-    await session.withTransaction(async () => { result = await work(session); });
+    await session.withTransaction(async () => {
+      result = await work(session);
+    });
     return result;
   } finally {
     await session.endSession();
@@ -30,40 +44,94 @@ const runTransaction = async (work) => {
 };
 
 const FINAL_PREGNANCY_RESULTS = new Set(["pregnant", "not_pregnant"]);
-export const completeInsemination = async ({ id, updateData, technicianId, farmerId, animalId, animalTag }, parentSession = null) => {
-  const policyResolution = await loadPregnancyConfirmationPolicy({ at: updateData.inseminationDate });
-  const policyVersion = policyResolution.mode === "method_based"
-    ? policyResolution.policy.version
-    : LEGACY_PREGNANCY_POLICY_VERSION;
+export const completeInsemination = async (
+  { id, updateData, technicianId, farmerId, animalId, animalTag },
+  parentSession = null,
+) => {
+  const policyResolution = await loadPregnancyConfirmationPolicy({
+    at: updateData.inseminationDate,
+  });
+  const policyVersion =
+    policyResolution.mode === "method_based"
+      ? policyResolution.policy.version
+      : LEGACY_PREGNANCY_POLICY_VERSION;
 
   const executeWork = async (session) => {
     const request = await Insemination.findOneAndUpdate(
-      { _id: id, status: { $nin: ["done", "rejected", "cancelled"] }, deletedAt: null },
+      {
+        _id: id,
+        status: { $nin: ["done", "rejected", "cancelled"] },
+        deletedAt: null,
+      },
       { $set: updateData, $unset: { activeRequestKey: 1 } },
       { returnDocument: "after", session },
     );
-    if (!request) throw new AppError("AI request is no longer active.", { status: 409, code: "AI_REQUEST_NOT_ACTIVE" });
+    if (!request)
+      throw new AppError("AI request is no longer active.", {
+        status: 409,
+        code: "AI_REQUEST_NOT_ACTIVE",
+      });
     const animalContext = await Animal.findById(animalId).session(session);
-    const enabledThresholds = policyResolution.mode === "method_based"
-      ? policyResolution.policy.methods
-          .filter((method) => method.enabled)
-          .map((method) => getMethodThresholdForSpecies(method, animalContext?.species))
-          .filter((threshold) => threshold !== null)
-      : [];
+    const enabledThresholds =
+      policyResolution.mode === "method_based"
+        ? policyResolution.policy.methods
+            .filter((method) => method.enabled)
+            .map((method) =>
+              getMethodThresholdForSpecies(method, animalContext?.species),
+            )
+            .filter((threshold) => threshold !== null)
+        : [];
     const initialConfirmationDays = enabledThresholds.length
       ? Math.min(...enabledThresholds)
       : 60;
 
-    await Animal.findByIdAndUpdate(animalId, {
-      $set: { reproductiveStatus: ANIMAL_REPRODUCTIVE_STATUS.INSEMINATED, lastInseminationDate: updateData.inseminationDate },
-      $push: { activityLogs: { event: "Artificial Insemination", date: updateData.inseminationDate, description: "Artificial insemination completed." } },
-    }, { session });
+    await Animal.findByIdAndUpdate(
+      animalId,
+      {
+        $set: {
+          reproductiveStatus: ANIMAL_REPRODUCTIVE_STATUS.INSEMINATED,
+          lastInseminationDate: updateData.inseminationDate,
+        },
+        $push: {
+          activityLogs: {
+            event: "Artificial Insemination",
+            date: updateData.inseminationDate,
+            description: "Artificial insemination completed.",
+          },
+        },
+      },
+      { session },
+    );
 
     const dueDate = new Date(updateData.inseminationDate);
     dueDate.setDate(dueDate.getDate() + initialConfirmationDays);
     await Task.updateOne(
-      { sourceType: "automatic_pd_followup", "metadata.inseminationId": id, status: { $nin: ["Completed", "Cancelled"] } },
-      { $setOnInsert: { technicianId, farmerId, animalIds: [animalId], taskType: "PD", category: "Follow-up", priority: 2, notes: `Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #${animalTag || "Unknown"}.`, status: "Pending", dueDate, sourceType: "automatic_pd_followup", metadata: { workflowStage: PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION, animalId, farmerId, inseminationId: id, policyVersion } } },
+      {
+        sourceType: "automatic_pd_followup",
+        "metadata.inseminationId": id,
+        status: { $nin: ["Completed", "Cancelled"] },
+      },
+      {
+        $setOnInsert: {
+          technicianId,
+          farmerId,
+          animalIds: [animalId],
+          taskType: "PD",
+          category: "Follow-up",
+          priority: 2,
+          notes: `Scheduled Pregnancy Diagnosis (PD) follow-up for Animal Tag #${animalTag || "Unknown"}.`,
+          status: "Pending",
+          dueDate,
+          sourceType: "automatic_pd_followup",
+          metadata: {
+            workflowStage: PREGNANCY_TASK_STAGE.INITIAL_CONFIRMATION,
+            animalId,
+            farmerId,
+            inseminationId: id,
+            policyVersion,
+          },
+        },
+      },
       { upsert: true, session },
     );
     return request;
@@ -75,44 +143,107 @@ export const completeInsemination = async ({ id, updateData, technicianId, farme
   return runTransaction(executeWork);
 };
 
-export const persistPregnancyDiagnosis = ({ animal, insemination, result, technicianNote, diagnosisDate, taskId, actorId }) =>
+export const persistPregnancyDiagnosis = ({
+  animal,
+  insemination,
+  result,
+  technicianNote,
+  diagnosisDate,
+  taskId,
+  actorId,
+}) =>
   runTransaction(async (session) => {
-    const existing = await Pregnancy.findOne({ inseminationId: insemination._id, deletedAt: null }).session(session);
-    if (existing) throw new AppError("Pregnancy diagnosis already recorded for this insemination attempt.", { status: 409, code: "PREGNANCY_DIAGNOSIS_EXISTS" });
+    const existing = await Pregnancy.findOne({
+      inseminationId: insemination._id,
+      deletedAt: null,
+    }).session(session);
+    if (existing)
+      throw new AppError(
+        "Pregnancy diagnosis already recorded for this insemination attempt.",
+        { status: 409, code: "PREGNANCY_DIAGNOSIS_EXISTS" },
+      );
 
-    const aiDate = insemination.inseminationDate || insemination.scheduledDate || insemination.preferredDate || insemination.createdAt;
-    const recordedDiagnosisDate = diagnosisDate ? new Date(diagnosisDate) : new Date();
-    if (Number.isNaN(recordedDiagnosisDate.getTime())) throw new AppError("A valid diagnosis date is required.", { status: 400, code: "DIAGNOSIS_DATE_INVALID" });
-    if (recordedDiagnosisDate.getTime() > Date.now() + 5 * 60 * 1000) throw new AppError("Diagnosis date cannot be in the future.", { status: 400, code: "DIAGNOSIS_DATE_IN_FUTURE" });
-    if (aiDate && recordedDiagnosisDate < new Date(aiDate)) throw new AppError("Diagnosis date cannot be earlier than the AI service date.", { status: 400, code: "DIAGNOSIS_BEFORE_AI" });
+    const aiDate =
+      insemination.inseminationDate ||
+      insemination.scheduledDate ||
+      insemination.preferredDate ||
+      insemination.createdAt;
+    const recordedDiagnosisDate = diagnosisDate
+      ? new Date(diagnosisDate)
+      : new Date();
+    if (Number.isNaN(recordedDiagnosisDate.getTime()))
+      throw new AppError("A valid diagnosis date is required.", {
+        status: 400,
+        code: "DIAGNOSIS_DATE_INVALID",
+      });
+    if (recordedDiagnosisDate.getTime() > Date.now() + 5 * 60 * 1000)
+      throw new AppError("Diagnosis date cannot be in the future.", {
+        status: 400,
+        code: "DIAGNOSIS_DATE_IN_FUTURE",
+      });
+    if (aiDate && recordedDiagnosisDate < new Date(aiDate))
+      throw new AppError(
+        "Diagnosis date cannot be earlier than the AI service date.",
+        { status: 400, code: "DIAGNOSIS_BEFORE_AI" },
+      );
     assertPregnancyDiagnosisWindow({
       insemination,
       diagnosisDate: recordedDiagnosisDate,
     });
-    const { calculateTargetCalvingDate } = await import("../utils/cattleCore.js");
-    const [pregnancy] = await Pregnancy.create([{
-      animalId: animal._id, farmerId: animal.farmerId, inseminationId: insemination._id, technicianNote,
-      pregnancyDiagnosis: { date: recordedDiagnosisDate, result },
-      targetCalvingDate: result === "Pregnant" ? calculateTargetCalvingDate(aiDate, animal.species, undefined, animal.breed) : undefined,
-    }], { session });
-    await Insemination.findByIdAndUpdate(insemination._id, {
-      $set: {
-        status: "done",
-        outcome: result === "Pregnant" ? "Pregnant" : "Failed (Negative PD)",
-        isSuccess: result === "Pregnant",
-        pregnancyId: pregnancy._id,
-        outcomeVerificationStatus: "verified",
-        outcomeConfirmationSource:
-          result === "Pregnant"
-            ? "technician_pregnancy_diagnosis"
-            : "technician_negative_pd",
-        outcomeConfirmedBy: actorId,
-        outcomeConfirmedAt: recordedDiagnosisDate,
-        failureReason: result === "Pregnant" ? null : "negative_pd",
+    const { calculateTargetCalvingDate } =
+      await import("../utils/cattleCore.js");
+    const [pregnancy] = await Pregnancy.create(
+      [
+        {
+          animalId: animal._id,
+          farmerId: animal.farmerId,
+          inseminationId: insemination._id,
+          technicianNote,
+          pregnancyDiagnosis: { date: recordedDiagnosisDate, result },
+          targetCalvingDate:
+            result === "Pregnant"
+              ? calculateTargetCalvingDate(
+                  aiDate,
+                  animal.species,
+                  undefined,
+                  animal.breed,
+                )
+              : undefined,
+        },
+      ],
+      { session },
+    );
+    await Insemination.findByIdAndUpdate(
+      insemination._id,
+      {
+        $set: {
+          status: "done",
+          outcome: result === "Pregnant" ? "Pregnant" : "Failed (Negative PD)",
+          isSuccess: result === "Pregnant",
+          pregnancyId: pregnancy._id,
+          outcomeVerificationStatus: "verified",
+          outcomeConfirmationSource:
+            result === "Pregnant"
+              ? "technician_pregnancy_diagnosis"
+              : "technician_negative_pd",
+          outcomeConfirmedBy: actorId,
+          outcomeConfirmedAt: recordedDiagnosisDate,
+          failureReason: result === "Pregnant" ? null : "negative_pd",
+        },
+        $unset: { activeRequestKey: 1 },
       },
-      $unset: { activeRequestKey: 1 },
-    }, { session });
-    await Animal.findByIdAndUpdate(animal._id, { $set: { reproductiveStatus: reproductiveStatusForPregnancyResult(result), expectedCalvingDate: pregnancy.targetCalvingDate } }, { session });
+      { session },
+    );
+    await Animal.findByIdAndUpdate(
+      animal._id,
+      {
+        $set: {
+          reproductiveStatus: reproductiveStatusForPregnancyResult(result),
+          expectedCalvingDate: pregnancy.targetCalvingDate,
+        },
+      },
+      { session },
+    );
     if (taskId) {
       const task = await Task.findOneAndUpdate(
         {
@@ -123,10 +254,22 @@ export const persistPregnancyDiagnosis = ({ animal, insemination, result, techni
           status: { $nin: ["Completed", "Cancelled"] },
           $or: [{ technicianId: actorId }, { technicianId: null }],
         },
-        { $set: { status: "Completed", relatedRecordType: "pregnancy", relatedRecordId: pregnancy._id, completedAt: new Date(), technicianId: actorId } },
+        {
+          $set: {
+            status: "Completed",
+            relatedRecordType: "pregnancy",
+            relatedRecordId: pregnancy._id,
+            completedAt: new Date(),
+            technicianId: actorId,
+          },
+        },
         { returnDocument: "after", session },
       );
-      if (!task) throw new AppError("The pregnancy-check task is not active or does not belong to this animal.", { status: 409, code: "TASK_RECORD_MISMATCH" });
+      if (!task)
+        throw new AppError(
+          "The pregnancy-check task is not active or does not belong to this animal.",
+          { status: 409, code: "TASK_RECORD_MISMATCH" },
+        );
     }
     return pregnancy;
   });
@@ -179,16 +322,22 @@ export const persistBreedingObservationVerification = ({
     if (verificationResult === "needs_recheck") {
       recheckDate = nextCheckDate ? new Date(nextCheckDate) : null;
       if (!recheckDate || Number.isNaN(recheckDate.getTime())) {
-        throw new AppError("A valid next check date is required for a recheck.", {
-          status: 400,
-          code: "RECHECK_DATE_REQUIRED",
-        });
+        throw new AppError(
+          "A valid next check date is required for a recheck.",
+          {
+            status: 400,
+            code: "RECHECK_DATE_REQUIRED",
+          },
+        );
       }
       if (recheckDate <= diagnosisDate) {
-        throw new AppError("The next check date must be after the verification date.", {
-          status: 400,
-          code: "RECHECK_DATE_INVALID",
-        });
+        throw new AppError(
+          "The next check date must be after the verification date.",
+          {
+            status: 400,
+            code: "RECHECK_DATE_INVALID",
+          },
+        );
       }
     }
 
@@ -206,7 +355,8 @@ export const persistBreedingObservationVerification = ({
       }
 
       const result = verificationResult === "pregnant" ? "Pregnant" : "Empty";
-      const { calculateTargetCalvingDate } = await import("../utils/cattleCore.js");
+      const { calculateTargetCalvingDate } =
+        await import("../utils/cattleCore.js");
       [pregnancy] = await Pregnancy.create(
         [
           {
@@ -438,17 +588,36 @@ export const persistBreedingObservationVerification = ({
     };
   });
 
-export const resolveHealthRequest = ({ id, updateFields, technicianId, medicalRecord }) =>
+export const resolveHealthRequest = ({
+  id,
+  updateFields,
+  technicianId,
+  medicalRecord,
+}) =>
   runTransaction(async (session) => {
     const request = await HealthRequest.findOneAndUpdate(
-      { _id: id, status: { $nin: ["resolved", "rejected", "cancelled"] }, deletedAt: null },
+      {
+        _id: id,
+        status: { $nin: ["resolved", "rejected", "cancelled"] },
+        deletedAt: null,
+      },
       { $set: updateFields, $unset: { activeCaseKey: 1 } },
       { returnDocument: "after", session },
     );
-    if (!request) throw new AppError("Health request is no longer active.", { status: 409, code: "HEALTH_REQUEST_NOT_ACTIVE" });
+    if (!request)
+      throw new AppError("Health request is no longer active.", {
+        status: 409,
+        code: "HEALTH_REQUEST_NOT_ACTIVE",
+      });
     await MedicalRecord.updateOne(
       { healthRequestId: request._id },
-      { $setOnInsert: { ...medicalRecord, healthRequestId: request._id, technicianId } },
+      {
+        $setOnInsert: {
+          ...medicalRecord,
+          healthRequestId: request._id,
+          technicianId,
+        },
+      },
       { upsert: true, session },
     );
     return request;
@@ -457,10 +626,15 @@ export const resolveHealthRequest = ({ id, updateFields, technicianId, medicalRe
 export const createResolvedWalkInHealth = ({ requestData, medicalRecord }) =>
   runTransaction(async (session) => {
     const [request] = await HealthRequest.create([requestData], { session });
-    const [record] = await MedicalRecord.create([{
-      ...medicalRecord,
-      healthRequestId: request._id,
-    }], { session });
+    const [record] = await MedicalRecord.create(
+      [
+        {
+          ...medicalRecord,
+          healthRequestId: request._id,
+        },
+      ],
+      { session },
+    );
     return { request, medicalRecord: record };
   });
 
@@ -489,66 +663,107 @@ export const recordTechnicianAIService = async ({
           $or: [
             { technicianId: actorId },
             { technicianId: null },
-            { technicianId: { $exists: false } }
-          ]
+            { technicianId: { $exists: false } },
+          ],
         },
         {
           $set: {
             status: "Completed",
             completedAt: new Date(),
-            technicianId: actorId
-          }
+            technicianId: actorId,
+          },
         },
-        { session, new: true }
+        { session, new: true },
       );
 
       if (!task) {
         // Acquisition failed, reload the task to resolve the scenario
         const currentTask = await Task.findById(taskId).session(session);
         if (!currentTask) {
-          throw new AppError("Task not found.", { status: 404, code: "TASK_NOT_FOUND" });
+          throw new AppError("Task not found.", {
+            status: 404,
+            code: "TASK_NOT_FOUND",
+          });
         }
         if (currentTask.taskType !== "AI") {
-          throw new AppError("Invalid task type for AI recording.", { status: 400, code: "INVALID_TASK_TYPE" });
+          throw new AppError("Invalid task type for AI recording.", {
+            status: 400,
+            code: "INVALID_TASK_TYPE",
+          });
         }
         if (currentTask.status === "Completed") {
           const expectedRecordId = requestId || currentTask.relatedRecordId;
-          if (currentTask.relatedRecordType === "insemination" && String(currentTask.relatedRecordId) === String(expectedRecordId)) {
-            const existingAI = await Insemination.findById(currentTask.relatedRecordId).session(session);
+          if (
+            currentTask.relatedRecordType === "insemination" &&
+            String(currentTask.relatedRecordId) === String(expectedRecordId)
+          ) {
+            const existingAI = await Insemination.findById(
+              currentTask.relatedRecordId,
+            ).session(session);
             return {
               outcome: "existing_and_task_completed",
               insemination: existingAI,
               task: currentTask,
             };
           } else {
-            throw new AppError("This task is already completed and linked to another record.", {
-              status: 409,
-              code: "TASK_ALREADY_LINKED",
-            });
+            throw new AppError(
+              "This task is already completed and linked to another record.",
+              {
+                status: 409,
+                code: "TASK_ALREADY_LINKED",
+              },
+            );
           }
         }
         if (currentTask.status === "Cancelled") {
-          throw new AppError("This task has been cancelled.", { status: 400, code: "TASK_CANCELLED" });
+          throw new AppError("This task has been cancelled.", {
+            status: 400,
+            code: "TASK_CANCELLED",
+          });
         }
-        const isClaimedByMe = currentTask.technicianId && String(currentTask.technicianId) === String(actorId);
+        const isClaimedByMe =
+          currentTask.technicianId &&
+          String(currentTask.technicianId) === String(actorId);
         const isClaimable = !currentTask.technicianId;
         if (!isClaimedByMe && !isClaimable && !isAdmin) {
-          throw new AppError("This task is assigned to another technician.", { status: 403, code: "TASK_ASSIGNED_TO_OTHER" });
+          throw new AppError("This task is assigned to another technician.", {
+            status: 403,
+            code: "TASK_ASSIGNED_TO_OTHER",
+          });
         }
-        throw new AppError("A concurrency conflict occurred. Please retry.", { status: 409, code: "CONCURRENCY_CONFLICT" });
+        throw new AppError("A concurrency conflict occurred. Please retry.", {
+          status: 409,
+          code: "CONCURRENCY_CONFLICT",
+        });
       }
 
       // Context matching & verification
       if (String(task.farmerId) !== String(farmerId)) {
-        throw new AppError("Task farmer mismatch.", { status: 409, code: "TASK_FARMER_MISMATCH" });
+        throw new AppError("Task farmer mismatch.", {
+          status: 409,
+          code: "TASK_FARMER_MISMATCH",
+        });
       }
-      if (!task.animalIds || !task.animalIds.some((id) => String(id) === String(animalId))) {
-        throw new AppError("Task animal mismatch.", { status: 409, code: "TASK_ANIMAL_MISMATCH" });
+      if (
+        !task.animalIds ||
+        !task.animalIds.some((id) => String(id) === String(animalId))
+      ) {
+        throw new AppError("Task animal mismatch.", {
+          status: 409,
+          code: "TASK_ANIMAL_MISMATCH",
+        });
       }
       if (requestId) {
-        const metadataRequestId = task.metadata?.requestId || task.relatedRecordId;
-        if (metadataRequestId && String(metadataRequestId) !== String(requestId)) {
-          throw new AppError("Task request mismatch.", { status: 409, code: "TASK_REQUEST_MISMATCH" });
+        const metadataRequestId =
+          task.metadata?.requestId || task.relatedRecordId;
+        if (
+          metadataRequestId &&
+          String(metadataRequestId) !== String(requestId)
+        ) {
+          throw new AppError("Task request mismatch.", {
+            status: 409,
+            code: "TASK_REQUEST_MISMATCH",
+          });
         }
       }
     }
@@ -556,13 +771,19 @@ export const recordTechnicianAIService = async ({
     // 2. Resolve Animal and Farmer
     const animal = await Animal.findById(animalId).session(session);
     if (!animal) {
-      throw new AppError("Animal not found.", { status: 404, code: "ANIMAL_NOT_FOUND" });
+      throw new AppError("Animal not found.", {
+        status: 404,
+        code: "ANIMAL_NOT_FOUND",
+      });
     }
     if (String(animal.farmerId) !== String(farmerId)) {
-      throw new AppError("The selected animal does not belong to the selected farmer.", {
-        status: 400,
-        code: "ANIMAL_FARMER_MISMATCH",
-      });
+      throw new AppError(
+        "The selected animal does not belong to the selected farmer.",
+        {
+          status: 400,
+          code: "ANIMAL_FARMER_MISMATCH",
+        },
+      );
     }
 
     let insemination;
@@ -572,7 +793,10 @@ export const recordTechnicianAIService = async ({
       // Request-Linked Path
       insemination = await Insemination.findById(requestId).session(session);
       if (!insemination) {
-        throw new AppError("Insemination request not found.", { status: 404, code: "AI_REQUEST_NOT_FOUND" });
+        throw new AppError("Insemination request not found.", {
+          status: 404,
+          code: "AI_REQUEST_NOT_FOUND",
+        });
       }
 
       // Check if the request is already complete
@@ -580,8 +804,13 @@ export const recordTechnicianAIService = async ({
         if (taskId) {
           await Task.updateOne(
             { _id: taskId },
-            { $set: { relatedRecordType: "insemination", relatedRecordId: insemination._id } },
-            { session }
+            {
+              $set: {
+                relatedRecordType: "insemination",
+                relatedRecordId: insemination._id,
+              },
+            },
+            { session },
           );
         }
         return {
@@ -592,17 +821,29 @@ export const recordTechnicianAIService = async ({
       }
 
       // Validate age and species and postpartum window
-      const ageCheck = checkInseminationAgeEligibility(animal.birthDate, animal.species);
+      const ageCheck = checkInseminationAgeEligibility(
+        animal.birthDate,
+        animal.species,
+      );
       if (!ageCheck.isEligible) {
-        throw new AppError(ageCheck.reason, { status: 400, code: ageCheck.code });
+        throw new AppError(ageCheck.reason, {
+          status: 400,
+          code: ageCheck.code,
+        });
       }
-      const recoveryAnchor = animal.lastCalvingDate || animal.lastPregnancyLossDate;
+      const recoveryAnchor =
+        animal.lastCalvingDate || animal.lastPregnancyLossDate;
       if (recoveryAnchor) {
-        const recovery = verifyPostpartumWindow(recoveryAnchor, inseminationDate, animal.species, animal.breed);
+        const recovery = verifyPostpartumWindow(
+          recoveryAnchor,
+          inseminationDate,
+          animal.species,
+          animal.breed,
+        );
         if (!recovery.isSafe) {
           throw new AppError(
             `The animal is still within the postpartum recovery period. Rebreeding is allowed after ${recovery.requiredDays} days post-calving.`,
-            { status: 400, code: "POSTPARTUM_RECOVERY" }
+            { status: 400, code: "POSTPARTUM_RECOVERY" },
           );
         }
       }
@@ -627,13 +868,19 @@ export const recordTechnicianAIService = async ({
           animalId,
           animalTag: animal.earTag || animal.animalId,
         },
-        session
+        session,
       );
     } else {
       // Manual Walk-In Path
-      const eligibility = await getAnimalAIEligibility({ animal, at: inseminationDate });
+      const eligibility = await getAnimalAIEligibility({
+        animal,
+        at: inseminationDate,
+      });
       if (!eligibility.eligible) {
-        throw new AppError(eligibility.reason, { status: 400, code: eligibility.code });
+        throw new AppError(eligibility.reason, {
+          status: 400,
+          code: eligibility.code,
+        });
       }
 
       // Verify the last performed attempt was a failure
@@ -642,13 +889,21 @@ export const recordTechnicianAIService = async ({
         status: "done",
         inseminationDate: { $exists: true, $ne: null },
         deletedAt: null,
-      }).sort({ attemptNumber: -1, inseminationDate: -1 }).session(session);
+      })
+        .sort({ attemptNumber: -1, inseminationDate: -1 })
+        .session(session);
 
-      if (lastPerformedAttempt && !isVerifiedFailedAIAttempt(lastPerformedAttempt)) {
-        throw new AppError("The previous AI attempt is not a verified failure.", {
-          status: 400,
-          code: "PREVIOUS_AI_ATTEMPT_NOT_FAILED",
-        });
+      if (
+        lastPerformedAttempt &&
+        !isVerifiedFailedAIAttempt(lastPerformedAttempt)
+      ) {
+        throw new AppError(
+          "The previous AI attempt is not a verified failure.",
+          {
+            status: 400,
+            code: "PREVIOUS_AI_ATTEMPT_NOT_FAILED",
+          },
+        );
       }
 
       insemination = await createAIRequestWithGuard(
@@ -665,31 +920,47 @@ export const recordTechnicianAIService = async ({
           technicianId: actorId,
           approvedBy: actorId,
         },
-        { session }
+        { session },
       );
 
       isCreated = true;
 
       // Sync Animal reproductiveStatus
-      await Animal.findByIdAndUpdate(animalId, {
-        $set: {
-          reproductiveStatus: ANIMAL_REPRODUCTIVE_STATUS.INSEMINATED,
-          lastInseminationDate: inseminationDate,
+      await Animal.findByIdAndUpdate(
+        animalId,
+        {
+          $set: {
+            reproductiveStatus: ANIMAL_REPRODUCTIVE_STATUS.INSEMINATED,
+            lastInseminationDate: inseminationDate,
+          },
+          $push: {
+            activityLogs: {
+              event: "Artificial Insemination",
+              date: inseminationDate,
+              description: "Artificial insemination completed.",
+            },
+          },
         },
-        $push: { activityLogs: { event: "Artificial Insemination", date: inseminationDate, description: "Artificial insemination completed." } },
-      }, { session });
+        { session },
+      );
 
       // Create automatic PD follow-up task
-      const policyResolution = await loadPregnancyConfirmationPolicy({ at: inseminationDate });
-      const policyVersion = policyResolution.mode === "method_based"
-        ? policyResolution.policy.version
-        : LEGACY_PREGNANCY_POLICY_VERSION;
-      const enabledThresholds = policyResolution.mode === "method_based"
-        ? policyResolution.policy.methods
-            .filter((method) => method.enabled)
-            .map((method) => getMethodThresholdForSpecies(method, animal?.species))
-            .filter((threshold) => threshold !== null)
-        : [];
+      const policyResolution = await loadPregnancyConfirmationPolicy({
+        at: inseminationDate,
+      });
+      const policyVersion =
+        policyResolution.mode === "method_based"
+          ? policyResolution.policy.version
+          : LEGACY_PREGNANCY_POLICY_VERSION;
+      const enabledThresholds =
+        policyResolution.mode === "method_based"
+          ? policyResolution.policy.methods
+              .filter((method) => method.enabled)
+              .map((method) =>
+                getMethodThresholdForSpecies(method, animal?.species),
+              )
+              .filter((threshold) => threshold !== null)
+          : [];
       const initialConfirmationDays = enabledThresholds.length
         ? Math.min(...enabledThresholds)
         : 60;
@@ -697,7 +968,11 @@ export const recordTechnicianAIService = async ({
       pdDueDate.setDate(pdDueDate.getDate() + initialConfirmationDays);
 
       await Task.updateOne(
-        { sourceType: "automatic_pd_followup", "metadata.inseminationId": insemination._id, status: { $nin: ["Completed", "Cancelled"] } },
+        {
+          sourceType: "automatic_pd_followup",
+          "metadata.inseminationId": insemination._id,
+          status: { $nin: ["Completed", "Cancelled"] },
+        },
         {
           $setOnInsert: {
             technicianId: actorId,
@@ -719,7 +994,7 @@ export const recordTechnicianAIService = async ({
             },
           },
         },
-        { upsert: true, session }
+        { upsert: true, session },
       );
     }
 
@@ -727,8 +1002,13 @@ export const recordTechnicianAIService = async ({
     if (taskId) {
       await Task.updateOne(
         { _id: taskId },
-        { $set: { relatedRecordType: "insemination", relatedRecordId: insemination._id } },
-        { session }
+        {
+          $set: {
+            relatedRecordType: "insemination",
+            relatedRecordId: insemination._id,
+          },
+        },
+        { session },
       );
     }
 
@@ -739,9 +1019,14 @@ export const recordTechnicianAIService = async ({
         actorId,
         entityType: "Insemination",
         entityId: insemination._id,
-        details: { taskId, requestId, animalId, attemptNumber: insemination.attemptNumber },
+        details: {
+          taskId,
+          requestId,
+          animalId,
+          attemptNumber: insemination.attemptNumber,
+        },
       },
-      { session }
+      { session },
     );
 
     // 5. Create Notification
@@ -765,11 +1050,13 @@ export const recordTechnicianAIService = async ({
           },
         },
       ],
-      { session }
+      { session },
     );
 
     return {
-      outcome: isCreated ? "created_and_task_completed" : "existing_and_task_completed",
+      outcome: isCreated
+        ? "created_and_task_completed"
+        : "existing_and_task_completed",
       insemination,
       task: taskId ? await Task.findById(taskId).session(session) : null,
     };

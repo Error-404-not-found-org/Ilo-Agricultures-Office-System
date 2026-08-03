@@ -29,10 +29,20 @@ export const normalizeAnimalReproductiveStatus = (value) => {
 export const reproductiveStatusQuery = (value) => {
   const normalized = normalizeAnimalReproductiveStatus(value);
   if (normalized === ANIMAL_REPRODUCTIVE_STATUS.NORMAL) {
-    return { $in: [ANIMAL_REPRODUCTIVE_STATUS.NORMAL, LEGACY_ANIMAL_REPRODUCTIVE_STATUS.OPEN] };
+    return {
+      $in: [
+        ANIMAL_REPRODUCTIVE_STATUS.NORMAL,
+        LEGACY_ANIMAL_REPRODUCTIVE_STATUS.OPEN,
+      ],
+    };
   }
   if (normalized === ANIMAL_REPRODUCTIVE_STATUS.POST_PARTUM) {
-    return { $in: [ANIMAL_REPRODUCTIVE_STATUS.POST_PARTUM, LEGACY_ANIMAL_REPRODUCTIVE_STATUS.POSTPARTUM] };
+    return {
+      $in: [
+        ANIMAL_REPRODUCTIVE_STATUS.POST_PARTUM,
+        LEGACY_ANIMAL_REPRODUCTIVE_STATUS.POSTPARTUM,
+      ],
+    };
   }
   return normalized;
 };
@@ -63,9 +73,7 @@ export const LEGACY_ACTIVE_AI_STATUS = Object.freeze({
 });
 
 export const normalizeAIStatus = (value) =>
-  value === LEGACY_ACTIVE_AI_STATUS.IN_PROGRESS
-    ? AI_STATUS.IN_PROGRESS
-    : value;
+  value === LEGACY_ACTIVE_AI_STATUS.IN_PROGRESS ? AI_STATUS.IN_PROGRESS : value;
 
 export const ACTIVE_AI_REQUEST_STATUSES = Object.freeze([
   AI_STATUS.PENDING,

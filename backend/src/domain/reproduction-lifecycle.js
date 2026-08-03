@@ -70,7 +70,7 @@ export const getReproductionEligibility = ({
       eligible: false,
       code: "ACTIVE_REPRODUCTIVE_WORKFLOW",
       reason: nextAction
-        ? `A new AI request cannot be created while the animal is in the "${nextAction.phase}" reproductive workflow.`
+        ? `An artificial insemination service has already been scheduled for this animal.`
         : "A new AI request cannot be created while another AI request is active.",
       nextAction,
       nextActionAt: nextAction?.at || undefined,

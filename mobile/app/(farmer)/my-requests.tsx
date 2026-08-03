@@ -186,10 +186,26 @@ export default function MyRequests({
         toast.error(err.response?.data?.message || "Failed to cancel request");
       }
     } else {
-      // Remove from history — admin-only DELETE is now blocked; just refresh list
-      toast.info("Removed from view.");
-      queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
-      queryClient.invalidateQueries({ queryKey: ["farmer", "health-requests"] });
+      const endpoint =
+        type === "ai"
+          ? `/ai-request/${id}/dismiss`
+          : `/health-request/${id}/dismiss`;
+      try {
+        await api.patch(endpoint);
+        setAllRequests((current) =>
+          current.filter(
+            (request) => !(request._id === id && request.type === type),
+          ),
+        );
+        toast.success("Request removed from your history.");
+        queryClient.invalidateQueries({ queryKey: ["farmer", "ai-requests"] });
+        queryClient.invalidateQueries({ queryKey: ["farmer", "health-requests"] });
+      } catch (err: any) {
+        toast.error(
+          err.response?.data?.message ||
+            "Failed to remove the request from your history.",
+        );
+      }
     }
   };
 

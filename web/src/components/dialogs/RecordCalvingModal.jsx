@@ -41,9 +41,10 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
         animalId: '',
         date: new Date().toISOString().split('T')[0],
         calvingEase: 'Natural',
+        outcome: 'live_birth',
         numberOfCalves: 1,
         calves: [
-            { sex: 'F', earTag: '', color: '', brand: '' }
+            { sex: 'F', earTag: '', color: '', brand: '', imageUrl: '', isLiving: true }
         ],
         technicianNote: ''
     });
@@ -77,9 +78,10 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                     animalId: '',
                     date: new Date().toISOString().split('T')[0],
                     calvingEase: 'Natural',
+        outcome: 'live_birth',
                     numberOfCalves: 1,
                     calves: [
-                        { sex: 'F', earTag: '', color: '', brand: '' }
+                        { sex: 'F', earTag: '', color: '', brand: '', imageUrl: '', isLiving: true }
                     ],
                     technicianNote: ''
                 });
@@ -159,7 +161,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
         let newCalves = [...formData.calves];
         if (count > newCalves.length) {
             for (let i = newCalves.length; i < count; i++) {
-                newCalves.push({ sex: 'F', earTag: '', color: '', brand: '' });
+                newCalves.push({ sex: 'F', earTag: '', color: '', brand: '', imageUrl: '', isLiving: true });
             }
         } else {
             newCalves = newCalves.slice(0, count);
@@ -172,6 +174,22 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
         const newCalves = [...formData.calves];
         newCalves[index][field] = value;
         setFormData({ ...formData, calves: newCalves });
+    };
+
+    const handleImageUpload = (index, e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error("Image size must be less than 5MB");
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            updateCalf(index, 'imageUrl', reader.result);
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleAutoGenerateTag = (index) => {
@@ -213,10 +231,21 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
             }
         }
 
-        mutation.mutate({
-            ...formData,
-            taskId
-        });
+        let payload = { ...formData, taskId };
+        
+        // Handle Mixed outcome logic
+        if (formData.outcome === 'mixed') {
+            const living = formData.calves.filter(c => c.isLiving);
+            const nonLiving = formData.calves.filter(c => !c.isLiving);
+            payload.calves = living;
+            payload.nonLivingCalves = nonLiving;
+        } else if (formData.outcome === 'stillbirth' || formData.outcome === 'abortion') {
+            // Backend handles this differently but web just sends them normally, though abortion ignores calves
+            payload.nonLivingCalves = formData.calves;
+            payload.calves = [];
+        }
+
+        mutation.mutate(payload);
     };
 
     if (!isOpen) return null;
@@ -397,7 +426,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                         {/* Basic Info Section (Visible if pregnancy record is resolved) */}
                         {(pregnancyData || activePregnancy) && (
                             <>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">Drop Date</label>
                                         <div className="relative">
@@ -412,16 +441,29 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                         </div>
                                     </div>
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">Calving Ease</label>
+                                        <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">Outcome</label>
+                                        <select 
+                                            value={formData.outcome}
+                                            onChange={(e) => setFormData({...formData, outcome: e.target.value})}
+                                            className="w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:outline-none transition-all cursor-pointer"
+                                        >
+                                            <option value="live_birth">Live Birth</option>
+                                            <option value="mixed">Mixed Vitality</option>
+                                            <option value="stillbirth">Stillbirth</option>
+                                            <option value="abortion">Abortion (Pregnancy Loss)</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">Delivery Method</label>
                                         <select 
                                             value={formData.calvingEase}
                                             onChange={(e) => setFormData({...formData, calvingEase: e.target.value})}
                                             className="w-full h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content focus:outline-none transition-all cursor-pointer"
                                         >
                                             <option value="Natural">Natural</option>
+                                            <option value="Normal">Normal</option>
                                             <option value="Difficult">Difficult</option>
-                                            <option value="Abortion">Abortion</option>
-                                            <option value="Stillbirth">Stillbirth</option>
+                                            <option value="Cesarean">Cesarean</option>
                                         </select>
                                     </div>
                                     <div className="space-y-1.5">
@@ -441,6 +483,17 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                 </div>
 
                                 {/* Offspring Details Section */}
+                                {formData.outcome === 'abortion' ? (
+                                    <div className="bg-rose-500/5 p-4 rounded-2xl border border-rose-500/10 flex items-start gap-3 mt-4">
+                                        <AlertCircle size={20} className="text-rose-500 shrink-0" />
+                                        <div>
+                                            <h4 className="text-xs font-black text-rose-500 uppercase tracking-widest">Pregnancy Loss</h4>
+                                            <p className="text-[10px] font-bold text-base-content/60 leading-relaxed mt-1">
+                                                An abortion will be recorded for this pregnancy. The mother's reproductive cycle will be reset to post-partum and the breeding history preserved. No calf records will be generated.
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : (
                                 <div className="space-y-4">
                                     <div className="flex justify-between items-center">
                                         <h3 className="text-[10px] font-black text-base-content/50 uppercase tracking-widest pl-2 border-l-4 border-emerald-500 py-0.5">Offspring Registry</h3>
@@ -465,9 +518,20 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                                 animate={{ opacity: 1, x: 0 }}
                                                 className="bg-base-200/40 border border-base-300 rounded-2xl p-5 relative group hover:border-emerald-500/30 transition-all"
                                             >
-                                                <div className="absolute -top-2.5 -left-2.5 w-7 h-7 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs font-black shadow-md">
+                                                <div className={`absolute -top-2.5 -left-2.5 w-7 h-7 rounded-full text-white flex items-center justify-center text-xs font-black shadow-md ${!calf.isLiving ? 'bg-slate-400' : 'bg-emerald-500'}`}>
                                                     {index + 1}
                                                 </div>
+                                                {formData.outcome === 'mixed' && (
+                                                    <div className="absolute top-4 right-4 flex items-center gap-2">
+                                                        <span className="text-[9px] font-black uppercase tracking-widest text-base-content/50">Living</span>
+                                                        <input 
+                                                            type="checkbox" 
+                                                            className="toggle toggle-sm toggle-success" 
+                                                            checked={calf.isLiving} 
+                                                            onChange={(e) => updateCalf(index, 'isLiving', e.target.checked)} 
+                                                        />
+                                                    </div>
+                                                )}
                                                 
                                                 <div className="space-y-4">
                                                     <div className="space-y-1">
@@ -513,6 +577,30 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                                         </div>
                                                     </div>
 
+                                                    {calf.isLiving && (
+                                                        <div>
+                                                            <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest mb-1.5 block">Calf Image (Optional)</label>
+                                                            <div className="flex gap-2 items-center">
+                                                                {calf.imageUrl ? (
+                                                                    <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-emerald-500/30 shrink-0">
+                                                                        <img src={calf.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                                                                        <button type="button" onClick={() => updateCalf(index, 'imageUrl', '')} className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                                                            <X size={14} className="text-white" />
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <label className="w-10 h-10 rounded-lg border border-dashed border-base-300 flex items-center justify-center bg-base-100 cursor-pointer hover:border-emerald-500 hover:bg-emerald-500/5 transition-all shrink-0">
+                                                                        <span className="text-xl leading-none font-light text-base-content/30">+</span>
+                                                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(index, e)} />
+                                                                    </label>
+                                                                )}
+                                                                <div className="flex-1 text-[9px] font-medium text-base-content/50 leading-tight">
+                                                                    Upload a photo of the calf. Max 5MB.
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
                                                     <div>
                                                         <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest mb-1.5 block">Calf's ID No. / Ear Tag</label>
                                                         <div className="flex gap-2">
@@ -537,7 +625,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                         ))}
                                     </div>
                                 </div>
-
+                                )}
                                 {/* Notes Section */}
                                 <div className="bg-base-200/40 rounded-2xl p-5 border border-base-300">
                                     <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block mb-2">Technical Observations</label>

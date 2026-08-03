@@ -35,6 +35,14 @@ export default function Layout() {
     };
   }, [signOut]);
 
+  // Prevent double scrollbars by locking the body scroll when inside the app layout.
+  useEffect(() => {
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, []);
+
   return (
     <div className="drawer lg:drawer-open h-screen bg-base-200 text-base-content font-sans antialiased">
       <input

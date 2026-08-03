@@ -23,7 +23,12 @@ const parseIloiloCityBarangay = (value) => {
   return { brgy: value || "", district: "" };
 };
 
-const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
+const RegisterFarmerModal = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  farmer = null,
+}) => {
   const queryClient = useQueryClient();
   const toast = useToast();
 
@@ -79,7 +84,7 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
         return res.data;
       }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       toast.success(farmer ? "Farmer profile updated successfully!" : "Farmer profile created successfully!");
       queryClient.invalidateQueries({
         queryKey: ["technician", "dashboard"],
@@ -87,6 +92,7 @@ const RegisterFarmerModal = ({ isOpen, onClose, farmer = null }) => {
       queryClient.invalidateQueries({
         queryKey: ["technician", "farmers"],
       });
+      onSuccess?.(result?.user || result?.data || result);
       onClose();
     },
     onError: (error) => {
