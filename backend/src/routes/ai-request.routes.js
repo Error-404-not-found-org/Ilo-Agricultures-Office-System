@@ -14,7 +14,11 @@ import {
   respondAICancellation,
   dismissAIRequestForFarmer,
 } from "../controllers/ai-request.controllers.js";
-import { protectedRoute, AdminOnly } from "../middleware/auth.middleware.js";
+import {
+  protectedRoute,
+  AdminOnly,
+  requireRole,
+} from "../middleware/auth.middleware.js";
 import { requestLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
@@ -30,10 +34,20 @@ router.get("/my", protectedRoute, getMyRequests);
 router.get("/:id", protectedRoute, getAIRequestDetail);
 
 // Technician / Admin views all requests (filter by ?status=pending etc.)
-router.get("/", protectedRoute, getAllRequests);
+router.get(
+  "/",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  getAllRequests,
+);
 
 // Technician / Admin updates request status
-router.patch("/:id/status", protectedRoute, updateRequestStatus);
+router.patch(
+  "/:id/status",
+  protectedRoute,
+  requireRole(["technician", "admin"]),
+  updateRequestStatus,
+);
 
 // Farmer confirms AI outcome
 router.patch("/:id/outcome", protectedRoute, confirmAIOutcome);

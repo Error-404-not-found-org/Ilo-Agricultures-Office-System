@@ -13,7 +13,11 @@ import { checkInseminationAgeEligibility } from "../utils/cattleCore.js";
 import { getReproductionEligibility } from "../domain/reproduction-lifecycle.js";
 import { createAuditLog } from "../services/audit.service.js";
 import { createTimelineEvent } from "../services/animal-timeline.service.js";
-import { assertAIRequestAccess } from "../policies/request.policy.js";
+import {
+  assertAIRequestAccess,
+  assertAIRequestStatusAccess,
+  buildAIRequestAssignmentGuard,
+} from "../policies/request.policy.js";
 import { Task } from "../models/task.model.js";
 import { assertStatusTransition } from "../domain/livestock-workflow.js";
 import { resolveReproductionNextAction } from "../domain/reproduction-next-action.js";
@@ -511,6 +515,8 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(404).json({ message: "AI request record not found." });
     }
 
+    assertAIRequestStatusAccess(req.user, existing);
+
     assertStatusTransition("ai", existing.status, status, {
       isAdmin: req.user.role === "admin",
     });
@@ -543,18 +549,6 @@ export const updateRequestStatus = async (req, res) => {
       });
     }
 
-    // Concurrency guard: check if already assigned to another technician
-    if (
-      existing.approvedBy &&
-      existing.approvedBy.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
-      const assignedTech = await User.findById(existing.approvedBy);
-      return res.status(403).json({
-        message: `This request is already being assisted by technician: ${assignedTech?.name || "another technician"}.`,
-      });
-    }
-
     if (status === "done") {
       if (!sireBreed || !sireCode || !estrus) {
         return res.status(400).json({
@@ -579,6 +573,14 @@ export const updateRequestStatus = async (req, res) => {
       req.user.role === "admin" && req.body.approvedBy
         ? req.body.approvedBy
         : req.user._id;
+    const assignmentGuard =
+      req.user.role === "admin"
+        ? {}
+        : buildAIRequestAssignmentGuard({ technicianId: req.user._id });
+    const mutationGuard = {
+      status: existing.status,
+      ...assignmentGuard,
+    };
 
     // Schedule conflict guard
     if ((status === "scheduled" || status === "in-progress") && scheduledDate) {
@@ -667,6 +669,7 @@ export const updateRequestStatus = async (req, res) => {
         farmerId: existing.farmerId,
         animalId: existing.animalId,
         animalTag: existing.animalId?.earTag || existing.animalId?.animalId,
+        requestFilter: mutationGuard,
       });
       await request.populate("farmerId", "name pushToken");
       await request.populate("animalId", "animalId earTag species");
@@ -674,15 +677,25 @@ export const updateRequestStatus = async (req, res) => {
       const statusUpdate = isActiveAIRequestStatus(status)
         ? { $set: updateData }
         : { $set: updateData, $unset: { activeRequestKey: 1 } };
-      request = await Insemination.findByIdAndUpdate(id, statusUpdate, {
-        returnDocument: "after",
-      })
+      request = await Insemination.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          ...mutationGuard,
+        },
+        statusUpdate,
+        { returnDocument: "after" },
+      )
         .populate("farmerId", "name pushToken")
         .populate("animalId", "animalId earTag species");
     }
 
     if (!request) {
-      return res.status(404).json({ message: "AI request record not found." });
+      return res.status(409).json({
+        message:
+          "The AI request assignment or status changed before this update completed.",
+        code: "AI_REQUEST_CONCURRENT_UPDATE",
+      });
     }
 
     // --- TRIGGER NOTIFICATION TO FARMER ---

@@ -305,6 +305,7 @@ test("two technicians cannot claim the same request concurrently", async () => {
   Insemination.findById = async () => ({
     _id: "request-1",
     animalId: "animal-1",
+    status: "pending",
     approvedBy: null,
   });
   let claimed = false;

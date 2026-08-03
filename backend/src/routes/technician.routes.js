@@ -76,7 +76,11 @@ router.get("/ai-service-context", getAIServiceContext);
 router.post("/walk-in-insemination", walkInInsemination);
 router.post("/walk-in-livestock", walkInLivestock);
 // Compatibility alias for installed clients and queued offline mutations.
-router.patch("/inseminations/:id/status", updateCanonicalAIRequestStatus);
+router.patch(
+  "/inseminations/:id/status",
+  requireRole(["technician", "admin"]),
+  updateCanonicalAIRequestStatus,
+);
 router.get("/animal-history/:id", getAnimalHistory);
 router.post("/register-farmer", registerFarmer);
 router.post("/pregnancy-check", recordPregnancyCheck);

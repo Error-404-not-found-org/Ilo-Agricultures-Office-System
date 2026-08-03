@@ -25,7 +25,7 @@ test("Workflow consolidation: legacy AI status route delegates to canonical cont
   );
   assert.match(
     routes,
-    /router\.patch\("\/inseminations\/:id\/status", updateCanonicalAIRequestStatus\)/,
+    /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician", "admin"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
   );
 });
 
@@ -85,7 +85,7 @@ test("Workflow consolidation: legacy compatibility route and canonical route sha
   const routes = readSource("../src/routes/technician.routes.js");
   assert.match(
     routes,
-    /router\.patch\("\/inseminations\/:id\/status", updateCanonicalAIRequestStatus\)/,
+    /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician", "admin"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
   );
   assert.match(
     routes,

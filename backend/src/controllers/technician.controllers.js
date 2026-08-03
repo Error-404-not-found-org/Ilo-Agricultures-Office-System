@@ -44,6 +44,7 @@ import {
   sendNotificationPush,
 } from "../services/notification-delivery.service.js";
 import { presentNotificationDocument } from "../domain/notification-presentation.js";
+import { buildAIRequestAssignmentGuard } from "../policies/request.policy.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
@@ -2732,13 +2733,29 @@ export const claimRequest = async (req, res) => {
     let updated = null;
 
     if (type === "ai") {
+      if (!["technician", "admin"].includes(req.user.role)) {
+        return res.status(403).json({
+          message: "Only technicians or administrators can claim AI requests.",
+          code: "AI_REQUEST_CLAIM_FORBIDDEN",
+        });
+      }
+
       const existing = await Insemination.findById(id);
       if (!existing) {
         return res
           .status(404)
           .json({ message: "AI request record not found." });
       }
-      if (existing.approvedBy) {
+      if (existing.status !== "pending") {
+        return res.status(409).json({
+          message: `This request is already ${existing.status} and cannot be claimed.`,
+          code: "REQUEST_NOT_CLAIMABLE",
+        });
+      }
+      if (
+        existing.approvedBy &&
+        existing.approvedBy.toString() !== req.user._id.toString()
+      ) {
         return res.status(409).json({
           message:
             "This request has already been claimed by another technician.",
@@ -2750,7 +2767,11 @@ export const claimRequest = async (req, res) => {
         {
           _id: id,
           deletedAt: null,
-          approvedBy: { $in: [null, undefined] },
+          status: "pending",
+          ...buildAIRequestAssignmentGuard({
+            technicianId: req.user._id,
+            allowPendingUnassigned: true,
+          }),
         },
         {
           $set: {

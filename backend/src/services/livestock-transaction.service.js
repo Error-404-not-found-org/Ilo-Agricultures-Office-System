@@ -45,7 +45,15 @@ const runTransaction = async (work) => {
 
 const FINAL_PREGNANCY_RESULTS = new Set(["pregnant", "not_pregnant"]);
 export const completeInsemination = async (
-  { id, updateData, technicianId, farmerId, animalId, animalTag },
+  {
+    id,
+    updateData,
+    technicianId,
+    farmerId,
+    animalId,
+    animalTag,
+    requestFilter = {},
+  },
   parentSession = null,
 ) => {
   const policyResolution = await loadPregnancyConfirmationPolicy({
@@ -62,6 +70,7 @@ export const completeInsemination = async (
         _id: id,
         status: { $nin: ["done", "rejected", "cancelled"] },
         deletedAt: null,
+        ...requestFilter,
       },
       { $set: updateData, $unset: { activeRequestKey: 1 } },
       { returnDocument: "after", session },

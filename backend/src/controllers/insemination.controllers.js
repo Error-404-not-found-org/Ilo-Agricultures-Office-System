@@ -90,6 +90,14 @@ export const updateInsemination = async (req, res) => {
       return res.status(404).json({ message: "Insemination record not found" });
     }
 
+    if (status === "done" && existingRecord.status !== "done") {
+      return res.status(409).json({
+        message:
+          "AI service completion must use the canonical request completion workflow.",
+        code: "CANONICAL_AI_COMPLETION_REQUIRED",
+      });
+    }
+
     const nextStatus = status || existingRecord.status;
     const activeStatus = isActiveAIRequestStatus(nextStatus);
     const insemination = await Insemination.findByIdAndUpdate(
