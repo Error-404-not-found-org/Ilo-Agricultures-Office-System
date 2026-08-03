@@ -31,6 +31,11 @@ import { useWalkInInseminationMutation } from "@/features/technician/hooks/useTe
 import { getAnimalsByFarmer } from "@/features/technician/services/animalManagement.service";
 import { ILOILO_MUNICIPALITY_OPTIONS } from "@/constants/address";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
+import {
+  formatLocalCalendarDate,
+  formatLocalTime,
+  validateAIRecording,
+} from "@/features/technician-requests/utils/aiWorkflow";
 
 const readRouteParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
@@ -63,15 +68,33 @@ export default function RecordAIScreen() {
     farmerId?: string | string[];
     animalId?: string | string[];
     source?: string | string[];
+    mode?: string | string[];
+    workflowId?: string | string[];
+    taskId?: string | string[];
+    farmerName?: string | string[];
+    animalName?: string | string[];
+    earTag?: string | string[];
+    scheduleDate?: string | string[];
+    visitPeriod?: string | string[];
   }>();
   const api = useApi();
   const { isDark, colors } = useTheme();
   const { clientsQuery } = useTechnicianClients();
   const walkInInseminationMutation = useWalkInInseminationMutation();
   const prefillAppliedRef = useRef(false);
+  const saveSubmissionRef = useRef(false);
   const routeFarmerId = readRouteParam(params.farmerId);
   const routeAnimalId = readRouteParam(params.animalId);
   const routeSource = readRouteParam(params.source);
+  const routeMode = readRouteParam(params.mode);
+  const routeWorkflowId = readRouteParam(params.workflowId);
+  const routeTaskId = readRouteParam(params.taskId);
+  const routeFarmerName = readRouteParam(params.farmerName);
+  const routeAnimalName = readRouteParam(params.animalName);
+  const routeEarTag = readRouteParam(params.earTag);
+  const routeScheduleDate = readRouteParam(params.scheduleDate);
+  const routeVisitPeriod = readRouteParam(params.visitPeriod);
+  const isRequestLinked = routeMode === "request-linked";
   const isProfileLaunch =
     routeSource === "animal-profile" &&
     isMongoId(routeFarmerId) &&
@@ -121,9 +144,8 @@ export default function RecordAIScreen() {
   }, [selectedAnimal]);
 
   const [sireBreed, setSireBreed] = useState("");
-  const [sireCode, setSireCode] = useState(
-    `SIRE-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
-  );
+  const [sireCode, setSireCode] = useState("");
+  const [semenDosesUsed, setSemenDosesUsed] = useState("1");
   const [estrus, setEstrus] = useState("Natural");
   const [notes, setNotes] = useState("");
   const saving = walkInInseminationMutation.isPending;
@@ -133,23 +155,9 @@ export default function RecordAIScreen() {
 
   // Mission Date & Time Picker States
   const [inseminationDate, setInseminationDate] = useState(new Date());
-  const [inseminationTime, setInseminationTime] = useState(() => {
-    const d = new Date();
-    d.setHours(8, 0, 0, 0);
-    return d;
-  });
+  const [inseminationTime, setInseminationTime] = useState(() => new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
-
-  const getFormattedDate = (date: Date) => {
-    return date.toISOString().split("T")[0];
-  };
-
-  const getFormattedTime = (date: Date) => {
-    const hrs = String(date.getHours()).padStart(2, "0");
-    const mins = String(date.getMinutes()).padStart(2, "0");
-    return `${hrs}:${mins}`;
-  };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
@@ -242,7 +250,51 @@ export default function RecordAIScreen() {
     applyProfileContext();
   }, [api, farmers, isProfileLaunch, routeAnimalId, routeFarmerId]);
 
+  useEffect(() => {
+    if (
+      !isRequestLinked ||
+      prefillAppliedRef.current ||
+      !isMongoId(routeWorkflowId) ||
+      !isMongoId(routeFarmerId) ||
+      !isMongoId(routeAnimalId)
+    ) {
+      return;
+    }
+    prefillAppliedRef.current = true;
+
+    const applyRequestContext = async () => {
+      setSelectedFarmer({ _id: routeFarmerId, name: routeFarmerName || "Farmer" });
+      setLoadingAnimals(true);
+      try {
+        const response = await api.get(`/animals/${routeAnimalId}`);
+        const animal = response.data?.data || response.data;
+        if (String(animal?._id) !== String(routeAnimalId)) {
+          throw new Error("ANIMAL_CONTEXT_MISMATCH");
+        }
+        setSelectedAnimal(animal);
+        setAnimals([animal]);
+        setProfileContextLocked(true);
+        setStatus("done");
+      } catch (error) {
+        console.error(error);
+        toast.error("The linked animal could not be loaded. Return to My Work and try again.");
+      } finally {
+        setLoadingAnimals(false);
+      }
+    };
+
+    void applyRequestContext();
+  }, [
+    api,
+    isRequestLinked,
+    routeAnimalId,
+    routeFarmerId,
+    routeFarmerName,
+    routeWorkflowId,
+  ]);
+
   const handleSave = async () => {
+    if (saveSubmissionRef.current) return;
     toast.dismiss();
     // Validation
     if (!selectedFarmer) {
@@ -258,30 +310,81 @@ export default function RecordAIScreen() {
       return;
     }
 
+    if (isRequestLinked && !isMongoId(routeWorkflowId)) {
+      toast.error("This AI service is missing its workflow identifier.");
+      return;
+    }
+    if (isRequestLinked && routeTaskId && !isMongoId(routeTaskId)) {
+      toast.error("This AI service has an invalid linked task identifier.");
+      return;
+    }
+    if (
+      isRequestLinked &&
+      (!isMongoId(selectedFarmer?._id) || !isMongoId(selectedAnimal?._id))
+    ) {
+      toast.error("The linked farmer or animal context is invalid.");
+      return;
+    }
+
+    const validationMessage =
+      isRequestLinked || status === "done"
+        ? validateAIRecording({
+            sireBreed,
+            sireCode,
+            semenDosesUsed,
+            technicianNote: notes,
+            serviceDate: inseminationDate,
+            serviceTime: inseminationTime,
+          })
+        : null;
+    if (validationMessage) {
+      toast.error(validationMessage);
+      return;
+    }
+
+    saveSubmissionRef.current = true;
     try {
-      const payload = {
+      const inseminationDetails = {
+        sireBreed: sireBreed.trim(),
+        sireCode: sireCode.trim(),
+        estrus,
+        semenDosesUsed: Number(semenDosesUsed),
+        technicianNote: notes.trim() || undefined,
+        inseminationDate: formatLocalCalendarDate(inseminationDate),
+        time: formatLocalTime(inseminationTime),
+      };
+      const payload = isRequestLinked
+        ? {
+            farmerId: selectedFarmer._id,
+            animalId: selectedAnimal._id,
+            requestId: routeWorkflowId,
+            ...(isMongoId(routeTaskId) ? { taskId: routeTaskId } : {}),
+            inseminationDetails,
+          }
+        : {
         farmerId: selectedFarmer._id,
         animalId: selectedAnimal?._id,
         animalDetails: null,
         inseminationDetails: {
-          sireBreed,
-          sireCode,
-          estrus,
-          notes,
+          ...inseminationDetails,
           status,
-          inseminationDate: getFormattedDate(inseminationDate),
-          time: getFormattedTime(inseminationTime),
         },
       };
 
       const result = await walkInInseminationMutation.mutateAsync(payload);
       if (result.status === "synced") {
-        toast.success("AI Record saved successfully");
+        toast.success(
+          isRequestLinked
+            ? "Insemination recorded successfully."
+            : "AI Record saved successfully",
+        );
       }
       router.back();
     } catch (err: any) {
       console.error(err);
       toast.error(err.response?.data?.message || "Failed to save record");
+    } finally {
+      saveSubmissionRef.current = false;
     }
   };
 
@@ -313,7 +416,7 @@ export default function RecordAIScreen() {
             color: colors.textPrimary,
           }}
         >
-          Record AI
+          {isRequestLinked ? "Record Insemination" : "Record AI"}
         </Text>
       </View>
 
@@ -482,12 +585,39 @@ export default function RecordAIScreen() {
           style={{ backgroundColor: colors.card, borderColor: colors.border }}
         >
           <Text style={{ color: colors.textPrimary, fontFamily: "Outfit_700Bold", fontSize: 13 }}>
-            Current AI field service
+            {isRequestLinked ? "Request-linked AI service" : "Current AI field service"}
           </Text>
           <Text style={{ color: colors.textSecondary, fontFamily: "Outfit_500Medium", fontSize: 11, lineHeight: 17, marginTop: 3 }}>
-            Use this form for a service performed now. Older AI records require the authorized historical-record workflow.
+            {isRequestLinked
+              ? "This submission completes the selected AI request. The scheduled visit and actual service time remain separate."
+              : "Use this form for a service performed now. Older AI records require the authorized historical-record workflow."}
           </Text>
         </View>
+        {isRequestLinked && routeScheduleDate ? (
+          <View
+            className="rounded-2xl border p-4 mb-4"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            <Text style={{ color: colors.textMuted, fontSize: 10, fontFamily: "Outfit_700Bold" }}>
+              SCHEDULED VISIT
+            </Text>
+            <Text style={{ color: colors.textPrimary, marginTop: 5, fontFamily: "Outfit_700Bold" }}>
+              {new Date(routeScheduleDate).toLocaleDateString("en-PH", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              })}
+              {routeVisitPeriod
+                ? ` · ${routeVisitPeriod.replace(/^./, (value) => value.toUpperCase())}`
+                : ""}
+            </Text>
+            <Text style={{ color: colors.textSecondary, marginTop: 4, fontSize: 12 }}>
+              {[routeFarmerName, routeAnimalName, routeEarTag]
+                .filter(Boolean)
+                .join(" · ")}
+            </Text>
+          </View>
+        ) : null}
         <View className="bg-emerald-50/50 dark:bg-emerald-900/10 p-6 rounded-[32px] mb-8 border border-emerald-100 dark:border-emerald-800/50">
           <View className="flex-row items-center gap-2 mb-4">
             <MaterialCommunityIcons
@@ -504,7 +634,7 @@ export default function RecordAIScreen() {
           </View>
 
           <View className="gap-y-5">
-            <View>
+            {!isRequestLinked ? <View>
               <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
                 Record Status
               </Text>
@@ -554,28 +684,29 @@ export default function RecordAIScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </View> : null}
 
             <View>
               <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
                 Sire Breed
               </Text>
-              <TouchableOpacity
-                onPress={() => setShowBreedModal(true)}
-                className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 flex-row justify-between items-center shadow-sm"
-              >
-                <Text
-                  style={{ fontFamily: "Outfit_700Bold" }}
-                  className={
-                    sireBreed
-                      ? "text-slate-800 dark:text-white"
-                      : "text-slate-300 dark:text-slate-600"
-                  }
+              <View className="flex-row gap-2">
+                <TextInput
+                  className="flex-1 bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-medium shadow-sm"
+                  placeholder="Enter sire breed"
+                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                  value={sireBreed}
+                  onChangeText={setSireBreed}
+                  maxLength={100}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowBreedModal(true)}
+                  accessibilityLabel="Browse sire breed suggestions"
+                  className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl px-4 items-center justify-center"
                 >
-                  {sireBreed || "Select Sire Breed..."}
-                </Text>
-                <ChevronDown size={18} color={isDark ? "#6b7280" : "#94a3b8"} />
-              </TouchableOpacity>
+                  <ChevronDown size={18} color={isDark ? "#6b7280" : "#94a3b8"} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <View>
@@ -583,16 +714,28 @@ export default function RecordAIScreen() {
                 Sire Code
               </Text>
               <TextInput
-                className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800/60 rounded-2xl p-4 text-slate-400 dark:text-slate-500 font-outfit-medium shadow-sm"
-                placeholder="Auto-filled from Sire Breed selection"
+                className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-medium shadow-sm"
+                placeholder="Enter sire code"
                 placeholderTextColor={isDark ? "#4b5563" : "#cbd5e1"}
                 value={sireCode}
-                editable={false}
+                onChangeText={setSireCode}
+                maxLength={64}
               />
             </View>
 
-
-
+            <View>
+              <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">
+                Semen Doses Used
+              </Text>
+              <TextInput
+                className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-medium shadow-sm"
+                value={semenDosesUsed}
+                onChangeText={setSemenDosesUsed}
+                keyboardType="number-pad"
+                placeholder="1"
+                placeholderTextColor={isDark ? "#4b5563" : "#cbd5e1"}
+              />
+            </View>
             {/* Dynamic Date & Time Selectors */}
             <View className="flex-row gap-3">
               <View className="flex-1">
@@ -682,7 +825,7 @@ export default function RecordAIScreen() {
         </View>
 
         <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
-          Additional Notes
+          Technician Note (Optional)
         </Text>
         <TextInput
           className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 h-32 text-slate-800 dark:text-white shadow-sm mb-10 font-outfit-medium"
@@ -692,6 +835,7 @@ export default function RecordAIScreen() {
           placeholderTextColor={isDark ? "#6b7280" : "#cbd5e1"}
           value={notes}
           onChangeText={setNotes}
+          maxLength={2000}
         />
 
         {/* SAVE BUTTON */}
@@ -706,7 +850,13 @@ export default function RecordAIScreen() {
           onPress={handleSave}
           disabled={saving || !!animalWarning}
           accessibilityRole="button"
-          accessibilityLabel={status === "done" ? "Save AI record" : "Schedule AI visit"}
+          accessibilityLabel={
+            isRequestLinked
+              ? "Record insemination"
+              : status === "done"
+                ? "Save AI record"
+                : "Schedule AI visit"
+          }
           style={
             !(saving || animalWarning)
               ? status === "done"
@@ -736,7 +886,11 @@ export default function RecordAIScreen() {
                 style={{ fontFamily: "Outfit_800ExtraBold" }}
                 className="text-white text-base"
               >
-                {status === "done" ? "Save AI Record" : "Schedule Insemination"}
+                {isRequestLinked
+                  ? "Record Insemination"
+                  : status === "done"
+                    ? "Save AI Record"
+                    : "Schedule Insemination"}
               </Text>
             </>
           )}
@@ -1123,7 +1277,7 @@ export default function RecordAIScreen() {
           mode="date"
           display="default"
           onChange={handleDateChange}
-          maximumDate={status === "done" ? new Date() : undefined}
+          maximumDate={status === "done" || isRequestLinked ? new Date() : undefined}
           minimumDate={
             status === "in-progress"
               ? new Date()

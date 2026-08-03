@@ -242,15 +242,25 @@ function VisitRow({ item, onPress, isLocked, lockedByName }: any) {
   const timeLabel =
     item.time || formatShortTime(item.displayDate || item.scheduledDate);
   const timeParts = splitTimeLabel(timeLabel);
+  const isAIService =
+    service.toLowerCase().includes("insemination") ||
+    service.toLowerCase().includes("ai service");
   const canStart =
-    !overdue && !isLocked && !inProgress && item.isReadyToday === true;
-  const actionLabel = canStart ? "Start service" : "View";
+    !isAIService &&
+    !overdue &&
+    !isLocked &&
+    !inProgress &&
+    item.isReadyToday === true;
+  const actionLabel = isAIService
+    ? "View My Work"
+    : canStart
+      ? "Start service"
+      : "View";
   const ServiceIcon = service.toLowerCase().includes("health")
     ? Stethoscope
     : service.toLowerCase().includes("pregnancy")
       ? HeartPulse
-      : service.toLowerCase().includes("insemination") ||
-          service.toLowerCase().includes("ai service")
+      : isAIService
         ? Syringe
         : CalendarDays;
   const statusVariant = overdue

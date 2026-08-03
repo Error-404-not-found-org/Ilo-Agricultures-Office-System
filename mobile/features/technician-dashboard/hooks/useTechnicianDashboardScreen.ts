@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { usePathname, useRouter } from "expo-router";
 import { useApi } from "@/lib/api";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { toast } from "sonner-native";
 import { useQuery } from "@tanstack/react-query";
-import { getSireCodeByBreed } from "@/lib/sireRegistry";
 import {
   useTechnicianDashboardQuery,
   useTechnicianAnalyticsQuery,
@@ -87,7 +86,7 @@ export function useTechnicianDashboardScreen() {
   const [farmerSearch, setFarmerSearch] = useState("");
 
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [selectedItem] = useState<any>(null);
   const [scheduledDate, setScheduledDate] = useState(new Date());
   const [note, setNote] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
@@ -141,6 +140,15 @@ export function useTechnicianDashboardScreen() {
     }
 
     const type = item.type === "health" ? "health" : "ai";
+    if (type === "ai") {
+      const status = String(item.status || "").toLowerCase();
+      router.push(
+        ["scheduled", "in-progress", "in_progress", "done"].includes(status)
+          ? ("/(technician)/technician.tasks" as any)
+          : ("/(technician)/(tabs)/technician.requests" as any),
+      );
+      return;
+    }
     router.push({
       pathname: "/(technician)/request-details",
       params: {
@@ -159,6 +167,12 @@ export function useTechnicianDashboardScreen() {
     let nextStatus = "";
     const currentStatus = selectedItem.status?.toLowerCase();
     const isAI = selectedItem.type === "insemination" || selectedItem.type === "ai";
+
+    if (isAI) {
+      setModalVisible(false);
+      handleAction(selectedItem);
+      return;
+    }
 
     if (currentStatus === "pending") {
       nextStatus = "approved"; // Assign to Me

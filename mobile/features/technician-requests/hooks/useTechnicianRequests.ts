@@ -2,12 +2,18 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@clerk/clerk-expo";
-import { getTechnicianRequests, claimTechnicianRequest } from "../services/technicianRequests.service";
+import {
+  claimAndScheduleAIRequest,
+  getTechnicianRequests,
+} from "../services/technicianRequests.service";
+import type { ClaimAndSchedulePayload } from "../services/technicianRequests.service";
 import {
   useDeclineTechnicianRequestMutation,
   useUpdateRequestStatusMutation,
 } from "@/features/technician/hooks/useTechnicianDashboard";
 import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
+import NetInfo from "@react-native-community/netinfo";
+import { technicianKeys } from "@/lib/queryKeys";
 
 export function useTechnicianRequests() {
   const api = useApi();
@@ -16,10 +22,11 @@ export function useTechnicianRequests() {
   const queryClient = useQueryClient();
 
   const invalidateTechnicianWorkflow = () => {
-    queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
-    queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
-    queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
-    queryClient.invalidateQueries({ queryKey: ["technician", "tasks"] });
+    queryClient.invalidateQueries({ queryKey: technicianKeys.requests() });
+    queryClient.invalidateQueries({ queryKey: technicianKeys.workQueue() });
+    queryClient.invalidateQueries({ queryKey: technicianKeys.dashboard() });
+    queryClient.invalidateQueries({ queryKey: technicianKeys.records() });
+    queryClient.invalidateQueries({ queryKey: technicianKeys.tasks() });
   };
 
   // Filters State
@@ -194,6 +201,37 @@ export function useTechnicianRequests() {
     },
   });
 
+  const claimAndScheduleMutation = useMutation({
+    mutationFn: async ({
+      workflowId,
+      payload,
+    }: {
+      workflowId: string;
+      payload: ClaimAndSchedulePayload;
+    }) => {
+      const connectivity = await NetInfo.fetch();
+      if (
+        connectivity.isConnected === false ||
+        connectivity.isInternetReachable === false
+      ) {
+        const offlineError = new Error(
+          "Claim & Set Visit requires an internet connection.",
+        ) as Error & { code?: string };
+        offlineError.code = "ONLINE_REQUIRED";
+        throw offlineError;
+      }
+      return claimAndScheduleAIRequest(api, workflowId, payload);
+    },
+    onSuccess: () => {
+      invalidateTechnicianWorkflow();
+    },
+  });
+
+  const handleClaimAndSchedule = (
+    workflowId: string,
+    payload: ClaimAndSchedulePayload,
+  ) => claimAndScheduleMutation.mutateAsync({ workflowId, payload });
+
   const handleClaimRequest = async (
     requestId: string,
     type: "health" | "ai" | "breeding_verification"
@@ -254,6 +292,12 @@ export function useTechnicianRequests() {
     handleUpdateStatus,
     handleDeclineForMe,
     handleClaimRequest,
-    isUpdating: updateMutation.isPending || declineMutation.isPending || claimMutation.isPending,
+    handleClaimAndSchedule,
+    isClaimingAndScheduling: claimAndScheduleMutation.isPending,
+    isUpdating:
+      updateMutation.isPending ||
+      declineMutation.isPending ||
+      claimMutation.isPending ||
+      claimAndScheduleMutation.isPending,
   };
 }

@@ -55,6 +55,8 @@ export function RequestListCard({
 }: RequestListCardProps) {
   const { colors, isDark } = useTheme();
   const isHealth = item.type === "health";
+  const isAIRequest = item.workflowType === "AI" || item.type === "ai";
+  const isCanonicalAI = item.workflowType === "AI";
   const isPregnancyCheck = item.type === "breeding_verification";
   const normalizedStatus = item.status.toLowerCase();
   const cancellationRequested =
@@ -90,7 +92,11 @@ export function RequestListCard({
         ? "In Progress"
         : titleCase(item.status || "Pending");
 
-  const primaryActionLabel = isPregnancyCheck
+  const primaryActionLabel = isAIRequest
+    ? isCanonicalAI
+      ? item.actionLabel
+      : null
+    : isPregnancyCheck
     ? "Open task"
     : normalizedStatus === "pending"
       ? "Claim"
@@ -319,7 +325,7 @@ export function RequestListCard({
         />
       </View>
 
-      {!isClosed ? (
+      {!isClosed && (!isAIRequest || primaryActionLabel) ? (
         <View
           style={{
             flexDirection: "row",
@@ -341,6 +347,7 @@ export function RequestListCard({
           ) : (
             <>
               {!isPregnancyCheck &&
+              !isAIRequest &&
               ["pending", "approved", "assigned", "triaged"].includes(
                 normalizedStatus,
               ) ? (
@@ -356,7 +363,7 @@ export function RequestListCard({
                 />
               ) : null}
               <Button
-                label={primaryActionLabel}
+                label={primaryActionLabel || "Open"}
                 className="flex-1"
                 loading={isUpdating}
                 onPress={(event) => {

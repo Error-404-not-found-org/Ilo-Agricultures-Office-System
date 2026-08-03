@@ -1,5 +1,9 @@
 import { AxiosInstance } from "axios";
-import { RequestFilters, RequestsResponse } from "../types/technicianRequests.types";
+import {
+  RequestFilters,
+  RequestsResponse,
+  VisitPeriod,
+} from "../types/technicianRequests.types";
 
 export const getTechnicianRequests = async (
   api: AxiosInstance,
@@ -15,6 +19,23 @@ export const claimTechnicianRequest = async (
   requestId: string
 ): Promise<any> => {
   const response = await api.patch(`/technician/requests/${type}/${requestId}/claim`);
+  return response.data;
+};
+
+export interface ClaimAndSchedulePayload {
+  scheduledDate: string;
+  visitPeriod: VisitPeriod;
+}
+
+export const claimAndScheduleAIRequest = async (
+  api: AxiosInstance,
+  workflowId: string,
+  payload: ClaimAndSchedulePayload,
+) => {
+  const response = await api.patch(
+    `/ai-request/${workflowId}/claim-and-schedule`,
+    payload,
+  );
   return response.data;
 };
 

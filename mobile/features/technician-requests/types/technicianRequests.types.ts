@@ -1,5 +1,35 @@
+export type VisitPeriod = "morning" | "afternoon";
+
+export type WorkflowType =
+  | "AI"
+  | "Health"
+  | "PD"
+  | "Calving"
+  | "StandaloneTask";
+
+export type AllowedAction =
+  | "CLAIM_AND_SCHEDULE"
+  | "RECORD_SERVICE"
+  | "VIEW_RECORD"
+  | "COMPLETE_TASK"
+  | "START_SERVICE"
+  | "SCHEDULE_VISIT"
+  | "CLAIM"
+  | null;
+
+export interface CanonicalSchedule {
+  date: string | null;
+  visitPeriod: VisitPeriod | null;
+}
+
 export interface RequestItem {
   id: string;
+  workflowId: string | null;
+  taskId: string | null;
+  workflowType: WorkflowType;
+  allowedAction: AllowedAction;
+  actionLabel: string | null;
+  schedule: CanonicalSchedule;
   type: "ai" | "health" | "breeding_verification";
   serviceType?: string;
   requestType?: string;
@@ -22,6 +52,21 @@ export interface RequestItem {
   scheduledDate: string | null;
   assignedTechnician: string;
   createdAt: string;
+  farmerPhone?: string | null;
+  phone?: string | null;
+  farmerDetails?: {
+    id: string | null;
+    name: string;
+    phone: string | null;
+    location: string;
+  };
+  heatSigns?: string[];
+  requestSubmissionDate?: string;
+  attachments?: {
+    primaryUrl: string | null;
+    urls: string[];
+    count: number;
+  };
   farmerObservation?: {
     reportType?: string | null;
     reportedAt?: string | null;
@@ -32,6 +77,37 @@ export interface RequestItem {
     verificationStatus?: string;
   } | null;
   raw: any;
+}
+
+export interface WorkQueueParty {
+  id: string | null;
+  name: string;
+  phone?: string | null;
+  location?: string;
+  earTag?: string | null;
+}
+
+export interface WorkQueueItem {
+  id: string;
+  workflowId: string | null;
+  taskId: string | null;
+  workflowType: WorkflowType;
+  serviceType: string;
+  status: string;
+  allowedAction: AllowedAction;
+  actionLabel: string | null;
+  farmer: WorkQueueParty;
+  animal: WorkQueueParty;
+  schedule: CanonicalSchedule;
+  requestedAt: string | null;
+  completedAt: string | null;
+  category?: string;
+  taskType?: string;
+  urgent?: boolean;
+  overdue?: boolean;
+  notes?: string;
+  raw?: any;
+  [key: string]: any;
 }
 
 export interface RequestFilters {

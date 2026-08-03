@@ -361,6 +361,21 @@ export default function RequestDetailsScreen() {
     const isAI =
       type === "ai" || request.serviceType === "ai" || request.type === "ai";
 
+    if (isAI) {
+      const destination = ["scheduled", "in-progress", "in_progress"].includes(
+        status,
+      )
+        ? "/(technician)/technician.tasks"
+        : "/(technician)/(tabs)/technician.requests";
+      toast.error(
+        ["scheduled", "in-progress", "in_progress"].includes(status)
+          ? "Open My Work to use the current AI action."
+          : "Open Requests to use Claim & Set Visit.",
+      );
+      router.replace(destination as any);
+      return;
+    }
+
     if (status === "pending") {
       // Assign to Me
       await handleUpdateStatus("approved", {
@@ -712,7 +727,11 @@ export default function RequestDetailsScreen() {
   const normalizedStatus = request.status?.toLowerCase() || "";
   const statusPresentation = getTechnicianRequestStatusPresentation(request);
   const primaryActionLabel =
-    normalizedStatus === "pending"
+    isAI
+      ? ["scheduled", "in-progress", "in_progress"].includes(normalizedStatus)
+        ? "Open My Work"
+        : "Open Requests"
+      : normalizedStatus === "pending"
       ? "Claim request"
       : ["approved", "assigned", "triaged"].includes(normalizedStatus)
         ? "Schedule visit"
@@ -722,7 +741,11 @@ export default function RequestDetailsScreen() {
             ? "Complete AI service"
             : "Resolve health request";
   const nextActionDescription =
-    normalizedStatus === "pending"
+    isAI
+      ? ["scheduled", "in-progress", "in_progress"].includes(normalizedStatus)
+        ? "Use the backend-provided action in My Work to record this insemination."
+        : "Use Claim & Set Visit from Requests to schedule this AI service."
+      : normalizedStatus === "pending"
       ? "Claim this request to unlock the farmer's full contact and farm directions."
       : ["approved", "assigned", "triaged"].includes(normalizedStatus)
         ? "Confirm a visit date and time before notifying the farmer."
@@ -1911,7 +1934,7 @@ export default function RequestDetailsScreen() {
                 </View>
 
                 {/* Inline scheduling date/time picker */}
-                {(request.status?.toLowerCase() === "approved" ||
+                {!isAI && (request.status?.toLowerCase() === "approved" ||
                   request.status?.toLowerCase() === "assigned" ||
                   request.status?.toLowerCase() === "triaged") && (
                   <View style={{ gap: 10, marginBottom: 16 }}>
@@ -1994,8 +2017,9 @@ export default function RequestDetailsScreen() {
                 )}
 
                 {/* Inline completed forms */}
-                {(request.status?.toLowerCase() === "in-progress" ||
-                  request.status?.toLowerCase() === "in_progress") && (
+                {!isAI &&
+                  (request.status?.toLowerCase() === "in-progress" ||
+                    request.status?.toLowerCase() === "in_progress") && (
                   <View style={{ gap: 14, marginBottom: 16 }}>
                     <Text
                       style={{ color: colors.textMuted }}
@@ -2402,6 +2426,48 @@ export default function RequestDetailsScreen() {
                     {request.estrus || "N/A"}
                   </Text>
                 </View>
+                {[
+                  [
+                    "Actual Service",
+                    request.inseminationDate
+                      ? new Date(request.inseminationDate).toLocaleString("en-PH", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                      : "N/A",
+                  ],
+                  ["Semen Doses", String(request.semenDosesUsed || 1)],
+                  ["Technician", technician?.name || "N/A"],
+                  ["Attempt", String(request.attemptNumber || 1)],
+                  [
+                    "Scheduled Visit",
+                    request.scheduledDate
+                      ? `${new Date(request.scheduledDate).toLocaleDateString("en-PH")}${request.visitPeriod ? ` · ${String(request.visitPeriod).replace(/^./, (value) => value.toUpperCase())}` : ""}`
+                      : "N/A",
+                  ],
+                ].map(([label, value]) => (
+                  <View
+                    key={label}
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <Text style={{ color: colors.textMuted }} variant="medium">
+                      {label}
+                    </Text>
+                    <Text
+                      style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }}
+                      variant="bold"
+                    >
+                      {value}
+                    </Text>
+                  </View>
+                ))}
                 <View style={{ marginTop: 4 }}>
                   <Text style={{ color: colors.textMuted }} variant="medium">
                     Notes / Remarks

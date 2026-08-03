@@ -1,21 +1,19 @@
-import React, { useState, useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   FlatList,
   TouchableOpacity,
   RefreshControl,
-  ScrollView,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter } from "expo-router";
 import { safeBack } from "@/utils/navigation";
 import {
   CalendarDays,
   SlidersHorizontal,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQuery } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/lib/theme";
-import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { Text } from "@/components/ui/Text";
 import { ScreenLayout } from "@/components/ScreenLayout";
@@ -34,6 +32,19 @@ import {
 
 import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
 import { RequestListCard } from "../components/RequestListCard";
+import {
+  AIRequestModal,
+  AIRequestModalView,
+} from "../components/AIRequestModal";
+import type {
+  RequestItem,
+  VisitPeriod,
+} from "../types/technicianRequests.types";
+import {
+  getClaimScheduleErrorMessage,
+  isCanonicalWorkflowId,
+} from "../utils/aiWorkflow";
+import { technicianKeys } from "@/lib/queryKeys";
 import {
   SearchBar,
   FilterChips,
@@ -54,33 +65,20 @@ export default function TechnicianRequestsScreen({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const api = useApi();
-
-  // Queries dbUser profile info
-  const { data: dbUser } = useQuery({
-    queryKey: ["user", "me"],
-    queryFn: async () => {
-      const response = await api.get("/user/me");
-      return response.data || {};
-    },
-  });
+  const queryClient = useQueryClient();
+  const scheduleSubmissionRef = useRef(false);
 
   const {
     search,
     setSearch,
     type,
     setType,
-    status,
-    setStatus,
-    urgency,
-    setUrgency,
     assignment,
     setAssignment,
     page,
     setPage,
     nearLat,
     setNearLat,
-    nearLng,
     setNearLng,
     sortBy,
     setSortBy,
@@ -93,50 +91,19 @@ export default function TechnicianRequestsScreen({
     isLoading,
     isRefetching,
     handleRefresh,
-    handleUpdateStatus,
     handleDeclineForMe,
     handleClaimRequest,
+    handleClaimAndSchedule,
+    isClaimingAndScheduling,
     isUpdating,
   } = useTechnicianRequests();
 
-  // Modal Action State
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [scheduledDate, setScheduledDate] = useState(new Date());
-  const [note, setNote] = useState("");
-  const [diagnosis, setDiagnosis] = useState("");
-  const [treatment, setTreatment] = useState("");
-  const [advice, setAdvice] = useState("");
-  const [sireBreed, setSireBreed] = useState("");
-  const [sireCode, setSireCode] = useState("");
-  const [estrus, setEstrus] = useState("Natural");
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [showBreedModal, setShowBreedModal] = useState(false);
+  const [aiModal, setAIModal] = useState<{
+    request: RequestItem;
+    view: AIRequestModalView;
+  } | null>(null);
+
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
-
-  const selectedItemTechId =
-    selectedItem?.raw?.approvedBy?._id ||
-    selectedItem?.raw?.approvedBy ||
-    selectedItem?.raw?.handledBy?._id ||
-    selectedItem?.raw?.handledBy ||
-    null;
-
-  const selectedItemTechName =
-    selectedItem?.raw?.approvedBy?.name ||
-    selectedItem?.raw?.handledBy?.name ||
-    (selectedItemTechId ? "another technician" : null);
-
-  const isSelectedAssignedToOther =
-    selectedItemTechId &&
-    dbUser?._id &&
-    String(selectedItemTechId) !== String(dbUser._id);
-
-  const isReadOnly =
-    isSelectedAssignedToOther ||
-    ["done", "resolved", "completed"].includes(
-      selectedItem?.status?.toLowerCase(),
-    );
 
   // Filter option arrays
   const typeOptions = [
@@ -146,26 +113,6 @@ export default function TechnicianRequestsScreen({
     { label: "Pregnancy Check", value: "breeding_verification" },
   ];
 
-  const statusOptions = [
-    { label: "All Statuses", value: "all" },
-    { label: "Pending", value: "pending" },
-    { label: "Claimed, Awaiting Schedule", value: "approved" },
-    { label: "Scheduled", value: "scheduled" },
-    { label: "In Progress", value: "in_progress" },
-    { label: "Completed", value: "completed" },
-    { label: "Declined", value: "declined" },
-  ];
-
-  const assignmentOptions = [
-    { label: "All Assignments", value: "all" },
-    { label: "My Claimed Requests", value: "mine" },
-    { label: "Available Requests", value: "unassigned" },
-  ];
-
-  const urgencyOptions = [
-    { label: "All Urgency", value: "all" },
-    { label: "Urgent Only", value: "urgent" },
-  ];
 
   const sortOptions = [
     { label: "Newest First", value: "newest" },
@@ -212,7 +159,7 @@ export default function TechnicianRequestsScreen({
     ];
   }, [municipality]);
 
-  const [locationLoading, setLocationLoading] = useState(false);
+  const [, setLocationLoading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -292,7 +239,40 @@ export default function TechnicianRequestsScreen({
     }
   };
 
-  const handleActionPress = (item: any) => {
+  const openAIRequest = (item: RequestItem, view: AIRequestModalView) => {
+    if (!isCanonicalWorkflowId(item.workflowId)) {
+      toast.error("This AI request is missing its workflow identifier.");
+      return;
+    }
+    setAIModal({ request: item, view });
+  };
+
+  const handleActionPress = (item: RequestItem | any) => {
+    if (item.workflowType === "AI" || item.type === "ai") {
+      if (item.workflowType !== "AI") {
+        toast.error("This AI request is missing its canonical workflow contract.");
+        return;
+      }
+      if (item.allowedAction === "CLAIM_AND_SCHEDULE") {
+        openAIRequest(item, "details");
+      } else if (item.allowedAction === "VIEW_RECORD") {
+        router.push({
+          pathname: "/(technician)/request-details",
+          params: { id: item.workflowId, type: "ai", viewOnly: "true" },
+        });
+      } else if (item.allowedAction === "RECORD_SERVICE") {
+        toast.error("Open this scheduled service from My Work.");
+      } else if (item.allowedAction === "SCHEDULE_VISIT") {
+        router.push({
+          pathname: "/(technician)/request-details",
+          params: { id: item.workflowId, type: "ai" },
+        });
+      } else {
+        toast.error("This AI request has no available action.");
+      }
+      return;
+    }
+
     if (item.type === "breeding_verification" || item.type === "task") {
       router.push(
         `/(technician)/task-details?id=${item.id || item._id}` as any,
@@ -310,15 +290,6 @@ export default function TechnicianRequestsScreen({
     });
   };
 
-  const getAdditionalNotesOnly = (fullComment: string) => {
-    if (!fullComment) return "";
-    const parts = fullComment.split("Additional Notes:\n");
-    if (parts.length > 1) {
-      return parts[1].trim();
-    }
-    return fullComment;
-  };
-
   const handleDeclineRequest = async (item: any) => {
     if (item.type === "breeding_verification" || item.type === "task") {
       handleActionPress(item);
@@ -333,7 +304,20 @@ export default function TechnicianRequestsScreen({
     }
   };
 
-  const handleAcceptRequest = async (item: any) => {
+  const handleAcceptRequest = async (item: RequestItem) => {
+    if (item.workflowType === "AI" || item.type === "ai") {
+      if (item.workflowType !== "AI") {
+        toast.error("This AI request is missing its canonical workflow contract.");
+        return;
+      }
+      if (item.allowedAction === "CLAIM_AND_SCHEDULE") {
+        openAIRequest(item, "schedule");
+      } else {
+        handleActionPress(item);
+      }
+      return;
+    }
+
     const currentStatus = item.status.toLowerCase();
 
     // Check if the request is unassigned / pending
@@ -365,109 +349,32 @@ export default function TechnicianRequestsScreen({
     handleActionPress(item);
   };
 
-  const handleConfirmAction = async () => {
-    if (!selectedItem) return;
-
-    let nextStatus = "";
-    const currentStatus = selectedItem.status?.toLowerCase();
-    const isAI =
-      selectedItem.type === "insemination" || selectedItem.type === "ai";
-
-    if (currentStatus === "pending") {
-      nextStatus = "approved"; // Assign to Me
-    } else if (
-      currentStatus === "approved" ||
-      currentStatus === "assigned" ||
-      currentStatus === "triaged"
-    ) {
-      nextStatus = "scheduled"; // Schedule Visit
-    } else if (currentStatus === "scheduled") {
-      nextStatus = "in-progress"; // Start Service
-    } else if (
-      currentStatus === "in-progress" ||
-      currentStatus === "in_progress"
-    ) {
-      nextStatus = isAI ? "done" : "resolved"; // Complete / Resolve
-    } else {
+  const handleConfirmAISchedule = async (
+    workflowId: string,
+    payload: { scheduledDate: string; visitPeriod: VisitPeriod },
+  ) => {
+    if (scheduleSubmissionRef.current) return;
+    if (!isCanonicalWorkflowId(workflowId)) {
+      toast.error("This AI request has an invalid workflow identifier.");
       return;
     }
-
-    // Validate completing AI
-    if (isAI && nextStatus === "done") {
-      if (!sireBreed || !sireBreed.trim()) {
-        toast.error("Please select a Sire Breed.");
-        return;
-      }
-      if (!sireCode || !sireCode.trim()) {
-        toast.error("Please provide a Sire Code.");
-        return;
-      }
-      if (!estrus || !estrus.trim()) {
-        toast.error("Please select an Estrus Type.");
-        return;
-      }
-      if (!note || !note.trim()) {
-        toast.error("Please add technician notes.");
-        return;
-      }
-    }
-
-    // Validate resolving health check
-    if (selectedItem.type === "health" && nextStatus === "resolved") {
-      if (!diagnosis || !diagnosis.trim()) {
-        toast.error("Please enter a diagnosis / findings.");
-        return;
-      }
-      if (!treatment || !treatment.trim()) {
-        toast.error(
-          "Please log treatment or medicine given (include dosage if medicine is given).",
-        );
-        return;
-      }
-      if (!advice || !advice.trim()) {
-        toast.error("Please enter advice or resolution notes.");
-        return;
-      }
-    }
-
+    scheduleSubmissionRef.current = true;
     try {
-      const payload: any = {
-        status: nextStatus,
-        technicianNote:
-          note ||
-          `${nextStatus === "approved" ? "Assigned" : nextStatus === "scheduled" ? "Scheduled" : nextStatus === "in-progress" ? "Started" : "Completed"} by technician.`,
-      };
-
-      if (nextStatus === "scheduled") {
-        payload.scheduledDate = scheduledDate.toISOString();
+      await handleClaimAndSchedule(workflowId, payload);
+      setAIModal(null);
+      toast.success("Visit scheduled successfully.");
+    } catch (error: any) {
+      toast.error(getClaimScheduleErrorMessage(error));
+      if (error?.response?.status === 409) {
+        await handleRefresh();
+        await queryClient.invalidateQueries({
+          queryKey: technicianKeys.workQueue(),
+        });
       }
-
-      if (nextStatus === "done") {
-        payload.sireBreed = sireBreed;
-        payload.sireCode = sireCode;
-        payload.estrus = estrus;
-      }
-
-      if (nextStatus === "resolved") {
-        payload.diagnosis = diagnosis;
-        payload.treatment = treatment;
-        payload.advice = advice;
-      }
-
-      await handleUpdateStatus(
-        selectedItem.id,
-        selectedItem.type,
-        nextStatus,
-        payload,
-      );
-      toast.success("Request updated successfully");
-      setModalVisible(false);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to update request");
+    } finally {
+      scheduleSubmissionRef.current = false;
     }
   };
-
-  const hasEmptyState = !isLoading && requests.length === 0;
 
   return (
     <ScreenLayout edges={[]}>
@@ -556,7 +463,9 @@ export default function TechnicianRequestsScreen({
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => setAssignment("mine")}
+                  onPress={() =>
+                    router.push("/(technician)/technician.tasks" as any)
+                  }
                   style={{
                     flex: 1,
                     minHeight: 48,
@@ -564,29 +473,18 @@ export default function TechnicianRequestsScreen({
                     justifyContent: "center",
                     borderRadius: 8,
                     backgroundColor:
-                      assignment === "mine"
-                        ? isDark
-                          ? "#1e293b"
-                          : "#fff"
-                        : "transparent",
+                      "transparent",
                   }}
                 >
                   <Text
                     style={{
                       fontFamily: "Outfit_700Bold",
                       color:
-                        assignment === "mine"
-                          ? colors.primary
-                          : isDark
-                            ? "#94a3b8"
-                            : "#64748b",
+                        isDark ? "#94a3b8" : "#64748b",
                       fontSize: 13,
                     }}
                   >
                     My Work
-                    {assignment === "mine" && pagination.total > 0
-                      ? `  ${pagination.total}`
-                      : ""}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -770,6 +668,14 @@ export default function TechnicianRequestsScreen({
           }
         />
       </View>
+      <AIRequestModal
+        request={aiModal?.request || null}
+        initialView={aiModal?.view || "details"}
+        visible={Boolean(aiModal)}
+        isSubmitting={isClaimingAndScheduling}
+        onClose={() => setAIModal(null)}
+        onConfirm={handleConfirmAISchedule}
+      />
     </ScreenLayout>
   );
 }

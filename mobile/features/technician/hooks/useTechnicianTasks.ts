@@ -3,17 +3,17 @@ import { useApi } from "@/lib/api";
 import {
   getTasks,
   getTaskDetails,
-  createTask,
-  completeTask,
-  claimTask,
+  getTechnicianWorkQueue,
   CreateTaskPayload,
 } from "../services/tasks.service";
 import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
+import { technicianKeys } from "@/lib/queryKeys";
 
 export const tasksQueryKeys = {
   all: ["technician", "tasks"] as const,
   lists: () => [...tasksQueryKeys.all, "list"] as const,
   details: (id: string) => [...tasksQueryKeys.all, "detail", id] as const,
+  workQueue: () => technicianKeys.workQueue(),
 };
 
 export const useTechnicianTasks = (id?: string, filters?: { scope?: string }) => {
@@ -21,8 +21,14 @@ export const useTechnicianTasks = (id?: string, filters?: { scope?: string }) =>
   const queryClient = useQueryClient();
 
   const tasksQuery = useQuery({
-    queryKey: [...tasksQueryKeys.lists(), filters || {}],
-    queryFn: () => getTasks(api, filters),
+    queryKey:
+      filters?.scope === "mine"
+        ? tasksQueryKeys.workQueue()
+        : [...tasksQueryKeys.lists(), filters || {}],
+    queryFn: () =>
+      filters?.scope === "mine"
+        ? getTechnicianWorkQueue(api)
+        : getTasks(api, filters),
   });
 
   const taskDetailsQuery = useQuery({

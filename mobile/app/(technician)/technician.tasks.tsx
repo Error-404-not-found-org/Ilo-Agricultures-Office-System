@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   View,
   TouchableOpacity,
@@ -6,13 +6,16 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from "react-native";
-import { Plus, CheckCircle, Search, ClipboardList, ArrowLeft } from "lucide-react-native";
+import { Plus, CheckCircle, ClipboardList, ArrowLeft } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { SearchBar } from "@/components/shared";
+import { toast } from "sonner-native";
+import type { WorkQueueItem } from "@/features/technician-requests/types/technicianRequests.types";
+import { isCanonicalWorkflowId } from "@/features/technician-requests/utils/aiWorkflow";
 
 export default function TasksScreen() {
   const router = useRouter();
@@ -37,14 +40,21 @@ export default function TasksScreen() {
       // For any other category (All, Urgent, etc.), hide terminal tasks
       if (isTerminal) return false;
       // Category match
-      if (activeCategory !== "All" && t.category !== activeCategory) return false;
+      if (
+        activeCategory !== "All" &&
+        (t.category || t.raw?.category) !== activeCategory
+      ) return false;
     }
 
     // Search query match (farmer name or ear tag or notes)
     const text = searchQuery.toLowerCase();
-    const farmerName = t.farmerId?.name?.toLowerCase() || "";
-    const notes = t.notes?.toLowerCase() || "";
-    const animalTags = (t.animalIds || []).map((a: any) => (a.earTag || a.animalId || "").toLowerCase());
+    const farmerName = String(t.farmer?.name || t.farmerId?.name || "").toLowerCase();
+    const notes = String(t.notes || t.task || t.serviceType || "").toLowerCase();
+    const animalTags = t.animal
+      ? [String(t.animal.earTag || t.animal.name || "").toLowerCase()]
+      : (t.animalIds || []).map((a: any) =>
+          (a.earTag || a.animalId || "").toLowerCase(),
+        );
     const searchMatch =
       !searchQuery ||
       farmerName.includes(text) ||
@@ -89,6 +99,70 @@ export default function TasksScreen() {
       default:
         return { bg: isDark ? "bg-slate-800" : "bg-slate-100", text: "text-slate-600" };
     }
+  };
+
+  const openWorkItem = (item: WorkQueueItem | any) => {
+    if (scope !== "mine") {
+      router.push(`/(technician)/task-details?id=${item._id}` as any);
+      return;
+    }
+
+    const isAIShapedItem =
+      item.workflowType === "AI" ||
+      String(item.taskType || "").toUpperCase() === "AI" ||
+      item.type === "insemination";
+    if (isAIShapedItem && item.workflowType !== "AI") {
+      toast.error("This AI work item is missing its canonical workflow contract.");
+      return;
+    }
+
+    if (isAIShapedItem) {
+      if (!isCanonicalWorkflowId(item.workflowId)) {
+        toast.error("This AI work item is missing its workflow identifier.");
+        return;
+      }
+      if (item.allowedAction === "RECORD_SERVICE") {
+        router.push({
+          pathname: "/(technician)/record-ai",
+          params: {
+            mode: "request-linked",
+            workflowId: item.workflowId,
+            taskId: item.taskId || undefined,
+            farmerId: item.farmer?.id || undefined,
+            farmerName: item.farmer?.name || undefined,
+            animalId: item.animal?.id || undefined,
+            animalName: item.animal?.name || undefined,
+            earTag: item.animal?.earTag || undefined,
+            scheduleDate: item.schedule?.date || undefined,
+            visitPeriod: item.schedule?.visitPeriod || undefined,
+          },
+        });
+        return;
+      }
+      if (item.allowedAction === "VIEW_RECORD") {
+        router.push({
+          pathname: "/(technician)/request-details",
+          params: { id: item.workflowId, type: "ai", viewOnly: "true" },
+        });
+        return;
+      }
+      toast.error("This AI work item has no supported action.");
+      return;
+    }
+
+    if (item.workflowType === "Health" && item.workflowId) {
+      router.push({
+        pathname: "/(technician)/request-details",
+        params: { id: item.workflowId, type: "health" },
+      });
+      return;
+    }
+
+    if (item.taskId) {
+      router.push(`/(technician)/task-details?id=${item.taskId}` as any);
+      return;
+    }
+    toast.error("This work item is missing its task identifier.");
   };
 
   return (
@@ -236,17 +310,20 @@ export default function TasksScreen() {
             </View>
           ) : (
             filteredTasks.map((t: any) => {
-              const badge = getTaskBadgeStyle(t.taskType);
-              const catColor = getCategoryColor(t.category);
+              const badge = getTaskBadgeStyle(t.workflowType || t.taskType);
+              const itemCategory = t.category || t.raw?.category || "Routine";
+              const catColor = getCategoryColor(itemCategory);
               const pregnancyReadiness =
-                t.taskType === "PD" ? t.pregnancyReadiness : null;
+                t.taskType === "PD"
+                  ? t.pregnancyReadiness || t.raw?.pregnancyReadiness
+                  : null;
               return (
                 <TouchableOpacity
-                  key={t._id}
+                  key={t.id || t._id}
                   activeOpacity={0.7}
                   className="rounded-2xl p-4 mb-4 border shadow-sm"
                   style={{ backgroundColor: colors.card, borderColor: colors.border }}
-                  onPress={() => router.push(`/(technician)/task-details?id=${t._id}` as any)}
+                  onPress={() => openWorkItem(t)}
                 >
                   {/* Badge Row */}
                   <View className="flex-row justify-between items-center mb-2">
@@ -257,13 +334,13 @@ export default function TasksScreen() {
                     </View>
                     <View className={`px-2 py-0.5 rounded-md ${catColor.bg}`}>
                       <Text className={`text-[9px] font-bold uppercase ${catColor.text}`}>
-                        {t.category}
+                        {itemCategory || t.status}
                       </Text>
                     </View>
                   </View>
 
                   <Text className="font-bold text-base mt-1 flex-1" numberOfLines={2} style={{ color: colors.textPrimary }}>
-                    {t.notes}
+                    {t.task || t.notes || t.serviceType}
                   </Text>
 
                   {pregnancyReadiness && !pregnancyReadiness.isEligible && (
@@ -285,25 +362,30 @@ export default function TasksScreen() {
 
                   <View className="rounded-lg p-3 mt-3" style={{ backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc" }}>
                     <Text style={{ fontFamily: "Outfit_700Bold", color: colors.textPrimary, fontSize: 13 }}>
-                      {t.farmerId?.name || "Unknown Farmer"}
+                      {t.farmer?.name || t.farmerId?.name || "Unknown Farmer"}
                     </Text>
-                    {t.dueDate && (
+                    {(t.schedule?.date || t.dueDate) && (
                       <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>
-                        Due Date: {new Date(t.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {t.workflowType === "AI" ? "Scheduled" : "Due Date"}: {new Date(t.schedule?.date || t.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        {t.schedule?.visitPeriod ? ` · ${String(t.schedule.visitPeriod).replace(/^./, (value: string) => value.toUpperCase())}` : ""}
                       </Text>
                     )}
-                    {t.animalIds && t.animalIds.length > 0 && (
+                    {t.animal ? (
+                      <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
+                        Animal: {t.animal.name}{t.animal.earTag ? ` · ${t.animal.earTag}` : ""}
+                      </Text>
+                    ) : t.animalIds && t.animalIds.length > 0 ? (
                       <Text style={{ fontFamily: "Outfit_500Medium", color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
                         Animals: {t.animalIds.map((a: any) => a.earTag || a.animalId).join(', ')}
                       </Text>
-                    )}
+                    ) : null}
                   </View>
 
                   <View className="flex-row justify-end border-t pt-3 mt-3" style={{ borderColor: colors.border }}>
                     <View className="flex-row items-center border px-3 py-1.5 rounded-lg" style={{ borderColor: colors.border }}>
                       <ClipboardList size={14} color={isDark ? "#10b981" : "#00643B"} />
                       <Text style={{ fontFamily: "Outfit_700Bold", color: isDark ? "#10b981" : "#00643B", fontSize: 11, marginLeft: 6 }}>
-                        View Details
+                        {t.actionLabel || "View Details"}
                       </Text>
                     </View>
                   </View>

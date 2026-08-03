@@ -45,6 +45,10 @@ export const notificationKeys = {
 export const technicianKeys = {
   all: ["technician"] as const,
   dashboard: () => [...technicianKeys.all, "dashboard"] as const,
+  requests: () => [...technicianKeys.all, "requests"] as const,
+  workQueue: () => [...technicianKeys.all, "work-queue"] as const,
+  records: () => [...technicianKeys.all, "records"] as const,
+  tasks: () => [...technicianKeys.all, "tasks"] as const,
   analytics: () => [...technicianKeys.all, "analytics"] as const,
   assignedFarmers: () => [...technicianKeys.all, "assigned-farmers"] as const,
   scheduledVisits: () => [...technicianKeys.all, "visits"] as const,

@@ -1,4 +1,5 @@
 import { AxiosInstance } from "axios";
+import type { WorkQueueItem } from "@/features/technician-requests/types/technicianRequests.types";
 
 export interface CreateTaskPayload {
   farmerId: string;
@@ -18,6 +19,13 @@ export const getTasks = async (
 ) => {
   const response = await api.get("/tasks", { params: filters });
   return response.data || [];
+};
+
+export const getTechnicianWorkQueue = async (
+  api: AxiosInstance,
+): Promise<WorkQueueItem[]> => {
+  const response = await api.get("/technician/work-queue");
+  return response.data?.data || [];
 };
 
 export const claimTask = async (api: AxiosInstance, id: string) => {
