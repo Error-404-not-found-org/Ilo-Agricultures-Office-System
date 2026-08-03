@@ -24,6 +24,7 @@ import Topbar from "../../components/layout/Topbar";
 import UserAvatar from "../../components/ui/UserAvatar";
 import { TableRowSkeleton } from "../../components/ui/Skeleton";
 import RequestActionModal from "../../components/dialogs/RequestActionModal";
+import AIClaimScheduleAction from "../../components/dialogs/AIClaimScheduleAction";
 import { ui } from "../../components/ui/uiClasses";
 import Modal from "../../components/ui/Modal";
 import {
@@ -53,6 +54,58 @@ const toTitleCase = (str) => {
     .split(" ")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+};
+
+const localDateKey = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatCanonicalAISchedule = (schedule = {}) => {
+  if (!schedule.date) {
+    return {
+      combined: "Not scheduled",
+      dateLabel: "Not scheduled",
+      periodLabel: "",
+    };
+  }
+
+  const date = new Date(schedule.date);
+  if (Number.isNaN(date.getTime())) {
+    return {
+      combined: "Not scheduled",
+      dateLabel: "Not scheduled",
+      periodLabel: "",
+    };
+  }
+
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dateKey = localDateKey(date);
+  const dateLabel =
+    dateKey === localDateKey(today)
+      ? "Today"
+      : dateKey === localDateKey(tomorrow)
+        ? "Tomorrow"
+        : date.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+  const periodLabel = schedule.visitPeriod
+    ? toTitleCase(schedule.visitPeriod)
+    : "";
+
+  return {
+    combined: [dateLabel, periodLabel].filter(Boolean).join(" · "),
+    dateLabel,
+    periodLabel,
+  };
 };
 
 const getServiceMeta = (request = {}) => {
@@ -229,6 +282,23 @@ export default function OperationalInbox() {
     },
   });
 
+  const requestsQueryKey = [
+    "technician",
+    "requests",
+    statusParam,
+    typeFilter,
+    urgencyFilter,
+    assignmentFilter,
+    sortBy,
+    municipality,
+    barangay,
+    nearCoords?.latitude,
+    nearCoords?.longitude,
+    searchQuery,
+    currentPage,
+    requestedId,
+  ];
+
   // Main list query
   const {
     data: queueData,
@@ -237,22 +307,7 @@ export default function OperationalInbox() {
     isError: isQueueError,
     error: queueError,
   } = useQuery({
-    queryKey: [
-      "technician",
-      "requests",
-      statusParam,
-      typeFilter,
-      urgencyFilter,
-      assignmentFilter,
-      sortBy,
-      municipality,
-      barangay,
-      nearCoords?.latitude,
-      nearCoords?.longitude,
-      searchQuery,
-      currentPage,
-      requestedId,
-    ],
+    queryKey: requestsQueryKey,
     queryFn: async () => {
       const res = await axiosInstance.get("/technician/requests", {
         params: {
@@ -305,29 +360,46 @@ export default function OperationalInbox() {
         : "Distance unavailable";
 
       const farmerBadge = req.raw?.farmerId?.accountStatus || null;
-      const scheduleValue =
+      const isCanonicalAI = req.workflowType === "AI";
+      const canonicalSchedule = {
+        date: req.schedule?.date || null,
+        visitPeriod: req.schedule?.visitPeriod || null,
+      };
+      const legacyScheduleValue =
         req.scheduledDate || req.preferredDate || req.createdAt || null;
-      const scheduleDate = scheduleValue ? new Date(scheduleValue) : null;
-      const isValidDate = scheduleDate && !Number.isNaN(scheduleDate.getTime());
+      const legacyScheduleDate = legacyScheduleValue
+        ? new Date(legacyScheduleValue)
+        : null;
+      const isValidLegacyDate =
+        legacyScheduleDate && !Number.isNaN(legacyScheduleDate.getTime());
+      const canonicalSchedulePresentation = formatCanonicalAISchedule(
+        canonicalSchedule,
+      );
 
-      const formattedDateOnly = isValidDate
-        ? scheduleDate.toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-          })
-        : "Date unavailable";
+      const formattedDateOnly = isCanonicalAI
+        ? canonicalSchedulePresentation.dateLabel
+        : isValidLegacyDate
+          ? legacyScheduleDate.toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : "Date unavailable";
 
-      const formattedTimeOnly = isValidDate
-        ? scheduleDate.toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-          })
-        : "Time unavailable";
+      const formattedTimeOnly = isCanonicalAI
+        ? canonicalSchedulePresentation.periodLabel
+        : isValidLegacyDate
+          ? legacyScheduleDate.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+            })
+          : "Time unavailable";
 
-      const formattedSchedule = isValidDate
-        ? `${formattedDateOnly}, ${formattedTimeOnly}`
-        : "Date unavailable";
+      const formattedSchedule = isCanonicalAI
+        ? canonicalSchedulePresentation.combined
+        : isValidLegacyDate
+          ? `${formattedDateOnly}, ${formattedTimeOnly}`
+          : "Date unavailable";
       const sentDate = req.createdAt ? new Date(req.createdAt) : null;
       const isValidSentDate = sentDate && !Number.isNaN(sentDate.getTime());
       const formattedSentAt = isValidSentDate
@@ -339,13 +411,29 @@ export default function OperationalInbox() {
             minute: "2-digit",
           })
         : null;
+      const farmerDetails =
+        req.farmer && typeof req.farmer === "object"
+          ? req.farmer
+          : req.farmerDetails || null;
+      const animalDetails =
+        req.animal && typeof req.animal === "object" ? req.animal : null;
 
       return {
         id: req.id,
-        farmer: req.farmer || "Farmer unavailable",
+        workflowId: req.workflowId,
+        workflowType: req.workflowType,
+        allowedAction: req.allowedAction || null,
+        actionLabel: req.actionLabel || null,
+        farmer:
+          farmerDetails?.name || req.farmer || "Farmer unavailable",
+        farmerDetails,
         farmerImageUrl: req.farmerImageUrl || null,
         farmerPhone:
-          req.farmerPhone || req.raw?.farmerId?.phoneNumber || "Not provided",
+          req.phone ||
+          req.farmerPhone ||
+          farmerDetails?.phone ||
+          req.raw?.farmerId?.phoneNumber ||
+          "Not provided",
         location:
           req.locationLabel ||
           req.location ||
@@ -363,6 +451,10 @@ export default function OperationalInbox() {
         distanceText,
         farmerBadge,
         animalTag,
+        animalName:
+          animalDetails?.name ||
+          (typeof req.animal === "string" ? req.animal : null) ||
+          animalTag,
         breed,
         taskDetails:
           req.raw?.symptoms ||
@@ -406,7 +498,14 @@ export default function OperationalInbox() {
         ).getTime(),
         preferredDate: req.preferredDate || req.raw?.preferredDate || null,
         scheduledDate: req.scheduledDate || req.raw?.scheduledDate || null,
-        visitDate: req.scheduledDate || req.preferredDate || null,
+        schedule: canonicalSchedule,
+        visitDate: isCanonicalAI
+          ? canonicalSchedule.date
+          : req.scheduledDate || req.preferredDate || null,
+        heatSigns: Array.isArray(req.heatSigns) ? req.heatSigns : [],
+        requestSubmissionDate:
+          req.requestSubmissionDate || req.createdAt || null,
+        attachments: req.attachments || { count: 0, urls: [] },
         urgency: req.urgency,
         previousTechnician,
         raw: req.raw || req,
@@ -510,6 +609,13 @@ export default function OperationalInbox() {
 
   // Action Handlers
   const handleClaimRequest = async (request) => {
+    if (
+      !isAdmin &&
+      request.workflowType === "AI" &&
+      request.allowedAction === "CLAIM_AND_SCHEDULE"
+    ) {
+      return;
+    }
     if (isUpdating) return;
     const claimType = getClaimType(request.queueType || request.type);
     if (!claimType) {
@@ -1149,6 +1255,10 @@ export default function OperationalInbox() {
                             reqTechId &&
                             dbUser?._id &&
                             String(reqTechId) !== String(dbUser._id);
+                          const isAIClaimAndSchedule =
+                            !isAdmin &&
+                            req.workflowType === "AI" &&
+                            req.allowedAction === "CLAIM_AND_SCHEDULE";
 
                           const visitDate = req.visitDate
                             ? new Date(req.visitDate)
@@ -1290,15 +1400,19 @@ export default function OperationalInbox() {
                                         size={15}
                                         className="text-base-content/40 shrink-0"
                                       />
-                                      {req.formattedDateOnly}
+                                      {req.workflowType === "AI"
+                                        ? req.date
+                                        : req.formattedDateOnly}
                                     </span>
-                                    <span className="text-xs text-base-content/65 flex items-center gap-1.5 mt-0.5 truncate">
-                                      <Clock
-                                        size={14}
-                                        className="text-base-content/40 shrink-0"
-                                      />
-                                      {req.formattedTimeOnly}
-                                    </span>
+                                    {req.workflowType !== "AI" && (
+                                      <span className="text-xs text-base-content/65 flex items-center gap-1.5 mt-0.5 truncate">
+                                        <Clock
+                                          size={14}
+                                          className="text-base-content/40 shrink-0"
+                                        />
+                                        {req.formattedTimeOnly}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </td>
@@ -1334,7 +1448,17 @@ export default function OperationalInbox() {
                                     onClick={(e) => e.stopPropagation()}
                                     className="flex items-center gap-2 justify-end"
                                   >
-                                    {req.status === "pending" && !reqTechId && (
+                                    {isAIClaimAndSchedule && (
+                                      <AIClaimScheduleAction
+                                        request={req}
+                                        requestQueryKey={requestsQueryKey}
+                                        disabled={isUpdating}
+                                      />
+                                    )}
+
+                                    {!isAIClaimAndSchedule &&
+                                      req.status === "pending" &&
+                                      !reqTechId && (
                                       <button
                                         type="button"
                                         disabled={isUpdating}
@@ -1348,7 +1472,7 @@ export default function OperationalInbox() {
                                           aria-hidden="true"
                                         />
                                       </button>
-                                    )}
+                                      )}
 
                                     {(req.type === "breeding_verification" ||
                                       primaryView ===
