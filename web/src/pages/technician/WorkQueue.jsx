@@ -3,13 +3,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardCheck,
-  RefreshCw,
   Search,
   Clock,
   Calendar,
-  AlertCircle,
   CheckCircle,
-  Activity,
   ChevronLeft,
   ChevronRight,
   MoreVertical,
@@ -21,33 +18,17 @@ import { toast } from "sonner";
 import axiosInstance from "../../lib/axios";
 import { ui } from "../../components/ui/uiClasses";
 import Topbar from "../../components/layout/Topbar";
-import UserAvatar from "../../components/ui/UserAvatar";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
+import Modal from "../../components/ui/Modal";
 import {
   getTaskReadiness,
-  getTaskOperationalStatus,
-  getTaskType,
-  getWorkflowStageLabel,
 } from "../../constants/technicianWorkflow";
 import {
   getTaskPrimaryActionLabel,
-  normalizeTaskContext,
-  getTaskActionTarget,
-  buildTaskNavigationState,
 } from "../../utils/taskNavigation";
-import {
-  isActiveTask,
-  isOnHoldTask,
-  isTaskCompletedThisWeek,
-  isTaskDueToday,
-  isTaskScheduledThisWeek,
-  isTaskUpcoming,
-  isTerminalTask,
-} from "../../utils/workQueue";
-import { getTaskWorkflowSummary } from "../../utils/reproductionWorkflow";
 
 // Helper to convert strings to Title Case
 const toTitleCase = (str) => {
@@ -59,55 +40,34 @@ const toTitleCase = (str) => {
     .join(" ");
 };
 
-const getVisitTypeMeta = (taskType) => {
-  const t = String(taskType).toUpperCase();
-  if (t === "AI") {
-    return {
-      label: "AI Service",
-      icon: "💉",
-      color: "text-blue-500 bg-blue-500/10 border-blue-500/20",
-    };
-  }
-  if (t === "PD") {
-    return {
-      label: "Pregnancy Diagnosis",
-      icon: "🧬",
-      color: "text-rose-500 bg-rose-500/10 border-rose-500/20",
-    };
-  }
-  if (t === "HEALTH") {
-    return {
-      label: "Health Assistance",
-      icon: "🩺",
-      color: "text-indigo-500 bg-indigo-500/10 border-indigo-500/20",
-    };
-  }
-  if (t === "CD") {
-    return {
-      label: "Calving Assistance",
-      icon: "🐄",
-      color: "text-pink-500 bg-pink-500/10 border-pink-500/20",
-    };
-  }
-  if (t === "FOLLOWUP") {
-    return {
-      label: "Follow-up Visit",
-      icon: "📋",
-      color: "text-blue-500 bg-blue-500/10 border-blue-500/20",
-    };
-  }
-  if (t === "GENERALVISIT" || t === "GENERAL_VISIT") {
-    return {
-      label: "General Check-up",
-      icon: "🩺",
-      color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
-    };
-  }
-  return {
-    label: taskType || "Task",
-    icon: "📋",
-    color: "text-base-content/70 bg-base-200 border-base-300",
-  };
+const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
+
+const formatCanonicalAISchedule = (schedule = {}) => {
+  if (!schedule.date) return "Not scheduled";
+  const date = new Date(schedule.date);
+  if (Number.isNaN(date.getTime())) return "Not scheduled";
+  const dateLabel = date.toLocaleDateString("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const periodLabel = schedule.visitPeriod
+    ? toTitleCase(schedule.visitPeriod)
+    : null;
+  return [dateLabel, periodLabel].filter(Boolean).join(" · ");
+};
+
+const formatRecordDate = (value) => {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not recorded";
+  return date.toLocaleDateString("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 };
 
 function MetricCard({ icon, value, label, note }) {
@@ -134,13 +94,10 @@ export default function WorkQueue() {
   const [statusFilter, setStatusFilter] = useState(
     () => searchParams.get("statusFilter") || "all",
   );
-  const [isAIServiceOpen, setIsAIServiceOpen] = useState(false);
-  const [selectedTask, setSelectedTask] = useState(null);
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
+  const [selectedAIRecord, setSelectedAIRecord] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [openActionMenuId, setOpenActionMenuId] = useState(null);
   const itemsPerPage = 8;
-  const [showSidebar, setShowSidebar] = useState(true);
 
   const formatRelativeSchedule = (value) => {
     if (!value) return { date: "No date", time: "—" };
@@ -197,10 +154,14 @@ export default function WorkQueue() {
   });
 
   const completeMutation = useMutation({
-    mutationFn: (task) => axiosInstance.put(`/tasks/${task._id}/complete`, {}),
+    mutationFn: (taskId) =>
+      axiosInstance.put(`/tasks/${encodeURIComponent(taskId)}/complete`, {}),
     onSuccess: () => {
       toast.success("Task completed.");
-      queryClient.invalidateQueries({ queryKey: ["technician"] });
+      queryClient.invalidateQueries({
+        queryKey: ["technician", "work-queue", "mine"],
+        exact: true,
+      });
     },
     onError: (error) =>
       toast.error(
@@ -224,12 +185,6 @@ export default function WorkQueue() {
     return (query.data || []).filter(
       (t) =>
         !t.isReadyToday && !t.overdue && new Date(t.displayDate) > new Date(),
-    ).length;
-  }, [query.data]);
-
-  const completedCounts = useMemo(() => {
-    return (query.data || []).filter((t) =>
-      ["done", "resolved", "Completed"].includes(t.status),
     ).length;
   }, [query.data]);
 
@@ -295,113 +250,75 @@ export default function WorkQueue() {
   const handleStartService = async (task) => {
     try {
       if (task.type === "insemination") {
-        await axiosInstance.patch(`/technician/inseminations/${task.id}/status`, {
+        await axiosInstance.patch(`/technician/inseminations/${task.workflowId}/status`, {
           status: "in-progress",
         });
       } else if (task.type === "health") {
-        await axiosInstance.patch(`/health-requests/${task.id}/status`, {
+        await axiosInstance.patch(`/health-requests/${task.workflowId}/status`, {
           status: "in-progress",
         });
       }
       queryClient.invalidateQueries({ queryKey: ["technician"] });
       toast.success("Service started");
-    } catch (err) {
+    } catch {
       toast.error("Failed to start service");
     }
   };
 
   const openTask = (task) => {
-    if (task.allowedAction === "START_SERVICE") {
-      handleStartService(task);
-      return;
+    switch (task.allowedAction) {
+      case "RECORD_SERVICE":
+        if (task.workflowType === "AI" && !isMongoId(task.workflowId)) {
+          toast.error("This AI work item has an invalid workflow identifier.");
+          return;
+        }
+        setSelectedTaskWrapper(task);
+        return;
+      case "VIEW_RECORD":
+        if (task.workflowType === "AI") {
+          if (!isMongoId(task.workflowId)) {
+            toast.error("This AI record has an invalid workflow identifier.");
+            return;
+          }
+          setSelectedAIRecord(task);
+          return;
+        }
+        toast.info(
+          "Viewing this historical record remains available from its existing workflow.",
+        );
+        return;
+      case "COMPLETE_TASK":
+        if (
+          task.workflowType !== "StandaloneTask" ||
+          !isMongoId(task.taskId)
+        ) {
+          toast.error("This standalone task has an invalid task identifier.");
+          return;
+        }
+        completeMutation.mutate(task.taskId);
+        return;
+      case "START_SERVICE":
+        if (task.workflowType === "AI") {
+          toast.error("AI service recording must use Record Insemination.");
+          return;
+        }
+        handleStartService(task);
+        return;
+      case "SCHEDULE_VISIT":
+        toast.info(
+          "Please use the existing Schedule workflow for this service.",
+        );
+        return;
+      case "CLAIM":
+      case "CLAIM_AND_SCHEDULE":
+        toast.info("Please use the Requests page to claim this work.");
+        return;
+      default:
+        toast.error("This work item does not have a supported action.");
     }
-
-    if (task.allowedAction === "RECORD_SERVICE") {
-      setSelectedTaskWrapper(task);
-      return;
-    }
-
-    if (task.allowedAction === "SCHEDULE_VISIT") {
-      // Future integration points for explicit scheduling dialogs
-      toast.info("Please use the Schedule workflow on the dashboard or animal profile.");
-      return;
-    }
-
-    if (task.allowedAction === "VIEW_RECORD") {
-       // Future integration point for completed records
-      toast.info("Viewing historical records is accessible from the animal profile.");
-      return;
-    }
-    
-    // Fallback for CLAIM or manual tasks
-    completeMutation.mutate(task);
   };
 
   const focusedTaskId = searchParams.get("taskId");
-
-  // Sidebar dynamic counts mapping
-  const categorizedTaskCounts = dueTodayCounts + upcomingCounts + onHoldCounts;
-  const otherActiveCounts = Math.max(totalCounts - categorizedTaskCounts, 0);
-  const duePercent = totalCounts
-    ? Math.round((dueTodayCounts / totalCounts) * 100)
-    : 0;
-  const upPercent = totalCounts
-    ? Math.round((upcomingCounts / totalCounts) * 100)
-    : 0;
-  const holdPercent = totalCounts
-    ? Math.round((onHoldCounts / totalCounts) * 100)
-    : 0;
-  const otherPercent = Math.max(100 - duePercent - upPercent - holdPercent, 0);
-
-  // Sidebar list of today's schedule timeline
-  const todayTimelineTasks = useMemo(() => {
-    return (query.data || [])
-      .filter((task) => isTaskDueToday(task))
-      .slice(0, 4)
-      .map((task) => {
-        const animal = task.animalIds?.[0] || {};
-        const meta = getVisitTypeMeta(task.taskType);
-        const timeStr = new Date(task.dueDate).toLocaleTimeString(undefined, {
-          hour: "numeric",
-          minute: "2-digit",
-        });
-        return {
-          id: task._id,
-          time: timeStr,
-          title: meta.label,
-          animal: `${animal.earTag ? `Tag #${animal.earTag.length > 12 ? animal.earTag.slice(0, 12) + "..." : animal.earTag}` : "Livestock"}`,
-          farm:
-            task.farmerId?.farmName ||
-            task.farmerId?.name ||
-            "Farm not recorded",
-          bulletColor:
-            task.taskType === "AI"
-              ? "bg-blue-500"
-              : task.taskType === "PD"
-                ? "bg-rose-500"
-                : "bg-emerald-500",
-        };
-      });
-  }, [query.data]);
-
-  // Sidebar top farms with tasks
-  const topFarmsList = useMemo(() => {
-    const counts = new Map();
-    (query.data || [])
-      .filter((task) => isTaskScheduledThisWeek(task))
-      .forEach((t) => {
-        if (t.farmerId?.name) {
-          const key = t.farmerId._id || t.farmerId.name;
-          const current = counts.get(key) || {
-            farmer: t.farmerId.name,
-            farm: t.farmerId.farmName || "Farm not recorded",
-            count: 0,
-          };
-          counts.set(key, { ...current, count: current.count + 1 });
-        }
-      });
-    return [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 3);
-  }, [query.data]);
 
   return (
     <div className={ui.page}>
@@ -584,17 +501,22 @@ export default function WorkQueue() {
                     </thead>
                     <tbody className="divide-y divide-base-300">
                       {paginatedTasks.map((task) => {
-                        const available = false; // Unified queue items are already assigned
                         const complete = [
                           "done",
                           "resolved",
                           "Completed",
                         ].includes(task.status);
+                        const canViewCompletedAI =
+                          task.workflowType === "AI" &&
+                          task.allowedAction === "VIEW_RECORD";
                         const priority = task.urgent ? 1 : 0;
                         const animalReference =
                           task.animalTag || "Not recorded";
                         const readiness = getTaskReadiness(task.raw || task);
-                        const actionDisabled = !readiness.ready;
+                        const actionDisabled =
+                          !readiness.ready ||
+                          (task.workflowType === "AI" &&
+                            (!task.allowedAction || !task.actionLabel));
                         const animalId =
                           task.raw?.animalId?._id ||
                           task.raw?.animalIds?.[0]?._id;
@@ -655,7 +577,14 @@ export default function WorkQueue() {
 
                             {/* 3. SCHEDULE */}
                             <td className="p-3.5 align-top">
-                              {(() => {
+                              {task.workflowType === "AI" ? (
+                                <span
+                                  className={`block font-bold text-xs ${task.overdue ? "text-error" : "text-base-content"}`}
+                                >
+                                  {formatCanonicalAISchedule(task.schedule)}
+                                </span>
+                              ) : (
+                                (() => {
                                 const sched = formatRelativeSchedule(
                                   task.displayDate,
                                 );
@@ -671,7 +600,8 @@ export default function WorkQueue() {
                                     </span>
                                   </div>
                                 );
-                              })()}
+                                })()
+                              )}
                             </td>
 
                             {/* 4. STATUS */}
@@ -685,18 +615,10 @@ export default function WorkQueue() {
 
                             {/* 5. PRIMARY ACTION */}
                             <td className="p-3.5 align-top pr-6 text-right">
-                              {complete ? (
+                              {complete && !canViewCompletedAI ? (
                                 <span className="text-[11px] font-bold text-emerald-600 flex items-center justify-end gap-1 mt-1">
                                   <CheckCircle size={13} /> Completed
                                 </span>
-                              ) : available ? (
-                                <button
-                                  type="button"
-                                  onClick={() => claimMutation.mutate(task)}
-                                  className="btn btn-xs btn-outline btn-primary px-4"
-                                >
-                                  Claim Task
-                                </button>
                               ) : (
                                 <div
                                   className={
@@ -716,7 +638,9 @@ export default function WorkQueue() {
                                     onClick={() => openTask(task)}
                                     className={`btn btn-xs px-4 btn-primary`}
                                   >
-                                    {getTaskPrimaryActionLabel(task)}
+                                    {task.workflowType === "AI"
+                                      ? task.actionLabel
+                                      : getTaskPrimaryActionLabel(task)}
                                   </button>
                                 </div>
                               )}
@@ -729,7 +653,6 @@ export default function WorkQueue() {
                                 className="btn btn-ghost btn-sm btn-square"
                                 popoverTarget={menuId}
                                 style={{ anchorName: menuAnchor }}
-                                onClick={() => setOpenActionMenuId(task.id)}
                               >
                                 <MoreVertical size={16} />
                               </button>
@@ -849,10 +772,30 @@ export default function WorkQueue() {
         context="task"
         onClose={() => setSelectedTaskWrapper(null)}
         taskData={selectedTaskWrapper?.raw}
-        taskId={selectedTaskWrapper?.id || selectedTaskWrapper?.taskId}
-        preSelectedFarmer={selectedTaskWrapper?.raw?.farmerId}
-        preSelectedAnimal={selectedTaskWrapper?.raw?.animalId}
-        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["technician"] })}
+        workflowId={selectedTaskWrapper?.workflowId || null}
+        taskId={selectedTaskWrapper?.taskId || null}
+        requestContext={selectedTaskWrapper}
+        preSelectedFarmer={
+          selectedTaskWrapper?.raw?.farmerId ||
+          (selectedTaskWrapper?.farmer
+            ? {
+                ...selectedTaskWrapper.farmer,
+                _id: selectedTaskWrapper.farmer.id,
+                phoneNumber: selectedTaskWrapper.farmer.phone,
+              }
+            : null)
+        }
+        preSelectedAnimal={
+          selectedTaskWrapper?.raw?.animalId ||
+          (selectedTaskWrapper?.animal
+            ? {
+                ...selectedTaskWrapper.animal,
+                _id: selectedTaskWrapper.animal.id,
+                earTag: selectedTaskWrapper.animal.earTag,
+              }
+            : null)
+        }
+        onSuccess={() => setSelectedTaskWrapper(null)}
       />
       <WalkInHealthModal
         isOpen={Boolean(selectedTaskWrapper) && selectedTaskWrapper?.workflowType === "Health"}
@@ -868,6 +811,63 @@ export default function WorkQueue() {
         taskId={selectedTaskWrapper?.id || selectedTaskWrapper?.taskId}
         onSuccess={() => queryClient.invalidateQueries({ queryKey: ["technician"] })}
       />
+      <Modal
+        isOpen={Boolean(selectedAIRecord)}
+        onClose={() => setSelectedAIRecord(null)}
+        title="Insemination record"
+        subtitle="Completed AI service summary"
+        size="md"
+        actions={
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => setSelectedAIRecord(null)}
+          >
+            Close
+          </button>
+        }
+      >
+        {selectedAIRecord && (
+          <div className="space-y-4 text-sm">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="text-xs text-base-content/55">Farmer</p>
+                <p className="font-semibold">{selectedAIRecord.farmer?.name}</p>
+              </div>
+              <div>
+                <p className="text-xs text-base-content/55">Animal</p>
+                <p className="font-semibold">
+                  {selectedAIRecord.animal?.name}
+                  {selectedAIRecord.animal?.earTag
+                    ? ` · Tag ${selectedAIRecord.animal.earTag}`
+                    : ""}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-base-content/55">Scheduled visit</p>
+                <p className="font-semibold">
+                  {formatCanonicalAISchedule(selectedAIRecord.schedule)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-base-content/55">Completed</p>
+                <p className="font-semibold">
+                  {formatRecordDate(selectedAIRecord.completedAt)}
+                </p>
+              </div>
+            </div>
+            <div className="rounded-box border border-base-300 bg-base-200/50 p-3">
+              <p className="text-xs text-base-content/55">Recorded service</p>
+              <p className="font-semibold">
+                {selectedAIRecord.raw?.sireBreed || "Sire breed not recorded"}
+                {selectedAIRecord.raw?.sireCode
+                  ? ` · ${selectedAIRecord.raw.sireCode}`
+                  : ""}
+              </p>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

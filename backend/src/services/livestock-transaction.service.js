@@ -29,7 +29,10 @@ import {
   verifyPostpartumWindow,
 } from "../utils/cattleCore.js";
 import { createAuditLog } from "./audit.service.js";
-import { normalizeAICompletionFields } from "../domain/ai-recording-fields.js";
+import {
+  normalizeAICompletionFields,
+  normalizeTechnicianNoteInput,
+} from "../domain/ai-recording-fields.js";
 
 const runTransaction = async (work) => {
   const session = await mongoose.startSession();
@@ -57,10 +60,17 @@ export const completeInsemination = async (
   },
   parentSession = null,
 ) => {
+  const normalizedTechnicianNote = normalizeTechnicianNoteInput(updateData);
   updateData = {
     ...updateData,
     ...normalizeAICompletionFields(updateData),
   };
+  delete updateData.technicianNote;
+  delete updateData.technicianNotes;
+  delete updateData.notes;
+  if (normalizedTechnicianNote !== undefined) {
+    updateData.technicianNote = normalizedTechnicianNote;
+  }
   const policyResolution = await loadPregnancyConfirmationPolicy({
     at: updateData.inseminationDate,
   });
@@ -662,6 +672,9 @@ export const recordTechnicianAIService = async ({
   sireCode,
   semenDosesUsed,
   estrus,
+  technicianNote,
+  technicianNotes,
+  notes,
   actorId,
   isAdmin,
 }) => {
@@ -669,6 +682,11 @@ export const recordTechnicianAIService = async ({
     sireBreed,
     sireCode,
     semenDosesUsed,
+  });
+  const normalizedTechnicianNote = normalizeTechnicianNoteInput({
+    technicianNote,
+    technicianNotes,
+    notes,
   });
 
   return runTransaction(async (session) => {
@@ -873,7 +891,8 @@ export const recordTechnicianAIService = async ({
         status: "done",
         approvedBy: actorId,
         technicianId: actorId,
-        technicianNote: insemination.technicianNote || "",
+        technicianNote:
+          normalizedTechnicianNote ?? insemination.technicianNote ?? "",
         sireBreed: completionFields.sireBreed,
         sireCode: completionFields.sireCode,
         semenDosesUsed: completionFields.semenDosesUsed,
@@ -939,6 +958,9 @@ export const recordTechnicianAIService = async ({
           sireCode: completionFields.sireCode,
           semenDosesUsed: completionFields.semenDosesUsed,
           estrus: estrus || "Natural",
+          ...(normalizedTechnicianNote !== undefined
+            ? { technicianNote: normalizedTechnicianNote }
+            : {}),
           status: "done",
           technicianId: actorId,
           approvedBy: actorId,

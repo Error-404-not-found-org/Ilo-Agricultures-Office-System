@@ -5,8 +5,10 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  AI_TECHNICIAN_NOTE_MAX_LENGTH,
   normalizeAICompletionFields,
   normalizeSemenDosesUsed,
+  normalizeTechnicianNoteInput,
   normalizeVisitPeriod,
 } from "../src/domain/ai-recording-fields.js";
 import { Insemination } from "../src/models/insemination.model.js";
@@ -106,6 +108,50 @@ test("AI recording fields: manual sire text is trimmed and required for completi
   );
 });
 
+test("AI recording fields: technician note aliases normalize to one optional field", () => {
+  assert.equal(
+    normalizeTechnicianNoteInput({
+      technicianNote: "  Line one\nLine two  ",
+    }),
+    "Line one\nLine two",
+  );
+  assert.equal(
+    normalizeTechnicianNoteInput({ technicianNotes: "  Alias note  " }),
+    "Alias note",
+  );
+  assert.equal(
+    normalizeTechnicianNoteInput({ notes: "  Legacy mobile note  " }),
+    "Legacy mobile note",
+  );
+  assert.equal(normalizeTechnicianNoteInput({ notes: "   \n  " }), undefined);
+  assert.equal(normalizeTechnicianNoteInput({}), undefined);
+});
+
+test("AI recording fields: technician notes reject invalid types and excessive length", () => {
+  for (const value of [1, true, {}, []]) {
+    assert.throws(
+      () => normalizeTechnicianNoteInput({ technicianNote: value }),
+      (error) =>
+        error.status === 400 && error.code === "INVALID_TECHNICIAN_NOTE",
+    );
+  }
+
+  assert.throws(
+    () =>
+      normalizeTechnicianNoteInput({
+        technicianNote: "N".repeat(AI_TECHNICIAN_NOTE_MAX_LENGTH + 1),
+      }),
+    (error) =>
+      error.status === 400 && error.code === "TECHNICIAN_NOTE_TOO_LONG",
+  );
+  assert.equal(
+    normalizeTechnicianNoteInput({
+      technicianNote: "N".repeat(AI_TECHNICIAN_NOTE_MAX_LENGTH),
+    }).length,
+    AI_TECHNICIAN_NOTE_MAX_LENGTH,
+  );
+});
+
 test("AI schema: new fields are optional for historical records and validate new values", () => {
   const visitPeriodPath = Insemination.schema.path("visitPeriod");
   const semenDosesPath = Insemination.schema.path("semenDosesUsed");
@@ -124,6 +170,7 @@ test("AI schema: new fields are optional for historical records and validate new
   assert.equal(historical.visitPeriod, undefined);
   assert.equal(historical.semenDosesUsed, undefined);
   assert.equal(historical.sireCode, undefined);
+  assert.equal(historical.technicianNote, "");
 
   const newPending = new Insemination({
     farmerId: ids.farmer,
@@ -175,6 +222,18 @@ test("AI completion paths share recording validation and contain no inventory mu
   assert.match(
     transactionService,
     /export const recordTechnicianAIService[\s\S]*normalizeAICompletionFields\(\{/,
+  );
+  assert.match(
+    technicianController,
+    /normalizeTechnicianNoteInput\([\s\S]*recordTechnicianAIService\(\{[\s\S]*technicianNote,/,
+  );
+  assert.match(
+    aiController,
+    /updateRequestStatus[\s\S]*normalizeTechnicianNoteInput\(req\.body\)[\s\S]*completeInsemination\(\{/,
+  );
+  assert.match(
+    transactionService,
+    /export const completeInsemination[\s\S]*normalizeTechnicianNoteInput\(updateData\)/,
   );
   assert.doesNotMatch(
     `${aiController}\n${technicianController}\n${transactionService}`,

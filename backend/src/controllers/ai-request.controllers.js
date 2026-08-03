@@ -39,6 +39,7 @@ import { notifyUser } from "../services/notification-delivery.service.js";
 import {
   normalizeAICompletionFields,
   normalizeAIScheduleDate,
+  normalizeTechnicianNoteInput,
   normalizeVisitPeriod,
 } from "../domain/ai-recording-fields.js";
 
@@ -501,7 +502,6 @@ export const updateRequestStatus = async (req, res) => {
     const { id } = req.params;
     const {
       status,
-      technicianNote,
       scheduledDate,
       inseminationDate,
       sireBreed,
@@ -511,6 +511,7 @@ export const updateRequestStatus = async (req, res) => {
       visitPeriod,
       earlyStartConfirmed,
     } = req.body;
+    const normalizedTechnicianNote = normalizeTechnicianNoteInput(req.body);
 
     const VALID_STATUSES = Object.values(AI_STATUS);
     if (!VALID_STATUSES.includes(status)) {
@@ -647,11 +648,14 @@ export const updateRequestStatus = async (req, res) => {
     const updateData = {
       status,
       approvedBy: targetTechId,
-      technicianNote: technicianNote || "",
       sireBreed: completionFields?.sireBreed ?? sireBreed,
       sireCode: completionFields?.sireCode ?? sireCode,
       estrus,
     };
+
+    if (normalizedTechnicianNote !== undefined) {
+      updateData.technicianNote = normalizedTechnicianNote;
+    }
 
     if (normalizedVisitPeriod !== undefined) {
       updateData.visitPeriod = normalizedVisitPeriod;
@@ -752,7 +756,7 @@ export const updateRequestStatus = async (req, res) => {
             serviceType: "ai",
             technicianName: req.user.name,
             scheduledDate: request.scheduledDate,
-            reason: technicianNote || "",
+            reason: normalizedTechnicianNote || "",
           },
         });
       }

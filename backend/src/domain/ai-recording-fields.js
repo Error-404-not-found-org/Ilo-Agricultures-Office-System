@@ -3,6 +3,7 @@ import { AppError } from "../utils/app-error.js";
 export const AI_VISIT_PERIODS = Object.freeze(["morning", "afternoon"]);
 export const SIRE_BREED_MAX_LENGTH = 100;
 export const SIRE_CODE_MAX_LENGTH = 64;
+export const AI_TECHNICIAN_NOTE_MAX_LENGTH = 2000;
 export const AI_SCHEDULE_TIMEZONE_OFFSET_MINUTES = 8 * 60;
 
 const invalidField = (message, code) =>
@@ -135,6 +136,24 @@ export const normalizeSireCode = (value, { required = false } = {}) =>
     requiredCode: "SIRE_CODE_REQUIRED",
     lengthCode: "SIRE_CODE_TOO_LONG",
   });
+
+export const normalizeTechnicianNote = (value) =>
+  normalizeManualText(value, {
+    label: "Technician note",
+    required: false,
+    maxLength: AI_TECHNICIAN_NOTE_MAX_LENGTH,
+    requiredCode: "INVALID_TECHNICIAN_NOTE",
+    lengthCode: "TECHNICIAN_NOTE_TOO_LONG",
+  });
+
+export const normalizeTechnicianNoteInput = (source = {}) => {
+  for (const alias of ["technicianNote", "technicianNotes", "notes"]) {
+    if (Object.hasOwn(source, alias) && source[alias] !== undefined) {
+      return normalizeTechnicianNote(source[alias]);
+    }
+  }
+  return undefined;
+};
 
 export const normalizeSemenDosesUsed = (
   value,

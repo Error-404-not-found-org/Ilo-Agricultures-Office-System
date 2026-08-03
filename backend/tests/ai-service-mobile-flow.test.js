@@ -9,6 +9,7 @@ import {
   getEarlyStartTiming,
 } from "../src/domain/service-timing.js";
 import { updateRequestStatus } from "../src/controllers/ai-request.controllers.js";
+import { walkInInsemination } from "../src/controllers/technician.controllers.js";
 import { Insemination } from "../src/models/insemination.model.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -76,6 +77,32 @@ test("AI status endpoint rejects an unconfirmed early start with a readable cont
   assert.ok(responseBody.earlyStartMinutes >= 59);
 });
 
+test("walk-in AI rejects a non-string technician note before recording", async () => {
+  let statusCode = 200;
+  let responseBody;
+  const response = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      responseBody = body;
+      return this;
+    },
+  };
+
+  await walkInInsemination(
+    {
+      body: { inseminationDetails: { technicianNote: { invalid: true } } },
+      user: { _id: "technician-1", role: "technician" },
+    },
+    response,
+  );
+
+  assert.equal(statusCode, 400);
+  assert.equal(responseBody.code, "INVALID_TECHNICIAN_NOTE");
+});
+
 test("technician request starts and AI completion stay responsive and visible", () => {
   const details = source("mobile/app/(technician)/request-details.tsx");
   const rootLayout = source("mobile/app/_layout.tsx");
@@ -127,5 +154,10 @@ test("technician request starts and AI completion stay responsive and visible", 
   assert.match(controller, /updateData\.serviceStartedAt/);
   assert.match(controller, /updateData\.earlyStartMinutes/);
   assert.match(controller, /request = await completeInsemination\(\{/);
+  assert.match(controller, /normalizeTechnicianNoteInput\(req\.body\)/);
+  assert.match(
+    controller,
+    /normalizedTechnicianNote !== undefined[\s\S]*updateData\.technicianNote = normalizedTechnicianNote/,
+  );
   assert.match(healthController, /request = await resolveHealthRequest\(\{/);
 });

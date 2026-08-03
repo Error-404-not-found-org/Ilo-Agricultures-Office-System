@@ -45,6 +45,7 @@ import {
 } from "../services/notification-delivery.service.js";
 import { presentNotificationDocument } from "../domain/notification-presentation.js";
 import { buildAIRequestAssignmentGuard } from "../policies/request.policy.js";
+import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
@@ -943,6 +944,9 @@ export const walkInInsemination = async (req, res) => {
       taskId,
       requestId,
     } = req.body;
+    const technicianNote = normalizeTechnicianNoteInput(
+      inseminationDetails || {},
+    );
 
     // 1. Resolve or Create Farmer
     let farmer;
@@ -1063,6 +1067,7 @@ export const walkInInsemination = async (req, res) => {
       sireCode: inseminationDetails?.sireCode,
       semenDosesUsed: inseminationDetails?.semenDosesUsed,
       estrus: inseminationDetails?.estrus,
+      technicianNote,
       actorId: req.user._id,
       isAdmin: req.user.role === "admin",
     });
@@ -1170,7 +1175,7 @@ export const getAnimalHistory = async (req, res) => {
         date: ins.inseminationDate || ins.createdAt,
         status: ins.status.charAt(0).toUpperCase() + ins.status.slice(1),
         iconType: "Syringe",
-        technicianName: ins.technicianNote || "Field Technician",
+        technicianName: "Field Technician",
         // Extended Details
         details: {
           sireBreed: ins.sireBreed,
@@ -1180,6 +1185,7 @@ export const getAnimalHistory = async (req, res) => {
           attemptNumber: ins.attemptNumber,
           estrus: ins.estrus,
           outcome: ins.outcome,
+          technicianNote: ins.technicianNote || "",
         },
       });
     });
@@ -2202,12 +2208,10 @@ export const recordPregnancyContinuation = async (req, res) => {
       taskId: req.body.taskId,
       actor: req.user,
     });
-    res
-      .status(200)
-      .json({
-        message: "Pregnancy continuation recheck recorded.",
-        data: result,
-      });
+    res.status(200).json({
+      message: "Pregnancy continuation recheck recorded.",
+      data: result,
+    });
   } catch (error) {
     res.status(error.status || 500).json({
       message:
@@ -3080,14 +3084,14 @@ export const getTechnicianRequests = async (req, res) => {
 
       const aiSearchFilter = {
         $or: [
-        { farmerId: { $in: farmerIds } },
-        { animalId: { $in: animalIds } },
+          { farmerId: { $in: farmerIds } },
+          { animalId: { $in: animalIds } },
         ],
       };
       const healthSearchFilter = {
         $or: [
-        { farmerId: { $in: farmerIds } },
-        { animalId: { $in: animalIds } },
+          { farmerId: { $in: farmerIds } },
+          { animalId: { $in: animalIds } },
         ],
       };
 
@@ -3600,7 +3604,9 @@ export const getWorkQueue = async (req, res) => {
     const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
     const aiQuery = {
-      status: { $in: ["pending", "approved", "scheduled", "in-progress", "done"] },
+      status: {
+        $in: ["pending", "approved", "scheduled", "in-progress", "done"],
+      },
       deletedAt: null,
       ...(isAdmin
         ? {}
@@ -3658,36 +3664,87 @@ export const getWorkQueue = async (req, res) => {
 
     const [inseminations, healthReqs, scheduledTasks] = await Promise.all([
       Insemination.find(aiQuery)
-        .populate("farmerId", "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar")
+        .populate(
+          "farmerId",
+          "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
+        )
         .populate("animalId", "name animalId earTag imageUrl breed species")
         .sort({ createdAt: -1 })
         .lean(),
 
       HealthRequest.find(healthQuery)
-        .populate("farmerId", "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar")
+        .populate(
+          "farmerId",
+          "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
+        )
         .populate("animalId", "name animalId earTag imageUrl breed species")
         .sort({ urgency: -1, createdAt: -1 })
         .lean(),
 
       Task.find(taskQuery)
-        .populate("farmerId", "name phoneNumber phone address farmLocation avatarUrl profilePicture avatar")
+        .populate(
+          "farmerId",
+          "name phoneNumber phone address farmLocation avatarUrl profilePicture avatar",
+        )
         .populate("animalIds", "name animalId earTag imageUrl breed species")
         .sort({ dueDate: 1, createdAt: -1 })
         .lean(),
     ]);
 
     const idOf = (value) => {
-      if (value === null || value === undefined) return null;
-      if (typeof value === "object" && value._id !== undefined) {
-        return idOf(value._id);
-      }
-      const normalized = String(value).trim();
-      return normalized || null;
-    };
+      let current = value;
+      const seen = new Set();
 
+      // Limit traversal in case a malformed object contains a deep or cyclic ID.
+      for (let depth = 0; depth < 5; depth += 1) {
+        if (current == null) return null;
+
+        if (typeof current === "string") {
+          return current;
+        }
+
+        if (typeof current === "number" || typeof current === "bigint") {
+          return String(current);
+        }
+
+        // Handle real MongoDB/Mongoose ObjectIds before accessing `_id`.
+        if (typeof current?.toHexString === "function") {
+          try {
+            return current.toHexString();
+          } catch {
+            return null;
+          }
+        }
+
+        if (typeof current !== "object") {
+          return null;
+        }
+
+        if (seen.has(current)) {
+          return null;
+        }
+
+        seen.add(current);
+
+        const nestedId = current._id ?? current.id;
+
+        if (nestedId == null || nestedId === current) {
+          return null;
+        }
+
+        current = nestedId;
+      }
+
+      return null;
+    };
     const cleanAddressPart = (value) => {
       const normalized = String(value || "").trim();
-      return normalized && !["n/a", "na", "none", "null", "undefined"].includes(normalized.toLowerCase()) ? normalized : "";
+      return normalized &&
+        !["n/a", "na", "none", "null", "undefined"].includes(
+          normalized.toLowerCase(),
+        )
+        ? normalized
+        : "";
     };
 
     const formatAddress = (addr) => {
@@ -3695,10 +3752,20 @@ export const getWorkQueue = async (req, res) => {
       if (typeof addr === "string") return addr;
       if (Array.isArray(addr) && addr.length > 0) {
         const first = addr[0];
-        return [first.barangay, first.city || first.municipality].map(cleanAddressPart).filter(Boolean).join(", ") || "Unknown Location";
+        return (
+          [first.barangay, first.city || first.municipality]
+            .map(cleanAddressPart)
+            .filter(Boolean)
+            .join(", ") || "Unknown Location"
+        );
       }
       if (typeof addr === "object") {
-        return [addr.barangay, addr.city || addr.municipality].map(cleanAddressPart).filter(Boolean).join(", ") || "Unknown Location";
+        return (
+          [addr.barangay, addr.city || addr.municipality]
+            .map(cleanAddressPart)
+            .filter(Boolean)
+            .join(", ") || "Unknown Location"
+        );
       }
       return "Unknown Location";
     };
@@ -3715,13 +3782,20 @@ export const getWorkQueue = async (req, res) => {
 
     const getFarmLocationDetails = (farmer) => {
       const farmLocation = farmer?.farmLocation || null;
-      const hasCoordinates = Number.isFinite(farmLocation?.latitude) && Number.isFinite(farmLocation?.longitude);
-      const label = farmLocation?.detectedAddress?.trim() || farmLocation?.landmark?.trim() || (hasCoordinates ? "Farm pin saved" : formatAddress(farmer?.address));
+      const hasCoordinates =
+        Number.isFinite(farmLocation?.latitude) &&
+        Number.isFinite(farmLocation?.longitude);
+      const label =
+        farmLocation?.detectedAddress?.trim() ||
+        farmLocation?.landmark?.trim() ||
+        (hasCoordinates ? "Farm pin saved" : formatAddress(farmer?.address));
       return {
         farmLocation,
         farmLocationLabel: label,
         hasFarmPin: hasCoordinates,
-        navigationTarget: hasCoordinates ? `${farmLocation.latitude},${farmLocation.longitude}` : null,
+        navigationTarget: hasCoordinates
+          ? `${farmLocation.latitude},${farmLocation.longitude}`
+          : null,
       };
     };
 
@@ -3776,9 +3850,7 @@ export const getWorkQueue = async (req, res) => {
       if (workflowType === "Health") {
         return (
           relatedRecordType === "health" ||
-          ["HEALTH", "TREATMENT", "VACCINATION", "DEWORMING"].includes(
-            taskType,
-          )
+          ["HEALTH", "TREATMENT", "VACCINATION", "DEWORMING"].includes(taskType)
         );
       }
 
@@ -3881,7 +3953,12 @@ export const getWorkQueue = async (req, res) => {
         displayDate: itemDisplayDate,
         farmerName: ins.farmerId?.name || "Unknown Farmer",
         farmerPhone: ins.farmerId?.phoneNumber || ins.farmerId?.phone || null,
-        farmerImageUrl: ins.farmerId?.imageUrl || ins.farmerId?.avatarUrl || ins.farmerId?.profilePicture || ins.farmerId?.avatar || "",
+        farmerImageUrl:
+          ins.farmerId?.imageUrl ||
+          ins.farmerId?.avatarUrl ||
+          ins.farmerId?.profilePicture ||
+          ins.farmerId?.avatar ||
+          "",
         farmerId: ins.farmerId || null,
         location: formatAddress(ins.farmerId?.address),
         ...farmLocationDetails,
@@ -3915,19 +3992,30 @@ export const getWorkQueue = async (req, res) => {
       const farmLocationDetails = getFarmLocationDetails(req.farmerId);
       const scheduleDate = req.scheduledDate || null;
       const terminal = ["resolved", "done"].includes(req.status);
-      const completedAt = terminal ? req.resolvedAt || req.updatedAt || null : null;
-      const itemDisplayDate = scheduleDate || completedAt || req.createdAt || null;
+      const completedAt = terminal
+        ? req.resolvedAt || req.updatedAt || null
+        : null;
+      const itemDisplayDate =
+        scheduleDate || completedAt || req.createdAt || null;
 
       let allowedAction = null;
       let actionLabel = null;
-      if (req.status === "pending" || req.status === "triaged" || req.status === "assigned") allowedAction = "CLAIM";
-      else if (req.status === "approved" || req.status === "scheduled") allowedAction = "START_SERVICE";
-      else if (req.status === "in-progress" || req.status === "in_progress") allowedAction = "RECORD_SERVICE";
+      if (
+        req.status === "pending" ||
+        req.status === "triaged" ||
+        req.status === "assigned"
+      )
+        allowedAction = "CLAIM";
+      else if (req.status === "approved" || req.status === "scheduled")
+        allowedAction = "START_SERVICE";
+      else if (req.status === "in-progress" || req.status === "in_progress")
+        allowedAction = "RECORD_SERVICE";
       else if (terminal) allowedAction = "VIEW_RECORD";
 
       if (allowedAction === "CLAIM") actionLabel = "Claim";
       else if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
-      else if (allowedAction === "RECORD_SERVICE") actionLabel = "Record Service";
+      else if (allowedAction === "RECORD_SERVICE")
+        actionLabel = "Record Service";
       else if (allowedAction === "VIEW_RECORD") actionLabel = "View Record";
 
       const item = {
@@ -3954,7 +4042,12 @@ export const getWorkQueue = async (req, res) => {
         displayDate: itemDisplayDate,
         farmerName: req.farmerId?.name || "Unknown Farmer",
         farmerPhone: req.farmerId?.phoneNumber || req.farmerId?.phone || null,
-        farmerImageUrl: req.farmerId?.imageUrl || req.farmerId?.avatarUrl || req.farmerId?.profilePicture || req.farmerId?.avatar || "",
+        farmerImageUrl:
+          req.farmerId?.imageUrl ||
+          req.farmerId?.avatarUrl ||
+          req.farmerId?.profilePicture ||
+          req.farmerId?.avatar ||
+          "",
         farmerId: req.farmerId || null,
         location: formatAddress(req.farmerId?.address),
         ...farmLocationDetails,
@@ -3987,74 +4080,88 @@ export const getWorkQueue = async (req, res) => {
         return;
       }
 
-        const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
-        const terminal = taskDoc.status === "Completed";
-        const firstAnimal = Array.isArray(taskDoc.animalIds) ? taskDoc.animalIds[0] : null;
+      const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
+      const terminal = taskDoc.status === "Completed";
+      const firstAnimal = Array.isArray(taskDoc.animalIds)
+        ? taskDoc.animalIds[0]
+        : null;
 
-        let allowedAction = null;
-        let wType = "StandaloneTask";
-        if (taskDoc.taskType === "PD") wType = "PD";
-        if (taskDoc.taskType === "CD" || taskDoc.taskType === "Calving") wType = "Calving";
+      let allowedAction = null;
+      let wType = "StandaloneTask";
+      if (taskDoc.taskType === "PD") wType = "PD";
+      if (taskDoc.taskType === "CD" || taskDoc.taskType === "Calving")
+        wType = "Calving";
 
-        if (["PD", "Calving"].includes(wType)) {
-          if (taskDoc.status === "Pending" && taskDoc.technicianId) allowedAction = "START_SERVICE";
-          else if (taskDoc.status === "In Progress") allowedAction = "RECORD_SERVICE";
-          else if (taskDoc.status === "Pending") allowedAction = "CLAIM";
-        } else if (["Pending", "In Progress"].includes(taskDoc.status)) {
-          allowedAction = taskDoc.technicianId ? "COMPLETE_TASK" : "CLAIM";
-        }
+      if (["PD", "Calving"].includes(wType)) {
+        if (taskDoc.status === "Pending" && taskDoc.technicianId)
+          allowedAction = "START_SERVICE";
+        else if (taskDoc.status === "In Progress")
+          allowedAction = "RECORD_SERVICE";
+        else if (taskDoc.status === "Pending") allowedAction = "CLAIM";
+      } else if (["Pending", "In Progress"].includes(taskDoc.status)) {
+        allowedAction = taskDoc.technicianId ? "COMPLETE_TASK" : "CLAIM";
+      }
 
-        let actionLabel = null;
-        if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
-        else if (allowedAction === "RECORD_SERVICE") actionLabel = "Record Service";
-        else if (allowedAction === "COMPLETE_TASK") actionLabel = "Complete Task";
-        else if (allowedAction === "CLAIM") actionLabel = "Claim";
+      let actionLabel = null;
+      if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
+      else if (allowedAction === "RECORD_SERVICE")
+        actionLabel = "Record Service";
+      else if (allowedAction === "COMPLETE_TASK") actionLabel = "Complete Task";
+      else if (allowedAction === "CLAIM") actionLabel = "Claim";
 
-        const serviceType =
-          wType === "PD"
-            ? "Pregnancy Diagnosis"
-            : wType === "Calving"
-              ? "Calving Assistance"
-              : taskDoc.taskType || "Task";
+      const serviceType =
+        wType === "PD"
+          ? "Pregnancy Diagnosis"
+          : wType === "Calving"
+            ? "Calving Assistance"
+            : taskDoc.taskType || "Task";
 
-        const item = {
-          id: taskId,
-          workflowId: null,
-          taskId,
-          workflowType: wType,
-          type: "task",
-          taskType: taskDoc.taskType || "Other",
-          serviceType,
-          status: taskDoc.status,
-          allowedAction,
-          actionLabel,
-          farmer: serializeFarmer(taskDoc.farmerId),
-          animal: serializeAnimal(firstAnimal),
-          schedule: { date: taskDoc.dueDate || null, visitPeriod: null },
-          requestedAt: taskDoc.createdAt || null,
-          completedAt: terminal ? taskDoc.completedAt || taskDoc.updatedAt || null : null,
-          displayStatus: taskDoc.status,
-          time: formatTime(itemDisplayDate),
-          displayDate: itemDisplayDate,
-          farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
-          farmerPhone: taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
-          farmerImageUrl: taskDoc.farmerId?.avatarUrl || taskDoc.farmerId?.profilePicture || taskDoc.farmerId?.avatar || null,
-          farmerId: taskDoc.farmerId || null,
-          location: formatAddress(taskDoc.farmerId?.address),
-          ...getFarmLocationDetails(taskDoc.farmerId),
-          animalId: firstAnimal || null,
-          animalTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
-          preferredTime: formatTime(itemDisplayDate),
-          task: `${taskDoc.taskType || "Visit"}${firstAnimal ? ` - ${firstAnimal.animalId || firstAnimal.earTag || "Unknown"}` : ""}`,
-          urgent: taskDoc.category === "Urgent" || taskDoc.category === "Emergency",
-          overdue: isOverdue(taskDoc.dueDate, terminal),
-          sentTime: formatTime(taskDoc.createdAt),
-          scheduledDate: taskDoc.dueDate || null,
-          visitPeriod: null,
-          raw: taskDoc,
-        };
+      const item = {
+        id: taskId,
+        workflowId: null,
+        taskId,
+        workflowType: wType,
+        type: "task",
+        taskType: taskDoc.taskType || "Other",
+        serviceType,
+        status: taskDoc.status,
+        allowedAction,
+        actionLabel,
+        farmer: serializeFarmer(taskDoc.farmerId),
+        animal: serializeAnimal(firstAnimal),
+        schedule: { date: taskDoc.dueDate || null, visitPeriod: null },
+        requestedAt: taskDoc.createdAt || null,
+        completedAt: terminal
+          ? taskDoc.completedAt || taskDoc.updatedAt || null
+          : null,
+        displayStatus: taskDoc.status,
+        time: formatTime(itemDisplayDate),
+        displayDate: itemDisplayDate,
+        farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerPhone:
+          taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
+        farmerImageUrl:
+          taskDoc.farmerId?.avatarUrl ||
+          taskDoc.farmerId?.profilePicture ||
+          taskDoc.farmerId?.avatar ||
+          null,
+        farmerId: taskDoc.farmerId || null,
+        location: formatAddress(taskDoc.farmerId?.address),
+        ...getFarmLocationDetails(taskDoc.farmerId),
+        animalId: firstAnimal || null,
+        animalTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
+        preferredTime: formatTime(itemDisplayDate),
+        task: `${taskDoc.taskType || "Visit"}${firstAnimal ? ` - ${firstAnimal.animalId || firstAnimal.earTag || "Unknown"}` : ""}`,
+        urgent:
+          taskDoc.category === "Urgent" || taskDoc.category === "Emergency",
+        overdue: isOverdue(taskDoc.dueDate, terminal),
+        sentTime: formatTime(taskDoc.createdAt),
+        scheduledDate: taskDoc.dueDate || null,
+        visitPeriod: null,
+        raw: taskDoc,
+      };
 
-        unifiedQueue.push(item);
+      unifiedQueue.push(item);
     });
 
     // Sort logic to match work queue priorities (overdue first, then by date)
@@ -4068,7 +4175,12 @@ export const getWorkQueue = async (req, res) => {
 
     res.status(200).json({
       data: unifiedQueue,
-      pagination: { total: unifiedQueue.length, page: 1, limit: unifiedQueue.length, totalPages: 1 },
+      pagination: {
+        total: unifiedQueue.length,
+        page: 1,
+        limit: unifiedQueue.length,
+        totalPages: 1,
+      },
     });
   } catch (error) {
     console.error("[getWorkQueue ERROR]", error);

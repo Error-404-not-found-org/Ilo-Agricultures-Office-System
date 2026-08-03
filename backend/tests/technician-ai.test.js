@@ -8,7 +8,10 @@ import { Notification } from "../src/models/notification.model.js";
 import { Task } from "../src/models/task.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Config } from "../src/models/config.model.js";
-import { recordTechnicianAIService } from "../src/services/livestock-transaction.service.js";
+import {
+  completeInsemination,
+  recordTechnicianAIService,
+} from "../src/services/livestock-transaction.service.js";
 import { AppError } from "../src/utils/app-error.js";
 
 const ids = {
@@ -46,6 +49,10 @@ const baseInsemination = {
   animalId: ids.animal,
   status: "pending",
   inseminationDate: null,
+  technicianNote: "",
+  attemptNumber: 3,
+  previousAttemptId: "507f1f77bcf86cd799439007",
+  attemptSeriesId: "507f1f77bcf86cd799439008",
 };
 
 const query = (value) => {
@@ -140,7 +147,7 @@ const installHarness = (overrides = {}) => {
   Insemination.findOneAndUpdate = async (filter, update, options) => {
     state.inseminationUpdates.push({ filter, update, options });
     if (state.insemination) {
-      state.insemination.status = "done";
+      Object.assign(state.insemination, update.$set);
     }
     return state.insemination;
   };
@@ -224,6 +231,7 @@ test("Technician AI Service Suite", async (t) => {
         inseminationDate: new Date(),
         sireBreed: "  Jersey  ",
         sireCode: "  JER-101  ",
+        technicianNote: "  Calm animal\nNo complications.  ",
         estrus: "Natural",
         actorId: ids.technician,
         isAdmin: false,
@@ -234,6 +242,10 @@ test("Technician AI Service Suite", async (t) => {
       assert.equal(harness.state.createdInseminations[0].sireBreed, "Jersey");
       assert.equal(harness.state.createdInseminations[0].sireCode, "JER-101");
       assert.equal(harness.state.createdInseminations[0].semenDosesUsed, 1);
+      assert.equal(
+        harness.state.createdInseminations[0].technicianNote,
+        "Calm animal\nNo complications.",
+      );
       assert.equal(harness.state.taskUpdates.length, 1);
       assert.equal(harness.state.notifications.length, 1);
       assert.equal(harness.state.audits.length, 1);
@@ -259,6 +271,7 @@ test("Technician AI Service Suite", async (t) => {
         sireBreed: "Holstein",
         sireCode: "HOL-202",
         semenDosesUsed: "2",
+        technicianNote: "  Service completed normally.  ",
         estrus: "Synchronized",
         actorId: ids.technician,
         isAdmin: false,
@@ -270,6 +283,25 @@ test("Technician AI Service Suite", async (t) => {
         harness.state.inseminationUpdates[0].update.$set.semenDosesUsed,
         2,
       );
+      assert.equal(
+        harness.state.inseminationUpdates[0].update.$set.technicianNote,
+        "Service completed normally.",
+      );
+      assert.equal(
+        result.insemination.technicianNote,
+        "Service completed normally.",
+      );
+      assert.equal(result.insemination._id, ids.request);
+      assert.equal(result.insemination.attemptNumber, 3);
+      assert.equal(
+        result.insemination.previousAttemptId,
+        baseInsemination.previousAttemptId,
+      );
+      assert.equal(
+        result.insemination.attemptSeriesId,
+        baseInsemination.attemptSeriesId,
+      );
+      assert.equal(harness.state.createdInseminations.length, 0);
       assert.equal(harness.state.taskUpdates.length, 1);
       assert.equal(harness.state.pdTasks.length, 2);
     } finally {
@@ -423,6 +455,110 @@ test("Technician AI Service Suite", async (t) => {
         }),
         (error) => error.code === "SIRE_CODE_REQUIRED",
       );
+    }
+  });
+
+  await t.test("supports legacy note aliases and an optional task", async () => {
+    const harness = installHarness({ insemination: false, task: false });
+
+    try {
+      const result = await recordTechnicianAIService({
+        farmerId: ids.farmer,
+        animalId: ids.animal,
+        inseminationDate: new Date(),
+        sireBreed: "Jersey",
+        sireCode: "JER-103",
+        notes: "  Sent by legacy mobile  ",
+        actorId: ids.technician,
+        isAdmin: false,
+      });
+
+      assert.equal(result.task, null);
+      assert.equal(
+        harness.state.createdInseminations[0].technicianNote,
+        "Sent by legacy mobile",
+      );
+    } finally {
+      harness.uninstall();
+    }
+  });
+
+  await t.test("keeps a missing or whitespace-only technician note optional", async () => {
+    for (const note of [undefined, "  \n  "]) {
+      const harness = installHarness({ insemination: false, task: false });
+      try {
+        await recordTechnicianAIService({
+          farmerId: ids.farmer,
+          animalId: ids.animal,
+          inseminationDate: new Date(),
+          sireBreed: "Jersey",
+          sireCode: "JER-104",
+          technicianNote: note,
+          actorId: ids.technician,
+          isAdmin: false,
+        });
+
+        assert.equal(
+          Object.hasOwn(
+            harness.state.createdInseminations[0],
+            "technicianNote",
+          ),
+          false,
+        );
+      } finally {
+        harness.uninstall();
+      }
+    }
+  });
+
+  await t.test("rejects invalid and oversized technician notes before mutation", async () => {
+    for (const technicianNote of [42, "N".repeat(2001)]) {
+      await assert.rejects(
+        recordTechnicianAIService({
+          farmerId: ids.farmer,
+          animalId: ids.animal,
+          inseminationDate: new Date(),
+          sireBreed: "Jersey",
+          sireCode: "JER-105",
+          technicianNote,
+          actorId: ids.technician,
+        }),
+        (error) =>
+          ["INVALID_TECHNICIAN_NOTE", "TECHNICIAN_NOTE_TOO_LONG"].includes(
+            error.code,
+          ),
+      );
+    }
+  });
+
+  await t.test("normalizes note aliases at the canonical completion boundary", async () => {
+    const harness = installHarness({
+      insemination: { ...baseInsemination, technicianNote: "" },
+    });
+
+    try {
+      const result = await completeInsemination({
+        id: ids.request,
+        updateData: {
+          status: "done",
+          inseminationDate: new Date(),
+          sireBreed: "Jersey",
+          sireCode: "JER-106",
+          notes: "  Canonical boundary note  ",
+        },
+        technicianId: ids.technician,
+        farmerId: ids.farmer,
+        animalId: ids.animal,
+        animalTag: "AI-106",
+      });
+
+      assert.equal(result.technicianNote, "Canonical boundary note");
+      assert.equal(
+        Object.hasOwn(harness.state.inseminationUpdates[0].update.$set, "notes"),
+        false,
+      );
+    } finally {
+      harness.uninstall();
     }
   });
 });
