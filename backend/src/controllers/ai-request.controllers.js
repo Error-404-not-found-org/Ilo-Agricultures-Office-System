@@ -38,6 +38,7 @@ import { getEarlyStartTiming } from "../domain/service-timing.js";
 import { notifyUser } from "../services/notification-delivery.service.js";
 import {
   normalizeAICompletionFields,
+  normalizeAIScheduleDate,
   normalizeVisitPeriod,
 } from "../domain/ai-recording-fields.js";
 
@@ -799,6 +800,165 @@ export const updateRequestStatus = async (req, res) => {
         ? "This operation requires a transaction-capable database."
         : error.message || "Failed to update request status.",
       code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
+    });
+  }
+};
+
+// PATCH /api/ai-request/:id/claim-and-schedule
+// New date-only workflow: assignment and scheduling are one conditional write.
+export const claimAndScheduleAIRequest = async (req, res) => {
+  try {
+    if (req.user?.role !== "technician") {
+      return res.status(403).json({
+        message: "Only technicians can claim and schedule AI requests.",
+        code: "AI_REQUEST_CLAIM_FORBIDDEN",
+      });
+    }
+
+    if (
+      Object.hasOwn(req.body, "approvedBy") ||
+      Object.hasOwn(req.body, "technicianId")
+    ) {
+      return res.status(400).json({
+        message: "The assigned technician is determined by authentication.",
+        code: "TECHNICIAN_ASSIGNMENT_NOT_ALLOWED",
+      });
+    }
+
+    const scheduledDate = normalizeAIScheduleDate(req.body.scheduledDate);
+    const visitPeriod = normalizeVisitPeriod(req.body.visitPeriod);
+    if (visitPeriod === undefined) {
+      return res.status(400).json({
+        message: "Choose morning or afternoon before scheduling.",
+        code: "VISIT_PERIOD_REQUIRED",
+      });
+    }
+
+    const changedAt = new Date();
+    const request = await Insemination.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        deletedAt: null,
+        status: AI_STATUS.PENDING,
+        cancellationStatus: { $nin: ["requested", "approved"] },
+        ...buildAIRequestAssignmentGuard({
+          technicianId: req.user._id,
+          allowPendingUnassigned: true,
+        }),
+      },
+      {
+        $set: {
+          approvedBy: req.user._id,
+          scheduledDate,
+          visitPeriod,
+          status: AI_STATUS.SCHEDULED,
+          claimedAt: changedAt,
+          scheduledAt: changedAt,
+        },
+      },
+      { returnDocument: "after", runValidators: true },
+    )
+      .populate("farmerId", "name pushToken")
+      .populate("animalId", "animalId earTag species")
+      .populate("approvedBy", "name");
+
+    if (!request) {
+      const current = await Insemination.findById(req.params.id)
+        .populate("farmerId", "name pushToken")
+        .populate("animalId", "animalId earTag species")
+        .populate("approvedBy", "name");
+
+      if (!current) {
+        return res.status(404).json({
+          message: "AI request record not found.",
+          code: "AI_REQUEST_NOT_FOUND",
+        });
+      }
+
+      const assignedTechnicianId =
+        current.approvedBy?._id?.toString() ||
+        current.approvedBy?.toString() ||
+        null;
+      const isSameTechnician =
+        assignedTechnicianId === req.user._id.toString();
+      const isSameSchedule =
+        current.scheduledDate &&
+        new Date(current.scheduledDate).getTime() === scheduledDate.getTime() &&
+        current.visitPeriod === visitPeriod;
+
+      if (
+        !current.deletedAt &&
+        current.status === AI_STATUS.SCHEDULED &&
+        isSameTechnician &&
+        isSameSchedule
+      ) {
+        return res.status(200).json({
+          message: "Request was already claimed and scheduled.",
+          request: current,
+          idempotent: true,
+        });
+      }
+
+      if (assignedTechnicianId && !isSameTechnician) {
+        return res.status(409).json({
+          message: "This request has already been claimed by another technician.",
+          code: "REQUEST_ALREADY_CLAIMED",
+        });
+      }
+
+      return res.status(409).json({
+        message: `This request is ${current.deletedAt ? "deleted" : current.status} and cannot be scheduled.`,
+        code: "REQUEST_NOT_CLAIMABLE",
+      });
+    }
+
+    try {
+      if (request.farmerId?._id) {
+        await notifyUser({
+          recipient: request.farmerId,
+          senderId: req.user._id,
+          type: "ai-request",
+          relatedId: request._id,
+          category: "ai",
+          eventType: "service_visit_scheduled",
+          linkType: "request",
+          dedupeKey: `ai-visit-scheduled:${request._id}`,
+          title: "AI visit scheduled",
+          message: `Technician ${req.user.name || "assigned technician"} scheduled the AI visit for ${visitPeriod}.`,
+          metadata: {
+            requestId: request._id,
+            animalId: request.animalId?._id,
+            animalTag:
+              request.animalId?.earTag || request.animalId?.animalId,
+            serviceType: "ai",
+            technicianName: req.user.name,
+            scheduledDate: request.scheduledDate,
+            visitPeriod: request.visitPeriod,
+          },
+        });
+      }
+    } catch (notifyError) {
+      console.error("[claimAndScheduleAIRequest NOTIFICATION ERROR]", notifyError.message);
+    }
+
+    const io = req.app?.get?.("io");
+    if (io) {
+      io.emit("dashboardUpdate", {
+        type: "AI_REQUEST_SCHEDULED",
+        requestId: request._id,
+        status: request.status,
+      });
+    }
+
+    return res.status(200).json({
+      message: "AI request claimed and scheduled successfully.",
+      request,
+    });
+  } catch (error) {
+    console.error("[claimAndScheduleAIRequest ERROR]", error.message);
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to claim and schedule AI request.",
+      code: error.code,
     });
   }
 };

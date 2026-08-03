@@ -107,6 +107,9 @@ const InseminationSchema = new mongoose.Schema(
     scheduledDate: {
       type: Date,
     },
+    scheduledAt: {
+      type: Date,
+    },
     visitPeriod: {
       type: String,
       enum: ["morning", "afternoon"],

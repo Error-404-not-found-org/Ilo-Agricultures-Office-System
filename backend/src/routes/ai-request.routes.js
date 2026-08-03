@@ -5,6 +5,7 @@ import {
   getMyRequests,
   getAllRequests,
   updateRequestStatus,
+  claimAndScheduleAIRequest,
   confirmAIOutcome,
   submitFarmerBreedingObservation,
   verifyFarmerBreedingObservation,
@@ -47,6 +48,14 @@ router.patch(
   protectedRoute,
   requireRole(["technician", "admin"]),
   updateRequestStatus,
+);
+
+// Atomic confirmed workflow: claim and set the date-only visit window.
+router.patch(
+  "/:id/claim-and-schedule",
+  protectedRoute,
+  requireRole(["technician"]),
+  claimAndScheduleAIRequest,
 );
 
 // Farmer confirms AI outcome

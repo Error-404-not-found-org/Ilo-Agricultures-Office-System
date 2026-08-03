@@ -4,7 +4,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { updateRequestStatus } from "../src/controllers/ai-request.controllers.js";
+import {
+  claimAndScheduleAIRequest,
+  updateRequestStatus,
+} from "../src/controllers/ai-request.controllers.js";
 import { updateInsemination } from "../src/controllers/insemination.controllers.js";
 import { claimRequest } from "../src/controllers/technician.controllers.js";
 import { protectedRoute, requireRole } from "../src/middleware/auth.middleware.js";
@@ -73,6 +76,10 @@ test("AI authorization: list and status routes require technician or admin", () 
     /router\.patch\(\s*"\/:id\/status",\s*protectedRoute,\s*requireRole\(\["technician", "admin"\]\),\s*updateRequestStatus,\s*\)/,
   );
   assert.match(
+    aiRoutes,
+    /router\.patch\(\s*"\/:id\/claim-and-schedule",\s*protectedRoute,\s*requireRole\(\["technician"\]\),\s*claimAndScheduleAIRequest,\s*\)/,
+  );
+  assert.match(
     technicianRoutes,
     /router\.patch\(\s*"\/inseminations\/:id\/status",\s*requireRole\(\["technician", "admin"\]\),\s*updateCanonicalAIRequestStatus,\s*\)/,
   );
@@ -81,6 +88,18 @@ test("AI authorization: list and status routes require technician or admin", () 
   assert.equal(runRoleGuard("admin").nextCalled, true);
   assert.equal(runRoleGuard("farmer").statusCode, 403);
   assert.equal(runRoleGuard("veterinarian").statusCode, 403);
+
+  const technicianOnly = createResponseRecorder();
+  let technicianOnlyNext = false;
+  requireRole(["technician"])(
+    { user: { role: "technician" } },
+    technicianOnly.response,
+    () => {
+      technicianOnlyNext = true;
+    },
+  );
+  assert.equal(technicianOnlyNext, true);
+  assert.equal(typeof claimAndScheduleAIRequest, "function");
 });
 
 test("AI authorization: unauthenticated callers are rejected", async () => {
