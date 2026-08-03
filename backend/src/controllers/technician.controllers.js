@@ -3078,14 +3078,40 @@ export const getTechnicianRequests = async (req, res) => {
       }).select("_id");
       const animalIds = animals.map((a) => a._id);
 
-      aiQuery.$or = [
+      const aiSearchFilter = {
+        $or: [
         { farmerId: { $in: farmerIds } },
         { animalId: { $in: animalIds } },
-      ];
-      healthQuery.$or = [
+        ],
+      };
+      const healthSearchFilter = {
+        $or: [
         { farmerId: { $in: farmerIds } },
         { animalId: { $in: animalIds } },
-      ];
+        ],
+      };
+
+      if (aiQuery.$or) {
+        aiQuery.$and = [
+          ...(aiQuery.$and || []),
+          { $or: aiQuery.$or },
+          aiSearchFilter,
+        ];
+        delete aiQuery.$or;
+      } else {
+        aiQuery.$or = aiSearchFilter.$or;
+      }
+
+      if (healthQuery.$or) {
+        healthQuery.$and = [
+          ...(healthQuery.$and || []),
+          { $or: healthQuery.$or },
+          healthSearchFilter,
+        ];
+        delete healthQuery.$or;
+      } else {
+        healthQuery.$or = healthSearchFilter.$or;
+      }
       taskAndFilters.push({
         $or: [
           { farmerId: { $in: farmerIds } },
@@ -3222,6 +3248,30 @@ export const getTechnicianRequests = async (req, res) => {
       const hasFarmPin = !!(farmLoc.latitude && farmLoc.longitude);
       const city = addr.city || "";
       const barangay = addr.barangay || "";
+      const assignedTechnicianId =
+        rec.approvedBy?._id || rec.approvedBy || rec.technicianId || null;
+      const isUnassigned = !assignedTechnicianId;
+
+      let allowedAction = null;
+      let actionLabel = null;
+      if (rec.status === "pending" && isUnassigned) {
+        allowedAction = "CLAIM_AND_SCHEDULE";
+        actionLabel = "Claim & Set Visit";
+      } else if (rec.status === "approved") {
+        allowedAction = "SCHEDULE_VISIT";
+        actionLabel = "Schedule Visit";
+      } else if (["scheduled", "in-progress"].includes(rec.status)) {
+        allowedAction = "RECORD_SERVICE";
+        actionLabel = "Record Insemination";
+      } else if (rec.status === "done") {
+        allowedAction = "VIEW_RECORD";
+        actionLabel = "View Record";
+      }
+
+      const attachmentUrls = [
+        rec.imageUrl,
+        ...(Array.isArray(rec.evidencePhotos) ? rec.evidencePhotos : []),
+      ].filter(Boolean);
 
       let distanceKm = null;
       if (
@@ -3243,9 +3293,14 @@ export const getTechnicianRequests = async (req, res) => {
 
       return {
         id: rec._id,
+        workflowId: rec._id,
+        taskId: null,
+        workflowType: "AI",
         type: "ai",
         serviceType: "Artificial Insemination",
         status: rec.status,
+        allowedAction,
+        actionLabel,
         isReadyToday: !!isReady,
         displayStatus: isReady
           ? "Ready Today"
@@ -3257,6 +3312,13 @@ export const getTechnicianRequests = async (req, res) => {
         farmerId: farmer._id || farmer,
         farmerImageUrl: farmer.imageUrl || "",
         farmerPhone: farmer.phoneNumber || "",
+        phone: farmer.phoneNumber || farmer.phone || null,
+        farmerDetails: {
+          id: farmer._id || null,
+          name: farmer.name || "Unknown Farmer",
+          phone: farmer.phoneNumber || farmer.phone || null,
+          location: formatAddress(farmer.address),
+        },
         animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
         animalId: rec.animalId?._id || rec.animalId,
         earTag: rec.animalId?.earTag || "",
@@ -3275,6 +3337,17 @@ export const getTechnicianRequests = async (req, res) => {
         preferredDate: rec.preferredDate || rec.createdAt,
         scheduledDate: rec.scheduledDate || null,
         visitPeriod: rec.visitPeriod,
+        schedule: {
+          date: rec.scheduledDate || null,
+          visitPeriod: rec.visitPeriod || null,
+        },
+        heatSigns: Array.isArray(rec.heatSigns) ? rec.heatSigns : [],
+        requestSubmissionDate: rec.createdAt,
+        attachments: {
+          primaryUrl: rec.imageUrl || attachmentUrls[0] || null,
+          urls: attachmentUrls,
+          count: attachmentUrls.length,
+        },
         assignedTechnician: rec.approvedBy?.name || "",
         createdAt: rec.createdAt,
         raw: rec,
@@ -3517,11 +3590,8 @@ export const getTechnicianRequests = async (req, res) => {
 
 export const getWorkQueue = async (req, res) => {
   try {
-    const hideDeclinedForMe =
-      req.user?.role !== "admin" && req.user?._id
-        ? { declinedByTechnicianIds: { $ne: req.user._id } }
-        : {};
-
+    const isAdmin = req.user?.role === "admin";
+    const authenticatedUserId = req.user?._id;
     const now = new Date();
     const PHT_OFFSET = 8 * 60 * 60 * 1000;
     const todayStart = new Date(now.getTime() + PHT_OFFSET);
@@ -3529,42 +3599,92 @@ export const getWorkQueue = async (req, res) => {
     todayStart.setTime(todayStart.getTime() - PHT_OFFSET);
     const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
+    const aiQuery = {
+      status: { $in: ["pending", "approved", "scheduled", "in-progress", "done"] },
+      deletedAt: null,
+      ...(isAdmin
+        ? {}
+        : {
+            declinedByTechnicianIds: { $ne: authenticatedUserId },
+            $or: [
+              { approvedBy: authenticatedUserId },
+              { status: "done", technicianId: authenticatedUserId },
+            ],
+          }),
+    };
+
+    const healthAssigneeField =
+      req.user?.role === "veterinarian"
+        ? "assignedVeterinarianId"
+        : "assignedTechnicianId";
+    const healthQuery = {
+      status: {
+        $in: [
+          "pending",
+          "triaged",
+          "assigned",
+          "approved",
+          "scheduled",
+          "in-progress",
+          "in_progress",
+          "resolved",
+          "done",
+        ],
+      },
+      deletedAt: null,
+      ...(isAdmin
+        ? {}
+        : {
+            declinedByTechnicianIds: { $ne: authenticatedUserId },
+            $or: [
+              { handledBy: authenticatedUserId },
+              { [healthAssigneeField]: authenticatedUserId },
+            ],
+          }),
+    };
+
+    const taskQuery = {
+      status: { $in: ["Pending", "In Progress", "Completed"] },
+      ...(isAdmin
+        ? {}
+        : {
+            $or: [
+              { technicianId: authenticatedUserId },
+              { technicianId: null },
+              { technicianId: { $exists: false } },
+            ],
+          }),
+    };
+
     const [inseminations, healthReqs, scheduledTasks] = await Promise.all([
-      // Data Streams
-      Insemination.find({
-        status: { $in: ["pending", "approved", "scheduled", "in-progress"] },
-        deletedAt: null,
-        ...hideDeclinedForMe,
-      })
+      Insemination.find(aiQuery)
         .populate("farmerId", "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar")
-        .populate("animalId", "animalId earTag imageUrl breed species")
+        .populate("animalId", "name animalId earTag imageUrl breed species")
         .sort({ createdAt: -1 })
         .lean(),
 
-      HealthRequest.find({
-        status: {
-          $in: ["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress"],
-        },
-        deletedAt: null,
-        ...hideDeclinedForMe,
-      })
+      HealthRequest.find(healthQuery)
         .populate("farmerId", "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar")
-        .populate("animalId", "animalId earTag imageUrl breed species")
+        .populate("animalId", "name animalId earTag imageUrl breed species")
         .sort({ urgency: -1, createdAt: -1 })
         .lean(),
 
-      Task.find({
-        status: { $in: ["Pending", "In Progress"] },
-        dueDate: { $ne: null },
-        ...(req.user.role !== "admin" ? { technicianId: req.user._id } : {}),
-      })
+      Task.find(taskQuery)
         .populate("farmerId", "name phoneNumber phone address farmLocation avatarUrl profilePicture avatar")
-        .populate("animalIds", "animalId earTag imageUrl breed species")
+        .populate("animalIds", "name animalId earTag imageUrl breed species")
         .sort({ dueDate: 1, createdAt: -1 })
         .lean(),
     ]);
 
-    // Formatters
+    const idOf = (value) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === "object" && value._id !== undefined) {
+        return idOf(value._id);
+      }
+      const normalized = String(value).trim();
+      return normalized || null;
+    };
+
     const cleanAddressPart = (value) => {
       const normalized = String(value || "").trim();
       return normalized && !["n/a", "na", "none", "null", "undefined"].includes(normalized.toLowerCase()) ? normalized : "";
@@ -3585,7 +3705,12 @@ export const getWorkQueue = async (req, res) => {
 
     const formatTime = (date) => {
       if (!date) return "Not Set";
-      return new Date(date).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Manila" });
+      return new Date(date).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "Asia/Manila",
+      });
     };
 
     const getFarmLocationDetails = (farmer) => {
@@ -3600,49 +3725,179 @@ export const getWorkQueue = async (req, res) => {
       };
     };
 
+    const serializeFarmer = (farmer) => ({
+      id: idOf(farmer),
+      name: farmer?.name || "Unknown Farmer",
+      phone: farmer?.phoneNumber || farmer?.phone || null,
+      location: formatAddress(farmer?.address),
+    });
+
+    const serializeAnimal = (animal) => ({
+      id: idOf(animal),
+      name: animal?.name || animal?.animalId || animal?.earTag || "Unknown",
+      earTag: animal?.earTag || animal?.animalId || null,
+    });
+
+    const taskLinkIds = (taskDoc) => {
+      const metadata = taskDoc?.metadata || {};
+      return new Set(
+        [
+          taskDoc?.relatedRecordId,
+          taskDoc?.requestId,
+          taskDoc?.sourceId,
+          taskDoc?.inseminationId,
+          metadata.relatedRecordId,
+          metadata.requestId,
+          metadata.sourceId,
+          metadata.inseminationId,
+          metadata.healthRequestId,
+        ]
+          .map(idOf)
+          .filter(Boolean),
+      );
+    };
+
+    const isExecutionTaskForWorkflow = (taskDoc, workflowType, workflowId) => {
+      if (!workflowId || !taskLinkIds(taskDoc).has(workflowId)) return false;
+
+      const taskType = String(taskDoc?.taskType || "").toUpperCase();
+      const relatedRecordType = String(
+        taskDoc?.relatedRecordType || "",
+      ).toLowerCase();
+
+      // PD and Calving are distinct downstream activities even when they carry
+      // an insemination id for lineage.
+      if (["PD", "CD", "CALVING"].includes(taskType)) return false;
+
+      if (workflowType === "AI") {
+        return taskType === "AI" || relatedRecordType === "insemination";
+      }
+
+      if (workflowType === "Health") {
+        return (
+          relatedRecordType === "health" ||
+          ["HEALTH", "TREATMENT", "VACCINATION", "DEWORMING"].includes(
+            taskType,
+          )
+        );
+      }
+
+      return false;
+    };
+
+    const findExecutionTask = (workflowType, workflowId) =>
+      scheduledTasks.find((taskDoc) => {
+        const taskTechnicianId = idOf(taskDoc.technicianId);
+        const taskIsVisible =
+          isAdmin ||
+          !taskTechnicianId ||
+          taskTechnicianId === idOf(authenticatedUserId);
+        return (
+          taskIsVisible &&
+          isExecutionTaskForWorkflow(taskDoc, workflowType, workflowId)
+        );
+      }) || null;
+
+    const isToday = (date) => {
+      if (!date) return false;
+      const value = new Date(date);
+      return value >= todayStart && value < todayEnd;
+    };
+
+    const isOverdue = (date, terminal) => {
+      if (!date || terminal) return false;
+      const value = new Date(date);
+      return !Number.isNaN(value.getTime()) && value < todayStart;
+    };
+
     const unifiedQueue = [];
+    const workflowOwnedTaskIds = new Set();
 
     inseminations.forEach((ins) => {
+      const workflowId = idOf(ins);
+      if (!workflowId) return;
+
+      const assignedTechnicianId = idOf(ins.approvedBy);
+      if (ins.status === "pending" && !assignedTechnicianId) return;
+
+      const matchedTask = findExecutionTask("AI", workflowId);
+      const taskId = idOf(matchedTask);
+      if (taskId) workflowOwnedTaskIds.add(taskId);
+
       const farmLocationDetails = getFarmLocationDetails(ins.farmerId);
-      const isMobileRequest = !ins.sireCode && ins.status === "pending";
-      const itemDisplayDate = (ins.status === "done" || ins.status === "resolved") ? (ins.inseminationDate || ins.scheduledDate || ins.preferredDate || ins.createdAt) : (ins.scheduledDate || ins.preferredDate || ins.inseminationDate || ins.createdAt);
-      const isOverdue = ["pending", "approved", "scheduled", "in-progress"].includes(ins.status) && new Date(itemDisplayDate) < todayStart;
-      const isReadyToday = ["approved", "scheduled"].includes(ins.status) && new Date(itemDisplayDate) >= todayStart && new Date(itemDisplayDate) < todayEnd;
+      const scheduleDate = ins.scheduledDate || null;
+      const completedAt =
+        ins.status === "done"
+          ? ins.inseminationDate || ins.updatedAt || null
+          : null;
+      const itemDisplayDate =
+        scheduleDate || completedAt || ins.createdAt || null;
+      const terminal = ins.status === "done";
 
       let allowedAction = null;
-      if (ins.status === "pending") allowedAction = "CLAIM";
-      else if (ins.status === "approved") allowedAction = "SCHEDULE_VISIT";
-      else if (ins.status === "scheduled") allowedAction = "START_SERVICE";
-      else if (ins.status === "in-progress") allowedAction = "RECORD_SERVICE";
-      else if (ins.status === "done" || ins.status === "resolved") allowedAction = "VIEW_RECORD";
-      
-      const matchedTask = scheduledTasks.find(t => String(t.relatedRecordId) === String(ins._id) || String(t.metadata?.requestId) === String(ins._id) || String(t.metadata?.sourceId) === String(ins._id));
+      let actionLabel = null;
+      let stateIssue = null;
+      if (ins.status === "pending") {
+        actionLabel = "Schedule review required";
+        stateIssue = scheduleDate
+          ? "PENDING_WITH_SCHEDULE"
+          : "PENDING_ASSIGNED_WITHOUT_SCHEDULE";
+      } else if (ins.status === "approved") {
+        allowedAction = "SCHEDULE_VISIT";
+        actionLabel = "Schedule Visit";
+      } else if (["scheduled", "in-progress"].includes(ins.status)) {
+        allowedAction = "RECORD_SERVICE";
+        actionLabel = "Record Insemination";
+      } else if (ins.status === "done") {
+        allowedAction = "VIEW_RECORD";
+        actionLabel = "View Record";
+      }
 
       const item = {
-        id: ins._id,
-        taskId: matchedTask ? matchedTask._id : null,
+        id: workflowId,
+        workflowId,
+        taskId,
         workflowType: "AI",
         type: "insemination",
         taskType: "AI",
         serviceType: "Artificial Insemination",
         status: ins.status,
-        isReadyToday,
+        allowedAction,
+        actionLabel,
+        stateIssue,
+        farmer: serializeFarmer(ins.farmerId),
+        animal: serializeAnimal(ins.animalId),
+        schedule: {
+          date: scheduleDate,
+          visitPeriod: ins.visitPeriod || null,
+        },
+        requestedAt: ins.createdAt || null,
+        completedAt,
+        isReadyToday:
+          ["approved", "scheduled"].includes(ins.status) &&
+          isToday(scheduleDate),
         time: formatTime(itemDisplayDate),
         preferredTime: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
-        farmer: ins.farmerId?.name || "Unknown Farmer",
         farmerName: ins.farmerId?.name || "Unknown Farmer",
         farmerPhone: ins.farmerId?.phoneNumber || ins.farmerId?.phone || null,
         farmerImageUrl: ins.farmerId?.imageUrl || ins.farmerId?.avatarUrl || ins.farmerId?.profilePicture || ins.farmerId?.avatar || "",
+        farmerId: ins.farmerId || null,
         location: formatAddress(ins.farmerId?.address),
         ...farmLocationDetails,
+        animalId: ins.animalId || null,
         animalTag: ins.animalId?.earTag || ins.animalId?.animalId || null,
-        displayStatus: isReadyToday ? "Ready Today" : ins.status,
-        task: isMobileRequest ? `AI Request (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}` : `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`,
-        urgent: isMobileRequest,
-        overdue: isOverdue,
+        displayStatus:
+          ["approved", "scheduled"].includes(ins.status) &&
+          isToday(scheduleDate)
+            ? "Ready Today"
+            : ins.status,
+        task: `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`,
+        urgent: false,
+        overdue: isOverdue(scheduleDate, terminal),
         sentTime: formatTime(ins.createdAt),
-        allowedAction,
+        scheduledDate: scheduleDate,
+        visitPeriod: ins.visitPeriod || null,
         raw: ins,
       };
 
@@ -3650,43 +3905,72 @@ export const getWorkQueue = async (req, res) => {
     });
 
     healthReqs.forEach((req) => {
+      const workflowId = idOf(req);
+      if (!workflowId) return;
+
+      const matchedTask = findExecutionTask("Health", workflowId);
+      const taskId = idOf(matchedTask);
+      if (taskId) workflowOwnedTaskIds.add(taskId);
+
       const farmLocationDetails = getFarmLocationDetails(req.farmerId);
-      const itemDisplayDate = (req.status === "resolved" || req.status === "done") ? (req.scheduledDate || req.preferredDate || req.createdAt) : (req.scheduledDate || req.preferredDate || req.createdAt);
-      const isOverdue = ["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress"].includes(req.status) && new Date(itemDisplayDate) < todayStart;
-      const isReadyToday = ["approved", "scheduled"].includes(req.status) && new Date(itemDisplayDate) >= todayStart && new Date(itemDisplayDate) < todayEnd;
+      const scheduleDate = req.scheduledDate || null;
+      const terminal = ["resolved", "done"].includes(req.status);
+      const completedAt = terminal ? req.resolvedAt || req.updatedAt || null : null;
+      const itemDisplayDate = scheduleDate || completedAt || req.createdAt || null;
 
       let allowedAction = null;
+      let actionLabel = null;
       if (req.status === "pending" || req.status === "triaged" || req.status === "assigned") allowedAction = "CLAIM";
       else if (req.status === "approved" || req.status === "scheduled") allowedAction = "START_SERVICE";
       else if (req.status === "in-progress" || req.status === "in_progress") allowedAction = "RECORD_SERVICE";
+      else if (terminal) allowedAction = "VIEW_RECORD";
 
-      const matchedTask = scheduledTasks.find(t => String(t.relatedRecordId) === String(req._id) || String(t.metadata?.requestId) === String(req._id) || String(t.metadata?.sourceId) === String(req._id));
+      if (allowedAction === "CLAIM") actionLabel = "Claim";
+      else if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
+      else if (allowedAction === "RECORD_SERVICE") actionLabel = "Record Service";
+      else if (allowedAction === "VIEW_RECORD") actionLabel = "View Record";
 
       const item = {
-        id: req._id,
-        taskId: matchedTask ? matchedTask._id : null,
+        id: workflowId,
+        workflowId,
+        taskId,
         workflowType: "Health",
         type: "health",
         taskType: "Health",
         serviceType: req.requestType || "Health Assistance",
         status: req.status,
-        isReadyToday,
+        allowedAction,
+        actionLabel,
+        farmer: serializeFarmer(req.farmerId),
+        animal: serializeAnimal(req.animalId),
+        schedule: { date: scheduleDate, visitPeriod: null },
+        requestedAt: req.createdAt || null,
+        completedAt,
+        isReadyToday:
+          ["approved", "scheduled"].includes(req.status) &&
+          isToday(scheduleDate),
         time: formatTime(itemDisplayDate),
         preferredTime: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
-        farmer: req.farmerId?.name || "Unknown Farmer",
         farmerName: req.farmerId?.name || "Unknown Farmer",
         farmerPhone: req.farmerId?.phoneNumber || req.farmerId?.phone || null,
         farmerImageUrl: req.farmerId?.imageUrl || req.farmerId?.avatarUrl || req.farmerId?.profilePicture || req.farmerId?.avatar || "",
+        farmerId: req.farmerId || null,
         location: formatAddress(req.farmerId?.address),
         ...farmLocationDetails,
+        animalId: req.animalId || null,
         animalTag: req.animalId?.earTag || req.animalId?.animalId || null,
-        displayStatus: isReadyToday ? "Ready Today" : req.status,
+        displayStatus:
+          ["approved", "scheduled"].includes(req.status) &&
+          isToday(scheduleDate)
+            ? "Ready Today"
+            : req.status,
         task: `Health Check - ${req.animalId?.animalId || req.animalId?.earTag || "Unknown"}`,
         urgent: ["high", "emergency"].includes(req.urgency),
-        overdue: isOverdue,
+        overdue: isOverdue(scheduleDate, terminal),
         sentTime: formatTime(req.createdAt),
-        allowedAction,
+        scheduledDate: scheduleDate,
+        visitPeriod: null,
         raw: req,
       };
 
@@ -3694,37 +3978,68 @@ export const getWorkQueue = async (req, res) => {
     });
 
     scheduledTasks.forEach((taskDoc) => {
-      // Check if this task is associated with an already processed workflow item
-      const isAssociated = inseminations.some(ins => String(ins._id) === String(taskDoc.relatedRecordId) || String(ins._id) === String(taskDoc.metadata?.requestId) || String(ins._id) === String(taskDoc.metadata?.sourceId)) ||
-                           healthReqs.some(req => String(req._id) === String(taskDoc.relatedRecordId) || String(req._id) === String(taskDoc.metadata?.requestId) || String(req._id) === String(taskDoc.metadata?.sourceId));
-      
-      if (!isAssociated) {
+      const taskId = idOf(taskDoc);
+      if (!taskId || workflowOwnedTaskIds.has(taskId)) return;
+      if (
+        !isAdmin &&
+        idOf(taskDoc.technicianId) !== idOf(authenticatedUserId)
+      ) {
+        return;
+      }
+
         const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
-        const isOverdue = ["Pending", "In Progress"].includes(taskDoc.status) && new Date(itemDisplayDate) < todayStart;
+        const terminal = taskDoc.status === "Completed";
         const firstAnimal = Array.isArray(taskDoc.animalIds) ? taskDoc.animalIds[0] : null;
 
         let allowedAction = null;
-        if (taskDoc.status === "Pending" && taskDoc.technicianId) allowedAction = "START_SERVICE";
-        else if (taskDoc.status === "In Progress") allowedAction = "RECORD_SERVICE";
-        else if (taskDoc.status === "Pending") allowedAction = "CLAIM";
-
         let wType = "StandaloneTask";
         if (taskDoc.taskType === "PD") wType = "PD";
         if (taskDoc.taskType === "CD" || taskDoc.taskType === "Calving") wType = "Calving";
 
+        if (["PD", "Calving"].includes(wType)) {
+          if (taskDoc.status === "Pending" && taskDoc.technicianId) allowedAction = "START_SERVICE";
+          else if (taskDoc.status === "In Progress") allowedAction = "RECORD_SERVICE";
+          else if (taskDoc.status === "Pending") allowedAction = "CLAIM";
+        } else if (["Pending", "In Progress"].includes(taskDoc.status)) {
+          allowedAction = taskDoc.technicianId ? "COMPLETE_TASK" : "CLAIM";
+        }
+
+        let actionLabel = null;
+        if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
+        else if (allowedAction === "RECORD_SERVICE") actionLabel = "Record Service";
+        else if (allowedAction === "COMPLETE_TASK") actionLabel = "Complete Task";
+        else if (allowedAction === "CLAIM") actionLabel = "Claim";
+
+        const serviceType =
+          wType === "PD"
+            ? "Pregnancy Diagnosis"
+            : wType === "Calving"
+              ? "Calving Assistance"
+              : taskDoc.taskType || "Task";
+
         const item = {
-          id: taskDoc._id,
+          id: taskId,
+          workflowId: null,
+          taskId,
           workflowType: wType,
           type: "task",
           taskType: taskDoc.taskType || "Other",
+          serviceType,
           status: taskDoc.status,
+          allowedAction,
+          actionLabel,
+          farmer: serializeFarmer(taskDoc.farmerId),
+          animal: serializeAnimal(firstAnimal),
+          schedule: { date: taskDoc.dueDate || null, visitPeriod: null },
+          requestedAt: taskDoc.createdAt || null,
+          completedAt: terminal ? taskDoc.completedAt || taskDoc.updatedAt || null : null,
           displayStatus: taskDoc.status,
           time: formatTime(itemDisplayDate),
           displayDate: itemDisplayDate,
-          farmer: taskDoc.farmerId?.name || "Unknown Farmer",
           farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
           farmerPhone: taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
           farmerImageUrl: taskDoc.farmerId?.avatarUrl || taskDoc.farmerId?.profilePicture || taskDoc.farmerId?.avatar || null,
+          farmerId: taskDoc.farmerId || null,
           location: formatAddress(taskDoc.farmerId?.address),
           ...getFarmLocationDetails(taskDoc.farmerId),
           animalId: firstAnimal || null,
@@ -3732,21 +4047,23 @@ export const getWorkQueue = async (req, res) => {
           preferredTime: formatTime(itemDisplayDate),
           task: `${taskDoc.taskType || "Visit"}${firstAnimal ? ` - ${firstAnimal.animalId || firstAnimal.earTag || "Unknown"}` : ""}`,
           urgent: taskDoc.category === "Urgent" || taskDoc.category === "Emergency",
-          overdue: isOverdue,
+          overdue: isOverdue(taskDoc.dueDate, terminal),
           sentTime: formatTime(taskDoc.createdAt),
-          allowedAction,
+          scheduledDate: taskDoc.dueDate || null,
+          visitPeriod: null,
           raw: taskDoc,
         };
 
         unifiedQueue.push(item);
-      }
     });
-    
+
     // Sort logic to match work queue priorities (overdue first, then by date)
     unifiedQueue.sort((a, b) => {
       if (a.overdue && !b.overdue) return -1;
       if (!a.overdue && b.overdue) return 1;
-      return new Date(a.displayDate) - new Date(b.displayDate);
+      const aDate = new Date(a.displayDate || 0).getTime();
+      const bDate = new Date(b.displayDate || 0).getTime();
+      return aDate - bDate;
     });
 
     res.status(200).json({
