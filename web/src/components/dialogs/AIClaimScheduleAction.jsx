@@ -1,6 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  ArrowLeft,
   CalendarDays,
   Check,
   Clock3,
@@ -28,35 +29,175 @@ const backendErrorDetails = (error) => ({
   status: error?.response?.status || null,
 });
 
-export default function AIClaimScheduleAction({
-  request,
+const humanizeStatus = (status) =>
+  String(status || "Pending")
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const AIRequestSummary = ({ request, compact = false }) => {
+  const farmerName =
+    request.farmerDetails?.name || request.farmer || "Unknown farmer";
+  const phone =
+    request.phone ||
+    request.farmerPhone ||
+    request.farmerDetails?.phone ||
+    "Not provided";
+  const animalName =
+    request.animalName || request.animal || request.animalTag || "Unknown";
+  const animalTag = request.animalTag || request.earTag || null;
+  const heatSigns = Array.isArray(request.heatSigns) ? request.heatSigns : [];
+  const submittedAt = request.requestSubmissionDate || request.createdAt;
+  const submittedDate = submittedAt ? new Date(submittedAt) : null;
+  const submittedLabel =
+    submittedDate && !Number.isNaN(submittedDate.getTime())
+      ? submittedDate.toLocaleDateString("en-PH", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "Not recorded";
+  const attachmentUrls = [
+    ...new Set(
+      (Array.isArray(request.attachments?.urls)
+        ? request.attachments.urls
+        : []
+      ).filter((url) => typeof url === "string" && url.trim()),
+    ),
+  ];
+  const attachmentCount = Math.max(
+    Number(request.attachments?.count || 0),
+    attachmentUrls.length,
+  );
+
+  return (
+    <section
+      aria-label={compact ? "AI request summary" : "AI request details"}
+      className="rounded-box border border-base-300 bg-base-200/50 p-4"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-base-content/55">
+          Artificial Insemination
+        </p>
+        <span className="badge badge-sm">
+          {humanizeStatus(request.status)}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <div>
+          <p className="text-xs text-base-content/55">Farmer</p>
+          <p className="font-semibold text-base-content">{farmerName}</p>
+        </div>
+        <div>
+          <p className="text-xs text-base-content/55">Animal</p>
+          <p className="font-semibold text-base-content">
+            {animalName}
+            {animalTag && animalTag !== animalName ? ` · Tag ${animalTag}` : ""}
+          </p>
+        </div>
+
+        {!compact && (
+          <div className="flex items-start gap-2">
+            <Phone
+              size={15}
+              className="mt-0.5 shrink-0 text-base-content/55"
+              aria-hidden="true"
+            />
+            <span>{phone}</span>
+          </div>
+        )}
+        <div className="flex items-start gap-2">
+          <MapPin
+            size={15}
+            className="mt-0.5 shrink-0 text-base-content/55"
+            aria-hidden="true"
+          />
+          <span>{request.location || "Location unavailable"}</span>
+        </div>
+
+        {!compact && (
+          <>
+            <div>
+              <p className="text-xs text-base-content/55">Heat signs</p>
+              <p>
+                {heatSigns.length ? heatSigns.join(", ") : "None submitted"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-base-content/55">Submitted</p>
+              <p>{submittedLabel}</p>
+            </div>
+          </>
+        )}
+      </div>
+
+      {!compact && (
+        <div className="mt-4 space-y-2">
+          <p className="flex items-center gap-2 text-sm font-medium text-base-content/70">
+            <Paperclip size={15} aria-hidden="true" />
+            {attachmentCount} attachment{attachmentCount === 1 ? "" : "s"}
+          </p>
+          {attachmentUrls.length > 0 && (
+            <div
+              className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+              aria-label="Submitted request images"
+            >
+              {attachmentUrls.map((url, index) => (
+                <a
+                  key={url}
+                  href={url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="card card-border overflow-hidden bg-base-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  aria-label={`Open request image ${index + 1}`}
+                >
+                  <figure className="aspect-video bg-base-200">
+                    <img
+                      src={url}
+                      alt={`AI request attachment ${index + 1}`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                  </figure>
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+};
+
+export default function AIRequestModal({
+  modalState,
   requestQueryKey,
-  disabled = false,
+  onClose,
+  onViewChange,
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const fieldId = useId().replaceAll(":", "");
   const submittingRef = useRef(false);
-  const [isOpen, setIsOpen] = useState(false);
   const [dateChoice, setDateChoice] = useState("");
   const [customDate, setCustomDate] = useState("");
   const [visitPeriod, setVisitPeriod] = useState("");
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isCanonicalAIAction =
-    request?.workflowType === "AI" &&
+  const request = modalState?.request || null;
+  const view = modalState?.view === "schedule" ? "schedule" : "details";
+  const isOpen = Boolean(request?.workflowType === "AI");
+  const canClaimAndSchedule =
     request?.allowedAction === "CLAIM_AND_SCHEDULE";
 
-  if (!isCanonicalAIAction) return null;
+  if (!request) return null;
 
   const closeModal = () => {
     if (submittingRef.current) return;
-    setIsOpen(false);
-    setDateChoice("");
-    setCustomDate("");
-    setVisitPeriod("");
     setErrors({});
+    onClose();
   };
 
   const selectedDate =
@@ -83,7 +224,7 @@ export default function AIClaimScheduleAction({
   };
 
   const confirmSchedule = async () => {
-    if (submittingRef.current || !validate()) return;
+    if (submittingRef.current || !canClaimAndSchedule || !validate()) return;
 
     submittingRef.current = true;
     setIsSubmitting(true);
@@ -140,8 +281,8 @@ export default function AIClaimScheduleAction({
 
     submittingRef.current = false;
     setIsSubmitting(false);
-    setIsOpen(false);
     toast.success("AI visit scheduled successfully.");
+    onClose();
 
     await Promise.allSettled([
       queryClient.invalidateQueries({
@@ -159,127 +300,80 @@ export default function AIClaimScheduleAction({
     ]);
   };
 
-  const farmerName =
-    request.farmerDetails?.name || request.farmer || "Unknown farmer";
-  const phone =
-    request.phone ||
-    request.farmerPhone ||
-    request.farmerDetails?.phone ||
-    "Not provided";
-  const animalName =
-    request.animalName || request.animal || request.animalTag || "Unknown";
-  const animalTag = request.animalTag || request.earTag || null;
-  const heatSigns = Array.isArray(request.heatSigns)
-    ? request.heatSigns
-    : [];
-  const submittedAt = request.requestSubmissionDate || request.createdAt;
-  const submittedLabel = submittedAt
-    ? new Date(submittedAt).toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : "Not recorded";
-  const attachmentCount = Number(request.attachments?.count || 0);
+  const actions =
+    view === "details" ? (
+      <>
+        <button type="button" className="btn btn-sm btn-ghost" onClick={closeModal}>
+          Close
+        </button>
+        {canClaimAndSchedule && (
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() => onViewChange("schedule")}
+          >
+            <CalendarDays size={16} aria-hidden="true" />
+            {request.actionLabel || "Claim & Set Visit"}
+          </button>
+        )}
+      </>
+    ) : (
+      <>
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost mr-auto"
+          disabled={isSubmitting}
+          onClick={() => onViewChange("details")}
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+          Back to Details
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost"
+          disabled={isSubmitting}
+          onClick={closeModal}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-primary"
+          disabled={isSubmitting || !canClaimAndSchedule}
+          onClick={confirmSchedule}
+        >
+          {isSubmitting ? (
+            <span className="loading loading-spinner loading-xs" />
+          ) : (
+            <Check size={16} aria-hidden="true" />
+          )}
+          {isSubmitting ? "Scheduling…" : "Confirm Schedule"}
+        </button>
+      </>
+    );
 
   return (
-    <>
-      <button
-        type="button"
-        className="btn btn-sm whitespace-nowrap"
-        disabled={disabled}
-        onClick={() => setIsOpen(true)}
-      >
-        <CalendarDays size={16} aria-hidden="true" />
-        {request.actionLabel}
-      </button>
-
-      <Modal
-        isOpen={isOpen}
-        onClose={closeModal}
-        title={request.actionLabel}
-        subtitle="Choose the visit date and service period before assignment."
-        size="lg"
-        actions={
-          <>
-            <button
-              type="button"
-              className="btn btn-sm btn-ghost"
-              disabled={isSubmitting}
-              onClick={closeModal}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              disabled={isSubmitting}
-              onClick={confirmSchedule}
-            >
-              {isSubmitting ? (
-                <span className="loading loading-spinner loading-xs" />
-              ) : (
-                <Check size={16} aria-hidden="true" />
-              )}
-              {isSubmitting ? "Scheduling…" : "Confirm Schedule"}
-            </button>
-          </>
-        }
-      >
+    <Modal
+      isOpen={isOpen}
+      onClose={closeModal}
+      title={
+        view === "schedule"
+          ? request.actionLabel || "Claim & Set Visit"
+          : "AI Request Details"
+      }
+      subtitle={
+        view === "schedule"
+          ? "Choose the visit date and service period before assignment."
+          : "Review the farmer's artificial insemination request."
+      }
+      size="lg"
+      actions={actions}
+    >
+      {view === "details" ? (
+        <AIRequestSummary request={request} />
+      ) : (
         <div className="space-y-5">
-          <section
-            aria-label="AI request details"
-            className="rounded-box border border-base-300 bg-base-200/50 p-4"
-          >
-            <p className="text-xs font-semibold uppercase tracking-wide text-base-content/55">
-              Artificial Insemination
-            </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div>
-                <p className="text-xs text-base-content/55">Farmer</p>
-                <p className="font-semibold text-base-content">{farmerName}</p>
-              </div>
-              <div>
-                <p className="text-xs text-base-content/55">Animal</p>
-                <p className="font-semibold text-base-content">
-                  {animalName}
-                  {animalTag && animalTag !== animalName
-                    ? ` · Tag ${animalTag}`
-                    : ""}
-                </p>
-              </div>
-              <div className="flex items-start gap-2">
-                <Phone
-                  size={15}
-                  className="mt-0.5 shrink-0 text-base-content/55"
-                  aria-hidden="true"
-                />
-                <span>{phone}</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <MapPin
-                  size={15}
-                  className="mt-0.5 shrink-0 text-base-content/55"
-                  aria-hidden="true"
-                />
-                <span>{request.location || "Location unavailable"}</span>
-              </div>
-              <div>
-                <p className="text-xs text-base-content/55">Heat signs</p>
-                <p>{heatSigns.length ? heatSigns.join(", ") : "None submitted"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-base-content/55">Submitted</p>
-                <p>{submittedLabel}</p>
-              </div>
-            </div>
-            {attachmentCount > 0 && (
-              <p className="mt-3 flex items-center gap-2 text-sm font-medium text-base-content/70">
-                <Paperclip size={15} aria-hidden="true" />
-                {attachmentCount} attachment{attachmentCount === 1 ? "" : "s"}
-              </p>
-            )}
-          </section>
+          <AIRequestSummary request={request} compact />
 
           {errors.form && (
             <div role="alert" className="alert alert-error alert-soft text-sm">
@@ -375,7 +469,7 @@ export default function AIClaimScheduleAction({
             )}
           </fieldset>
         </div>
-      </Modal>
-    </>
+      )}
+    </Modal>
   );
 }

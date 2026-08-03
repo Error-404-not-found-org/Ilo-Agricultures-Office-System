@@ -263,6 +263,10 @@ export default function OperationalInbox() {
   });
   const [selectedTask, setSelectedTask] = useState(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [aiRequestModal, setAIRequestModal] = useState({
+    request: null,
+    view: "details",
+  });
   const [isUpdating, setIsUpdating] = useState(false);
 
   const itemsPerPage = 6; // Set to 6 to match the pagination of the redesigned screen
@@ -830,7 +834,19 @@ export default function OperationalInbox() {
     );
   };
 
+  const openAIRequest = (request, view = "details") => {
+    setAIRequestModal({ request, view });
+  };
+
+  const closeAIRequest = () => {
+    setAIRequestModal({ request: null, view: "details" });
+  };
+
   const openRequest = (request) => {
+    if (!isAdmin && request.workflowType === "AI") {
+      openAIRequest(request, "details");
+      return;
+    }
     setSelectedTask(request);
     setIsTaskModalOpen(true);
   };
@@ -1449,11 +1465,21 @@ export default function OperationalInbox() {
                                     className="flex items-center gap-2 justify-end"
                                   >
                                     {isAIClaimAndSchedule && (
-                                      <AIClaimScheduleAction
-                                        request={req}
-                                        requestQueryKey={requestsQueryKey}
+                                      <button
+                                        type="button"
+                                        className="btn btn-sm whitespace-nowrap"
                                         disabled={isUpdating}
-                                      />
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          openAIRequest(req, "schedule");
+                                        }}
+                                      >
+                                        <Calendar
+                                          size={16}
+                                          aria-hidden="true"
+                                        />
+                                        {req.actionLabel}
+                                      </button>
                                     )}
 
                                     {!isAIClaimAndSchedule &&
@@ -1796,6 +1822,16 @@ export default function OperationalInbox() {
           {confirmModal.message}
         </p>
       </Modal>
+
+      <AIClaimScheduleAction
+        key={aiRequestModal.request?.workflowId || "closed-ai-request"}
+        modalState={aiRequestModal}
+        requestQueryKey={requestsQueryKey}
+        onClose={closeAIRequest}
+        onViewChange={(view) =>
+          setAIRequestModal((current) => ({ ...current, view }))
+        }
+      />
 
       {/* ===== TASK ACTION DIALOG MODAL ===== */}
       <RequestActionModal
