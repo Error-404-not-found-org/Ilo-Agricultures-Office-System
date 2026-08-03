@@ -12,6 +12,12 @@ import {
 import { isActiveAIRequestStatus } from "../domain/status-vocabulary.js";
 import { createAuditLog } from "../services/audit.service.js";
 import { getAnimalAIEligibility } from "../services/ai-eligibility.service.js";
+import {
+  normalizeSemenDosesUsed,
+  normalizeSireBreed,
+  normalizeSireCode,
+  normalizeVisitPeriod,
+} from "../domain/ai-recording-fields.js";
 
 export const createInsemination = async (req, res) => {
   try {
@@ -21,8 +27,15 @@ export const createInsemination = async (req, res) => {
       inseminationDate,
       sireBreed,
       sireCode,
+      semenDosesUsed,
       estrus,
+      visitPeriod,
     } = req.body;
+
+    const normalizedSireBreed = normalizeSireBreed(sireBreed);
+    const normalizedSireCode = normalizeSireCode(sireCode);
+    const normalizedSemenDosesUsed = normalizeSemenDosesUsed(semenDosesUsed);
+    const normalizedVisitPeriod = normalizeVisitPeriod(visitPeriod);
 
     if (!req.user || !["technician", "admin"].includes(req.user.role)) {
       return res.status(403).json({
@@ -59,8 +72,14 @@ export const createInsemination = async (req, res) => {
       farmerId,
       animalId,
       inseminationDate,
-      sireBreed,
-      sireCode,
+      sireBreed: normalizedSireBreed,
+      sireCode: normalizedSireCode,
+      ...(normalizedSemenDosesUsed !== undefined
+        ? { semenDosesUsed: normalizedSemenDosesUsed }
+        : {}),
+      ...(normalizedVisitPeriod !== undefined
+        ? { visitPeriod: normalizedVisitPeriod }
+        : {}),
       estrus,
       status: "approved",
       approvedBy: req.user._id,
@@ -83,7 +102,15 @@ export const createInsemination = async (req, res) => {
 export const updateInsemination = async (req, res) => {
   try {
     const { id } = req.params;
-    const { inseminationDate, sireBreed, sireCode, estrus, status } = req.body;
+    const {
+      inseminationDate,
+      sireBreed,
+      sireCode,
+      semenDosesUsed,
+      estrus,
+      status,
+      visitPeriod,
+    } = req.body;
 
     const existingRecord = await Insemination.findById(id);
     if (!existingRecord) {
@@ -100,13 +127,37 @@ export const updateInsemination = async (req, res) => {
 
     const nextStatus = status || existingRecord.status;
     const activeStatus = isActiveAIRequestStatus(nextStatus);
+    const hasSireBreed = Object.hasOwn(req.body, "sireBreed");
+    const hasSireCode = Object.hasOwn(req.body, "sireCode");
+    const hasSemenDosesUsed = Object.hasOwn(req.body, "semenDosesUsed");
+    const hasVisitPeriod = Object.hasOwn(req.body, "visitPeriod");
+    const normalizedSireBreed = hasSireBreed
+      ? normalizeSireBreed(sireBreed, {
+          required: existingRecord.status === "done",
+        })
+      : undefined;
+    const normalizedSireCode = hasSireCode
+      ? normalizeSireCode(sireCode, {
+          required: existingRecord.status === "done",
+        })
+      : undefined;
+    const normalizedSemenDosesUsed = hasSemenDosesUsed
+      ? normalizeSemenDosesUsed(semenDosesUsed)
+      : undefined;
+    const normalizedVisitPeriod = hasVisitPeriod
+      ? normalizeVisitPeriod(visitPeriod)
+      : undefined;
     const insemination = await Insemination.findByIdAndUpdate(
       id,
       {
         $set: {
           inseminationDate,
-          sireBreed,
-          sireCode,
+          ...(hasSireBreed ? { sireBreed: normalizedSireBreed } : {}),
+          ...(hasSireCode ? { sireCode: normalizedSireCode } : {}),
+          ...(hasSemenDosesUsed
+            ? { semenDosesUsed: normalizedSemenDosesUsed }
+            : {}),
+          ...(hasVisitPeriod ? { visitPeriod: normalizedVisitPeriod } : {}),
           estrus,
           status: nextStatus,
           ...(activeStatus
@@ -142,7 +193,10 @@ export const updateInsemination = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating insemination:", error);
-    res.status(500).json({ message: "Failed to update insemination" });
+    res.status(error.status || 500).json({
+      message: error.message || "Failed to update insemination",
+      code: error.code,
+    });
   }
 };
 

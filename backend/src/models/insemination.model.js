@@ -29,12 +29,30 @@ const InseminationSchema = new mongoose.Schema(
 
     sireBreed: {
       type: String,
+      trim: true,
+      maxlength: 100,
       // Removed required: true to allow pending requests
     },
 
     sireCode: {
       type: String,
+      trim: true,
+      maxlength: 64,
       // Removed required: true to allow pending requests
+    },
+
+    semenDosesUsed: {
+      type: Number,
+      min: 1,
+      default: function defaultSemenDosesUsedForNewCompletion() {
+        return this.isNew && this.status === AI_STATUS.DONE ? 1 : undefined;
+      },
+      validate: {
+        validator: Number.isSafeInteger,
+        message: "Semen doses used must be a whole number.",
+      },
+      // Historical hydrated records remain undefined. Completion APIs also
+      // normalize this default before conditional update operations.
     },
 
     status: {
@@ -88,6 +106,12 @@ const InseminationSchema = new mongoose.Schema(
     },
     scheduledDate: {
       type: Date,
+    },
+    visitPeriod: {
+      type: String,
+      enum: ["morning", "afternoon"],
+      trim: true,
+      lowercase: true,
     },
     serviceStartedAt: {
       type: Date,

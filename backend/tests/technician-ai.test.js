@@ -222,8 +222,8 @@ test("Technician AI Service Suite", async (t) => {
         farmerId: ids.farmer,
         animalId: ids.animal,
         inseminationDate: new Date(),
-        sireBreed: "Jersey",
-        sireCode: "JER-101",
+        sireBreed: "  Jersey  ",
+        sireCode: "  JER-101  ",
         estrus: "Natural",
         actorId: ids.technician,
         isAdmin: false,
@@ -232,6 +232,8 @@ test("Technician AI Service Suite", async (t) => {
       assert.equal(result.outcome, "created_and_task_completed");
       assert.equal(harness.state.createdInseminations.length, 1);
       assert.equal(harness.state.createdInseminations[0].sireBreed, "Jersey");
+      assert.equal(harness.state.createdInseminations[0].sireCode, "JER-101");
+      assert.equal(harness.state.createdInseminations[0].semenDosesUsed, 1);
       assert.equal(harness.state.taskUpdates.length, 1);
       assert.equal(harness.state.notifications.length, 1);
       assert.equal(harness.state.audits.length, 1);
@@ -256,6 +258,7 @@ test("Technician AI Service Suite", async (t) => {
         inseminationDate: new Date(),
         sireBreed: "Holstein",
         sireCode: "HOL-202",
+        semenDosesUsed: "2",
         estrus: "Synchronized",
         actorId: ids.technician,
         isAdmin: false,
@@ -263,6 +266,10 @@ test("Technician AI Service Suite", async (t) => {
 
       assert.equal(result.outcome, "existing_and_task_completed");
       assert.equal(harness.state.inseminationUpdates.length, 1);
+      assert.equal(
+        harness.state.inseminationUpdates[0].update.$set.semenDosesUsed,
+        2,
+      );
       assert.equal(harness.state.taskUpdates.length, 1);
       assert.equal(harness.state.pdTasks.length, 2);
     } finally {
@@ -383,6 +390,39 @@ test("Technician AI Service Suite", async (t) => {
       );
     } finally {
       harness.uninstall();
+    }
+  });
+
+  await t.test("rejects invalid semen doses before recording", async () => {
+    for (const semenDosesUsed of [0, -1, 1.5, "many"]) {
+      await assert.rejects(
+        recordTechnicianAIService({
+          farmerId: ids.farmer,
+          animalId: ids.animal,
+          inseminationDate: new Date(),
+          sireBreed: "Holstein",
+          sireCode: "HOL-202",
+          semenDosesUsed,
+          actorId: ids.technician,
+        }),
+        (error) => error.code === "INVALID_SEMEN_DOSES_USED",
+      );
+    }
+  });
+
+  await t.test("requires a non-empty sire code before recording", async () => {
+    for (const sireCode of [undefined, "", "   "]) {
+      await assert.rejects(
+        recordTechnicianAIService({
+          farmerId: ids.farmer,
+          animalId: ids.animal,
+          inseminationDate: new Date(),
+          sireBreed: "Holstein",
+          sireCode,
+          actorId: ids.technician,
+        }),
+        (error) => error.code === "SIRE_CODE_REQUIRED",
+      );
     }
   });
 });

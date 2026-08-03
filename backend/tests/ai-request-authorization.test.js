@@ -166,12 +166,13 @@ test("AI authorization: assigned technician update uses an atomic assignment and
   Insemination.findById = async () => existing;
   Insemination.findOne = async () => null;
   HealthRequest.findOne = async () => null;
-  Insemination.findOneAndUpdate = (filter) => {
+  Insemination.findOneAndUpdate = (filter, update) => {
     capturedFilter = filter;
     return populatedQuery({
       ...existing,
       status: "scheduled",
       scheduledDate,
+      visitPeriod: update.$set.visitPeriod,
       animalId: { _id: "animal-1", earTag: "AI-1" },
     });
   };
@@ -180,7 +181,11 @@ test("AI authorization: assigned technician update uses an atomic assignment and
   await updateRequestStatus(
     {
       params: { id: "request-1" },
-      body: { status: "scheduled", scheduledDate: scheduledDate.toISOString() },
+      body: {
+        status: "scheduled",
+        scheduledDate: scheduledDate.toISOString(),
+        visitPeriod: "  MoRnInG  ",
+      },
       user: {
         _id: "technician-1",
         role: "technician",
@@ -195,6 +200,7 @@ test("AI authorization: assigned technician update uses an atomic assignment and
   assert.equal(capturedFilter.status, "approved");
   assert.equal(capturedFilter.approvedBy, "technician-1");
   assert.equal(capturedFilter.deletedAt, null);
+  assert.equal(recorder.body.request.visitPeriod, "morning");
 });
 
 test("AI concurrency: reusable assignment guard permits only self or pending unassigned", () => {

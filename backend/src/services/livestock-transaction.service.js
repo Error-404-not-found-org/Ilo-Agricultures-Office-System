@@ -29,6 +29,7 @@ import {
   verifyPostpartumWindow,
 } from "../utils/cattleCore.js";
 import { createAuditLog } from "./audit.service.js";
+import { normalizeAICompletionFields } from "../domain/ai-recording-fields.js";
 
 const runTransaction = async (work) => {
   const session = await mongoose.startSession();
@@ -56,6 +57,10 @@ export const completeInsemination = async (
   },
   parentSession = null,
 ) => {
+  updateData = {
+    ...updateData,
+    ...normalizeAICompletionFields(updateData),
+  };
   const policyResolution = await loadPregnancyConfirmationPolicy({
     at: updateData.inseminationDate,
   });
@@ -655,10 +660,17 @@ export const recordTechnicianAIService = async ({
   inseminationDate,
   sireBreed,
   sireCode,
+  semenDosesUsed,
   estrus,
   actorId,
   isAdmin,
 }) => {
+  const completionFields = normalizeAICompletionFields({
+    sireBreed,
+    sireCode,
+    semenDosesUsed,
+  });
+
   return runTransaction(async (session) => {
     let task = null;
 
@@ -862,8 +874,9 @@ export const recordTechnicianAIService = async ({
         approvedBy: actorId,
         technicianId: actorId,
         technicianNote: insemination.technicianNote || "",
-        sireBreed,
-        sireCode,
+        sireBreed: completionFields.sireBreed,
+        sireCode: completionFields.sireCode,
+        semenDosesUsed: completionFields.semenDosesUsed,
         estrus,
         inseminationDate,
       };
@@ -922,8 +935,9 @@ export const recordTechnicianAIService = async ({
           inseminationDate,
           scheduledDate: inseminationDate,
           preferredDate: inseminationDate,
-          sireBreed,
-          sireCode,
+          sireBreed: completionFields.sireBreed,
+          sireCode: completionFields.sireCode,
+          semenDosesUsed: completionFields.semenDosesUsed,
           estrus: estrus || "Natural",
           status: "done",
           technicianId: actorId,

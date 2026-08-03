@@ -36,6 +36,10 @@ import {
 import { notifyTechniciansOfBreedingObservation } from "../services/breeding-observation-notification.service.js";
 import { getEarlyStartTiming } from "../domain/service-timing.js";
 import { notifyUser } from "../services/notification-delivery.service.js";
+import {
+  normalizeAICompletionFields,
+  normalizeVisitPeriod,
+} from "../domain/ai-recording-fields.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -501,7 +505,9 @@ export const updateRequestStatus = async (req, res) => {
       inseminationDate,
       sireBreed,
       sireCode,
+      semenDosesUsed,
       estrus,
+      visitPeriod,
       earlyStartConfirmed,
     } = req.body;
 
@@ -509,6 +515,8 @@ export const updateRequestStatus = async (req, res) => {
     if (!VALID_STATUSES.includes(status)) {
       return res.status(400).json({ message: "Invalid status value." });
     }
+
+    const normalizedVisitPeriod = normalizeVisitPeriod(visitPeriod);
 
     const existing = await Insemination.findById(id);
     if (!existing) {
@@ -549,8 +557,14 @@ export const updateRequestStatus = async (req, res) => {
       });
     }
 
+    let completionFields = null;
     if (status === "done") {
-      if (!sireBreed || !sireCode || !estrus) {
+      completionFields = normalizeAICompletionFields({
+        sireBreed,
+        sireCode,
+        semenDosesUsed,
+      });
+      if (!estrus) {
         return res.status(400).json({
           message:
             "Sire breed, sire code, and estrus type are required when completing AI.",
@@ -633,10 +647,14 @@ export const updateRequestStatus = async (req, res) => {
       status,
       approvedBy: targetTechId,
       technicianNote: technicianNote || "",
-      sireBreed,
-      sireCode,
+      sireBreed: completionFields?.sireBreed ?? sireBreed,
+      sireCode: completionFields?.sireCode ?? sireCode,
       estrus,
     };
+
+    if (normalizedVisitPeriod !== undefined) {
+      updateData.visitPeriod = normalizedVisitPeriod;
+    }
 
     if (isActiveAIRequestStatus(status)) {
       updateData.activeRequestKey = activeRequestKeyForAnimal(
@@ -658,6 +676,7 @@ export const updateRequestStatus = async (req, res) => {
       updateData.inseminationDate = inseminationDate
         ? new Date(inseminationDate)
         : new Date();
+      updateData.semenDosesUsed = completionFields.semenDosesUsed;
     }
 
     let request;
@@ -1175,6 +1194,7 @@ export const getUpcomingVisits = async (req, res) => {
       serviceType: "ai",
       animalId: r.animalId,
       scheduledAt: r.scheduledDate || r.preferredDate || r.createdAt,
+      visitPeriod: r.visitPeriod,
       technician: r.approvedBy?.name || null,
       createdAt: r.createdAt,
     }));
