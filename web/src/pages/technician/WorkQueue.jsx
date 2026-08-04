@@ -29,6 +29,13 @@ import {
 import {
   getTaskPrimaryActionLabel,
 } from "../../utils/taskNavigation";
+import {
+  MY_WORK_FILTERS,
+  getServicePresentation,
+  normalizeServiceType,
+  normalizeWorkflowStatus,
+  getWorkflowStatusPresentation,
+} from "../../utils/requestWorkPresentation";
 
 // Helper to convert strings to Title Case
 const toTitleCase = (str) => {
@@ -91,14 +98,13 @@ export default function WorkQueue() {
   const [typeFilter, setTypeFilter] = useState(
     () => searchParams.get("typeFilter") || "all",
   );
-  const [statusFilter, setStatusFilter] = useState(
-    () => searchParams.get("statusFilter") || "all",
+  const [workStateFilter, setWorkStateFilter] = useState(
+    () => searchParams.get("workStateFilter") || "active",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
   const [selectedAIRecord, setSelectedAIRecord] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-
   const formatRelativeSchedule = (value) => {
     if (!value) return { date: "No date", time: "—" };
     const targetDate = new Date(value);
@@ -206,41 +212,21 @@ export default function WorkQueue() {
         .toLowerCase();
 
       let matchesStatus = true;
-      if (statusFilter === "due_today") {
-        matchesStatus = task.isReadyToday || task.overdue;
-      } else if (statusFilter === "upcoming") {
-        matchesStatus =
-          !task.isReadyToday &&
-          !task.overdue &&
-          new Date(task.displayDate) > new Date();
-      } else if (statusFilter === "completed") {
-        matchesStatus = ["done", "resolved", "Completed"].includes(task.status);
-      } else if (statusFilter === "all") {
-        matchesStatus = !["done", "resolved", "Completed"].includes(
-          task.status,
-        );
+      const isCompleted = ["done", "resolved", "completed"].includes(String(task.status).toLowerCase());
+      if (workStateFilter === "active") {
+        matchesStatus = !isCompleted;
+      } else if (workStateFilter === "completed") {
+        matchesStatus = isCompleted;
       }
 
       let matchesType = true;
       if (typeFilter !== "all") {
-        if (typeFilter === "AI" && task.type !== "insemination")
-          matchesType = false;
-        if (typeFilter === "Health" && task.type !== "health")
-          matchesType = false;
-        if (typeFilter === "PD" && task.raw?.taskType !== "PD")
-          matchesType = false;
-        if (
-          typeFilter === "CD" &&
-          !["CD", "Calving"].includes(task.raw?.taskType)
-        )
-          matchesType = false;
-        if (typeFilter === "FollowUp" && task.raw?.taskType !== "Follow-up")
-          matchesType = false;
+        matchesType = normalizeServiceType(task) === typeFilter;
       }
 
       return (!q || haystack.includes(q)) && matchesType && matchesStatus;
     });
-  }, [query.data, search, statusFilter, typeFilter]);
+  }, [query.data, search, workStateFilter, typeFilter]);
 
   const paginatedTasks = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -363,27 +349,19 @@ export default function WorkQueue() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="join w-full sm:w-auto overflow-x-auto">
                 {[
-                  { id: "all", label: "All" },
-                  { id: "due_today", label: "Today" },
-                  { id: "upcoming", label: "Upcoming" },
+                  { id: "active", label: "Active" },
                   { id: "completed", label: "Completed" },
-                  { id: "on_hold", label: "On Hold" },
                 ].map((status) => (
                   <button
                     type="button"
                     key={status.id}
                     onClick={() => {
-                      setStatusFilter(status.id);
+                      setWorkStateFilter(status.id);
                       setCurrentPage(1);
                     }}
-                    className={`join-item btn btn-sm px-4 whitespace-nowrap ${statusFilter === status.id ? "btn-neutral" : "bg-base-100 border-base-200 hover:bg-base-200"}`}
+                    className={`join-item btn btn-sm px-4 whitespace-nowrap ${workStateFilter === status.id ? "btn-neutral" : "bg-base-100 border-base-200 hover:bg-base-200"}`}
                   >
                     {status.label}
-                    {status.id === "due_today" && dueTodayCounts > 0 && (
-                      <span className="badge badge-sm badge-error badge-outline ml-1">
-                        {dueTodayCounts}
-                      </span>
-                    )}
                   </button>
                 ))}
               </div>
@@ -397,12 +375,11 @@ export default function WorkQueue() {
                   }}
                   className="select select-sm select-bordered w-full sm:w-36 bg-base-100 border-base-200 font-medium"
                 >
-                  <option value="all">All Services</option>
-                  <option value="AI">AI Service</option>
-                  <option value="PD">Pregnancy</option>
-                  <option value="Health">Health</option>
-                  <option value="CD">Calving</option>
-                  <option value="FollowUp">Follow-up</option>
+                  {MY_WORK_FILTERS.map((filter) => (
+                    <option key={filter.value} value={filter.value}>
+                      {filter.value === "all" ? "All Services" : filter.label}
+                    </option>
+                  ))}
                 </select>
 
                 <div className="relative w-full sm:w-64">
@@ -467,16 +444,16 @@ export default function WorkQueue() {
                 />
                 <h2 className="font-bold">No tasks found</h2>
                 <p className="mt-1 text-sm text-base-content/60">
-                  {search || typeFilter !== "all" || statusFilter !== "all"
+                  {search || typeFilter !== "all" || workStateFilter !== "all"
                     ? "Try adjusting your filters to see more tasks."
                     : "You're all caught up! No tasks assigned to you right now."}
                 </p>
-                {(search || typeFilter !== "all" || statusFilter !== "all") && (
+                {(search || typeFilter !== "all" || workStateFilter !== "all") && (
                   <button
                     onClick={() => {
                       setSearch("");
                       setTypeFilter("all");
-                      setStatusFilter("all");
+                      setWorkStateFilter("all");
                       setCurrentPage(1);
                     }}
                     className="btn btn-sm mt-4"
@@ -501,11 +478,11 @@ export default function WorkQueue() {
                     </thead>
                     <tbody className="divide-y divide-base-300">
                       {paginatedTasks.map((task) => {
-                        const complete = [
-                          "done",
-                          "resolved",
-                          "Completed",
-                        ].includes(task.status);
+                        const workflowStatus = normalizeWorkflowStatus(task);
+                        const statusPresentation = getWorkflowStatusPresentation(workflowStatus);
+                        const serviceType = normalizeServiceType(task);
+                        const servicePresentation = getServicePresentation(serviceType);
+                        const complete = workflowStatus === "completed";
                         const canViewCompletedAI =
                           task.workflowType === "AI" &&
                           task.allowedAction === "VIEW_RECORD";
@@ -533,9 +510,7 @@ export default function WorkQueue() {
                             <td className="p-3.5 pl-6 align-top">
                               <div className="flex flex-col gap-1.5 mt-0.5">
                                 <span className="font-bold text-xs text-base-content leading-tight">
-                                  {task.serviceType ||
-                                    task.taskType ||
-                                    "Service"}
+                                  {servicePresentation.label}
                                 </span>
                                 {priority === 1 && (
                                   <span className="badge badge-error badge-xs badge-outline font-bold uppercase text-[9px]">
@@ -579,7 +554,7 @@ export default function WorkQueue() {
                             <td className="p-3.5 align-top">
                               {task.workflowType === "AI" ? (
                                 <span
-                                  className={`block font-bold text-xs ${task.overdue ? "text-error" : "text-base-content"}`}
+                                  className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
                                 >
                                   {formatCanonicalAISchedule(task.schedule)}
                                 </span>
@@ -591,7 +566,7 @@ export default function WorkQueue() {
                                 return (
                                   <div>
                                     <span
-                                      className={`block font-bold text-xs ${task.overdue ? "text-error" : "text-base-content"}`}
+                                      className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
                                     >
                                       {sched.date}
                                     </span>
@@ -607,9 +582,9 @@ export default function WorkQueue() {
                             {/* 4. STATUS */}
                             <td className="p-3.5 align-top">
                               <span
-                                className={`badge badge-sm font-bold uppercase tracking-wider text-[9px] border bg-base-200`}
+                                className={`badge badge-sm font-bold uppercase tracking-wider text-[9px] border ${statusPresentation.badgeClass}`}
                               >
-                                {task.displayStatus}
+                                {statusPresentation.label}
                               </span>
                             </td>
 

@@ -376,9 +376,8 @@ export default function OperationalInbox() {
         : null;
       const isValidLegacyDate =
         legacyScheduleDate && !Number.isNaN(legacyScheduleDate.getTime());
-      const canonicalSchedulePresentation = formatCanonicalAISchedule(
-        canonicalSchedule,
-      );
+      const canonicalSchedulePresentation =
+        formatCanonicalAISchedule(canonicalSchedule);
 
       const formattedDateOnly = isCanonicalAI
         ? canonicalSchedulePresentation.dateLabel
@@ -428,8 +427,7 @@ export default function OperationalInbox() {
         workflowType: req.workflowType,
         allowedAction: req.allowedAction || null,
         actionLabel: req.actionLabel || null,
-        farmer:
-          farmerDetails?.name || req.farmer || "Farmer unavailable",
+        farmer: farmerDetails?.name || req.farmer || "Farmer unavailable",
         farmerDetails,
         farmerImageUrl: req.farmerImageUrl || null,
         farmerPhone:
@@ -516,7 +514,22 @@ export default function OperationalInbox() {
       };
     });
 
-    if (primaryView === REQUEST_BOARD_VIEWS.MINE) {
+    if (primaryView === REQUEST_BOARD_VIEWS.OPEN) {
+      mapped = mapped.filter((req) => {
+        const isAI =
+          req.workflowType === "AI" ||
+          req.serviceType === "ai" ||
+          req.queueType === "insemination";
+        const isHealth =
+          req.workflowType === "Health" ||
+          req.serviceType === "health" ||
+          req.queueType === "health";
+        const isCompleted = ["done", "completed", "resolved"].includes(
+          String(req.status || "").toLowerCase(),
+        );
+        return !((isAI || isHealth) && isCompleted);
+      });
+    } else if (primaryView === REQUEST_BOARD_VIEWS.MINE) {
       mapped = mapped.filter((req) => {
         const s = String(req.status || "")
           .toLowerCase()
@@ -1178,7 +1191,7 @@ export default function OperationalInbox() {
             </div>
 
             {/* Main items display grid/list with static container height and fixed column widths */}
-            <div id="request-board-results" className="w-full">
+            <div id="request-board-results" className="w-full mb-8">
               <div className="card bg-base-100 border border-base-300/60 rounded-2xl shadow-sm overflow-hidden flex flex-col min-h-145 xl:h-150">
                 {/* Scrollable table viewport with table-fixed layout */}
                 <div className="overflow-x-auto overflow-y-auto flex-1">
@@ -1485,19 +1498,21 @@ export default function OperationalInbox() {
                                     {!isAIClaimAndSchedule &&
                                       req.status === "pending" &&
                                       !reqTechId && (
-                                      <button
-                                        type="button"
-                                        disabled={isUpdating}
-                                        onClick={() => handleClaimRequest(req)}
-                                        className="btn btn-sm btn-square btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer shadow-xs"
-                                        title="Claim Request"
-                                        aria-label={`Claim request for ${req.farmer}`}
-                                      >
-                                        <CirclePlus
-                                          size={18}
-                                          aria-hidden="true"
-                                        />
-                                      </button>
+                                        <button
+                                          type="button"
+                                          disabled={isUpdating}
+                                          onClick={() =>
+                                            handleClaimRequest(req)
+                                          }
+                                          className="btn btn-sm btn-square btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer shadow-xs"
+                                          title="Claim Request"
+                                          aria-label={`Claim request for ${req.farmer}`}
+                                        >
+                                          <CirclePlus
+                                            size={18}
+                                            aria-hidden="true"
+                                          />
+                                        </button>
                                       )}
 
                                     {(req.type === "breeding_verification" ||

@@ -15,7 +15,13 @@ import { Button } from "@/components/ui/Button";
 import { StatusBadge } from "@/components/shared";
 import { RequestItem } from "../types/technicianRequests.types";
 import { getBreedingObservationLabel } from "@/features/breeding/utils/breedingObservationPresentation";
-import { getTechnicianRequestStatusPresentation } from "../utils/requestPresentation";
+import { RequestWorkBadge } from "./RequestWorkBadge";
+import {
+  getServicePresentation,
+  getWorkflowStatusPresentation,
+  normalizeServiceType,
+  normalizeWorkflowStatus,
+} from "../utils/requestWorkPresentation";
 
 interface RequestListCardProps {
   item: RequestItem;
@@ -23,13 +29,6 @@ interface RequestListCardProps {
   onAccept: () => void;
   onDecline: () => void;
   onPress: () => void;
-}
-
-function titleCase(value: string) {
-  return value
-    .replace(/_/g, " ")
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function formatDate(dateValue?: string) {
@@ -73,24 +72,20 @@ export function RequestListCard({
     "cancelled",
     "declined",
   ].includes(normalizedStatus);
-  const statusPresentation = getTechnicianRequestStatusPresentation(item);
-
-  const serviceLabel = item.serviceType || item.requestType
-    ? titleCase(item.serviceType || item.requestType || "")
-    : isPregnancyCheck
-      ? "Pregnancy Check"
-      : isHealth
+  const service = normalizeServiceType(item);
+  const servicePresentation = getServicePresentation(service);
+  const workflowStatus = normalizeWorkflowStatus(item);
+  const statusPresentation = getWorkflowStatusPresentation(workflowStatus);
+  const serviceLabel =
+    service === "ai"
+      ? "Artificial Insemination"
+      : service === "health"
         ? "Health Assistance"
-        : "Artificial Insemination";
-
-  const statusLabel = cancellationRequested
-    ? "Cancellation review"
-    : statusPresentation?.label
-      ? statusPresentation.label
-      : normalizedStatus === "in_progress" ||
-          normalizedStatus === "in-progress"
-        ? "In Progress"
-        : titleCase(item.status || "Pending");
+        : service === "pregnancy"
+          ? "Pregnancy Verification"
+          : service === "calving"
+            ? "Calving Assistance"
+            : "Other service";
 
   const primaryActionLabel = isAIRequest
     ? isCanonicalAI
@@ -209,16 +204,18 @@ export function RequestListCard({
           </View>
         </View>
 
-        <StatusBadge
-          label={statusLabel}
-          variant={
-            cancellationRequested
-              ? "danger"
-              : statusPresentation?.variant || item.status
-          }
-          domain="request"
-          compact
-        />
+        <View style={{ alignItems: "flex-end", gap: 6 }}>
+          <RequestWorkBadge
+            label={servicePresentation.label}
+            tone={servicePresentation.tone}
+            accessibilityPrefix="Service"
+          />
+          <RequestWorkBadge
+            label={statusPresentation.label}
+            tone={statusPresentation.tone}
+            accessibilityPrefix="Status"
+          />
+        </View>
       </View>
 
       {(isUrgent || isReInsemination || isPregnancyCheck) && (

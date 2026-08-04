@@ -1,5 +1,10 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@clerk/clerk-expo";
 import {
@@ -14,6 +19,12 @@ import {
 import { executeOfflineMutation } from "@/hooks/useOfflineMutation";
 import NetInfo from "@react-native-community/netinfo";
 import { technicianKeys } from "@/lib/queryKeys";
+import type { RequestWorkFilterOption } from "../utils/requestWorkPresentation";
+
+type OpenRequestFilter = RequestWorkFilterOption["value"];
+
+const toRequestApiType = (value: OpenRequestFilter) =>
+  value === "pregnancy" ? "breeding_verification" : value;
 
 export function useTechnicianRequests() {
   const api = useApi();
@@ -32,7 +43,7 @@ export function useTechnicianRequests() {
   // Filters State
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [type, setType] = useState<"all" | "ai" | "health" | "breeding_verification">("all");
+  const [type, setType] = useState<OpenRequestFilter>("all");
   const [status, setStatus] = useState<"all" | "pending" | "scheduled" | "in_progress" | "completed" | "declined">("all");
   const [urgency, setUrgency] = useState<"all" | "urgent">("all");
   const [assignment, setAssignment] = useState<"all" | "mine" | "unassigned">("unassigned");
@@ -79,7 +90,7 @@ export function useTechnicianRequests() {
     ],
     queryFn: () =>
       getTechnicianRequests(api, {
-        type,
+        type: toRequestApiType(type),
         status,
         urgency,
         assignment,
@@ -96,11 +107,52 @@ export function useTechnicianRequests() {
     refetchInterval: 15000, // 15s polling
   });
 
+  const openCountFilters: OpenRequestFilter[] = [
+    "all",
+    "ai",
+    "health",
+    "pregnancy",
+  ];
+  const openCountQueries = useQueries({
+    queries: openCountFilters.map((countType) => ({
+      queryKey: ["technician", "requests", "open-count", countType],
+      queryFn: () =>
+        getTechnicianRequests(api, {
+          type: toRequestApiType(countType),
+          status: "active",
+          urgency: "all",
+          assignment: "unassigned",
+          search: "",
+          page: 1,
+          limit: 1,
+          sortBy: "newest",
+        }),
+      enabled: isEnabled,
+      refetchInterval: 15000,
+    })),
+  });
+  const openRequestCounts = Object.fromEntries(
+    openCountFilters.map((countType, index) => [
+      countType,
+      openCountQueries[index]?.data?.pagination?.total,
+    ]),
+  ) as Partial<Record<OpenRequestFilter, number>>;
+  const areOpenRequestCountsLoading = openCountQueries.some(
+    (countQuery) => countQuery.isLoading,
+  );
+
   const handleRefresh = async () => {
     await refetch();
   };
 
-  const requests = data?.requests || [];
+  const requests = (data?.requests || []).filter((req: any) => {
+    if (assignment !== "unassigned") return true;
+    const status = String(req.status || "").toLowerCase();
+    const isCompleted = status === "completed" || status === "done" || status === "resolved";
+    const isAI = req.workflowType === "AI" || req.type === "insemination" || req.type === "ai";
+    const isHealth = req.workflowType === "Health" || req.type === "health";
+    return !(isCompleted && (isAI || isHealth));
+  });
   const pagination = data?.pagination || { total: 0, page: 1, limit: 10, totalPages: 1 };
 
   // Status updates mutation (reusing the existing dashboard mutation)
@@ -284,6 +336,8 @@ export function useTechnicianRequests() {
     // Query values
     requests,
     pagination,
+    openRequestCounts,
+    areOpenRequestCountsLoading,
     isLoading,
     isRefetching,
     handleRefresh,
