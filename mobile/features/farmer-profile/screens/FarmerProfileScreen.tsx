@@ -55,7 +55,6 @@ export const FarmerProfileScreen = () => {
     handleChooseFromGallery,
     handleChangeProfileImage,
     handleUpdate,
-    handleUseCurrentContactAddress,
     handleSaveCurrentFarmLocation,
     handleSaveFarmLocationNotes,
     handleUseContactAddressForFarmLocation,
@@ -63,6 +62,7 @@ export const FarmerProfileScreen = () => {
     handleChangePhoneNumber,
     handleStartPhoneNumberChange,
     handleOpenPhoneEditor,
+    handleOpenAddressEditor,
     handleCloseProfileEditor,
     colors,
     isDark,
@@ -117,9 +117,7 @@ export const FarmerProfileScreen = () => {
           clerkUser={clerkUser}
           dbUser={dbUser}
           onEditPhone={handleOpenPhoneEditor}
-          onUseCurrentContactAddress={handleUseCurrentContactAddress}
-          isSavingLocation={isSavingContactAddressLocation}
-          isLocationBusy={mutation.isPending || isSavingFarmLocation}
+          onEditAddress={handleOpenAddressEditor}
         />
 
         <FarmLocationCard

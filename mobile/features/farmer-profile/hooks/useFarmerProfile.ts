@@ -322,11 +322,15 @@ export const useFarmerProfile = () => {
     const normalizedAddress = normalizeIloiloCityAddressForForm(user.address);
     return {
       phoneNumber: user.phoneNumber || "",
+      houseNumber: user.address?.houseNumber || "",
+      purokSitio: user.address?.purokSitio || "",
       street: user.address?.street || "",
+      subdivision: user.address?.subdivision || "",
       barangay: normalizedAddress.barangay,
       city: user.address?.city || "",
       district: normalizedAddress.district,
       province: user.address?.province || "Iloilo",
+      zipCode: user.address?.zipCode || "",
       farmLandmark: user.farmLocation?.landmark || "",
       farmDirectionsNote: user.farmLocation?.directionsNote || "",
     };
@@ -578,94 +582,31 @@ export const useFarmerProfile = () => {
       } finally {
         setPasswordUpdating(false);
       }
-    }
-  };
-
-  const handleUseCurrentContactAddress = async () => {
-    if (mutation.isPending || locationAction || !dbUser?._id) return;
-
-    const cooldownMessage = getLocationCooldownMessage(
-      dbUser.address?.locationCapturedAt,
-      "Contact address location",
-    );
-    if (cooldownMessage) {
-      toast.dismiss();
-      toast.error("Please wait before updating", {
-        description: cooldownMessage,
-      });
-      return;
-    }
-
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Location permission denied", {
-        description: "Enable location access to detect your contact address.",
-      });
-      return;
-    }
-
-    let locationToastId: string | number | undefined;
-    try {
-      setLocationAction("contact-gps");
-      locationToastId = toast.info("Detecting contact address...");
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const [geocode] = await Location.reverseGeocodeAsync({
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude,
-      });
-
-      const normalization = normalizeContactAddress(geocode, dbUser.address || formData);
-
-      if (locationToastId !== undefined) toast.dismiss(locationToastId);
-
-      setFormData((prev) => ({
-        ...prev,
-        street: normalization.address.street || prev.street,
-        barangay: normalization.address.barangay || prev.barangay,
-        city: normalization.address.city || prev.city,
-        district: normalization.address.district || prev.district,
-        province: normalization.address.province || prev.province,
-      }));
-
-      if (!normalization.hasBarangay) {
-        setEditMode("address");
-        toast.info("Barangay selection required", {
-          description: "We found your location, but we could not identify your barangay. Please select your barangay to continue.",
-        });
-        return;
+    } else if (editMode === "address") {
+      if (!formData.barangay || isAddressPlaceholder(formData.barangay)) {
+        return toast.error("Please select your barangay before saving.");
       }
-
-      await mutation.mutateAsync({
-        address: {
-          street: normalization.address.street || formData.street,
-          barangay: normalization.address.barangay,
-          city: normalization.address.city || formData.city || "",
-          district: normalization.address.district || formData.district || "",
-          province: normalization.address.province || "Iloilo",
-          zipCode: normalization.address.zipCode || dbUser.address?.zipCode || "",
-          region: "Region VI",
-          detectedAddress: normalization.address.detectedAddress,
-          coordinates: {
-            lat: current.coords.latitude,
-            lng: current.coords.longitude,
+      try {
+        await mutation.mutateAsync({
+          address: {
+            houseNumber: formData.houseNumber || "",
+            purokSitio: formData.purokSitio || "",
+            street: formData.street || "",
+            subdivision: formData.subdivision || "",
+            barangay: formData.barangay,
+            city: formData.city || "",
+            district: formData.district || "",
+            province: formData.province || "Iloilo",
+            zipCode: formData.zipCode || "",
+            region: "Region VI",
           },
-          locationCapture: true,
-        },
-      });
-    } catch (err: any) {
-      if (locationToastId !== undefined) toast.dismiss(locationToastId);
-      if (!err?.response) {
-        toast.error("Unable to detect your location", {
-          description: "Check location permissions and try again.",
         });
+      } catch (err) {
+        // Error toast handled by mutation.onError
       }
-    } finally {
-      setLocationAction(null);
     }
   };
+
 
   const handleSaveCurrentFarmLocation = async () => {
     if (mutation.isPending || locationAction || !dbUser?._id) return;
@@ -873,6 +814,10 @@ export const useFarmerProfile = () => {
     }
   };
 
+  const handleOpenAddressEditor = () => {
+    setEditMode("address");
+  };
+
   return {
     clerkUser,
     dbUser,
@@ -911,7 +856,6 @@ export const useFarmerProfile = () => {
     handleChooseFromGallery,
     handleChangeProfileImage,
     handleUpdate,
-    handleUseCurrentContactAddress,
     handleSaveCurrentFarmLocation,
     handleSaveFarmLocationNotes,
     handleUseContactAddressForFarmLocation,
@@ -919,6 +863,7 @@ export const useFarmerProfile = () => {
     handleChangePhoneNumber,
     handleStartPhoneNumberChange,
     handleOpenPhoneEditor,
+    handleOpenAddressEditor,
     handleCloseProfileEditor,
     colors,
     isDark,
