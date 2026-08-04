@@ -31,6 +31,7 @@ export default function TechnicianLayout() {
       <Stack.Screen name="health-log" />
       <Stack.Screen name="record-ai" />
       <Stack.Screen name="technician.calendar" />
+      <Stack.Screen name="technician.tasks" />
       <Stack.Screen name="task-details" />
       <Stack.Screen name="performance" />
       <Stack.Screen name="offline-maps" />

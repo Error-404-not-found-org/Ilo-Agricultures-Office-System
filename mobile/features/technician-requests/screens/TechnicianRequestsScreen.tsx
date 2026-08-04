@@ -1,26 +1,15 @@
 import React, { useRef, useState, useEffect } from "react";
-import {
-  View,
-  FlatList,
-  TouchableOpacity,
-  RefreshControl,
-} from "react-native";
-import { useRouter } from "expo-router";
+import { View, FlatList, TouchableOpacity, RefreshControl } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { safeBack } from "@/utils/navigation";
-import {
-  CalendarDays,
-  SlidersHorizontal,
-} from "lucide-react-native";
+import { CalendarDays, SlidersHorizontal } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/lib/theme";
 import { toast } from "sonner-native";
 import { Text } from "@/components/ui/Text";
 import { ScreenLayout } from "@/components/ScreenLayout";
-import {
-  AppHeaderIconButton,
-  AppPageHeader,
-} from "@/components/AppPageHeader";
+import { AppHeaderIconButton, AppPageHeader } from "@/components/AppPageHeader";
 import * as Location from "expo-location";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
@@ -32,10 +21,8 @@ import {
 
 import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
 import { RequestListCard } from "../components/RequestListCard";
-import {
-  AIRequestModal,
-  AIRequestModalView,
-} from "../components/AIRequestModal";
+import { AIRequestModal } from "../components/AIRequestModal";
+import TechnicianMyWorkPanel from "../components/TechnicianMyWorkPanel";
 import type {
   RequestItem,
   VisitPeriod,
@@ -59,6 +46,8 @@ type TechnicianRequestsScreenProps = {
   showBackButton?: boolean;
 };
 
+type RequestSection = "openRequests" | "myWork";
+
 export default function TechnicianRequestsScreen({
   showBackButton = true,
 }: TechnicianRequestsScreenProps) {
@@ -67,14 +56,16 @@ export default function TechnicianRequestsScreen({
   const { colors, isDark } = useTheme();
   const queryClient = useQueryClient();
   const scheduleSubmissionRef = useRef(false);
+  const { section } = useLocalSearchParams<{
+    section?: string | string[];
+  }>();
+  const normalizedSection = Array.isArray(section) ? section[0] : section;
 
   const {
     search,
     setSearch,
     type,
     setType,
-    assignment,
-    setAssignment,
     page,
     setPage,
     nearLat,
@@ -100,10 +91,17 @@ export default function TechnicianRequestsScreen({
 
   const [aiModal, setAIModal] = useState<{
     request: RequestItem;
-    view: AIRequestModalView;
   } | null>(null);
+  const [activeSection, setActiveSection] =
+    useState<RequestSection>("openRequests");
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+
+  useEffect(() => {
+    setActiveSection(
+      normalizedSection === "myWork" ? "myWork" : "openRequests",
+    );
+  }, [normalizedSection]);
 
   // Filter option arrays
   const typeOptions = [
@@ -112,7 +110,6 @@ export default function TechnicianRequestsScreen({
     { label: "Health", value: "health" },
     { label: "Pregnancy Check", value: "breeding_verification" },
   ];
-
 
   const sortOptions = [
     { label: "Newest First", value: "newest" },
@@ -239,22 +236,24 @@ export default function TechnicianRequestsScreen({
     }
   };
 
-  const openAIRequest = (item: RequestItem, view: AIRequestModalView) => {
+  const openAIRequest = (item: RequestItem) => {
     if (!isCanonicalWorkflowId(item.workflowId)) {
       toast.error("This AI request is missing its workflow identifier.");
       return;
     }
-    setAIModal({ request: item, view });
+    setAIModal({ request: item });
   };
 
   const handleActionPress = (item: RequestItem | any) => {
     if (item.workflowType === "AI" || item.type === "ai") {
       if (item.workflowType !== "AI") {
-        toast.error("This AI request is missing its canonical workflow contract.");
+        toast.error(
+          "This AI request is missing its canonical workflow contract.",
+        );
         return;
       }
       if (item.allowedAction === "CLAIM_AND_SCHEDULE") {
-        openAIRequest(item, "details");
+        openAIRequest(item);
       } else if (item.allowedAction === "VIEW_RECORD") {
         router.push({
           pathname: "/(technician)/request-details",
@@ -263,10 +262,7 @@ export default function TechnicianRequestsScreen({
       } else if (item.allowedAction === "RECORD_SERVICE") {
         toast.error("Open this scheduled service from My Work.");
       } else if (item.allowedAction === "SCHEDULE_VISIT") {
-        router.push({
-          pathname: "/(technician)/request-details",
-          params: { id: item.workflowId, type: "ai" },
-        });
+        openAIRequest(item);
       } else {
         toast.error("This AI request has no available action.");
       }
@@ -307,11 +303,13 @@ export default function TechnicianRequestsScreen({
   const handleAcceptRequest = async (item: RequestItem) => {
     if (item.workflowType === "AI" || item.type === "ai") {
       if (item.workflowType !== "AI") {
-        toast.error("This AI request is missing its canonical workflow contract.");
+        toast.error(
+          "This AI request is missing its canonical workflow contract.",
+        );
         return;
       }
       if (item.allowedAction === "CLAIM_AND_SCHEDULE") {
-        openAIRequest(item, "schedule");
+        openAIRequest(item);
       } else {
         handleActionPress(item);
       }
@@ -395,9 +393,90 @@ export default function TechnicianRequestsScreen({
         }
       />
 
-      <View style={{ flex: 1, paddingHorizontal: 16, paddingTop: 16 }}>
-        {/* Requests Board List */}
-        <FlatList
+      <View style={{ flex: 1, paddingTop: 16 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9",
+            borderRadius: 12,
+            padding: 4,
+            marginBottom: 12,
+            marginHorizontal: 16,
+          }}
+        >
+          <TouchableOpacity
+            onPress={() => setActiveSection("openRequests")}
+            style={{
+              flex: 1,
+              minHeight: 48,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 8,
+              backgroundColor:
+                activeSection === "openRequests"
+                  ? isDark
+                    ? "#1e293b"
+                    : "#fff"
+                  : "transparent",
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "Outfit_700Bold",
+                color:
+                  activeSection === "openRequests"
+                    ? colors.primary
+                    : isDark
+                      ? "#94a3b8"
+                      : "#64748b",
+                fontSize: 13,
+              }}
+            >
+              Open Requests
+              {activeSection === "openRequests" && pagination.total > 0
+                ? `  ${pagination.total}`
+                : ""}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => {
+              setAIModal(null);
+              setActiveSection("myWork");
+            }}
+            style={{
+              flex: 1,
+              minHeight: 48,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 8,
+              backgroundColor:
+                activeSection === "myWork"
+                  ? isDark
+                    ? "#1e293b"
+                    : "#fff"
+                  : "transparent",
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "Outfit_700Bold",
+                color:
+                  activeSection === "myWork"
+                    ? colors.primary
+                    : isDark
+                      ? "#94a3b8"
+                      : "#64748b",
+                fontSize: 13,
+              }}
+            >
+              My Work
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeSection === "openRequests" ? (
+          <FlatList
           style={{ flex: 1 }}
           data={isLoading && !isRefetching ? [] : requests}
           keyExtractor={(item) => item.id}
@@ -406,6 +485,7 @@ export default function TechnicianRequestsScreen({
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{
             paddingBottom: showBackButton ? 24 : insets.bottom + 96,
+            paddingHorizontal: 16,
           }}
           ListHeaderComponent={
             <View style={{ paddingBottom: 4 }}>
@@ -415,79 +495,6 @@ export default function TechnicianRequestsScreen({
                 placeholder="Search farmer or ear tag"
                 variant="directory"
               />
-
-              {/* Segmented Control for Assignment Filter */}
-              <View
-                style={{
-                  flexDirection: "row",
-                  backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#f1f5f9",
-                  borderRadius: 12,
-                  padding: 4,
-                  marginBottom: 12,
-                  marginTop: 10,
-                }}
-              >
-                <TouchableOpacity
-                  onPress={() => setAssignment("unassigned")}
-                  style={{
-                    flex: 1,
-                    minHeight: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 8,
-                    backgroundColor:
-                      assignment === "unassigned"
-                        ? isDark
-                          ? "#1e293b"
-                          : "#fff"
-                        : "transparent",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_700Bold",
-                      color:
-                        assignment === "unassigned"
-                          ? colors.primary
-                          : isDark
-                            ? "#94a3b8"
-                            : "#64748b",
-                      fontSize: 13,
-                    }}
-                  >
-                    Open Requests
-                    {assignment === "unassigned" && pagination.total > 0
-                      ? `  ${pagination.total}`
-                      : ""}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() =>
-                    router.push("/(technician)/technician.tasks" as any)
-                  }
-                  style={{
-                    flex: 1,
-                    minHeight: 48,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 8,
-                    backgroundColor:
-                      "transparent",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontFamily: "Outfit_700Bold",
-                      color:
-                        isDark ? "#94a3b8" : "#64748b",
-                      fontSize: 13,
-                    }}
-                  >
-                    My Work
-                  </Text>
-                </TouchableOpacity>
-              </View>
 
               <FilterChips
                 options={typeOptions}
@@ -511,7 +518,9 @@ export default function TechnicianRequestsScreen({
                     fontSize: 12,
                   }}
                 >
-                  {showAdvancedFilters ? "Filter requests" : "All request types"}
+                  {showAdvancedFilters
+                    ? "Filter requests"
+                    : "All request types"}
                 </Text>
                 <TouchableOpacity
                   onPress={() => setShowAdvancedFilters((current) => !current)}
@@ -527,7 +536,9 @@ export default function TechnicianRequestsScreen({
                     paddingHorizontal: 12,
                     borderRadius: 14,
                     borderWidth: 1,
-                    borderColor: showAdvancedFilters ? colors.primary : colors.border,
+                    borderColor: showAdvancedFilters
+                      ? colors.primary
+                      : colors.border,
                     backgroundColor: showAdvancedFilters
                       ? isDark
                         ? "rgba(16,185,129,0.14)"
@@ -616,7 +627,9 @@ export default function TechnicianRequestsScreen({
                 </View>
               ) : null}
 
-              {isLoading && !isRefetching ? <AsyncState state="loading" /> : null}
+              {isLoading && !isRefetching ? (
+                <AsyncState state="loading" />
+              ) : null}
             </View>
           }
           renderItem={({ item }) => (
@@ -640,16 +653,8 @@ export default function TechnicianRequestsScreen({
             isLoading || isRefetching ? null : (
               <AsyncState
                 state="empty"
-                title={
-                  assignment === "unassigned"
-                    ? "No open requests"
-                    : "No claimed requests yet"
-                }
-                message={
-                  assignment === "unassigned"
-                    ? "New farmer service requests will appear here."
-                    : "Requests you claim or accept will appear in My Work."
-                }
+                title="No open requests"
+                message="New farmer service requests will appear here."
                 onAction={handleRefresh}
                 actionLabel="Refresh"
                 style={{ paddingVertical: 32 }}
@@ -666,14 +671,18 @@ export default function TechnicianRequestsScreen({
               />
             ) : null
           }
-        />
+          />
+        ) : (
+          <TechnicianMyWorkPanel />
+        )}
       </View>
       <AIRequestModal
+        visible={!!aiModal}
         request={aiModal?.request || null}
-        initialView={aiModal?.view || "details"}
-        visible={Boolean(aiModal)}
         isSubmitting={isClaimingAndScheduling}
-        onClose={() => setAIModal(null)}
+        onClose={() => {
+          if (!isClaimingAndScheduling) setAIModal(null);
+        }}
         onConfirm={handleConfirmAISchedule}
       />
     </ScreenLayout>

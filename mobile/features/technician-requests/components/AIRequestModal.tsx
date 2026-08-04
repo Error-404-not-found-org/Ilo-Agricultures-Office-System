@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  LayoutAnimation,
   Modal,
   ScrollView,
   TouchableOpacity,
@@ -9,6 +10,7 @@ import {
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { CalendarDays, Clock3, MapPin, Phone, X } from "lucide-react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
@@ -18,11 +20,8 @@ import type {
 } from "../types/technicianRequests.types";
 import { formatLocalCalendarDate } from "../utils/aiWorkflow";
 
-export type AIRequestModalView = "details" | "schedule";
-
 interface AIRequestModalProps {
   request: RequestItem | null;
-  initialView: AIRequestModalView;
   visible: boolean;
   isSubmitting: boolean;
   onClose: () => void;
@@ -46,14 +45,12 @@ const addDays = (date: Date, days: number) => {
 
 export function AIRequestModal({
   request,
-  initialView,
   visible,
   isSubmitting,
   onClose,
   onConfirm,
 }: AIRequestModalProps) {
   const { colors, isDark } = useTheme();
-  const [view, setView] = useState<AIRequestModalView>(initialView);
   const [selectedDate, setSelectedDate] = useState(startOfToday);
   const [dateChoice, setDateChoice] = useState<"today" | "tomorrow" | "custom">(
     "today",
@@ -63,13 +60,12 @@ export function AIRequestModal({
   const submittingRef = useRef(false);
 
   useEffect(() => {
-    setView(initialView);
     setSelectedDate(startOfToday());
     setDateChoice("today");
     setVisitPeriod(null);
     setShowDatePicker(false);
     submittingRef.current = false;
-  }, [initialView, request?.workflowId, visible]);
+  }, [request?.workflowId, visible]);
 
   if (!request) return null;
 
@@ -94,6 +90,7 @@ export function AIRequestModal({
     setDateChoice(choice);
     setSelectedDate(addDays(startOfToday(), choice === "tomorrow" ? 1 : 0));
   };
+
 
   const confirmSchedule = async () => {
     if (
@@ -128,10 +125,18 @@ export function AIRequestModal({
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="pageSheet"
+      presentationStyle="fullScreen"
+      statusBarTranslucent={false}
+      navigationBarTranslucent={false}
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <SafeAreaView
+        edges={["top", "bottom"]}
+        style={{
+          flex: 1,
+          backgroundColor: colors.background,
+        }}
+      >
         <View
           style={{
             minHeight: 64,
@@ -149,7 +154,7 @@ export function AIRequestModal({
               style={{ color: colors.textPrimary, fontSize: 18 }}
               variant="extrabold"
             >
-              {view === "details" ? "AI Request" : "Claim & Set Visit"}
+              AI Service Request
             </Text>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>
               {request.actionLabel || "Artificial Insemination"}
@@ -167,11 +172,20 @@ export function AIRequestModal({
         </View>
 
         <ScrollView
-          contentContainerStyle={{ padding: 18, paddingBottom: 36, gap: 14 }}
+          style={{ flex: 1 }}
+          contentContainerStyle={{
+            padding: 18,
+            paddingBottom: 36,
+            gap: 14,
+          }}
           showsVerticalScrollIndicator={false}
+          contentInsetAdjustmentBehavior="automatic"
         >
           <View style={cardStyle}>
-            <Text style={{ color: colors.textPrimary, fontSize: 16 }} variant="bold">
+            <Text
+              style={{ color: colors.textPrimary, fontSize: 16 }}
+              variant="bold"
+            >
               {farmerName}
             </Text>
             <Text style={{ color: colors.textSecondary, marginTop: 3 }}>
@@ -179,33 +193,53 @@ export function AIRequestModal({
               {request.earTag ? ` · ${request.earTag}` : ""}
             </Text>
             <View style={{ gap: 8, marginTop: 12 }}>
-              <SummaryRow icon={Phone} text={farmerPhone || "Phone not provided"} />
+              <SummaryRow
+                icon={Phone}
+                text={farmerPhone || "Phone not provided"}
+              />
               <SummaryRow icon={MapPin} text={location} />
               <SummaryRow
                 icon={CalendarDays}
-                text={`Submitted ${new Date(submittedAt).toLocaleDateString("en-PH", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}`}
+                text={`Submitted ${new Date(submittedAt).toLocaleDateString(
+                  "en-PH",
+                  {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  },
+                )}`}
               />
             </View>
           </View>
 
-          {view === "details" ? (
-            <>
+
               <View style={cardStyle}>
-                <Text style={{ color: colors.textMuted, fontSize: 11 }} variant="bold">
+                <Text
+                  style={{ color: colors.textMuted, fontSize: 11 }}
+                  variant="bold"
+                >
                   HEAT SIGNS
                 </Text>
-                <Text style={{ color: colors.textPrimary, marginTop: 6, lineHeight: 20 }}>
-                  {heatSigns.length > 0 ? heatSigns.join(", ") : "No heat signs submitted."}
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    marginTop: 6,
+                    lineHeight: 20,
+                  }}
+                >
+                  {heatSigns.length > 0
+                    ? heatSigns.join(", ")
+                    : "No heat signs submitted."}
                 </Text>
               </View>
 
               <View style={cardStyle}>
-                <Text style={{ color: colors.textMuted, fontSize: 11 }} variant="bold">
-                  ATTACHMENTS ({request.attachments?.count || attachments.length})
+                <Text
+                  style={{ color: colors.textMuted, fontSize: 11 }}
+                  variant="bold"
+                >
+                  ATTACHMENTS (
+                  {request.attachments?.count || attachments.length})
                 </Text>
                 {attachments.length > 0 ? (
                   <ScrollView
@@ -232,36 +266,27 @@ export function AIRequestModal({
               </View>
 
               <View style={cardStyle}>
-                <Text style={{ color: colors.textMuted, fontSize: 11 }} variant="bold">
+                <Text
+                  style={{ color: colors.textMuted, fontSize: 11 }}
+                  variant="bold"
+                >
                   STATUS
                 </Text>
-                <Text style={{ color: colors.textPrimary, marginTop: 6 }} variant="bold">
+                <Text
+                  style={{ color: colors.textPrimary, marginTop: 6 }}
+                  variant="bold"
+                >
                   {request.status}
                 </Text>
               </View>
 
               {canSchedule ? (
-                <TouchableOpacity
-                  onPress={() => setView("schedule")}
-                  accessibilityRole="button"
-                  style={{
-                    minHeight: 52,
-                    borderRadius: 14,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    backgroundColor: colors.primary,
-                  }}
-                >
-                  <Text style={{ color: colors.onPrimary, fontSize: 15 }} variant="bold">
-                    {request.actionLabel || "Claim & Set Visit"}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </>
-          ) : (
-            <>
+                <>
               <View style={cardStyle}>
-                <Text style={{ color: colors.textPrimary, marginBottom: 10 }} variant="bold">
+                <Text
+                  style={{ color: colors.textPrimary, marginBottom: 10 }}
+                  variant="bold"
+                >
                   Visit date
                 </Text>
                 <View style={{ flexDirection: "row", gap: 8 }}>
@@ -284,7 +309,9 @@ export function AIRequestModal({
                         justifyContent: "center",
                         borderWidth: 1,
                         borderColor:
-                          dateChoice === choice ? colors.primary : colors.border,
+                          dateChoice === choice
+                            ? colors.primary
+                            : colors.border,
                         backgroundColor:
                           dateChoice === choice
                             ? isDark
@@ -332,7 +359,10 @@ export function AIRequestModal({
               </View>
 
               <View style={cardStyle}>
-                <Text style={{ color: colors.textPrimary, marginBottom: 10 }} variant="bold">
+                <Text
+                  style={{ color: colors.textPrimary, marginBottom: 10 }}
+                  variant="bold"
+                >
                   Visit period
                 </Text>
                 <View style={{ flexDirection: "row", gap: 10 }}>
@@ -350,7 +380,9 @@ export function AIRequestModal({
                         gap: 7,
                         borderWidth: 1,
                         borderColor:
-                          visitPeriod === period ? colors.primary : colors.border,
+                          visitPeriod === period
+                            ? colors.primary
+                            : colors.border,
                         backgroundColor:
                           visitPeriod === period
                             ? isDark
@@ -361,7 +393,10 @@ export function AIRequestModal({
                     >
                       <Clock3 size={16} color={colors.primary} />
                       <Text
-                        style={{ color: colors.textPrimary, textTransform: "capitalize" }}
+                        style={{
+                          color: colors.textPrimary,
+                          textTransform: "capitalize",
+                        }}
                         variant="bold"
                       >
                         {period}
@@ -372,23 +407,6 @@ export function AIRequestModal({
               </View>
 
               <View style={{ flexDirection: "row", gap: 8 }}>
-                <TouchableOpacity
-                  onPress={() => setView("details")}
-                  disabled={isSubmitting}
-                  style={{
-                    flex: 1,
-                    minHeight: 48,
-                    borderRadius: 12,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text style={{ color: colors.textPrimary }} variant="bold">
-                    Back
-                  </Text>
-                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={onClose}
                   disabled={isSubmitting}
@@ -406,30 +424,35 @@ export function AIRequestModal({
                     Cancel
                   </Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={confirmSchedule}
+                  disabled={isSubmitting || !visitPeriod || !workflowId}
+                  accessibilityRole="button"
+                  style={{
+                    flex: 1,
+                    minHeight: 48,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: colors.primary,
+                    opacity:
+                      isSubmitting || !visitPeriod || !workflowId ? 0.55 : 1,
+                  }}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator color={colors.onPrimary} />
+                  ) : (
+                    <Text
+                      style={{ color: colors.onPrimary, fontSize: 15 }}
+                      variant="bold"
+                    >
+                      Confirm Schedule
+                    </Text>
+                  )}
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={confirmSchedule}
-                disabled={isSubmitting || !visitPeriod || !workflowId}
-                accessibilityRole="button"
-                style={{
-                  minHeight: 52,
-                  borderRadius: 14,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  backgroundColor: colors.primary,
-                  opacity: isSubmitting || !visitPeriod || !workflowId ? 0.55 : 1,
-                }}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color={colors.onPrimary} />
-                ) : (
-                  <Text style={{ color: colors.onPrimary, fontSize: 15 }} variant="bold">
-                    Confirm Schedule
-                  </Text>
-                )}
-              </TouchableOpacity>
             </>
-          )}
+          ) : null}
         </ScrollView>
 
         {showDatePicker ? (
@@ -447,7 +470,7 @@ export function AIRequestModal({
             }}
           />
         ) : null}
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }

@@ -144,7 +144,7 @@ export function useTechnicianDashboardScreen() {
       const status = String(item.status || "").toLowerCase();
       router.push(
         ["scheduled", "in-progress", "in_progress", "done"].includes(status)
-          ? ("/(technician)/technician.tasks" as any)
+          ? ("/(technician)/(tabs)/technician.requests?section=myWork" as any)
           : ("/(technician)/(tabs)/technician.requests" as any),
       );
       return;

@@ -335,6 +335,9 @@ export default function RequestDetailsScreen() {
     "declined",
   ].includes(request?.status?.toLowerCase());
 
+  const isAI =
+    type === "ai" || request?.serviceType === "ai" || request?.type === "ai" || request?.sireBreed !== undefined;
+
   const isReadyToday = (() => {
     if (!request) return false;
     const status = request.status?.toLowerCase();
@@ -358,14 +361,12 @@ export default function RequestDetailsScreen() {
     if (!request) return;
     setActionNotice(null);
     const status = request.status?.toLowerCase();
-    const isAI =
-      type === "ai" || request.serviceType === "ai" || request.type === "ai";
 
     if (isAI) {
       const destination = ["scheduled", "in-progress", "in_progress"].includes(
         status,
       )
-        ? "/(technician)/technician.tasks"
+        ? "/(technician)/(tabs)/technician.requests?section=myWork"
         : "/(technician)/(tabs)/technician.requests";
       toast.error(
         ["scheduled", "in-progress", "in_progress"].includes(status)
@@ -707,11 +708,6 @@ export default function RequestDetailsScreen() {
     );
   }
 
-  const isAI =
-    type === "ai" ||
-    request.serviceType === "ai" ||
-    request.type === "ai" ||
-    request.sireBreed !== undefined;
   const animal = request.animalId;
   const farmer = request.farmerId;
   const technician = request.approvedBy || request.handledBy;
@@ -1574,7 +1570,7 @@ export default function RequestDetailsScreen() {
         </View>
 
         {/* Action / Input Section */}
-        {!isTerminal && (
+        {!isTerminal && (!isAI || request.cancellationStatus === "requested") && (
           <View style={sectionCardStyle}>
             {request.cancellationStatus === "requested" ? (
               // Cancellation Requested Review Panel
