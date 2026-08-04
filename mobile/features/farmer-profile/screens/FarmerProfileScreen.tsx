@@ -33,7 +33,6 @@ export const FarmerProfileScreen = () => {
     isSavingContactAddressLocation,
     isSavingFarmGpsPin,
     isSavingFarmLocationNotes,
-    isCopyingContactAddressToFarm,
     phoneOtpSent,
     phoneOtpCode,
     setPhoneOtpCode,
@@ -57,7 +56,6 @@ export const FarmerProfileScreen = () => {
     handleUpdate,
     handleSaveCurrentFarmLocation,
     handleSaveFarmLocationNotes,
-    handleUseContactAddressForFarmLocation,
     handleResendOtp,
     handleChangePhoneNumber,
     handleStartPhoneNumberChange,
@@ -126,10 +124,8 @@ export const FarmerProfileScreen = () => {
           setFormData={setFormData}
           isBusy={mutation.isPending || isSavingFarmLocation}
           isSavingCurrentLocation={isSavingFarmGpsPin}
-          isSavingContactAddress={isCopyingContactAddressToFarm}
           isSavingNotes={isSavingFarmLocationNotes}
           onUseCurrentLocation={() => setFarmLocationConfirmVisible(true)}
-          onUseContactAddress={handleUseContactAddressForFarmLocation}
           onSaveNotes={handleSaveFarmLocationNotes}
         />
 
