@@ -61,6 +61,7 @@ export const getClaimScheduleErrorMessage = (error: any) => {
 };
 
 export interface AIRecordingInput {
+  estrus: string;
   sireBreed: string;
   sireCode: string;
   semenDosesUsed: string;
@@ -70,6 +71,9 @@ export interface AIRecordingInput {
 }
 
 export const validateAIRecording = (input: AIRecordingInput) => {
+  if (!["Natural", "Synchronized", "Induced"].includes(input.estrus)) {
+    return "Select the estrus type observed for this insemination.";
+  }
   const sireBreed = input.sireBreed.trim();
   const sireCode = input.sireCode.trim();
   const technicianNote = input.technicianNote.trim();
