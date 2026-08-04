@@ -10,18 +10,17 @@ import {
   Platform,
 } from "react-native";
 import { ChevronLeft, Send, Sparkles, Trash2 } from "lucide-react-native";
-import { useRouter } from "expo-router";
+import { safeBack } from "../utils/navigation";
 import { StatusBar } from "expo-status-bar";
 import { useUser } from "@clerk/clerk-expo";
 import { useApi } from "../lib/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
-const PRIMARY = "#00643B";
+import { useTheme } from "../lib/theme";
 
 export default function AskMoowie() {
-  const router = useRouter();
   const { user } = useUser();
   const api = useApi();
+  const { colors, isDark } = useTheme();
 
   const role = user?.publicMetadata?.role || "farmer";
 
@@ -163,44 +162,63 @@ export default function AskMoowie() {
 
   return (
     <View className="flex-1 bg-white dark:bg-slate-950">
-      <StatusBar style="light" />
+      <StatusBar style={isDark ? "light" : "dark"} />
 
       {/* Header */}
-      <View className="pt-14 pb-6 px-6 bg-[#00643B] rounded-b-[32px] flex-row items-center justify-between shadow-lg">
+      <View
+        className="flex-row items-center justify-between px-6 py-4 border-b z-10 w-full"
+        style={{
+          backgroundColor: isDark ? colors.card : "#fff",
+          borderColor: colors.border,
+          paddingTop: 56,
+        }}
+      >
         <TouchableOpacity
-          onPress={() => router.back()}
-          className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
+          onPress={() => safeBack(role === "technician" ? "/(technician)/(tabs)" : "/(farmer)/(tabs)")}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={{
+            padding: 8,
+            backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+            borderRadius: 999,
+          }}
         >
-          <ChevronLeft size={24} color="white" />
+          <ChevronLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
         </TouchableOpacity>
 
         <View className="flex-1 items-center">
           <Text
-            style={{ fontFamily: "Outfit_800ExtraBold" }}
-            className="text-white text-[20px]"
+            style={{
+              fontFamily: "Outfit_900Black",
+              color: colors.textPrimary,
+              fontSize: 20,
+            }}
           >
             Ask Moowie
           </Text>
 
           <View className="flex-row items-center mt-0.5">
-            <View className="w-2 h-2 rounded-full bg-emerald-400 mr-1.5" />
-
+            <View className="w-2 h-2 rounded-full bg-emerald-500 mr-1.5" />
             <Text
-              style={{ fontFamily: "Outfit_700Bold" }}
-              className="text-emerald-100 text-[10px] uppercase tracking-widest opacity-80"
+              style={{ fontFamily: "Outfit_700Bold", color: colors.textSecondary }}
+              className="text-[10px] uppercase tracking-widest opacity-80"
             >
-              {role === "technician"
-                ? "Field Support Mode"
-                : "Online Assistant"}
+              {role === "technician" ? "Field Support Mode" : "Online Assistant"}
             </Text>
           </View>
         </View>
 
         <TouchableOpacity
           onPress={handleClearHistory}
-          className="w-10 h-10 bg-white/10 rounded-full items-center justify-center border border-white/10"
+          accessibilityRole="button"
+          accessibilityLabel="Clear Moowie chat history"
+          style={{
+            padding: 8,
+            backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+            borderRadius: 999,
+          }}
         >
-          <Trash2 size={20} color="white" />
+          <Trash2 size={20} color={isDark ? "#f85a5a" : "#ef4444"} />
         </TouchableOpacity>
       </View>
 
@@ -231,7 +249,7 @@ export default function AskMoowie() {
             >
               {/* AI Avatar */}
               {item.role === "ai" && (
-                <View className="w-10 h-10 rounded-full bg-emerald-50 items-center justify-center mr-2 mt-1 border border-emerald-100 overflow-hidden shadow-sm">
+                <View className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/50 items-center justify-center mr-2 mt-1 border border-emerald-100 dark:border-emerald-800/50 overflow-hidden shadow-sm">
                   <Image
                     source={{
                       uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
@@ -267,7 +285,7 @@ export default function AskMoowie() {
           {/* Typing */}
           {loading && (
             <View className="mb-6 flex-row justify-start">
-              <View className="w-10 h-10 rounded-full bg-emerald-50 items-center justify-center mr-2 mt-1 border border-emerald-100 overflow-hidden shadow-sm">
+              <View className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/50 items-center justify-center mr-2 mt-1 border border-emerald-100 dark:border-emerald-800/50 overflow-hidden shadow-sm">
                 <Image
                   source={{
                     uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
@@ -306,6 +324,8 @@ export default function AskMoowie() {
             <TouchableOpacity
               onPress={handleSend}
               disabled={!message.trim()}
+              accessibilityRole="button"
+              accessibilityLabel="Send message to Moowie"
               className={`w-10 h-10 rounded-full items-center justify-center ml-2 shadow-sm ${
                 message.trim()
                   ? "bg-[#00643B]"

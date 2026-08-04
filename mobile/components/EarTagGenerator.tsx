@@ -43,7 +43,6 @@ export default function EarTagGenerator({
     const generatedTag = `${numStr}${initials}`;
 
     onGenerate(generatedTag);
-    toast.success(`Generated tag: ${generatedTag}`);
   };
 
   return (

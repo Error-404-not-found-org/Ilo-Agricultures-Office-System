@@ -1,15 +1,6 @@
 import mongoose from "mongoose";
 import { ENV } from "./env.js";
-import dns from "dns";
-
-if (process.env.FORCE_CUSTOM_DNS === "true") {
-  try {
-    dns.setServers(["8.8.8.8", "1.1.1.1"]);
-    console.log("IPv4 DNS servers set to 8.8.8.8, 1.1.1.1");
-  } catch (err) {
-    console.error("Failed to set custom DNS:", err);
-  }
-}
+import { configureCustomDns } from "./custom-dns.js";
 
 export const connectDB = async () => {
   try {
@@ -26,7 +17,9 @@ export const connectDB = async () => {
     }
 
     // 3. Connect using the dynamically chosen string
-    const conn = await mongoose.connect(dbURI);
+    // Production indexes are deployed explicitly after duplicate audits and backfills.
+    configureCustomDns();
+    const conn = await mongoose.connect(dbURI, { autoIndex: !isProduction });
 
     // Friendly reminder in your terminal so you always know where data is saving
     console.log(

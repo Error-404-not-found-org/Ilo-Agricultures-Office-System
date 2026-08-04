@@ -1,17 +1,18 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "react-router-dom";
+import { validateTaskContextForAction, sanitizeReturnTo } from "../../utils/taskNavigation";
+import TaskContextCard from "../../features/technician/TaskContextCard";
+import TaskContextErrorView from "../../features/technician/TaskContextErrorView";
 import { useUser } from "@clerk/clerk-react";
 import axiosInstance from "../../lib/axios";
-import { TableRowSkeleton } from "../../components/Skeleton";
 import {
   Search,
   Download,
-  Tractor,
   Sparkles,
   HeartPulse,
   X,
   Eye,
-  Info,
   ChevronLeft,
   ChevronRight,
   Filter,
@@ -20,16 +21,32 @@ import {
   Calendar,
   Baby,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
+import TableNameLink from "../../components/ui/TableNameLink";
 import { toast } from "sonner";
 
 export default function NewbornsLog() {
   const queryClient = useQueryClient();
   const { user } = useUser();
+  const location = useLocation();
+
+  const searchParams = new URLSearchParams(location.search);
+  const taskIdQuery = searchParams.get("taskId");
+
+  const taskContext = location.state?.taskContext || null;
+  const returnTo = sanitizeReturnTo(location.state?.returnTo);
+
+  const isTaskWorkflow = !!taskIdQuery;
+  const validation = taskContext ? validateTaskContextForAction(taskContext) : null;
+  const isStateMissing = isTaskWorkflow && (!taskContext || (validation && !validation.valid));
+  const isTaskPreview = isTaskWorkflow && !isStateMissing;
+
   const role = user?.publicMetadata?.role || "Field Officer";
   const normalizedRole = String(role).toLowerCase();
 
   const [searchQuery, setSearchQuery] = useState("");
+
+
   const [speciesFilter, setSpeciesFilter] = useState("");
   const [easeFilter, setEaseFilter] = useState("");
   const [seenFilter, setSeenFilter] = useState("");
@@ -89,14 +106,25 @@ export default function NewbornsLog() {
   };
 
   // ---- FETCH REAL DATA ----
-  const endpoint = normalizedRole === "admin" ? "/admin/calvings?limit=1000" : "/technician/calvings?limit=1000";
-  const { data: calvings = [], isLoading } = useQuery({
-    queryKey: ["technician", "calvings-list-isolated"],
+  const endpoint = normalizedRole === "admin" ? "/admin/calvings" : "/technician/calvings";
+  const { data: calvingPage = {}, isLoading, isError, error, refetch } = useQuery({
+    queryKey: ["technician", "calvings-list-isolated", normalizedRole, currentPage, searchQuery, speciesFilter, easeFilter, seenFilter],
     queryFn: async () => {
-      const res = await axiosInstance.get(endpoint);
-      return res.data?.data || res.data || [];
-    }
+      const res = await axiosInstance.get(endpoint, {
+        params: {
+          page: currentPage,
+          limit: itemsPerPage,
+          search: searchQuery || undefined,
+          species: speciesFilter || undefined,
+          calvingEase: easeFilter || undefined,
+          seen: seenFilter || undefined,
+        },
+      });
+      return res.data || {};
+    },
+    keepPreviousData: true,
   });
+  const calvings = useMemo(() => calvingPage.data || calvingPage.calvings || [], [calvingPage]);
 
   // ---- MARK SEEN MUTATION ----
   const markSeenMutation = useMutation({
@@ -118,19 +146,20 @@ export default function NewbornsLog() {
       
       return {
         id: c._id,
+        animalId: c.animalId?._id || c.animalId?.id || null,
         date: new Date(birthDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
         time: new Date(birthDate).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
         rawDate: birthDate,
-        motherTag: c.animalId?.earTag || "N/A",
-        motherSpecies: c.animalId?.species || "Cattle",
-        motherBreed: c.animalId?.breed || "N/A",
-        farmer: c.farmerId?.name || "N/A",
-        farmerPhone: c.farmerId?.phoneNumber || "N/A",
-        farmerEmail: c.farmerId?.email || "N/A",
-        numberOfCalves: c.numberOfCalves || calfList.length || 1,
+        motherTag: c.animalId?.earTag || "Not recorded",
+        motherSpecies: c.animalId?.species || "Not recorded",
+        motherBreed: c.animalId?.breed || "Not recorded",
+        farmer: c.farmerId?.name || "Farmer not recorded",
+        farmerPhone: c.farmerId?.phoneNumber || "Not recorded",
+        farmerEmail: c.farmerId?.email || "Not recorded",
+        numberOfCalves: c.numberOfCalves ?? (calfList.length || null),
         calves: calfList,
-        calvesSummary: calvesInfo || "N/A",
-        calvingEase: c.calvingEase || "Natural",
+        calvesSummary: calvesInfo || "Not recorded",
+        calvingEase: c.calvingEase || "Not recorded",
         technicianNote: c.technicianNote || "",
         isSeen: c.isSeen || false,
       };
@@ -139,34 +168,14 @@ export default function NewbornsLog() {
 
   // ---- FILTER ENGINE ----
   const filteredLogs = useMemo(() => {
-    return processedLogs.filter((l) => {
-      const q = searchQuery.toLowerCase();
-      const matchesSearch =
-        l.farmer.toLowerCase().includes(q) ||
-        l.motherTag.toLowerCase().includes(q) ||
-        l.motherBreed.toLowerCase().includes(q) ||
-        l.calvesSummary.toLowerCase().includes(q) ||
-        l.id.toLowerCase().includes(q);
-      const matchesSpecies = !speciesFilter || l.motherSpecies === speciesFilter;
-      const matchesEase = !easeFilter || l.calvingEase === easeFilter;
-      const matchesSeen = 
-        seenFilter === "" 
-          ? true 
-          : seenFilter === "unseen" 
-            ? !l.isSeen 
-            : l.isSeen;
-            
-      return matchesSearch && matchesSpecies && matchesEase && matchesSeen;
-    });
-  }, [searchQuery, speciesFilter, easeFilter, seenFilter, processedLogs]);
+    return processedLogs;
+  }, [processedLogs]);
 
   // ---- PAGINATION COMPUTATION ----
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedLogs = filteredLogs.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
-  const totalPages = Math.ceil(filteredLogs.length / itemsPerPage) || 1;
+  const paginatedLogs = filteredLogs;
+  const totalPages = calvingPage.totalPages || calvingPage.pagination?.totalPages || Math.ceil((calvingPage.total || calvingPage.pagination?.total || filteredLogs.length) / itemsPerPage) || 1;
+  const totalItems = calvingPage.total || calvingPage.pagination?.total || filteredLogs.length;
 
   // ---- CSV EXPORTER ----
   const handleExportCSV = () => {
@@ -221,51 +230,58 @@ export default function NewbornsLog() {
     }
   };
 
+  if (isStateMissing) {
+    const errorType = (validation && validation.errorType) || "missing_info";
+    return <TaskContextErrorView errorType={errorType} returnTo={returnTo} />;
+  }
+
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
         title="Newborns Log"
         subtitle="Registers of new calving events, newborn specifications, and parturition ease audits"
       />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
+        {isTaskPreview && <TaskContextCard taskContext={taskContext} />}
+
         {/* Metric widgets */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-[#00643b] bg-emerald-50 dark:bg-emerald-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+            <div className="p-2.5 rounded-xl shrink-0 text-primary bg-primary/10">
               <Baby size={16} />
             </div>
             <div>
               <div className="text-xl font-black">{isLoading ? "..." : processedLogs.length}</div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Total Calving Events
               </div>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-amber-500 bg-amber-50 dark:bg-amber-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+            <div className="p-2.5 rounded-xl shrink-0 text-amber-500 bg-amber-500/10">
               <Sparkles size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {isLoading ? "..." : processedLogs.filter((l) => !l.isSeen).length}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Unseen Calving Reports
               </div>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs">
-            <div className="p-2.5 rounded-xl shrink-0 text-rose-500 bg-rose-50 dark:bg-rose-950/20">
+          <div className="bg-base-100 border border-base-300 p-4 rounded-xl flex items-center gap-3 shadow-xs">
+            <div className="p-2.5 rounded-xl shrink-0 text-rose-500 bg-rose-500/10">
               <HeartPulse size={16} />
             </div>
             <div>
               <div className="text-xl font-black">
                 {isLoading ? "..." : processedLogs.filter((l) => l.calvingEase === "Difficult" || l.calvingEase === "Cesarean").length}
               </div>
-              <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+              <div className="text-[10px] font-bold uppercase text-base-content/50 tracking-wider">
                 Assisted / Difficult Births
               </div>
             </div>
@@ -273,17 +289,18 @@ export default function NewbornsLog() {
         </div>
 
         {/* List of Newborns */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="card bg-base-100 border border-base-300 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
           {/* Top Actions Row */}
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <div className="relative w-72">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none flex items-center justify-center">
                 <Search size={14} />
               </span>
               <input
                 type="text"
+                aria-label="Search calving records"
                 placeholder="Search tag, breed, farmer..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
+                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content placeholder-base-content/40 focus:ring-1 focus:ring-primary outline-none transition-all duration-200"
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
@@ -296,25 +313,26 @@ export default function NewbornsLog() {
               <button
                 onClick={handleExportCSV}
                 disabled={isLoading || filteredLogs.length === 0}
-                className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] disabled:opacity-50 text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
+                className="btn btn-sm btn-primary disabled:opacity-50 text-white border-none text-xs font-bold gap-1.5 rounded-xl px-4 cursor-pointer"
               >
                 <Download size={13} /> Export CSV
               </button>
-              <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2.5 whitespace-nowrap">
+              <span className="text-xs text-base-content/40 font-semibold border-l border-base-300 pl-2.5 whitespace-nowrap">
                 {isLoading ? "Fetching entries..." : `${filteredLogs.length} event${filteredLogs.length !== 1 ? "s" : ""} matched`}
               </span>
             </div>
           </div>
 
           {/* Filter Ribbon */}
-          <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
+          <div className="flex items-center gap-2 flex-wrap mb-4 bg-base-200 border border-base-300 p-2.5 rounded-xl">
+            <div className="flex items-center gap-1.5 text-xs text-base-content/40 font-bold uppercase tracking-wide px-1">
               <Filter size={13} />
               <span>Filters:</span>
             </div>
             
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+              className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
+              aria-label="Filter calving records by species"
               value={speciesFilter}
               onChange={(e) => {
                 setSpeciesFilter(e.target.value);
@@ -329,7 +347,8 @@ export default function NewbornsLog() {
             </select>
 
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+              className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
+              aria-label="Filter calving records by calving ease"
               value={easeFilter}
               onChange={(e) => {
                 setEaseFilter(e.target.value);
@@ -346,7 +365,8 @@ export default function NewbornsLog() {
             </select>
 
             <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-200 outline-none transition-all duration-200"
+              className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 focus:bg-base-100 focus:border-primary text-base-content outline-none transition-all duration-200"
+              aria-label="Filter calving records by notification status"
               value={seenFilter}
               onChange={(e) => {
                 setSeenFilter(e.target.value);
@@ -376,9 +396,9 @@ export default function NewbornsLog() {
 
           {/* Table */}
           <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full border-collapse">
+            <table className="table w-full min-w-[1040px] border-collapse" aria-label="Calving and newborn records">
               <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none">
+                <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider select-none">
                   <th className="p-3.5 pl-5">Status</th>
                   <th className="p-3.5">Birth Date & Time</th>
                   <th className="p-3.5">Mother Tag</th>
@@ -389,52 +409,84 @@ export default function NewbornsLog() {
                   <th className="p-3.5 pr-5 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
+              <tbody className="divide-y divide-base-300 text-xs">
                 {isLoading ? (
-                  [...Array(6)].map((_, idx) => <TableRowSkeleton key={idx} />)
+                  [...Array(6)].map((_, idx) => (
+                    <tr key={idx}>
+                      <td colSpan={8}>
+                        <div className="grid grid-cols-[.8fr_1.2fr_.8fr_1.2fr_1.2fr_1.2fr_.8fr_.8fr] gap-5 py-1">
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                          <span className="skeleton h-4" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : isError ? (
+                  <tr>
+                    <td colSpan={8} className="p-6">
+                      <div role="alert" className="alert alert-error">
+                        <span>{error?.response?.data?.message || "Calving records could not be loaded."}</span>
+                        <button type="button" className="btn btn-sm" onClick={() => refetch()}>Retry</button>
+                      </div>
+                    </td>
+                  </tr>
                 ) : paginatedLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium">
+                    <td colSpan={8} className="text-center p-12 text-base-content/40 font-medium">
                       No calving records registered yet.
                     </td>
                   </tr>
                 ) : (
                   paginatedLogs.map((l) => {
                     const rowGlowClass = !l.isSeen
-                      ? "bg-emerald-500/10 dark:bg-emerald-500/5 hover:bg-emerald-500/15! dark:hover:bg-emerald-500/10! shadow-[inset_4px_0_0_0_#10b981] transition-all animate-pulse duration-[2000ms]"
-                      : "hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors";
+                      ? "bg-primary/10 hover:bg-primary/15! shadow-[inset_4px_0_0_0_#10b981] transition-all animate-pulse motion-reduce:animate-none duration-[2000ms]"
+                      : "hover:bg-base-200 transition-colors";
 
                     return (
                       <tr
                         key={l.id}
-                        className={`${rowGlowClass} cursor-pointer`}
-                        onClick={() => handleInspectLog(l)}
+                        className={rowGlowClass}
                       >
                         <td className="p-3.5 pl-5 font-bold">
                           {!l.isSeen ? (
-                            <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 animate-pulse">
-                              <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                            <span className="flex items-center gap-1.5 text-primary animate-pulse motion-reduce:animate-none">
+                              <span className="h-2 w-2 rounded-full bg-primary"></span>
                               <span className="text-[9px] uppercase tracking-widest font-black">New</span>
                             </span>
                           ) : (
-                            <span className="text-slate-400 text-[9px] uppercase tracking-widest font-semibold">Seen</span>
+                            <span className="text-base-content/40 text-[9px] uppercase tracking-widest font-semibold">Seen</span>
                           )}
                         </td>
                         <td className="p-3.5 font-medium">
                           <div className="font-extrabold">{l.date}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{l.time}</div>
+                          <div className="text-[10px] text-base-content/40 mt-0.5">{l.time}</div>
                         </td>
-                        <td className="p-3.5 font-extrabold text-[#00643b] dark:text-[#10b981]">
-                          {l.motherTag}
+                        <td className="p-3.5 font-extrabold text-primary">
+                          {l.animalId ? (
+                            <TableNameLink
+                              to={`/technician/animals/${l.animalId}`}
+                              ariaLabel={`Open livestock profile for mother ${l.motherTag}`}
+                            >
+                              {l.motherTag}
+                            </TableNameLink>
+                          ) : l.motherTag}
                         </td>
                         <td className="p-3.5 font-bold">{l.farmer}</td>
                         <td className="p-3.5 font-medium">
                           <div>{l.motherSpecies}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{l.motherBreed}</div>
+                          <div className="text-[10px] text-base-content/40 mt-0.5">{l.motherBreed}</div>
                         </td>
-                        <td className="p-3.5 text-center font-bold text-slate-700 dark:text-slate-200">
-                          {l.numberOfCalves} Calf/Calves
-                          <div className="text-[10px] font-medium text-slate-400 mt-0.5 truncate max-w-[180px]">
+                        <td className="p-3.5 text-center font-bold text-base-content/85">
+                          {l.numberOfCalves == null
+                            ? "Not recorded"
+                            : `${l.numberOfCalves} Calf/Calves`}
+                          <div className="text-[10px] font-medium text-base-content/40 mt-0.5 truncate max-w-[180px]">
                             {l.calvesSummary}
                           </div>
                         </td>
@@ -442,10 +494,10 @@ export default function NewbornsLog() {
                           <span
                             className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${
                               l.calvingEase === "Difficult" || l.calvingEase === "Cesarean"
-                                ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400"
+                                ? "bg-rose-500/10 text-rose-600 border-rose-200/50"
                                 : l.calvingEase === "Natural" || l.calvingEase === "Normal"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400"
-                                  : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400"
+                                  ? "bg-primary/10 text-primary border-primary/20"
+                                  : "bg-blue-500/10 text-blue-600 border-blue-200/50"
                             }`}
                           >
                             {l.calvingEase}
@@ -456,8 +508,10 @@ export default function NewbornsLog() {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
+                            type="button"
                             onClick={() => handleInspectLog(l)}
-                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-800 hover:border-[#00643b] hover:text-[#00643b] items-center gap-1 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 transition-all cursor-pointer inline-flex"
+                            aria-label={`Inspect calving record for ${l.motherTag}`}
+                            className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-base-300 hover:border-primary hover:text-primary items-center gap-1 bg-base-100 text-base-content/70 transition-all cursor-pointer inline-flex"
                           >
                             <Eye size={12} /> Inspect
                           </button>
@@ -472,36 +526,43 @@ export default function NewbornsLog() {
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between mt-3">
-              <span className="text-[11px] font-medium text-slate-400">
-                Showing {startIndex + 1}–{Math.min(startIndex + itemsPerPage, filteredLogs.length)} of {filteredLogs.length} calving events
+            <div className="pt-4 border-t border-base-300 flex items-center justify-between mt-3">
+              <span className="text-[11px] font-medium text-base-content/40">
+                Showing {totalItems === 0 ? 0 : startIndex + 1}–{Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems} calving events
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1" aria-label="Calving records pagination">
                 <button
+                  type="button"
+                  aria-label="Previous calving records page"
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1 || isLoading}
-                  className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                  className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
                 >
                   <ChevronLeft size={12} />
                 </button>
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNumber) => (
                   <button
+                    type="button"
+                    aria-label={`Go to calving records page ${pageNumber}`}
+                    aria-current={currentPage === pageNumber ? "page" : undefined}
                     key={pageNumber}
                     disabled={isLoading}
                     onClick={() => setCurrentPage(pageNumber)}
                     className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
                       currentPage === pageNumber
-                        ? "bg-[#00643b] text-white shadow-xs"
-                        : "border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
+                        ? "bg-primary text-white shadow-xs"
+                        : "border border-base-300 text-base-content/60 hover:bg-base-200"
                     }`}
                   >
                     {pageNumber}
                   </button>
                 ))}
                 <button
+                  type="button"
+                  aria-label="Next calving records page"
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages || isLoading}
-                  className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
+                  className="btn btn-xs btn-outline border-base-300 px-1.5 disabled:opacity-40"
                 >
                   <ChevronRight size={12} />
                 </button>
@@ -518,19 +579,19 @@ export default function NewbornsLog() {
           onClick={() => setSelectedLog(null)}
         >
           <div
-            className="card w-full max-w-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-6 rounded-2xl shadow-xl space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            className="card w-full max-w-lg bg-base-100 border border-base-300 p-6 rounded-2xl shadow-xl space-y-5 max-h-[90vh] overflow-y-auto custom-scrollbar"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-900 pb-3">
-              <div className="flex items-center gap-2 text-emerald-600">
+            <div className="flex items-center justify-between border-b border-base-300 pb-3">
+              <div className="flex items-center gap-2 text-primary">
                 <Baby size={18} />
-                <h3 className="text-sm font-black uppercase tracking-tight text-slate-800 dark:text-slate-100">
+                <h3 className="text-sm font-black uppercase tracking-tight text-base-content">
                   Newborn Calving Details
                 </h3>
               </div>
               <button
                 onClick={() => setSelectedLog(null)}
-                className="btn btn-xs btn-ghost btn-circle text-slate-400 hover:text-rose-500 cursor-pointer"
+                className="btn btn-xs btn-ghost btn-circle text-base-content/40 hover:text-rose-500 cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -538,42 +599,42 @@ export default function NewbornsLog() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-xs">
               {/* Mother specs */}
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/80 p-4 rounded-xl space-y-3">
-                <h4 className="text-[10px] font-black uppercase text-[#00643b] tracking-wider border-b border-slate-200/50 pb-1 flex items-center gap-1.5">
+              <div className="bg-base-200 border border-base-300 p-4 rounded-xl space-y-3">
+                <h4 className="text-[10px] font-black uppercase text-primary tracking-wider border-b border-base-300 pb-1 flex items-center gap-1.5">
                   <Activity size={12} /> Dam (Mother) Profile
                 </h4>
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-slate-400 font-semibold">Ear Tag</span>
-                    <span className="font-extrabold text-[#00643b]">{selectedLog.motherTag}</span>
+                    <span className="text-base-content/40 font-semibold">Ear Tag</span>
+                    <span className="font-extrabold text-primary">{selectedLog.motherTag}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400 font-semibold">Species</span>
+                    <span className="text-base-content/40 font-semibold">Species</span>
                     <span className="font-bold">{selectedLog.motherSpecies}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400 font-semibold">Breed</span>
+                    <span className="text-base-content/40 font-semibold">Breed</span>
                     <span className="font-bold">{selectedLog.motherBreed}</span>
                   </div>
                 </div>
               </div>
 
               {/* Owner specs */}
-              <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/80 p-4 rounded-xl space-y-3">
-                <h4 className="text-[10px] font-black uppercase text-[#00643b] tracking-wider border-b border-slate-200/50 pb-1 flex items-center gap-1.5">
+              <div className="bg-base-200 border border-base-300 p-4 rounded-xl space-y-3">
+                <h4 className="text-[10px] font-black uppercase text-primary tracking-wider border-b border-base-300 pb-1 flex items-center gap-1.5">
                   <User size={12} /> Owner Details
                 </h4>
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-slate-400 font-semibold">Farmer Name</span>
+                    <span className="text-base-content/40 font-semibold">Farmer Name</span>
                     <span className="font-bold">{selectedLog.farmer}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400 font-semibold">Contact #</span>
+                    <span className="text-base-content/40 font-semibold">Contact #</span>
                     <span className="font-bold">{selectedLog.farmerPhone}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400 font-semibold">Email</span>
+                    <span className="text-base-content/40 font-semibold">Email</span>
                     <span className="font-bold truncate max-w-[130px]">{selectedLog.farmerEmail}</span>
                   </div>
                 </div>
@@ -581,33 +642,37 @@ export default function NewbornsLog() {
             </div>
 
             {/* Birth Event parameters */}
-            <div className="bg-slate-50 dark:bg-slate-900/50 border border-slate-200/50 dark:border-slate-800/80 p-4 rounded-xl text-xs space-y-3">
-              <h4 className="text-[10px] font-black uppercase text-[#00643b] tracking-wider border-b border-slate-200/50 pb-1 flex items-center gap-1.5">
+            <div className="bg-base-200 border border-base-300 p-4 rounded-xl text-xs space-y-3">
+              <h4 className="text-[10px] font-black uppercase text-primary tracking-wider border-b border-base-300 pb-1 flex items-center gap-1.5">
                 <Calendar size={12} /> Delivery Parameters
               </h4>
               <div className="grid grid-cols-2 gap-y-2.5 gap-x-4">
                 <div className="flex justify-between">
-                  <span className="text-slate-400 font-semibold">Birth Date</span>
+                  <span className="text-base-content/40 font-semibold">Birth Date</span>
                   <span className="font-bold">{selectedLog.date}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400 font-semibold">Birth Time</span>
+                  <span className="text-base-content/40 font-semibold">Birth Time</span>
                   <span className="font-bold">{selectedLog.time}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400 font-semibold">Calving Ease</span>
+                  <span className="text-base-content/40 font-semibold">Calving Ease</span>
                   <span className={`font-black uppercase ${selectedLog.calvingEase === 'Difficult' || selectedLog.calvingEase === 'Cesarean' ? 'text-rose-500' : 'text-emerald-500'}`}>{selectedLog.calvingEase}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400 font-semibold">Offspring Count</span>
-                  <span className="font-bold">{selectedLog.numberOfCalves} Calf/Calves</span>
+                  <span className="text-base-content/40 font-semibold">Offspring Count</span>
+                  <span className="font-bold">
+                    {selectedLog.numberOfCalves == null
+                      ? "Not recorded"
+                      : `${selectedLog.numberOfCalves} Calf/Calves`}
+                  </span>
                 </div>
               </div>
             </div>
 
             {/* Calves list detail cards */}
             <div className="space-y-2">
-              <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+              <h4 className="text-[10px] font-black uppercase text-base-content/40 tracking-wider">
                 Born Offspring Specifications
               </h4>
               <div className="space-y-2">
@@ -623,18 +688,18 @@ export default function NewbornsLog() {
                     return (
                       <div
                         key={index}
-                        className="flex flex-col p-3.5 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl text-xs gap-2.5"
+                        className="flex flex-col p-3.5 border border-base-300 bg-base-100 rounded-2xl text-xs gap-2.5"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className="h-6 w-6 rounded bg-[#00643b]/10 text-[#00643b] flex items-center justify-center font-bold text-[10px]">
+                            <div className="h-6 w-6 rounded bg-primary/10 text-primary flex items-center justify-center font-bold text-[10px]">
                               {index + 1}
                             </div>
                             <div>
-                              <div className="font-extrabold text-slate-800 dark:text-slate-200">
+                              <div className="font-extrabold text-base-content">
                                 Tag #{calf.earTag || "No tag yet"}
                               </div>
-                              <div className="text-[10px] text-slate-400 mt-0.5">
+                              <div className="text-[10px] text-base-content/40 mt-0.5">
                                 Gender: {calf.sex === "M" ? "Male ♂" : "Female ♀"}
                               </div>
                             </div>
@@ -642,16 +707,16 @@ export default function NewbornsLog() {
                         </div>
 
                         {/* Color and Brand values / inline edits */}
-                        <div className="bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-100 dark:border-slate-900 space-y-2 text-[11px]">
+                        <div className="bg-base-200 p-2.5 rounded-xl border border-base-300 space-y-2 text-[11px]">
                           <div className="flex items-center justify-between gap-4">
-                            <span className="text-slate-400 font-semibold shrink-0">Color:</span>
+                            <span className="text-base-content/40 font-semibold shrink-0">Color:</span>
                             {!isColorEmpty ? (
-                              <span className="font-bold text-slate-700 dark:text-slate-200 text-right truncate">{cColor}</span>
+                              <span className="font-bold text-base-content/90 text-right truncate">{cColor}</span>
                             ) : (
                               <input
                                 type="text"
                                 placeholder="Fill color (e.g. Red)..."
-                                className="input input-xs bg-base-200/50 text-xs rounded-lg px-2.5 py-1 focus:outline-emerald-500 focus:border-emerald-500 border border-slate-200 dark:border-slate-800 w-36 font-bold"
+                                className="input input-xs bg-base-300 text-xs rounded-lg px-2.5 py-1 focus:outline-emerald-500 focus:border-emerald-500 border border-base-300 w-36 font-bold"
                                 value={calfEdits[calfId]?.color ?? ""}
                                 onChange={(e) => {
                                   setCalfEdits(prev => ({
@@ -667,14 +732,14 @@ export default function NewbornsLog() {
                           </div>
 
                           <div className="flex items-center justify-between gap-4">
-                            <span className="text-slate-400 font-semibold shrink-0">Markings (Brand):</span>
+                            <span className="text-base-content/40 font-semibold shrink-0">Markings (Brand):</span>
                             {!isBrandEmpty ? (
-                              <span className="font-bold text-slate-700 dark:text-slate-200 text-right truncate">{cBrand}</span>
+                              <span className="font-bold text-base-content/90 text-right truncate">{cBrand}</span>
                             ) : (
                               <input
                                 type="text"
                                 placeholder="Fill brand (e.g. Left Hip)..."
-                                className="input input-xs bg-base-200/50 text-xs rounded-lg px-2.5 py-1 focus:outline-emerald-500 focus:border-emerald-500 border border-slate-200 dark:border-slate-800 w-36 font-bold"
+                                className="input input-xs bg-base-300 text-xs rounded-lg px-2.5 py-1 focus:outline-emerald-500 focus:border-emerald-500 border border-base-300 w-36 font-bold"
                                 value={calfEdits[calfId]?.brand ?? ""}
                                 onChange={(e) => {
                                   setCalfEdits(prev => ({
@@ -692,9 +757,9 @@ export default function NewbornsLog() {
                           {(isColorEmpty || isBrandEmpty) && calfId && (
                             <div className="flex justify-end pt-1">
                               <button
-                                disabled={savingCalfId === calfId || (!calfEdits[calfId]?.color?.trim() && !calfEdits[calfId]?.brand?.trim())}
+                                disabled={savingCalfId === calfId || (!calfEdits[calfId]?.color?.trim() && !calfEdits[calfId]?.brand?.trim()) || isTaskPreview}
                                 onClick={() => handleSaveCalfDetails(calfId)}
-                                className="btn btn-xs bg-[#00643b] hover:bg-[#004d2e] disabled:opacity-40 text-white border-none rounded-lg px-3 font-bold text-[9px] uppercase tracking-wider cursor-pointer"
+                                className="btn btn-xs btn-primary disabled:opacity-40 text-white border-none rounded-lg px-3 font-bold text-[9px] uppercase tracking-wider cursor-pointer"
                               >
                                 {savingCalfId === calfId ? "Saving..." : "Save Details"}
                               </button>
@@ -705,7 +770,7 @@ export default function NewbornsLog() {
                     );
                   })
                 ) : (
-                  <div className="p-4 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-center text-xs text-slate-400 italic">
+                  <div className="p-4 border border-dashed border-base-300 rounded-xl text-center text-xs text-base-content/40 italic">
                     No calf records embedded.
                   </div>
                 )}
@@ -714,11 +779,11 @@ export default function NewbornsLog() {
 
             {/* Observations / Notes */}
             {selectedLog.technicianNote && (
-              <div className="bg-emerald-500/5 dark:bg-emerald-500/10 border border-emerald-500/20 p-4 rounded-xl text-xs space-y-2">
-                <h5 className="font-extrabold text-[#00643b] dark:text-emerald-400">
+              <div className="bg-primary/10 border border-primary/20 p-4 rounded-xl text-xs space-y-2">
+                <h5 className="font-extrabold text-primary">
                   Technician observations & Remarks
                 </h5>
-                <p className="italic text-slate-600 dark:text-slate-300">
+                <p className="italic text-base-content/70">
                   "{selectedLog.technicianNote}"
                 </p>
               </div>
@@ -726,7 +791,7 @@ export default function NewbornsLog() {
 
             <button
               onClick={() => setSelectedLog(null)}
-              className="btn btn-sm w-full bg-[#00643b] hover:bg-[#004d2e] border-none text-white rounded-xl text-xs font-bold mt-2 cursor-pointer"
+              className="btn btn-sm w-full btn-primary border-none text-white rounded-xl text-xs font-bold mt-2 cursor-pointer"
             >
               Close Details
             </button>

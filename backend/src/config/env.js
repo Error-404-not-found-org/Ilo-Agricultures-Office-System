@@ -4,6 +4,7 @@ dotenv.config();
 
 export const ENV = {
   NODE_ENV: process.env.NODE_ENV,
+  FORCE_CUSTOM_DNS: process.env.FORCE_CUSTOM_DNS,
   PORT: process.env.PORT,
   DB_URL: process.env.DB_URL,
   DB_URL_DEV: process.env.DB_URL_DEV,
@@ -17,4 +18,8 @@ export const ENV = {
   ADMIN_EMAIL: process.env.ADMIN_EMAIL,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   CLIENT_URL: process.env.CLIENT_URL || "http://localhost:5173",
+  VOICEFLOW_API_KEY: process.env.VOICEFLOW_API_KEY,
+  IPROG_SMS_ENABLED: process.env.IPROG_SMS_ENABLED,
+  IPROG_SMS_API_TOKEN: process.env.IPROG_SMS_API_TOKEN,
+  IPROG_SMS_BASE_URL: process.env.IPROG_SMS_BASE_URL,
 };

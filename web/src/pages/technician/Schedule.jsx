@@ -1,54 +1,173 @@
-import React, { useState, useMemo } from "react";
-import {
-  Calendar as CalendarIcon,
-  Syringe,
-  HeartPulse,
-  ChevronLeft,
-  ChevronRight,
-  Map,
-  User,
-  MapPin,
-  Plus,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Search,
-  Zap,
-  Lock,
-} from "lucide-react";
+import { useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import FullCalendar from "@fullcalendar/react";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import timeGridPlugin from "@fullcalendar/timegrid";
+import interactionPlugin from "@fullcalendar/interaction";
+import {
+  Calendar,
+  MapPin,
+  Phone,
+  ExternalLink,
+} from "lucide-react";
+
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
-import TaskActionModal from "../../components/modals/TaskActionModal";
-import WalkInAIModal from "../../components/modals/WalkInAIModal";
-import WalkInHealthModal from "../../components/modals/WalkInHealthModal";
+import Topbar from "../../components/layout/Topbar";
+import Modal from "../../components/ui/Modal";
+import UserAvatar from "../../components/ui/UserAvatar";
+import AIServiceModal from "../../components/dialogs/AIServiceModal";
+import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
+import { getCalendarTarget } from "../../utils/taskNavigation";
+import {
+  getRequestWorkflowSummary,
+  getTaskWorkflowSummary,
+} from "../../utils/reproductionWorkflow";
+import PageMeta from "../../components/layout/PageMeta";
+import {
+  VisitCalendarFilters,
+  VisitLegendCard,
+  UpcomingVisitsCard,
+} from "../../components/calendar/CalendarComponents";
+
+// Helper to resolve styles based on visit types
+const getVisitStyles = (visitType) => {
+  const t = visitType?.toLowerCase() || "";
+  if (t.includes("check-up") || t.includes("clinical")) {
+    return {
+      bg: "bg-emerald-50 border-emerald-100 dark:bg-emerald-500/10 dark:border-emerald-500/15",
+      text: "text-emerald-700 dark:text-emerald-300",
+      dot: "bg-emerald-500",
+    };
+  }
+  if (t.includes("vaccination")) {
+    return {
+      bg: "bg-amber-50 border-amber-100 dark:bg-amber-500/10 dark:border-amber-500/15",
+      text: "text-amber-700 dark:text-amber-300",
+      dot: "bg-amber-500",
+    };
+  }
+  if (t.includes("ai service") || t.includes("insemination")) {
+    return {
+      bg: "bg-blue-50 border-blue-100 dark:bg-blue-500/10 dark:border-blue-500/15",
+      text: "text-blue-700 dark:text-blue-300",
+      dot: "bg-blue-500",
+    };
+  }
+  if (t.includes("deworming")) {
+    return {
+      bg: "bg-purple-50 border-purple-100 dark:bg-purple-500/10 dark:border-purple-500/15",
+      text: "text-purple-700 dark:text-purple-300",
+      dot: "bg-purple-500",
+    };
+  }
+  if (t.includes("pregnancy")) {
+    return {
+      bg: "bg-rose-50 border-rose-100 dark:bg-rose-500/10 dark:border-rose-500/15",
+      text: "text-rose-700 dark:text-rose-300",
+      dot: "bg-rose-500",
+    };
+  }
+  return {
+    bg: "bg-teal-50 border-teal-100 dark:bg-teal-500/10 dark:border-teal-500/15",
+    text: "text-teal-700 dark:text-teal-300",
+    dot: "bg-teal-500",
+  };
+};
+
+const getAgendaServiceLabel = (item = {}) => {
+  const type = String(item.taskType || item.type || "").toLowerCase();
+  if (item.type === "task" && type === "pd") {
+    return getTaskWorkflowSummary(item.raw || item).stageLabel;
+  }
+  const serviceType = item.serviceType || item.raw?.requestType;
+  if (serviceType) return String(serviceType).replaceAll("_", " ");
+  if (["ai", "insemination"].includes(type)) return "AI Service";
+  if (["pd", "pregnancy", "pregnancy_check"].includes(type)) return "Pregnancy Diagnosis";
+  if (["health", "treatment"].includes(type)) return "General Check-up";
+  if (type === "vaccination") return "Vaccination";
+  if (type === "deworming") return "Deworming";
+  if (["cd", "calving"].includes(type)) return "Calving Assistance";
+  return item.taskType ? String(item.taskType).replaceAll("_", " ") : "Other Services";
+};
+
+const getShortServiceBadge = (serviceLabel = "") => {
+  const s = String(serviceLabel).toLowerCase();
+  if (s.includes("artificial insemination") || s.includes("ai")) return "AI";
+  if (s.includes("health")) return "HEALTH";
+  if (s.includes("pregnancy")) return "PREGNANCY";
+  if (s.includes("vaccin")) return "VACCINATION";
+  if (s.includes("deworm")) return "DEWORMING";
+  if (s.includes("calv")) return "CALVING";
+  return "SERVICE";
+};
+
+const getCleanTaskTitle = (item = {}, serviceType = "") => {
+  const type = String(item.type || item.taskType || "").toLowerCase();
+  const rawTask = String(item.task || "");
+  if (
+    type.includes("insemination") ||
+    type === "ai" ||
+    serviceType.includes("Artificial Insemination") ||
+    serviceType.includes("AI")
+  ) {
+    const attempt = item.raw?.attemptNumber || 1;
+    return `Artificial Insemination · Attempt ${attempt}`;
+  }
+  if (type.includes("health") || serviceType.includes("Health")) {
+    return "Health Assistance";
+  }
+  if (
+    type.includes("pregnancy") ||
+    type === "pd" ||
+    serviceType.includes("Pregnancy")
+  ) {
+    return "Pregnancy Diagnosis";
+  }
+  return rawTask.split("-")[0]?.trim() || serviceType;
+};
+
+const getAgendaWorkflowSummary = (item = {}) =>
+  item.type === "task"
+    ? getTaskWorkflowSummary(item.raw || item)
+    : getRequestWorkflowSummary({
+        ...item,
+        type: item.type,
+        serviceLabel: getAgendaServiceLabel(item),
+      });
 
 export default function DeploymentSchedule() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
-  // ---- DATE NAVIGATION STATES ----
-  const [viewDate, setViewDate] = useState(new Date()); // Month/Year view
-  const [selectedDate, setSelectedDate] = useState(new Date()); // Selected day filter
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  // ---- FETCH LOGGED-IN TECHNICIAN USER PROFILE ----
+  const { data: dbUser } = useQuery({
+    queryKey: ["user", "me"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/user/me");
+      return res.data;
+    },
+  });
+
+  // ---- FILTERS STATES ----
+  const [selectedRange, setSelectedRange] = useState("all");
+  const [selectedFarm, setSelectedFarm] = useState("all");
+  const [selectedType, setSelectedType] = useState("all");
 
   // ---- MODAL STATES ----
-  const [selectedTask, setSelectedTask] = useState(null);
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [isAppointmentMenuOpen, setIsAppointmentMenuOpen] = useState(false);
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isHealthModalOpen, setIsHealthModalOpen] = useState(false);
 
-  const { data: dbUser } = useQuery({
-    queryKey: ["technician", "profile-me"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/technician/profile");
-      return res.data || {};
-    },
+  // ---- DATE POPUP MODAL STATE ----
+  const [selectedDayModal, setSelectedDayModal] = useState({
+    isOpen: false,
+    formattedDate: "",
+    requests: [],
   });
 
   // ---- FETCH INTEGRATED SCHEDULE DATA ----
-  const { data: rawAgenda = [], isLoading } = useQuery({
+  const { data: rawAgenda = [], isLoading, isError } = useQuery({
     queryKey: ["technician", "schedule"],
     queryFn: async () => {
       const res = await axiosInstance.get(
@@ -58,466 +177,504 @@ export default function DeploymentSchedule() {
     },
   });
 
-  // ---- CALENDAR CALCULATOR ENGINE ----
-  const daysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = (year, month) => new Date(year, month, 1).getDay();
+  // ---- FILTER AGENDA TO ONLY DISPLAY REQUESTS CLAIMED BY THIS SPECIFIC TECHNICIAN ----
+  const claimedAgenda = useMemo(() => {
+    const list = Array.isArray(rawAgenda) ? rawAgenda : [];
+    const myId = dbUser?._id || dbUser?.id;
 
-  const currentYear = viewDate.getFullYear();
-  const currentMonth = viewDate.getMonth();
-  const totalDays = daysInMonth(currentYear, currentMonth);
-  const startDay = firstDayOfMonth(currentYear, currentMonth);
+    return list.filter((item) => {
+      const raw = item.raw || item;
+      const status = String(item.status || raw.status || "").toLowerCase();
 
-  const prevMonth = () =>
-    setViewDate(new Date(currentYear, currentMonth - 1, 1));
-  const nextMonth = () =>
-    setViewDate(new Date(currentYear, currentMonth + 1, 1));
+      // Exclude unclaimed / pending requests
+      if (status === "pending" || status === "unassigned") return false;
 
-  const isSameDay = (d1, d2) => {
-    return (
-      d1.getFullYear() === d2.getFullYear() &&
-      d1.getMonth() === d2.getMonth() &&
-      d1.getDate() === d2.getDate()
-    );
-  };
+      // Admins view full claimed schedule
+      if (dbUser?.role === "admin") return true;
 
-  // ---- LIVE INDICATOR (DOTS) MATRIX CALCULATOR ----
-  const taskCountsByDate = useMemo(() => {
-    return (rawAgenda || []).reduce((acc, item) => {
+      // If user profile not loaded yet, default to active non-pending
+      if (!myId) return true;
+
+      const techIds = [
+        raw.approvedBy?._id,
+        raw.approvedBy,
+        raw.handledBy?._id,
+        raw.handledBy,
+        raw.technicianId?._id,
+        raw.technicianId,
+        raw.assignedTechnicianId?._id,
+        raw.assignedTechnicianId,
+        raw.createdBy?._id,
+        raw.createdBy,
+        item.approvedBy,
+        item.handledBy,
+        item.technicianId,
+      ]
+        .filter(Boolean)
+        .map((id) => String(id));
+
+      if (techIds.length === 0) return true;
+      return techIds.includes(String(myId));
+    });
+  }, [rawAgenda, dbUser]);
+
+  // ---- GROUP SCHEDULED REQUESTS BY DAY (YYYY-MM-DD) ----
+  const dayGroupedRequests = useMemo(() => {
+    const map = new Map();
+    (claimedAgenda || []).forEach((item) => {
       const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
-      if (!itemDateVal) return acc;
+      if (!itemDateVal) return;
+      const d = new Date(itemDateVal);
+      if (Number.isNaN(d.getTime())) return;
 
-      const itemDate = new Date(itemDateVal);
-      if (
-        itemDate.getMonth() === currentMonth &&
-        itemDate.getFullYear() === currentYear
-      ) {
-        const day = itemDate.getDate();
-        acc[day] = (acc[day] || 0) + 1;
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const serviceType = getAgendaServiceLabel(item);
+      const farm = item.farmLocationLabel || item.location || "Location unavailable";
+
+      // Apply Filter constraints
+      if (selectedFarm !== "all" && farm !== selectedFarm) return;
+      if (selectedType !== "all" && serviceType !== selectedType) return;
+      if (selectedRange !== "all") {
+        const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        if (monthKey !== selectedRange) return;
       }
-      return acc;
-    }, {});
-  }, [rawAgenda, currentMonth, currentYear]);
 
-  // ---- DYNAMIC MATRIX FILTERING PIPELINE ----
-  const filteredTasks = useMemo(() => {
-    return (
-      rawAgenda?.filter((item) => {
+      if (!map.has(dateKey)) {
+        map.set(dateKey, {
+          dateKey,
+          dateObj: d,
+          requests: [],
+        });
+      }
+      map.get(dateKey).requests.push(item);
+    });
+    return map;
+  }, [claimedAgenda, selectedFarm, selectedType, selectedRange]);
+
+  // ---- MAP TO SUMMARY COUNT EVENTS FOR FULLCALENDAR ----
+  const events = useMemo(() => {
+    return [...dayGroupedRequests.values()].map(({ dateKey, requests, dateObj }) => {
+      const formattedDate = dateObj.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+      });
+      const count = requests.length;
+      return {
+        id: `summary-${dateKey}`,
+        start: dateKey,
+        title: `${count} ${count === 1 ? "request" : "requests"}`,
+        allDay: true,
+        extendedProps: {
+          isSummaryCount: true,
+          dateKey,
+          formattedDate,
+          requests,
+        },
+      };
+    });
+  }, [dayGroupedRequests]);
+
+  const rangeOptions = useMemo(() => {
+    const months = new Map();
+    (claimedAgenda || []).forEach((item) => {
+      const dateVal = item.scheduledDate || item.preferredDate || item.displayDate;
+      const date = dateVal ? new Date(dateVal) : null;
+      if (!date || Number.isNaN(date.getTime())) return;
+      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+      months.set(
+        value,
+        date.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+      );
+    });
+    return [...months.entries()].map(([value, label]) => ({ value, label }));
+  }, [claimedAgenda]);
+
+  const farmOptions = useMemo(() => {
+    const farms = (claimedAgenda || []).map(
+      (item) => item.farmLocationLabel || item.location
+    ).filter(Boolean);
+    return [...new Set(farms)].sort();
+  }, [claimedAgenda]);
+
+  const typeOptions = useMemo(() => {
+    const types = (claimedAgenda || []).map((item) => getAgendaServiceLabel(item)).filter(Boolean);
+    return [...new Set(types)].sort();
+  }, [claimedAgenda]);
+
+  // ---- FILTER UPCOMING VISITS LIST FOR SIDEBAR ----
+  const upcomingVisits = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return (claimedAgenda || [])
+      .filter((item) => {
         const itemDateVal = item.scheduledDate || item.preferredDate || item.displayDate;
         if (!itemDateVal) return false;
+        const d = new Date(itemDateVal);
+        d.setHours(0, 0, 0, 0);
+        return d.getTime() >= now.getTime();
+      })
+      .slice(0, 5)
+      .map((item) => ({
+        id: item.id || item._id,
+        serviceType: getAgendaServiceLabel(item),
+        animalName: item.animalTag || item.task || "Animal not recorded",
+        farmName: item.farmLocationLabel || item.location || "Location unavailable",
+        time: item.time || "Time unavailable",
+        date: new Date(item.scheduledDate || item.preferredDate || item.displayDate).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
+        contextLabel: `${getAgendaWorkflowSummary(item).sourceLabel} · ${getAgendaWorkflowSummary(item).nextActionLabel}`,
+      }));
+  }, [claimedAgenda]);
 
-        const itemDate = new Date(itemDateVal);
-        const selected = new Date(selectedDate);
+  // ---- CALENDAR CLICK HANDLERS ----
+  const handleEventClick = (clickInfo) => {
+    clickInfo.jsEvent.preventDefault();
+    const extProps = clickInfo.event.extendedProps;
+    if (extProps.requests) {
+      setSelectedDayModal({
+        isOpen: true,
+        formattedDate: extProps.formattedDate,
+        requests: extProps.requests,
+      });
+    }
+  };
 
-        // Normalize both to midnight to eliminate timezone offset inconsistencies
-        itemDate.setHours(0, 0, 0, 0);
-        selected.setHours(0, 0, 0, 0);
+  const handleDateClick = (arg) => {
+    const dateKey = arg.dateStr;
+    const group = dayGroupedRequests.get(dateKey);
+    const dateObj = new Date(dateKey);
+    const formattedDate = !Number.isNaN(dateObj.getTime())
+      ? dateObj.toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        })
+      : dateKey;
+    setSelectedDayModal({
+      isOpen: true,
+      formattedDate,
+      requests: group ? group.requests : [],
+    });
+  };
 
-        const matchesDate = itemDate.getTime() === selected.getTime();
-        const matchesCategory =
-          selectedCategory === "all" ||
-          item.type === selectedCategory ||
-          (selectedCategory === "insemination" && item.type === "ai");
+  const renderEventContent = (eventInfo) => {
+    const count = eventInfo.event.extendedProps.requests?.length || 1;
+    const requests = eventInfo.event.extendedProps.requests || [];
+    const formattedDate = eventInfo.event.extendedProps.formattedDate || "";
 
-        const q = searchQuery.toLowerCase();
-        const matchesSearch =
-          !searchQuery ||
-          item.task?.toLowerCase().includes(q) ||
-          item.farmer?.toLowerCase().includes(q) ||
-          item.location?.toLowerCase().includes(q);
-
-        return matchesDate && matchesCategory && matchesSearch;
-      }) || []
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedDayModal({
+            isOpen: true,
+            formattedDate,
+            requests,
+          });
+        }}
+        className="w-full inline-flex items-center justify-center gap-1.5 px-2.5 py-1 text-xs font-black bg-primary text-primary-content rounded-xl shadow-xs hover:opacity-90 transition-all cursor-pointer border-none"
+      >
+        <Calendar size={13} className="shrink-0" />
+        <span>
+          {count} {count === 1 ? "request" : "requests"}
+        </span>
+      </button>
     );
-  }, [rawAgenda, selectedDate, selectedCategory, searchQuery]);
-
-  const handleOpenRouteGuide = () => {
-    window.open("https://maps.google.com", "_blank");
   };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
+      <PageMeta
+        title="Deployment Schedule | BreedSmart"
+        description="View and manage technician veterinarian visits and artificial inseminations"
+      />
+
       {/* Topbar Layout */}
       <Topbar
         title="Deployment Schedule"
         subtitle="Operational Timeline — manage and track field service deployments"
-      >
-        <div className="relative">
-          <button
-            onClick={() => setIsAppointmentMenuOpen(!isAppointmentMenuOpen)}
-            className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4"
-          >
-            <Plus size={13} /> Add Appointment
-          </button>
+      />
 
-          {isAppointmentMenuOpen && (
-            <>
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setIsAppointmentMenuOpen(false)}
-              />
-              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-50 overflow-hidden py-1">
-                <button
-                  onClick={() => {
-                    setIsAIModalOpen(true);
-                    setIsAppointmentMenuOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-slate-700 dark:text-slate-300 flex items-center gap-2"
-                >
-                  <Syringe size={14} className="text-blue-500" />
-                  <span>Artificial Insemination</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setIsHealthModalOpen(true);
-                    setIsAppointmentMenuOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-emerald-50 dark:hover:bg-emerald-950/20 text-slate-700 dark:text-slate-300 flex items-center gap-2"
-                >
-                  <HeartPulse size={14} className="text-rose-500" />
-                  <span>Clinical Health Check</span>
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </Topbar>
+      {/* Main Workspace */}
+      <main className="p-6 space-y-6">
+        <VisitCalendarFilters
+          selectedRange={selectedRange}
+          setSelectedRange={setSelectedRange}
+          selectedFarm={selectedFarm}
+          setSelectedFarm={setSelectedFarm}
+          selectedType={selectedType}
+          setSelectedType={setSelectedType}
+          rangeOptions={rangeOptions}
+          farmOptions={farmOptions}
+          typeOptions={typeOptions}
+          isAppointmentMenuOpen={isAppointmentMenuOpen}
+          setIsAppointmentMenuOpen={setIsAppointmentMenuOpen}
+          onOpenAIModal={() => setIsAIModalOpen(true)}
+          onOpenHealthModal={() => setIsHealthModalOpen(true)}
+        />
 
-      {/* Main Timeline Workspace Content */}
-      <main className="p-6 space-y-5">
-        {/* Header Banner Block - Gradient Brand Alignment */}
-        <div className="relative bg-linear-to-r from-[#074033] to-[#065f46] text-white p-6 rounded-2xl shadow-xs space-y-2 overflow-hidden">
-          <div className="relative z-10 flex items-center gap-2 text-[#a7f3d0] font-extrabold text-[10px] tracking-widest uppercase">
-            <CalendarIcon size={14} />
-            <span>Operational Timeline</span>
-          </div>
-          <h2 className="relative z-10 text-2xl font-black tracking-tight">
-            Deployment Schedule
-          </h2>
-          <p className="relative z-10 text-xs text-emerald-100/80 max-w-xl font-medium leading-relaxed">
-            View confirmed visits, sync breeding cycles, and coordinate travel
-            routes across Supa, Pulo, and Oton sectors efficiently.
-          </p>
-          <div className="absolute top-[-20%] right-[-10%] w-[300px] h-[300px] bg-emerald-500/10 rounded-full blur-[100px]" />
-        </div>
-
-        {/* Dashboard Operational Split Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5 items-start">
-          {/* Left Panel Sidebar Wrapper */}
-          <div className="space-y-4">
-            {/* Interactive Monthly Calendar Matrix */}
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-xs">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-400">
-                  {viewDate.toLocaleString("default", {
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </h3>
-                <div className="flex gap-1">
-                  <button
-                    onClick={prevMonth}
-                    className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1"
-                  >
-                    <ChevronLeft size={12} />
-                  </button>
-                  <button
-                    onClick={nextMonth}
-                    className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1"
-                  >
-                    <ChevronRight size={12} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Day Header Labels */}
-              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 mb-2 select-none">
-                {["S", "M", "T", "W", "T", "F", "S"].map((day, i) => (
-                  <span key={i}>{day}</span>
-                ))}
-              </div>
-
-              {/* Day Numerical Grids */}
-              <div className="grid grid-cols-7 gap-1">
-                {/* Empty slots for the first week offset */}
-                {Array.from({ length: startDay }).map((_, i) => (
-                  <span key={`offset-${i}`} />
-                ))}
-
-                {Array.from({ length: totalDays }).map((_, i) => {
-                  const day = i + 1;
-                  const date = new Date(currentYear, currentMonth, day);
-                  const isSelected = isSameDay(date, selectedDate);
-                  const hasTasks = taskCountsByDate[day];
-                  const isToday = isSameDay(date, new Date());
-
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => setSelectedDate(date)}
-                      className={`h-9 relative rounded-xl font-bold text-xs flex flex-col items-center justify-center border transition-all ${
-                        isSelected
-                          ? "bg-[#00643b] border-[#00643b] text-white shadow-xs"
-                          : isToday
-                            ? "border-[#00643b] text-[#00643b] dark:border-emerald-600 dark:text-emerald-400 font-black"
-                            : "border-transparent bg-slate-50/50 dark:bg-slate-900/50 hover:border-[#00643b] dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                      }`}
-                    >
-                      <span>{day}</span>
-                      {hasTasks > 0 && (
-                        <span
-                          className={`w-1 h-1 rounded-full absolute bottom-1.5 ${
-                            isSelected ? "bg-[#a7f3d0]" : "bg-[#00643b] dark:bg-emerald-500"
-                          }`}
-                        />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Category Routing Filters Box */}
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-xs">
-              <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-3">
-                Categories
-              </h4>
-              <div className="flex flex-col gap-1.5">
-                {[
-                  {
-                    id: "all",
-                    label: "All Tasks",
-                    icon: <CalendarIcon size={13} />,
-                    style: "hover:border-[#00643b]",
-                    activeStyle: "bg-[#00643b] text-white border-[#00643b]",
-                  },
-                  {
-                    id: "insemination",
-                    label: "Inseminations",
-                    icon: <Syringe size={13} />,
-                    style:
-                      "border-blue-100 text-blue-700 dark:border-blue-900/40 dark:text-blue-400 hover:bg-blue-50/30",
-                    activeStyle: "bg-blue-600 border-blue-600 text-white",
-                  },
-                  {
-                    id: "health",
-                    label: "Health Checks",
-                    icon: <HeartPulse size={13} />,
-                    style:
-                      "border-rose-100 text-rose-700 dark:border-rose-900/40 dark:text-rose-400 hover:bg-rose-50/30",
-                    activeStyle: "bg-rose-600 border-rose-600 text-white",
-                  },
-                ].map((cat) => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedCategory(cat.id)}
-                    className={`w-full px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-2 transition-all ${
-                      selectedCategory === cat.id
-                        ? cat.activeStyle
-                        : `bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 ${cat.style}`
-                    }`}
-                  >
-                    {cat.icon}
-                    <span>{cat.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right Panel Timeline List Wrapper */}
-          <div className="space-y-3">
-            {/* Context Heading Header Status Summary Bar */}
-            <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-xs flex flex-row items-center justify-between flex-wrap gap-3">
-              <div>
-                <h3 className="text-base font-black tracking-tight">
-                  {selectedDate.toLocaleDateString(undefined, {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                    year: "numeric",
-                  })}
-                </h3>
-                <p className="text-xs text-slate-400 font-medium mt-0.5">
-                  You have {filteredTasks.length} scheduled task
-                  {filteredTasks.length !== 1 ? "s" : ""} for this cycle.
-                </p>
-              </div>
-              <div className="flex gap-2.5 items-center flex-wrap">
-                {/* Local Search Input */}
-                <div className="relative w-full sm:w-60">
-                  <Search
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                    size={13}
-                  />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search ear tag or farmer..."
-                    className="w-full h-9 pl-10 pr-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold focus:border-emerald-500 focus:outline-none transition-all placeholder:text-slate-400"
-                  />
-                </div>
-
-                <button
-                  onClick={handleOpenRouteGuide}
-                  className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 text-xs font-bold gap-1.5 rounded-xl px-4 h-9 min-h-0"
-                >
-                  <Map size={13} /> Map Route Guide
-                </button>
-              </div>
-            </div>
-
-            {/* Tasks Dynamic Loop Output List Container */}
-            <div className="space-y-2.5">
+        {/* 2-Column Responsive Layout */}
+        <div className="grid grid-cols-12 gap-6">
+          {/* Main Calendar View (Left side) */}
+          <div className="col-span-12 xl:col-span-8">
+            <div id="deployment-calendar" className="rounded-2xl border border-base-300 bg-base-100 p-5 shadow-xs">
               {isLoading ? (
-                Array.from({ length: 3 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="h-24 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl animate-pulse"
-                  />
-                ))
-              ) : filteredTasks.length === 0 ? (
-                <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-12 text-center text-slate-400 dark:text-slate-500 font-medium rounded-2xl">
-                  No operational field deployments scheduled for this selection.
+                <div className="h-100 flex items-center justify-center">
+                  <span className="loading loading-spinner loading-md text-primary"></span>
+                </div>
+              ) : isError ? (
+                <div className="alert alert-error" role="alert">
+                  Schedule data is unavailable. Refresh the page to try again.
                 </div>
               ) : (
-                filteredTasks.map((task) => {
-                  const isTaskConfirmed =
-                    task.status &&
-                    ["done", "resolved", "completed", "approved", "in-progress"].includes(
-                      task.status.toLowerCase()
-                    );
-
-                  const reqTechId =
-                    task.raw?.approvedBy?._id ||
-                    task.raw?.approvedBy ||
-                    task.raw?.handledBy?._id ||
-                    task.raw?.handledBy ||
-                    null;
-
-                  const reqTechName =
-                    task.raw?.approvedBy?.name ||
-                    task.raw?.handledBy?.name ||
-                    (reqTechId ? "another technician" : null);
-
-                  const isAssignedToOther =
-                    reqTechId &&
-                    dbUser?._id &&
-                    String(reqTechId) !== String(dbUser._id);
-
-                  return (
-                    <div
-                      key={task.id}
-                      onClick={() => {
-                        setSelectedTask(task);
-                        setIsTaskModalOpen(true);
-                      }}
-                      className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-xl flex flex-row items-center justify-between gap-4 shadow-2xs hover:shadow-md hover:border-[#00643b] transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center gap-4 min-w-0">
-                        {/* Left Time Alignment Metric Block */}
-                        <div className="border-r border-slate-100 dark:border-slate-800/80 pr-4 text-center min-w-[95px] shrink-0">
-                          <span
-                            className={`text-[8px] font-black tracking-wider uppercase flex items-center justify-center gap-0.5 ${
-                              isAssignedToOther
-                                ? "text-amber-500"
-                                : isTaskConfirmed
-                                  ? "text-emerald-600 dark:text-emerald-400"
-                                  : "text-amber-500"
-                            }`}
-                          >
-                            {isAssignedToOther ? (
-                              <Lock size={8} />
-                            ) : isTaskConfirmed ? (
-                              <CheckCircle2 size={8} />
-                            ) : (
-                              <AlertCircle size={8} />
-                            )}
-                            {isAssignedToOther ? "LOCKED" : isTaskConfirmed ? "ACTIVE" : "PENDING"}
-                          </span>
-                          <div className="text-xs font-black text-slate-800 dark:text-slate-200 mt-1.5 flex items-center justify-center gap-1">
-                            <Clock size={11} className="text-slate-400" />
-                            <span>{task.time || "Preferred"}</span>
-                          </div>
-                        </div>
-
-                        {/* Content Description Block */}
-                        <div className="min-w-0">
-                          <span
-                            className={`inline-block text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide mb-1.5 ${
-                              task.type === "ai" || task.type === "insemination"
-                                ? "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30"
-                                : "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-100 dark:border-rose-900/30"
-                            }`}
-                          >
-                            {task.type === "ai" || task.type === "insemination"
-                              ? "Artificial Insemination"
-                              : "Clinical Checkup"}
-                          </span>
-                          {isAssignedToOther && (
-                            <span className="inline-block text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wide mb-1.5 ml-1.5 bg-amber-500/10 text-amber-600 border border-amber-500/20" title={`Assigned to ${reqTechName}`}>
-                              Locked
-                            </span>
-                          )}
-                          <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate mb-1">
-                            {task.task}
-                          </h4>
-                          <div className="flex gap-3 text-[11px] text-slate-400 font-semibold truncate">
-                            <span className="flex items-center gap-0.5">
-                              <User size={10} /> {task.farmer}
-                            </span>
-                            <span className="flex items-center gap-0.5">
-                              <MapPin size={10} /> {task.location}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Inline Deployment Row Action Trigger */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedTask(task);
-                          setIsTaskModalOpen(true);
-                        }}
-                        className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 hover:border-[#00643b] text-[11px] font-bold rounded-lg px-3 py-1 bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 transition-colors shrink-0"
-                      >
-                        {isAssignedToOther ? "View" : "Manage"}
-                      </button>
-                    </div>
-                  );
-                })
+                <div className="custom-calendar breedsmart-calendar">
+                  <FullCalendar
+                    plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+                    initialView="dayGridMonth"
+                    headerToolbar={{
+                      left: "prev,next today",
+                      center: "title",
+                      right: "dayGridMonth,timeGridWeek",
+                    }}
+                    buttonText={{
+                      today: "Today",
+                      month: "Month",
+                      week: "Week",
+                    }}
+                    events={events}
+                    selectable={true}
+                    dateClick={handleDateClick}
+                    eventClick={handleEventClick}
+                    eventContent={renderEventContent}
+                  />
+                </div>
               )}
             </div>
+          </div>
+
+          {/* Sidebar Cards Panel (Right side - Mini Calendar Widget Removed) */}
+          <div className="col-span-12 xl:col-span-4 space-y-6">
+            {/* Color Legend Widget */}
+            <VisitLegendCard />
+
+            {/* Upcoming Visits Widget */}
+            <UpcomingVisitsCard
+              visits={upcomingVisits}
+              onViewAllClick={() => {
+                setSelectedRange("all");
+                setSelectedFarm("all");
+                setSelectedType("all");
+                document.getElementById("deployment-calendar")?.scrollIntoView({ behavior: "smooth" });
+              }}
+            />
           </div>
         </div>
       </main>
 
-      {/* Task management action modal */}
-      <TaskActionModal
-        isOpen={isTaskModalOpen}
-        onClose={() => setIsTaskModalOpen(false)}
-        task={selectedTask}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ["technician", "schedule"] });
-        }}
-      />
+      {/* ===== POPUP LISTING MODAL FOR SPECIFIC DATE ===== */}
+      <Modal
+        isOpen={selectedDayModal.isOpen}
+        onClose={() => setSelectedDayModal({ isOpen: false, formattedDate: "", requests: [] })}
+        title={`Scheduled Requests — ${selectedDayModal.formattedDate}`}
+        subtitle={
+          selectedDayModal.requests.length === 0
+            ? "No service requests scheduled for this date"
+            : `${selectedDayModal.requests.length} request${selectedDayModal.requests.length !== 1 ? "s" : ""} scheduled`
+        }
+        size="6xl"
+      >
+        <div className="space-y-4 max-h-[72vh] overflow-y-auto pr-2 py-2">
+          {selectedDayModal.requests.length === 0 ? (
+            <div className="text-center py-16 text-base-content/60 text-xs font-semibold">
+              There are no service requests scheduled on this date.
+            </div>
+          ) : (
+            selectedDayModal.requests.map((item) => {
+              const serviceType = getAgendaServiceLabel(item);
+              const shortBadge = getShortServiceBadge(serviceType);
+              const cleanTitle = getCleanTaskTitle(item, serviceType);
+              const styles = getVisitStyles(serviceType);
 
-      {/* Quick Action Insemination Registration Modal */}
-      <WalkInAIModal
+              const earTag =
+                item.animalTag ||
+                item.raw?.animalId?.earTag ||
+                item.raw?.animalId?.animalId ||
+                item.raw?.animalIds?.[0]?.earTag ||
+                item.raw?.animalIds?.[0]?.animalId ||
+                "Not recorded";
+
+              const breed =
+                item.raw?.animalId?.breed ||
+                item.breed ||
+                item.raw?.animalIds?.[0]?.breed ||
+                "Livestock";
+
+              const farmerName =
+                item.farmerName ||
+                item.farmer ||
+                item.raw?.farmerId?.name ||
+                item.raw?.farmer?.name ||
+                "Farmer unavailable";
+
+              const farmerPhone =
+                item.farmerPhone ||
+                item.phone ||
+                item.raw?.farmerId?.phoneNumber ||
+                item.raw?.farmerId?.phone ||
+                item.raw?.farmer?.phoneNumber ||
+                item.raw?.farmer?.phone ||
+                item.raw?.farmerPhone ||
+                item.raw?.phone ||
+                "No phone listed";
+
+              const farmerImageUrl =
+                item.farmerImageUrl ||
+                item.raw?.farmerId?.avatarUrl ||
+                item.raw?.farmerId?.profilePicture ||
+                item.raw?.farmerId?.avatar ||
+                null;
+
+              const taskDetails =
+                item.raw?.symptoms ||
+                item.raw?.issueDescription ||
+                item.raw?.diagnosis ||
+                item.raw?.treatment ||
+                item.raw?.farmerObservation ||
+                item.raw?.observationNotes ||
+                item.raw?.notes ||
+                item.raw?.remarks ||
+                item.raw?.taskDescription ||
+                item.raw?.description ||
+                item.task ||
+                serviceType;
+
+              const isReInsemination =
+                (serviceType.toLowerCase().includes("insemination") || serviceType.toLowerCase().includes("ai")) &&
+                Boolean(item.raw?.previousAttemptId);
+
+              const location =
+                item.farmLocationLabel || item.location || "Location unavailable";
+              const time = item.time || "Time unavailable";
+              const dateVal =
+                item.scheduledDate || item.preferredDate || item.displayDate;
+              const formattedDate = dateVal
+                ? new Date(dateVal).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })
+                : selectedDayModal.formattedDate;
+
+              return (
+                <div
+                  key={item.id || item._id}
+                  className="grid grid-cols-12 gap-5 items-center p-5 sm:p-6 rounded-2xl border border-base-300 bg-base-100 shadow-xs hover:border-primary/50 hover:shadow-md transition-all text-xs"
+                >
+                  {/* 1. FARMER & CONTACT */}
+                  <div className="col-span-12 md:col-span-3 min-w-0 flex items-center gap-3">
+                    <UserAvatar
+                      src={farmerImageUrl}
+                      name={farmerName}
+                      size="md"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-[10px] font-black text-base-content/40 uppercase tracking-widest block">
+                        Farmer
+                      </span>
+                      <h4 className="font-bold text-base text-base-content leading-snug truncate" title={farmerName}>
+                        {farmerName}
+                      </h4>
+                      <p className="text-sm font-bold text-primary flex items-center gap-1.5 mt-0.5 truncate">
+                        <Phone size={13} className="shrink-0 text-primary" />
+                        <span className="truncate">{farmerPhone}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 2. SERVICE DETAILS & ANIMAL */}
+                  <div className="col-span-12 md:col-span-4 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-xs font-black uppercase tracking-wider border shrink-0 ${styles.bg} ${styles.text}`}
+                      >
+                        {shortBadge}
+                      </span>
+                      <span className="font-black text-base text-base-content leading-tight truncate">
+                        {cleanTitle}
+                      </span>
+                      {isReInsemination && (
+                        <span className="badge badge-sm badge-soft badge-info font-bold text-xs shrink-0">
+                          Re-insemination
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-bold text-base-content/90 mt-1 truncate">
+                      Animal: <span className="text-base-content font-black">{breed}</span> (Tag #{earTag})
+                    </p>
+                    <p className="text-sm font-medium text-base-content/65 mt-0.5 leading-relaxed line-clamp-2">
+                      Details: {taskDetails}
+                    </p>
+                  </div>
+
+                  {/* 3. LOCATION & DATE/TIME */}
+                  <div className="col-span-12 md:col-span-3 min-w-0 space-y-1.5">
+                    <div className="flex items-center gap-2 font-bold text-sm text-base-content/90">
+                      <Calendar size={14} className="text-base-content/40 shrink-0" />
+                      <span>{formattedDate}</span>
+                      <span className="text-primary font-black">· {time}</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-sm font-semibold text-base-content/70 leading-relaxed whitespace-normal wrap-break-word">
+                      <MapPin size={14} className="text-primary shrink-0 mt-0.5" />
+                      <span>Brgy. {location}</span>
+                    </div>
+                  </div>
+
+                  {/* 4. ACTION (Far Right) */}
+                  <div className="col-span-12 md:col-span-2 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reqId = item.id || item._id || item.raw?._id;
+                        setSelectedDayModal({
+                          isOpen: false,
+                          formattedDate: "",
+                          requests: [],
+                        });
+                        navigate(
+                          `/technician/schedule/details?requestId=${encodeURIComponent(reqId)}`
+                        );
+                      }}
+                      className="btn btn-sm btn-primary px-4 gap-2 font-black uppercase tracking-wider shadow-xs cursor-pointer w-full md:w-auto"
+                    >
+                      <span>View Details</span>
+                      <ExternalLink size={14} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Modal>
+
+      {/* Appointment Modals */}
+      <AIServiceModal
         isOpen={isAIModalOpen}
         onClose={() => {
           setIsAIModalOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["technician", "schedule"] });
+          queryClient.invalidateQueries({ queryKey: ["technician"] });
         }}
       />
 
-      {/* Quick Action Health Check Log Modal */}
       <WalkInHealthModal
         isOpen={isHealthModalOpen}
         onClose={() => {
           setIsHealthModalOpen(false);
-          queryClient.invalidateQueries({ queryKey: ["technician", "schedule"] });
+          queryClient.invalidateQueries({ queryKey: ["technician"] });
         }}
       />
     </div>

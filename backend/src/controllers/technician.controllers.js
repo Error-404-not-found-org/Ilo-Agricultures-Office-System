@@ -11,16 +11,50 @@ import { AIRequest } from "../models/ai-request.model.js";
 import { Config } from "../models/config.model.js";
 import { FieldNote } from "../models/field-note.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
+import { Task } from "../models/task.model.js";
 import { inngest } from "../config/inngest.js";
+import {
+  confirmPregnancyDiagnosis,
+  recordPregnancyContinuationRecheck,
+} from "../services/pregnancy-confirmation.service.js";
+import { persistCalving } from "../services/calving.service.js";
+import {
+  correctCalvingRecord,
+  correctPregnancyRecord,
+} from "../services/breeding-correction.service.js";
+import {
+  activeRequestKeyForAnimal,
+  createAIRequestWithGuard,
+  findActiveAIRequest,
+} from "../services/ai-request-creation.service.js";
+import { getAnimalAIEligibility } from "../services/ai-eligibility.service.js";
+import { buildAIServiceContext } from "../domain/ai-service-context.js";
+import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
+import { withPregnancyConfirmationMetadata } from "../domain/pregnancy-confirmation-metadata.js";
+import { activeHealthCaseKey } from "../services/health-request-creation.service.js";
 import {
   verifyPostpartumWindow,
   calculateTargetCalvingDate,
+  checkInseminationAgeEligibility,
 } from "../utils/cattleCore.js";
+import { recordTechnicianAIService } from "../services/livestock-transaction.service.js";
+import {
+  notifyUser,
+  sendNotificationPush,
+} from "../services/notification-delivery.service.js";
+import { presentNotificationDocument } from "../domain/notification-presentation.js";
+import { buildAIRequestAssignmentGuard } from "../policies/request.policy.js";
+import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
     const { fullAgenda } = req.query;
     const isFull = fullAgenda === "true";
+    const hideDeclinedForMe =
+      req.user?.role !== "admin" && req.user?._id
+        ? { declinedByTechnicianIds: { $ne: req.user._id } }
+        : {};
 
     const now = new Date();
     const PHT_OFFSET = 8 * 60 * 60 * 1000;
@@ -46,6 +80,9 @@ export const getTechnicianDashboardData = async (req, res) => {
       healthReqs,
       animalRegistryData,
       totalInsemMonth,
+      totalPregnancyCheckupMonth,
+      totalCalvingMonth,
+      scheduledTasks,
     ] = await Promise.all([
       // Stats
       Insemination.countDocuments({
@@ -84,20 +121,38 @@ export const getTechnicianDashboardData = async (req, res) => {
       ]),
       // Data Streams (Using .lean() for performance)
       Insemination.find({
-        status: { $in: ["pending", "approved", "in-progress"] },
+        status: { $in: ["pending", "approved", "scheduled", "in-progress"] },
         deletedAt: null,
+        ...hideDeclinedForMe,
       })
-        .populate("farmerId", "name address")
+        .populate(
+          "farmerId",
+          "name phoneNumber phone address farmLocation imageUrl",
+        )
         .populate("animalId", "animalId earTag imageUrl breed species")
         .populate("approvedBy", "name")
         .sort({ createdAt: -1 })
         .lean(),
 
       HealthRequest.find({
-        status: { $in: ["pending", "in-progress"] },
+        status: {
+          $in: [
+            "pending",
+            "triaged",
+            "assigned",
+            "approved",
+            "scheduled",
+            "in-progress",
+            "in_progress",
+          ],
+        },
         deletedAt: null,
+        ...hideDeclinedForMe,
       })
-        .populate("farmerId", "name address")
+        .populate(
+          "farmerId",
+          "name phoneNumber phone address farmLocation imageUrl",
+        )
         .populate("animalId", "animalId earTag imageUrl breed species")
         .populate("handledBy", "name")
         .sort({ urgency: -1, createdAt: -1 })
@@ -167,6 +222,24 @@ export const getTechnicianDashboardData = async (req, res) => {
       Insemination.countDocuments({
         inseminationDate: { $gte: monthStart },
       }),
+      Pregnancy.countDocuments({
+        createdAt: { $gte: monthStart },
+        deletedAt: null,
+      }),
+      Calving.countDocuments({
+        createdAt: { $gte: monthStart },
+        deletedAt: null,
+      }),
+      // 8. Tasks (Claimed/Scheduled tasks)
+      Task.find({
+        status: { $in: ["Pending", "In Progress"] },
+        dueDate: { $ne: null },
+        ...(req.user.role !== "admin" ? { technicianId: req.user._id } : {}),
+      })
+        .populate("farmerId", "name phoneNumber phone address farmLocation")
+        .populate("animalIds", "animalId earTag imageUrl breed species")
+        .sort({ dueDate: 1, createdAt: -1 })
+        .lean(),
     ]);
 
     // 2. Fetch Success Rate from Cache or Calculate
@@ -179,22 +252,34 @@ export const getTechnicianDashboardData = async (req, res) => {
         : "0%";
 
     // 2. FORMAT DATA
+    const cleanAddressPart = (value) => {
+      const normalized = String(value || "").trim();
+      return normalized &&
+        !["n/a", "na", "none", "null", "undefined"].includes(
+          normalized.toLowerCase(),
+        )
+        ? normalized
+        : "";
+    };
+
     const formatAddress = (addr) => {
       if (!addr) return "Unknown Location";
       if (typeof addr === "string") return addr;
       if (Array.isArray(addr) && addr.length > 0) {
         const first = addr[0];
         return (
-          `${first.barangay || ""}, ${first.city || ""}`
-            .replace(/^,|,$/g, "")
-            .trim() || "Unknown Location"
+          [first.barangay, first.city || first.municipality]
+            .map(cleanAddressPart)
+            .filter(Boolean)
+            .join(", ") || "Unknown Location"
         );
       }
       if (typeof addr === "object") {
         return (
-          `${addr.barangay || ""}, ${addr.city || ""}`
-            .replace(/^,|,$/g, "")
-            .trim() || "Unknown Location"
+          [addr.barangay, addr.city || addr.municipality]
+            .map(cleanAddressPart)
+            .filter(Boolean)
+            .join(", ") || "Unknown Location"
         );
       }
       return "Unknown Location";
@@ -210,11 +295,32 @@ export const getTechnicianDashboardData = async (req, res) => {
       });
     };
 
+    const getFarmLocationDetails = (farmer) => {
+      const farmLocation = farmer?.farmLocation || null;
+      const hasCoordinates =
+        Number.isFinite(farmLocation?.latitude) &&
+        Number.isFinite(farmLocation?.longitude);
+      const label =
+        farmLocation?.detectedAddress?.trim() ||
+        farmLocation?.landmark?.trim() ||
+        (hasCoordinates ? "Farm pin saved" : formatAddress(farmer?.address));
+
+      return {
+        farmLocation,
+        farmLocationLabel: label,
+        hasFarmPin: hasCoordinates,
+        navigationTarget: hasCoordinates
+          ? `${farmLocation.latitude},${farmLocation.longitude}`
+          : null,
+      };
+    };
+
     const pendingRequests = [];
     const agendaItems = [];
 
     // Process Inseminations
     inseminations.forEach((ins) => {
+      const farmLocationDetails = getFarmLocationDetails(ins.farmerId);
       const isMobileRequest = !ins.sireCode && ins.status === "pending";
       const itemDisplayDate =
         ins.status === "done" || ins.status === "resolved"
@@ -228,17 +334,37 @@ export const getTechnicianDashboardData = async (req, res) => {
             ins.createdAt;
 
       const isOverdue =
-        ["pending", "approved", "in-progress"].includes(ins.status) &&
-        new Date(itemDisplayDate) < todayStart;
+        ["pending", "approved", "scheduled", "in-progress"].includes(
+          ins.status,
+        ) && new Date(itemDisplayDate) < todayStart;
+      const isReadyToday =
+        ["approved", "scheduled"].includes(ins.status) &&
+        new Date(itemDisplayDate) >= todayStart &&
+        new Date(itemDisplayDate) < todayEnd;
 
       const item = {
         id: ins._id,
         type: "insemination",
+        taskType: "AI",
+        serviceType: "Artificial Insemination",
         status: ins.status,
+        isReadyToday,
         time: formatTime(itemDisplayDate),
+        preferredTime: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
         farmer: ins.farmerId?.name || "Unknown Farmer",
+        farmerName: ins.farmerId?.name || "Unknown Farmer",
+        farmerPhone: ins.farmerId?.phoneNumber || ins.farmerId?.phone || null,
+        farmerImageUrl:
+          ins.farmerId?.imageUrl ||
+          ins.farmerId?.avatarUrl ||
+          ins.farmerId?.profilePicture ||
+          ins.farmerId?.avatar ||
+          "",
         location: formatAddress(ins.farmerId?.address),
+        ...farmLocationDetails,
+        animalTag: ins.animalId?.earTag || ins.animalId?.animalId || null,
+        displayStatus: isReadyToday ? "Ready Today" : ins.status,
         task: isMobileRequest
           ? `AI Request (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`
           : `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`,
@@ -248,7 +374,9 @@ export const getTechnicianDashboardData = async (req, res) => {
         raw: ins,
       };
 
-      if (["pending", "approved", "in-progress"].includes(ins.status)) {
+      if (
+        ["pending", "approved", "scheduled", "in-progress"].includes(ins.status)
+      ) {
         pendingRequests.push(item);
       }
 
@@ -265,31 +393,68 @@ export const getTechnicianDashboardData = async (req, res) => {
 
     // Process Health Requests
     healthReqs.forEach((req) => {
+      const farmLocationDetails = getFarmLocationDetails(req.farmerId);
       const itemDisplayDate =
         req.status === "resolved" || req.status === "done"
           ? req.scheduledDate || req.preferredDate || req.createdAt // Health doesn't have inseminationDate
           : req.scheduledDate || req.preferredDate || req.createdAt;
 
       const isOverdue =
-        ["pending", "in-progress"].includes(req.status) &&
-        new Date(itemDisplayDate) < todayStart;
+        [
+          "pending",
+          "triaged",
+          "assigned",
+          "approved",
+          "scheduled",
+          "in-progress",
+          "in_progress",
+        ].includes(req.status) && new Date(itemDisplayDate) < todayStart;
+      const isReadyToday =
+        ["approved", "scheduled"].includes(req.status) &&
+        new Date(itemDisplayDate) >= todayStart &&
+        new Date(itemDisplayDate) < todayEnd;
 
       const item = {
         id: req._id,
         type: "health",
+        taskType: "Health",
+        serviceType: req.requestType || "Health Assistance",
         status: req.status,
+        isReadyToday,
         time: formatTime(itemDisplayDate),
+        preferredTime: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
         farmer: req.farmerId?.name || "Unknown Farmer",
+        farmerName: req.farmerId?.name || "Unknown Farmer",
+        farmerPhone: req.farmerId?.phoneNumber || req.farmerId?.phone || null,
+        farmerImageUrl:
+          req.farmerId?.imageUrl ||
+          req.farmerId?.avatarUrl ||
+          req.farmerId?.profilePicture ||
+          req.farmerId?.avatar ||
+          "",
         location: formatAddress(req.farmerId?.address),
+        ...farmLocationDetails,
+        animalTag: req.animalId?.earTag || req.animalId?.animalId || null,
+        displayStatus: isReadyToday ? "Ready Today" : req.status,
         task: `Health Check - ${req.animalId?.animalId || req.animalId?.earTag || "Unknown"}`,
-        urgent: req.urgency === "high",
+        urgent: ["high", "emergency"].includes(req.urgency),
         overdue: isOverdue,
         sentTime: formatTime(req.createdAt),
         raw: req,
       };
 
-      if (["pending", "in-progress"].includes(req.status)) {
+      if (
+        [
+          "pending",
+          "triaged",
+          "assigned",
+          "approved",
+          "scheduled",
+          "in-progress",
+          "in_progress",
+        ].includes(req.status)
+      ) {
         pendingRequests.push(item);
       }
 
@@ -301,6 +466,75 @@ export const getTechnicianDashboardData = async (req, res) => {
         if (req.status !== "pending") {
           agendaItems.push(item);
         }
+      }
+    });
+
+    // Process scheduled technician tasks / general visits
+    scheduledTasks.forEach((taskDoc) => {
+      const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
+      const isOverdue =
+        ["Pending", "In Progress"].includes(taskDoc.status) &&
+        new Date(itemDisplayDate) < todayStart;
+      const firstAnimal = Array.isArray(taskDoc.animalIds)
+        ? taskDoc.animalIds[0]
+        : null;
+
+      const getFarmLocationTarget = (farmer) => {
+        const loc = farmer?.farmLocation;
+        if (
+          typeof loc?.latitude === "number" &&
+          typeof loc?.longitude === "number"
+        ) {
+          return `${loc.latitude},${loc.longitude}`;
+        }
+        return null;
+      };
+
+      const item = {
+        id: taskDoc._id,
+        type: "task",
+        taskType: taskDoc.taskType || "Other",
+        status: taskDoc.status,
+        displayStatus: taskDoc.status,
+        time: formatTime(itemDisplayDate),
+        displayDate: itemDisplayDate,
+        farmer: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerPhone:
+          taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
+        farmerImageUrl:
+          taskDoc.farmerId?.avatarUrl ||
+          taskDoc.farmerId?.profilePicture ||
+          taskDoc.farmerId?.avatar ||
+          null,
+        location: formatAddress(taskDoc.farmerId?.address),
+        farmLocationLabel:
+          taskDoc.farmerId?.farmLocation?.detectedAddress?.trim() ||
+          taskDoc.farmerId?.farmLocation?.landmark?.trim() ||
+          (getFarmLocationTarget(taskDoc.farmerId)
+            ? "Farm pin saved"
+            : formatAddress(taskDoc.farmerId?.address)),
+        navigationTarget: getFarmLocationTarget(taskDoc.farmerId),
+        farmLocation: taskDoc.farmerId?.farmLocation || null,
+        animalId: firstAnimal || null,
+        animalTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
+        preferredTime: formatTime(itemDisplayDate),
+        task: `${taskDoc.taskType || "Visit"}${firstAnimal ? ` - ${firstAnimal.animalId || firstAnimal.earTag || "Unknown"}` : ""}`,
+        urgent:
+          taskDoc.category === "Urgent" || taskDoc.category === "Emergency",
+        overdue: isOverdue,
+        sentTime: formatTime(taskDoc.createdAt),
+        raw: taskDoc,
+      };
+
+      const isDateToday = (d) => {
+        if (!d) return false;
+        const dateVal = new Date(d);
+        return dateVal >= todayStart && dateVal < todayEnd;
+      };
+
+      if (isFull || isDateToday(itemDisplayDate) || isOverdue) {
+        agendaItems.push(item);
       }
     });
 
@@ -367,6 +601,8 @@ export const getTechnicianDashboardData = async (req, res) => {
         pendingHealth: totalHealthPending,
         successRate,
         totalInsemMonth,
+        totalPregnancyCheckupMonth,
+        totalCalvingMonth,
       },
       pendingRequests,
       agendaItems,
@@ -386,21 +622,63 @@ export const getMyInseminations = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const [records, total] = await Promise.all([
-      Insemination.find({ deletedAt: null })
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .populate("pregnancyId")
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Insemination.countDocuments({ deletedAt: null }),
-    ]);
+    const query = { deletedAt: null };
+    const search = String(req.query.search || "").trim();
+    const estrus = String(req.query.estrus || "").trim();
+    const outcome = String(req.query.outcome || "").trim();
+
+    if (estrus) query.estrus = estrus;
+    if (outcome) query.outcome = outcome;
+
+    if (search) {
+      const searchPattern = new RegExp(
+        search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "i",
+      );
+      const [farmers, animals] = await Promise.all([
+        User.find({ name: searchPattern }).select("_id").lean(),
+        Animal.find({
+          $or: [{ earTag: searchPattern }, { animalId: searchPattern }],
+        })
+          .select("_id")
+          .lean(),
+      ]);
+
+      query.$or = [
+        { farmerId: { $in: farmers.map((farmer) => farmer._id) } },
+        { animalId: { $in: animals.map((animal) => animal._id) } },
+        { sireBreed: searchPattern },
+        { sireCode: searchPattern },
+      ];
+    }
+
+    const summaryQuery = { deletedAt: null };
+    const [records, total, totalCycles, confirmedPregnant, pendingChecks] =
+      await Promise.all([
+        Insemination.find(query)
+          .populate("farmerId", "name phoneNumber address imageUrl")
+          .populate("animalId", "animalId earTag breed species imageUrl")
+          .populate("pregnancyId")
+          .populate("technicianId", "name")
+          .populate("approvedBy", "name")
+          .populate(
+            "previousAttemptId",
+            "attemptNumber inseminationDate outcome outcomeVerificationStatus outcomeConfirmedAt",
+          )
+          .sort({ inseminationDate: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Insemination.countDocuments(query),
+        Insemination.countDocuments(summaryQuery),
+        Insemination.countDocuments({ ...summaryQuery, outcome: "Pregnant" }),
+        Insemination.countDocuments({ ...summaryQuery, outcome: "Pending" }),
+      ]);
 
     res.status(200).json({
       inseminations: records,
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      summary: { totalCycles, confirmedPregnant, pendingChecks },
     });
   } catch (error) {
     res
@@ -457,7 +735,7 @@ export const getMyPregnancyChecks = async (req, res) => {
     ]);
 
     res.status(200).json({
-      data: records,
+      data: records.map(withPregnancyConfirmationMetadata),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
@@ -521,7 +799,7 @@ export const getMyNotifications = async (req, res) => {
     ]);
 
     res.status(200).json({
-      data: records,
+      data: records.map(presentNotificationDocument),
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
@@ -544,6 +822,113 @@ export const getMyProfile = async (req, res) => {
 
 // --- ACTION HANDLERS ---
 
+export const getAIServiceContext = async (req, res) => {
+  try {
+    const { farmerId, animalId } = req.query;
+
+    if (
+      !mongoose.Types.ObjectId.isValid(farmerId) ||
+      !mongoose.Types.ObjectId.isValid(animalId)
+    ) {
+      return res.status(400).json({
+        code: "AI_SERVICE_CONTEXT_REQUIRED",
+        message: "Select a registered farmer and animal to continue.",
+      });
+    }
+
+    const [farmer, animal] = await Promise.all([
+      User.findOne({ _id: farmerId, role: "farmer" }).lean(),
+      Animal.findById(animalId).lean(),
+    ]);
+
+    if (!farmer) {
+      return res.status(404).json({
+        code: "FARMER_NOT_FOUND",
+        message: "The selected farmer profile is no longer available.",
+      });
+    }
+    if (!animal) {
+      return res.status(404).json({
+        code: "ANIMAL_NOT_FOUND",
+        message: "The selected animal profile is no longer available.",
+      });
+    }
+    if (String(animal.farmerId) !== String(farmer._id)) {
+      return res.status(400).json({
+        code: "ANIMAL_FARMER_MISMATCH",
+        message: "The selected animal does not belong to the selected farmer.",
+      });
+    }
+
+    const activeRequest = await findActiveAIRequest(animal._id);
+    if (activeRequest) {
+      await activeRequest.populate([
+        { path: "approvedBy", select: "name" },
+        { path: "technicianId", select: "name" },
+      ]);
+    }
+
+    const task = activeRequest
+      ? await Task.findOne({
+          taskType: "AI",
+          status: { $in: ["Pending", "In Progress"] },
+          $or: [
+            {
+              relatedRecordType: "insemination",
+              relatedRecordId: activeRequest._id,
+            },
+            { "metadata.requestId": activeRequest._id },
+            { "metadata.inseminationId": activeRequest._id },
+          ],
+        })
+          .select("_id status technicianId dueDate")
+          .lean()
+      : null;
+
+    const eligibility = activeRequest
+      ? {
+          eligible: true,
+          code: "ACTIVE_REQUEST_FOUND",
+          reason: "Continue the existing AI service request for this animal.",
+        }
+      : await getAnimalAIEligibility({ animal, at: new Date() });
+
+    const context = buildAIServiceContext({
+      activeRequest,
+      eligibility,
+      task,
+      actorId: req.user._id,
+      isAdmin: req.user.role === "admin",
+      now: new Date(),
+    });
+
+    return res.status(200).json({
+      ...context,
+      farmer: {
+        _id: farmer._id,
+        name: farmer.name,
+        phoneNumber: farmer.phoneNumber || "",
+        address: farmer.address || null,
+      },
+      animal: {
+        _id: animal._id,
+        animalId: animal.animalId,
+        earTag: animal.earTag,
+        species: animal.species,
+        breed: animal.breed,
+        gender: animal.gender,
+        reproductiveStatus: animal.reproductiveStatus,
+      },
+    });
+  } catch (error) {
+    console.error("[getAIServiceContext ERROR]", error);
+    return res.status(500).json({
+      code: "AI_SERVICE_CONTEXT_FAILED",
+      message: "The AI service context could not be loaded.",
+    });
+  }
+};
+
 export const walkInInsemination = async (req, res) => {
   try {
     const {
@@ -556,7 +941,12 @@ export const walkInInsemination = async (req, res) => {
       address,
       animalDetails,
       inseminationDetails,
+      taskId,
+      requestId,
     } = req.body;
+    const technicianNote = normalizeTechnicianNoteInput(
+      inseminationDetails || {},
+    );
 
     // 1. Resolve or Create Farmer
     let farmer;
@@ -628,50 +1018,18 @@ export const walkInInsemination = async (req, res) => {
     }
 
     if (!animal) {
-      if (!animalDetails?.animalId && !animalDetails?.earTag) {
-        return res
-          .status(400)
-          .json({ message: "Animal details are required." });
-      }
-      const newAnimalId =
-        animalDetails.animalId || `ANM-${Date.now().toString().slice(-6)}`;
-      animal = await Animal.create({
-        farmerId: farmer._id,
-        animalId: newAnimalId,
-        earTag: animalDetails.earTag || undefined,
-        species: animalDetails.species || "Cattle",
-        breed: animalDetails.breed || "Crossbreed",
-        color: animalDetails.color || "Not Provided",
-        barangay: farmer.address?.barangay || "Not Provided",
-        isVerified: true,
-      });
-    }
-
-    // Gender check
-    if (animal.gender !== "Female") {
       return res.status(400).json({
+        code: "ANIMAL_SELECTION_REQUIRED",
         message:
-          "Insemination is restricted to female animals only. This animal is registered as Male.",
+          "Select an existing animal before recording AI. Historical or incomplete animal records must be entered through an authorized historical-record workflow.",
       });
     }
-
-    // --- DOUBLE REQUEST CONFIRMATION / DUPLICATE CHECK ---
-    const existingActiveRequest = await Insemination.findOne({
-      animalId: animal._id,
-      status: { $in: ["pending", "approved", "in-progress"] },
-    });
-
-    if (existingActiveRequest) {
+    if (String(animal.farmerId) !== String(farmer._id)) {
       return res.status(400).json({
-        message: `Active AI request (${existingActiveRequest.status}) already exists for this animal.`,
+        code: "ANIMAL_FARMER_MISMATCH",
+        message: "The selected animal does not belong to the selected farmer.",
       });
     }
-
-    // 3. Record Insemination
-    const lastAttempt = await Insemination.findOne({
-      animalId: animal._id,
-    }).sort({ attemptNumber: -1 });
-    const attemptNumber = lastAttempt ? lastAttempt.attemptNumber + 1 : 1;
 
     // Combine date and time into a single timestamp
     const entryDateString =
@@ -681,39 +1039,54 @@ export const walkInInsemination = async (req, res) => {
     const entryDate = new Date(
       `${entryDateString}T${entryTimeString}:00+08:00`,
     );
+    if (Number.isNaN(entryDate.getTime())) {
+      return res
+        .status(400)
+        .json({ message: "A valid AI service date and time are required." });
+    }
+    if (entryDate.getTime() > Date.now() + 5 * 60 * 1000) {
+      return res
+        .status(400)
+        .json({ message: "AI service date cannot be in the future." });
+    }
+    if (entryDate.getTime() < Date.now() - 24 * 60 * 60 * 1000) {
+      return res.status(400).json({
+        code: "HISTORICAL_AI_WORKFLOW_REQUIRED",
+        message:
+          "The Record AI form is for a current field service. Older AI records require an authorized historical-record workflow.",
+      });
+    }
 
-    const insemination = await Insemination.create({
+    const result = await recordTechnicianAIService({
+      taskId,
+      requestId,
       farmerId: farmer._id,
       animalId: animal._id,
       inseminationDate: entryDate,
-      scheduledDate: entryDate, // Ensure walk-ins show up on the schedule
-      preferredDate: entryDate, // Ensure requested date matches for walk-ins
       sireBreed: inseminationDetails?.sireBreed,
       sireCode: inseminationDetails?.sireCode,
-      estrus: inseminationDetails?.estrus || "Natural",
-      attemptNumber,
-      status: inseminationDetails?.status || "in-progress",
-      approvedBy: req.user._id,
+      semenDosesUsed: inseminationDetails?.semenDosesUsed,
+      estrus: inseminationDetails?.estrus,
+      technicianNote,
+      actorId: req.user._id,
+      isAdmin: req.user.role === "admin",
     });
 
-    // Sync Animal Status if marked as 'done'
-    if (insemination.status === "done") {
-      await Animal.findByIdAndUpdate(animal._id, {
-        reproductiveStatus: "Inseminated",
-      });
-      console.log(
-        `[Status Sync] Animal ${animal._id} set to Inseminated via walkInInsemination.`,
-      );
-    }
-
-    // Notify Farmer
-    await Notification.create({
-      recipientId: farmer._id,
-      senderId: req.user._id,
+    await sendNotificationPush({
+      recipient: farmer,
       type: "ai-request",
-      relatedId: insemination._id,
-      title: "Field AI Recorded",
-      message: `A field insemination has been recorded for your animal (${animal.earTag}) by technician ${req.user.name}.`,
+      eventType: "field_ai_recorded",
+      relatedId: result.insemination._id,
+      linkType: "record",
+      title: "AI service recorded",
+      message: `The completed AI service for ${animal.earTag || animal.animalId} was recorded.`,
+      metadata: {
+        animalId: animal._id,
+        animalTag: animal.earTag || animal.animalId,
+        recordId: result.insemination._id,
+        serviceType: "ai",
+        technicianName: req.user.name,
+      },
     });
 
     // Trigger Socket Update
@@ -723,157 +1096,18 @@ export const walkInInsemination = async (req, res) => {
 
     res.status(201).json({
       message: "Walk-in insemination recorded successfully",
-      insemination,
+      insemination: result.insemination,
+      outcome: result.outcome,
+      task: result.task,
       farmer,
       animal,
     });
   } catch (error) {
     console.error("[walkInInsemination ERROR]", error);
-    res
-      .status(500)
-      .json({ message: "Error recording insemination", error: error.message });
-  }
-};
-
-export const updateInseminationStatus = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const {
-      status,
-      technicianNote,
-      scheduledDate,
-      sireBreed,
-      sireCode,
-      estrus,
-    } = req.body;
-
-    const existing = await Insemination.findById(id);
-    if (!existing) {
-      return res.status(404).json({ message: "Record not found" });
-    }
-
-    // Concurrency guard: check if already assigned to another technician
-    if (
-      existing.approvedBy &&
-      existing.approvedBy.toString() !== req.user._id.toString() &&
-      req.user.role !== "admin"
-    ) {
-      const assignedTech = await User.findById(existing.approvedBy);
-      return res.status(403).json({
-        message: `This request is already being assisted by technician: ${assignedTech?.name || "another technician"}.`,
-      });
-    }
-
-    const updateData = {
-      status,
-      technicianNote,
-      scheduledDate,
-      sireBreed,
-      sireCode,
-      estrus,
-      approvedBy: req.user._id,
-    };
-
-    // If marking as done, set the official insemination date to now (if not already set)
-    if (status === "done") {
-      updateData.inseminationDate = new Date();
-    }
-
-    const insemination = await Insemination.findByIdAndUpdate(id, updateData, {
-      returnDocument: "after",
-    })
-      .populate("farmerId", "name")
-      .populate("animalId", "earTag");
-
-    if (!insemination)
-      return res.status(404).json({ message: "Record not found" });
-
-    // --- IMMEDIATE STATUS SYNC ---
-    if (status === "done") {
-      await Animal.findByIdAndUpdate(insemination.animalId, {
-        reproductiveStatus: "Inseminated",
-      });
-      console.log(
-        `[Status Sync] Animal ${insemination.animalId} set to Inseminated via updateInseminationStatus.`,
-      );
-    }
-
-    // Notify Farmer — status-specific messages
-    if (insemination.farmerId && insemination.farmerId._id) {
-      const animalTag = insemination.animalId?.earTag || "your animal";
-      const techName = req.user?.name || "a technician";
-
-      let notifTitle = "AI Request Update";
-      let notifMessage = "";
-
-      if (status === "approved") {
-        const rescheduled = scheduledDate
-          ? ` The visit has been scheduled on ${new Date(scheduledDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}.`
-          : " No schedule date has been set yet.";
-        notifTitle = "AI Request Accepted";
-        notifMessage = `Your artificial insemination request for animal ${animalTag} has been accepted by Technician: ${techName}.${rescheduled}`;
-      } else if (status === "in-progress") {
-        const rescheduled = scheduledDate
-          ? ` The visit is rescheduled to ${new Date(scheduledDate).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" })}.`
-          : "";
-        notifTitle = "AI Request In Progress";
-        notifMessage = `Your artificial insemination request for animal ${animalTag} is now in progress with Technician: ${techName}.${rescheduled}`;
-      } else if (status === "done") {
-        notifTitle = "AI Request Completed";
-        notifMessage = `Great news! The artificial insemination for animal ${animalTag} has been successfully completed by Technician: ${techName}.`;
-      } else if (status === "rejected") {
-        notifTitle = "AI Request Rejected";
-        notifMessage = `Your artificial insemination request for animal ${animalTag} has been declined by Technician: ${techName}. Please contact the office for more details.`;
-      } else {
-        notifMessage = `Your artificial insemination request for animal ${animalTag} has been updated to: ${status} by Technician: ${techName}.`;
-      }
-
-      await Notification.create({
-        recipientId: insemination.farmerId._id,
-        senderId: req.user._id,
-        type: "ai-request",
-        relatedId: insemination._id,
-        title: notifTitle,
-        message: notifMessage,
-      });
-    }
-
-    // Trigger Socket Update
-    req.app
-      .get("io")
-      .emit("dashboardUpdate", { type: "INSEMINATION_UPDATED", status });
-
-    // --- TRIGGER INNGEST AUTOMATION ---
-    if (status === "done") {
-      try {
-        await inngest.send({
-          name: "insemination/approved",
-          data: {
-            inseminationId: insemination._id,
-            animalId: insemination.animalId?._id || insemination.animalId,
-            farmerId: insemination.farmerId?._id || insemination.farmerId,
-          },
-        });
-      } catch (inngestError) {
-        console.error("Inngest Automation Error:", inngestError);
-        // We still consider the status updated, but we notify the user that background tasks might be delayed
-        return res.status(200).json({
-          message:
-            "Status updated, but background automation encountered an issue. Please contact support if reminders are not sent.",
-          insemination,
-          automationError: true,
-        });
-      }
-    }
-
-    res
-      .status(200)
-      .json({ message: "Status updated successfully", insemination });
-  } catch (error) {
-    console.error("UpdateInseminationStatus Error:", error);
-    res.status(500).json({
-      message: "Failed to update mission status. Internal Server Error.",
-      error: error.message,
+    res.status(error.status || 500).json({
+      message: error.message || "Error recording insemination",
+      code: error.code,
+      ...(error.details || {}),
     });
   }
 };
@@ -903,6 +1137,15 @@ export const getAnimalHistory = async (req, res) => {
       ]);
 
     if (!animal) return res.status(404).json({ message: "Animal not found" });
+    const policyResolution = await loadPregnancyConfirmationPolicy();
+    const inseminationsWithReadiness = inseminations.map((insemination) => ({
+      ...insemination,
+      pregnancyReadiness: getPregnancyCheckReadiness({
+        insemination,
+        policy: policyResolution.policy,
+        species: animal.species,
+      }),
+    }));
 
     // 2. Build Timeline Events
     const timeline = [];
@@ -932,20 +1175,23 @@ export const getAnimalHistory = async (req, res) => {
         date: ins.inseminationDate || ins.createdAt,
         status: ins.status.charAt(0).toUpperCase() + ins.status.slice(1),
         iconType: "Syringe",
-        technicianName: ins.technicianNote || "Field Technician",
+        technicianName: "Field Technician",
         // Extended Details
         details: {
           sireBreed: ins.sireBreed,
           sireCode: ins.sireCode,
+          semenDosesUsed: ins.semenDosesUsed,
+          visitPeriod: ins.visitPeriod,
           attemptNumber: ins.attemptNumber,
           estrus: ins.estrus,
           outcome: ins.outcome,
+          technicianNote: ins.technicianNote || "",
         },
       });
     });
 
     // - Pregnancy Checks
-    pregnancies.forEach((p) => {
+    pregnancies.map(withPregnancyConfirmationMetadata).forEach((p) => {
       const result = p.pregnancyDiagnosis?.result || "Pending";
       timeline.push({
         _id: p._id,
@@ -973,12 +1219,17 @@ export const getAnimalHistory = async (req, res) => {
     // - Calvings
     calvings.forEach((c) => {
       const sexDist = c.calves?.map((calf) => calf.sex).join("/") || "N/A";
+      const isLiveBirth = c.outcome === "live_birth" || !c.outcome;
       timeline.push({
         _id: c._id,
         relatedId: c._id,
         type: "Calving",
         title: "Calving Event",
-        description: `Successful birth of ${c.numberOfCalves} calf/calves. Sex distribution: [${sexDist}]. Ease: ${c.calvingEase}.`,
+        description: isLiveBirth
+          ? `Live birth of ${c.numberOfCalves} calf/calves. Sex distribution: [${sexDist}]. Ease: ${c.calvingEase}.`
+          : c.outcome === "stillbirth"
+            ? `Stillbirth of ${c.numberOfCalves} calf/calves recorded.`
+            : "Pregnancy loss recorded as abortion.",
         date: c.date || c.createdAt,
         status: "Done",
         iconType: "CheckCircle2",
@@ -1022,8 +1273,8 @@ export const getAnimalHistory = async (req, res) => {
     res.status(200).json({
       animal,
       timeline,
-      inseminations,
-      pregnancies,
+      inseminations: inseminationsWithReadiness,
+      pregnancies: pregnancies.map(withPregnancyConfirmationMetadata),
       calvings,
       healthRequests,
     });
@@ -1121,9 +1372,18 @@ export const registerFarmer = async (req, res) => {
 
 export const recordPregnancyCheck = async (req, res) => {
   try {
-    const { animalId, result, technicianNote, inseminationId } = req.body;
+    const {
+      animalId,
+      result,
+      technicianNote,
+      inseminationId,
+      diagnosisDate,
+      taskId,
+      methodCode,
+      policyVersion,
+    } = req.body;
     console.log(
-      `[recordPregnancyCheck] Recording result for Animal: ${animalId}, Insem: ${inseminationId}, Result: ${result}`,
+      `[recordPregnancyCheck] Recording result for Animal: ${animalId}, Insem: ${inseminationId}, Result: ${result}, Task: ${taskId || "None"}`,
     );
 
     if (!animalId || !result || !inseminationId) {
@@ -1132,76 +1392,46 @@ export const recordPregnancyCheck = async (req, res) => {
       });
     }
 
-    const animal = await Animal.findById(animalId);
-    if (!animal) return res.status(404).json({ message: "Animal not found" });
-
-    // PROTECTION 1: Don't allow diagnosing a cow that's already pregnant
-    if (animal.reproductiveStatus === "Pregnant") {
-      return res.status(400).json({
-        message: "Animal is already marked as pregnant.",
-      });
-    }
-
-    // PROTECTION 2: Stop overwriting old records
-    const existingPregnancy = await Pregnancy.findOne({ inseminationId });
-    if (existingPregnancy) {
-      return res.status(400).json({
-        message:
-          "Pregnancy diagnosis already recorded for this insemination attempt.",
-      });
-    }
-
-    // Create NEW record instead of updating an upsert
-    const pregnancy = await Pregnancy.create({
+    const confirmation = await confirmPregnancyDiagnosis({
       animalId,
-      farmerId: animal.farmerId,
       inseminationId,
+      result,
       technicianNote,
-      pregnancyDiagnosis: {
-        date: new Date(),
-        result: result, // "Pregnant" or "Empty"
-      },
-      targetCalvingDate:
-        result === "Pregnant"
-          ? calculateTargetCalvingDate(
-              new Date(),
-              animal.species,
-              undefined,
-              animal.breed,
-            )
-          : undefined,
+      diagnosisDate,
+      taskId,
+      methodCode,
+      policyVersion,
+      actor: req.user,
     });
+    const { pregnancy, animal, pregnancyReadiness, alreadyRecorded } =
+      confirmation;
 
-    // Update Insemination outcome and ensure status is marked as done
-    await Insemination.findByIdAndUpdate(inseminationId, {
-      status: "done",
-      outcome: result === "Pregnant" ? "Pregnant" : "Failed (Negative PD)",
-      pregnancyId: pregnancy._id,
-    });
-
-    // Update Animal Reproductive Status
-    await Animal.findByIdAndUpdate(animalId, {
-      reproductiveStatus: result === "Pregnant" ? "Pregnant" : "Normal",
-    });
-
-    if (animal.farmerId) {
+    if (animal.farmerId && !alreadyRecorded) {
       try {
-        const title =
-          result === "Pregnant"
-            ? "🎉 Pregnancy Confirmed!"
-            : "Pregnancy Check Outcome";
-        const message =
-          result === "Pregnant"
-            ? `Great news! Animal Tag #${animal.earTag || animal.animalId} has been confirmed pregnant by technician ${req.user.name}. Expected calving date is around ${pregnancy.targetCalvingDate ? new Date(pregnancy.targetCalvingDate).toLocaleDateString() : "the calculated target"}.`
-            : `The pregnancy check for animal Tag #${animal.earTag || animal.animalId} resulted in: Empty. We recommend monitoring her for signs of heat and scheduling another A.I. attempt when appropriate.`;
-
-        await Notification.create({
+        const farmer = await User.findById(animal.farmerId);
+        await notifyUser({
+          recipient: farmer,
           recipientId: animal.farmerId,
           senderId: req.user._id,
-          type: "system",
-          relatedId: pregnancy._id,
-          title,
-          message,
+          type: "ai-request",
+          relatedId: animal._id,
+          category: "pregnancy",
+          eventType:
+            result === "Pregnant"
+              ? "pregnancy_confirmed"
+              : "pregnancy_not_confirmed",
+          linkType: "animal",
+          dedupeKey: `pregnancy-result:${pregnancy._id}:${animal.farmerId}`,
+          title: "Pregnancy check updated",
+          message: `The pregnancy check for ${animal.earTag || animal.animalId} has been recorded.`,
+          metadata: {
+            animalId: animal._id,
+            animalTag: animal.earTag || animal.animalId,
+            pregnancyId: pregnancy._id,
+            requestId: inseminationId,
+            technicianName: req.user.name,
+            targetCalvingDate: pregnancy.targetCalvingDate,
+          },
         });
       } catch (notifErr) {
         console.error("[recordPregnancyCheck NOTIF ERROR]", notifErr.message);
@@ -1209,7 +1439,7 @@ export const recordPregnancyCheck = async (req, res) => {
     }
 
     // Trigger Inngest if Pregnant
-    if (result === "Pregnant") {
+    if (result === "Pregnant" && !alreadyRecorded) {
       try {
         await inngest.send({
           name: "pregnancy/confirmed",
@@ -1227,12 +1457,26 @@ export const recordPregnancyCheck = async (req, res) => {
       }
     }
 
-    res.status(201).json({ message: "Pregnancy check recorded", pregnancy });
+    res.status(alreadyRecorded ? 200 : 201).json({
+      message: alreadyRecorded
+        ? "The pregnancy diagnosis was already recorded. The matching task has been completed."
+        : "Pregnancy check recorded",
+      code: alreadyRecorded ? "PREGNANCY_DIAGNOSIS_RECONCILED" : undefined,
+      pregnancy,
+      pregnancyReadiness,
+      continuationTask: confirmation.continuationTask,
+    });
   } catch (error) {
     console.error("[recordPregnancyCheck ERROR]", error);
-    res.status(500).json({
-      message: "Failed to record pregnancy check",
-      error: error.message,
+    const transactionUnavailable =
+      /Transaction numbers are only allowed|replica set|mongos/i.test(
+        error.message,
+      );
+    res.status(transactionUnavailable ? 503 : error.status || 500).json({
+      message: transactionUnavailable
+        ? "This operation requires a transaction-capable database."
+        : error.message || "Failed to record pregnancy check",
+      code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
     });
   }
 };
@@ -1244,30 +1488,18 @@ export const recordCalving = async (req, res) => {
       animalId,
       date,
       calvingEase,
+      outcome: submittedOutcome,
       numberOfCalves,
       calves,
+      nonLivingCalves,
       technicianNote,
+      taskId,
     } = req.body;
 
     // 1. Validate Mother & Pregnancy
     const mother = await Animal.findOne({ _id: animalId, deletedAt: null });
     if (!mother)
       return res.status(404).json({ message: "Mother animal not found" });
-
-    // Chronological Calving Postpartum Firewall
-    if (mother.lastCalvingDate) {
-      const windowCheck = verifyPostpartumWindow(
-        mother.lastCalvingDate,
-        date || new Date(),
-        mother.species,
-        mother.breed,
-      );
-      if (!windowCheck.isSafe) {
-        return res.status(422).json({
-          message: `Warning: Calving event occurs too close to the previous calving event. Only ${windowCheck.daysPassed} days have passed, but the voluntary waiting period for ${mother.species} is ${windowCheck.requiredDays} days.`,
-        });
-      }
-    }
 
     const pregnancy = await Pregnancy.findOne({
       _id: pregnancyId,
@@ -1276,160 +1508,77 @@ export const recordCalving = async (req, res) => {
     if (!pregnancy)
       return res.status(404).json({ message: "Pregnancy record not found" });
 
-    // Check if calving record already exists to prevent E11000 duplicate key error
-    const existingCalving = await Calving.findOne({
-      pregnancyId: pregnancy._id,
-      deletedAt: null,
-    });
-    if (existingCalving) {
-      if (mother.reproductiveStatus === "Pregnant") {
-        await Animal.findByIdAndUpdate(animalId, {
-          $set: { reproductiveStatus: "Normal" },
-        });
-      }
-      return res
-        .status(400)
-        .json({
-          message: "A calving record already exists for this pregnancy.",
-        });
-    }
-
-    // Extract sire info from insemination if available
-    const sireBreed = pregnancy.inseminationId?.sireBreed || "Unknown";
-
-    // 2. Register Each Calf as a New Animal
-    const registeredCalves = [];
-    const calfRecordsForBirth = [];
-
-    for (let i = 0; i < calves.length; i++) {
-      const calfData = calves[i];
-
-      // Generate a unique ID for the calf
-      const calfAnimalId = `ANM-${Date.now().toString().slice(-6)}-${i}`;
-
-      let calfImageUrl = "";
-      if (calfData.imageUrl && calfData.imageUrl.startsWith("data:image")) {
-        try {
-          const uploadRes = await cloudinary.uploader.upload(calfData.imageUrl, {
-            folder: "livestock_profiles",
-          });
-          calfImageUrl = uploadRes.secure_url;
-        } catch (uploadError) {
-          console.error(`[recordCalving TECH CALF IMAGE UPLOAD ERROR for index ${i}]`, uploadError);
-        }
-      } else if (calfData.imageUrl) {
-        calfImageUrl = calfData.imageUrl;
-      }
-
-      const newCalf = await Animal.create({
-        earTag:
-          calfData.earTag || `CALF-${Date.now().toString().slice(-4)}-${i}`,
-        animalId: calfAnimalId,
-        species: mother.species,
-        breed:
-          sireBreed !== "Unknown"
-            ? `${mother.breed} x ${sireBreed}`
-            : mother.breed,
-        farmerId: mother.farmerId,
-        motherId: mother._id,
-        imageUrl: calfImageUrl,
-        isVerified: true,
-        gender: calfData.sex === "M" ? "Male" : "Female",
-        color: calfData.color || mother.color || "Not Provided",
-        brand: calfData.brand || mother.brand || "",
-        birthDate: date || new Date(),
-        barangay: mother.barangay || "Not Provided",
-        activityLogs: [
-          {
-            event: "Initial Registration",
-            date: new Date(),
-            description: `Automatically registered via calving event from mother ${mother.earTag || mother.animalId}.`,
-          },
-        ],
-      });
-
-      registeredCalves.push(newCalf);
-      calfRecordsForBirth.push({
-        sex: calfData.sex,
-        earTag: newCalf.earTag,
-        animalId: newCalf._id,
-      });
-    }
-
-    // 3. Create Calving Record
-    const calving = await Calving.create({
-      animalId,
-      farmerId: mother.farmerId,
-      pregnancyId,
-      date: date || new Date(),
-      numberOfCalves: numberOfCalves || registeredCalves.length,
-      calves: calfRecordsForBirth,
+    const {
+      calving,
+      offspring: registeredCalves,
+      outcome,
+      alreadyRecorded,
+    } = await persistCalving({
+      mother,
+      pregnancy,
+      calves,
+      nonLivingCalves,
+      date,
       calvingEase,
-      technicianId: req.user._id,
+      outcome: submittedOutcome,
+      numberOfCalves,
       technicianNote,
+      actor: req.user,
+      taskId,
     });
-
-    // 4. Update Mother's Status, lastCalvingDate & Increment Parity
-    await Animal.findByIdAndUpdate(animalId, {
-      $set: {
-        reproductiveStatus: "Normal",
-        lastCalvingDate: date || new Date(),
-      },
-      $inc: { parity: 1 }, // Track number of births
-      $push: {
-        activityLogs: {
-          event: "Calving",
-          date: new Date(),
-          description: `Gave birth to ${numberOfCalves} calf/calves. Ease: ${calvingEase}.`,
-        },
-      },
-    });
-
-    // 5. Notify Farmer
-    if (mother.farmerId) {
-      const calfSexList = calves
-        .map((c) => (c.sex === "M" ? "Male" : "Female"))
-        .join(", ");
-      await Notification.create({
-        recipientId: mother.farmerId,
-        senderId: req.user._id,
-        type: "system",
-        title: "🍼 New Calving Recorded",
-        message: `Congratulations! Your animal Tag #${mother.earTag || mother.animalId} successfully calved ${registeredCalves.length} offspring (${calfSexList}).`,
-      });
-    }
 
     // 6. Trigger Inngest & Socket
-    try {
-      await inngest.send({
-        name: "livestock/calving-recorded",
-        data: {
-          animalId,
-          farmerId: mother.farmerId,
-          numberOfCalves: registeredCalves.length,
-          offspringIds: registeredCalves.map((c) => c._id),
-        },
-      });
-    } catch (inngestErr) {
-      console.error("[recordCalving INNGEST ERROR]", inngestErr.message);
+    if (!alreadyRecorded) {
+      try {
+        await inngest.send({
+          name: "livestock/calving-recorded",
+          data: {
+            animalId,
+            farmerId: mother.farmerId,
+            calvingId: calving._id,
+            numberOfCalves: registeredCalves.length,
+            offspringIds: registeredCalves.map((c) => c._id),
+            outcome,
+          },
+        });
+      } catch (inngestErr) {
+        console.error("[recordCalving INNGEST ERROR]", inngestErr.message);
+      }
     }
 
-    req.app.get("io").emit("dashboardUpdate", {
-      type: "CALVING_RECORDED",
-      motherId: animalId,
-      calvingId: calving._id,
-    });
+    const io = req.app.get("io");
+    if (io && !alreadyRecorded) {
+      io.emit("dashboardUpdate", {
+        type: "CALVING_RECORDED",
+        motherId: animalId,
+        calvingId: calving._id,
+      });
+    }
 
-    res.status(201).json({
-      message: "Calving and offspring registered successfully",
+    res.status(alreadyRecorded ? 200 : 201).json({
+      message: alreadyRecorded
+        ? "This calving was already recorded. The original result has been returned."
+        : ["live_birth", "mixed"].includes(outcome)
+          ? "Calving and offspring registered successfully"
+          : outcome === "stillbirth"
+            ? "Stillbirth event recorded successfully"
+            : "Pregnancy-loss event recorded successfully",
+      code: alreadyRecorded ? "CALVING_ALREADY_RECORDED" : undefined,
       calving,
       offspring: registeredCalves,
     });
   } catch (error) {
     console.error("[recordCalving ERROR]", error);
-    res
-      .status(500)
-      .json({ message: "Failed to record calving", error: error.message });
+    const transactionUnavailable =
+      /Transaction numbers are only allowed|replica set|mongos/i.test(
+        error.message,
+      );
+    res.status(transactionUnavailable ? 503 : error.status || 500).json({
+      message: transactionUnavailable
+        ? "This operation requires a transaction-capable database."
+        : error.message || "Failed to record calving",
+      code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
+    });
   }
 };
 
@@ -1474,22 +1623,39 @@ export const getDashboardStats = async (req, res) => {
 
 export const getDashboardFeed = async (req, res) => {
   try {
+    const hideDeclinedForMe =
+      req.user?.role !== "admin" && req.user?._id
+        ? { declinedByTechnicianIds: { $ne: req.user._id } }
+        : {};
+
     const [inseminations, healthReqs] = await Promise.all([
       Insemination.find({
-        status: { $in: ["pending", "approved", "in-progress"] },
+        status: { $in: ["pending", "approved", "scheduled", "in-progress"] },
         deletedAt: null,
+        ...hideDeclinedForMe,
       })
-        .populate("farmerId", "name address")
+        .populate("farmerId", "name address farmLocation")
         .populate("animalId", "animalId earTag imageUrl breed species")
         .populate("approvedBy", "name")
         .sort({ createdAt: -1 })
         .limit(20)
         .lean(),
       HealthRequest.find({
-        status: { $in: ["pending", "in-progress"] },
+        status: {
+          $in: [
+            "pending",
+            "triaged",
+            "assigned",
+            "approved",
+            "scheduled",
+            "in-progress",
+            "in_progress",
+          ],
+        },
         deletedAt: null,
+        ...hideDeclinedForMe,
       })
-        .populate("farmerId", "name address")
+        .populate("farmerId", "name address farmLocation")
         .populate("animalId", "animalId earTag imageUrl breed species")
         .populate("handledBy", "name")
         .sort({ urgency: -1, createdAt: -1 })
@@ -1660,13 +1826,21 @@ export const walkInLivestock = async (req, res) => {
       isVerified: true,
     });
 
-    await Notification.create({
-      recipientId: farmer._id,
+    await notifyUser({
+      recipient: farmer,
       senderId: req.user._id,
       type: "system",
       relatedId: animal._id,
-      title: "New Animal Registered",
+      category: "animal",
+      eventType: "animal_registered",
+      linkType: "animal",
+      title: "New animal registered",
       message: `A new ${species} (${breed}) with Tag #${earTag} has been added by technician ${req.user.name}.`,
+      metadata: {
+        animalId: animal._id,
+        animalTag: earTag,
+        technicianName: req.user.name,
+      },
     });
 
     req.app.get("io").emit("dashboardUpdate", { type: "LIVESTOCK_REGISTERED" });
@@ -1805,6 +1979,9 @@ export const getTechnicianAnalytics = async (req, res) => {
       totalAI_Week,
       totalHealth_Month,
       speciesData,
+      monthlyHealthData,
+      monthlyPregnancyData,
+      monthlyCalvingData,
       breedData,
       monthlyData,
       barangayData,
@@ -1839,6 +2016,48 @@ export const getTechnicianAnalytics = async (req, res) => {
         { $unwind: "$animal" },
         { $group: { _id: "$animal.species", count: { $sum: 1 } } },
         { $project: { species: "$_id", count: 1, _id: 0 } },
+      ]),
+
+      HealthRequest.aggregate([
+        { $match: { createdAt: { $gte: sixMonthsAgo }, deletedAt: null } },
+        {
+          $group: {
+            _id: {
+              month: { $month: "$createdAt" },
+              year: { $year: "$createdAt" },
+            },
+            health: { $sum: 1 },
+          },
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
+      ]),
+
+      Pregnancy.aggregate([
+        { $match: { createdAt: { $gte: sixMonthsAgo }, deletedAt: null } },
+        {
+          $group: {
+            _id: {
+              month: { $month: "$createdAt" },
+              year: { $year: "$createdAt" },
+            },
+            pregnancy: { $sum: 1 },
+          },
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
+      ]),
+
+      Calving.aggregate([
+        { $match: { createdAt: { $gte: sixMonthsAgo }, deletedAt: null } },
+        {
+          $group: {
+            _id: {
+              month: { $month: "$createdAt" },
+              year: { $year: "$createdAt" },
+            },
+            calving: { $sum: 1 },
+          },
+        },
+        { $sort: { "_id.year": 1, "_id.month": 1 } },
       ]),
 
       // 3. Top Sire Breeds
@@ -1881,12 +2100,32 @@ export const getTechnicianAnalytics = async (req, res) => {
     ]);
 
     // Format Monthly Data to be easier for charts
-    const formattedMonthly = monthlyData.map((m) => ({
-      month: new Date(m._id.year, m._id.month - 1).toLocaleString("en-US", {
-        month: "short",
-      }),
-      ai: m.ai,
-    }));
+    const monthBuckets = new Map();
+    const mergeMonthly = (rows, field) => {
+      rows.forEach((row) => {
+        const key = `${row._id.year}-${String(row._id.month).padStart(2, "0")}`;
+        const existing = monthBuckets.get(key) || {
+          key,
+          month: new Date(row._id.year, row._id.month - 1).toLocaleString(
+            "en-US",
+            { month: "short" },
+          ),
+          ai: 0,
+          health: 0,
+          pregnancy: 0,
+          calving: 0,
+        };
+        existing[field] = row[field] || 0;
+        monthBuckets.set(key, existing);
+      });
+    };
+    mergeMonthly(monthlyData, "ai");
+    mergeMonthly(monthlyHealthData, "health");
+    mergeMonthly(monthlyPregnancyData, "pregnancy");
+    mergeMonthly(monthlyCalvingData, "calving");
+    const formattedMonthly = [...monthBuckets.values()]
+      .sort((a, b) => a.key.localeCompare(b.key))
+      .map(({ key: _key, ...row }) => row);
 
     const successRate =
       totalInsem > 0 ? Math.round((totalPreg / totalInsem) * 100) : 0;
@@ -1951,116 +2190,122 @@ export const deleteAnimal = async (req, res) => {
 };
 
 export const deletePregnancyCheck = async (req, res) => {
+  return res.status(405).json({
+    message:
+      "Official pregnancy records cannot be deleted. Use the correction endpoint with an audit reason.",
+    code: "OFFICIAL_RECORD_CORRECTION_REQUIRED",
+  });
+};
+
+export const recordPregnancyContinuation = async (req, res) => {
   try {
-    const { id } = req.params;
-    const record = await Pregnancy.findByIdAndDelete(id);
-    if (!record) return res.status(404).json({ message: "Record not found" });
-
-    // Cleanup linked calving if any
-    await Calving.deleteMany({ pregnancyId: id });
-
-    res.status(200).json({ message: "Pregnancy check deleted successfully" });
+    const result = await recordPregnancyContinuationRecheck({
+      pregnancyId: req.params.id,
+      result: req.body.result,
+      checkedAt: req.body.checkedAt,
+      notes: req.body.notes,
+      followUpDate: req.body.followUpDate,
+      taskId: req.body.taskId,
+      actor: req.user,
+    });
+    res.status(200).json({
+      message: "Pregnancy continuation recheck recorded.",
+      data: result,
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to delete record", error: error.message });
+    res.status(error.status || 500).json({
+      message:
+        error.message || "Failed to record pregnancy continuation recheck.",
+      code: error.code,
+    });
   }
 };
 
 export const deleteCalving = async (req, res) => {
+  return res.status(405).json({
+    message:
+      "Official calving records cannot be deleted. Use the correction endpoint with an audit reason.",
+    code: "OFFICIAL_RECORD_CORRECTION_REQUIRED",
+  });
+};
+
+export const correctPregnancyCheck = async (req, res) => {
   try {
     const { id } = req.params;
-    const record = await Calving.findByIdAndDelete(id);
-    if (!record) return res.status(404).json({ message: "Record not found" });
-
-    res.status(200).json({ message: "Calving event deleted successfully" });
+    const record = await correctPregnancyRecord({
+      id,
+      changes: req.body?.changes || {},
+      reason: req.body?.reason,
+      actorId: req.user._id,
+    });
+    return res.status(200).json({
+      message: "Pregnancy record corrected successfully.",
+      data: record,
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Failed to delete record", error: error.message });
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to correct pregnancy record.",
+      code: error.code || "PREGNANCY_CORRECTION_FAILED",
+    });
+  }
+};
+
+export const correctCalving = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const record = await correctCalvingRecord({
+      id,
+      changes: req.body?.changes || {},
+      reason: req.body?.reason,
+      actorId: req.user._id,
+    });
+    return res.status(200).json({
+      message: "Calving record corrected successfully.",
+      data: record,
+    });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      message: error.message || "Failed to correct calving record.",
+      code: error.code || "CALVING_CORRECTION_FAILED",
+    });
   }
 };
 
 export const getFieldNotes = async (req, res) => {
   try {
-    const isTech = req.user?.role === "technician";
     const userId = req.user?._id;
+    const noteQuery =
+      req.user?.role === "admin" ? {} : { technicianId: userId };
+    const technicianNotes = await FieldNote.find(noteQuery)
+      .populate("technicianId", "name")
+      .populate("farmerId", "name phoneNumber address")
+      .populate("taskId", "taskType notes dueDate status")
+      .populate("animalId", "animalId earTag breed species")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const insemQuery = isTech
-      ? { technicianId: userId, imageUrl: { $exists: true, $ne: "" } }
-      : { imageUrl: { $exists: true, $ne: "" } };
-
-    const healthQuery = isTech
-      ? { handledBy: userId, imageUrl: { $exists: true, $ne: "" } }
-      : { imageUrl: { $exists: true, $ne: "" } };
-
-    const noteQuery = isTech ? { technicianId: userId } : {};
-
-    const [inseminations, healthRequests, technicianNotes] = await Promise.all([
-      Insemination.find(insemQuery)
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .lean(),
-      HealthRequest.find(healthQuery)
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .lean(),
-      FieldNote.find(noteQuery)
-        .populate("technicianId", "name")
-        .populate("farmerId", "name phoneNumber address")
-        .sort({ createdAt: -1 })
-        .lean(),
-    ]);
-
-    const notes = [
-      ...inseminations.map((ins) => ({
-        id: ins._id,
-        type: "insemination",
-        farmer: ins.farmerId?.name || "Unknown Farmer",
-        farmerPhone: ins.farmerId?.phoneNumber || "No Phone",
-        animalTag: ins.animalId?.animalId || ins.animalId?.earTag || "No Tag",
-        animalSpecies: ins.animalId?.species || "Cattle",
-        animalBreed: ins.animalId?.breed || "Crossbreed",
-        imageUrl: ins.imageUrl,
-        note: ins.comment || "No comment provided.",
-        date: ins.createdAt,
-        status: ins.status,
-        isArchived: !!ins.deletedAt,
-      })),
-      ...healthRequests.map((hr) => ({
-        id: hr._id,
-        type: "health",
-        farmer: hr.farmerId?.name || "Unknown Farmer",
-        farmerPhone: hr.farmerId?.phoneNumber || "No Phone",
-        animalTag: hr.animalId?.animalId || hr.animalId?.earTag || "No Tag",
-        animalSpecies: hr.animalId?.species || "Cattle",
-        animalBreed: hr.animalId?.breed || "Crossbreed",
-        imageUrl: hr.imageUrl,
-        note: hr.symptoms || "No symptoms/notes provided.",
-        date: hr.createdAt,
-        status: hr.status,
-        isArchived: !!hr.deletedAt,
-      })),
-      ...technicianNotes.map((tn) => ({
-        id: tn._id,
-        type: "technician-note",
-        farmer: tn.farmerName || tn.farmerId?.name || "General Note",
-        farmerPhone: tn.farmerId?.phoneNumber || "N/A",
-        animalTag: "N/A",
-        animalSpecies: "N/A",
-        animalBreed: "N/A",
-        imageUrl: tn.imageUrl,
-        note: `[${tn.title}] ${tn.description || "No description."}`,
-        date: tn.createdAt,
-        status: "recorded",
-        latitude: tn.latitude,
-        longitude: tn.longitude,
-        author: tn.technicianId?.name || "Technician",
-        isArchived: !!tn.deletedAt,
-      })),
-    ].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const notes = technicianNotes.map((note) => ({
+      id: note._id,
+      _id: note._id,
+      type: "technician-note",
+      farmer: note.farmerId?.name || note.farmerName || "General note",
+      farmerName: note.farmerId?.name || note.farmerName || "",
+      farmerPhone: note.farmerId?.phoneNumber || "",
+      taskId: note.taskId || null,
+      animalId: note.animalId || null,
+      imageUrl: note.imageUrl || "",
+      title: note.title,
+      description: note.description || "",
+      note: [note.title, note.description].filter(Boolean).join(": "),
+      date: note.createdAt,
+      createdAt: note.createdAt,
+      status: "recorded",
+      latitude: note.latitude || "",
+      longitude: note.longitude || "",
+      locationName: note.locationName || "",
+      author: note.technicianId?.name || "Technician",
+      isArchived: Boolean(note.deletedAt),
+    }));
 
     res.status(200).json(notes);
   } catch (error) {
@@ -2073,11 +2318,132 @@ export const getFieldNotes = async (req, res) => {
 export const createFieldNote = async (req, res) => {
   try {
     const technicianId = req.user._id;
-    const { title, description, imageUrl, farmerName, latitude, longitude } =
-      req.body;
+    const {
+      title,
+      description,
+      imageUrl,
+      farmerId: requestedFarmerId,
+      taskId: requestedTaskId,
+      animalId: requestedAnimalId,
+      farmerName,
+      latitude,
+      longitude,
+    } = req.body;
 
-    if (!title) {
+    const normalizedTitle = String(title || "").trim();
+    const normalizedDescription = String(description || "").trim();
+    if (!normalizedTitle) {
       return res.status(400).json({ message: "Note title is required" });
+    }
+    if (!normalizedDescription && !imageUrl) {
+      return res.status(400).json({
+        message: "Add an observation or attach a photo.",
+      });
+    }
+
+    let linkedTask = null;
+    if (requestedTaskId) {
+      if (!mongoose.isValidObjectId(requestedTaskId)) {
+        return res.status(400).json({ message: "Invalid field-work task." });
+      }
+      linkedTask = await Task.findOne({
+        _id: requestedTaskId,
+        technicianId,
+        taskType: {
+          $in: ["GeneralVisit", "FarmInspection", "Registration", "Other"],
+        },
+      }).select("_id farmerId animalIds taskType");
+      if (!linkedTask) {
+        return res.status(404).json({
+          message:
+            "Field-work task not found. Official service evidence belongs in its service record.",
+        });
+      }
+    }
+
+    const effectiveFarmerId =
+      requestedFarmerId || linkedTask?.farmerId?.toString() || "";
+    if (
+      requestedFarmerId &&
+      linkedTask &&
+      String(requestedFarmerId) !== String(linkedTask.farmerId)
+    ) {
+      return res.status(400).json({
+        message: "The selected farmer does not match this field-work task.",
+      });
+    }
+
+    let farmer = null;
+    if (effectiveFarmerId) {
+      if (!mongoose.isValidObjectId(effectiveFarmerId)) {
+        return res.status(400).json({ message: "Invalid farmer selection." });
+      }
+      farmer = await User.findOne({
+        _id: effectiveFarmerId,
+        role: "farmer",
+        deletedAt: null,
+      }).select("_id name");
+      if (!farmer) {
+        return res.status(404).json({ message: "Farmer not found." });
+      }
+    }
+
+    let linkedAnimal = null;
+    if (requestedAnimalId) {
+      if (!mongoose.isValidObjectId(requestedAnimalId)) {
+        return res.status(400).json({ message: "Invalid animal selection." });
+      }
+      if (
+        linkedTask &&
+        !(linkedTask.animalIds || []).some(
+          (animalId) => String(animalId) === String(requestedAnimalId),
+        )
+      ) {
+        return res.status(400).json({
+          message: "The selected animal is not part of this field-work task.",
+        });
+      }
+      linkedAnimal = await Animal.findOne({
+        _id: requestedAnimalId,
+        ...(farmer ? { farmerId: farmer._id } : {}),
+        deletedAt: null,
+      }).select("_id");
+      if (!linkedAnimal) {
+        return res.status(404).json({ message: "Animal not found." });
+      }
+    }
+
+    const normalizeCoordinate = (value, minimum, maximum, label) => {
+      if (value === undefined || value === null || value === "") return "";
+      const coordinate = Number(value);
+      if (
+        !Number.isFinite(coordinate) ||
+        coordinate < minimum ||
+        coordinate > maximum
+      ) {
+        const error = new Error(`Invalid ${label}.`);
+        error.status = 400;
+        throw error;
+      }
+      return coordinate.toFixed(6);
+    };
+
+    const normalizedLatitude = normalizeCoordinate(
+      latitude,
+      -90,
+      90,
+      "latitude",
+    );
+    const normalizedLongitude = normalizeCoordinate(
+      longitude,
+      -180,
+      180,
+      "longitude",
+    );
+    if (Boolean(normalizedLatitude) !== Boolean(normalizedLongitude)) {
+      return res.status(400).json({
+        message: "Latitude and longitude must be saved together.",
+      });
     }
 
     // Handle Image Upload if base64
@@ -2096,32 +2462,23 @@ export const createFieldNote = async (req, res) => {
       }
     }
 
-    // Attempt to resolve farmerId if farmerName matches an existing farmer
-    let farmerId = null;
-    if (farmerName) {
-      const farmer = await User.findOne({
-        name: { $regex: new RegExp(farmerName, "i") },
-        role: "farmer",
-      });
-      if (farmer) {
-        farmerId = farmer._id;
-      }
-    }
-
     const fieldNote = await FieldNote.create({
       technicianId,
-      farmerId,
-      farmerName: farmerName || "General Note",
-      title,
-      description,
+      farmerId: farmer?._id || null,
+      taskId: linkedTask?._id || null,
+      animalId: linkedAnimal?._id || null,
+      farmerName: farmer?.name || String(farmerName || "").trim(),
+      title: normalizedTitle,
+      description: normalizedDescription,
       imageUrl: finalImageUrl || "",
-      latitude: latitude || "",
-      longitude: longitude || "",
+      latitude: normalizedLatitude,
+      longitude: normalizedLongitude,
+      locationName: "",
     });
 
     req.app.get("io").emit("dashboardUpdate", {
       type: "FIELD_NOTE_CREATED",
-      message: `Technician ${req.user.name} uploaded a new field note: ${title}`,
+      message: `Technician ${req.user.name} added a field note: ${normalizedTitle}`,
     });
 
     res
@@ -2129,101 +2486,47 @@ export const createFieldNote = async (req, res) => {
       .json({ message: "Field note saved successfully", fieldNote });
   } catch (error) {
     console.error("[createFieldNote ERROR]", error);
-    res
-      .status(500)
-      .json({ message: "Failed to save field note", error: error.message });
+    res.status(error.status || 500).json({
+      message:
+        error.status === 400 ? error.message : "Failed to save field note",
+      error: error.message,
+    });
   }
 };
 
 export const getTechnicianFieldNotes = async (req, res) => {
   try {
     const technicianId = req.user._id;
+    const technicianNotes = await FieldNote.find({
+      technicianId,
+      deletedAt: null,
+    })
+      .populate("technicianId", "name")
+      .populate("farmerId", "name phoneNumber address")
+      .populate("taskId", "taskType notes dueDate status")
+      .populate("animalId", "animalId earTag breed species")
+      .sort({ createdAt: -1 })
+      .lean();
 
-    const [inseminations, healthRequests, technicianNotes] = await Promise.all([
-      Insemination.find({
-        technicianId,
-        imageUrl: { $exists: true, $ne: "" },
-        deletedAt: null,
-      })
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .lean(),
-      HealthRequest.find({
-        handledBy: technicianId,
-        imageUrl: { $exists: true, $ne: "" },
-        deletedAt: null,
-      })
-        .populate("farmerId", "name phoneNumber address")
-        .populate("animalId", "animalId earTag breed species imageUrl")
-        .sort({ createdAt: -1 })
-        .lean(),
-      FieldNote.find({
-        technicianId,
-        deletedAt: null,
-      })
-        .populate("technicianId", "name")
-        .populate("farmerId", "name phoneNumber address")
-        .sort({ createdAt: -1 })
-        .lean(),
-    ]);
-
-    const notes = [
-      ...inseminations.map((ins) => ({
-        _id: ins._id,
-        id: ins._id,
-        type: "insemination",
-        farmerName: ins.farmerId?.name || "Unknown Farmer",
-        farmer: ins.farmerId?.name || "Unknown Farmer",
-        farmerPhone: ins.farmerId?.phoneNumber || "No Phone",
-        animalTag: ins.animalId?.animalId || ins.animalId?.earTag || "No Tag",
-        animalSpecies: ins.animalId?.species || "Cattle",
-        animalBreed: ins.animalId?.breed || "Crossbreed",
-        imageUrl: ins.imageUrl,
-        title: "Insemination Upload",
-        description: ins.comment || "No comment provided.",
-        createdAt: ins.createdAt,
-        status: ins.status,
-        isArchived: !!ins.deletedAt,
-      })),
-      ...healthRequests.map((hr) => ({
-        _id: hr._id,
-        id: hr._id,
-        type: "health",
-        farmerName: hr.farmerId?.name || "Unknown Farmer",
-        farmer: hr.farmerId?.name || "Unknown Farmer",
-        farmerPhone: hr.farmerId?.phoneNumber || "No Phone",
-        animalTag: hr.animalId?.animalId || hr.animalId?.earTag || "No Tag",
-        animalSpecies: hr.animalId?.species || "Cattle",
-        animalBreed: hr.animalId?.breed || "Crossbreed",
-        imageUrl: hr.imageUrl,
-        title: `${hr.requestType?.toUpperCase() || "HEALTH"} Request`,
-        description: hr.symptoms || "No symptoms/notes provided.",
-        createdAt: hr.createdAt,
-        status: hr.status,
-        isArchived: !!hr.deletedAt,
-      })),
-      ...technicianNotes.map((tn) => ({
-        _id: tn._id,
-        id: tn._id,
-        type: "technician-note",
-        farmerName: tn.farmerName || tn.farmerId?.name || "General Note",
-        farmer: tn.farmerId?.name || "General Note",
-        farmerPhone: tn.farmerId?.phoneNumber || "N/A",
-        animalTag: "N/A",
-        animalSpecies: "N/A",
-        animalBreed: "N/A",
-        imageUrl: tn.imageUrl,
-        title: tn.title,
-        description: tn.description || "No description.",
-        createdAt: tn.createdAt,
-        status: "recorded",
-        latitude: tn.latitude,
-        longitude: tn.longitude,
-        author: tn.technicianId?.name || "Technician",
-        isArchived: !!tn.deletedAt,
-      })),
-    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const notes = technicianNotes.map((note) => ({
+      ...note,
+      _id: note._id,
+      id: note._id,
+      type: "technician-note",
+      farmerName: note.farmerId?.name || note.farmerName || "",
+      farmer: note.farmerId?.name || note.farmerName || "General note",
+      farmerPhone: note.farmerId?.phoneNumber || "",
+      taskId: note.taskId || null,
+      animalId: note.animalId || null,
+      imageUrl: note.imageUrl || "",
+      description: note.description || "",
+      latitude: note.latitude || "",
+      longitude: note.longitude || "",
+      locationName: note.locationName || "",
+      author: note.technicianId?.name || "Technician",
+      status: "recorded",
+      isArchived: false,
+    }));
 
     res.status(200).json(notes);
   } catch (error) {
@@ -2237,62 +2540,22 @@ export const getTechnicianFieldNotes = async (req, res) => {
 export const deleteFieldNote = async (req, res) => {
   try {
     const { id } = req.params;
-    const { type } = req.query;
-
-    let targetType = type;
-    if (!targetType) {
-      const fn = await FieldNote.findById(id);
-      if (fn) {
-        targetType = "technician-note";
-      } else {
-        const ins = await Insemination.findById(id);
-        if (ins) {
-          targetType = "insemination";
-        } else {
-          const hr = await HealthRequest.findById(id);
-          if (hr) {
-            targetType = "health";
-          }
-        }
-      }
-    }
-
-    if (targetType === "insemination") {
-      const ins = await Insemination.findOne({
+    const fieldNote = await FieldNote.findOneAndUpdate(
+      {
         _id: id,
         technicianId: req.user._id,
-      });
-      if (!ins) {
-        return res
-          .status(404)
-          .json({ message: "Insemination record not found or unauthorized" });
-      }
-      await Insemination.findByIdAndDelete(id);
-    } else if (targetType === "health") {
-      const hr = await HealthRequest.findOne({
-        _id: id,
-        handledBy: req.user._id,
-      });
-      if (!hr) {
-        return res
-          .status(404)
-          .json({ message: "Health request record not found or unauthorized" });
-      }
-      await HealthRequest.findByIdAndDelete(id);
-    } else {
-      const fn = await FieldNote.findOne({
-        _id: id,
-        technicianId: req.user._id,
-      });
-      if (!fn) {
-        return res
-          .status(404)
-          .json({ message: "Field note not found or unauthorized" });
-      }
-      await FieldNote.findByIdAndDelete(id);
+        deletedAt: null,
+      },
+      { $set: { deletedAt: new Date() } },
+      { new: true },
+    );
+    if (!fieldNote) {
+      return res
+        .status(404)
+        .json({ message: "Field note not found or unauthorized" });
     }
 
-    res.status(200).json({ message: "Field note deleted successfully" });
+    res.status(200).json({ message: "Field note archived successfully" });
   } catch (error) {
     res
       .status(500)
@@ -2303,49 +2566,43 @@ export const deleteFieldNote = async (req, res) => {
 export const deleteFieldNoteRecord = async (req, res) => {
   try {
     const { id } = req.params;
-    const { type, permanent } = req.query;
+    const { permanent, restore } = req.query;
     const isPermanent = permanent === "true";
+    const ownerFilter =
+      req.user.role === "admin"
+        ? { _id: id }
+        : { _id: id, technicianId: req.user._id };
 
-    if (type === "insemination") {
-      if (isPermanent) {
-        await Insemination.findByIdAndDelete(id);
-      } else {
-        await Insemination.findByIdAndUpdate(id, {
-          $set: { deletedAt: new Date() },
-        });
-      }
-      res
-        .status(200)
-        .json({
-          message: `Insemination field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
-        });
-    } else if (type === "health") {
-      if (isPermanent) {
-        await HealthRequest.findByIdAndDelete(id);
-      } else {
-        await HealthRequest.findByIdAndUpdate(id, {
-          $set: { deletedAt: new Date() },
-        });
-      }
-      res
-        .status(200)
-        .json({
-          message: `Health request field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
-        });
+    let fieldNote;
+    if (restore === "true") {
+      fieldNote = await FieldNote.findOneAndUpdate(
+        ownerFilter,
+        { $set: { deletedAt: null } },
+        { new: true },
+      );
+    } else if (isPermanent) {
+      fieldNote = await FieldNote.findOneAndDelete(ownerFilter);
     } else {
-      if (isPermanent) {
-        await FieldNote.findByIdAndDelete(id);
-      } else {
-        await FieldNote.findByIdAndUpdate(id, {
-          $set: { deletedAt: new Date() },
-        });
-      }
-      res
-        .status(200)
-        .json({
-          message: `Field note ${isPermanent ? "permanently" : "soft"} deleted successfully`,
-        });
+      fieldNote = await FieldNote.findOneAndUpdate(
+        ownerFilter,
+        { $set: { deletedAt: new Date() } },
+        { new: true },
+      );
     }
+
+    if (!fieldNote) {
+      return res
+        .status(404)
+        .json({ message: "Field note not found or unauthorized" });
+    }
+
+    const action =
+      restore === "true"
+        ? "restored"
+        : isPermanent
+          ? "permanently deleted"
+          : "archived";
+    res.status(200).json({ message: `Field note ${action} successfully` });
   } catch (error) {
     res.status(500).json({
       message: "Failed to delete field note record",
@@ -2370,5 +2627,1563 @@ export const markCalvingAsSeen = async (req, res) => {
     res
       .status(500)
       .json({ message: "Error marking calving as seen", error: error.message });
+  }
+};
+
+export const declineTechnicianRequest = async (req, res) => {
+  try {
+    const { type, id } = req.params;
+    const note = req.body?.technicianNote || "Declined by technician.";
+
+    if (!["ai", "health"].includes(type)) {
+      return res.status(400).json({ message: "Invalid request type." });
+    }
+
+    const Model = type === "ai" ? Insemination : HealthRequest;
+    const assignedField = type === "ai" ? "approvedBy" : "handledBy";
+    const request = await Model.findOne({ _id: id, deletedAt: null });
+
+    if (!request) {
+      return res.status(404).json({ message: "Request not found." });
+    }
+
+    if (
+      ["done", "resolved", "completed", "rejected", "cancelled"].includes(
+        request.status,
+      )
+    ) {
+      return res.status(400).json({
+        message: `This request is already ${request.status} and cannot be declined.`,
+      });
+    }
+
+    const assignedTo = request[assignedField];
+    const isAssignedToAnother =
+      assignedTo &&
+      assignedTo.toString() !== req.user._id.toString() &&
+      req.user.role !== "admin";
+
+    if (isAssignedToAnother) {
+      const assignedTech = await User.findById(assignedTo)
+        .select("name")
+        .lean();
+      return res.status(403).json({
+        message: `This request is already assigned to ${assignedTech?.name || "another technician"}.`,
+      });
+    }
+
+    const update = {
+      $addToSet: { declinedByTechnicianIds: req.user._id },
+      $push: {
+        statusHistory: {
+          status: "declined_by_technician",
+          note,
+          actorId: req.user._id,
+          createdAt: new Date(),
+        },
+      },
+    };
+
+    if (assignedTo && assignedTo.toString() === req.user._id.toString()) {
+      update.$unset = {
+        [assignedField]: "",
+        scheduledDate: "",
+      };
+      update.$set = {
+        status: "pending",
+        technicianNote: note,
+      };
+      if (type === "health") {
+        update.$unset.assignedTechnicianId = "";
+      }
+    }
+
+    const updated = await Model.findByIdAndUpdate(id, update, {
+      new: true,
+    });
+
+    req.app.get("io").to("role:technician").emit("dashboardUpdate", {
+      type: "REQUEST_DECLINED_FOR_TECHNICIAN",
+      requestType: type,
+      requestId: id,
+      technicianId: req.user._id,
+    });
+
+    res.status(200).json({
+      message:
+        "Request hidden from your queue. Other technicians can still accept it.",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("[declineTechnicianRequest ERROR]", error);
+    res.status(500).json({
+      message: "Failed to decline request for this technician.",
+      error: error.message,
+    });
+  }
+};
+
+export const claimRequest = async (req, res) => {
+  try {
+    const { type, id } = req.params;
+
+    if (req.user.role === "farmer") {
+      return res
+        .status(403)
+        .json({ message: "Farmers cannot claim technician requests." });
+    }
+
+    if (!["ai", "health", "breeding_verification"].includes(type)) {
+      return res.status(400).json({ message: "Invalid request type." });
+    }
+
+    let updated = null;
+
+    if (type === "ai") {
+      if (!["technician", "admin"].includes(req.user.role)) {
+        return res.status(403).json({
+          message: "Only technicians or administrators can claim AI requests.",
+          code: "AI_REQUEST_CLAIM_FORBIDDEN",
+        });
+      }
+
+      const existing = await Insemination.findById(id);
+      if (!existing) {
+        return res
+          .status(404)
+          .json({ message: "AI request record not found." });
+      }
+      if (existing.status !== "pending") {
+        return res.status(409).json({
+          message: `This request is already ${existing.status} and cannot be claimed.`,
+          code: "REQUEST_NOT_CLAIMABLE",
+        });
+      }
+      if (
+        existing.approvedBy &&
+        existing.approvedBy.toString() !== req.user._id.toString()
+      ) {
+        return res.status(409).json({
+          message:
+            "This request has already been claimed by another technician.",
+          code: "REQUEST_ALREADY_CLAIMED",
+        });
+      }
+
+      updated = await Insemination.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          status: "pending",
+          ...buildAIRequestAssignmentGuard({
+            technicianId: req.user._id,
+            allowPendingUnassigned: true,
+          }),
+        },
+        {
+          $set: {
+            approvedBy: req.user._id,
+            claimedAt: new Date(),
+            status: "approved",
+            activeRequestKey: activeRequestKeyForAnimal(existing.animalId),
+          },
+        },
+        { new: true },
+      )
+        .populate("farmerId", "name address imageUrl phoneNumber")
+        .populate("animalId", "animalId earTag species breed imageUrl");
+    } else if (type === "health") {
+      const existing = await HealthRequest.findById(id);
+      if (!existing) {
+        return res
+          .status(404)
+          .json({ message: "Health request record not found." });
+      }
+      if (existing.handledBy) {
+        return res.status(409).json({
+          message:
+            "This request has already been claimed by another technician.",
+          code: "REQUEST_ALREADY_CLAIMED",
+        });
+      }
+
+      updated = await HealthRequest.findOneAndUpdate(
+        {
+          _id: id,
+          deletedAt: null,
+          handledBy: { $in: [null, undefined] },
+        },
+        {
+          $set: {
+            handledBy: req.user._id,
+            assignedTechnicianId: req.user._id,
+            claimedAt: new Date(),
+            status: "approved",
+            activeCaseKey: activeHealthCaseKey(
+              existing.animalId,
+              existing.requestType,
+            ),
+          },
+        },
+        { new: true },
+      )
+        .populate("farmerId", "name address imageUrl phoneNumber")
+        .populate("animalId", "animalId earTag species breed imageUrl");
+    } else if (type === "breeding_verification") {
+      const existing = await Task.findById(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Task not found." });
+      }
+      if (existing.technicianId) {
+        return res.status(409).json({
+          message:
+            "This request has already been claimed by another technician.",
+          code: "REQUEST_ALREADY_CLAIMED",
+        });
+      }
+
+      updated = await Task.findOneAndUpdate(
+        {
+          _id: id,
+          taskType: "PD",
+          technicianId: { $in: [null, undefined] },
+        },
+        {
+          $set: {
+            technicianId: req.user._id,
+            claimedAt: new Date(),
+          },
+        },
+        { new: true },
+      )
+        .populate("farmerId", "name address imageUrl phoneNumber")
+        .populate("animalIds", "animalId earTag species breed imageUrl");
+    }
+
+    if (!updated) {
+      return res.status(409).json({
+        message: "This request has already been claimed by another technician.",
+        code: "REQUEST_ALREADY_CLAIMED",
+      });
+    }
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to("role:technician").emit("dashboardUpdate", {
+        type: "REQUEST_CLAIMED",
+        requestType: type,
+        requestId: id,
+        technicianId: req.user._id,
+      });
+    }
+
+    return res.status(200).json({
+      message: "Request claimed successfully.",
+      data: updated,
+    });
+  } catch (error) {
+    console.error("[claimRequest ERROR]", error);
+    return res.status(500).json({
+      message: "Failed to claim request.",
+      error: error.message,
+    });
+  }
+};
+
+export const getTechnicianRequests = async (req, res) => {
+  try {
+    let {
+      type,
+      status,
+      urgency,
+      assignment,
+      search,
+      page,
+      limit,
+      includeUpcoming,
+      nearLat,
+      nearLng,
+      sortBy,
+      municipality,
+      barangay,
+      includeOperationalTasks,
+      requestId,
+    } = req.query;
+    page = parseInt(page, 10) || 1;
+    limit = parseInt(limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const now = new Date();
+    const PHT_OFFSET = 8 * 60 * 60 * 1000;
+    const todayStart = new Date(now.getTime() + PHT_OFFSET);
+    todayStart.setUTCHours(0, 0, 0, 0);
+    todayStart.setTime(todayStart.getTime() - PHT_OFFSET);
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const aiQuery = { deletedAt: null };
+    const healthQuery = { deletedAt: null };
+    const taskQuery = { taskType: "PD" };
+    const taskAndFilters = [];
+
+    if (requestId) {
+      if (!mongoose.Types.ObjectId.isValid(requestId)) {
+        return res.status(400).json({
+          message: "The requested service reference is invalid.",
+        });
+      }
+      aiQuery._id = requestId;
+      healthQuery._id = requestId;
+      taskQuery._id = requestId;
+    }
+
+    // Apply municipality/barangay filters if provided
+    if (municipality || barangay) {
+      const addressQuery = {};
+      if (municipality) {
+        addressQuery["address.city"] = {
+          $regex: new RegExp(`^${municipality}$`, "i"),
+        };
+      }
+      if (barangay) {
+        addressQuery["address.barangay"] = {
+          $regex: new RegExp(`^${barangay}$`, "i"),
+        };
+      }
+      const matchingFarmers = await User.find({
+        role: "farmer",
+        ...addressQuery,
+      }).select("_id");
+      const matchingFarmerIds = matchingFarmers.map((f) => f._id);
+
+      aiQuery.farmerId = { $in: matchingFarmerIds };
+      healthQuery.farmerId = { $in: matchingFarmerIds };
+      taskAndFilters.push({ farmerId: { $in: matchingFarmerIds } });
+    }
+
+    if (includeUpcoming !== "true") {
+      taskAndFilters.push({
+        $or: [
+          // Manual or farmer-requested: show immediately
+          { sourceType: { $in: ["manual", "farmer_requested_verification"] } },
+          // Automatic follow-ups: only show when dueDate has arrived
+          { sourceType: "automatic_pd_followup", dueDate: { $lte: now } },
+          // Legacy tasks (no sourceType): show immediately
+          { sourceType: { $exists: false } },
+        ],
+      });
+    }
+
+    // 1. Assignment & Visibility Filter
+    if (assignment === "mine") {
+      aiQuery.$or = [
+        { approvedBy: req.user._id },
+        { technicianId: req.user._id },
+      ];
+      healthQuery.$or = [
+        { handledBy: req.user._id },
+        { assignedTechnicianId: req.user._id },
+      ];
+      taskQuery.technicianId = req.user._id;
+    } else if (assignment === "unassigned" || assignment === "available") {
+      aiQuery.approvedBy = { $in: [null, undefined] };
+      healthQuery.handledBy = { $in: [null, undefined] };
+      taskQuery.technicianId = { $in: [null, undefined] };
+      if (req.user.role !== "admin") {
+        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
+      }
+      aiQuery.status = {
+        $in: ["pending", "approved", "unassigned", "triaged"],
+      };
+      healthQuery.status = {
+        $in: ["pending", "triaged", "assigned", "approved", "unassigned"],
+      };
+      taskQuery.status = { $in: ["Pending", "unassigned"] };
+    } else if (assignment === "all") {
+      // No assignment filter
+    } else {
+      aiQuery.approvedBy = { $in: [req.user._id, null, undefined] };
+      healthQuery.handledBy = { $in: [req.user._id, null, undefined] };
+      taskQuery.technicianId = { $in: [req.user._id, null, undefined] };
+      if (req.user.role !== "admin") {
+        aiQuery.declinedByTechnicianIds = { $ne: req.user._id };
+        healthQuery.declinedByTechnicianIds = { $ne: req.user._id };
+      }
+    }
+
+    // 2. Urgency Filter
+    if (urgency === "urgent") {
+      healthQuery.urgency = { $in: ["high", "emergency"] };
+      taskQuery.priority = 1;
+    }
+
+    // 3. Status Filter Mapping
+    if (status && status !== "all") {
+      if (status === "pending") {
+        aiQuery.status = "pending";
+        healthQuery.status = { $in: ["pending", "triaged", "assigned"] };
+        taskQuery.status = "Pending";
+      } else if (status === "approved") {
+        aiQuery.status = "approved";
+        healthQuery.status = { $in: ["assigned", "approved"] };
+        taskQuery.status = "Pending";
+      } else if (status === "scheduled") {
+        aiQuery.status = { $in: ["approved", "scheduled"] };
+        healthQuery.status = { $in: ["approved", "scheduled"] };
+        taskQuery.status = "In Progress";
+      } else if (status === "in_progress") {
+        aiQuery.status = "in-progress";
+        healthQuery.status = { $in: ["in-progress", "in_progress"] };
+        taskQuery.status = "In Progress";
+      } else if (status === "completed") {
+        aiQuery.status = "done";
+        healthQuery.status = "resolved";
+        taskQuery.status = "Completed";
+      } else if (status === "declined") {
+        aiQuery.status = "rejected";
+        healthQuery.status = { $in: ["rejected", "cancelled"] };
+        taskQuery.status = "Cancelled";
+      } else if (status === "active") {
+        aiQuery.status = {
+          $in: ["pending", "approved", "scheduled", "in-progress"],
+        };
+        healthQuery.status = {
+          $in: [
+            "pending",
+            "triaged",
+            "assigned",
+            "approved",
+            "scheduled",
+            "in-progress",
+            "in_progress",
+          ],
+        };
+        taskQuery.status = { $in: ["Pending", "In Progress"] };
+      } else if (status === "history") {
+        aiQuery.status = { $in: ["done", "rejected", "cancelled"] };
+        healthQuery.status = { $in: ["resolved", "rejected", "cancelled"] };
+        taskQuery.status = { $in: ["Completed", "Cancelled"] };
+      }
+    }
+
+    // 4. Search Filter
+    if (search) {
+      const farmers = await User.find({
+        name: { $regex: search, $options: "i" },
+        role: "farmer",
+      }).select("_id");
+      const farmerIds = farmers.map((f) => f._id);
+
+      const animals = await Animal.find({
+        $or: [
+          { earTag: { $regex: search, $options: "i" } },
+          { animalId: { $regex: search, $options: "i" } },
+        ],
+      }).select("_id");
+      const animalIds = animals.map((a) => a._id);
+
+      const aiSearchFilter = {
+        $or: [
+          { farmerId: { $in: farmerIds } },
+          { animalId: { $in: animalIds } },
+        ],
+      };
+      const healthSearchFilter = {
+        $or: [
+          { farmerId: { $in: farmerIds } },
+          { animalId: { $in: animalIds } },
+        ],
+      };
+
+      if (aiQuery.$or) {
+        aiQuery.$and = [
+          ...(aiQuery.$and || []),
+          { $or: aiQuery.$or },
+          aiSearchFilter,
+        ];
+        delete aiQuery.$or;
+      } else {
+        aiQuery.$or = aiSearchFilter.$or;
+      }
+
+      if (healthQuery.$or) {
+        healthQuery.$and = [
+          ...(healthQuery.$and || []),
+          { $or: healthQuery.$or },
+          healthSearchFilter,
+        ];
+        delete healthQuery.$or;
+      } else {
+        healthQuery.$or = healthSearchFilter.$or;
+      }
+      taskAndFilters.push({
+        $or: [
+          { farmerId: { $in: farmerIds } },
+          { animalIds: { $in: animalIds } },
+        ],
+      });
+    }
+
+    if (taskAndFilters.length > 0) {
+      taskQuery.$and = taskAndFilters;
+    }
+
+    // 5. Fetch Records
+    const fetchAI = type === "all" || type === "ai" || !type;
+    const fetchHealth = type === "all" || type === "health" || !type;
+    const fetchPregnancyChecks =
+      includeOperationalTasks !== "false" &&
+      (type === "all" || type === "breeding_verification" || !type);
+
+    const [aiRecords, healthRecords, pregnancyCheckTasks] = await Promise.all([
+      fetchAI
+        ? Insemination.find(aiQuery)
+            .populate(
+              "farmerId",
+              "name address imageUrl phoneNumber farmLocation",
+            )
+            .populate("animalId", "animalId earTag species breed imageUrl")
+            .populate("approvedBy", "name")
+            .populate({
+              path: "previousAttemptId",
+              select:
+                "attemptNumber inseminationDate outcome outcomeConfirmedAt approvedBy technicianId",
+              populate: { path: "approvedBy technicianId", select: "name" },
+            })
+            .lean()
+        : [],
+      fetchHealth
+        ? HealthRequest.find(healthQuery)
+            .populate(
+              "farmerId",
+              "name address imageUrl phoneNumber farmLocation",
+            )
+            .populate("animalId", "animalId earTag species breed imageUrl")
+            .populate("handledBy", "name")
+            .lean()
+        : [],
+      fetchPregnancyChecks
+        ? Task.find(taskQuery)
+            .populate(
+              "farmerId",
+              "name address imageUrl phoneNumber farmLocation",
+            )
+            .populate("animalIds", "animalId earTag species breed imageUrl")
+            .populate("technicianId", "name")
+            .lean()
+        : [],
+    ]);
+
+    const linkedObservationIds = pregnancyCheckTasks
+      .filter((task) => task.sourceType === "farmer_requested_verification")
+      .map((task) => task.metadata?.inseminationId)
+      .filter(Boolean);
+    const linkedObservations = linkedObservationIds.length
+      ? await Insemination.find({ _id: { $in: linkedObservationIds } })
+          .select(
+            "farmerOutcomeReport farmerOutcomeReportedAt farmerObservationSigns farmerObservationNotes evidencePhotos verificationRequested verificationStatus",
+          )
+          .lean()
+      : [];
+    const observationByInseminationId = new Map(
+      linkedObservations.map((observation) => [
+        String(observation._id),
+        observation,
+      ]),
+    );
+
+    const formatAddress = (addr) => {
+      if (!addr) return "Unknown Location";
+      if (typeof addr === "string") return addr;
+      if (Array.isArray(addr) && addr.length > 0) {
+        const first = addr[0];
+        return (
+          `${first.barangay || ""}, ${first.city || ""}`
+            .replace(/^,|,$/g, "")
+            .trim() || "Unknown Location"
+        );
+      }
+      if (typeof addr === "object") {
+        return (
+          `${addr.barangay || ""}, ${addr.city || ""}`
+            .replace(/^,|,$/g, "")
+            .trim() || "Unknown Location"
+        );
+      }
+      return "Unknown Location";
+    };
+
+    // Helper to check if a date is today
+    const isDateToday = (d) => {
+      if (!d) return false;
+      const dateVal = new Date(d);
+      return dateVal >= todayStart && dateVal < todayEnd;
+    };
+
+    const getHaversineDistance = (lat1, lon1, lat2, lon2) => {
+      const R = 6371; // Radius of the Earth in km
+      const dLat = (lat2 - lat1) * (Math.PI / 180);
+      const dLon = (lon2 - lon1) * (Math.PI / 180);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) *
+          Math.cos(lat2 * (Math.PI / 180)) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c; // Distance in km
+    };
+
+    const techLat = nearLat ? parseFloat(nearLat) : null;
+    const techLng = nearLng ? parseFloat(nearLng) : null;
+
+    // Normalize AI Inseminations
+    const normalizedAI = aiRecords.map((rec) => {
+      const isReady =
+        (rec.status === "scheduled" || rec.status === "approved") &&
+        rec.scheduledDate &&
+        isDateToday(rec.scheduledDate) &&
+        rec.approvedBy &&
+        rec.approvedBy._id?.toString() === req.user._id.toString();
+
+      const farmer = rec.farmerId || {};
+      const farmLoc = farmer.farmLocation || {};
+      const addr = farmer.address || {};
+      const hasFarmPin = !!(farmLoc.latitude && farmLoc.longitude);
+      const city = addr.city || "";
+      const barangay = addr.barangay || "";
+      const assignedTechnicianId =
+        rec.approvedBy?._id || rec.approvedBy || rec.technicianId || null;
+      const isUnassigned = !assignedTechnicianId;
+
+      let allowedAction = null;
+      let actionLabel = null;
+      if (rec.status === "pending" && isUnassigned) {
+        allowedAction = "CLAIM_AND_SCHEDULE";
+        actionLabel = "Claim & Set Visit";
+      } else if (rec.status === "approved") {
+        allowedAction = "SCHEDULE_VISIT";
+        actionLabel = "Schedule Visit";
+      } else if (["scheduled", "in-progress"].includes(rec.status)) {
+        allowedAction = "RECORD_SERVICE";
+        actionLabel = "Record Insemination";
+      } else if (rec.status === "done") {
+        allowedAction = "VIEW_RECORD";
+        actionLabel = "View Record";
+      }
+
+      const attachmentUrls = [
+        rec.imageUrl,
+        ...(Array.isArray(rec.evidencePhotos) ? rec.evidencePhotos : []),
+      ].filter(Boolean);
+
+      let distanceKm = null;
+      if (
+        techLat !== null &&
+        !isNaN(techLat) &&
+        techLng !== null &&
+        !isNaN(techLng) &&
+        hasFarmPin
+      ) {
+        distanceKm = parseFloat(
+          getHaversineDistance(
+            techLat,
+            techLng,
+            farmLoc.latitude,
+            farmLoc.longitude,
+          ).toFixed(2),
+        );
+      }
+
+      return {
+        id: rec._id,
+        workflowId: rec._id,
+        taskId: null,
+        workflowType: "AI",
+        type: "ai",
+        serviceType: "Artificial Insemination",
+        status: rec.status,
+        allowedAction,
+        actionLabel,
+        isReadyToday: !!isReady,
+        displayStatus: isReady
+          ? "Ready Today"
+          : rec.status === "approved"
+            ? "Assigned"
+            : rec.status,
+        urgency: "normal",
+        farmer: farmer.name || "Unknown Farmer",
+        farmerId: farmer._id || farmer,
+        farmerImageUrl: farmer.imageUrl || "",
+        farmerPhone: farmer.phoneNumber || "",
+        phone: farmer.phoneNumber || farmer.phone || null,
+        farmerDetails: {
+          id: farmer._id || null,
+          name: farmer.name || "Unknown Farmer",
+          phone: farmer.phoneNumber || farmer.phone || null,
+          location: formatAddress(farmer.address),
+        },
+        animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
+        animalId: rec.animalId?._id || rec.animalId,
+        earTag: rec.animalId?.earTag || "",
+        breed: rec.animalId?.breed || "",
+        species: rec.animalId?.species || "",
+        location: formatAddress(farmer.address),
+        locationLabel:
+          barangay && city
+            ? `${barangay}, ${city}`
+            : formatAddress(farmer.address) || "Unknown Location",
+        municipality: city,
+        barangay: barangay,
+        hasFarmPin,
+        distanceKm,
+        farmPinStatus: hasFarmPin ? "available" : "missing",
+        preferredDate: rec.preferredDate || rec.createdAt,
+        scheduledDate: rec.scheduledDate || null,
+        visitPeriod: rec.visitPeriod,
+        schedule: {
+          date: rec.scheduledDate || null,
+          visitPeriod: rec.visitPeriod || null,
+        },
+        heatSigns: Array.isArray(rec.heatSigns) ? rec.heatSigns : [],
+        requestSubmissionDate: rec.createdAt,
+        attachments: {
+          primaryUrl: rec.imageUrl || attachmentUrls[0] || null,
+          urls: attachmentUrls,
+          count: attachmentUrls.length,
+        },
+        assignedTechnician: rec.approvedBy?.name || "",
+        createdAt: rec.createdAt,
+        raw: rec,
+      };
+    });
+
+    // Normalize Health Requests
+    const normalizedHealth = healthRecords.map((rec) => {
+      const isReady =
+        (rec.status === "scheduled" || rec.status === "approved") &&
+        rec.scheduledDate &&
+        isDateToday(rec.scheduledDate) &&
+        rec.handledBy &&
+        rec.handledBy._id?.toString() === req.user._id.toString();
+
+      const farmer = rec.farmerId || {};
+      const farmLoc = farmer.farmLocation || {};
+      const addr = farmer.address || {};
+      const hasFarmPin = !!(farmLoc.latitude && farmLoc.longitude);
+      const city = addr.city || "";
+      const barangay = addr.barangay || "";
+
+      let distanceKm = null;
+      if (
+        techLat !== null &&
+        !isNaN(techLat) &&
+        techLng !== null &&
+        !isNaN(techLng) &&
+        hasFarmPin
+      ) {
+        distanceKm = parseFloat(
+          getHaversineDistance(
+            techLat,
+            techLng,
+            farmLoc.latitude,
+            farmLoc.longitude,
+          ).toFixed(2),
+        );
+      }
+
+      return {
+        id: rec._id,
+        type: "health",
+        serviceType: rec.requestType || "health",
+        requestType: rec.requestType || "health",
+        status: rec.status,
+        isReadyToday: !!isReady,
+        displayStatus: isReady
+          ? "Ready Today"
+          : rec.status === "approved"
+            ? "Assigned"
+            : rec.status,
+        urgency:
+          rec.urgency === "high" || rec.urgency === "emergency"
+            ? "urgent"
+            : "normal",
+        farmer: farmer.name || "Unknown Farmer",
+        farmerId: farmer._id || farmer,
+        farmerImageUrl: farmer.imageUrl || "",
+        farmerPhone: farmer.phoneNumber || "",
+        animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
+        animalId: rec.animalId?._id || rec.animalId,
+        earTag: rec.animalId?.earTag || "",
+        breed: rec.animalId?.breed || "",
+        species: rec.animalId?.species || "",
+        location: formatAddress(farmer.address),
+        locationLabel:
+          barangay && city
+            ? `${barangay}, ${city}`
+            : formatAddress(farmer.address) || "Unknown Location",
+        municipality: city,
+        barangay: barangay,
+        hasFarmPin,
+        distanceKm,
+        farmPinStatus: hasFarmPin ? "available" : "missing",
+        preferredDate: rec.preferredDate || rec.createdAt,
+        scheduledDate: rec.scheduledDate || null,
+        assignedTechnician: rec.handledBy?.name || "",
+        createdAt: rec.createdAt,
+        raw: rec,
+      };
+    });
+
+    // Normalize Pregnancy Checks
+    const normalizedPregnancyChecks = pregnancyCheckTasks.map((task) => {
+      const animal = Array.isArray(task.animalIds) ? task.animalIds[0] : null;
+      const linkedObservation = task.metadata?.inseminationId
+        ? observationByInseminationId.get(String(task.metadata.inseminationId))
+        : null;
+
+      const farmer = task.farmerId || {};
+      const farmLoc = farmer.farmLocation || {};
+      const addr = farmer.address || {};
+      const hasFarmPin = !!(farmLoc.latitude && farmLoc.longitude);
+      const city = addr.city || "";
+      const barangay = addr.barangay || "";
+
+      let distanceKm = null;
+      if (
+        techLat !== null &&
+        !isNaN(techLat) &&
+        techLng !== null &&
+        !isNaN(techLng) &&
+        hasFarmPin
+      ) {
+        distanceKm = parseFloat(
+          getHaversineDistance(
+            techLat,
+            techLng,
+            farmLoc.latitude,
+            farmLoc.longitude,
+          ).toFixed(2),
+        );
+      }
+
+      return {
+        id: task._id,
+        type: "breeding_verification",
+        serviceType: "Pregnancy Check",
+        status: task.status,
+        isReadyToday: false,
+        displayStatus: task.status,
+        urgency:
+          task.priority === 1 || task.category === "Urgent"
+            ? "urgent"
+            : "normal",
+        farmer: farmer.name || "Unknown Farmer",
+        farmerId: farmer._id || farmer,
+        farmerImageUrl: farmer.imageUrl || "",
+        farmerPhone: farmer.phoneNumber || "",
+        animal: animal?.animalId || animal?.earTag || "Unknown",
+        animalId: animal?._id || animal,
+        earTag: animal?.earTag || "",
+        breed: animal?.breed || "",
+        species: animal?.species || "",
+        location: formatAddress(farmer.address),
+        locationLabel:
+          barangay && city
+            ? `${barangay}, ${city}`
+            : formatAddress(farmer.address) || "Unknown Location",
+        municipality: city,
+        barangay: barangay,
+        hasFarmPin,
+        distanceKm,
+        farmPinStatus: hasFarmPin ? "available" : "missing",
+        preferredDate: task.dueDate || task.createdAt,
+        scheduledDate: task.dueDate || null,
+        assignedTechnician: task.technicianId?.name || "",
+        createdAt: task.createdAt,
+        farmerObservation: linkedObservation
+          ? {
+              reportType: linkedObservation.farmerOutcomeReport || null,
+              reportedAt: linkedObservation.farmerOutcomeReportedAt || null,
+              signs: Array.isArray(linkedObservation.farmerObservationSigns)
+                ? linkedObservation.farmerObservationSigns
+                : [],
+              notes: linkedObservation.farmerObservationNotes || "",
+              evidencePhotos: Array.isArray(linkedObservation.evidencePhotos)
+                ? linkedObservation.evidencePhotos.filter(Boolean)
+                : [],
+              verificationRequested: Boolean(
+                linkedObservation.verificationRequested,
+              ),
+              verificationStatus:
+                linkedObservation.verificationStatus || "not_requested",
+            }
+          : task.sourceType === "farmer_requested_verification"
+            ? {
+                reportType: task.metadata?.reportType || null,
+                reportedAt: null,
+                signs: [],
+                notes: "",
+                evidencePhotos: [],
+                verificationRequested: true,
+                verificationStatus: "pending",
+              }
+            : null,
+        raw: task,
+      };
+    });
+
+    // Combine & Sort
+    const sortByVal = sortBy || "newest";
+    const combined = [
+      ...normalizedAI,
+      ...normalizedHealth,
+      ...normalizedPregnancyChecks,
+    ].sort((a, b) => {
+      // 1. Emergency/Urgent priority first:
+      const aUrgent = a.urgency === "urgent";
+      const bUrgent = b.urgency === "urgent";
+      if (aUrgent && !bUrgent) return -1;
+      if (!aUrgent && bUrgent) return 1;
+
+      // 2. Sort by sortBy parameter:
+      if (sortByVal === "distance" && techLat !== null && techLng !== null) {
+        const aHasDist = a.distanceKm !== null;
+        const bHasDist = b.distanceKm !== null;
+        if (aHasDist && !bHasDist) return -1;
+        if (!aHasDist && bHasDist) return 1;
+        if (aHasDist && bHasDist) {
+          return a.distanceKm - b.distanceKm;
+        }
+      } else if (sortByVal === "preferredDate") {
+        return (
+          new Date(a.preferredDate).getTime() -
+          new Date(b.preferredDate).getTime()
+        );
+      } else if (sortByVal === "oldest") {
+        return (
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        );
+      }
+
+      // Fallback: newest first
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    // Apply pagination slice
+    const total = combined.length;
+    const paginated = combined.slice(skip, skip + limit);
+
+    res.status(200).json({
+      requests: paginated,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    });
+  } catch (error) {
+    console.error("[getTechnicianRequests ERROR]", error);
+    res.status(500).json({
+      message: "Failed to fetch technician requests",
+      error: error.message,
+    });
+  }
+};
+
+export const getWorkQueue = async (req, res) => {
+  try {
+    const isAdmin = req.user?.role === "admin";
+    const authenticatedUserId = req.user?._id;
+    const now = new Date();
+    const PHT_OFFSET = 8 * 60 * 60 * 1000;
+    const todayStart = new Date(now.getTime() + PHT_OFFSET);
+    todayStart.setUTCHours(0, 0, 0, 0);
+    todayStart.setTime(todayStart.getTime() - PHT_OFFSET);
+    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+    const aiQuery = {
+      status: {
+        $in: ["pending", "approved", "scheduled", "in-progress", "done"],
+      },
+      deletedAt: null,
+      ...(isAdmin
+        ? {}
+        : {
+            declinedByTechnicianIds: { $ne: authenticatedUserId },
+            $or: [
+              { approvedBy: authenticatedUserId },
+              { status: "done", technicianId: authenticatedUserId },
+            ],
+          }),
+    };
+
+    const healthAssigneeField =
+      req.user?.role === "veterinarian"
+        ? "assignedVeterinarianId"
+        : "assignedTechnicianId";
+    const healthQuery = {
+      status: {
+        $in: [
+          "pending",
+          "triaged",
+          "assigned",
+          "approved",
+          "scheduled",
+          "in-progress",
+          "in_progress",
+          "resolved",
+          "done",
+        ],
+      },
+      deletedAt: null,
+      ...(isAdmin
+        ? {}
+        : {
+            declinedByTechnicianIds: { $ne: authenticatedUserId },
+            $or: [
+              { handledBy: authenticatedUserId },
+              { [healthAssigneeField]: authenticatedUserId },
+            ],
+          }),
+    };
+
+    const taskQuery = {
+      status: { $in: ["Pending", "In Progress", "Completed"] },
+      ...(isAdmin
+        ? {}
+        : {
+            $or: [
+              { technicianId: authenticatedUserId },
+              { technicianId: null },
+              { technicianId: { $exists: false } },
+            ],
+          }),
+    };
+
+    const [inseminations, healthReqs, scheduledTasks] = await Promise.all([
+      Insemination.find(aiQuery)
+        .populate(
+          "farmerId",
+          "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
+        )
+        .populate("animalId", "name animalId earTag imageUrl breed species")
+        .sort({ createdAt: -1 })
+        .lean(),
+
+      HealthRequest.find(healthQuery)
+        .populate(
+          "farmerId",
+          "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
+        )
+        .populate("animalId", "name animalId earTag imageUrl breed species")
+        .sort({ urgency: -1, createdAt: -1 })
+        .lean(),
+
+      Task.find(taskQuery)
+        .populate(
+          "farmerId",
+          "name phoneNumber phone address farmLocation avatarUrl profilePicture avatar",
+        )
+        .populate("animalIds", "name animalId earTag imageUrl breed species")
+        .sort({ dueDate: 1, createdAt: -1 })
+        .lean(),
+    ]);
+
+    const idOf = (value) => {
+      let current = value;
+      const seen = new Set();
+
+      // Limit traversal in case a malformed object contains a deep or cyclic ID.
+      for (let depth = 0; depth < 5; depth += 1) {
+        if (current == null) return null;
+
+        if (typeof current === "string") {
+          return current;
+        }
+
+        if (typeof current === "number" || typeof current === "bigint") {
+          return String(current);
+        }
+
+        // Handle real MongoDB/Mongoose ObjectIds before accessing `_id`.
+        if (typeof current?.toHexString === "function") {
+          try {
+            return current.toHexString();
+          } catch {
+            return null;
+          }
+        }
+
+        if (typeof current !== "object") {
+          return null;
+        }
+
+        if (seen.has(current)) {
+          return null;
+        }
+
+        seen.add(current);
+
+        const nestedId = current._id ?? current.id;
+
+        if (nestedId == null || nestedId === current) {
+          return null;
+        }
+
+        current = nestedId;
+      }
+
+      return null;
+    };
+    const cleanAddressPart = (value) => {
+      const normalized = String(value || "").trim();
+      return normalized &&
+        !["n/a", "na", "none", "null", "undefined"].includes(
+          normalized.toLowerCase(),
+        )
+        ? normalized
+        : "";
+    };
+
+    const formatAddress = (addr) => {
+      if (!addr) return "Unknown Location";
+      if (typeof addr === "string") return addr;
+      if (Array.isArray(addr) && addr.length > 0) {
+        const first = addr[0];
+        return (
+          [first.barangay, first.city || first.municipality]
+            .map(cleanAddressPart)
+            .filter(Boolean)
+            .join(", ") || "Unknown Location"
+        );
+      }
+      if (typeof addr === "object") {
+        return (
+          [addr.barangay, addr.city || addr.municipality]
+            .map(cleanAddressPart)
+            .filter(Boolean)
+            .join(", ") || "Unknown Location"
+        );
+      }
+      return "Unknown Location";
+    };
+
+    const formatTime = (date) => {
+      if (!date) return "Not Set";
+      return new Date(date).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "Asia/Manila",
+      });
+    };
+
+    const getFarmLocationDetails = (farmer) => {
+      const farmLocation = farmer?.farmLocation || null;
+      const hasCoordinates =
+        Number.isFinite(farmLocation?.latitude) &&
+        Number.isFinite(farmLocation?.longitude);
+      const label =
+        farmLocation?.detectedAddress?.trim() ||
+        farmLocation?.landmark?.trim() ||
+        (hasCoordinates ? "Farm pin saved" : formatAddress(farmer?.address));
+      return {
+        farmLocation,
+        farmLocationLabel: label,
+        hasFarmPin: hasCoordinates,
+        navigationTarget: hasCoordinates
+          ? `${farmLocation.latitude},${farmLocation.longitude}`
+          : null,
+      };
+    };
+
+    const serializeFarmer = (farmer) => ({
+      id: idOf(farmer),
+      name: farmer?.name || "Unknown Farmer",
+      phone: farmer?.phoneNumber || farmer?.phone || null,
+      location: formatAddress(farmer?.address),
+    });
+
+    const serializeAnimal = (animal) => ({
+      id: idOf(animal),
+      name: animal?.name || animal?.animalId || animal?.earTag || "Unknown",
+      earTag: animal?.earTag || animal?.animalId || null,
+    });
+
+    const taskLinkIds = (taskDoc) => {
+      const metadata = taskDoc?.metadata || {};
+      return new Set(
+        [
+          taskDoc?.relatedRecordId,
+          taskDoc?.requestId,
+          taskDoc?.sourceId,
+          taskDoc?.inseminationId,
+          metadata.relatedRecordId,
+          metadata.requestId,
+          metadata.sourceId,
+          metadata.inseminationId,
+          metadata.healthRequestId,
+        ]
+          .map(idOf)
+          .filter(Boolean),
+      );
+    };
+
+    const isExecutionTaskForWorkflow = (taskDoc, workflowType, workflowId) => {
+      if (!workflowId || !taskLinkIds(taskDoc).has(workflowId)) return false;
+
+      const taskType = String(taskDoc?.taskType || "").toUpperCase();
+      const relatedRecordType = String(
+        taskDoc?.relatedRecordType || "",
+      ).toLowerCase();
+
+      // PD and Calving are distinct downstream activities even when they carry
+      // an insemination id for lineage.
+      if (["PD", "CD", "CALVING"].includes(taskType)) return false;
+
+      if (workflowType === "AI") {
+        return taskType === "AI" || relatedRecordType === "insemination";
+      }
+
+      if (workflowType === "Health") {
+        return (
+          relatedRecordType === "health" ||
+          ["HEALTH", "TREATMENT", "VACCINATION", "DEWORMING"].includes(taskType)
+        );
+      }
+
+      return false;
+    };
+
+    const findExecutionTask = (workflowType, workflowId) =>
+      scheduledTasks.find((taskDoc) => {
+        const taskTechnicianId = idOf(taskDoc.technicianId);
+        const taskIsVisible =
+          isAdmin ||
+          !taskTechnicianId ||
+          taskTechnicianId === idOf(authenticatedUserId);
+        return (
+          taskIsVisible &&
+          isExecutionTaskForWorkflow(taskDoc, workflowType, workflowId)
+        );
+      }) || null;
+
+    const isToday = (date) => {
+      if (!date) return false;
+      const value = new Date(date);
+      return value >= todayStart && value < todayEnd;
+    };
+
+    const isOverdue = (date, terminal) => {
+      if (!date || terminal) return false;
+      const value = new Date(date);
+      return !Number.isNaN(value.getTime()) && value < todayStart;
+    };
+
+    const unifiedQueue = [];
+    const workflowOwnedTaskIds = new Set();
+
+    inseminations.forEach((ins) => {
+      const workflowId = idOf(ins);
+      if (!workflowId) return;
+
+      const assignedTechnicianId = idOf(ins.approvedBy);
+      if (ins.status === "pending" && !assignedTechnicianId) return;
+
+      const matchedTask = findExecutionTask("AI", workflowId);
+      const taskId = idOf(matchedTask);
+      if (taskId) workflowOwnedTaskIds.add(taskId);
+
+      const farmLocationDetails = getFarmLocationDetails(ins.farmerId);
+      const scheduleDate = ins.scheduledDate || null;
+      const completedAt =
+        ins.status === "done"
+          ? ins.inseminationDate || ins.updatedAt || null
+          : null;
+      const itemDisplayDate =
+        scheduleDate || completedAt || ins.createdAt || null;
+      const terminal = ins.status === "done";
+
+      let allowedAction = null;
+      let actionLabel = null;
+      let stateIssue = null;
+      if (ins.status === "pending") {
+        actionLabel = "Schedule review required";
+        stateIssue = scheduleDate
+          ? "PENDING_WITH_SCHEDULE"
+          : "PENDING_ASSIGNED_WITHOUT_SCHEDULE";
+      } else if (ins.status === "approved") {
+        allowedAction = "SCHEDULE_VISIT";
+        actionLabel = "Schedule Visit";
+      } else if (["scheduled", "in-progress"].includes(ins.status)) {
+        allowedAction = "RECORD_SERVICE";
+        actionLabel = "Record Insemination";
+      } else if (ins.status === "done") {
+        allowedAction = "VIEW_RECORD";
+        actionLabel = "View Record";
+      }
+
+      const item = {
+        id: workflowId,
+        workflowId,
+        taskId,
+        workflowType: "AI",
+        type: "insemination",
+        taskType: "AI",
+        serviceType: "Artificial Insemination",
+        status: ins.status,
+        allowedAction,
+        actionLabel,
+        stateIssue,
+        farmer: serializeFarmer(ins.farmerId),
+        animal: serializeAnimal(ins.animalId),
+        schedule: {
+          date: scheduleDate,
+          visitPeriod: ins.visitPeriod || null,
+        },
+        requestedAt: ins.createdAt || null,
+        completedAt,
+        isReadyToday:
+          ["approved", "scheduled"].includes(ins.status) &&
+          isToday(scheduleDate),
+        time: formatTime(itemDisplayDate),
+        preferredTime: formatTime(itemDisplayDate),
+        displayDate: itemDisplayDate,
+        farmerName: ins.farmerId?.name || "Unknown Farmer",
+        farmerPhone: ins.farmerId?.phoneNumber || ins.farmerId?.phone || null,
+        farmerImageUrl:
+          ins.farmerId?.imageUrl ||
+          ins.farmerId?.avatarUrl ||
+          ins.farmerId?.profilePicture ||
+          ins.farmerId?.avatar ||
+          "",
+        farmerId: ins.farmerId || null,
+        location: formatAddress(ins.farmerId?.address),
+        ...farmLocationDetails,
+        animalId: ins.animalId || null,
+        animalTag: ins.animalId?.earTag || ins.animalId?.animalId || null,
+        displayStatus:
+          ["approved", "scheduled"].includes(ins.status) &&
+          isToday(scheduleDate)
+            ? "Ready Today"
+            : ins.status,
+        task: `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`,
+        urgent: false,
+        overdue: isOverdue(scheduleDate, terminal),
+        sentTime: formatTime(ins.createdAt),
+        scheduledDate: scheduleDate,
+        visitPeriod: ins.visitPeriod || null,
+        raw: ins,
+      };
+
+      unifiedQueue.push(item);
+    });
+
+    healthReqs.forEach((req) => {
+      const workflowId = idOf(req);
+      if (!workflowId) return;
+
+      const matchedTask = findExecutionTask("Health", workflowId);
+      const taskId = idOf(matchedTask);
+      if (taskId) workflowOwnedTaskIds.add(taskId);
+
+      const farmLocationDetails = getFarmLocationDetails(req.farmerId);
+      const scheduleDate = req.scheduledDate || null;
+      const terminal = ["resolved", "done"].includes(req.status);
+      const completedAt = terminal
+        ? req.resolvedAt || req.updatedAt || null
+        : null;
+      const itemDisplayDate =
+        scheduleDate || completedAt || req.createdAt || null;
+
+      let allowedAction = null;
+      let actionLabel = null;
+      if (
+        req.status === "pending" ||
+        req.status === "triaged" ||
+        req.status === "assigned"
+      )
+        allowedAction = "CLAIM";
+      else if (req.status === "approved" || req.status === "scheduled")
+        allowedAction = "START_SERVICE";
+      else if (req.status === "in-progress" || req.status === "in_progress")
+        allowedAction = "RECORD_SERVICE";
+      else if (terminal) allowedAction = "VIEW_RECORD";
+
+      if (allowedAction === "CLAIM") actionLabel = "Claim";
+      else if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
+      else if (allowedAction === "RECORD_SERVICE")
+        actionLabel = "Record Service";
+      else if (allowedAction === "VIEW_RECORD") actionLabel = "View Record";
+
+      const item = {
+        id: workflowId,
+        workflowId,
+        taskId,
+        workflowType: "Health",
+        type: "health",
+        taskType: "Health",
+        serviceType: req.requestType || "Health Assistance",
+        status: req.status,
+        allowedAction,
+        actionLabel,
+        farmer: serializeFarmer(req.farmerId),
+        animal: serializeAnimal(req.animalId),
+        schedule: { date: scheduleDate, visitPeriod: null },
+        requestedAt: req.createdAt || null,
+        completedAt,
+        isReadyToday:
+          ["approved", "scheduled"].includes(req.status) &&
+          isToday(scheduleDate),
+        time: formatTime(itemDisplayDate),
+        preferredTime: formatTime(itemDisplayDate),
+        displayDate: itemDisplayDate,
+        farmerName: req.farmerId?.name || "Unknown Farmer",
+        farmerPhone: req.farmerId?.phoneNumber || req.farmerId?.phone || null,
+        farmerImageUrl:
+          req.farmerId?.imageUrl ||
+          req.farmerId?.avatarUrl ||
+          req.farmerId?.profilePicture ||
+          req.farmerId?.avatar ||
+          "",
+        farmerId: req.farmerId || null,
+        location: formatAddress(req.farmerId?.address),
+        ...farmLocationDetails,
+        animalId: req.animalId || null,
+        animalTag: req.animalId?.earTag || req.animalId?.animalId || null,
+        displayStatus:
+          ["approved", "scheduled"].includes(req.status) &&
+          isToday(scheduleDate)
+            ? "Ready Today"
+            : req.status,
+        task: `Health Check - ${req.animalId?.animalId || req.animalId?.earTag || "Unknown"}`,
+        urgent: ["high", "emergency"].includes(req.urgency),
+        overdue: isOverdue(scheduleDate, terminal),
+        sentTime: formatTime(req.createdAt),
+        scheduledDate: scheduleDate,
+        visitPeriod: null,
+        raw: req,
+      };
+
+      unifiedQueue.push(item);
+    });
+
+    scheduledTasks.forEach((taskDoc) => {
+      const taskId = idOf(taskDoc);
+      if (!taskId || workflowOwnedTaskIds.has(taskId)) return;
+      if (
+        !isAdmin &&
+        idOf(taskDoc.technicianId) !== idOf(authenticatedUserId)
+      ) {
+        return;
+      }
+
+      const itemDisplayDate = taskDoc.dueDate || taskDoc.createdAt;
+      const terminal = taskDoc.status === "Completed";
+      const firstAnimal = Array.isArray(taskDoc.animalIds)
+        ? taskDoc.animalIds[0]
+        : null;
+
+      let allowedAction = null;
+      let wType = "StandaloneTask";
+      if (taskDoc.taskType === "PD") wType = "PD";
+      if (taskDoc.taskType === "CD" || taskDoc.taskType === "Calving")
+        wType = "Calving";
+
+      if (["PD", "Calving"].includes(wType)) {
+        if (taskDoc.status === "Pending" && taskDoc.technicianId)
+          allowedAction = "START_SERVICE";
+        else if (taskDoc.status === "In Progress")
+          allowedAction = "RECORD_SERVICE";
+        else if (taskDoc.status === "Pending") allowedAction = "CLAIM";
+      } else if (["Pending", "In Progress"].includes(taskDoc.status)) {
+        allowedAction = taskDoc.technicianId ? "COMPLETE_TASK" : "CLAIM";
+      }
+
+      let actionLabel = null;
+      if (allowedAction === "START_SERVICE") actionLabel = "Start Service";
+      else if (allowedAction === "RECORD_SERVICE")
+        actionLabel = "Record Service";
+      else if (allowedAction === "COMPLETE_TASK") actionLabel = "Complete Task";
+      else if (allowedAction === "CLAIM") actionLabel = "Claim";
+
+      const serviceType =
+        wType === "PD"
+          ? "Pregnancy Diagnosis"
+          : wType === "Calving"
+            ? "Calving Assistance"
+            : taskDoc.taskType || "Task";
+
+      const item = {
+        id: taskId,
+        workflowId: null,
+        taskId,
+        workflowType: wType,
+        type: "task",
+        taskType: taskDoc.taskType || "Other",
+        serviceType,
+        status: taskDoc.status,
+        allowedAction,
+        actionLabel,
+        farmer: serializeFarmer(taskDoc.farmerId),
+        animal: serializeAnimal(firstAnimal),
+        schedule: { date: taskDoc.dueDate || null, visitPeriod: null },
+        requestedAt: taskDoc.createdAt || null,
+        completedAt: terminal
+          ? taskDoc.completedAt || taskDoc.updatedAt || null
+          : null,
+        displayStatus: taskDoc.status,
+        time: formatTime(itemDisplayDate),
+        displayDate: itemDisplayDate,
+        farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
+        farmerPhone:
+          taskDoc.farmerId?.phoneNumber || taskDoc.farmerId?.phone || null,
+        farmerImageUrl:
+          taskDoc.farmerId?.avatarUrl ||
+          taskDoc.farmerId?.profilePicture ||
+          taskDoc.farmerId?.avatar ||
+          null,
+        farmerId: taskDoc.farmerId || null,
+        location: formatAddress(taskDoc.farmerId?.address),
+        ...getFarmLocationDetails(taskDoc.farmerId),
+        animalId: firstAnimal || null,
+        animalTag: firstAnimal?.earTag || firstAnimal?.animalId || null,
+        preferredTime: formatTime(itemDisplayDate),
+        task: `${taskDoc.taskType || "Visit"}${firstAnimal ? ` - ${firstAnimal.animalId || firstAnimal.earTag || "Unknown"}` : ""}`,
+        urgent:
+          taskDoc.category === "Urgent" || taskDoc.category === "Emergency",
+        overdue: isOverdue(taskDoc.dueDate, terminal),
+        sentTime: formatTime(taskDoc.createdAt),
+        scheduledDate: taskDoc.dueDate || null,
+        visitPeriod: null,
+        raw: taskDoc,
+      };
+
+      unifiedQueue.push(item);
+    });
+
+    // Sort logic to match work queue priorities (overdue first, then by date)
+    unifiedQueue.sort((a, b) => {
+      if (a.overdue && !b.overdue) return -1;
+      if (!a.overdue && b.overdue) return 1;
+      const aDate = new Date(a.displayDate || 0).getTime();
+      const bDate = new Date(b.displayDate || 0).getTime();
+      return aDate - bDate;
+    });
+
+    res.status(200).json({
+      data: unifiedQueue,
+      pagination: {
+        total: unifiedQueue.length,
+        page: 1,
+        limit: unifiedQueue.length,
+        totalPages: 1,
+      },
+    });
+  } catch (error) {
+    console.error("[getWorkQueue ERROR]", error);
+    res.status(500).json({ message: "Failed to load work queue data." });
   }
 };

@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { jsPDF } from "jspdf";
@@ -11,30 +12,56 @@ import {
   MapPin,
   Sparkles,
   ClipboardCheck,
-  Activity,
   Award,
-  ChevronRight,
   TrendingUp,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import { OTON_BARANGAYS } from "../../constants/barangays";
+import Topbar from "../../components/layout/Topbar";
 
 export default function Reports() {
   const toast = useToast();
   const [reportType, setReportType] = useState("da-unified");
   const [barangay, setBarangay] = useState("all");
-  const [dateRange, setDateRange] = useState("May 2026");
+  const [compilationMonth, setCompilationMonth] = useState("2026-05");
   const [isCompiling, setIsCompiling] = useState(false);
+
+  const { data: stats, isLoading: isLoadingStats } = useQuery({
+    queryKey: ["admin", "reports-stats"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/admin/stats");
+      return res.data;
+    },
+  });
+
+  const { data: farmers = [] } = useQuery({
+    queryKey: ["admin", "farmers-list-for-reports"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/user?role=farmer");
+      return Array.isArray(res.data) ? res.data : res.data?.data || [];
+    },
+  });
+
+  const dynamicBarangays = useMemo(() => {
+    const brgys = new Set();
+    OTON_BARANGAYS.forEach((b) => brgys.add(b.trim()));
+    farmers.forEach((f) => {
+      const b = f.address?.barangay;
+      if (b) {
+        brgys.add(b.trim());
+      }
+    });
+    return Array.from(brgys).sort();
+  }, [farmers]);
 
   const handleGenerateReport = async (action) => {
     setIsCompiling(true);
     try {
-      const [monthName, yearString] = dateRange.split(" ");
-      const monthMap = {
-        January: 1, February: 2, March: 3, April: 4, May: 5, June: 6,
-        July: 7, August: 8, September: 9, October: 10, November: 11, December: 12
-      };
-      const monthVal = monthMap[monthName] || 5;
+      const [yearString, monthString] = compilationMonth.split("-");
+      const monthVal = parseInt(monthString) || 5;
       const yearVal = parseInt(yearString) || 2026;
+
+      const dateObj = new Date(yearVal, monthVal - 1);
+      const formattedDateRange = dateObj.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 
       const isPrint = action === "print";
 
@@ -85,7 +112,7 @@ export default function Reports() {
           doc.text("Veterinary Health Diagnostics & Triage Logs", doc.internal.pageSize.width / 2, 12, { align: "center" });
           doc.setFont("helvetica", "bold");
           doc.setFontSize(9);
-          doc.text(`HEALTH TRIAGE & DIAGNOSTIC LOGS - ${dateRange.toUpperCase()}`, doc.internal.pageSize.width / 2, 17, { align: "center" });
+          doc.text(`HEALTH TRIAGE & DIAGNOSTIC LOGS - ${formattedDateRange.toUpperCase()}`, doc.internal.pageSize.width / 2, 17, { align: "center" });
           
           doc.autoTable({
             head: [headers],
@@ -103,7 +130,7 @@ export default function Reports() {
           const url = URL.createObjectURL(blob);
           const link = document.createElement("a");
           link.setAttribute("href", url);
-          link.setAttribute("download", `BreedSmart_Health_Diagnostics_${barangay}_${dateRange.replace(" ", "_")}.csv`);
+          link.setAttribute("download", `BreedSmart_Health_Diagnostics_${barangay}_${formattedDateRange.replace(" ", "_")}.csv`);
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -188,7 +215,7 @@ export default function Reports() {
         );
         doc.setFont("helvetica", "normal");
         doc.setFontSize(7.5);
-        doc.text(`For the Month of: ${dateRange}    Sector Barangay: ${barangay.toUpperCase()}`, doc.internal.pageSize.width / 2, 23, { align: "center" });
+        doc.text(`For the Month of: ${formattedDateRange}    Sector Barangay: ${barangay.toUpperCase()}`, doc.internal.pageSize.width / 2, 23, { align: "center" });
 
         const structuredHeaders = [
           [
@@ -224,7 +251,7 @@ export default function Reports() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.setAttribute("href", url);
-        link.setAttribute("download", `DA_UNIP_${reportType}_${barangay}_${dateRange.replace(" ", "_")}.csv`);
+        link.setAttribute("download", `DA_UNIP_${reportType}_${barangay}_${formattedDateRange.replace(" ", "_")}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -258,7 +285,9 @@ export default function Reports() {
               <Layers size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">94%</div>
+              <div className="text-xl font-black">
+                {isLoadingStats ? "..." : stats?.successRate || "—"}
+              </div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                 Breeding Accomplishments Rate
               </div>
@@ -269,7 +298,9 @@ export default function Reports() {
               <ClipboardCheck size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">154</div>
+              <div className="text-xl font-black">
+                {isLoadingStats ? "..." : (stats?.inseminations || 0) + (stats?.pregnancies || 0) + (stats?.calvings || 0)}
+              </div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                 Total Logs Compiled
               </div>
@@ -280,7 +311,9 @@ export default function Reports() {
               <TrendingUp size={16} />
             </div>
             <div>
-              <div className="text-xl font-black">88%</div>
+              <div className="text-xl font-black">
+                {isLoadingStats ? "..." : stats?.successRate || "—"}
+              </div>
               <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
                 Pregnancy Diagnosis Accuracy
               </div>
@@ -325,10 +358,11 @@ export default function Reports() {
                       className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold select select-bordered"
                     >
                       <option value="all">All Barangays</option>
-                      <option value="poblacion">Poblacion</option>
-                      <option value="buray">Buray</option>
-                      <option value="cagbang">Cagbang</option>
-                      <option value="santa-monica">Santa Monica</option>
+                      {dynamicBarangays.map((brgy) => (
+                        <option key={brgy} value={brgy.toLowerCase()}>
+                          {brgy}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -336,15 +370,13 @@ export default function Reports() {
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-1">
                       <Calendar size={10} /> Compilation Month
                     </label>
-                    <select
-                      value={dateRange}
-                      onChange={(e) => setDateRange(e.target.value)}
-                      className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold select select-bordered"
-                    >
-                      <option value="May 2026">May 2026</option>
-                      <option value="April 2026">April 2026</option>
-                      <option value="March 2026">March 2026</option>
-                    </select>
+                    <input
+                      type="month"
+                      value={compilationMonth}
+                      onChange={(e) => setCompilationMonth(e.target.value)}
+                      className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2 outline-none font-bold input input-bordered text-xs"
+                      required
+                    />
                   </div>
                 </div>
               </div>

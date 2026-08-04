@@ -2,14 +2,24 @@
   "expo": {
     "name": "BreedSmart",
     "slug": "mobile",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ilo-agriculture",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.breedsmart.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "BreedSmart allows you to upload livestock photos and farm records.",
+        "NSPhotoLibraryAddUsageDescription": "BreedSmart may save livestock photos to your photo library when requested.",
+        "NSCameraUsageDescription": "BreedSmart uses the camera to capture livestock photos and farm records.",
+        "NSMicrophoneUsageDescription": "BreedSmart records audio when required for farm documentation.",
+        "NSLocationWhenInUseUsageDescription": "BreedSmart uses your location to save your farm pin so technicians can locate your farm during scheduled visits.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "BreedSmart uses your location to support technician visits and navigation."
+      }
     },
     "android": {
       "softwareKeyboardLayoutMode": "resize",
@@ -20,7 +30,11 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.breedsmart.mobile",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -28,6 +42,13 @@
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "BreedSmart allows you to select livestock photos from your photo library.",
+          "cameraPermission": "BreedSmart uses your camera to capture livestock photos and farm records."
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -41,6 +62,12 @@
         }
       ],
       "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BreedSmart uses your location to save your farm pin so technicians can find the farm during scheduled visits."
+        }
+      ],
       "expo-font"
     ],
     "experiments": {
@@ -54,9 +81,7 @@
       }
     },
     "owner": "johndong28",
-    "runtimeVersion": {
-      "policy": "appVersion"
-    },
+    "runtimeVersion": "1.02",
     "updates": {
       "url": "https://u.expo.dev/3fc4429f-8376-4203-808d-b8911ea21070"
     }

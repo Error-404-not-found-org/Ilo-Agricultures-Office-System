@@ -11,6 +11,7 @@ export default function FarmerTabLayout() {
     >
       <Tabs.Screen name="index" />
       <Tabs.Screen name="add-animal" />
+      <Tabs.Screen name="service-requests" />
       <Tabs.Screen name="farmer.records" />
       <Tabs.Screen name="profile" />
     </Tabs>

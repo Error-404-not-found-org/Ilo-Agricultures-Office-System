@@ -1,34 +1,57 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, TouchableWithoutFeedback, StyleSheet } from 'react-native';
-import { Home, Users, Plus, FileText, Activity, X, UserPlus, Dog } from 'lucide-react-native';
-import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useColorScheme } from 'nativewind';
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  TouchableWithoutFeedback,
+  StyleSheet,
+} from "react-native";
+import {
+  Home,
+  Users,
+  Plus,
+  FileText,
+  Activity,
+  X,
+  UserPlus,
+  Dog,
+  MapPin,
+} from "lucide-react-native";
+import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { useRouter } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useColorScheme } from "nativewind";
 
 // Admin Theme Colors
 const COLORS = {
-  primary: '#0f172a', // Dark Navy
-  active: '#2563EB',  // Admin Blue
-  inactive: '#94a3b8',
-  background: '#ffffff',
-  darkBackground: '#0f172a',
-  darkSurface: '#1e293b',
+  primary: "#0f172a", // Dark Navy
+  active: "#2563EB",  // Admin Blue
+  inactive: "#94a3b8",
+  background: "#ffffff",
+  darkBackground: "#0f172a",
+  darkSurface: "#1e293b",
 };
 
-const AdminBottomNavigator = ({ state, descriptors, navigation }: BottomTabBarProps) => {
+const AdminBottomNavigator = ({
+  state,
+  descriptors,
+  navigation,
+}: BottomTabBarProps) => {
   const [modalVisible, setModalVisible] = useState(false);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colorScheme } = useColorScheme();
 
-  const onNavigate = (screenName: string) => {
-    navigation.navigate(screenName);
-  };
+  const isDark = colorScheme === "dark";
+  const focusedRouteKey = state.routes[state.index].key;
+  const focusedOptions = descriptors[focusedRouteKey].options;
+
+  if ((focusedOptions.tabBarStyle as any)?.display === "none") return null;
 
   const isFocused = (screenName: string) => {
-    const route = state.routes.find(r => r.name === screenName);
-    return route ? state.index === state.routes.indexOf(route) : false;
+    const routeIndex = state.routes.findIndex((r) => r.name === screenName);
+    return routeIndex === state.index;
   };
 
   const handleModalAction = (path: string) => {
@@ -37,53 +60,89 @@ const AdminBottomNavigator = ({ state, descriptors, navigation }: BottomTabBarPr
   };
 
   return (
-    <>
+    <View style={styles.outerContainer}>
       {/* --- ADMIN QUICK ACTION MODAL --- */}
       <Modal
         animationType="fade"
-        transparent={true}
+        transparent
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
         <TouchableOpacity
-          className="flex-1 bg-slate-900/60 justify-end"
+          style={styles.modalOverlay}
           activeOpacity={1}
           onPress={() => setModalVisible(false)}
         >
           <TouchableWithoutFeedback>
-            <View className="bg-white dark:bg-slate-900 rounded-t-[40px] px-6 pt-8 pb-12" style={[styles.modalShadow, { paddingBottom: insets.bottom + 20 }]}>
-              <View className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full self-center mb-6" />
-              
-              <View className="flex-row justify-between items-center mb-8">
-                <Text className="text-2xl font-bold text-slate-800 dark:text-white tracking-tight">Admin Actions</Text>
+            <View
+              style={[
+                styles.modalContent,
+                {
+                  backgroundColor: isDark
+                    ? COLORS.darkBackground
+                    : COLORS.background,
+                  paddingBottom: insets.bottom + 24,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.modalHandle,
+                  { backgroundColor: isDark ? "#334155" : "#e2e8f0" },
+                ]}
+              />
+
+              <View style={styles.modalHeader}>
+                <Text
+                  style={[
+                    styles.modalTitle,
+                    { color: isDark ? "#ffffff" : "#1e293b" },
+                  ]}
+                >
+                  Admin Actions
+                </Text>
+
                 <TouchableOpacity
                   onPress={() => setModalVisible(false)}
-                  className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full items-center justify-center"
+                  style={[
+                    styles.closeButton,
+                    { backgroundColor: isDark ? "#1e293b" : "#f8fafc" },
+                  ]}
                 >
-                  <X size={20} color={colorScheme === 'dark' ? '#94a3b8' : '#64748b'} />
+                  <X size={18} color={isDark ? "#94a3b8" : "#64748b"} />
                 </TouchableOpacity>
               </View>
 
-              <View className="flex-row flex-wrap justify-between gap-y-4">
+              <View style={styles.modalGrid}>
                 <ModalAction
                   icon={<UserPlus size={24} color={COLORS.active} />}
                   label="Create User"
-                  onPress={() => handleModalAction('/(admin)/create-user')}
+                  onPress={() => handleModalAction("/(admin)/create-user")}
+                  isDark={isDark}
                 />
                 <ModalAction
                   icon={<Dog size={24} color={COLORS.active} />}
                   label="All Animals"
-                  onPress={() => handleModalAction('/(admin)/admin.animals')}
+                  onPress={() => handleModalAction("/(admin)/admin.animals")}
+                  isDark={isDark}
                 />
                 <ModalAction
                   icon={<Activity size={24} color={COLORS.active} />}
                   label="Records"
-                  onPress={() => handleModalAction('/(admin)/admin.records')}
+                  onPress={() => handleModalAction("/(admin)/admin.records")}
+                  isDark={isDark}
                 />
                 <ModalAction
                   icon={<Users size={24} color={COLORS.active} />}
                   label="All Users"
-                  onPress={() => handleModalAction('/(admin)/admin.users')}
+                  onPress={() => handleModalAction("/(admin)/admin.users")}
+                  isDark={isDark}
+                />
+                <ModalAction
+                  icon={<MapPin size={24} color={COLORS.active} />}
+                  label="Barangay Insights"
+                  onPress={() => handleModalAction("/(admin)/barangay-insights")}
+                  isDark={isDark}
                 />
               </View>
             </View>
@@ -91,148 +150,264 @@ const AdminBottomNavigator = ({ state, descriptors, navigation }: BottomTabBarPr
         </TouchableOpacity>
       </Modal>
 
-      {/* --- MAIN TAB BAR — flat, flush, no floating (Technician Design) --- */}
-      <View style={[styles.tabContainer, { 
-        paddingBottom: Math.max(insets.bottom, 12),
-        backgroundColor: colorScheme === 'dark' ? COLORS.darkBackground : COLORS.background,
-      }]}>
-        <View style={[styles.topBorder, { backgroundColor: colorScheme === 'dark' ? '#1e293b' : '#f1f5f9' }]} />
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'flex-end',
-            backgroundColor: colorScheme === 'dark' ? COLORS.darkBackground : COLORS.background,
-            paddingTop: 8,
-          }}
-        >
+      {/* --- MAIN TAB BAR --- */}
+      <View
+        style={[
+          styles.tabContainer,
+          {
+            paddingBottom: Math.max(insets.bottom, 12),
+            backgroundColor: isDark ? COLORS.darkBackground : COLORS.background,
+            borderTopColor: isDark ? "#1e293b" : "#f1f5f9",
+          },
+        ]}
+      >
+        <View style={styles.tabRow}>
           <TabItem
             icon={Home}
             label="Home"
-            isFocused={isFocused('admin.dashboard')}
-            onPress={() => onNavigate('admin.dashboard')}
-            colorScheme={colorScheme}
+            isFocused={isFocused("admin.dashboard")}
+            onPress={() => navigation.navigate("admin.dashboard")}
+            isDark={isDark}
           />
           <TabItem
             icon={Users}
             label="Users"
-            isFocused={isFocused('admin.users')}
-            onPress={() => onNavigate('admin.users')}
-            colorScheme={colorScheme}
+            isFocused={isFocused("admin.users")}
+            onPress={() => navigation.navigate("admin.users")}
+            isDark={isDark}
           />
 
-          {/* Center FAB — rises above bar via negative marginTop */}
-          <View style={{ flex: 1, alignItems: 'center', marginTop: -20 }}>
+          <View style={styles.fabSlot}>
             <TouchableOpacity
-              style={[styles.fab, styles.fabShadow, { borderColor: colorScheme === 'dark' ? COLORS.darkBackground : '#ffffff' }]}
               activeOpacity={0.9}
               onPress={() => setModalVisible(true)}
+              style={[
+                styles.fab,
+                {
+                  backgroundColor: COLORS.active,
+                  borderColor: isDark ? COLORS.darkBackground : "#FFFFFF",
+                  shadowColor: COLORS.active,
+                },
+              ]}
             >
-              <Plus color="white" size={28} strokeWidth={2.5} />
+              <Plus color="#fff" size={28} strokeWidth={3} />
             </TouchableOpacity>
           </View>
 
           <TabItem
             icon={Dog}
             label="Animals"
-            isFocused={isFocused('admin.animals')}
-            onPress={() => onNavigate('admin.animals')}
-            colorScheme={colorScheme}
+            isFocused={isFocused("admin.animals")}
+            onPress={() => navigation.navigate("admin.animals")}
+            isDark={isDark}
           />
           <TabItem
             icon={FileText}
             label="Records"
-            isFocused={isFocused('admin.records')}
-            onPress={() => onNavigate('admin.records')}
-            colorScheme={colorScheme}
+            isFocused={isFocused("admin.records")}
+            onPress={() => navigation.navigate("admin.records")}
+            isDark={isDark}
           />
         </View>
       </View>
-    </>
+    </View>
   );
 };
 
 // --- SUB COMPONENTS ---
 
-const TabItem = ({ icon: Icon, label, isFocused, onPress, colorScheme }: any) => (
+const TabItem = ({ icon: Icon, label, isFocused, onPress, isDark }: any) => (
   <TouchableOpacity
     onPress={onPress}
-    style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 4 }}
-    activeOpacity={0.6}
+    style={styles.tabItem}
+    activeOpacity={0.75}
   >
     <View
-      style={
-        isFocused
-          ? { backgroundColor: colorScheme === 'dark' ? '#1e3a8a' : '#eff6ff', width: 52, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }
-          : { alignItems: 'center', justifyContent: 'center' }
-      }
+      style={[
+        styles.iconWrapper,
+        {
+          backgroundColor: isFocused
+            ? isDark
+              ? "#1e3a8a"
+              : "#eff6ff"
+            : "transparent",
+        },
+      ]}
     >
-      <Icon color={isFocused ? COLORS.active : COLORS.inactive} size={22} strokeWidth={isFocused ? 2.5 : 2} />
+      <Icon
+        color={isFocused ? COLORS.active : COLORS.inactive}
+        size={22}
+        strokeWidth={isFocused ? 2.6 : 2}
+      />
     </View>
-    <Text style={{ fontSize: 10, color: isFocused ? COLORS.active : COLORS.inactive, fontWeight: '600', marginTop: 2 }}>
+
+    <Text
+      numberOfLines={1}
+      style={[
+        styles.tabLabel,
+        {
+          color: isFocused ? COLORS.active : COLORS.inactive,
+          fontFamily: isFocused ? "Outfit_800ExtraBold" : "Outfit_600SemiBold",
+        },
+      ]}
+    >
       {label}
     </Text>
   </TouchableOpacity>
 );
 
-
-const ModalAction = ({ icon, label, onPress }: { icon: any; label: string; onPress?: () => void }) => (
+const ModalAction = ({ icon, label, onPress, isDark }: any) => (
   <TouchableOpacity
     onPress={onPress}
-    className="w-[47%] bg-white dark:bg-slate-800 p-5 rounded-[24px] items-center border border-slate-100 dark:border-slate-700"
-    style={styles.actionShadow}
+    style={[
+      styles.modalAction,
+      {
+        backgroundColor: isDark ? "#1e293b" : "#ffffff",
+        borderColor: isDark ? "#334155" : "#f1f5f9",
+      },
+    ]}
+    activeOpacity={0.75}
   >
-    <View className="w-14 h-14 bg-blue-50 dark:bg-blue-900/30 rounded-full items-center justify-center mb-3">{icon}</View>
-    <Text className="font-bold text-slate-700 dark:text-slate-200 text-[13px]">{label}</Text>
+    <View
+      style={[
+        styles.actionIcon,
+        {
+          backgroundColor: isDark ? "rgba(37, 99, 235, 0.16)" : "#eff6ff",
+        },
+      ]}
+    >
+      {icon}
+    </View>
+
+    <Text
+      style={[styles.actionLabel, { color: isDark ? "#e2e8f0" : "#334155" }]}
+    >
+      {label}
+    </Text>
   </TouchableOpacity>
 );
-
 
 // --- STYLES ---
 
 const styles = StyleSheet.create({
+  outerContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "transparent",
+  },
   tabContainer: {
-    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
     elevation: 16,
     zIndex: 100,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.07,
     shadowRadius: 16,
   },
-  topBorder: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
+  tabRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    paddingTop: 8,
+  },
+  tabItem: {
+    flex: 1,
+    height: 62,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconWrapper: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tabLabel: {
+    fontSize: 10,
+    marginTop: 2,
+  },
+  fabSlot: {
+    flex: 1,
+    height: 62,
+    alignItems: "center",
+    justifyContent: "flex-start",
   },
   fab: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15,23,42,0.6)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+  },
+  modalHandle: {
+    width: 48,
+    height: 5,
+    borderRadius: 999,
+    alignSelf: "center",
+    marginBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontFamily: "Outfit_800ExtraBold",
+  },
+  closeButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  modalAction: {
+    width: "48%",
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    alignItems: "center",
+    borderWidth: 1,
+    marginBottom: 14,
+  },
+  actionIcon: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#0f172a',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#ffffff',
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
   },
-  fabShadow: {
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  modalShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 20,
-  },
-  actionShadow: {
-    shadowColor: '#94a3b8',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+  actionLabel: {
+    fontSize: 13,
+    fontFamily: "Outfit_700Bold",
+    textAlign: "center",
   },
 });
 

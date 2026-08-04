@@ -1,371 +1,245 @@
-import React, { useState } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  TouchableWithoutFeedback,
-  StyleSheet,
-} from "react-native";
-import {
-  Home,
-  Users,
-  Plus,
-  FileText,
-  Dog,
-  X,
-  Syringe,
-  ClipboardList,
-  Map,
-  Camera,
-  MessageSquareQuote,
-  Sparkles,
-  Calendar as CalendarIcon,
-  UserPlus,
-} from "lucide-react-native";
+import React from "react";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
-import { useRouter } from "expo-router";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@clerk/clerk-expo";
+import {
+  ClipboardList,
+  FileText,
+  Home,
+  PawPrint,
+  Users,
+} from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useColorScheme } from "nativewind";
 
-// Premium Theme Colors
-const COLORS = {
-  primary: "#0f766e",
-  active: "#0d9488",
-  inactive: "#94a3b8",
-  background: "#ffffff",
-  surface: "#f8fafc",
-  darkBackground: "#0f172a",
-  darkSurface: "#1e293b",
-};
+import { useApi } from "@/lib/api";
+import { useTheme } from "@/lib/theme";
+import { getTechnicianRequests } from "@/features/technician-requests/services/technicianRequests.service";
 
-const BottomNavigator = ({
+const REQUEST_ROUTES = ["technician.requests"];
+
+export default function BottomNavigator({
   state,
   descriptors,
   navigation,
-}: BottomTabBarProps) => {
+}: BottomTabBarProps) {
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
+  const api = useApi();
+  const { isLoaded, isSignedIn } = useAuth();
+
   const focusedRouteKey = state.routes[state.index].key;
   const focusedOptions = descriptors[focusedRouteKey].options;
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const { colorScheme } = useColorScheme();
+  const { data: requestCountData } = useQuery({
+    queryKey: ["technician", "requests", "navigation-count"],
+    queryFn: () =>
+      getTechnicianRequests(api, {
+        assignment: "unassigned",
+        status: "pending",
+        page: 1,
+        limit: 1,
+      }),
+    enabled: Boolean(isLoaded && isSignedIn),
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
 
-  if ((focusedOptions.tabBarStyle as any)?.display === "none") {
-    return null;
-  }
+  if ((focusedOptions.tabBarStyle as any)?.display === "none") return null;
 
-  const onNavigate = (screenName: string) => {
-    navigation.navigate(screenName);
-  };
+  const activeRoute = state.routes[state.index]?.name;
+  const availableCount = requestCountData?.pagination?.total || 0;
 
-  const isFocused = (screenName: string) => {
-    const route = state.routes.find((r) => r.name === screenName);
-    return route ? state.index === state.routes.indexOf(route) : false;
-  };
+  const navigate = (screenName: string) => {
+    const route = state.routes.find((item) => item.name === screenName);
+    if (!route) return;
 
-  const handleModalAction = (path: string) => {
-    setModalVisible(false);
-    router.push(path as any);
+    const event = navigation.emit({
+      type: "tabPress",
+      target: route.key,
+      canPreventDefault: true,
+    });
+
+    if (!event.defaultPrevented) navigation.navigate(screenName);
   };
 
   return (
-    <>
-      {/* --- QUICK ACTION MODAL --- */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <TouchableOpacity
-          className="flex-1 bg-slate-900/60 justify-end"
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
-        >
-          <TouchableWithoutFeedback>
-            <View
-              className="bg-white dark:bg-slate-900 rounded-t-[40px] px-6 pt-8 pb-12"
-              style={[
-                styles.modalShadow,
-                { paddingBottom: insets.bottom + 20 },
-              ]}
-            >
-              <View className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full self-center mb-6" />
-              <View className="flex-row justify-between items-center mb-8">
-                <Text
-                  style={{ fontFamily: "Outfit_800ExtraBold" }}
-                  className="text-2xl text-slate-800 dark:text-white tracking-tight"
-                >
-                  Quick Actions
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full items-center justify-center"
-                >
-                  <X
-                    size={20}
-                    color={colorScheme === "dark" ? "#94a3b8" : "#64748b"}
-                  />
-                </TouchableOpacity>
-              </View>
-              <View className="flex-row flex-wrap justify-between gap-y-4">
-                <ModalAction
-                  icon={<CalendarIcon size={24} color="#0d9488" />}
-                  label="Field Calendar"
-                  onPress={() =>
-                    handleModalAction("/(technician)/technician.calendar")
-                  }
-                />
-                <ModalAction
-                  icon={<Camera size={24} color="#0d9488" />}
-                  label="Photo Note"
-                  onPress={() =>
-                    handleModalAction("/(technician)/photo-notes")
-                  }
-                />
-                {/* <ModalAction
-                  icon={<Map size={24} color="#0d9488" />}
-                  label="Heatmap"
-                  onPress={() =>
-                    handleModalAction("/(technician)/heat-map")
-                  }
-                /> */}
-                <ModalAction
-                  icon={<FileText size={24} color="#0d9488" />}
-                  label="Field Reports"
-                  onPress={() =>
-                    handleModalAction("/(technician)/technician.reports")
-                  }
-                />
-                <ModalAction
-                  icon={<UserPlus size={24} color="#0d9488" />}
-                  label="Register Farmer"
-                  onPress={() =>
-                    handleModalAction("/(technician)/register-client")
-                  }
-                />
-                <ModalAction
-                  icon={<Sparkles size={24} color="#0d9488" />}
-                  label="Ask Moowie"
-                  onPress={() => handleModalAction("/ask-moowie")}
-                />
-              </View>
-            </View>
-          </TouchableWithoutFeedback>
-        </TouchableOpacity>
-      </Modal>
+    <View
+      style={[
+        styles.container,
+        {
+          paddingBottom: Math.max(insets.bottom, 8),
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
+        },
+      ]}
+    >
+      <TabItem
+        icon={Home}
+        label="Home"
+        focused={activeRoute === "technician.dashboard"}
+        onPress={() => navigate("technician.dashboard")}
+        colors={colors}
+        isDark={isDark}
+      />
+      <TabItem
+        icon={Users}
+        label="Farmers"
+        focused={activeRoute === "technician.clients"}
+        onPress={() => navigate("technician.clients")}
+        colors={colors}
+        isDark={isDark}
+      />
+      <TabItem
+        icon={ClipboardList}
+        label="Requests"
+        focused={REQUEST_ROUTES.includes(activeRoute)}
+        badge={availableCount}
+        onPress={() => navigate("technician.requests")}
+        colors={colors}
+        isDark={isDark}
+      />
+      <TabItem
+        icon={PawPrint}
+        label="Animals"
+        focused={activeRoute === "technician.animals"}
+        onPress={() => navigate("technician.animals")}
+        colors={colors}
+        isDark={isDark}
+      />
+      <TabItem
+        icon={FileText}
+        label="Records"
+        focused={activeRoute === "technician.records"}
+        onPress={() => navigate("technician.records")}
+        colors={colors}
+        isDark={isDark}
+      />
+    </View>
+  );
+}
 
-      {/* --- MAIN TAB BAR — flat, flush, no floating --- */}
-      <View
+function TabItem({
+  icon: Icon,
+  label,
+  focused,
+  badge = 0,
+  onPress,
+  colors,
+  isDark,
+}: any) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.72}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: focused }}
+      style={styles.tab}
+    >
+      <View style={styles.iconSlot}>
+        <View
+          style={[
+            styles.iconCircle,
+            {
+              backgroundColor: focused
+                ? isDark
+                  ? "rgba(16,185,129,0.18)"
+                  : "rgba(0,100,59,0.10)"
+                : "transparent",
+            },
+          ]}
+        >
+          <Icon
+            size={22}
+            strokeWidth={focused ? 2.5 : 2}
+            color={focused ? colors.primary : colors.textMuted}
+          />
+        </View>
+        {badge > 0 ? (
+          <View style={[styles.badge, { borderColor: colors.card }]}>
+            <Text style={styles.badgeText}>{badge > 99 ? "99+" : badge}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.82}
         style={[
-          styles.tabContainer,
+          styles.label,
           {
-            paddingBottom: Math.max(insets.bottom, 12),
-            backgroundColor:
-              colorScheme === "dark"
-                ? COLORS.darkBackground
-                : COLORS.background,
+            color: focused ? colors.primary : colors.textMuted,
+            fontFamily: focused ? "Outfit_700Bold" : "Outfit_500Medium",
           },
         ]}
       >
-        <View
-          style={[
-            styles.topBorder,
-            { backgroundColor: colorScheme === "dark" ? "#1e293b" : "#f1f5f9" },
-          ]}
-        />
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "flex-end",
-            backgroundColor:
-              colorScheme === "dark"
-                ? COLORS.darkBackground
-                : COLORS.background,
-            paddingTop: 8,
-          }}
-        >
-          <TabItem
-            icon={Home}
-            label="Home"
-            isFocused={isFocused("technician.dashboard")}
-            onPress={() => onNavigate("technician.dashboard")}
-            colorScheme={colorScheme}
-          />
-          <TabItem
-            icon={Users}
-            label="Clients"
-            isFocused={isFocused("technician.clients")}
-            onPress={() => onNavigate("technician.clients")}
-            colorScheme={colorScheme}
-          />
-
-          {/* Center FAB — rises above bar via negative marginTop */}
-          <View style={{ flex: 1, alignItems: "center", marginTop: -20 }}>
-            <TouchableOpacity
-              style={[
-                styles.fab,
-                styles.fabShadow,
-                {
-                  borderColor:
-                    colorScheme === "dark" ? COLORS.darkBackground : "#ffffff",
-                },
-              ]}
-              activeOpacity={0.9}
-              onPress={() => setModalVisible(true)}
-            >
-              <Plus color="white" size={28} strokeWidth={2.5} />
-            </TouchableOpacity>
-          </View>
-
-          <TabItem
-            icon={Dog}
-            label="Animals"
-            isFocused={isFocused("technician.animals")}
-            onPress={() => onNavigate("technician.animals")}
-            colorScheme={colorScheme}
-          />
-          <TabItem
-            icon={FileText}
-            label="Ledger"
-            isFocused={isFocused("technician.records")}
-            onPress={() => onNavigate("technician.records")}
-            colorScheme={colorScheme}
-          />
-        </View>
-      </View>
-    </>
+        {label}
+      </Text>
+    </TouchableOpacity>
   );
-};
-
-// --- SUB COMPONENTS ---
-
-const TabItem = ({
-  icon: Icon,
-  label,
-  isFocused,
-  onPress,
-  colorScheme,
-}: any) => (
-  <TouchableOpacity
-    onPress={onPress}
-    style={{
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      paddingTop: 8,
-      paddingBottom: 10,
-    }}
-    activeOpacity={0.6}
-  >
-    <View
-      style={
-        isFocused
-          ? {
-              backgroundColor: colorScheme === "dark" ? "#134e4a" : "#f0fdfa",
-              width: 52,
-              height: 32,
-              borderRadius: 16,
-              alignItems: "center",
-              justifyContent: "center",
-            }
-          : { alignItems: "center", justifyContent: "center" }
-      }
-    >
-      <Icon
-        color={isFocused ? COLORS.active : COLORS.inactive}
-        size={22}
-        strokeWidth={isFocused ? 2.5 : 2}
-      />
-    </View>
-    <Text
-      style={{
-        fontSize: 10,
-        color: isFocused ? COLORS.active : COLORS.inactive,
-        fontFamily: isFocused ? "Outfit_800ExtraBold" : "Outfit_600SemiBold",
-        marginTop: 2,
-      }}
-    >
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
-
-const ModalAction = ({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: any;
-  label: string;
-  onPress?: () => void;
-}) => (
-  <TouchableOpacity
-    onPress={onPress}
-    className="w-[47%] bg-white dark:bg-slate-800 p-5 rounded-[24px] items-center border border-slate-100 dark:border-slate-700"
-    style={styles.actionShadow}
-  >
-    <View className="w-14 h-14 bg-teal-50 dark:bg-teal-900/30 rounded-full items-center justify-center mb-3">
-      {icon}
-    </View>
-    <Text
-      style={{ fontFamily: "Outfit_700Bold" }}
-      className="text-slate-700 dark:text-slate-200 text-[13px]"
-    >
-      {label}
-    </Text>
-  </TouchableOpacity>
-);
-
-// --- STYLES ---
+}
 
 const styles = StyleSheet.create({
-  tabContainer: {
-    backgroundColor: "#ffffff",
-    elevation: 16,
-    zIndex: 100,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.07,
-    shadowRadius: 16,
+  container: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    left: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 7,
+    elevation: 12,
+    shadowColor: "#052e1d",
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
   },
-  topBorder: {
-    height: 1,
-    backgroundColor: "#f1f5f9",
-  },
-  fab: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: "#0f766e",
+  tab: {
+    flex: 1,
+    minHeight: 58,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 3,
-    borderColor: "#ffffff",
+    backgroundColor: "transparent",
   },
-  fabShadow: {
-    shadowColor: "#0f766e",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
+  iconSlot: {
+    width: 42,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  modalShadow: {
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 20,
+  iconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
   },
-  actionShadow: {
-    shadowColor: "#94a3b8",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+  label: {
+    marginTop: 3,
+    fontSize: 10,
+    lineHeight: 13,
+    textAlign: "center",
+  },
+  badge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#b45309",
+  },
+  badgeText: {
+    color: "#fff",
+    fontFamily: "Outfit_700Bold",
+    fontSize: 9,
+    lineHeight: 11,
   },
 });
-
-export default BottomNavigator;

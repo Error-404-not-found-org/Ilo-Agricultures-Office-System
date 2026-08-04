@@ -1,661 +1,184 @@
-import React, { useMemo, useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
-  User,
-  Phone,
-  MapPin,
-  Mail,
-  Calendar,
-  Tractor,
-  Database,
-  HeartPulse,
-  Tag,
-  ExternalLink,
   AlertCircle,
-  FileSpreadsheet,
-  Settings,
+  ArrowLeft,
+  Beef,
+  Calendar,
+  History,
+  Mail,
+  MapPin,
+  Phone,
+  Plus,
+  RefreshCw,
+  Search,
+  Smartphone,
+  Syringe,
+  User,
   X,
 } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
 import axiosInstance from "../../lib/axios";
-import { useToast } from "../../contexts/ToastContext";
-import { OTON_BARANGAYS } from "../../constants/barangays";
+import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+
+const REPRODUCTIVE_STATUSES = ["Normal", "In Heat", "Inseminated", "Likely Pregnant", "Pregnant", "Dry", "Lactating", "Post-partum"];
+const CATTLE_SPECIES = new Set(["beef", "dairy", "beef cattle", "dairy cattle", "cattle", "bovine"]);
+
+const cleanPart = (value) => {
+  const text = String(value || "").trim();
+  return ["", "n/a", "na", "unknown", "not provided"].includes(text.toLowerCase()) ? "" : text;
+};
+
+const getAddress = (value) => {
+  if (Array.isArray(value)) return value[0] || {};
+  return value && typeof value === "object" ? value : {};
+};
+
+const getLocation = (farmer) => {
+  const address = getAddress(farmer?.address);
+  return [cleanPart(address.barangay), cleanPart(address.city || address.municipality)].filter(Boolean).join(", ") || "Location not provided";
+};
+
+const statusClass = (value) => {
+  const status = String(value || "normal").toLowerCase();
+  if (status === "pregnant") return "badge-success";
+  if (["inseminated", "likely pregnant"].includes(status)) return "badge-info";
+  if (["in heat", "post-partum", "postpartum"].includes(status)) return "badge-warning";
+  return "badge-primary";
+};
+
+const getAppStatus = (farmer) => {
+  const realAccount = farmer?.clerkId && !String(farmer.clerkId).startsWith("manual_");
+  if (farmer?.profileClaimStatus === "blocked") return { label: "Blocked", className: "badge-error" };
+  if (farmer?.profileClaimStatus === "claimed" || realAccount) return { label: "App connected", className: "badge-success" };
+  if (farmer?.profileClaimStatus === "unclaimed" || (farmer?.registeredByTechnician && !farmer?.email)) return { label: "No app account", className: "badge-warning" };
+  return { label: "Profile only", className: "badge-ghost" };
+};
+
+function ProfileSkeleton() {
+  return (
+    <div className="min-h-screen flex-1 bg-base-200 p-4 md:p-6">
+      <div className="mx-auto max-w-7xl space-y-5">
+        <div className="skeleton h-16 w-full" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((item) => <div key={item} className="skeleton h-28" />)}</div>
+        <div className="grid gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]"><div className="skeleton h-96" /><div className="skeleton h-96" /></div>
+      </div>
+    </div>
+  );
+}
+
+function MetricCard({ value, label, note }) {
+  return <div className="stats border border-base-300 bg-base-100 shadow-sm"><div className="stat py-4"><div className="stat-title text-xs font-semibold">{label}</div><div className="stat-value text-2xl">{value}</div><div className="stat-desc text-base-content/55">{note}</div></div></div>;
+}
+
+function AnimalCard({ animal, onOpen }) {
+  return (
+    <article className="card card-sm card-border overflow-hidden bg-base-100 shadow-sm sm:card-side">
+      <figure className="h-32 bg-base-200 sm:h-auto sm:w-36 sm:shrink-0">{animal.imageUrl ? <img src={animal.imageUrl} alt={`Animal ${animal.tag}`} className="h-full w-full object-cover" /> : <Beef size={38} className="text-primary/40" />}</figure>
+      <div className="card-body min-w-0 gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="card-title text-base">#{animal.tag}</h3><p className="text-sm text-base-content/60">{animal.species} · {animal.breed}</p></div><span className={`badge badge-sm badge-soft ${statusClass(animal.status)}`}>{animal.status}</span></div>
+        <p className="text-sm text-base-content/65">{animal.gender} · Last AI: {animal.lastAI}</p>
+        <div className="card-actions justify-end border-t border-base-300 pt-3"><button type="button" className="btn btn-sm w-full sm:w-auto" onClick={() => onOpen(animal)}><History size={15} /> Open animal history</button></div>
+      </div>
+    </article>
+  );
+}
 
 export default function FarmerProfile() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const toast = useToast();
-  const queryClient = useQueryClient();
+  const [animalSearch, setAnimalSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
 
-  // ---- APPLICATION LOCAL MODAL STATES ----
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [isBarangayDropdownOpen, setIsBarangayDropdownOpen] = useState(false);
-  const [editData, setEditData] = useState({
-    id: "",
-    firstName: "",
-    lastName: "",
-    phoneNumber: "",
-    barangay: "",
-    email: "",
-  });
-
-  // ---- BACKEND RECOVERY PIPELINES ----
-  const {
-    data: farmer,
-    isLoading: isFarmerLoading,
-    error: farmerError,
-  } = useQuery({
+  const farmerQuery = useQuery({
     queryKey: ["technician", "farmer", id],
+    queryFn: async () => (await axiosInstance.get(`/user/${id}`)).data,
+    enabled: Boolean(id),
+  });
+  const animalsQuery = useQuery({
+    queryKey: ["animals", "farmer", id],
     queryFn: async () => {
-      const res = await axiosInstance.get(`/user/${id}`);
-      return res.data;
+      const response = await axiosInstance.get(`/animals/farmer/${id}`);
+      return response.data?.data || response.data?.animals || response.data || [];
     },
-    enabled: !!id,
+    enabled: Boolean(id),
   });
 
-  const { data: animals = [], isLoading: isAnimalsLoading } = useQuery({
-    queryKey: ["animals"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/animals/all");
-      return res.data || [];
-    },
-  });
+  const farmer = farmerQuery.data;
+  const ownedAnimals = useMemo(() => Array.isArray(animalsQuery.data) ? animalsQuery.data : [], [animalsQuery.data]);
+  const animals = useMemo(() => ownedAnimals.map((animal) => ({
+    id: animal._id,
+    tag: animal.earTag || animal.animalId || "Unassigned tag",
+    species: animal.species || animal.type || "Not recorded",
+    breed: animal.breed || "Not recorded",
+    gender: animal.gender || "Not recorded",
+    status: animal.reproductiveStatus || "Normal",
+    imageUrl: animal.imageUrl || "",
+    lastAI: animal.lastInseminationDate ? new Date(animal.lastInseminationDate).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "Not recorded",
+  })), [ownedAnimals]);
 
-  const isLoading = isFarmerLoading || isAnimalsLoading;
-
-  // ---- DYNAMIC CROSS-REFERENCE FILTER MATRIX ----
-  const ownedAnimals = useMemo(() => {
-    if (!Array.isArray(animals) || !id) return [];
+  const visibleAnimals = useMemo(() => {
+    const query = animalSearch.trim().toLowerCase();
     return animals.filter((animal) => {
-      const fId =
-        typeof animal.farmerId === "object"
-          ? animal.farmerId?._id
-          : animal.farmerId;
-      return fId === id;
+      const matchesSearch = !query || [animal.tag, animal.species, animal.breed].join(" ").toLowerCase().includes(query);
+      const matchesStatus = !statusFilter || animal.status === statusFilter || (statusFilter === "Normal" && animal.status === "Open");
+      return matchesSearch && matchesStatus;
     });
-  }, [animals, id]);
+  }, [animalSearch, animals, statusFilter]);
 
-  const stats = useMemo(() => {
-    return {
-      totalHerd: ownedAnimals.length,
-      cattleCount: ownedAnimals.filter(
-        (a) =>
-          a.species?.toLowerCase() === "cattle" ||
-          a.type?.toLowerCase() === "cattle",
-      ).length,
-      otherCount: ownedAnimals.filter(
-        (a) =>
-          a.species?.toLowerCase() !== "cattle" &&
-          a.type?.toLowerCase() !== "cattle",
-      ).length,
-    };
-  }, [ownedAnimals]);
+  const stats = useMemo(() => ({
+    total: animals.length,
+    cattle: animals.filter((animal) => CATTLE_SPECIES.has(animal.species.toLowerCase())).length,
+    pregnant: animals.filter((animal) => animal.status === "Pregnant").length,
+    needsFollowUp: animals.filter((animal) => ["Inseminated", "Likely Pregnant", "In Heat"].includes(animal.status)).length,
+  }), [animals]);
 
-  // ---- MODAL LIFECYCLE EVENT HANDLERS ----
-  const openEditModal = () => {
-    if (!farmer) return;
-    const nameParts = farmer.name?.split(" ") || ["", ""];
-    setEditData({
-      id: farmer._id,
-      firstName: nameParts[0] || "",
-      lastName: nameParts.slice(1).join(" ") || "",
-      phoneNumber: farmer.phoneNumber || "",
-      barangay: farmer.address?.barangay || "",
-      email: farmer.email || "",
-    });
-    setIsEditModalOpen(true);
-  };
+  if (farmerQuery.isLoading || animalsQuery.isLoading) return <ProfileSkeleton />;
 
-  const handleEditSubmit = async (e) => {
-    e.preventDefault();
-
-    // Explicit Validation Safeguards
-    if (editData.phoneNumber.length < 10) {
-      toast.error("Please provide a valid complete mobile contact number.");
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      await axiosInstance.put(`/user/${editData.id}`, {
-        name: `${editData.firstName.trim()} ${editData.lastName.trim()}`,
-        phoneNumber: editData.phoneNumber,
-        address: {
-          barangay: editData.barangay,
-          city: "Oton",
-          province: "Iloilo",
-        },
-        email: editData.email,
-      });
-      toast.success("Profile updated successfully");
-      queryClient.invalidateQueries({ queryKey: ["technician", "farmer", id] });
-      setIsEditModalOpen(false);
-    } catch (error) {
-      toast.error("Failed to update official profile ledger parameters");
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex flex-col h-screen bg-slate-50 dark:bg-slate-900 justify-center items-center">
-        <div className="flex flex-col items-center gap-3 select-none">
-          <div className="w-10 h-10 border-4 border-slate-200 border-t-[#00643b] dark:border-slate-800 dark:border-t-emerald-500 rounded-full animate-spin" />
-          <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest animate-pulse">
-            Syncing Profile...
-          </span>
-        </div>
-      </div>
-    );
+  if (farmerQuery.isError || !farmer) {
+    return <div className="flex min-h-screen flex-1 items-center justify-center bg-base-200 p-6"><div role="alert" className="alert alert-error max-w-xl"><AlertCircle size={20} /><div><div className="font-bold">Farmer profile could not be loaded.</div><div className="text-sm">{farmerQuery.error?.response?.data?.message || farmerQuery.error?.message || "The profile may no longer be available."}</div></div><button type="button" className="btn btn-sm" onClick={() => farmerQuery.refetch()}><RefreshCw size={14} /> Retry</button><button type="button" className="btn btn-sm btn-ghost" onClick={() => navigate("/technician/farmers")}><ArrowLeft size={14} /> Farmers</button></div></div>;
   }
 
-  if (farmerError || !farmer) {
-    return (
-      <div className="flex-1 flex flex-col h-screen bg-slate-50 dark:bg-slate-900 justify-center items-center p-6">
-        <div className="text-center space-y-4 max-w-sm">
-          <AlertCircle size={40} className="text-rose-500 mx-auto" />
-          <h2 className="text-lg font-black text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-            Profile Access Failure
-          </h2>
-          <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
-            Could not locate or parse the target farmer database ledger file
-            inside this municipal instance cluster.
-          </p>
-          <button
-            onClick={() => navigate("/technician/farmers")}
-            className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] text-white rounded-xl text-xs font-bold gap-1.5 px-4"
-          >
-            <ArrowLeft size={14} /> Return to Registry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const address = getAddress(farmer.address);
+  const phone = farmer.phoneNumber || address.phoneNumber || "Phone not provided";
+  const location = getLocation(farmer);
+  const appStatus = getAppStatus(farmer);
+  const hasAnimalFilters = Boolean(animalSearch || statusFilter);
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
-      {/* Sticky Header Bar */}
-      <header className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800/80 px-4 sm:px-8 h-16 flex items-center justify-between flex-shrink-0 current-row sticky top-0 z-30 backdrop-blur-md bg-white/90 dark:bg-slate-950/90">
-        <div className="flex items-center gap-4 min-w-0">
-          <button
-            onClick={() => navigate("/technician/farmers")}
-            className="btn btn-sm btn-circle btn-ghost text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-900 flex items-center justify-center cursor-pointer transition-colors"
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <div className="min-w-0">
-            <h1 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider truncate">
-              {farmer.name || "Farmer Account Dossier"}
-            </h1>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-              System Reference &bull; UID-{farmer._id?.slice(-8).toUpperCase()}
-            </p>
-          </div>
-        </div>
-
-        <div>
-          <span
-            className={`badge badge-sm border font-black text-[9px] uppercase tracking-wider px-2.5 h-6 rounded-md ${
-              farmer.isVerified
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-                : "bg-slate-100 dark:bg-slate-900 text-slate-400 border-slate-200 dark:border-slate-800"
-            }`}
-          >
-            {farmer.isVerified ? "Verified Partner" : "Manual File"}
-          </span>
+    <div className="min-h-screen flex-1 overflow-y-auto bg-base-200 text-base-content">
+      <header className="sticky top-0 z-30 border-b border-base-300 bg-base-100/95 px-4 py-3 backdrop-blur md:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3"><button type="button" className="btn btn-ghost btn-sm btn-square" aria-label="Back to Farmers" onClick={() => navigate("/technician/farmers")}><ArrowLeft size={18} /></button><div className="min-w-0"><h1 className="truncate text-lg font-bold">Farmer Profile</h1><p className="truncate text-sm text-base-content/55">{farmer.name || "Unnamed farmer"}</p></div></div>
+          <div className="flex flex-wrap justify-end gap-2"><span className={`badge badge-soft ${appStatus.className}`}>{appStatus.label}</span><span className={`badge badge-soft ${farmer.isVerified ? "badge-success" : "badge-warning"}`}>{farmer.isVerified ? "Verified profile" : "Needs verification"}</span></div>
         </div>
       </header>
 
-      {/* Main Container Dashboard */}
-      <main className="max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex-1 flex flex-col min-h-0 space-y-6">
-        {/* Dynamic Metric Layout Blocks */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-xl flex items-center gap-3.5 shadow-sm">
-            <div className="p-2.5 rounded-xl shrink-0 bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b] dark:text-emerald-400 border border-emerald-500/10">
-              <Tractor size={16} />
-            </div>
-            <div>
-              <div className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                {stats.totalHerd}
-              </div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
-                Total Herd Headcount
-              </div>
-            </div>
-          </div>
+      <main className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
+        <section className="grid grid-cols-2 gap-3 xl:grid-cols-4"><MetricCard value={stats.total} label="Registered animals" note="Total herd" /><MetricCard value={stats.cattle} label="Cattle" note="Beef and dairy" /><MetricCard value={stats.pregnant} label="Pregnant" note="Current status" /><MetricCard value={stats.needsFollowUp} label="Needs follow-up" note="Breeding-related" /></section>
 
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-xl flex items-center gap-3.5 shadow-sm">
-            <div className="p-2.5 rounded-xl shrink-0 bg-blue-50 dark:bg-blue-950/20 text-blue-600 border border-blue-500/10">
-              <Database size={16} />
-            </div>
-            <div>
-              <div className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                {stats.cattleCount}
-              </div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
-                Registered Cattle
-              </div>
-            </div>
-          </div>
+        <div className="grid items-start gap-5 lg:grid-cols-[20rem_minmax(0,1fr)]">
+          <aside className="card card-border bg-base-100 shadow-sm"><div className="card-body gap-5">
+            <div className="flex items-center gap-4"><div className="avatar placeholder"><div className="w-16 rounded-2xl bg-base-200 text-base-content/50">{farmer.imageUrl ? <img src={farmer.imageUrl} alt={farmer.name || "Farmer"} /> : <User size={28} />}</div></div><div className="min-w-0"><h2 className="card-title truncate">{farmer.name}</h2><p className="text-sm text-base-content/55">Livestock owner</p></div></div>
+            <div className="grid gap-2"><button type="button" className="btn btn-primary btn-sm" onClick={() => setIsRegisterModalOpen(true)}><Plus size={15} /> Register animal</button><button type="button" className="btn btn-sm" onClick={() => navigate(`/technician/walk-in?farmerId=${farmer._id}`)}><Syringe size={15} /> Record walk-in AI</button>{phone !== "Phone not provided" && <a className="btn btn-sm btn-ghost" href={`tel:${phone}`}><Phone size={15} /> Call farmer</a>}</div>
+            <div className="divider my-0" />
+            <dl className="space-y-4 text-sm"><div className="flex items-start gap-3"><MapPin size={16} className="mt-0.5 shrink-0 text-primary" /><div><dt className="text-xs text-base-content/50">Home / contact location</dt><dd className="font-semibold">{location}</dd></div></div><div className="flex items-start gap-3"><Phone size={16} className="mt-0.5 shrink-0 text-primary" /><div><dt className="text-xs text-base-content/50">Phone</dt><dd className="font-semibold">{phone}</dd></div></div><div className="flex items-start gap-3"><Mail size={16} className="mt-0.5 shrink-0 text-primary" /><div className="min-w-0"><dt className="text-xs text-base-content/50">Email</dt><dd className="break-words font-semibold">{farmer.email || "Email not provided"}</dd></div></div><div className="flex items-start gap-3"><Calendar size={16} className="mt-0.5 shrink-0 text-primary" /><div><dt className="text-xs text-base-content/50">Registered</dt><dd className="font-semibold">{farmer.createdAt ? new Date(farmer.createdAt).toLocaleDateString("en-PH", { dateStyle: "long" }) : "Date not recorded"}</dd></div></div><div className="flex items-start gap-3"><Smartphone size={16} className="mt-0.5 shrink-0 text-primary" /><div><dt className="text-xs text-base-content/50">Mobile app access</dt><dd className="font-semibold">{appStatus.label}</dd></div></div></dl>
+          </div></aside>
 
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-xl flex items-center gap-3.5 shadow-sm">
-            <div className="p-2.5 rounded-xl shrink-0 bg-purple-50 dark:bg-purple-950/20 text-purple-600 border border-purple-500/10">
-              <HeartPulse size={16} />
-            </div>
-            <div>
-              <div className="text-xl font-black tracking-tight text-slate-900 dark:text-white">
-                {stats.otherCount}
-              </div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
-                Other Specie Units
-              </div>
-            </div>
-          </div>
-        </div>
+          <section className="card card-border min-w-0 bg-base-100 shadow-sm"><div className="card-body gap-4 p-4 md:p-5">
+            <div><h2 className="card-title">Registered Animals</h2><p className="text-sm text-base-content/55">Search this farmer’s herd and open the complete animal history.</p></div>
+            <div className="flex flex-col gap-2 rounded-box border border-base-300 bg-base-200 p-3 sm:flex-row"><label className="input w-full"><Search size={16} className="text-base-content/45" /><input type="search" aria-label="Search this farmer's animals" placeholder="Search animal tag, species, or breed" value={animalSearch} onChange={(event) => setAnimalSearch(event.target.value)} /></label><select className="select w-full sm:w-auto" aria-label="Filter this farmer's animals by reproductive status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="">All reproductive statuses</option>{REPRODUCTIVE_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select>{hasAnimalFilters && <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setAnimalSearch(""); setStatusFilter(""); }}><X size={14} /> Clear</button>}</div>
 
-        {/* Unified Layout Split */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start flex-1">
-          {/* COLUMN 1: Profile Summary Side Card */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm space-y-5">
-            <div className="flex flex-col items-center text-center pt-2">
-              <div className="w-20 h-20 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center font-black text-2xl text-slate-400 overflow-hidden shadow-2xs mb-3">
-                {farmer.imageUrl ? (
-                  <img
-                    src={farmer.imageUrl}
-                    alt=""
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <User size={32} strokeWidth={1.5} />
-                )}
-              </div>
-              <h3 className="font-black text-base text-slate-800 dark:text-slate-100 leading-tight">
-                {farmer.name}
-              </h3>
-              <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mt-1">
-                {farmer.publicMetadata?.role || "Livestock Owner"}
-              </p>
-            </div>
-
-            {/* Actions Access Triggers */}
-            <div className="flex items-center gap-2 pt-1">
-              <a
-                href={`tel:${farmer.phoneNumber}`}
-                className="btn btn-sm btn-outline border-slate-200 dark:border-slate-800 hover:border-[#00643b] dark:hover:border-emerald-500 text-slate-600 dark:text-slate-300 font-bold text-xs rounded-xl px-4 flex-1 h-9 flex items-center justify-center"
-              >
-                <Phone size={13} className="mr-1" /> Call Partner
-              </a>
-              <button
-                onClick={openEditModal}
-                className="btn btn-sm bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 font-bold text-xs rounded-xl px-4 flex-1 h-9 cursor-pointer transition-colors"
-              >
-                <Settings size={13} className="mr-1" /> Update Profile
-              </button>
-            </div>
-
-            <div className="divider my-0 opacity-40 dark:border-slate-800" />
-
-            {/* Communication Details */}
-            <div className="space-y-4 text-xs font-semibold">
-              <div className="flex items-center gap-3.5">
-                <MapPin
-                  size={14}
-                  className="text-slate-400 dark:text-slate-500 shrink-0"
-                />
-                <div>
-                  <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                    Barangay Sector
-                  </div>
-                  <div className="text-slate-700 dark:text-slate-300 mt-0.5">
-                    {farmer.address?.barangay || "Oton Region"}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3.5">
-                <Phone
-                  size={14}
-                  className="text-slate-400 dark:text-slate-500 shrink-0"
-                />
-                <div>
-                  <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                    Mobile Line Contact
-                  </div>
-                  <span className="text-slate-700 dark:text-slate-300 mt-0.5 block font-mono">
-                    {farmer.phoneNumber || "No active cellular endpoint"}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3.5">
-                <Mail
-                  size={14}
-                  className="text-slate-400 dark:text-slate-500 shrink-0"
-                />
-                <div>
-                  <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                    Email Gateway
-                  </div>
-                  <div className="text-slate-700 dark:text-slate-300 truncate max-w-[180px] mt-0.5">
-                    {farmer.email || "No digital address linked"}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3.5">
-                <Calendar
-                  size={14}
-                  className="text-slate-400 dark:text-slate-500 shrink-0"
-                />
-                <div>
-                  <div className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                    Registry Activation Date
-                  </div>
-                  <div className="text-slate-700 dark:text-slate-300 mt-0.5">
-                    {farmer.createdAt
-                      ? new Date(farmer.createdAt).toLocaleDateString(
-                          undefined,
-                          { dateStyle: "long" },
-                        )
-                      : "N/A"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* COLUMNS 2 & 3: Farm Holdings Asset Ledger View */}
-          <div className="lg:col-span-2 card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4">
-            <div className="border-b border-slate-100 dark:border-slate-800/80 pb-3 flex items-center justify-between gap-4">
-              <div>
-                <h3 className="font-extrabold text-xs text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileSpreadsheet size={13} className="text-slate-400" />{" "}
-                  Associated Farm Herd Asset Registry
-                </h3>
-                <p className="text-[11px] text-slate-400 dark:text-slate-500 font-semibold mt-0.5">
-                  Biological ownership holdings tracked inside the active
-                  BreedSmart network infrastructure
-                </p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="table w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 dark:bg-slate-900 text-slate-400 dark:text-slate-500 border-b border-slate-100 dark:border-slate-800 text-[10.5px] font-bold uppercase tracking-wider select-none">
-                    <th className="p-3 pl-4">System Tag</th>
-                    <th className="p-3">Species Classification</th>
-                    <th className="p-3">Breed Structure</th>
-                    <th className="p-3">Biological Sex</th>
-                    <th className="p-3 pr-4 text-right">Action Link</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
-                  {ownedAnimals.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={5}
-                        className="p-12 text-center text-slate-400 dark:text-slate-500 font-medium italic"
-                      >
-                        No distinct livestock assets or animal registries tied
-                        to this holder account configuration.
-                      </td>
-                    </tr>
-                  ) : (
-                    ownedAnimals.map((animal) => (
-                      <tr
-                        key={animal._id}
-                        className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors"
-                      >
-                        <td className="p-3 pl-4 font-black text-[#00643b] dark:text-emerald-400 flex items-center gap-1.5">
-                          <Tag size={12} className="opacity-40" /> #
-                          {animal.earTag || "UN-TAGGED"}
-                        </td>
-                        <td className="p-3 font-bold text-slate-700 dark:text-slate-300 capitalize">
-                          {animal.type || animal.species || "Cattle"}
-                        </td>
-                        <td className="p-3 font-medium text-slate-500">
-                          {animal.breed || "Crossbreed Standard"}
-                        </td>
-                        <td className="p-3">
-                          <span
-                            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${
-                              animal.gender?.toLowerCase() === "male"
-                                ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/50"
-                                : "bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-950/20 dark:text-pink-400 dark:border-pink-900/50"
-                            }`}
-                          >
-                            {animal.gender || "Female"}
-                          </span>
-                        </td>
-                        <td className="p-3 pr-4 text-right">
-                          <button
-                            onClick={() => navigate(`/technician/animals`)}
-                            className="btn btn-ghost btn-xs btn-square text-slate-400 hover:text-[#00643b] dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-900 flex items-center justify-center cursor-pointer transition-colors"
-                            title="Audit Animal Core Metrics File"
-                          >
-                            <ExternalLink size={13} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+            {animalsQuery.isError ? <div role="alert" className="alert alert-error"><AlertCircle size={18} /><span>Registered animals could not be loaded.</span><button type="button" className="btn btn-sm" onClick={() => animalsQuery.refetch()}><RefreshCw size={14} /> Retry</button></div> : visibleAnimals.length === 0 ? <div className="rounded-box border border-dashed border-base-300 px-5 py-12 text-center"><Beef className="mx-auto mb-3 text-base-content/35" /><h3 className="font-bold">{ownedAnimals.length === 0 ? "No animals registered" : "No animals match these filters"}</h3><p className="mt-1 text-sm text-base-content/55">{ownedAnimals.length === 0 ? "Register this farmer’s first animal to begin its record history." : "Clear or change the search and reproductive-status filter."}</p></div> : <>
+              <div className="grid gap-3 lg:hidden">{visibleAnimals.map((animal) => <AnimalCard key={animal.id} animal={animal} onOpen={(item) => navigate(`/technician/animals/${item.id}`)} />)}</div>
+              <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block"><table className="table table-sm"><thead><tr><th>Animal</th><th>Species / breed</th><th>Sex</th><th>Reproductive status</th><th>Last AI</th><th><span className="sr-only">Action</span></th></tr></thead><tbody>{visibleAnimals.map((animal) => <tr key={animal.id} className="hover:bg-base-200"><td className="font-bold text-primary">#{animal.tag}</td><td><div className="font-semibold">{animal.species}</div><div className="text-xs text-base-content/50">{animal.breed}</div></td><td>{animal.gender}</td><td><span className={`badge badge-sm badge-soft ${statusClass(animal.status)}`}>{animal.status}</span></td><td>{animal.lastAI}</td><td className="text-right"><button type="button" className="btn btn-ghost btn-sm" onClick={() => navigate(`/technician/animals/${animal.id}`)}><History size={14} /> Open history</button></td></tr>)}</tbody></table></div>
+            </>}
+          </div></section>
         </div>
       </main>
 
-      {/* EDIT REGISTRY PROFILE DIALOG WINDOW */}
-      <AnimatePresence>
-        {isEditModalOpen && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsEditModalOpen(false)}
-              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 15 }}
-              className="relative w-full max-w-lg bg-white dark:bg-slate-950 rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800"
-            >
-              <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                <div>
-                  <h3 className="text-sm font-black uppercase text-slate-800 dark:text-slate-100">
-                    Update Partner Profile
-                  </h3>
-                  <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
-                    Modifying Official Registry Data
-                  </p>
-                </div>
-                <button
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="btn btn-ghost btn-sm btn-square flex items-center justify-center text-slate-400"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="p-6">
-                <form
-                  id="edit-farmer-form"
-                  onSubmit={handleEditSubmit}
-                  className="space-y-4"
-                >
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400 block">
-                        First Name
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={30}
-                        value={editData.firstName}
-                        onChange={(e) =>
-                          setEditData({
-                            ...editData,
-                            firstName: e.target.value,
-                          })
-                        }
-                        className="input input-bordered w-full rounded-xl h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 focus:outline-none"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-black uppercase text-slate-400 block">
-                        Last Name
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        maxLength={30}
-                        value={editData.lastName}
-                        onChange={(e) =>
-                          setEditData({ ...editData, lastName: e.target.value })
-                        }
-                        className="input input-bordered w-full rounded-xl h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 block">
-                      Contact Number
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      maxLength={11}
-                      placeholder="09XXXXXXXXX"
-                      value={editData.phoneNumber}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        // Strict numeric pattern protector guard
-                        if (val === "" || /^\d+$/.test(val)) {
-                          setEditData({ ...editData, phoneNumber: val });
-                        }
-                      }}
-                      className="input input-bordered w-full rounded-xl h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 focus:outline-none font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-1 relative">
-                    <label className="text-[10px] font-black uppercase text-slate-400 block">
-                      Barangay Sector Location
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={editData.barangay}
-                      onChange={(e) => {
-                        setEditData({ ...editData, barangay: e.target.value });
-                        setIsBarangayDropdownOpen(true);
-                      }}
-                      onFocus={() => setIsBarangayDropdownOpen(true)}
-                      onBlur={() =>
-                        setTimeout(() => setIsBarangayDropdownOpen(false), 200)
-                      }
-                      className="input input-bordered w-full rounded-xl h-10 text-xs font-bold bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800 focus:outline-none"
-                    />
-                    <AnimatePresence>
-                      {isBarangayDropdownOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -5 }}
-                          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-40 overflow-y-auto border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-xl rounded-xl custom-scrollbar"
-                        >
-                          {OTON_BARANGAYS.filter((b) =>
-                            (b || "")
-                              .toLowerCase()
-                              .includes(
-                                (editData.barangay || "").toLowerCase(),
-                              ),
-                          ).length > 0 ? (
-                            OTON_BARANGAYS.filter((b) =>
-                              (b || "")
-                                .toLowerCase()
-                                .includes(
-                                  (editData.barangay || "").toLowerCase(),
-                                ),
-                            ).map((b) => (
-                              <button
-                                key={b}
-                                onClick={() =>
-                                  setEditData({ ...editData, barangay: b })
-                                }
-                                type="button"
-                                className="w-full px-4 py-2 text-left text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-900 block border-b border-slate-100 dark:border-slate-900/60 last:border-0 cursor-pointer text-slate-700 dark:text-slate-200"
-                              >
-                                {b}
-                              </button>
-                            ))
-                          ) : (
-                            <div className="py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                              No matching barangay
-                            </div>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 block">
-                      Email Address{" "}
-                      {farmer?.email
-                        ? "(Locked · Contact Registry System)"
-                        : "(Available to Add)"}
-                    </label>
-                    <input
-                      type="email"
-                      disabled={!!farmer?.email}
-                      placeholder={farmer?.email ? "" : "example@domain.com"}
-                      value={editData.email}
-                      onChange={(e) =>
-                        setEditData({ ...editData, email: e.target.value })
-                      }
-                      className={`input input-bordered w-full rounded-xl h-10 text-xs font-bold focus:outline-none border-slate-200 dark:border-slate-800
-                        ${
-                          farmer?.email
-                            ? "bg-slate-100/80 dark:bg-slate-900/40 text-slate-400 cursor-not-allowed select-none"
-                            : "bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                        }`}
-                    />
-                  </div>
-                </form>
-              </div>
-
-              <div className="border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30 px-5 py-4 flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="btn btn-sm btn-ghost text-xs font-bold rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  form="edit-farmer-form"
-                  type="submit"
-                  disabled={isUpdating}
-                  className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white font-bold text-xs rounded-xl px-4 shadow-sm"
-                >
-                  {isUpdating ? "Updating..." : "Update Profile"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <RegisterLivestockModal isOpen={isRegisterModalOpen} preSelectedFarmer={farmer} onClose={() => setIsRegisterModalOpen(false)} />
     </div>
   );
 }

@@ -1,598 +1,449 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Search,
-  Bell,
-  UserPlus,
-  Download,
-  Users,
-  CheckCircle,
+  AlertCircle,
   Beef,
-  SlidersHorizontal,
-  X,
-  Edit,
-  Phone,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
-  AlertCircle,
+  Download,
+  Edit,
+  MapPin,
+  Phone,
+  RefreshCw,
+  Search,
+  Smartphone,
+  SlidersHorizontal,
+  UserPlus,
+  Users,
+  MoreVertical,
+  X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
-import { TableRowSkeleton } from "../../components/Skeleton";
-import RegisterFarmerModal from "../../components/modals/RegisterFarmerModal";
+import RegisterFarmerModal from "../../components/dialogs/RegisterFarmerModal";
+import Topbar from "../../components/layout/Topbar";
+import UserAvatar from "../../components/ui/UserAvatar";
+import TableNameLink from "../../components/ui/TableNameLink";
+import { ui } from "../../components/ui/uiClasses";
+import {
+  ILOILO_CITY_DISTRICT_OPTIONS,
+  ILOILO_CITY_NAME,
+  ILOILO_MUNICIPALITY_OPTIONS,
+  getIloiloBarangayOptions,
+} from "../../utils/addressOptions";
+
+const ITEMS_PER_PAGE = 10;
+
+const APP_STATUS = {
+  connected: { label: "App connected", className: "badge-success" },
+  no_app_account: { label: "No app account", className: "badge-warning" },
+  profile_only: { label: "Profile only", className: "badge-ghost" },
+  blocked: { label: "Blocked", className: "badge-error" },
+};
+
+const getAddress = (value) => {
+  if (Array.isArray(value)) return value[0] || {};
+  return value && typeof value === "object" ? value : {};
+};
+
+const cleanLocationPart = (value) => {
+  const text = String(value || "").trim();
+  return ["", "n/a", "na", "unknown", "not provided"].includes(text.toLowerCase()) ? "" : text;
+};
+
+const getAppStatus = (farmer) => {
+  const realClerkAccount = farmer.clerkId && !String(farmer.clerkId).startsWith("manual_");
+  if (farmer.profileClaimStatus === "blocked") return "blocked";
+  if (farmer.profileClaimStatus === "claimed" || realClerkAccount) return "connected";
+  if (farmer.profileClaimStatus === "unclaimed" || (farmer.registeredByTechnician && !farmer.email)) return "no_app_account";
+  return "profile_only";
+};
+
+function MetricCard({ icon, value, label, note }) {
+  return (
+    <div className="stats border border-base-300 bg-base-100 shadow-sm">
+      <div className="stat py-4">
+        <div className="stat-figure hidden text-primary sm:block">{icon}</div>
+        <div className="stat-title text-xs font-semibold">{label}</div>
+        <div className="stat-value text-2xl">{value}</div>
+        <div className="stat-desc text-base-content/70">{note}</div>
+      </div>
+    </div>
+  );
+}
+
+function FarmerCard({ farmer, onOpen, onEdit }) {
+  const appStatus = APP_STATUS[farmer.appStatus] || APP_STATUS.profile_only;
+  return (
+    <article className="card card-sm card-border bg-base-100 shadow-sm">
+      <div className="card-body gap-4">
+        <div className="flex items-start gap-3">
+          <UserAvatar
+            name={farmer.name}
+            imageUrl={farmer.imageUrl}
+            size={44}
+            sizeClass="h-11 w-11"
+          />
+          <div className="min-w-0 flex-1">
+            <h3 className="card-title text-base">{farmer.name}</h3>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              <span className={`badge badge-sm badge-soft ${appStatus.className}`}>{appStatus.label}</span>
+              <span className={`badge badge-sm badge-soft ${farmer.verified ? "badge-success" : "badge-warning"}`}>
+                {farmer.verified ? "Verified profile" : "Needs verification"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-2 text-sm text-base-content/70">
+          <p className="flex items-start gap-2"><MapPin size={15} className="mt-0.5 shrink-0" /> {farmer.location}</p>
+          <p className="flex items-center gap-2"><Phone size={15} className="shrink-0" /> {farmer.contact}</p>
+          <p className="flex items-center gap-2"><Beef size={15} className="shrink-0" /> {farmer.animals} registered animal{farmer.animals === 1 ? "" : "s"}</p>
+        </div>
+
+        <div className="card-actions grid grid-cols-2 border-t border-base-300 pt-3">
+          <button type="button" className="btn btn-sm" onClick={() => onOpen(farmer)}><Beef size={15} /> View animals</button>
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => onEdit(farmer)}><Edit size={15} /> Edit profile</button>
+        </div>
+      </div>
+    </article>
+  );
+}
 
 export default function ClientRegistry() {
   const navigate = useNavigate();
-
-  // ---- MODAL STATE ----
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isRegisterFarmerOpen, setIsRegisterFarmerOpen] = useState(false);
   const [selectedFarmerForEdit, setSelectedFarmerForEdit] = useState(null);
 
-  // ---- APPLICATION STATES ----
-  const [searchQuery, setSearchQuery] = useState("");
-  const [barangayFilter, setBarangayFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
+  const searchQuery = searchParams.get("search") || "";
+  const municipalityFilter = searchParams.get("municipality") || "";
+  const districtFilter = searchParams.get("district") || "";
+  const barangayFilter = searchParams.get("barangay") || "";
+  const statusFilter = searchParams.get("status") || "";
+  const accountStatusFilter = searchParams.get("accountStatus") || "all";
+  const currentPage = Number.parseInt(searchParams.get("page") || "1", 10);
 
-  const itemsPerPage = 10;
-
-  // ---- LIVE BACKEND DATA PIEPELINE ----
-  const { data: rawFarmers = [], isLoading: isFarmersLoading } = useQuery({
-    queryKey: ["technician", "farmers"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/user?role=farmer");
-      return res.data || [];
-    },
-  });
-
-  const { data: rawAnimals = [], isLoading: isAnimalsLoading } = useQuery({
-    queryKey: ["animals"],
-    queryFn: async () => {
-      const res = await axiosInstance.get("/animals/all");
-      return res.data || [];
-    },
-  });
-
-  const isMasterLoading = isFarmersLoading || isAnimalsLoading;
-
-  // ---- CORRELATION LOGIC ENGINE ----
-  const farmerAnimalCounts = useMemo(() => {
-    const counts = {};
-    if (Array.isArray(rawAnimals)) {
-      rawAnimals.forEach((animal) => {
-        const fId =
-          typeof animal.farmerId === "object"
-            ? animal.farmerId?._id
-            : animal.farmerId;
-        if (fId) counts[fId] = (counts[fId] || 0) + 1;
+  const updateParams = (changes) => {
+    setSearchParams((previous) => {
+      Object.entries(changes).forEach(([key, value]) => {
+        if (value && value !== "all") previous.set(key, String(value));
+        else previous.delete(key);
       });
-    }
-    return counts;
-  }, [rawAnimals]);
+      previous.set("page", "1");
+      return previous;
+    }, { replace: true });
+  };
 
-  const clients = useMemo(() => {
-    if (!Array.isArray(rawFarmers)) return [];
-    return rawFarmers.map((farmer, idx) => ({
-      n: idx + 1,
-      id: farmer._id,
-      name: farmer.name || "Unknown Farmer",
-      contact: farmer.phoneNumber || "--- --- ----",
-      brgy: farmer.address?.barangay || "Oton Proper",
-      animals: farmerAnimalCounts[farmer._id] || 0,
-      lastVisit: farmer.updatedAt
-        ? new Date(farmer.updatedAt).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
-        : "N/A",
-      registered: farmer.createdAt
-        ? new Date(farmer.createdAt).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          })
-        : "N/A",
-      status: farmer.isVerified ? "active" : "inactive",
-    }));
-  }, [rawFarmers, farmerAnimalCounts]);
+  const setMunicipality = (value) => {
+    setSearchParams((previous) => {
+      if (value) previous.set("municipality", value);
+      else previous.delete("municipality");
+      previous.delete("district");
+      previous.delete("barangay");
+      previous.set("page", "1");
+      return previous;
+    }, { replace: true });
+  };
 
-  // ---- LIVE SUMMARY METRICS ENGINE ----
-  const stats = useMemo(() => {
-    const totalCount = clients.length;
-    const activeCount = clients.filter((c) => c.status === "active").length;
+  const setDistrict = (value) => {
+    setSearchParams((previous) => {
+      if (value) previous.set("district", value);
+      else previous.delete("district");
+      previous.delete("barangay");
+      previous.set("page", "1");
+      return previous;
+    }, { replace: true });
+  };
 
-    // Fallback constants if raw list array matches initial sync index values
-    const monthNew =
-      totalCount > 0 ? Math.min(3, Math.ceil(totalCount * 0.1)) : 0;
+  const setCurrentPage = (value) => {
+    setSearchParams((previous) => {
+      const next = typeof value === "function" ? value(currentPage) : value;
+      previous.set("page", String(next));
+      return previous;
+    }, { replace: true });
+  };
 
-    let avgCount = 0;
-    if (totalCount > 0) {
-      const totalHerd = clients.reduce((sum, c) => sum + c.animals, 0);
-      avgCount = parseFloat((totalHerd / totalCount).toFixed(1));
-    }
+  const {
+    data: farmersPage = {},
+    isLoading,
+    isFetching,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["technician", "farmers", currentPage, searchQuery, municipalityFilter, barangayFilter, statusFilter, accountStatusFilter],
+    queryFn: async () => {
+      const response = await axiosInstance.get("/user", {
+        params: {
+          role: "farmer",
+          page: currentPage,
+          limit: ITEMS_PER_PAGE,
+          search: searchQuery || undefined,
+          city: municipalityFilter || undefined,
+          barangay: barangayFilter || undefined,
+          status: statusFilter || undefined,
+          accountStatus: accountStatusFilter === "all" ? undefined : accountStatusFilter,
+        },
+      });
+      return response.data || {};
+    },
+    keepPreviousData: true,
+  });
 
+  const rawFarmers = useMemo(() => farmersPage.data || [], [farmersPage]);
+  const farmers = useMemo(() => rawFarmers.map((farmer) => {
+    const address = getAddress(farmer.address);
+    const location = [cleanLocationPart(address.barangay), cleanLocationPart(address.city || address.municipality)].filter(Boolean).join(", ") || "Location not provided";
+    const name = farmer.name || "Unnamed farmer";
     return {
-      total: totalCount,
-      active: activeCount,
-      newThisMonth: monthNew,
-      avgAnimals: avgCount || 0,
+      id: farmer._id,
+      raw: farmer,
+      name,
+      contact: farmer.phoneNumber || address.phoneNumber || "Phone not provided",
+      location,
+      barangay: address.barangay || "Not provided",
+      animals: farmer.animalsCount || 0,
+      verified: Boolean(farmer.isVerified),
+      appStatus: getAppStatus(farmer),
+      registered: farmer.createdAt ? new Date(farmer.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" }) : "Not recorded",
+      imageUrl: farmer.imageUrl || farmer.profileImage || null,
     };
-  }, [clients]);
+  }), [rawFarmers]);
 
-  // ---- FILTERS & COLUMN SORT ENGINE ----
-  const processedClients = useMemo(() => {
-    let result = [...clients];
+  const totalItems = farmersPage.total ?? farmers.length;
+  const totalPages = Math.max(1, farmersPage.totalPages || Math.ceil(totalItems / ITEMS_PER_PAGE));
+  const startIndex = totalItems === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+  const endIndex = Math.min(currentPage * ITEMS_PER_PAGE, totalItems);
+  const pageStats = {
+    verified: farmers.filter((farmer) => farmer.verified).length,
+    connected: farmers.filter((farmer) => farmer.appStatus === "connected").length,
+    animals: farmers.reduce((sum, farmer) => sum + farmer.animals, 0),
+  };
+  const hasFilters = Boolean(searchQuery || municipalityFilter || districtFilter || barangayFilter || statusFilter || accountStatusFilter !== "all");
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          c.contact.toLowerCase().includes(q) ||
-          c.brgy.toLowerCase().includes(q),
-      );
-    }
-
-    if (barangayFilter)
-      result = result.filter((c) => c.brgy === barangayFilter);
-    if (statusFilter) result = result.filter((c) => c.status === statusFilter);
-
-    if (sortConfig.key) {
-      result.sort((a, b) => {
-        const valA = a[sortConfig.key];
-        const valB = b[sortConfig.key];
-
-        if (typeof valA === "number") {
-          return (valA - valB) * (sortConfig.direction === "asc" ? 1 : -1);
-        }
-        return (
-          String(valA).localeCompare(String(valB)) *
-          (sortConfig.direction === "asc" ? 1 : -1)
-        );
-      });
-    }
-
-    return result;
-  }, [searchQuery, barangayFilter, statusFilter, sortConfig, clients]);
-
-  // ---- PAGINATION COMPUTATION ----
-  const totalItems = processedClients.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedClients = processedClients.slice(
-    startIndex,
-    startIndex + itemsPerPage,
-  );
-
-  const handleSort = (key) => {
-    let direction = "asc";
-    if (sortConfig.key === key && sortConfig.direction === "asc") {
-      direction = "desc";
-    }
-    setSortConfig({ key, direction });
+  const openFarmer = (farmer) => navigate(`/technician/farmers/${farmer.id}`);
+  const editFarmer = (farmer) => {
+    setSelectedFarmerForEdit(farmer.raw);
+    setIsRegisterFarmerOpen(true);
   };
 
-  const handleClearFilters = () => {
-    setSearchQuery("");
-    setBarangayFilter("");
-    setStatusFilter("");
-    setCurrentPage(1);
-  };
-
-  const handleExportCSV = () => {
-    const headers = ["Name", "Contact/Phone", "Barangay", "Registered Animals Count", "Verification Status"];
-    const rows = processedClients.map((c) => [
-      c.name,
-      c.contact,
-      c.brgy,
-      c.animals,
-      c.status.toUpperCase(),
-    ]);
-
-    const csvContent =
-      headers.join(",") +
-      "\n" +
-      rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
+  const exportPage = () => {
+    const rows = farmers.map((farmer) => [farmer.name, farmer.contact, farmer.location, farmer.animals, APP_STATUS[farmer.appStatus].label, farmer.verified ? "Verified" : "Needs verification"]);
+    const csv = [["Farmer", "Phone", "Location", "Animals", "App access", "Verification"], ...rows]
+      .map((row) => row.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
     const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `DA_Farmers_Directory_${new Date().toLocaleDateString()}.csv`
-    );
+    link.href = url;
+    link.download = `BreedSmart_Farmers_Page_${currentPage}_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
     URL.revokeObjectURL(url);
   };
 
-  const avatarStyles = [
-    "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-400",
-    "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400",
-    "bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-400",
-    "bg-purple-50 text-purple-800 dark:bg-purple-950/40 dark:text-purple-400",
-  ];
-
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
-      <Topbar
-        title="Clients"
-        subtitle="Registered farmers & livestock owners"
-      />
+    <div className={ui.page}>
+      <Topbar title="Farmers" subtitle="Find a farmer, check app access, and open their animal records" />
+      <main className={ui.main}>
+        <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <MetricCard icon={<Users size={21} />} value={isLoading ? "—" : totalItems} label="Farmers found" note="Matching current filters" />
+          <MetricCard icon={<CheckCircle size={21} />} value={isLoading ? "—" : pageStats.verified} label="Verified profiles" note="On this page" />
+          <MetricCard icon={<Smartphone size={21} />} value={isLoading ? "—" : pageStats.connected} label="App connected" note="On this page" />
+          <MetricCard icon={<Beef size={21} />} value={isLoading ? "—" : pageStats.animals} label="Registered animals" note="For farmers on this page" />
+        </section>
 
-      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
-        {/* Metric Cards Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            {
-              label: "Total Clients",
-              val: stats.total,
-              color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
-              icon: <Users size={16} />,
-            },
-            {
-              label: "Active Registry",
-              val: stats.active,
-              color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
-              icon: <CheckCircle size={16} />,
-            },
-            {
-              label: "New This Month",
-              val: stats.newThisMonth,
-              color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
-              icon: <UserPlus size={16} />,
-            },
-            {
-              label: "Avg Animals / Client",
-              val: stats.avgAnimals,
-              color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
-              icon: <Beef size={16} />,
-            },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
-            >
-              <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
-                {stat.icon}
-              </div>
-              <div>
-                <div className="text-xl font-black tracking-tight">
-                  {isMasterLoading ? "..." : stat.val}
-                </div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
-                  {stat.label}
-                </div>
+        <section className="card card-border bg-base-100 shadow-sm">
+          <div className="card-body gap-4 p-4 md:p-5">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <label className="input w-full xl:max-w-md">
+                <Search size={16} className="text-base-content/45" />
+                <input type="search" aria-label="Search farmers" placeholder="Search name, phone, or email" value={searchQuery} onChange={(event) => updateParams({ search: event.target.value })} />
+              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className="btn btn-primary btn-sm" onClick={() => setIsRegisterFarmerOpen(true)}><UserPlus size={15} /> Register farmer</button>
+                <button type="button" className="btn btn-sm" onClick={exportPage} disabled={isLoading || farmers.length === 0}><Download size={15} /> Export this page</button>
+                <span className="text-sm font-medium text-base-content/70">{isFetching && !isLoading ? "Updating…" : `${totalItems} farmer${totalItems === 1 ? "" : "s"}`}</span>
               </div>
             </div>
-          ))}
-        </div>
 
-        {/* Filters and Datatable Section Wrapper */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-xs flex-1 flex flex-col min-h-0 overflow-hidden">
-          {/* Top Actions Row */}
-          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-            <div className="relative w-72">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
-                <Search size={14} />
-              </span>
-              <input
-                type="text"
-                placeholder="Search name, barangay, contact..."
-                className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setCurrentPage(1);
-                }}
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setIsRegisterFarmerOpen(true)}
-                className="btn btn-xs bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-[11px] font-bold gap-1.5 rounded-xl px-3 cursor-pointer animate-none"
-              >
-                <UserPlus size={11} /> Add Client
-              </button>
-              <button
-                onClick={handleExportCSV}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-[11px] font-bold gap-1.5 rounded-xl px-3 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <Download size={11} /> Export
-              </button>
-              <span className="text-xs text-slate-400 font-semibold border-l border-slate-200 dark:border-slate-800 pl-2.5 whitespace-nowrap">
-                {isMasterLoading
-                  ? "Calculating queue registry..."
-                  : `${totalItems} client${totalItems !== 1 ? "s" : ""} found`}
-              </span>
-            </div>
-          </div>
-
-          {/* Top Filter Ribbon Layout */}
-          <div className="flex items-center gap-2 flex-wrap mb-4 bg-slate-50 dark:bg-slate-900/40 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800/60">
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wide px-1">
-              <SlidersHorizontal size={13} />
-              <span>Filters:</span>
-            </div>
-
-            <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 outline-none"
-              value={barangayFilter}
-              onChange={(e) => {
-                setBarangayFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-            >
-              <option value="">All Barangays</option>
-              {[
-                "Supa",
-                "Pulo",
-                "Oton Proper",
-                "Calinog",
-                "Trapiche",
-                "Patag",
-                "Nibaliw",
-                "Tuburan",
-              ].map((b) => (
-                <option key={b} value={b}>
-                  {b}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="select select-bordered select-sm text-xs rounded-xl bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 outline-none"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setCurrentPage(1);
-              }}
-            >
-              <option value="">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-
-            {(barangayFilter || statusFilter || searchQuery) && (
-              <button
-                onClick={handleClearFilters}
-                className="btn btn-sm btn-ghost text-xs text-rose-600 font-bold gap-1 rounded-lg"
-              >
-                <X size={12} /> Clear Filters
-              </button>
-            )}
-          </div>
-
-          {/* Core Table Layout View */}
-          <div className="overflow-x-auto flex-1 overflow-y-auto">
-            <table className="table w-full border-collapse">
-              <thead>
-                <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold uppercase tracking-wider select-none">
-                  {[
-                    "n",
-                    "name",
-                    "contact",
-                    "brgy",
-                    "animals",
-                    "lastVisit",
-                    "registered",
-                    "status",
-                  ].map((colKey) => (
-                    <th
-                      key={colKey}
-                      onClick={() => handleSort(colKey)}
-                      className="p-3.5 pl-5 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-                    >
-                      <div className="flex items-center gap-1">
-                        <span>
-                          {colKey === "n"
-                            ? "#"
-                            : colKey === "name"
-                              ? "Client Name"
-                              : colKey === "brgy"
-                                ? "Barangay"
-                                : colKey === "lastVisit"
-                                  ? "Last Visit"
-                                  : colKey}
-                        </span>
-                        {sortConfig.key === colKey && (
-                          <span className="text-[10px] text-[#00643b]">
-                            {sortConfig.direction === "asc" ? "↑" : "↓"}
-                          </span>
-                        )}
-                      </div>
-                    </th>
-                  ))}
-                  <th className="p-3.5 pr-5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/40 text-xs">
-                {isMasterLoading ? (
-                  [...Array(5)].map((_, idx) => <TableRowSkeleton key={idx} />)
-                ) : paginatedClients.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={9}
-                      className="text-center p-12 text-slate-400 dark:text-slate-500 font-medium"
-                    >
-                      <div className="flex flex-col items-center justify-center gap-1">
-                        <AlertCircle size={20} className="text-slate-300" />
-                        <span>
-                          No registered clients found in this sector framework
-                          view.
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  paginatedClients.map((c, i) => {
-                    const initials = c.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")
-                      .toUpperCase()
-                      .slice(0, 2);
-                    const styleIdx = i % avatarStyles.length;
-
-                    return (
-                      <tr
-                        key={c.id}
-                        onClick={() => navigate(`/technician/farmers/${c.id}`)}
-                        className="hover:bg-slate-50/70 dark:hover:bg-slate-900/30 transition-colors cursor-pointer"
-                      >
-                        <td className="p-3.5 pl-5 font-bold text-slate-400">
-                          {String(c.n).padStart(2, "0")}
-                        </td>
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-2.5">
-                            <div
-                              className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 shadow-2xs ${avatarStyles[styleIdx]}`}
-                            >
-                              {initials}
-                            </div>
-                            <div>
-                              <div className="font-bold text-slate-800 dark:text-slate-200">
-                                {c.name}
-                              </div>
-                              <div className="text-[10px] text-slate-400 font-medium md:hidden">
-                                {c.brgy}
-                              </div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="p-3.5 font-medium text-slate-500">
-                          {c.contact}
-                        </td>
-                        <td className="p-3.5 font-semibold text-slate-600 dark:text-slate-400">
-                          {c.brgy}
-                        </td>
-                        <td className="p-3.5">
-                          <span className="font-extrabold text-sm text-[#00643b] dark:text-[#10b981]">
-                            {c.animals}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wide ml-1">
-                            units
-                          </span>
-                        </td>
-                        <td className="p-3.5 font-medium text-slate-500">
-                          {c.lastVisit}
-                        </td>
-                        <td className="p-3.5 font-medium text-slate-400">
-                          {c.registered}
-                        </td>
-                        <td className="p-3.5">
-                          <span
-                            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider border ${
-                              c.status === "active"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400 dark:border-emerald-900/50"
-                                : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/50"
-                            }`}
-                          >
-                            {c.status === "active" ? "Verified" : "Manual"}
-                          </span>
-                        </td>
-                        <td
-                          className="p-3.5 pr-5 text-right"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() =>
-                                navigate(`/technician/farmers/${c.id}`)
-                              }
-                              className="px-2.5 py-1 text-[11px] font-bold rounded-lg border border-slate-200 dark:border-slate-800 hover:border-[#00643b] dark:hover:border-emerald-600 hover:text-[#00643b] flex items-center gap-1 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 transition-all shadow-2xs cursor-pointer"
-                            >
-                              <Beef size={11} /> Animals
-                            </button>
-                            <button
-                              onClick={() => {
-                                const rawFarmer = rawFarmers.find((rf) => rf._id === c.id);
-                                setSelectedFarmerForEdit(rawFarmer || null);
-                                setIsRegisterFarmerOpen(true);
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 cursor-pointer"
-                              title="Edit Client"
-                            >
-                              <Edit size={12} />
-                            </button>
-                            <a
-                              href={`tel:${c.contact}`}
-                              className="p-1.5 text-slate-400 hover:text-[#00643b] dark:hover:text-emerald-400 transition-colors rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 flex items-center justify-center"
-                              title="Call Client"
-                            >
-                              <Phone size={12} />
-                            </a>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination Controls Toolbar */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between mt-3">
-            <span className="text-[11px] font-medium text-slate-400">
-              Showing {totalItems === 0 ? 0 : startIndex + 1}–
-              {Math.min(startIndex + itemsPerPage, totalItems)} of {totalItems}{" "}
-              client profiles
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1 || isMasterLoading}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
-              >
-                <ChevronLeft size={12} />
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                (pageNumber) => (
-                  <button
-                    key={pageNumber}
-                    disabled={isMasterLoading}
-                    onClick={() => setCurrentPage(pageNumber)}
-                    className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition-all ${
-                      currentPage === pageNumber
-                        ? "bg-[#00643b] text-white shadow-xs"
-                        : "border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900"
-                    }`}
-                  >
-                    {pageNumber}
-                  </button>
-                ),
+            <div className="flex flex-col gap-2 rounded-box border border-base-300 bg-base-200 p-3 md:flex-row md:flex-wrap md:items-center">
+              <span className="flex items-center gap-1.5 text-sm font-bold text-base-content/75"><SlidersHorizontal size={14} /> Filters</span>
+              <select className="select w-full md:w-auto" aria-label="Filter farmers by municipality" value={municipalityFilter} onChange={(event) => setMunicipality(event.target.value)}>
+                <option value="">All municipalities</option>
+                {ILOILO_MUNICIPALITY_OPTIONS.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+              {municipalityFilter === ILOILO_CITY_NAME && (
+                <select className="select w-full md:w-auto" aria-label="Filter farmers by Iloilo City district" value={districtFilter} onChange={(event) => setDistrict(event.target.value)}>
+                  <option value="">Select district</option>
+                  {ILOILO_CITY_DISTRICT_OPTIONS.map((name) => <option key={name} value={name}>{name}</option>)}
+                </select>
               )}
-              <button
-                onClick={() =>
-                  setCurrentPage((p) => Math.min(totalPages, p + 1))
-                }
-                disabled={currentPage === totalPages || isMasterLoading}
-                className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 px-1.5 disabled:opacity-40"
-              >
-                <ChevronRight size={12} />
-              </button>
+              <select className="select w-full md:w-auto" aria-label="Filter farmers by barangay" value={barangayFilter} disabled={!municipalityFilter || (municipalityFilter === ILOILO_CITY_NAME && !districtFilter)} onChange={(event) => updateParams({ barangay: event.target.value })}>
+                <option value="">All barangays</option>
+                {getIloiloBarangayOptions(municipalityFilter, districtFilter).map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+              <select className="select w-full md:w-auto" aria-label="Filter farmers by verification" value={statusFilter} onChange={(event) => updateParams({ status: event.target.value })}>
+                <option value="">All verification</option><option value="active">Verified</option><option value="inactive">Needs verification</option>
+              </select>
+              <select className="select w-full md:w-auto" aria-label="Filter farmers by app access" value={accountStatusFilter} onChange={(event) => updateParams({ accountStatus: event.target.value })}>
+                <option value="all">All app access</option><option value="connected">App connected</option><option value="no_app_account">No app account</option><option value="profile_only">Profile only</option><option value="blocked">Blocked</option>
+              </select>
+              {hasFilters && <button type="button" className="btn btn-ghost btn-sm md:ml-auto" onClick={() => setSearchParams(new URLSearchParams(), { replace: true })}><X size={14} /> Clear filters</button>}
             </div>
+
+            {isError ? (
+              <div role="alert" className="alert alert-error"><AlertCircle size={18} /><div><div className="font-bold">Farmers could not be loaded.</div><div className="text-sm">{error?.response?.data?.message || error?.message || "Check the server or your connection."}</div></div><button type="button" className="btn btn-sm" onClick={() => refetch()}><RefreshCw size={14} /> Retry</button></div>
+            ) : isLoading ? (
+              <>
+                <div className="grid gap-3 lg:hidden">{[0, 1, 2].map((item) => <div key={item} className="skeleton h-60 w-full" />)}</div>
+                <div className="hidden overflow-hidden rounded-box border border-base-300 lg:block" aria-label="Loading farmer records">
+                  <table className="table table-pin-rows w-full text-left min-w-[1000px]">
+                    <thead>
+                      <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="p-3.5 pl-6">Farmer</th>
+                        <th className="p-3.5">Contact</th>
+                        <th className="p-3.5">Location</th>
+                        <th className="p-3.5">Animals</th>
+                        <th className="p-3.5">App access</th>
+                        <th className="p-3.5">Verification</th>
+                        <th className="p-3.5 pr-6 text-right w-[100px]">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>{[0, 1, 2, 3, 4].map((row) => <tr key={row}><td colSpan={7}><div className="grid grid-cols-[1.4fr_1fr_1.2fr_.5fr_1fr_1fr_.8fr] gap-5 py-1"><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /></div></td></tr>)}</tbody>
+                  </table>
+                </div>
+              </>
+            ) : farmers.length === 0 ? (
+              <div className="rounded-box border border-dashed border-base-300 px-5 py-12 text-center"><Users className="mx-auto mb-3 text-base-content/35" /><h2 className="font-bold">No farmers found</h2><p className="mt-1 text-sm text-base-content/60">{hasFilters ? "Try changing or clearing the filters." : "Registered farmers will appear here."}</p>{hasFilters && <button type="button" className="btn btn-sm mt-4" onClick={() => setSearchParams(new URLSearchParams(), { replace: true })}>Clear filters</button>}</div>
+            ) : (
+              <>
+                <div className="grid gap-3 lg:hidden">{farmers.map((farmer) => <FarmerCard key={farmer.id} farmer={farmer} onOpen={openFarmer} onEdit={editFarmer} />)}</div>
+                <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
+                  <table className="table table-pin-rows w-full text-left min-w-250">
+                    <thead>
+                      <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
+                        <th className="p-3.5 pl-6">Farmer</th>
+                        <th className="p-3.5">Contact</th>
+                        <th className="p-3.5">Location</th>
+                        <th className="p-3.5">Animals</th>
+                        <th className="p-3.5">App access</th>
+                        <th className="p-3.5">Verification</th>
+                        <th className="p-3.5 pr-6 text-right w-25">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-base-300">
+                      {farmers.map((farmer) => {
+                        const appStatus = APP_STATUS[farmer.appStatus] || APP_STATUS.profile_only;
+                        return (
+                          <tr key={farmer.id} className="hover:bg-base-200/50 transition-colors text-xs font-semibold text-base-content/85">
+                            {/* 1. FARMER */}
+                            <td className="p-3.5 pl-6">
+                              <div className="flex items-center gap-3">
+                                <UserAvatar
+                                  name={farmer.name}
+                                  imageUrl={farmer.imageUrl}
+                                  size={36}
+                                  sizeClass="h-9 w-9"
+                                />
+                                <div>
+                                  <TableNameLink
+                                    to={`/technician/farmers/${farmer.id}`}
+                                    ariaLabel={`Open profile for ${farmer.name}`}
+                                  >
+                                    {farmer.name}
+                                  </TableNameLink>
+                                  <span className="text-[10px] text-base-content/50 block mt-0.5 font-bold">
+                                    Registered {farmer.registered}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+
+                            {/* 2. CONTACT */}
+                            <td className="p-3.5 font-semibold text-base-content/75">
+                              {farmer.contact}
+                            </td>
+
+                            {/* 3. LOCATION */}
+                            <td className="p-3.5 font-medium text-base-content/75">
+                              {farmer.location}
+                            </td>
+
+                            {/* 4. ANIMALS */}
+                            <td className="p-3.5">
+                              <span className="font-extrabold text-xs text-primary">
+                                {farmer.animals}
+                              </span>
+                            </td>
+
+                            {/* 5. APP ACCESS */}
+                            <td className="p-3.5">
+                              <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${appStatus.className}`}>
+                                {appStatus.label}
+                              </span>
+                            </td>
+
+                            {/* 6. VERIFICATION */}
+                            <td className="p-3.5">
+                              <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] ${farmer.verified ? "badge-success" : "badge-warning"}`}>
+                                {farmer.verified ? "Verified" : "Needs verification"}
+                              </span>
+                            </td>
+
+                            {/* 7. ACTIONS (Kebab Dropdown) */}
+                            <td className="p-3.5 pr-6 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="dropdown dropdown-end">
+                                <button tabIndex={0} role="button" className="btn btn-ghost btn-circle btn-xs hover:bg-base-200" aria-label={`Actions for farmer ${farmer.name}`}>
+                                  <MoreVertical size={16} className="text-base-content/60" />
+                                </button>
+                                <ul tabIndex={0} className="dropdown-content menu bg-base-100 rounded-xl z-30 w-44 p-1.5 shadow-xl border border-base-200 mt-1">
+                                  <li>
+                                    <button
+                                      onClick={() => openFarmer(farmer)}
+                                      className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                    >
+                                      <Beef size={13} className="mr-1" /> View Animals
+                                    </button>
+                                  </li>
+                                  <li>
+                                    <button
+                                      onClick={() => editFarmer(farmer)}
+                                      className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                    >
+                                      <Edit size={13} className="mr-1" /> Edit Profile
+                                    </button>
+                                  </li>
+                                  {farmer.contact && farmer.contact !== "Phone not provided" && (
+                                    <li>
+                                      <a
+                                        href={`tel:${farmer.contact}`}
+                                        className="text-xs font-extrabold text-base-content rounded-lg p-2.5"
+                                      >
+                                        <Phone size={13} className="mr-1" /> Call Client
+                                      </a>
+                                    </li>
+                                  )}
+                                </ul>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            {!isError && totalPages > 1 && <div className="flex flex-col gap-3 border-t border-base-300 pt-4 sm:flex-row sm:items-center sm:justify-between"><span className="text-sm text-base-content/55">Showing {startIndex}–{endIndex} of {totalItems}</span><div className="join self-end sm:self-auto"><button type="button" className="btn btn-sm join-item" aria-label="Previous farmers page" disabled={currentPage === 1 || isFetching} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}><ChevronLeft size={16} /></button><button type="button" className="btn btn-sm join-item pointer-events-none">Page {currentPage} of {totalPages}</button><button type="button" className="btn btn-sm join-item" aria-label="Next farmers page" disabled={currentPage === totalPages || isFetching} onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}><ChevronRight size={16} /></button></div></div>}
           </div>
-        </div>
+        </section>
       </main>
 
-      {/* Register Farmer Modal */}
-      <RegisterFarmerModal
-        isOpen={isRegisterFarmerOpen}
-        onClose={() => {
-          setIsRegisterFarmerOpen(false);
-          setSelectedFarmerForEdit(null);
-        }}
-        farmer={selectedFarmerForEdit}
-      />
+      <RegisterFarmerModal isOpen={isRegisterFarmerOpen} farmer={selectedFarmerForEdit} onClose={() => { setIsRegisterFarmerOpen(false); setSelectedFarmerForEdit(null); }} />
     </div>
   );
 }

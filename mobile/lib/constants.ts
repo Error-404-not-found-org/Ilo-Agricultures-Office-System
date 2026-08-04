@@ -126,6 +126,9 @@ export const CATTLE_COLORS = Array.from(
 export const REPRODUCTIVE_STATUSES = [
   "Normal",
   "Pregnant",
+  "Post-partum",
+  "Lactating",
+  "Dry",
   "In Heat",
   "Inseminated",
   "Open",

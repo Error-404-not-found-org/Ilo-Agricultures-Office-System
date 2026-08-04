@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,8 +10,9 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ArrowLeft,
@@ -28,11 +29,22 @@ import {
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import { useTheme } from "@/lib/theme";
+import { calculateTargetCalvingDate } from "@/lib/cattleCore";
+import {
+  getPregnancyCheckReadiness,
+  PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
+} from "@/lib/reproductionEligibility";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function PregnancyCheckScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const api = useApi();
+  const queryClient = useQueryClient();
   const { isDark, colors } = useTheme();
+  const initialFarmerId = params.farmerId as string | undefined;
+  const initialFarmerName = params.farmerName as string | undefined;
+  const initialAnimalId = params.animalId as string | undefined;
 
   const [saving, setSaving] = useState(false);
   const [farmers, setFarmers] = useState<any[]>([]);
@@ -52,13 +64,54 @@ export default function PregnancyCheckScreen() {
 
   const [result, setResult] = useState<"Pregnant" | "Empty" | "">("");
   const [note, setNote] = useState("");
+  const [methodCode, setMethodCode] = useState("");
 
+  const getPregnancyDiagnosisTiming = (attempt: any) => {
+    const readiness = getPregnancyCheckReadiness(attempt);
+    return {
+      ...readiness,
+      aiDate: attempt?.inseminationDate
+        ? new Date(attempt.inseminationDate)
+        : null,
+      eligibleDate: readiness.availableDate
+        ? new Date(readiness.availableDate)
+        : null,
+      isReady: readiness.isEligible,
+    };
+  };
+  const getPregnancyDiagnosisStatus = (attempt: any) => {
+    const timing = getPregnancyDiagnosisTiming(attempt);
+    if (timing.policyMode === "method_based") {
+      return timing.isReady
+        ? "SELECT AN AVAILABLE DIAGNOSTIC METHOD"
+        : "NO DIAGNOSTIC METHOD IS AVAILABLE YET";
+    }
+    return timing.isReady
+      ? "READY FOR PREGNANCY DIAGNOSIS"
+      : `MONITORING — DAY ${timing.daysPostAI ?? 0} OF ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}`;
+  };
   // VALID INSEMINATIONS FILTER
   const validInseminations = inseminations.filter(
-    (item: any) =>
-      (item.status === "done" || item.status === "completed" || item.status === "in-progress" || item.status === "approved") &&
-      (!item.outcome || item.outcome === "Pending"),
+    (item: any) => {
+      const status = String(item?.status || "")
+        .trim()
+        .toLowerCase();
+      const hasPendingOutcome =
+        !item?.outcome || item.outcome === "Pending";
+      const hasValidAIServiceDate = Boolean(
+        item?.inseminationDate &&
+          !Number.isNaN(
+            new Date(item.inseminationDate).getTime(),
+          ),
+      );
+      return (
+        ["done", "completed"].includes(status) &&
+        hasPendingOutcome &&
+        hasValidAIServiceDate
+      );
+    },
   );
+
 
   useEffect(() => {
     const fetchFarmers = async () => {
@@ -77,6 +130,7 @@ export default function PregnancyCheckScreen() {
     setSelectedAnimal(null);
     setInseminations([]);
     setSelectedInsemination(null);
+    setMethodCode("");
     setResult("");
     setShowFarmerModal(false);
 
@@ -90,12 +144,7 @@ export default function PregnancyCheckScreen() {
     }
   };
 
-  const handleAnimalSelect = async (animal: any) => {
-    setSelectedAnimal(animal);
-    setSelectedInsemination(null);
-    setInseminations([]);
-    setResult("");
-    setShowAnimalModal(false);
+  const loadAnimalHistory = useCallback(async (animal: any) => {
     setLoadingHistory(true);
 
     try {
@@ -108,17 +157,27 @@ export default function PregnancyCheckScreen() {
 
       setInseminations(insemList);
 
-      // Sort insemList to ensure the latest attempt is first (by attemptNumber descending)
       const sortedInsemList = [...insemList].sort((a: any, b: any) => {
         return (b.attemptNumber || 0) - (a.attemptNumber || 0);
       });
 
-      // Auto-select latest valid insemination
       const latestPending = sortedInsemList.find(
-        (item: any) =>
-          (item.status === "done" || item.status === "completed" || item.status === "in-progress" || item.status === "approved") &&
-          (!item.outcome || item.outcome === "Pending"),
+        (item: any) => {
+          const status = String(item?.status || "")
+            .trim()
+            .toLowerCase();
+          return (
+            ["done", "completed"].includes(status) &&
+            (!item?.outcome ||
+              item.outcome === "Pending") &&
+            Boolean(item?.inseminationDate) &&
+            !Number.isNaN(
+              new Date(item.inseminationDate).getTime(),
+            )
+          );
+        },
       );
+
 
       if (latestPending) {
         setSelectedInsemination(latestPending);
@@ -129,22 +188,94 @@ export default function PregnancyCheckScreen() {
     } finally {
       setLoadingHistory(false);
     }
+  }, [api]);
+
+  const handleAnimalSelect = async (animal: any) => {
+    setSelectedAnimal(animal);
+    setSelectedInsemination(null);
+    setMethodCode("");
+    setInseminations([]);
+    setResult("");
+    setShowAnimalModal(false);
+    await loadAnimalHistory(animal);
   };
 
-  const handleSave = async () => {
+  useEffect(() => {
+    const prefillFromRoute = async () => {
+      if (!initialFarmerId || !initialAnimalId || selectedAnimal) return;
+
+      try {
+        const farmer = {
+          _id: initialFarmerId,
+          name: initialFarmerName || "Selected farmer",
+        };
+        setSelectedFarmer(farmer);
+
+        const animalsRes = await api.get(`/animals/farmer/${initialFarmerId}`);
+        const animalList = Array.isArray(animalsRes.data)
+          ? animalsRes.data
+          : animalsRes.data?.data || [];
+        setAnimals(animalList);
+
+        const matchedAnimal =
+          animalList.find((animal: any) => String(animal._id) === String(initialAnimalId)) ||
+          (await api.get(`/animals/${initialAnimalId}`)).data;
+
+        if (matchedAnimal) {
+          setSelectedAnimal(matchedAnimal);
+          await loadAnimalHistory(matchedAnimal);
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error("Could not prefill pregnancy check details.");
+      }
+    };
+
+    prefillFromRoute();
+  }, [api, initialAnimalId, initialFarmerId, initialFarmerName, loadAnimalHistory, selectedAnimal]);
+
+  const validatePregnancyCheck = () => {
+    toast.dismiss();
     if (!selectedAnimal) {
       toast.error("Please select an animal first");
-      return;
+      return false;
     }
     if (!selectedInsemination) {
       toast.error("No breeding reference found. Please select an attempt.");
-      return;
+      return false;
+    }
+    const timing = getPregnancyDiagnosisTiming(
+      selectedInsemination,
+    );
+    if (!timing.isReady) {
+      const eligibleDateLabel = timing.eligibleDate
+        ? timing.eligibleDate.toLocaleDateString(
+            "en-US",
+            {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            },
+          )
+        : "the scheduled pregnancy diagnosis date";
+      toast.error(
+        `Pregnancy diagnosis is not yet available. It becomes available on ${eligibleDateLabel}.`,
+      );
+      return false;
     }
     if (!result) {
       toast.error("Please select a diagnosis result");
-      return;
+      return false;
+    }
+    if (timing.policyMode === "method_based" && !methodCode) {
+      toast.error("Please select an available diagnostic method");
+      return false;
     }
 
+    return true;
+  };
+
+  const submitPregnancyCheck = async () => {
     setSaving(true);
     try {
       const payload = {
@@ -152,19 +283,50 @@ export default function PregnancyCheckScreen() {
         inseminationId: selectedInsemination._id || selectedInsemination.id,
         result,
         technicianNote: note,
+        methodCode: methodCode || undefined,
+        policyVersion: selectedDiagnosisTiming.policyVersion,
       };
 
       await api.post("/technician/pregnancy-check", payload);
+      queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "records"] });
+      queryClient.invalidateQueries({ queryKey: ["technician", "tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["animal-details", selectedAnimal._id] });
+      queryClient.invalidateQueries({ queryKey: ["animalTimeline", selectedAnimal._id] });
       toast.success(`Diagnosis saved successfully: ${result}`);
       router.back();
     } catch (err: any) {
+      const code = err?.response?.data?.code;
+      const message =
+        err?.response?.data?.message ||
+        "Failed to save pregnancy record";
+      if (code === "PREGNANCY_CHECK_TOO_EARLY") {
+        toast.error(message);
+        return;
+      }
       console.error(err);
-      toast.error(
-        err.response?.data?.message || "Failed to save pregnancy record",
-      );
+      toast.error(message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = () => {
+    if (saving || !validatePregnancyCheck()) return;
+
+    Alert.alert(
+      "Save Pregnancy Diagnosis?",
+      `This will mark ${selectedAnimal?.earTag || "the selected animal"} as ${result} for the selected breeding attempt and update the animal record history.`,
+      [
+        { text: "Review", style: "cancel" },
+        {
+          text: "Save Diagnosis",
+          style: "default",
+          onPress: submitPregnancyCheck,
+        },
+      ],
+    );
   };
 
   const filteredFarmers = farmers.filter(
@@ -188,13 +350,44 @@ export default function PregnancyCheckScreen() {
     });
   };
 
-  // Estimated Calving Date
-  const estCalvingDate = new Date(
-    Date.now() + 280 * 24 * 60 * 60 * 1000,
-  ).toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-  });
+  const selectedInseminationDate =
+    selectedInsemination?.inseminationDate || null;
+  const selectedDiagnosisTiming =
+    getPregnancyDiagnosisTiming(selectedInsemination);
+  const methodBased = selectedDiagnosisTiming.policyMode === "method_based";
+  const methodOptions = selectedDiagnosisTiming.methods || [];
+  const selectedMethod = methodOptions.find(
+    (method: any) => method.methodCode === methodCode,
+  );
+  const daysSinceAI =
+    selectedDiagnosisTiming.daysPostAI;
+  const diagnosisEligibleDate =
+    selectedDiagnosisTiming.eligibleDate;
+  const isDiagnosisReady = methodBased
+    ? Boolean(selectedMethod?.enabled && selectedMethod?.isEligible)
+    : selectedDiagnosisTiming.isReady;
+  const diagnosisEligibleDateLabel =
+    diagnosisEligibleDate
+      ? diagnosisEligibleDate.toLocaleDateString(
+          "en-US",
+          {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          },
+        )
+      : "Unavailable";
+  const estCalvingDate = selectedInseminationDate
+    ? calculateTargetCalvingDate(
+        selectedInseminationDate,
+        selectedAnimal?.species || "Cattle",
+        undefined,
+        selectedAnimal?.breed,
+      ).toLocaleDateString("en-US", {
+        month: "long",
+        year: "numeric",
+      })
+    : "Select an AI attempt";
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
@@ -355,6 +548,248 @@ export default function PregnancyCheckScreen() {
             </>
           )}
 
+          {/* LINKED AI ATTEMPT CARD */}
+          {selectedInsemination && (
+            <View
+              className="bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/45 p-5 rounded-3xl mb-6"
+            >
+              <Text
+                style={{
+                  fontFamily: "Outfit_800ExtraBold",
+                  color: isDark ? "#60a5fa" : "#1e40af",
+                  fontSize: 10,
+                  textTransform: "uppercase",
+                  letterSpacing: 0.5,
+                  marginBottom: 8,
+                }}
+              >
+                🔗 Linked AI Attempt Details
+              </Text>
+              <View className="gap-y-1.5 mb-3">
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Attempt Number:{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_800ExtraBold",
+                    }}
+                  >
+                    #{selectedInsemination.attemptNumber || 1}
+                  </Text>
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  AI Date:{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                    }}
+                  >
+                    {formatDate(selectedInseminationDate)}
+                  </Text>
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Days Since AI:{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_800ExtraBold",
+                      color: isDiagnosisReady
+                        ? "#059669"
+                        : "#d97706",
+                    }}
+                  >
+                    {daysSinceAI ?? "N/A"}
+                    {daysSinceAI === null ? "" : " days"}
+                  </Text>
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Sire Code:{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                    }}
+                  >
+                    {selectedInsemination.sireCode || "N/A"}
+                  </Text>
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Sire Breed:{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                    }}
+                  >
+                    {selectedInsemination.sireBreed || "N/A"}
+                  </Text>
+                </Text>
+                {selectedInsemination.technicianId?.name && (
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_600SemiBold",
+                      fontSize: 13,
+                      color: colors.textPrimary,
+                    }}
+                  >
+                    AI Technician:{" "}
+                    <Text
+                      style={{
+                        fontFamily: "Outfit_700Bold",
+                      }}
+                    >
+                      {selectedInsemination.technicianId.name}
+                    </Text>
+                  </Text>
+                )}
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Current Outcome:{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_800ExtraBold",
+                      color: "#d97706",
+                    }}
+                  >
+                    Pending
+                  </Text>
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Diagnosis Status:{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_800ExtraBold",
+                      color: isDiagnosisReady
+                        ? "#059669"
+                        : "#d97706",
+                    }}
+                  >
+                    {methodBased
+                      ? methodCode
+                        ? isDiagnosisReady
+                          ? `${selectedMethod?.label || "Selected method"} is available`
+                          : `${selectedMethod?.label || "Selected method"} is not yet available`
+                        : "Select an available diagnostic method"
+                      : isDiagnosisReady
+                        ? "Ready for Pregnancy Diagnosis"
+                        : `Monitoring — Day ${daysSinceAI ?? 0} of ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}`}
+                  </Text>
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 13,
+                    color: colors.textPrimary,
+                  }}
+                >
+                  Diagnosis Available:{" "}
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_700Bold",
+                    }}
+                  >
+                    {diagnosisEligibleDateLabel}
+                  </Text>
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontFamily: "Outfit_500Medium",
+                  fontSize: 11,
+                  color: colors.textSecondary,
+                  lineHeight: 16,
+                  fontStyle: "italic"
+                }}
+              >
+                This diagnosis will update AI Attempt #{selectedInsemination.attemptNumber || 1} from {formatDate(selectedInseminationDate)}. The result will be permanently linked to this AI service record.
+              </Text>
+
+              {!isDiagnosisReady && (
+                <View
+                  className="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 p-3 rounded-2xl mt-4 flex-row items-center gap-2"
+                >
+                  <AlertCircle size={18} color="#d97706" />
+                  <Text
+                    style={{
+                      fontFamily: "Outfit_600SemiBold",
+                      fontSize: 11,
+                      color: "#b45309",
+                      flex: 1,
+                      lineHeight: 15,
+                    }}
+                  >
+                    {methodBased
+                      ? selectedMethod?.reason || "Select a diagnostic method that is currently available."
+                      : `Pregnancy diagnosis is locked until Day ${PREGNANCY_DIAGNOSIS_MINIMUM_DAYS}. This attempt is currently at Day ${daysSinceAI ?? 0}. Diagnosis becomes available on ${diagnosisEligibleDateLabel}.`}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {selectedInsemination && methodBased && (
+            <>
+              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
+                Diagnostic Method
+              </Text>
+              <View className="gap-2 mb-6">
+                {methodOptions.map((method: any) => (
+                  <TouchableOpacity
+                    key={method.methodCode}
+                    disabled={!method.enabled || !method.isEligible}
+                    onPress={() => setMethodCode(method.methodCode)}
+                    style={{ opacity: method.enabled && method.isEligible ? 1 : 0.5 }}
+                    className={`rounded-2xl border p-4 ${methodCode === method.methodCode ? "border-[#00643B] bg-emerald-50 dark:bg-emerald-950/20" : "border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900"}`}
+                  >
+                    <Text className="font-outfit-bold text-slate-800 dark:text-white">
+                      {method.label}
+                    </Text>
+                    <Text className="font-outfit-medium text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      {method.isEligible ? "Available now" : method.availableDateLabel || method.reason}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
           {/* DIAGNOSIS RESULT */}
           {selectedInsemination && (
             <>
@@ -363,7 +798,15 @@ export default function PregnancyCheckScreen() {
               </Text>
               <View className="flex-row gap-4 mb-6">
                 <TouchableOpacity
-                  onPress={() => setResult("Pregnant")}
+                  onPress={() => {
+                    if (isDiagnosisReady) {
+                      setResult("Pregnant");
+                    }
+                  }}
+                  disabled={!isDiagnosisReady}
+                  style={{
+                    opacity: isDiagnosisReady ? 1 : 0.45,
+                  }}
                   className={`flex-1 py-6 rounded-2xl border-2 items-center gap-2 ${result === "Pregnant" ? "border-purple-600 bg-purple-50 dark:bg-purple-900/20" : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"}`}
                 >
                   <Sparkles
@@ -385,7 +828,15 @@ export default function PregnancyCheckScreen() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => setResult("Empty")}
+                  onPress={() => {
+                    if (isDiagnosisReady) {
+                      setResult("Empty");
+                    }
+                  }}
+                  disabled={!isDiagnosisReady}
+                  style={{
+                    opacity: isDiagnosisReady ? 1 : 0.45,
+                  }}
                   className={`flex-1 py-6 rounded-2xl border-2 items-center gap-2 ${result === "Empty" ? "border-rose-600 bg-rose-50 dark:bg-rose-900/20" : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"}`}
                 >
                   <AlertCircle
@@ -444,9 +895,13 @@ export default function PregnancyCheckScreen() {
 
               {/* SAVE BUTTON */}
               <TouchableOpacity
-                className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${saving ? "bg-slate-400" : "bg-[#00643B]"}`}
+                className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${
+                  saving || !isDiagnosisReady
+                    ? "bg-slate-400"
+                    : "bg-[#00643B]"
+                }`}
                 onPress={handleSave}
-                disabled={saving}
+                disabled={saving || !isDiagnosisReady}
               >
                 {saving ? (
                   <ActivityIndicator color="white" />
@@ -461,7 +916,9 @@ export default function PregnancyCheckScreen() {
                       style={{ fontFamily: "Outfit_800ExtraBold" }}
                       className="text-white text-base"
                     >
-                      Save Diagnosis
+                      {isDiagnosisReady
+                        ? "Save Diagnosis"
+                        : "Pregnancy Diagnosis Not Yet Available"}
                     </Text>
                   </>
                 )}
@@ -657,6 +1114,7 @@ export default function PregnancyCheckScreen() {
                 <TouchableOpacity
                   onPress={() => {
                     setSelectedInsemination(item);
+                    setMethodCode("");
                     setShowInsemModal(false);
                   }}
                   className={`py-4 px-1 border-b border-slate-100 dark:border-slate-800 ${
@@ -676,8 +1134,14 @@ export default function PregnancyCheckScreen() {
                     Sire Code: {item.sireCode || "N/A"} • Breed:{" "}
                     {item.sireBreed || "N/A"}
                   </Text>
-                  <Text className="text-[10px] text-emerald-600 dark:text-emerald-400 font-outfit-bold uppercase mt-1">
-                    READY FOR PREGNANCY CHECK
+                  <Text
+                    className={`text-[10px] font-outfit-bold uppercase mt-1 ${
+                      getPregnancyDiagnosisTiming(item).isReady
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-amber-600 dark:text-amber-400"
+                    }`}
+                  >
+                    {getPregnancyDiagnosisStatus(item)}
                   </Text>
                 </TouchableOpacity>
               )}

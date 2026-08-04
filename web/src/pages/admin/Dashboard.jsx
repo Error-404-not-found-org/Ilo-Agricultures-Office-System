@@ -1,469 +1,766 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import axiosInstance from '../../lib/axios';
-import { useToast } from '../../contexts/ToastContext';
-import Topbar from '../../components/ui/Topbar';
-import DashboardChart from '../../components/data/DashboardChart';
-import AssignTaskModal from '../../components/modals/AssignTaskModal';
-import { TableRowSkeleton } from '../../components/Skeleton';
-import { 
-    Users, ClipboardCheck, Activity, ArrowUpRight, TrendingUp, 
-    ShieldAlert, Calendar, MapPin, Zap, Target, RefreshCcw, 
-    User, Sparkles, HeartPulse, ChevronRight, Search 
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Activity,
+  ArrowRight,
+  ClipboardList,
+  HeartPulse,
+  MapPin,
+  RefreshCcw,
+  ShieldAlert,
+  Stethoscope,
+  Syringe,
+  UserCheck,
+  Users,
+} from "lucide-react";
+import axiosInstance from "../../lib/axios";
+import { useToast } from "../../contexts/ToastContext";
+import Topbar from "../../components/layout/Topbar";
+import DashboardChart from "../../features/analytics/DashboardChart";
+import AssignTaskModal from "../../components/dialogs/AssignTaskModal";
+import { ui } from "../../components/ui/uiClasses";
+import { getStoredTheme, isDarkTheme } from "../../lib/theme";
+
+const GREEN = "#00643b";
+const GREEN_SOFT = "rgba(0, 100, 59, 0.72)";
+const AMBER = "#d97706";
+const ROSE = "#e11d48";
+const BLUE = "#1d4ed8";
+const EMPTY_ARRAY = [];
+const EMPTY_OBJECT = {};
+
+const sourceResult = (label, result, fallback) => {
+  if (result.status !== "fulfilled") {
+    return {
+      ok: false,
+      label,
+      data: fallback,
+      error:
+        result.reason?.response?.data?.message ||
+        result.reason?.message ||
+        "Unable to load this section.",
+    };
+  }
+  return { ok: true, label, data: result.value?.data ?? fallback, error: null };
+};
+
+const asArray = (value) => {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value?.users)) return value.users;
+  if (Array.isArray(value?.tickets)) return value.tickets;
+  if (Array.isArray(value?.logs)) return value.logs;
+  if (Array.isArray(value?.barangays)) return value.barangays;
+  return [];
+};
+
+const numberValue = (value) => {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric.toLocaleString();
+  return value ?? "Unavailable";
+};
+
+const getBarangayName = (item) => item?.barangay || item?.name || item?._id || "Unspecified";
+
+const formatDate = (date) => {
+  if (!date) return "No date";
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
+const getRequestType = (request) => {
+  if (request?.type === "ai" || request?.type === "insemination") return "AI";
+  if (request?.type === "health") return "Health";
+  if (request?.requestType) return request.requestType;
+  if (request?.raw?.requestType) return request.raw.requestType;
+  if (request?.issueDescription || request?.symptoms || request?.raw?.symptoms) return "Health";
+  return "Service";
+};
+
+const getQueueRequests = (value) => {
+  if (Array.isArray(value?.requests)) return value.requests;
+  return asArray(value);
+};
+
+const toDashboardRequest = (request) => {
+  const raw = request?.raw || request || {};
+  return {
+    id: request?.id || raw?._id,
+    rawId: raw?._id || request?.id,
+    type: request?.type || raw?.type || (raw?.issueDescription || raw?.symptoms ? "health" : "service"),
+    status: request?.status || raw?.status || "pending",
+    urgency: request?.urgency || raw?.urgency || "standard",
+    farmer: request?.farmer || raw?.farmerId?.name || raw?.farmer?.name || "Unknown farmer",
+    barangay: request?.location || raw?.farmerId?.address?.barangay || raw?.barangay || "No barangay",
+    animalTag: request?.earTag || request?.animal || raw?.animalId?.earTag || raw?.animalId?.animalId || "No tag",
+    animalLabel: request?.breed || raw?.animalId?.species || raw?.animalId?.breed || "Livestock",
+    detail: raw?.symptoms || raw?.requestType || raw?.issueDescription || request?.task || "No details provided",
+    createdAt: request?.createdAt || raw?.createdAt,
+    raw,
+  };
+};
 
 export default function Dashboard() {
-    const toast = useToast();
-    const queryClient = useQueryClient();
-    const [searchQuery, setSearchQuery] = useState("");
-    const [activeUrgency, setActiveUrgency] = useState('all');
-    
-    // Theme tracking state
-    const [theme, setTheme] = useState(() => {
-        return localStorage.getItem("theme") || "emerald";
-    });
+  const toast = useToast();
+  const queryClient = useQueryClient();
+  const [theme, setTheme] = useState(getStoredTheme);
+  const [activeUrgency, setActiveUrgency] = useState("all");
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
 
-    // Synchronize local theme state with global theme changes
-    useEffect(() => {
-        const syncTheme = () => {
-            setTheme(localStorage.getItem("theme") || "emerald");
-        };
-        window.addEventListener("theme-change", syncTheme);
-        window.addEventListener("storage", syncTheme);
-        const interval = setInterval(syncTheme, 1000);
-        return () => {
-            window.removeEventListener("theme-change", syncTheme);
-            window.removeEventListener("storage", syncTheme);
-            clearInterval(interval);
-        };
-    }, []);
-
-    // ---- LIVE CONCURRENT DATA PIPELINE ----
-    const { data, isLoading, refetch } = useQuery({
-        queryKey: ['adminDashboardData'],
-        queryFn: async () => {
-            const [statsRes, pendingRes, registryRes, analyticsRes, chartRes, techRes] = await Promise.all([
-                axiosInstance.get('/admin/stats').catch(() => ({ data: { farmers: 12, animals: 45, successRate: "85%" } })),
-                axiosInstance.get('/health-request?status=pending').catch(() => ({ data: [] })),
-                axiosInstance.get('/technician/dashboard-registry').catch(() => ({ data: [] })),
-                axiosInstance.get('/admin/analytics').catch(() => ({ data: { barangayStats: [], technicianStats: [] } })),
-                axiosInstance.get('/admin/chart-data').catch(() => ({ data: { inseminations: [], healthRequests: [] } })),
-                axiosInstance.get('/user?role=technician').catch(() => ({ data: [] }))
-            ]);
-            
-            return {
-                stats: statsRes.data,
-                pendingRequests: pendingRes.data,
-                registry: registryRes.data,
-                analytics: analyticsRes.data,
-                chartData: chartRes.data,
-                technicians: Array.isArray(techRes.data) ? techRes.data : techRes.data?.users || []
-            };
-        },
-        refetchInterval: 1000 * 30, // 30-second active background synchronization
-    });
-
-    // Live Sync handler
-    const handleLiveSync = async () => {
-        try {
-            await refetch();
-            toast.success("Command Center telemetry synchronized.");
-        } catch (error) {
-            toast.error("Failed synchronizing local dashboard.");
-        }
+  useEffect(() => {
+    const syncTheme = () => setTheme(getStoredTheme());
+    window.addEventListener("theme-change", syncTheme);
+    window.addEventListener("storage", syncTheme);
+    return () => {
+      window.removeEventListener("theme-change", syncTheme);
+      window.removeEventListener("storage", syncTheme);
     };
+  }, []);
 
-    const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-    const [selectedRequest, setSelectedRequest] = useState(null);
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey: ["admin", "dashboard-overview"],
+    queryFn: async () => {
+      const [
+        stats,
+        monitoring,
+        analytics,
+        chartData,
+        barangays,
+        technicians,
+        technicianRequests,
+        supportPending,
+        supportProgress,
+        supportResolved,
+        auditLogs,
+        registry,
+      ] = await Promise.allSettled([
+        axiosInstance.get("/admin/stats"),
+        axiosInstance.get("/admin/monitoring"),
+        axiosInstance.get("/admin/analytics"),
+        axiosInstance.get("/admin/chart-data"),
+        axiosInstance.get("/admin/barangays/insights"),
+        axiosInstance.get("/user?role=technician"),
+        axiosInstance.get("/technician/requests", { params: { status: "pending", limit: 50 } }),
+        axiosInstance.get("/support-tickets", { params: { status: "pending", limit: 25 } }),
+        axiosInstance.get("/support-tickets", { params: { status: "in-progress", limit: 25 } }),
+        axiosInstance.get("/support-tickets", { params: { status: "resolved", limit: 25 } }),
+        axiosInstance.get("/audit-logs", { params: { limit: 5 } }),
+        axiosInstance.get("/technician/dashboard-registry"),
+      ]);
 
-    // ---- CHART RESOLVERS ----
-    const areaChartLabels = useMemo(() => {
-        if (!data?.chartData) return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        const { inseminations = [], healthRequests = [] } = data.chartData;
-        const allDates = Array.from(new Set([
-            ...inseminations.map(d => d._id),
-            ...healthRequests.map(d => d._id)
-        ])).sort();
-        if (allDates.length === 0) return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-        return allDates.map(date => new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
-    }, [data?.chartData]);
+      const sources = {
+        stats: sourceResult("Core statistics", stats, {}),
+        monitoring: sourceResult("System monitoring", monitoring, {}),
+        analytics: sourceResult("Analytics", analytics, {}),
+        chartData: sourceResult("Chart data", chartData, {}),
+        barangays: sourceResult("Barangay insights", barangays, []),
+        technicians: sourceResult("Technician directory", technicians, []),
+        technicianRequests: sourceResult("Service queue", technicianRequests, {}),
+        supportPending: sourceResult("Pending support tickets", supportPending, {}),
+        supportProgress: sourceResult("In-progress support tickets", supportProgress, {}),
+        supportResolved: sourceResult("Resolved support tickets", supportResolved, {}),
+        auditLogs: sourceResult("Audit logs", auditLogs, {}),
+        registry: sourceResult("Dashboard registry", registry, []),
+      };
 
-    const areaChartDatasets = useMemo(() => {
-        if (!data?.chartData) return [];
-        const { inseminations = [], healthRequests = [] } = data.chartData;
-        const allDates = Array.from(new Set([
-            ...inseminations.map(d => d._id),
-            ...healthRequests.map(d => d._id)
-        ])).sort();
+      return {
+        sources,
+        stats: sources.stats.data,
+        monitoring: sources.monitoring.data,
+        analytics: sources.analytics.data,
+        chartData: sources.chartData.data,
+        barangays: asArray(sources.barangays.data),
+        technicians: asArray(sources.technicians.data),
+        requests: getQueueRequests(sources.technicianRequests.data).map(toDashboardRequest),
+        supportPending: sources.supportPending.data,
+        supportProgress: sources.supportProgress.data,
+        supportResolved: sources.supportResolved.data,
+        auditLogs: asArray(sources.auditLogs.data),
+        registry: asArray(sources.registry.data),
+      };
+    },
+    refetchInterval: 1000 * 45,
+  });
 
-        const aiData = allDates.map(date => inseminations.find(d => d._id === date)?.count || 0);
-        const healthData = allDates.map(date => healthRequests.find(d => d._id === date)?.count || 0);
+  const darkTheme = isDarkTheme(theme);
+  const sources = data?.sources || EMPTY_OBJECT;
+  const stats = data?.stats || EMPTY_OBJECT;
+  const monitoring = data?.monitoring || EMPTY_OBJECT;
+  const registryMonitor = monitoring.registryMonitor || {};
+  const moowieInsights = monitoring.moowieInsights || {};
+  const serviceRequests = data?.requests || EMPTY_ARRAY;
+  const barangays = data?.barangays || EMPTY_ARRAY;
+  const technicians = data?.technicians || EMPTY_ARRAY;
+  const auditLogs = data?.auditLogs || EMPTY_ARRAY;
+  const failedSources = Object.values(sources).filter((source) => source && !source.ok);
+  const isSourceOk = (key) => sources?.[key]?.ok !== false;
+  const unavailableIfFailed = (key, value) => (isSourceOk(key) ? value : "Unavailable");
 
-        return [
-            {
-                label: 'AI Service Cycle',
-                data: aiData.length > 0 ? aiData : [3, 5, 4, 7, 6, 8, 4],
-                borderColor: '#00643B',
-                backgroundColor: 'rgba(0, 100, 59, 0.06)',
-                fill: true,
-            },
-            {
-                label: 'Clinical Ledger',
-                data: healthData.length > 0 ? healthData : [2, 3, 1, 4, 3, 2, 3],
-                borderColor: '#10b981',
-                backgroundColor: 'rgba(16, 185, 129, 0.03)',
-                fill: true,
-            }
-        ];
-    }, [data?.chartData]);
+  const urgentHealth = useMemo(
+    () =>
+      serviceRequests.filter((request) =>
+        ["high", "emergency", "urgent", "critical"].includes(String(request?.urgency || "").toLowerCase()),
+      ),
+    [serviceRequests],
+  );
 
-    const barChartLabels = useMemo(() => {
-        if (!data?.analytics?.barangayStats || data.analytics.barangayStats.length === 0) {
-            return ["Poblacion", "San Antonio", "Santa Clara", "Cabatuan", "Buray"];
-        }
-        return data.analytics.barangayStats.map(item => item._id || "District");
-    }, [data?.analytics?.barangayStats]);
+  const filteredRequests = useMemo(() => {
+    if (activeUrgency === "urgent") return urgentHealth;
+    return serviceRequests;
+  }, [activeUrgency, serviceRequests, urgentHealth]);
 
-    const barChartDatasets = useMemo(() => {
-        if (!data?.analytics?.barangayStats || data.analytics.barangayStats.length === 0) {
-            return [
-                {
-                    label: "District Density",
-                    data: [15, 12, 9, 7, 5],
-                    borderColor: "#00643B",
-                    backgroundColor: "rgba(0, 100, 59, 0.8)",
-                    borderWidth: 0,
-                    fill: false,
-                }
-            ];
-        }
-        return [
-            {
-                label: "District Density",
-                data: data.analytics.barangayStats.map(item => item.count),
-                borderColor: "#00643B",
-                backgroundColor: "rgba(0, 100, 59, 0.8)",
-                borderWidth: 0,
-                fill: false,
-            }
-        ];
-    }, [data?.analytics?.barangayStats]);
 
-    // Filtered pending requests
-    const filteredRequests = useMemo(() => {
-        const requests = data?.pendingRequests || [];
-        return requests.filter(req => {
-            const matchesUrgency = activeUrgency === 'all' || req.urgency === activeUrgency;
-            const matchesSearch = !searchQuery || 
-                req.farmerId?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                req.animalId?.earTag?.toLowerCase().includes(searchQuery.toLowerCase());
-            return matchesUrgency && matchesSearch;
-        });
-    }, [data?.pendingRequests, activeUrgency, searchQuery]);
 
-    const statsList = [
-        { title: "Active Farmers", value: data?.stats?.farmers || 0, icon: Users, bgClass: "bg-blue-500/10 text-blue-600 dark:text-blue-400", trend: "+12.4%" },
-        { title: "Livestock Pop", value: data?.stats?.animals || 0, icon: Activity, bgClass: "bg-emerald-500/10 text-[#00643b] dark:text-emerald-400", trend: "+5.2%" },
-        { title: "AI Success Rate", value: data?.stats?.successRate || "84%", icon: Target, bgClass: "bg-rose-500/10 text-rose-600 dark:text-rose-400", trend: "+2.1%" },
-        { title: "Fleet Strength", value: data?.technicians?.length || 0, icon: Zap, bgClass: "bg-amber-500/10 text-amber-600 dark:text-amber-400", trend: "Stable" },
-    ];
 
-    return (
-        <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
-            <Topbar
-                title="Admin Command Center"
-                subtitle="Live operations monitoring, dynamic dispatcher, and fleet optimization panel."
-                searchPlaceholder="Search active dispatch queue..."
-                searchValue={searchQuery}
-                onSearchChange={(e) => setSearchQuery(e.target.value)}
-            >
-                <button 
-                    onClick={handleLiveSync}
-                    className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4 flex items-center transition-all cursor-pointer active:scale-95 shadow-md shadow-emerald-500/10"
-                >
-                    <RefreshCcw size={13} className={isLoading ? "animate-spin" : ""} /> Live Sync
-                </button>
-            </Topbar>
 
-            <main className="p-4 md:p-6 space-y-6 flex-1">
-                {/* --- PREMIUM METRICS CARD ROW --- */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {statsList.map((stat, i) => (
-                        <motion.div 
-                            initial={{ opacity: 0, y: 15 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.08 }}
-                            key={stat.title}
-                            className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-xs hover:shadow-md transition-all group relative overflow-hidden"
-                        >
-                            <div className="flex justify-between items-start mb-3">
-                                <div className={`p-2.5 rounded-xl ${stat.bgClass} group-hover:scale-105 transition-transform duration-300`}>
-                                    <stat.icon size={18} />
-                                </div>
-                                <div className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
-                                    <TrendingUp size={10} />
-                                    {stat.trend}
-                                </div>
-                            </div>
-                            <h3 className="text-slate-400 dark:text-slate-500 font-bold text-[10px] uppercase tracking-wider mb-1">{stat.title}</h3>
-                            <div className="flex items-baseline gap-2">
-                                <span className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">{isLoading ? "..." : stat.value}</span>
-                            </div>
-                        </motion.div>
-                    ))}
-                </div>
+  const barangayAttention = useMemo(() => {
+    return [...barangays]
+      .sort((a, b) => {
+        const aRisk = (a.pendingHealthRequests || 0) * 3 + (a.pendingAIRequests || 0) * 2 + (a.incompleteRecordsCount || 0);
+        const bRisk = (b.pendingHealthRequests || 0) * 3 + (b.pendingAIRequests || 0) * 2 + (b.incompleteRecordsCount || 0);
+        return bRisk - aRisk;
+      })
+      .slice(0, 5);
+  }, [barangays]);
 
-                {/* --- ANALYTICS & CHARTS GRID --- */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Volume Trends Chart */}
-                    <div className="lg:col-span-8 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col shadow-xs">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6">
-                            <div>
-                                <h3 className="font-extrabold text-sm text-slate-850 dark:text-slate-100 uppercase tracking-tight">System Throughput</h3>
-                                <p className="text-[11px] text-slate-400 font-semibold">30-day Breeding AI & Health protocols timeline</p>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center gap-1.5">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-[#00643B]" />
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">AI service</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                    <div className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400">Health list</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="flex-1 min-h-[220px]">
-                            <DashboardChart
-                                type="line"
-                                labels={areaChartLabels}
-                                datasets={areaChartDatasets}
-                                height={220}
-                                darkTheme={theme === "night"}
-                            />
-                        </div>
-                    </div>
+  const requestStatusData = useMemo(() => {
+    const pendingAI = serviceRequests.filter((request) => request.type === "ai" || request.type === "insemination").length;
+    const pendingHealth = serviceRequests.filter((request) => request.type === "health").length;
+    const urgent = urgentHealth.length;
+    const assigned = moowieInsights.technicianWorkloads?.reduce((sum, item) => sum + Number(item.activeRequests || 0), 0) || 0;
+    return {
+      labels: ["Health pending", "Urgent", "AI pending", "Assigned work"],
+      datasets: [
+        {
+          label: "Requests",
+          data: [pendingHealth, urgent, pendingAI, assigned],
+          backgroundColor: [ROSE, AMBER, GREEN, BLUE],
+          borderColor: darkTheme ? "#020617" : "#ffffff",
+          borderWidth: 3,
+        },
+      ],
+    };
+  }, [darkTheme, moowieInsights.technicianWorkloads, serviceRequests, urgentHealth.length]);
 
-                    {/* Regional Density Chart */}
-                    <div className="lg:col-span-4 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col shadow-xs">
-                        <h3 className="font-extrabold text-sm text-slate-850 dark:text-slate-100 uppercase tracking-tight mb-1">Barangay Density</h3>
-                        <p className="text-[11px] text-slate-400 font-semibold mb-6">Livestock units distribution by district</p>
-                        
-                        <div className="flex-1 min-h-[220px]">
-                            <DashboardChart
-                                type="bar"
-                                labels={barChartLabels}
-                                datasets={barChartDatasets}
-                                height={220}
-                                darkTheme={theme === "night"}
-                            />
-                        </div>
-                    </div>
-                </div>
+  const trendChart = useMemo(() => {
+    const chartData = data?.chartData || {};
+    const ai = chartData.inseminations || [];
+    const health = chartData.healthRequests || [];
+    const dates = Array.from(new Set([...ai.map((item) => item._id), ...health.map((item) => item._id)])).sort();
+    const labels = dates.length
+      ? dates.map((date) => new Date(date).toLocaleDateString("en-US", { month: "short", day: "numeric" }))
+      : ["Week 1", "Week 2", "Week 3", "Week 4"];
 
-                {/* --- DYNAMIC DISPATCH & FLEET CENTER --- */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                    {/* Live Dispatch Queue */}
-                    <div className="lg:col-span-8 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col">
-                        <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                            <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 bg-amber-500/10 text-amber-600 rounded-xl flex items-center justify-center">
-                                    <ShieldAlert size={18} />
-                                </div>
-                                <div>
-                                    <h3 className="font-extrabold text-sm text-slate-850 dark:text-slate-100 uppercase tracking-tight">Active Dispatch Queue</h3>
-                                    <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Real-time Emergency & Veterinary service requests</p>
-                                </div>
-                            </div>
-                            <div className="flex gap-1">
-                                {['all', 'high'].map(u => (
-                                    <button 
-                                        key={u}
-                                        onClick={() => setActiveUrgency(u)}
-                                        className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all cursor-pointer ${activeUrgency === u ? 'bg-[#00643b] text-white shadow-xs' : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-850 text-slate-400 hover:text-slate-600'}`}
-                                    >
-                                        {u === 'high' ? '🚨 Critical Only' : 'All Requests'}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+    return {
+      labels,
+      datasets: [
+        {
+          label: "AI records",
+          data: dates.length ? dates.map((date) => ai.find((item) => item._id === date)?.count || 0) : [0, 0, 0, 0],
+          borderColor: GREEN,
+          backgroundColor: "rgba(0, 100, 59, 0.08)",
+          fill: true,
+        },
+        {
+          label: "Health reports",
+          data: dates.length ? dates.map((date) => health.find((item) => item._id === date)?.count || 0) : [0, 0, 0, 0],
+          borderColor: ROSE,
+          backgroundColor: "rgba(225, 29, 72, 0.06)",
+          fill: true,
+        },
+      ],
+    };
+  }, [data?.chartData]);
 
-                        <div className="overflow-x-auto flex-1 min-h-[260px]">
-                            <table className="table table-sm w-full border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                                        <th className="p-3.5 text-left">Origin Farmer</th>
-                                        <th className="p-3.5 text-left">Target EarTag</th>
-                                        <th className="p-3.5 text-left">Urgency Matrix</th>
-                                        <th className="p-3.5 text-right pr-6">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100 dark:divide-slate-850 text-xs">
-                                    {isLoading ? (
-                                        [...Array(3)].map((_, i) => <TableRowSkeleton key={i} />)
-                                    ) : filteredRequests.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={5} className="text-center p-12 text-slate-400 italic">
-                                                No pending service requests matching parameters.
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        filteredRequests.map(req => (
-                                            <tr key={req._id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
-                                                <td className="p-3.5 pl-6">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-400">
-                                                            <User size={13} />
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-slate-850 dark:text-slate-150">{req.farmerId?.name || "Farmer"}</p>
-                                                            <div className="flex items-center gap-1 text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                                                                <MapPin size={9} />
-                                                                <span>{req.farmerId?.address?.barangay || "Oton District"}</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </td>
-                                                <td className="p-3.5">
-                                                    <div className="inline-flex items-center gap-1 bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-md text-[10px] font-black">
-                                                        #{req.animalId?.earTag || "N/A"}
-                                                    </div>
-                                                    <p className="text-[9px] text-slate-400 font-bold uppercase mt-1 tracking-wide">{req.animalId?.species || "Bovine"}</p>
-                                                </td>
-                                                <td className="p-3.5">
-                                                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9px] font-bold border ${req.urgency === 'high' ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/50 animate-pulse' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                                                        {req.urgency === 'high' ? '🚨 High' : 'Standard'}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3.5 pr-6 text-right">
-                                                    <button
-                                                        onClick={() => {
-                                                            setSelectedRequest(req);
-                                                            setIsAssignModalOpen(true);
-                                                        }}
-                                                        className="btn btn-xs bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-[10px] font-bold rounded-lg cursor-pointer transition-all active:scale-95 shadow-xs"
-                                                    >
-                                                        Assign
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
 
-                    {/* Active Fleet & Moowie AI Panel */}
-                    <div className="lg:col-span-4 space-y-6">
-                        {/* Fleet Active Status */}
-                        <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 flex flex-col shadow-xs">
-                            <h3 className="font-extrabold text-sm text-slate-850 dark:text-slate-100 uppercase tracking-tight mb-4">Active Field Fleet</h3>
-                            <div className="grid grid-cols-2 gap-3">
-                                {isLoading ? (
-                                    [...Array(4)].map((_, i) => (
-                                        <div key={i} className="h-20 bg-slate-100 dark:bg-slate-900 animate-pulse rounded-xl" />
-                                    ))
-                                ) : !data?.technicians || data.technicians.length === 0 ? (
-                                    <div className="col-span-2 text-center py-6 text-xs text-slate-400 italic">
-                                        No active technicians deployed.
-                                    </div>
-                                ) : (
-                                    data.technicians.slice(0, 4).map((tech, i) => (
-                                        <div key={i} className="p-3.5 rounded-xl bg-slate-50/50 dark:bg-slate-900 border border-slate-100 dark:border-slate-850 flex flex-col items-center text-center group hover:border-[#00643b]/40 transition-colors">
-                                            <div className="relative mb-2 shrink-0">
-                                                <div className="w-10 h-10 rounded-2xl bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-lg overflow-hidden">
-                                                    {tech.imageUrl ? <img src={tech.imageUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" /> : '👨‍🔧'}
-                                                </div>
-                                                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white dark:border-slate-950 rounded-full" />
-                                            </div>
-                                            <p className="text-[10px] font-black text-slate-800 dark:text-slate-100 uppercase truncate w-full tracking-wide">{tech.name?.split(' ')[0]}</p>
-                                            <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mt-0.5">Deployed</span>
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </div>
 
-                        {/* Moowie AI Auditor */}
-                        <div className="bg-[#074033] rounded-2xl border border-emerald-950 p-6 shadow-xl relative overflow-hidden group">
-                             <div className="absolute inset-0 bg-linear-to-br from-emerald-400/5 to-transparent pointer-events-none" />
-                            <div className="relative z-10 space-y-4">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-7 h-7 bg-emerald-500/20 border border-emerald-500/30 rounded-xl flex items-center justify-center text-emerald-400">
-                                        <Sparkles size={14} />
-                                    </div>
-                                    <h4 className="text-white text-xs font-black tracking-widest uppercase">Moowie Command Insight</h4>
-                                </div>
-                                <div className="bg-black/25 border border-white/5 rounded-xl p-4 backdrop-blur-xs">
-                                    <p className="text-emerald-400 text-[8px] font-black uppercase tracking-widest mb-1">Queue Load Balancing</p>
-                                    <p className="text-emerald-50/80 text-[10px] font-semibold leading-relaxed tracking-wide uppercase">
-                                        {data?.pendingRequests?.length > 4 
-                                            ? "Alert: Field ticketing payload is pacing high. Advise rescheduling non-urgent breeding logs."
-                                            : "System state is healthy. Operations yield targets: +4.2% municipal pacing."
-                                        }
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+  const workloadChart = useMemo(() => {
+    const workloads = Array.isArray(moowieInsights.technicianWorkloads) ? moowieInsights.technicianWorkloads : [];
+    const rows = workloads.length
+      ? workloads.slice(0, 6)
+      : technicians.slice(0, 6).map((tech) => ({ name: tech.name || "Technician", activeRequests: 0 }));
+    return {
+      rows,
+      labels: rows.map((item) => item.name || "Technician"),
+      datasets: [
+        {
+          label: "Active requests",
+          data: rows.map((item) => item.activeRequests || 0),
+          backgroundColor: GREEN_SOFT,
+          borderColor: GREEN,
+          borderWidth: 0,
+        },
+      ],
+    };
+  }, [moowieInsights.technicianWorkloads, technicians]);
 
-                {/* --- RECENT REGISTRY ACTIVITY --- */}
-                <div className="bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-xs">
-                    <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/80 pb-4 mb-6">
-                        <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-blue-500/10 text-blue-600 rounded-xl flex items-center justify-center">
-                                <ClipboardCheck size={18} />
-                            </div>
-                            <div>
-                                <h3 className="font-extrabold text-sm text-slate-850 dark:text-slate-100 uppercase tracking-tight">Global Registry Log</h3>
-                                <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Live inventory enrollment activities inside Oton</p>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {isLoading ? (
-                            [...Array(4)].map((_, i) => (
-                                <div key={i} className="h-28 bg-slate-100 dark:bg-slate-900 animate-pulse rounded-xl" />
-                            ))
-                        ) : !data?.registry || data.registry.length === 0 ? (
-                            <div className="col-span-4 text-center py-8 text-xs text-slate-400 italic">
-                                No recent registrations logged.
-                            </div>
-                        ) : (
-                            data.registry.slice(0, 4).map(animal => (
-                                <div key={animal.id} className="p-4 rounded-xl bg-slate-50/50 dark:bg-slate-900 border border-slate-100 dark:border-slate-850 flex flex-col justify-between hover:border-[#00643b]/40 hover:shadow-xs transition-all">
-                                    <div className="flex justify-between items-start mb-3">
-                                        <div className="w-8 h-8 rounded-lg bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center text-sm shadow-xs shrink-0">
-                                            🐄
-                                        </div>
-                                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border ${animal.status === 'Pregnant' ? 'bg-purple-50 text-purple-600 border-purple-200 dark:bg-purple-950/20 dark:text-purple-400' : 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400'}`}>
-                                            {animal.status || "Open"}
-                                        </span>
-                                    </div>
-                                    <h4 className="text-[11px] font-black text-slate-800 dark:text-slate-150">#{animal.id}</h4>
-                                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">{animal.breed || "Bovine Breed"}</p>
-                                    
-                                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-850 flex justify-between items-center text-[9px] font-semibold text-slate-500 dark:text-slate-400">
-                                        <span className="truncate max-w-[90px]">{animal.farmerName || "Farmer"}</span>
-                                        <span>{animal.lastActionDate ? new Date(animal.lastActionDate).toLocaleDateString() : "N/A"}</span>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-            </main>
 
-            <AssignTaskModal 
-                isOpen={isAssignModalOpen}
-                onClose={() => setIsAssignModalOpen(false)}
-                taskData={selectedRequest}
-                onSuccess={() => queryClient.invalidateQueries({ queryKey: ['adminDashboardData'] })}
+  const summaryCards = [
+    {
+      label: "Farmers",
+      value: unavailableIfFailed("stats", stats.farmers),
+      note: "Registered farmer accounts",
+      icon: Users,
+      color: "text-[#00643b] dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30",
+    },
+    {
+      label: "Animals",
+      value: unavailableIfFailed("stats", stats.animals),
+      note: isSourceOk("monitoring")
+        ? `${registryMonitor.missingAnimalData || 0} incomplete records`
+        : "Registry monitor unavailable",
+      icon: Activity,
+      color: "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/30",
+    },
+    {
+      label: "Technicians",
+      value: isSourceOk("stats") ? stats.technicians ?? technicians.length : "Unavailable",
+      note: "Active field workforce",
+      icon: UserCheck,
+      color: "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-900",
+    },
+    {
+      label: "Open requests",
+      value: unavailableIfFailed("technicianRequests", serviceRequests.length),
+      note: isSourceOk("technicianRequests") ? `${urgentHealth.length} urgent requests` : "Service queue unavailable",
+      icon: ClipboardList,
+      color: "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30",
+    },
+  ];
+
+  const needsAttention = [
+    {
+      title: "Urgent service requests",
+      count: urgentHealth.length,
+      detail: "High-priority service requests waiting for action",
+      to: "/admin/requests",
+      tone: "rose",
+    },
+    {
+      title: "Unclaimed service requests",
+      count: serviceRequests.length,
+      detail: "Pending requests from the unified service queue",
+      to: "/admin/requests",
+      tone: "amber",
+    },
+    {
+      title: "Barangays needing review",
+      count: barangayAttention.filter((item) => item.status !== "healthy").length,
+      detail: "Health, AI, or registry quality risk",
+      to: "/admin/barangays",
+      tone: "blue",
+    },
+    {
+      title: "Incomplete animal records",
+      count: registryMonitor.missingAnimalData || 0,
+      detail: "Missing breed, birth date, or registry details",
+      to: "/admin/monitoring",
+      tone: "slate",
+    },
+  ];
+
+  const handleRefresh = async () => {
+    try {
+      await refetch();
+      toast.success("Admin dashboard data refreshed.");
+    } catch {
+      toast.error("Unable to refresh admin dashboard data.");
+    }
+  };
+
+  return (
+    <div className={ui.page}>
+      <Topbar
+        title="Admin Dashboard"
+        subtitle="Municipal agriculture operations, service demand, and registry health"
+      >
+        <button
+          onClick={handleRefresh}
+          className="inline-flex items-center gap-2 rounded-xl bg-[#00643b] px-3 py-2 text-xs font-bold text-white hover:bg-[#004d2e] active:scale-95 transition"
+        >
+          <RefreshCcw size={14} className={isFetching ? "animate-spin" : ""} />
+          Refresh
+        </button>
+      </Topbar>
+
+      <main className={ui.main}>
+        {isError && (
+          <ErrorPanel title="Dashboard data unavailable" message="Some operational data could not be loaded. Check the backend connection and try again." onRetry={handleRefresh} />
+        )}
+        {!isError && failedSources.length > 0 && (
+          <PartialDataPanel sources={failedSources} onRetry={handleRefresh} />
+        )}
+
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {summaryCards.map((card) => (
+            <SummaryCard key={card.label} {...card} loading={isLoading} />
+          ))}
+        </section>
+
+        <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+          <Panel className="xl:col-span-5" title="Needs Attention" description="Items admins should review first">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {needsAttention.map((item) => (
+                <AttentionCard key={item.title} item={item} loading={isLoading} />
+              ))}
+            </div>
+          </Panel>
+
+          <Panel className="xl:col-span-7" title="Service Request Overview" description="Pending work across health and AI services">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 items-center">
+              <div className="lg:col-span-2">
+                <DashboardChart
+                  type="doughnut"
+                  labels={requestStatusData.labels}
+                  datasets={requestStatusData.datasets}
+                  height={220}
+                  darkTheme={darkTheme}
+                />
+              </div>
+              <div className="lg:col-span-3 grid grid-cols-2 gap-3">
+                <MiniMetric icon={HeartPulse} label="Health pending" value={requestStatusData.datasets[0].data[0]} />
+                <MiniMetric icon={ShieldAlert} label="Urgent requests" value={urgentHealth.length} />
+                <MiniMetric icon={Syringe} label="AI pending" value={requestStatusData.datasets[0].data[2]} />
+                <MiniMetric icon={ClipboardList} label="Assigned work" value={requestStatusData.datasets[0].data[3]} />
+              </div>
+            </div>
+          </Panel>
+        </section>
+
+        <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+          <Panel className="xl:col-span-7" title="Pending Service Queue" description="Unassigned or urgent cases from farmers" actionLabel="Open board" to="/admin/requests">
+            <RequestTable
+              requests={filteredRequests}
+              loading={isLoading}
+              activeUrgency={activeUrgency}
+              onUrgencyChange={setActiveUrgency}
+              onAssign={(request) => {
+                setSelectedRequest(request);
+                setIsAssignModalOpen(true);
+              }}
             />
-        </div>
-    );
+          </Panel>
+
+          <Panel className="xl:col-span-5" title="Technician Workload" description="Active assigned service load">
+            <DashboardChart
+              type="bar"
+              labels={workloadChart.labels}
+              datasets={workloadChart.datasets}
+              height={260}
+              darkTheme={darkTheme}
+            />
+          </Panel>
+        </section>
+
+        <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+          <Panel className="xl:col-span-6" title="Barangay Overview" description="Barangays with service or data quality pressure" actionLabel="View all" to="/admin/barangays">
+            <RankedBarangays barangays={barangayAttention} loading={isLoading} />
+          </Panel>
+
+          <Panel className="xl:col-span-6" title="Service Trends" description="AI records and health reports over the last 30 days">
+            <DashboardChart
+              type="line"
+              labels={trendChart.labels}
+              datasets={trendChart.datasets}
+              height={270}
+              darkTheme={darkTheme}
+            />
+          </Panel>
+        </section>
+
+        <section className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+          <Panel className="xl:col-span-12" title="Recent Audit Activity" description="Latest admin and workflow changes" actionLabel="View logs" to="/admin/audit-logs">
+            <AuditPreview logs={auditLogs} loading={isLoading} />
+          </Panel>
+        </section>
+      </main>
+
+      <AssignTaskModal
+        isOpen={isAssignModalOpen}
+        onClose={() => setIsAssignModalOpen(false)}
+        taskData={selectedRequest}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ["admin", "dashboard-overview"] })}
+      />
+    </div>
+  );
 }
+
+const Panel = ({ title, description, actionLabel, to, className = "", children }) => (
+  <section className={`bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden ${className}`}>
+    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between gap-4">
+      <div>
+        <h2 className="text-sm font-black text-slate-900 dark:text-white">{title}</h2>
+        {description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{description}</p>}
+      </div>
+      {to && actionLabel && (
+        <Link to={to} className="inline-flex items-center gap-1 text-xs font-bold text-[#00643b] dark:text-emerald-300 hover:underline shrink-0">
+          {actionLabel}
+          <ArrowRight size={13} />
+        </Link>
+      )}
+    </div>
+    <div className="p-5">{children}</div>
+  </section>
+);
+
+const SummaryCard = ({ label, value, note, icon: Icon, color, loading }) => (
+  <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm min-h-32">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{label}</p>
+        <p className="text-2xl font-black text-slate-900 dark:text-white mt-2 capitalize">{loading ? "..." : formatSummaryValue(value)}</p>
+      </div>
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${color}`}>
+        <Icon size={18} />
+      </div>
+    </div>
+    <p className="text-xs text-slate-500 dark:text-slate-400 mt-4">{note}</p>
+  </div>
+);
+
+const formatSummaryValue = (value) => {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric.toLocaleString();
+  return value || "0";
+};
+
+const AttentionCard = ({ item, loading }) => {
+  const toneClass = {
+    rose: "border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/15 text-rose-700 dark:text-rose-300",
+    amber: "border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/15 text-amber-700 dark:text-amber-300",
+    blue: "border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/15 text-blue-700 dark:text-blue-300",
+    slate: "border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-300",
+  }[item.tone];
+
+  return (
+    <Link to={item.to} className={`block rounded-2xl border p-4 hover:-translate-y-0.5 transition ${toneClass}`}>
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-sm font-black text-slate-900 dark:text-white">{item.title}</p>
+        <span className="text-xl font-black">{loading ? "..." : numberValue(item.count)}</span>
+      </div>
+      <p className="text-xs mt-2 text-slate-600 dark:text-slate-400">{item.detail}</p>
+    </Link>
+  );
+};
+
+const MiniMetric = ({ icon: Icon, label, value }) => (
+  <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
+    <Icon size={16} className="text-[#00643b] dark:text-emerald-300" />
+    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-3">{label}</p>
+    <p className="text-xl font-black text-slate-900 dark:text-white mt-1">{numberValue(value)}</p>
+  </div>
+);
+
+const RankedBarangays = ({ barangays, loading }) => {
+  if (loading) return <SkeletonRows count={5} />;
+  if (!barangays.length) return <EmptyState message="No barangay risk records available." />;
+
+  return (
+    <div className="space-y-3">
+      {barangays.map((item) => {
+        const name = getBarangayName(item);
+        const risk = Number(item.pendingHealthRequests || 0) + Number(item.pendingAIRequests || 0) + Number(item.incompleteRecordsCount || 0);
+        return (
+          <div key={name} className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-black text-slate-900 dark:text-white truncate">{name}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {numberValue(item.animalsCount || 0)} animals, {numberValue(item.farmersCount || 0)} farmers
+                </p>
+              </div>
+              <StatusBadge status={item.status || (risk > 0 ? "attention" : "healthy")} />
+            </div>
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              <SmallCount label="Health" value={item.pendingHealthRequests || 0} />
+              <SmallCount label="AI" value={item.pendingAIRequests || 0} />
+              <SmallCount label="Data" value={item.incompleteRecordsCount || 0} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const RequestTable = ({ requests, loading, activeUrgency, onUrgencyChange, onAssign }) => (
+  <div>
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-900 p-1">
+        {[
+          ["all", "All pending"],
+          ["urgent", "Urgent only"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            onClick={() => onUrgencyChange(value)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+              activeUrgency === value ? "bg-[#00643b] text-white" : "text-slate-500 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{requests.length} visible requests</p>
+    </div>
+
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-left text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-100 dark:border-slate-800">
+            <th className="py-3 pr-3">Farmer</th>
+            <th className="py-3 pr-3">Animal</th>
+            <th className="py-3 pr-3">Type</th>
+            <th className="py-3 pr-3">Urgency</th>
+            <th className="py-3 text-right">Action</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          {loading ? (
+            <tr>
+              <td colSpan={5} className="py-6"><SkeletonRows count={3} /></td>
+            </tr>
+          ) : requests.length === 0 ? (
+            <tr>
+              <td colSpan={5} className="py-10"><EmptyState message="No pending health requests in this view." /></td>
+            </tr>
+          ) : (
+            requests.slice(0, 7).map((request) => (
+              <tr key={request.id || request.rawId} className="align-middle">
+                <td className="py-3 pr-3">
+                  <p className="font-bold text-slate-900 dark:text-white">{request.farmer}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-0.5">
+                    <MapPin size={12} /> {request.barangay}
+                  </p>
+                </td>
+                <td className="py-3 pr-3">
+                  <span className="font-bold text-slate-700 dark:text-slate-200">{request.animalTag}</span>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{request.animalLabel}</p>
+                </td>
+                <td className="py-3 pr-3">
+                  <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 dark:bg-slate-900 px-2 py-1 text-xs font-bold text-slate-600 dark:text-slate-300">
+                    <Stethoscope size={12} /> {getRequestType(request)}
+                  </span>
+                </td>
+                <td className="py-3 pr-3">
+                  <StatusBadge status={request.urgency || "standard"} />
+                </td>
+                <td className="py-3 text-right">
+                  {request.type === "health" && request.raw?._id ? (
+                    <button onClick={() => onAssign(request.raw)} className="rounded-lg bg-[#00643b] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#004d2e] active:scale-95 transition">
+                      Assign
+                    </button>
+                  ) : (
+                    <Link to="/admin/requests" className="inline-flex rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900 transition">
+                      Review
+                    </Link>
+                  )}
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
+const AuditPreview = ({ logs, loading }) => {
+  if (loading) return <SkeletonRows count={4} />;
+  if (!logs.length) return <EmptyState message="No recent audit logs available." />;
+
+  return (
+    <div className="space-y-3">
+      {logs.slice(0, 5).map((log) => (
+        <div key={log._id} className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/70 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-black text-slate-900 dark:text-white truncate">{log.action || "Audit action"}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{log.entityType || "System"} by {log.actorId?.name || "System"}</p>
+            </div>
+            <span className="text-[11px] text-slate-400 shrink-0">{formatDate(log.createdAt)}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const SmallCount = ({ label, value }) => (
+  <div className="rounded-xl bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 p-2">
+    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+    <p className="text-sm font-black text-slate-900 dark:text-white mt-1">{numberValue(value)}</p>
+  </div>
+);
+
+const StatusBadge = ({ status }) => {
+  const normalized = String(status || "standard").toLowerCase();
+  const urgent = ["high", "emergency", "urgent", "critical"].includes(normalized);
+  const attention = ["attention", "pending", "standard"].includes(normalized);
+  const cls = urgent
+    ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-300 dark:border-rose-900/60"
+    : attention
+      ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/20 dark:text-amber-300 dark:border-amber-900/60"
+      : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-300 dark:border-emerald-900/60";
+  return <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${cls}`}>{status || "standard"}</span>;
+};
+
+const EmptyState = ({ message }) => (
+  <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-8 text-center text-sm text-slate-400 dark:text-slate-500">
+    {message}
+  </div>
+);
+
+const SkeletonRows = ({ count }) => (
+  <div className="space-y-3">
+    {Array.from({ length: count }).map((_, index) => (
+      <div key={index} className="h-16 rounded-2xl bg-slate-100 dark:bg-slate-900 animate-pulse" />
+    ))}
+  </div>
+);
+
+const ErrorPanel = ({ title, message, onRetry }) => (
+  <div className="rounded-2xl border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/20 p-4 flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <p className="text-sm font-black text-rose-800 dark:text-rose-200">{title}</p>
+      <p className="text-xs text-rose-700 dark:text-rose-300 mt-1">{message}</p>
+    </div>
+    <button onClick={onRetry} className="rounded-xl bg-rose-600 px-3 py-2 text-xs font-bold text-white hover:bg-rose-700">
+      Retry
+    </button>
+  </div>
+);
+
+const PartialDataPanel = ({ sources, onRetry }) => (
+  <div className="rounded-2xl border border-amber-200 dark:border-amber-900/70 bg-amber-50 dark:bg-amber-950/20 p-4 flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <p className="text-sm font-black text-amber-800 dark:text-amber-200">
+        Some dashboard sections did not load
+      </p>
+      <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+        Loaded sections remain visible. Failed widgets are marked as unavailable instead of showing fake zeroes.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {sources.map((source) => (
+          <span
+            key={source.label}
+            className="rounded-full border border-amber-200 dark:border-amber-800 bg-white/70 dark:bg-slate-950/40 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-200"
+            title={source.error}
+          >
+            {source.label}
+          </span>
+        ))}
+      </div>
+    </div>
+    <button onClick={onRetry} className="rounded-xl bg-amber-600 px-3 py-2 text-xs font-bold text-white hover:bg-amber-700">
+      Retry
+    </button>
+  </div>
+);

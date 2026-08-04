@@ -1,34 +1,48 @@
 import React, { useState } from 'react';
 import { View, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
-import { ChevronLeft, Phone, Mail, MessageSquare, ChevronUp, ChevronDown } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
+import { Phone, Mail, MessageSquare, ChevronUp, ChevronDown } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { useTheme } from '@/lib/theme';
 import { Text } from '@/components/ui/Text';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AppPageHeader } from '@/components/AppPageHeader';
+
+type SupportTicket = {
+  _id: string;
+  message: string;
+  status: 'pending' | 'in-progress' | 'resolved';
+  createdAt: string;
+  updatedAt: string;
+};
 
 export default function HelpCenter() {
-  const router = useRouter();
   const { user: clerkUser } = useUser();
   const api = useApi();
+  const queryClient = useQueryClient();
   const { colors, isDark } = useTheme();
 
   const role = clerkUser?.publicMetadata?.role || 'farmer';
   const isTechnician = role === 'technician';
 
   const primaryColor = isDark ? colors.primary : '#00643B';
-  const headerBgColor = isDark ? '#064e3e' : '#00643B';
 
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [supportMessage, setSupportMessage] = useState('');
   const [isSubmittingTicket, setIsSubmittingTicket] = useState(false);
+  const { data: myTickets = [], isLoading: isLoadingTickets } = useQuery<SupportTicket[]>({
+    queryKey: ['support-tickets', 'mine'],
+    queryFn: async () => {
+      const response = await api.get('/support-tickets/mine');
+      return Array.isArray(response.data?.data) ? response.data.data : [];
+    },
+  });
 
   const farmerFAQs = [
     {
       q: "How do I request Artificial Insemination (AI)?",
-      a: "Go to your Home tab, tap 'Request AI', fill in the animal's details (Ear Tag, breed), select your preferred schedule, and submit. A technician will receive a notification to approve and complete the visit."
+      a: "Go to your Home tab, tap 'AI Service Request', fill in the animal's details (Ear Tag, breed), select your preferred schedule, and submit. A technician will receive a notification to claim or schedule the visit."
     },
     {
       q: "What is 'Ask Moowie' AI assistant?",
@@ -69,18 +83,15 @@ export default function HelpCenter() {
     if (!supportMessage.trim()) return toast.error("Please enter a message.");
     setIsSubmittingTicket(true);
     try {
-      const userLabel = isTechnician ? 'Technician' : 'Farmer';
-      await api.post('/notification', {
-        title: "Support Ticket Submitted",
-        message: `${userLabel} ${clerkUser?.fullName || 'User'} submitted a query: ${supportMessage}`,
-        type: "system",
-        recipientId: "000000000000000000000000"
+      await api.post('/support-tickets', {
+        message: supportMessage,
       });
       toast.success("Message sent! Support will contact you shortly.");
       setSupportMessage('');
-    } catch (err) {
-      toast.success("Ticket submitted successfully!");
-      setSupportMessage('');
+      queryClient.invalidateQueries({ queryKey: ['support-tickets', 'mine'] });
+    } catch (err: any) {
+      const errMsg = err.response?.data?.message || err.message || "Failed to submit ticket.";
+      toast.error(errMsg);
     } finally {
       setIsSubmittingTicket(false);
     }
@@ -88,49 +99,7 @@ export default function HelpCenter() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
-      <StatusBar style="light" />
-      
-      {/* Header */}
-      <View 
-        style={{ 
-          paddingTop: 56, 
-          paddingBottom: 24, 
-          paddingHorizontal: 24, 
-          backgroundColor: headerBgColor,
-          borderBottomLeftRadius: 32,
-          borderBottomRightRadius: 32,
-          flexDirection: 'row',
-          alignItems: 'center',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.1,
-          shadowRadius: 12,
-          elevation: 4,
-          zIndex: 10
-        }}
-      >
-        <TouchableOpacity 
-          onPress={() => router.back()}
-          activeOpacity={0.7}
-          style={{ 
-            width: 40, 
-            height: 40, 
-            borderRadius: 20, 
-            backgroundColor: 'rgba(255, 255, 255, 0.15)', 
-            alignItems: 'center', 
-            justifyContent: 'center' 
-          }}
-        >
-          <ChevronLeft size={22} color="white" />
-        </TouchableOpacity>
-        
-        <View style={{ flex: 1, alignItems: 'center', marginRight: 40 }}>
-          <Text variant="black" size={18} style={{ color: '#ffffff' }}>Help Center</Text>
-          <Text variant="bold" size={9} style={{ color: isDark ? '#a7f3d0' : '#d1fae5', textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 }}>
-            Support & FAQs
-          </Text>
-        </View>
-      </View>
+      <AppPageHeader title="Help Center" />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 24, paddingBottom: 100 }}>
         <View style={{ gap: 24 }}>
@@ -264,6 +233,55 @@ export default function HelpCenter() {
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+
+          <View style={{ marginTop: 28 }}>
+            <Text variant="extrabold" size={18} style={{ color: colors.textPrimary, marginBottom: 6 }}>
+              My Support Tickets
+            </Text>
+            <Text variant="semibold" size={12} style={{ color: colors.textMuted, marginBottom: 14 }}>
+              Track whether your messages are pending, being handled, or resolved.
+            </Text>
+
+            {isLoadingTickets ? (
+              <ActivityIndicator color={primaryColor} style={{ marginVertical: 20 }} />
+            ) : myTickets.length === 0 ? (
+              <View style={{ padding: 18, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}>
+                <Text variant="semibold" size={13} style={{ color: colors.textMuted }}>
+                  You have not submitted any support tickets yet.
+                </Text>
+              </View>
+            ) : (
+              <View style={{ gap: 10 }}>
+                {myTickets.map((ticket) => {
+                  const statusColor = ticket.status === 'resolved'
+                    ? '#15803d'
+                    : ticket.status === 'in-progress'
+                      ? '#b45309'
+                      : '#475569';
+                  return (
+                    <View
+                      key={ticket._id}
+                      style={{ padding: 16, borderRadius: 16, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                        <Text variant="bold" size={13} style={{ flex: 1, color: colors.textPrimary, lineHeight: 19 }}>
+                          {ticket.message}
+                        </Text>
+                        <View style={{ paddingHorizontal: 9, paddingVertical: 5, borderRadius: 8, backgroundColor: `${statusColor}18` }}>
+                          <Text variant="bold" size={10} style={{ color: statusColor, textTransform: 'capitalize' }}>
+                            {ticket.status.replace('-', ' ')}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text variant="semibold" size={10} style={{ color: colors.textMuted, marginTop: 10 }}>
+                        Sent {new Date(ticket.createdAt).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
           </View>
 
         </View>

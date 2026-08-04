@@ -1,0 +1,311 @@
+import React from "react";
+import { Image, View, TouchableOpacity } from "react-native";
+import {
+  ChevronRight,
+  ClipboardCheck,
+  Hand,
+  LockKeyhole,
+  MapPin,
+  Send,
+  Stethoscope,
+  Syringe,
+  UserRound,
+} from "lucide-react-native";
+import { useRouter } from "expo-router";
+
+import { AsyncState, SectionHeader, StatusBadge } from "@/components/shared";
+import { Text } from "@/components/ui/Text";
+import { useTheme } from "@/lib/theme";
+import { hasTechnicianRequestAssignee } from "@/features/technician-requests/utils/requestPresentation";
+import {
+  formatDashboardLocation,
+  formatSentAt,
+  getTechnicianRequestBadge,
+} from "../utils/dashboardPresentation";
+import { TechnicianRequestSkeleton } from "./skeletons/TechnicianDashboardSkeletons";
+import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
+
+interface TechnicianRequestsSectionProps {
+  loading: boolean;
+  pendingRequests: any[];
+  dbUser: any;
+  isUpdating: boolean;
+  handleAction: (item: any) => void;
+}
+
+export function TechnicianRequestsSection({
+  loading,
+  pendingRequests,
+  dbUser,
+  isUpdating,
+  handleAction,
+}: TechnicianRequestsSectionProps) {
+  const router = useRouter();
+  const availableRequests = pendingRequests.filter(
+    (request: any) =>
+      String(request.status || request.raw?.status || "").toLowerCase() ===
+        "pending" && !hasTechnicianRequestAssignee(request),
+  );
+  const previewRequests = availableRequests.slice(0, 3);
+
+  return (
+    <View style={{ marginBottom: 24 }}>
+      <SectionHeader
+        title="Farmer requests"
+        subtitle={
+          availableRequests.length > 0
+            ? `${availableRequests.length} available ${availableRequests.length === 1 ? "request" : "requests"}`
+            : undefined
+        }
+        actionLabel="View all"
+        onAction={() =>
+          router.push("/(technician)/(tabs)/technician.requests" as any)
+        }
+      />
+
+      {loading ? (
+        <TechnicianRequestSkeleton />
+      ) : previewRequests.length === 0 ? (
+        <View
+          className={TECHNICIAN_DASHBOARD_CARD_CLASSNAME}
+          style={{ padding: 16 }}
+        >
+          <AsyncState
+            state="empty"
+            title="No new farmer requests"
+            message="New service requests will appear here."
+            style={{ paddingVertical: 20, paddingHorizontal: 8 }}
+          />
+        </View>
+      ) : (
+        previewRequests.map((request: any, index: number) => {
+          const assignedTechnicianId =
+            request.raw?.approvedBy?._id ||
+            request.raw?.approvedBy ||
+            request.raw?.handledBy?._id ||
+            request.raw?.handledBy ||
+            null;
+          const assignedTechnicianName =
+            request.raw?.approvedBy?.name ||
+            request.raw?.handledBy?.name ||
+            (assignedTechnicianId ? "another technician" : null);
+          const assignedToOther =
+            assignedTechnicianId &&
+            dbUser?._id &&
+            String(assignedTechnicianId) !== String(dbUser._id);
+
+          return (
+            <RequestRow
+              key={`${request.type}-${request._id || request.id || index}`}
+              item={request}
+              isLocked={assignedToOther}
+              lockedByName={assignedTechnicianName}
+              isUpdating={isUpdating}
+              onPress={() => handleAction(request)}
+            />
+          );
+        })
+      )}
+    </View>
+  );
+}
+
+function RequestRow({
+  item,
+  onPress,
+  isLocked,
+  lockedByName,
+  isUpdating,
+}: any) {
+  const { colors, isDark } = useTheme();
+  const isHealth = item.type === "health";
+  const isPregnancyCheck = item.type === "breeding_verification";
+  const serviceLabel = String(
+    item.serviceType ||
+      item.requestType ||
+      item.raw?.requestType ||
+      (isPregnancyCheck
+        ? "Pregnancy Check"
+        : isHealth
+          ? "Health Assistance"
+          : "Artificial Insemination"),
+  )
+    .replace(/[_-]/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+  const location = formatDashboardLocation(
+    item,
+    item.locationLabel || item.location,
+  );
+  const sentAt =
+    item.createdAt ||
+    item.requestedAt ||
+    item.raw?.createdAt ||
+    item.raw?.requestedAt ||
+    item.sentTime;
+
+  const badgeInfo = getTechnicianRequestBadge(item, isLocked);
+  const ServiceIcon = isPregnancyCheck
+    ? ClipboardCheck
+    : isHealth
+      ? Stethoscope
+      : Syringe;
+
+  return (
+    <TouchableOpacity
+      className={TECHNICIAN_DASHBOARD_CARD_CLASSNAME}
+      onPress={isUpdating ? undefined : onPress}
+      activeOpacity={0.8}
+      disabled={isUpdating}
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${serviceLabel} request from ${item.farmer}`}
+      style={{
+        marginBottom: 12,
+        padding: 14,
+        flexDirection: "row",
+        alignItems: "center",
+        opacity: isUpdating ? 0.6 : 1,
+      }}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 12,
+          overflow: "hidden",
+          backgroundColor: isDark ? "rgba(16,185,129,0.15)" : "#F0FDF4",
+          alignItems: "center",
+          justifyContent: "center",
+          marginRight: 12,
+        }}
+      >
+        {item.farmerImageUrl ? (
+          <Image
+            source={{ uri: item.farmerImageUrl }}
+            style={{ width: 44, height: 44 }}
+          />
+        ) : (
+          <UserRound size={21} color={colors.primary} />
+        )}
+      </View>
+
+      <View style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 8,
+          }}
+        >
+          <Text
+            variant="bold"
+            size={14}
+            numberOfLines={1}
+            style={{ flex: 1, color: colors.textPrimary }}
+          >
+            {item.farmer || "Farmer"}
+          </Text>
+          <StatusBadge
+            label={badgeInfo.label}
+            variant={badgeInfo.variant}
+            domain="request"
+            compact
+          />
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            marginTop: 3,
+          }}
+        >
+          <ServiceIcon size={14} color={colors.primary} />
+          <Text
+            variant="medium"
+            size={13}
+            numberOfLines={1}
+            style={{ flex: 1, color: colors.textSecondary }}
+          >
+            {serviceLabel}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            marginTop: 4,
+          }}
+        >
+          <MapPin size={13} color={colors.textMuted} />
+          <Text
+            size={12}
+            numberOfLines={1}
+            style={{ flex: 1, color: colors.textSecondary }}
+          >
+            {location}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            marginTop: 4,
+          }}
+        >
+          <Send size={13} color={colors.textMuted} />
+          <Text size={12} numberOfLines={1} style={{ color: colors.textMuted }}>
+            {formatSentAt(sentAt)}
+          </Text>
+        </View>
+
+        {badgeInfo.isAvailable ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              marginTop: 4,
+            }}
+          >
+            <Hand size={13} color={colors.warning} />
+            <Text
+              variant="semibold"
+              size={12}
+              numberOfLines={1}
+              style={{ flex: 1, color: colors.warningForeground }}
+            >
+              Tap to review and claim
+            </Text>
+          </View>
+        ) : isLocked ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              marginTop: 4,
+            }}
+          >
+            <LockKeyhole size={13} color={colors.warning} />
+            <Text
+              variant="semibold"
+              size={12}
+              numberOfLines={1}
+              style={{ flex: 1, color: colors.warningForeground }}
+            >
+              Assigned to {lockedByName}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <ChevronRight size={18} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
+}

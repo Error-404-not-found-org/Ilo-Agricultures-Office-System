@@ -1,18 +1,17 @@
-import React, { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  TrendingUp,
-  BarChart3,
-  Calendar,
-  Layers,
   Percent,
-  Activity,
-  Users,
-  Award,
+  Clock,
+  CheckCircle,
+  ListTodo,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
-import DashboardChart from "../../components/data/DashboardChart";
+import Topbar from "../../components/layout/Topbar";
+import StatCard from "../../components/ui/StatCard";
+import SectionHeader from "../../components/ui/SectionHeader";
+import RecommendationCard from "../../components/ui/RecommendationCard";
+import ProgressCard from "../../components/ui/ProgressCard";
 
 export default function TechnicianAnalytics() {
   const [timeRange, setTimeRange] = useState("6-months");
@@ -27,141 +26,120 @@ export default function TechnicianAnalytics() {
     },
   });
 
+  // ---- TASKS QUERY ----
+  const { data: tasksData = [] } = useQuery({
+    queryKey: ["technician", "performance-tasks"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/tasks", { params: { scope: "all", limit: 100 } });
+      return res.data?.data || res.data || [];
+    }
+  });
+
+  // Today's Progress calculations
+  const todayProgress = useMemo(() => {
+    const todayStr = new Date().toISOString().split("T")[0];
+    const todayTasks = tasksData.filter((t) => {
+      const taskDate = t.dueDate ? new Date(t.dueDate).toISOString().split("T")[0] : "";
+      return taskDate === todayStr;
+    });
+
+    const completed = todayTasks.filter((t) =>
+      ["completed", "done"].includes(String(t.status || "").toLowerCase())
+    ).length;
+
+    const remaining = todayTasks.length - completed;
+
+    const overdue = tasksData.filter((t) => {
+      const taskDate = t.dueDate ? new Date(t.dueDate).toISOString().split("T")[0] : "";
+      const isPending = !["completed", "done", "cancelled"].includes(String(t.status || "").toLowerCase());
+      return isPending && taskDate < todayStr;
+    }).length;
+
+    return {
+      total: todayTasks.length,
+      completed,
+      remaining,
+      overdue,
+    };
+  }, [tasksData]);
+
+  // Calculate dynamic stats
+  const totalFarmers = useMemo(() => {
+    return analytics.barangayActivity?.reduce((sum, b) => sum + (b.farmers || 0), 0) ?? 0;
+  }, [analytics]);
+
+  const kpis = useMemo(() => {
+    const totalInsem = analytics.totalInsem;
+    const totalPreg = analytics.totalPreg;
+    return {
+      completed: "Unavailable",
+      conceptionRate:
+        analytics.successRate !== undefined ? `${analytics.successRate}%` : "Unavailable",
+      responseTime: "Unavailable",
+      animalsAssisted: "Unavailable",
+      farmersServed: totalFarmers,
+      successfulAI: totalPreg ?? "Unavailable",
+      pregnanciesConfirmed: totalPreg ?? "Unavailable",
+      healthyBirths: "Unavailable",
+      healthCasesResolved: "Unavailable",
+      totalInsem: totalInsem ?? "Unavailable",
+      healthRequestsThisMonth: analytics.totalHealth_Month ?? "Unavailable",
+    };
+  }, [analytics, totalFarmers]);
+
+  // Success Indicators
+  const successIndicators = useMemo(() => {
+    return {
+      aiRate: kpis.conceptionRate,
+      pdRate: "Unavailable",
+      calvingRate: "Unavailable",
+      healthRate: "Unavailable",
+    };
+  }, [kpis]);
+
+  const rateWidth = (value) =>
+    typeof value === "string" && value.endsWith("%")
+      ? `${Math.min(100, Math.max(0, Number.parseFloat(value) || 0))}%`
+      : "0%";
+
+  // Actionable operational recommendations
+  const recommendations = useMemo(() => {
+    const recs = [];
+
+    if (todayProgress.overdue > 0) {
+      recs.push({
+        title: "Overdue tasks in Queue",
+        description: `You have ${todayProgress.overdue} overdue follow-up tasks. Prioritize claiming and completing them today.`,
+        type: "error",
+        icon: "🚨",
+      });
+    }
+
+    return recs;
+  }, [todayProgress]);
+
   if (isLoading) {
     return (
-      <div className="grow flex flex-col items-center justify-center min-h-[60vh] gap-4 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100">
-        <span className="loading loading-infinity loading-lg text-[#00643b] scale-150"></span>
-        <p className="text-[#00643b] dark:text-emerald-400 font-bold tracking-widest animate-pulse uppercase text-[10px]">
-          Computing Analytics Matrix...
+      <div className="grow flex flex-col items-center justify-center min-h-[60vh] gap-4 bg-base-200 text-base-content">
+        <span className="loading loading-infinity loading-lg text-primary scale-150"></span>
+        <p className="text-primary font-bold tracking-widest animate-pulse uppercase text-[10px]">
+          Computing Performance Metrics...
         </p>
       </div>
     );
   }
 
-  // ---- MAP DYNAMIC TELEMETRY OR FALLBACKS ----
-  const monthlyLabels = analytics.monthlyTrends?.length > 0
-    ? analytics.monthlyTrends.map((m) => m.month)
-    : ["Dec '25", "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26"];
-
-  const aiConceptionDataset = [
-    {
-      label: "AI Cycles Conducted",
-      data: analytics.monthlyTrends?.length > 0
-        ? analytics.monthlyTrends.map((m) => m.ai)
-        : [61, 63, 62, 65, 66, 68],
-      borderColor: "#00643b",
-      backgroundColor: "rgba(0, 100, 59, 0.05)",
-      fill: true,
-    },
-  ];
-
-  const healthIncidentsDataset = [
-    {
-      label: "Reported Incidents",
-      data: analytics.monthlyTrends?.length > 0
-        ? analytics.monthlyTrends.map((m) => Math.max(0, Math.round(m.ai * 0.75)))
-        : [28, 22, 34, 19, 14, 9],
-      borderColor: "#f43f5e",
-      backgroundColor: "#f43f5e",
-      fill: false,
-    },
-    {
-      label: "Resolved Cases",
-      data: analytics.monthlyTrends?.length > 0
-        ? analytics.monthlyTrends.map((m) => Math.max(0, Math.round(m.ai * 0.7)))
-        : [25, 21, 31, 18, 14, 8],
-      borderColor: "#0ea5e9",
-      backgroundColor: "#0ea5e9",
-      fill: false,
-    },
-  ];
-
-  const totalSpeciesCount = analytics.speciesDistribution?.reduce((sum, s) => sum + (s.count || 0), 0) || 1;
-  const speciesColors = ["bg-emerald-600", "bg-blue-600", "bg-amber-600", "bg-purple-600", "bg-rose-600"];
-  const speciesData = analytics.speciesDistribution?.length > 0
-    ? analytics.speciesDistribution.map((spec, idx) => {
-        const percentage = Math.round(((spec.count || 0) / totalSpeciesCount) * 100);
-        return {
-          name: spec.species || "Other",
-          count: spec.count || 0,
-          percentage: percentage,
-          color: speciesColors[idx % speciesColors.length],
-        };
-      })
-    : [
-        { name: "Cattle (Bovine)", count: 724, percentage: 58, color: "bg-emerald-600" },
-        { name: "Swine (Porcine)", count: 312, percentage: 25, color: "bg-blue-600" },
-        { name: "Goats (Caprine)", count: 150, percentage: 12, color: "bg-amber-600" },
-        { name: "Buffaloes (Bubaline)", count: 62, percentage: 5, color: "bg-purple-600" },
-      ];
-
-  const sectorPerformance = analytics.barangayActivity?.length > 0
-    ? analytics.barangayActivity.map((b) => {
-        const totalServices = Math.round(b.farmers * 2.8 + 1);
-        const successRate = `${Math.min(98, 85 + (b.farmers % 13))}%`;
-        const efficiency = b.farmers > 5 ? "Excellent" : b.farmers > 3 ? "Very High" : "High";
-        return {
-          name: `${b.barangay} Sector`,
-          totalServices: totalServices,
-          successRate: successRate,
-          efficiency: efficiency,
-        };
-      })
-    : [
-        { name: "Pavia Sector", totalServices: 342, successRate: "94.2%", efficiency: "Very High" },
-        { name: "San Miguel Sector", totalServices: 284, successRate: "96.5%", efficiency: "Excellent" },
-        { name: "Santa Barbara Sector", totalServices: 210, successRate: "92.1%", efficiency: "High" },
-        { name: "Oton Sector", totalServices: 198, successRate: "91.4%", efficiency: "High" },
-        { name: "Mandurriao Sector", totalServices: 142, successRate: "88.9%", efficiency: "Moderate" },
-      ];
-
-  const totalFarmers = analytics.barangayActivity?.reduce((sum, b) => sum + (b.farmers || 0), 0) || 142;
-  const stats = [
-    {
-      label: "AI Conception Rate",
-      val: `${analytics.successRate ?? 68}%`,
-      color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
-      icon: <Percent size={16} />,
-      trend: "+2.1% this month",
-      trendColor: "text-emerald-500",
-    },
-    {
-      label: "Total AI Cycles",
-      val: `${analytics.totalInsem ?? 1248} runs`,
-      color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
-      icon: <Activity size={16} />,
-      trend: `${analytics.totalAI_Week ?? 12} runs this week`,
-      trendColor: "text-blue-500",
-    },
-    {
-      label: "Farmers Onboarded",
-      val: `${totalFarmers} Clients`,
-      color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
-      icon: <Users size={16} />,
-      trend: "Across Oton barangays",
-      trendColor: "text-purple-500",
-    },
-    {
-      label: "Active Health Checks",
-      val: `${analytics.totalHealth_Month ?? 94} cases`,
-      color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
-      icon: <Award size={16} />,
-      trend: "Reported this month",
-      trendColor: "text-amber-500",
-    },
-  ];
-
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300 font-sans">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300 font-sans">
       <Topbar
-        title="Analytics Portal"
-        subtitle="Technician performance metrics, conception trends, and diagnostic audit logs"
+        title="Field Performance Dashboard"
+        subtitle="Operational metrics, productivity analysis, and service success rates"
       >
         <div className="flex gap-2 items-center flex-wrap">
           <select
             value={timeRange}
             onChange={(e) => setTimeRange(e.target.value)}
-            className="select select-sm select-bordered rounded-xl text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+            className="select select-sm select-bordered rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none transition-all duration-200 font-bold"
           >
             <option value="6-months">Last 6 Months</option>
             <option value="12-months">Last 12 Months</option>
@@ -171,7 +149,7 @@ export default function TechnicianAnalytics() {
           <select
             value={barangay}
             onChange={(e) => setBarangay(e.target.value)}
-            className="select select-sm select-bordered rounded-xl text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+            className="select select-sm select-bordered rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none transition-all duration-200 font-bold"
           >
             <option value="all">All Barangays</option>
             <option value="sm">San Miguel</option>
@@ -181,136 +159,195 @@ export default function TechnicianAnalytics() {
         </div>
       </Topbar>
 
-      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
-        {/* KPI metrics performance row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {stats.map((stat, i) => (
-            <div
-              key={i}
-              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-all duration-200"
-            >
-              <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
-                {stat.icon}
+      <main className="p-6 space-y-6 flex-1 flex flex-col min-h-0">
+
+        {/* 1. Today's Progress Section */}
+        <section className="bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+          <SectionHeader title="Today's Progress" subtitle="Review your scheduled task completions for today" />
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4 items-center">
+
+            <div className="flex flex-col items-center justify-center p-3.5 bg-base-200 rounded-2xl">
+              <span className="text-3xl font-black text-primary font-mono">{todayProgress.completed}</span>
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-base-content/40 mt-1">Completed Tasks</span>
+            </div>
+
+            <div className="flex flex-col items-center justify-center p-3.5 bg-base-200 rounded-2xl">
+              <span className="text-3xl font-black text-base-content font-mono">{todayProgress.remaining}</span>
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-base-content/40 mt-1">Remaining Tasks</span>
+            </div>
+
+            <div className="flex flex-col items-center justify-center p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl">
+              <span className="text-3xl font-black text-rose-600 dark:text-rose-400 font-mono">{todayProgress.overdue}</span>
+              <span className="text-[10px] uppercase tracking-wider font-extrabold text-rose-600 dark:text-rose-400 mt-1">Overdue Tasks</span>
+            </div>
+
+            <div className="flex flex-col justify-center">
+              <div className="flex justify-between items-center text-xs font-bold text-base-content/60 mb-2">
+                <span>Task Completion progress</span>
+                <span>{Math.round((todayProgress.completed / (todayProgress.total || 1)) * 100)}%</span>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-xl font-black tracking-tight">{stat.val}</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5 leading-none">
-                  {stat.label}
-                </div>
-                <span className={`text-[9px] font-extrabold block mt-1 leading-none ${stat.trendColor}`}>
-                  {stat.trend}
-                </span>
+              <div className="w-full h-3.5 bg-base-200 rounded-full overflow-hidden border border-base-300">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-500"
+                  style={{ width: `${Math.round((todayProgress.completed / (todayProgress.total || 1)) * 100)}%` }}
+                />
               </div>
             </div>
-          ))}
-        </div>
 
-        {/* Charts Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Conception Rate Line Chart */}
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
-              <TrendingUp size={13} className="text-[#00643b]" /> Artificial Insemination Conception Trend
-            </h3>
-            <div className="h-64 flex items-center justify-center">
-              <DashboardChart
-                type="line"
-                labels={monthlyLabels}
-                datasets={aiConceptionDataset}
-                height={240}
-              />
+          </div>
+        </section>
+
+        {/* 2. Monthly Productivity KPIs */}
+        <section>
+          <SectionHeader title="Monthly Productivity" subtitle="Summary of work completed during the active month" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mt-4">
+            <StatCard label="Completed Services" value={`${kpis.completed}`} icon={<CheckCircle size={16} />} />
+            <StatCard label="Avg Services per day" value="Unavailable" icon={<ListTodo size={16} />} />
+            <StatCard label="AI Conception Rate" value={kpis.conceptionRate} icon={<Percent size={16} />} />
+            <StatCard label="Average Response" value={kpis.responseTime} icon={<Clock size={16} />} />
+          </div>
+        </section>
+
+        {/* 3. Community Impact */}
+        <section className="bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+          <SectionHeader title="Community Impact metrics" subtitle="Officer statistics and contribution to the municipality" />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mt-4">
+            <div className="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-2xl hover:shadow-xs transition-shadow">
+              <span className="text-emerald-600 dark:text-emerald-400 font-black text-2xl font-mono block leading-none">{kpis.successfulAI}</span>
+              <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wide block mt-2">Successful AI</span>
+            </div>
+            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl hover:shadow-xs transition-shadow">
+              <span className="text-blue-600 dark:text-blue-400 font-black text-2xl font-mono block leading-none">{kpis.pregnanciesConfirmed}</span>
+              <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wide block mt-2">Pregnancies Confirmed</span>
+            </div>
+            <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl hover:shadow-xs transition-shadow">
+              <span className="text-amber-600 dark:text-amber-400 font-black text-2xl font-mono block leading-none">{kpis.healthyBirths}</span>
+              <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wide block mt-2">Healthy Births</span>
+            </div>
+            <div className="p-4 bg-rose-500/5 border border-rose-500/10 rounded-2xl hover:shadow-xs transition-shadow">
+              <span className="text-rose-600 dark:text-rose-400 font-black text-2xl font-mono block leading-none">{kpis.healthCasesResolved}</span>
+              <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wide block mt-2">Health Cases Resolved</span>
+            </div>
+            <div className="p-4 bg-purple-500/5 border border-purple-500/10 rounded-2xl hover:shadow-xs transition-shadow">
+              <span className="text-purple-600 dark:text-purple-400 font-black text-2xl font-mono block leading-none">{kpis.animalsAssisted}</span>
+              <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wide block mt-2">Animals Assisted</span>
+            </div>
+            <div className="p-4 bg-teal-500/5 border border-teal-500/10 rounded-2xl hover:shadow-xs transition-shadow">
+              <span className="text-teal-600 dark:text-teal-400 font-black text-2xl font-mono block leading-none">{kpis.farmersServed}</span>
+              <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wide block mt-2">Registered Farmers</span>
             </div>
           </div>
+        </section>
 
-          {/* Incidents and resolutions bar chart */}
-          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
-              <BarChart3 size={13} className="text-rose-500" /> Epidemic &amp; Health Incident Audits
-            </h3>
-            <div className="h-64 flex items-center justify-center">
-              <DashboardChart
-                type="bar"
-                labels={monthlyLabels}
-                datasets={healthIncidentsDataset}
-                height={240}
-              />
-            </div>
-          </div>
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
 
-        {/* Breakdown detail panels */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
-          {/* Left panel: Species distribution */}
-          <div className="lg:col-span-5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
+          {/* 4. Service Success Rates */}
+          <div className="lg:col-span-5 bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
             <div>
-              <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
-                <Layers size={13} /> Species Composition
-              </h3>
+              <SectionHeader title="Service Success Rates" subtitle="Diagnostic completion and recovery metrics" />
+              <div className="space-y-4 mt-2">
 
-              <div className="space-y-4">
-                {speciesData.map((spec, idx) => (
-                  <div key={idx} className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-extrabold text-slate-800 dark:text-slate-200">{spec.name}</span>
-                      <span className="font-bold text-slate-500 font-mono">
-                        {spec.count} head ({spec.percentage}%)
-                      </span>
-                    </div>
-                    {/* Visual Progress bar */}
-                    <div className="w-full h-2.5 bg-slate-100 dark:bg-slate-900 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${spec.color}`}
-                        style={{ width: `${spec.percentage}%` }}
-                      />
-                    </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-extrabold text-base-content">AI Success Rate</span>
+                    <span className="font-bold text-emerald-500 font-mono">{successIndicators.aiRate}</span>
                   </div>
-                ))}
+                  <div className="w-full h-2 bg-base-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: rateWidth(successIndicators.aiRate) }} />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-extrabold text-base-content">Pregnancy Confirmation Rate</span>
+                    <span className="font-bold text-blue-500 font-mono">{successIndicators.pdRate}</span>
+                  </div>
+                  <div className="w-full h-2 bg-base-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full" style={{ width: rateWidth(successIndicators.pdRate) }} />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-extrabold text-base-content">Calving Drop Rate</span>
+                    <span className="font-bold text-amber-500 font-mono">{successIndicators.calvingRate}</span>
+                  </div>
+                  <div className="w-full h-2 bg-base-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-amber-500 rounded-full" style={{ width: rateWidth(successIndicators.calvingRate) }} />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-extrabold text-base-content">Health Recovery Rate</span>
+                    <span className="font-bold text-rose-500 font-mono">{successIndicators.healthRate}</span>
+                  </div>
+                  <div className="w-full h-2 bg-base-200 rounded-full overflow-hidden">
+                    <div className="h-full bg-rose-500 rounded-full" style={{ width: rateWidth(successIndicators.healthRate) }} />
+                  </div>
+                </div>
+
               </div>
             </div>
+          </div>
 
-            <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/60 text-[10px] text-slate-400 font-bold uppercase text-center">
-              Livestock Census verified: {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+          {/* 5. Personal Operational Recommendations */}
+          <div className="lg:col-span-7 bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
+            <div>
+              <SectionHeader title="Actionable Recommendations" subtitle="Data-driven field advice to help prioritize your dispatches" />
+              <div className="space-y-3 mt-2">
+                {recommendations.length === 0 ? (
+                  <p className="text-xs text-base-content/40 italic font-semibold py-4 text-center">
+                    No recommendations found.
+                  </p>
+                ) : (
+                  recommendations.map((rec, i) => (
+                    <RecommendationCard
+                      key={i}
+                      title={rec.title}
+                      description={rec.description}
+                      type={rec.type}
+                      icon={rec.icon}
+                    />
+                  ))
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Right panel: top performing sectors */}
-          <div className="lg:col-span-7 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs flex flex-col">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
-              <Calendar size={13} /> Regional Sector Performance
-            </h3>
-
-            <div className="flex-1 overflow-x-auto">
-              <table className="table table-xs w-full divide-y divide-slate-100 dark:divide-slate-800">
-                <thead className="text-slate-400 uppercase font-black tracking-wider text-[9.5px]">
-                  <tr>
-                    <th className="py-2.5 text-left">Sector Area Name</th>
-                    <th className="py-2.5 text-center">Total Services</th>
-                    <th className="py-2.5 text-center">AI Conception</th>
-                    <th className="py-2.5 text-right">Containment Grade</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
-                  {sectorPerformance.map((sec, i) => (
-                    <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
-                      <td className="py-2.5 font-bold text-slate-800 dark:text-slate-200">{sec.name}</td>
-                      <td className="py-2.5 text-center font-mono">{sec.totalServices}</td>
-                      <td className="py-2.5 text-center font-bold text-emerald-500 font-mono">{sec.successRate}</td>
-                      <td className="py-2.5 text-right">
-                        <span className={`text-[8.5px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider border ${
-                          sec.efficiency === "Excellent" || sec.efficiency === "Very High"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/20 dark:text-emerald-400"
-                            : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400"
-                        }`}>
-                          {sec.efficiency}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
+
+        {/* 6. Monthly Goals Progress Grid */}
+        <section>
+          <SectionHeader title="Monthly Targets & Goals" subtitle="Track your active monthly quotas" />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            <ProgressCard
+              title="Monthly Inseminations"
+              subtitle="Target completed insemination cycles"
+              value={kpis.totalInsem}
+              target={null}
+              unit="AI runs"
+              color="bg-emerald-500"
+            />
+            <ProgressCard
+              title="Pregnancies Confirmed"
+              subtitle="Confirmed positive diagnoses target"
+              value={kpis.pregnanciesConfirmed}
+              target={null}
+              unit="diagnoses"
+              color="bg-blue-500"
+            />
+            <ProgressCard
+              title="Clinical Resolutions"
+              subtitle="Resolved health requests target"
+              value={kpis.healthCasesResolved}
+              target={null}
+              unit="cases"
+              color="bg-rose-500"
+            />
+          </div>
+        </section>
+
       </main>
     </div>
   );

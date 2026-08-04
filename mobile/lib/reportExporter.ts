@@ -3,6 +3,16 @@ import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
 import * as XLSX from "xlsx";
 
+const escapeHtml = (unsafe: any): string => {
+  if (unsafe === null || unsafe === undefined) return "";
+  return String(unsafe)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
 export interface ReportRow {
   type: "AI" | "PD" | "CD" | "HL";
   animalId: string;
@@ -45,28 +55,28 @@ export const generatePDF = async (
     .map(
       (row, index) => `
     <tr>
-      <td class="center">${row.type || ""}</td>
+      <td class="center">${escapeHtml(row.type)}</td>
       <td class="center">${index + 1}</td>
-      <td>${row.animalId || ""}</td>
-      <td>${row.earTag || ""}</td>
-      <td>${row.brand || ""}</td>
-      <td>${row.species || ""}</td>
-      <td>${row.breed || ""}</td>
-      <td>${row.color || ""}</td>
-      <td>${row.address || ""}</td>
-      <td>${row.farmer || ""}</td>
-      <td class="center">${row.date || ""}</td>
-      <td class="center">${row.noOfAi ?? ""}</td>
-      <td class="center">${row.estrus || ""}</td>
-      <td class="center">${row.sireBreed || ""}</td>
-      <td class="center">${row.sireCode || ""}</td>
-      <td class="center">${row.pdDate || ""}</td>
-      <td class="center">${row.pdResult || ""}</td>
-      <td class="center">${row.cdDate || ""}</td>
-      <td class="center">${row.cdNum ?? ""}</td>
-      <td class="center">${row.cdId || ""}</td>
-      <td class="center">${row.cdSex || ""}</td>
-      <td class="center">${row.cdEase || ""}</td>
+      <td>${escapeHtml(row.animalId)}</td>
+      <td>${escapeHtml(row.earTag)}</td>
+      <td>${escapeHtml(row.brand)}</td>
+      <td>${escapeHtml(row.species)}</td>
+      <td>${escapeHtml(row.breed)}</td>
+      <td>${escapeHtml(row.color)}</td>
+      <td>${escapeHtml(row.address)}</td>
+      <td>${escapeHtml(row.farmer)}</td>
+      <td class="center">${escapeHtml(row.date)}</td>
+      <td class="center">${escapeHtml(row.noOfAi)}</td>
+      <td class="center">${escapeHtml(row.estrus)}</td>
+      <td class="center">${escapeHtml(row.sireBreed)}</td>
+      <td class="center">${escapeHtml(row.sireCode)}</td>
+      <td class="center">${escapeHtml(row.pdDate)}</td>
+      <td class="center">${escapeHtml(row.pdResult)}</td>
+      <td class="center">${escapeHtml(row.cdDate)}</td>
+      <td class="center">${escapeHtml(row.cdNum)}</td>
+      <td class="center">${escapeHtml(row.cdId)}</td>
+      <td class="center">${escapeHtml(row.cdSex)}</td>
+      <td class="center">${escapeHtml(row.cdEase)}</td>
     </tr>
   `,
     )
@@ -266,27 +276,27 @@ export const generatePDF = async (
         <div class="location-block">
           <div class="loc-row">
             <span class="loc-label">Region</span>
-            <span class="loc-value">${region}</span>
+            <span class="loc-value">${escapeHtml(region)}</span>
           </div>
           <div class="loc-row">
             <span class="loc-label">Province</span>
-            <span class="loc-value">${province}</span>
+            <span class="loc-value">${escapeHtml(province)}</span>
           </div>
           <div class="loc-row">
             <span class="loc-label">Municipality/City</span>
-            <span class="loc-value">${municipality}</span>
+            <span class="loc-value">${escapeHtml(municipality)}</span>
           </div>
         </div>
 
         <!-- Report period -->
         <div class="report-period">Monthly Accomplish Report</div>
         <div class="period-line">
-          For the Month of&nbsp;<span>${month}</span>&nbsp;,&nbsp;<span>${year}</span>
+          For the Month of&nbsp;<span>${escapeHtml(month)}</span>&nbsp;,&nbsp;<span>${escapeHtml(year)}</span>
         </div>
 
         <!-- Submitted date -->
         <div class="submitted-line">
-          Submitted Date&nbsp;<span>${submittedDate}</span>
+          Submitted Date&nbsp;<span>${escapeHtml(submittedDate)}</span>
         </div>
 
         <!-- Main table -->
@@ -300,7 +310,7 @@ export const generatePDF = async (
               <th rowspan="2" style="width:60px;">Farmer</th>
               <th colspan="5" class="th-group">Artificial Insemination</th>
               <th colspan="2" class="th-group">Pregnancy Diagnosis</th>
-              <th colspan="5" class="th-group">Calf Drop</th>
+              <th colspan="5" class="th-group">Calving / Offspring</th>
             </tr>
             <!-- Row 2: sub-column headers -->
             <tr>
@@ -361,13 +371,13 @@ export const generatePDF = async (
         <div class="signatories">
           <div class="signatory-block">
             <div class="sig-label">Prepared by:</div>
-            <div class="sig-name">${preparedBy}</div>
-            <div class="sig-title">${preparedByTitle}</div>
+            <div class="sig-name">${escapeHtml(preparedBy)}</div>
+            <div class="sig-title">${escapeHtml(preparedByTitle)}</div>
           </div>
           <div class="signatory-block">
             <div class="sig-label">Noted by:</div>
-            <div class="sig-name">${notedBy}</div>
-            <div class="sig-title">${notedByTitle}</div>
+            <div class="sig-name">${escapeHtml(notedBy)}</div>
+            <div class="sig-title">${escapeHtml(notedByTitle)}</div>
           </div>
         </div>
 

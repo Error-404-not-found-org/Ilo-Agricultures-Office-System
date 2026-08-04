@@ -7,13 +7,28 @@ import { format } from 'date-fns';
 import { useUser } from '@clerk/clerk-expo';
 import { toast } from 'sonner-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTheme } from '@/lib/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { getNotificationTarget, presentNotification } from '@/features/notifications/utils/notificationPresentation';
 
 interface NotificationDetails {
   notification: {
     _id: string;
     title: string;
     message: string;
-    type: 'ai-request' | 'health-request';
+    type: 'ai-request' | 'health-request' | 'system';
+    relatedId?: string;
+    category?: string;
+    eventType?: string;
+    linkType?: 'request' | 'animal' | 'record' | 'task' | 'pregnancy';
+    metadata?: {
+      animalId?: string;
+      observationId?: string;
+      taskId?: string | null;
+      reportType?: string;
+      reportedAt?: string;
+      deepLinkTarget?: string;
+    };
     createdAt: string;
     senderId: {
       _id: string;
@@ -66,6 +81,8 @@ export default function NotificationDetailsScreen() {
   const api = useApi();
   const { user } = useUser();
   const queryClient = useQueryClient();
+  const { colors, isDark } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const { data: profile } = useQuery({
     queryKey: ['user', 'me'],
@@ -75,11 +92,11 @@ export default function NotificationDetailsScreen() {
     }
   });
 
-  const role = profile?.role || (user?.publicMetadata?.role as string) || 'technician';
+  const role =
+    profile?.role || (user?.publicMetadata?.role as string | undefined);
   const isFarmer = role === 'farmer';
   const [data, setData] = useState<NotificationDetails | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isUpdating, setIsUpdating] = useState(false);
 
   useEffect(() => {
     const fetchDetails = async () => {
@@ -99,50 +116,22 @@ export default function NotificationDetailsScreen() {
       }
     };
     fetchDetails();
-  }, [id, api]);
-
-  const handleAction = async () => {
-    if (!data || isUpdating || !data.relatedData) return;
-    setIsUpdating(true);
-    try {
-      const { notification, relatedData } = data;
-      const endpoint = notification.type === 'ai-request' 
-        ? `/ai-request/${relatedData._id}/status` 
-        : `/health-request/${relatedData._id}/status`;
-      
-      const nextStatus = notification.type === 'ai-request' ? 'approved' : 'in-progress';
-      
-      await api.patch(endpoint, { 
-        status: nextStatus,
-        technicianNote: "Handled via notification." 
-      });
-
-      toast.success(`Request marked as ${nextStatus}!`);
-      
-      // Refresh local data
-      const res = await api.get(`/notifications/${id}`);
-      setData(res.data);
-    } catch (error: any) {
-      console.error("Failed to update status:", error);
-      toast.error(error.response?.data?.message || "Failed to update request status.");
-    } finally {
-      setIsUpdating(false);
-    }
-  };
+  }, [id, api, queryClient]);
 
   if (loading) {
     return (
-      <View className="flex-1 bg-white items-center justify-center">
-        <ActivityIndicator size="large" color="#00643B" />
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   if (!data) {
       return (
-          <View className="flex-1 bg-white items-center justify-center p-6">
-              <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-500 font-bold text-lg text-center">Notification not found or linked request was deleted.</Text>
-              <TouchableOpacity onPress={() => router.back()} className="mt-4 bg-[#00643B] px-6 py-3 rounded-xl">
+          <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+              <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary, fontSize: 18, textAlign: 'center' }}>This notification is no longer available.</Text>
+              <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textMuted, fontSize: 14, lineHeight: 20, textAlign: 'center', marginTop: 6 }}>The linked item may have been removed, but your other notifications are unchanged.</Text>
+              <TouchableOpacity onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" style={{ minHeight: 44, marginTop: 16, backgroundColor: colors.primary, paddingHorizontal: 24, borderRadius: 12, justifyContent: 'center' }}>
                   <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-white font-bold">Go Back</Text>
               </TouchableOpacity>
           </View>
@@ -150,35 +139,64 @@ export default function NotificationDetailsScreen() {
   }
 
   const { notification, relatedData } = data;
+  const presentation = presentNotification(notification);
   const isAI = notification.type === 'ai-request';
+  const isComplete = ["done", "resolved", "completed", "cancelled", "rejected"].includes(
+    String(relatedData?.status || "").toLowerCase(),
+  );
+
+  const openLinkedRequest = () => {
+    const taskId = notification.metadata?.taskId;
+    if (taskId && (role === "technician" || role === "veterinarian")) {
+      router.push({
+        pathname: "/(technician)/task-details",
+        params: { id: taskId },
+      } as any);
+      return;
+    }
+    const target = getNotificationTarget(
+      {
+        ...notification,
+        taskId: taskId || undefined,
+        relatedId: notification.relatedId || relatedData?._id,
+      },
+      role,
+    );
+    if (target.pathname === "/notification-details") return;
+    router.push(target as any);
+  };
 
   return (
-    <View className="flex-1 bg-[#F9FAFB]">
-      <StatusBar barStyle="dark-content" />
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={colors.card} />
       
       {/* Header */}
-      <View className="pt-14 pb-6 px-6 bg-white border-b border-slate-100 flex-row items-center">
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 items-center justify-center rounded-full bg-slate-50">
-          <ArrowLeft size={22} color="#475569" />
+      <View style={{ paddingTop: insets.top + 14, paddingBottom: 14, paddingHorizontal: 20, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', alignItems: 'center' }}>
+        <TouchableOpacity onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" style={{ width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: isDark ? '#1e293b' : '#f8fafc' }}>
+          <ArrowLeft size={22} color={colors.textSecondary} />
         </TouchableOpacity>
-        <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-xl font-bold text-slate-800 ml-4">Request Details</Text>
+        <Text numberOfLines={2} style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary, fontSize: 20, marginLeft: 12, flex: 1, minWidth: 0 }}>Notification Details</Text>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 96 }}>
+        <View style={{ padding: 20, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+          <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary, fontSize: 20, lineHeight: 26 }}>{presentation.title}</Text>
+          <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textSecondary, fontSize: 15, lineHeight: 22, marginTop: 8 }}>{presentation.body}</Text>
+        </View>
         
         {/* Status Banner */}
-        <View className={`px-6 py-4 flex-row items-center ${isAI ? 'bg-emerald-50' : 'bg-amber-50'}`}>
+        <View className="px-6 py-4 flex-row items-center" style={{ backgroundColor: isAI ? (isDark ? 'rgba(16,185,129,0.16)' : '#ecfdf5') : (isDark ? 'rgba(245,158,11,0.16)' : '#fffbeb') }}>
             {isAI ? <Syringe size={20} color="#059669" /> : <HeartPulse size={20} color="#D97706" />}
-            <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`ml-2 font-bold ${isAI ? 'text-emerald-700' : 'text-amber-700'}`}>
+            <Text style={{ fontFamily: 'Outfit_700Bold', color: isAI ? (isDark ? '#6ee7b7' : '#047857') : (isDark ? '#fcd34d' : '#b45309') }} className="ml-2 font-bold">
                 {isAI ? 'Artificial Insemination' : 'Animal Health Service'}
             </Text>
-            <View className="ml-auto bg-white px-3 py-1 rounded-full border border-slate-100">
-                <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-600 font-bold text-xs uppercase">{relatedData?.status || 'Pending'}</Text>
+            <View className="ml-auto px-3 py-1 rounded-full border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
+                <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textSecondary }} className="font-bold text-xs capitalize">{String(relatedData?.status || 'Pending').replaceAll('_', ' ').replaceAll('-', ' ')}</Text>
             </View>
         </View>
 
         {/* Sender Info (Farmer or Technician) */}
-        <View className="p-6 bg-white mb-2 border-b border-slate-100">
+        <View className="p-6 mb-2 border-b" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
             <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
               {isFarmer ? "Handled By Technician" : "Requesting Farmer"}
             </Text>
@@ -191,18 +209,18 @@ export default function NotificationDetailsScreen() {
                     )}
                 </View>
                 <View className="ml-4 flex-1">
-                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-lg font-bold text-slate-800">
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="text-lg font-bold">
                       {notification.senderId?.name || "System / Tech"}
                     </Text>
                     {notification.senderId?.address ? (
                         <View className="flex-row items-center mt-1">
                             <MapPin size={14} color="#94a3b8" />
-                            <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 text-sm ml-1">
+                            <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textSecondary }} className="text-sm ml-1">
                                 {notification.senderId.address.barangay || "Oton"}, {notification.senderId.address.city || "Iloilo"}
                             </Text>
                         </View>
                     ) : (
-                        <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-400 text-sm">No address provided</Text>
+                        <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textMuted }} className="text-sm">No address provided</Text>
                     )}
                 </View>
             </View>
@@ -210,7 +228,7 @@ export default function NotificationDetailsScreen() {
 
         {/* Assigned Technician (If accepted/handled) */}
         {isFarmer && ((isAI && relatedData?.approvedBy) || (!isAI && relatedData?.handledBy)) && (
-          <View className="p-6 bg-white mb-2 border-b border-slate-100">
+          <View className="p-6 mb-2 border-b" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
             <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">
               Assigned Technician
             </Text>
@@ -231,7 +249,7 @@ export default function NotificationDetailsScreen() {
                  )}
                </View>
                <View className="ml-4 flex-1">
-                 <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-base font-bold text-slate-800">
+                 <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="text-base font-bold">
                    {isAI ? relatedData.approvedBy?.name : relatedData.handledBy?.name}
                  </Text>
                 <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-450 text-xs mt-0.5 font-bold uppercase tracking-wider">
@@ -244,10 +262,10 @@ export default function NotificationDetailsScreen() {
 
         {/* Animal Details */}
         {relatedData?.animalId ? (
-          <View className="p-6 bg-white mb-2 border-b border-slate-100">
+          <View className="p-6 mb-2 border-b" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Animal Details</Text>
-              <View className="flex-row bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                  <View className="w-20 h-20 rounded-xl bg-white items-center justify-center overflow-hidden border border-slate-100">
+              <View className="flex-row p-4 rounded-2xl border" style={{ backgroundColor: colors.background, borderColor: colors.border }}>
+                  <View className="w-20 h-20 rounded-xl items-center justify-center overflow-hidden border" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
                       {relatedData.animalId.imageUrl ? (
                           <Image source={{ uri: relatedData.animalId.imageUrl }} className="w-full h-full" />
                       ) : (
@@ -257,8 +275,8 @@ export default function NotificationDetailsScreen() {
                       )}
                   </View>
                   <View className="ml-4 flex-1 justify-center">
-                      <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-base font-bold text-slate-800">{relatedData.animalId.species} - {relatedData.animalId.breed}</Text>
-                      <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-500 text-sm mt-1">Tag: <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="font-bold text-slate-700">{relatedData.animalId.earTag || relatedData.animalId.animalId || 'N/A'}</Text></Text>
+                      <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="text-base font-bold">{relatedData.animalId.species} - {relatedData.animalId.breed}</Text>
+                      <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textSecondary }} className="text-sm mt-1">Tag: <Text style={{ fontFamily: 'Outfit_800ExtraBold', color: colors.textPrimary }} className="font-bold">{relatedData.animalId.earTag || relatedData.animalId.animalId || 'N/A'}</Text></Text>
                   </View>
               </View>
           </View>
@@ -266,7 +284,7 @@ export default function NotificationDetailsScreen() {
 
         {/* Request Content */}
         {relatedData ? (
-          <View className="p-6 bg-white mb-2 border-b border-slate-100">
+          <View className="p-6 mb-2 border-b" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               {/* Heat Signs List (if AI Insemination request) */}
               {isAI && relatedData.heatSigns && relatedData.heatSigns.length > 0 ? (
                 <View className="mb-6">
@@ -330,7 +348,7 @@ export default function NotificationDetailsScreen() {
                   <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-3">
                     {isAI ? "Additional Comments" : "Message / Symptoms"}
                   </Text>
-                  <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
+                  <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textPrimary, backgroundColor: colors.background, borderColor: colors.border }} className="text-base leading-6 p-4 rounded-2xl border italic">
                       &quot;{isAI ? getAdditionalNotesOnly(relatedData.comment || "") : relatedData.symptoms || 'No additional details provided.'}&quot;
                   </Text>
                 </View>
@@ -357,10 +375,10 @@ export default function NotificationDetailsScreen() {
               ) : null}
           </View>
         ) : (
-          <View className="p-6 bg-white mb-2 border-b border-slate-100">
+          <View className="p-6 mb-2 border-b" style={{ backgroundColor: colors.card, borderColor: colors.border }}>
               <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-4">Message</Text>
-              <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-slate-700 text-base leading-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 italic">
-                  &quot;{notification.message}&quot;
+              <Text style={{ fontFamily: 'Outfit_500Medium', color: colors.textPrimary, backgroundColor: colors.background, borderColor: colors.border }} className="text-base leading-6 p-4 rounded-2xl border italic">
+                  &quot;{presentation.body}&quot;
               </Text>
           </View>
         )}
@@ -404,28 +422,27 @@ export default function NotificationDetailsScreen() {
 
           const buttonText = isLocked
             ? `Locked by ${reqTechName}`
-            : relatedData.status === 'pending'
-              ? 'Approve & Handle Request'
-              : `Status: ${relatedData.status}`;
+            : isComplete
+              ? "Open Completed Service"
+              : "Open Request Details";
 
           return (
             <View className="px-6 mt-4">
                 <TouchableOpacity 
-                    disabled={isUpdating || relatedData.status !== 'pending' || isLocked}
-                    className={`py-5 rounded-[22px] items-center justify-center flex-row shadow-sm ${relatedData.status !== 'pending' || isLocked ? 'bg-slate-350 dark:bg-slate-800' : isAI ? 'bg-[#00643B]' : 'bg-amber-600'}`}
-                    onPress={handleAction}
+                    disabled={isLocked}
+                    className={`py-5 rounded-[22px] items-center justify-center flex-row shadow-sm ${isLocked ? 'bg-slate-350 dark:bg-slate-800' : isAI ? 'bg-[#00643B]' : 'bg-amber-600'}`}
+                    onPress={openLinkedRequest}
                 >
-                    {isUpdating ? (
-                        <ActivityIndicator color="white" />
-                    ) : (
-                        <>
-                            <CheckCircle2 size={24} color="white" />
-                            <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white font-black text-lg ml-2">
-                                {buttonText}
-                            </Text>
-                        </>
-                    )}
+                    <CheckCircle2 size={24} color="white" />
+                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white font-black text-lg ml-2">
+                        {buttonText}
+                    </Text>
                 </TouchableOpacity>
+                {!isLocked && (
+                  <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-slate-400 text-xs text-center mt-3">
+                    Use the full technician screen to schedule, record, or review this service.
+                  </Text>
+                )}
             </View>
           );
         })()}

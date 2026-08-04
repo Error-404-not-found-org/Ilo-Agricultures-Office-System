@@ -1,17 +1,14 @@
-import React, { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import {
   ChevronLeft,
-  User,
   Phone,
   Mail,
   MapPin,
   Briefcase,
   Activity,
-  Award,
-  Calendar,
   Layers,
   CheckCircle,
   Clock,
@@ -19,7 +16,6 @@ import {
   ClipboardList,
   AlertCircle,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
 
 export default function TechnicianProfile() {
   const { id } = useParams();
@@ -41,8 +37,8 @@ export default function TechnicianProfile() {
     queryFn: async () => {
       // Fetch dynamic requests as historical trace
       const [aiRes, healthRes] = await Promise.all([
-        axiosInstance.get("/ai-request?limit=1000").catch(() => ({ data: [] })),
-        axiosInstance.get("/health-request?limit=1000").catch(() => ({ data: [] })),
+        axiosInstance.get("/ai-request", { params: { page: 1, limit: 100 } }).catch(() => ({ data: [] })),
+        axiosInstance.get("/health-request", { params: { page: 1, limit: 100 } }).catch(() => ({ data: [] })),
       ]);
       const allAI = Array.isArray(aiRes.data) ? aiRes.data : aiRes.data?.data || [];
       const allHealth = Array.isArray(healthRes.data) ? healthRes.data : healthRes.data?.data || [];
