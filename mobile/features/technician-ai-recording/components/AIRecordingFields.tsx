@@ -10,7 +10,13 @@ import {
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
-import { CalendarDays, Check, ChevronDown, Clock, X } from "lucide-react-native";
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  Clock,
+  X,
+} from "lucide-react-native";
 import { CATTLE_BREEDS } from "@/lib/constants";
 import { useTheme } from "@/lib/theme";
 import type {
@@ -224,7 +230,7 @@ export function AIRecordingFields({
               editable={!disabled}
               value={values.sireBreed}
               onChangeText={onSireBreedChange}
-              maxLength={100}
+              maxLength={25}
               placeholder="Enter sire breed"
               placeholderTextColor={colors.textMuted}
               style={[inputStyle, { flex: 1 }]}
@@ -257,7 +263,7 @@ export function AIRecordingFields({
             editable={!disabled}
             value={values.sireCode}
             onChangeText={onSireCodeChange}
-            maxLength={64}
+            maxLength={10}
             autoCapitalize="characters"
             placeholder="Enter the actual sire or semen code"
             placeholderTextColor={colors.textMuted}
@@ -284,7 +290,7 @@ export function AIRecordingFields({
             editable={!disabled}
             value={values.technicianNote}
             onChangeText={onTechnicianNoteChange}
-            maxLength={2000}
+            maxLength={100}
             multiline
             textAlignVertical="top"
             placeholder="Add relevant service observations"
@@ -300,7 +306,7 @@ export function AIRecordingFields({
               textAlign: "right",
             }}
           >
-            {values.technicianNote.length}/2000
+            {values.technicianNote.length}/100
           </Text>
         </View>
       </View>

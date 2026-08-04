@@ -12,6 +12,7 @@ import { useWalkInInseminationMutation } from "@/features/technician/hooks/useTe
 import {
   formatLocalCalendarDate,
   formatLocalTime,
+  getStaticDefaultTime,
   isCanonicalWorkflowId,
   validateAIRecording,
 } from "@/features/technician-requests/utils/aiWorkflow";
@@ -33,7 +34,7 @@ const MY_WORK_PATH = "/(technician)/(tabs)/technician.requests?section=myWork";
 
 const initialValues = (): AIRecordingValues => ({
   inseminationDate: new Date(),
-  inseminationTime: new Date(),
+  inseminationTime: getStaticDefaultTime(),
   estrus: "",
   sireBreed: "",
   sireCode: "",
@@ -255,6 +256,7 @@ export default function RecordAIScreen() {
                 color: colors.textPrimary,
                 fontFamily: "Outfit_700Bold",
                 fontSize: 14,
+
               }}
             >
               {[mode.fallback.farmerName, mode.fallback.animalName, mode.fallback.earTag]

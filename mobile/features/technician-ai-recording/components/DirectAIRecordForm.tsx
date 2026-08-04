@@ -2,13 +2,21 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { AlertTriangle, Check, ChevronDown, Search, UserRound, X } from "lucide-react-native";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Search,
+  UserRound,
+  X,
+} from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { toast } from "sonner-native";
 import { useRouter } from "expo-router";
@@ -16,7 +24,10 @@ import { Button } from "@/components/ui/Button";
 import { AnimalSummaryCard } from "@/features/farmer-ui/components/AnimalSummaryCard";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
 import { getAnimalsByFarmer } from "@/features/technician/services/animalManagement.service";
-import { ILOILO_MUNICIPALITY_OPTIONS } from "@/constants/address";
+import {
+  ILOILO_MUNICIPALITY_OPTIONS,
+  getIloiloBarangayOptions,
+} from "@/constants/address";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
@@ -67,8 +78,12 @@ export function DirectAIRecordForm({
     [clientsQuery.data],
   );
 
-  const [selectedFarmer, setSelectedFarmer] = useState<SelectedFarmer | null>(null);
-  const [selectedAnimal, setSelectedAnimal] = useState<SelectedAnimal | null>(null);
+  const [selectedFarmer, setSelectedFarmer] = useState<SelectedFarmer | null>(
+    null,
+  );
+  const [selectedAnimal, setSelectedAnimal] = useState<SelectedAnimal | null>(
+    null,
+  );
   const [animals, setAnimals] = useState<SelectedAnimal[]>([]);
   const [loadingAnimals, setLoadingAnimals] = useState(false);
   const [profileContextLocked, setProfileContextLocked] = useState(false);
@@ -77,22 +92,38 @@ export function DirectAIRecordForm({
   const [showAnimalModal, setShowAnimalModal] = useState(false);
   const [farmerSearch, setFarmerSearch] = useState("");
   const [municipality, setMunicipality] = useState<string | null>(null);
+  const [barangay, setBarangay] = useState<string | null>(null);
+  const [filterPickerMode, setFilterPickerMode] = useState<
+    "municipality" | "barangay" | null
+  >(null);
+  const [pickerSearch, setPickerSearch] = useState("");
+
+  const barangayOptions = useMemo(() => {
+    if (!municipality) return [];
+    return getIloiloBarangayOptions(municipality);
+  }, [municipality]);
 
   const filteredFarmers = useMemo(() => {
     const search = farmerSearch.trim().toLowerCase();
     return farmers.filter((farmer) => {
-      const city = String(farmer.address?.city || "").toLowerCase();
+      const city = String(
+        farmer.address?.city || farmer.address?.municipality || "",
+      ).toLowerCase();
+      const brgy = String(farmer.address?.barangay || "").toLowerCase();
       if (municipality && city !== municipality.toLowerCase()) return false;
+      if (barangay && brgy !== barangay.toLowerCase()) return false;
       if (!search) return true;
       return (
-        String(farmer.name || "").toLowerCase().includes(search) ||
-        String(farmer.phoneNumber || "").includes(search)
+        String(farmer.name || "")
+          .toLowerCase()
+          .includes(search) || String(farmer.phoneNumber || "").includes(search)
       );
     });
-  }, [farmerSearch, farmers, municipality]);
+  }, [farmerSearch, farmers, municipality, barangay]);
 
   const eligibility = useMemo(
-    () => (selectedAnimal ? getAIEligibility({ animal: selectedAnimal }) : null),
+    () =>
+      selectedAnimal ? getAIEligibility({ animal: selectedAnimal }) : null,
     [selectedAnimal],
   );
 
@@ -112,7 +143,9 @@ export function DirectAIRecordForm({
     if (clientsQuery.isPending) return;
     if (farmers.length === 0) {
       profilePrefillRef.current = true;
-      setProfileError("The animal owner is not available in your assigned clients.");
+      setProfileError(
+        "The animal owner is not available in your assigned clients.",
+      );
       return;
     }
 
@@ -120,7 +153,9 @@ export function DirectAIRecordForm({
     const applyProfileContext = async () => {
       const farmer = farmers.find((item) => item._id === route.farmerId);
       if (!farmer) {
-        setProfileError("The animal owner is not available in your assigned clients.");
+        setProfileError(
+          "The animal owner is not available in your assigned clients.",
+        );
         return;
       }
 
@@ -222,7 +257,9 @@ export function DirectAIRecordForm({
       return;
     }
     if (eligibility && !eligibility.isEligible) {
-      toast.error(eligibility.reason || "This animal is not eligible for AI service.");
+      toast.error(
+        eligibility.reason || "This animal is not eligible for AI service.",
+      );
       return;
     }
     onReview(selectedFarmer, selectedAnimal);
@@ -257,7 +294,8 @@ export function DirectAIRecordForm({
             marginTop: 3,
           }}
         >
-          This form saves a completed AI service. It does not schedule future work.
+          This form saves a completed AI service. It does not schedule future
+          work.
         </Text>
 
         {profileError ? (
@@ -310,7 +348,11 @@ export function DirectAIRecordForm({
             </Text>
             <AnimalSummaryCard
               animal={selectedAnimal}
-              alert={eligibility && !eligibility.isEligible ? eligibility.reason : undefined}
+              alert={
+                eligibility && !eligibility.isEligible
+                  ? eligibility.reason
+                  : undefined
+              }
             />
           </View>
         ) : (
@@ -333,11 +375,36 @@ export function DirectAIRecordForm({
                 opacity: saving ? 0.55 : 1,
               }}
             >
-              <UserRound size={19} color={colors.primary} />
+              {selectedFarmer?.imageUrl ||
+              selectedFarmer?.farmerImageUrl ||
+              selectedFarmer?.photo ||
+              selectedFarmer?.avatar ||
+              selectedFarmer?.image ? (
+                <Image
+                  source={{
+                    uri:
+                      selectedFarmer?.imageUrl ||
+                      selectedFarmer?.farmerImageUrl ||
+                      selectedFarmer?.photo ||
+                      selectedFarmer?.avatar ||
+                      selectedFarmer?.image,
+                  }}
+                  style={{
+                    width: 26,
+                    height: 26,
+                    borderRadius: 13,
+                    backgroundColor: colors.border,
+                  }}
+                />
+              ) : (
+                <UserRound size={19} color={colors.primary} />
+              )}
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text
                   style={{
-                    color: selectedFarmer ? colors.textPrimary : colors.textMuted,
+                    color: selectedFarmer
+                      ? colors.textPrimary
+                      : colors.textMuted,
                     fontFamily: "Outfit_600SemiBold",
                     fontSize: 14,
                   }}
@@ -375,7 +442,11 @@ export function DirectAIRecordForm({
                   <AnimalSummaryCard
                     animal={selectedAnimal}
                     onPress={() => setShowAnimalModal(true)}
-                    alert={eligibility && !eligibility.isEligible ? eligibility.reason : undefined}
+                    alert={
+                      eligibility && !eligibility.isEligible
+                        ? eligibility.reason
+                        : undefined
+                    }
                   />
                 ) : animals.length > 0 ? (
                   <TouchableOpacity
@@ -436,14 +507,15 @@ export function DirectAIRecordForm({
                     <Button
                       variant="outline"
                       label="Register Animal"
-                      className="mt-3"
+                      className="mt-3 font-bold text-primary"
                       onPress={() =>
                         router.push({
                           pathname: "/(technician)/register-animal",
                           params: {
                             farmerId: selectedFarmer._id,
                             farmerName: selectedFarmer.name,
-                            phoneNumber: selectedFarmer.phoneNumber || undefined,
+                            phoneNumber:
+                              selectedFarmer.phoneNumber || undefined,
                             barangay: selectedFarmer.address?.barangay,
                             municipality: selectedFarmer.address?.city,
                           },
@@ -507,8 +579,12 @@ export function DirectAIRecordForm({
         <AIRecordingFields
           values={values}
           disabled={saving}
-          onDateChange={(inseminationDate) => onValuesChange({ inseminationDate })}
-          onTimeChange={(inseminationTime) => onValuesChange({ inseminationTime })}
+          onDateChange={(inseminationDate) =>
+            onValuesChange({ inseminationDate })
+          }
+          onTimeChange={(inseminationTime) =>
+            onValuesChange({ inseminationTime })
+          }
           onEstrusChange={(estrus) => onValuesChange({ estrus })}
           onSireBreedChange={(sireBreed) => onValuesChange({ sireBreed })}
           onSireCodeChange={(sireCode) => onValuesChange({ sireCode })}
@@ -524,6 +600,7 @@ export function DirectAIRecordForm({
       <Button
         label="Review & Complete"
         size="lg"
+        style={{ marginTop: 10 }}
         loading={saving}
         disabled={saving || Boolean(eligibility && !eligibility.isEligible)}
         onPress={review}
@@ -606,43 +683,123 @@ export function DirectAIRecordForm({
               />
             </View>
 
-            <FlatList
-              horizontal
-              data={["All", ...ILOILO_MUNICIPALITY_OPTIONS]}
-              keyExtractor={(item) => item}
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingVertical: 12 }}
-              renderItem={({ item }) => {
-                const selected = item === "All" ? !municipality : municipality === item;
-                return (
-                  <TouchableOpacity
-                    onPress={() => setMunicipality(item === "All" ? null : item)}
+            <View
+              style={{
+                flexDirection: "row",
+                gap: 10,
+                marginVertical: 12,
+              }}
+            >
+              {/* MUNICIPALITY DROPDOWN BUTTON */}
+              <TouchableOpacity
+                onPress={() => {
+                  setPickerSearch("");
+                  setFilterPickerMode("municipality");
+                }}
+                style={{
+                  flex: 1,
+                  minHeight: 46,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: 12,
+                  borderWidth: 1,
+                  borderColor: municipality ? colors.primary : colors.border,
+                  borderRadius: 12,
+                  backgroundColor: municipality
+                    ? colors.primary + "10"
+                    : colors.card,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 4 }}>
+                  <Text
                     style={{
-                      height: 38,
-                      justifyContent: "center",
-                      paddingHorizontal: 13,
-                      borderWidth: 1,
-                      borderColor: selected ? colors.primary : colors.border,
-                      borderRadius: 19,
-                      backgroundColor: selected ? colors.primary : colors.card,
+                      fontSize: 10,
+                      fontFamily: "Outfit_500Medium",
+                      color: colors.textMuted,
+                      textTransform: "uppercase",
                     }}
                   >
-                    <Text
-                      style={{
-                        color: selected ? colors.onPrimary : colors.textSecondary,
-                        fontFamily: "Outfit_600SemiBold",
-                        fontSize: 11,
-                      }}
-                    >
-                      {item}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              }}
-            />
+                    Municipality
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      fontSize: 13,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: municipality ? colors.primary : colors.textPrimary,
+                    }}
+                  >
+                    {municipality || "All Municipalities"}
+                  </Text>
+                </View>
+                <ChevronDown
+                  size={16}
+                  color={municipality ? colors.primary : colors.textMuted}
+                />
+              </TouchableOpacity>
+
+              {/* BARANGAY DROPDOWN BUTTON */}
+              <TouchableOpacity
+                disabled={!municipality}
+                onPress={() => {
+                  setPickerSearch("");
+                  setFilterPickerMode("barangay");
+                }}
+                style={{
+                  flex: 1,
+                  minHeight: 46,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  paddingHorizontal: 12,
+                  borderWidth: 1,
+                  borderColor: barangay ? colors.primary : colors.border,
+                  borderRadius: 12,
+                  backgroundColor: barangay
+                    ? colors.primary + "10"
+                    : colors.card,
+                  opacity: !municipality ? 0.5 : 1,
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 4 }}>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontFamily: "Outfit_500Medium",
+                      color: colors.textMuted,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Barangay
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      fontSize: 13,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: barangay ? colors.primary : colors.textPrimary,
+                    }}
+                  >
+                    {barangay ||
+                      (municipality ? "All Barangays" : "Select Muni First")}
+                  </Text>
+                </View>
+                <ChevronDown
+                  size={16}
+                  color={barangay ? colors.primary : colors.textMuted}
+                />
+              </TouchableOpacity>
+            </View>
 
             {clientsQuery.isPending ? (
-              <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+              <View
+                style={{
+                  flex: 1,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
                 <ActivityIndicator size="large" color={colors.primary} />
               </View>
             ) : (
@@ -677,7 +834,30 @@ export function DirectAIRecordForm({
                         borderBottomColor: colors.border,
                       }}
                     >
-                      <UserRound size={20} color={colors.primary} />
+                      {item.imageUrl ||
+                      item.farmerImageUrl ||
+                      item.photo ||
+                      item.avatar ||
+                      item.image ? (
+                        <Image
+                          source={{
+                            uri:
+                              item.imageUrl ||
+                              item.farmerImageUrl ||
+                              item.photo ||
+                              item.avatar ||
+                              item.image,
+                          }}
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 14,
+                            backgroundColor: colors.border,
+                          }}
+                        />
+                      ) : (
+                        <UserRound size={20} color={colors.primary} />
+                      )}
                       <View style={{ flex: 1, marginLeft: 10 }}>
                         <Text
                           style={{
@@ -697,10 +877,13 @@ export function DirectAIRecordForm({
                             marginTop: 2,
                           }}
                         >
-                          {farmerAddress(item.address)} · {item.phoneNumber || "No phone"}
+                          {farmerAddress(item.address)} ·{" "}
+                          {item.phoneNumber || "No phone"}
                         </Text>
                       </View>
-                      {selected ? <Check size={19} color={colors.primary} /> : null}
+                      {selected ? (
+                        <Check size={19} color={colors.primary} />
+                      ) : null}
                     </TouchableOpacity>
                   );
                 }}
@@ -774,6 +957,163 @@ export function DirectAIRecordForm({
                   }
                 />
               )}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* MUNICIPALITY / BARANGAY FILTER PICKER MODAL */}
+      <Modal
+        visible={filterPickerMode !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFilterPickerMode(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: colors.modalBackdrop,
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              maxHeight: "80%",
+              borderRadius: 20,
+              backgroundColor: colors.card,
+              padding: 18,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 12,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontFamily: "Outfit_700Bold",
+                  color: colors.textPrimary,
+                }}
+              >
+                {filterPickerMode === "municipality"
+                  ? "Select Municipality"
+                  : `Select Barangay (${municipality || ""})`}
+              </Text>
+              <TouchableOpacity
+                onPress={() => setFilterPickerMode(null)}
+                style={{ padding: 4 }}
+              >
+                <X size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <View
+              style={{
+                minHeight: 42,
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 10,
+                backgroundColor: colors.background,
+                marginBottom: 10,
+              }}
+            >
+              <Search size={16} color={colors.textMuted} />
+              <TextInput
+                value={pickerSearch}
+                onChangeText={setPickerSearch}
+                placeholder="Search..."
+                placeholderTextColor={colors.textMuted}
+                style={{
+                  flex: 1,
+                  marginLeft: 8,
+                  fontSize: 13,
+                  color: colors.textPrimary,
+                  fontFamily: "Outfit_500Medium",
+                }}
+              />
+            </View>
+
+            <FlatList
+              data={[
+                filterPickerMode === "municipality"
+                  ? "All Municipalities"
+                  : "All Barangays",
+                ...(filterPickerMode === "municipality"
+                  ? ILOILO_MUNICIPALITY_OPTIONS.filter((item) =>
+                      item.toLowerCase().includes(pickerSearch.toLowerCase()),
+                    )
+                  : barangayOptions.filter((item) =>
+                      item.toLowerCase().includes(pickerSearch.toLowerCase()),
+                    )),
+              ]}
+              keyExtractor={(item) => item}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => {
+                const isAll =
+                  item === "All Municipalities" || item === "All Barangays";
+                const isSelected = isAll
+                  ? filterPickerMode === "municipality"
+                    ? !municipality
+                    : !barangay
+                  : filterPickerMode === "municipality"
+                    ? municipality === item
+                    : barangay === item;
+
+                return (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (filterPickerMode === "municipality") {
+                        if (isAll) {
+                          setMunicipality(null);
+                          setBarangay(null);
+                        } else {
+                          setMunicipality(item);
+                          setBarangay(null);
+                        }
+                      } else {
+                        if (isAll) {
+                          setBarangay(null);
+                        } else {
+                          setBarangay(item);
+                        }
+                      }
+                      setFilterPickerMode(null);
+                    }}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingVertical: 12,
+                      paddingHorizontal: 10,
+                      borderBottomWidth: 1,
+                      borderBottomColor: colors.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 14,
+                        fontFamily: isSelected
+                          ? "Outfit_700Bold"
+                          : "Outfit_500Medium",
+                        color: isSelected ? colors.primary : colors.textPrimary,
+                      }}
+                    >
+                      {item}
+                    </Text>
+                    {isSelected ? (
+                      <Check size={18} color={colors.primary} />
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              }}
             />
           </View>
         </View>
