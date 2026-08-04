@@ -2,7 +2,7 @@ import type { Farmer } from "@/types";
 
 export interface FarmerProfileData extends Farmer {}
 
-export type EditMode = "phone" | "password" | null;
+export type EditMode = "phone" | "password" | "address" | null;
 
 export interface ProfileFormData {
   phoneNumber: string;

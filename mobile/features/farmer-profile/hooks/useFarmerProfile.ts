@@ -24,6 +24,7 @@ import {
   ILOILO_CITY_BARANGAYS_BY_DISTRICT,
   ILOILO_CITY_NAME,
   isAddressPlaceholder,
+  normalizeContactAddress,
 } from "@/constants/address";
 
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
@@ -355,6 +356,17 @@ export const useFarmerProfile = () => {
       setEditMode(null);
     },
     onError: (error: any) => {
+      toast.dismiss();
+      const code = error?.response?.data?.code;
+      const message = error?.response?.data?.message;
+
+      if (code === "BARANGAY_REQUIRED") {
+        toast.error("Please select your barangay before saving.", {
+          description: message || "Barangay is required to update your contact address.",
+        });
+        return;
+      }
+
       toast.error(t("updateFailed") || "Update failed.", {
         description: getApiErrorMessage(error, "Please try again."),
       });
@@ -599,26 +611,43 @@ export const useFarmerProfile = () => {
       const current = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
       });
-      const suggestion = await getAddressSuggestion({
+
+      const [geocode] = await Location.reverseGeocodeAsync({
         latitude: current.coords.latitude,
         longitude: current.coords.longitude,
       });
-      const existingBarangay = isAddressPlaceholder(formData.barangay)
-        ? ""
-        : formData.barangay;
-      const nextBarangay = suggestion.barangay || existingBarangay;
+
+      const normalization = normalizeContactAddress(geocode, dbUser.address || formData);
 
       if (locationToastId !== undefined) toast.dismiss(locationToastId);
+
+      setFormData((prev) => ({
+        ...prev,
+        street: normalization.address.street || prev.street,
+        barangay: normalization.address.barangay || prev.barangay,
+        city: normalization.address.city || prev.city,
+        district: normalization.address.district || prev.district,
+        province: normalization.address.province || prev.province,
+      }));
+
+      if (!normalization.hasBarangay) {
+        setEditMode("address");
+        toast.info("Barangay selection required", {
+          description: "We found your location, but we could not identify your barangay. Please select your barangay to continue.",
+        });
+        return;
+      }
+
       await mutation.mutateAsync({
         address: {
-          street: suggestion.street || formData.street,
-          ...(nextBarangay ? { barangay: nextBarangay } : {}),
-          city: suggestion.city || formData.city || "",
-          district: suggestion.district || formData.district || "",
-          province: suggestion.province || "Iloilo",
-          zipCode: suggestion.zipCode || dbUser.address?.zipCode || "",
+          street: normalization.address.street || formData.street,
+          barangay: normalization.address.barangay,
+          city: normalization.address.city || formData.city || "",
+          district: normalization.address.district || formData.district || "",
+          province: normalization.address.province || "Iloilo",
+          zipCode: normalization.address.zipCode || dbUser.address?.zipCode || "",
           region: "Region VI",
-          detectedAddress: suggestion.detectedAddress,
+          detectedAddress: normalization.address.detectedAddress,
           coordinates: {
             lat: current.coords.latitude,
             lng: current.coords.longitude,
@@ -628,13 +657,11 @@ export const useFarmerProfile = () => {
       });
     } catch (err: any) {
       if (locationToastId !== undefined) toast.dismiss(locationToastId);
-      const status = err?.response?.status;
-      toast.error(status === 429 ? "Please wait before updating" : "Could not detect contact address", {
-        description: getApiErrorMessage(
-          err,
-          "Please try again outdoors or enter it manually.",
-        ),
-      });
+      if (!err?.response) {
+        toast.error("Unable to detect your location", {
+          description: "Check location permissions and try again.",
+        });
+      }
     } finally {
       setLocationAction(null);
     }

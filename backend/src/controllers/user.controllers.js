@@ -1176,19 +1176,82 @@ export const updateUser = async (req, res) => {
           160,
         );
       }
+
+      const ALLOWED_ADDRESS_FIELDS = [
+        "street",
+        "barangay",
+        "city",
+        "district",
+        "municipality",
+        "province",
+        "zipCode",
+        "region",
+        "detectedAddress",
+        "locationCapturedAt",
+        "coordinates",
+        "phoneNumber",
+        "houseNumber",
+        "subdivision",
+      ];
+
+      const cleanIncomingAddress = {};
+      Object.keys(addressUpdate).forEach((key) => {
+        if (ALLOWED_ADDRESS_FIELDS.includes(key) && addressUpdate[key] !== undefined) {
+          cleanIncomingAddress[key] = addressUpdate[key];
+        }
+      });
       if (address.locationCapture) {
-        addressUpdate.locationCapturedAt = new Date();
+        cleanIncomingAddress.locationCapturedAt = new Date();
       }
-      if (!user.address) {
-        user.address = addressUpdate;
-      } else {
-        // Update fields individually to avoid overwriting the whole object incorrectly
-        Object.keys(addressUpdate).forEach((key) => {
-          user.address[key] = addressUpdate[key];
+
+      const existingAddressObj = user.address
+        ? typeof user.address.toObject === "function"
+          ? user.address.toObject()
+          : { ...user.address }
+        : {};
+
+      const isAddressPlaceholder = (val) =>
+        !val || typeof val !== "string" || ["na", "n/a", "notset", "unknown"].includes(val.trim().toLowerCase());
+
+      const incomingBarangay =
+        typeof cleanIncomingAddress.barangay === "string"
+          ? cleanIncomingAddress.barangay.trim()
+          : undefined;
+      const existingBarangay =
+        typeof existingAddressObj.barangay === "string"
+          ? existingAddressObj.barangay.trim()
+          : "";
+
+      let finalBarangay = incomingBarangay;
+      if (incomingBarangay === undefined) {
+        if (existingBarangay && !isAddressPlaceholder(existingBarangay)) {
+          finalBarangay = existingBarangay;
+        } else {
+          finalBarangay = "";
+        }
+      }
+
+      const mergedAddress = {
+        ...existingAddressObj,
+        ...cleanIncomingAddress,
+      };
+      if (finalBarangay !== undefined) {
+        mergedAddress.barangay = finalBarangay;
+      }
+
+      const checkBarangay = mergedAddress.barangay ? String(mergedAddress.barangay).trim() : "";
+      if (!checkBarangay || isAddressPlaceholder(checkBarangay)) {
+        return res.status(400).json({
+          code: "BARANGAY_REQUIRED",
+          message: "Barangay is required to update the contact address.",
         });
       }
-      // Sync phoneNumber if it was provided inside address
-      if (addressUpdate.phoneNumber) user.phoneNumber = addressUpdate.phoneNumber;
+
+      user.address = mergedAddress;
+
+      if (cleanIncomingAddress.phoneNumber) {
+        user.phoneNumber = cleanIncomingAddress.phoneNumber;
+      }
     }
 
     if (farmLocation !== undefined) {
@@ -1226,7 +1289,20 @@ export const updateUser = async (req, res) => {
       return res.status(error.statusCode).json({ message: error.message });
     }
     if (error.name === "ValidationError") {
-      return res.status(400).json({ message: error.message });
+      const isBarangayError =
+        error.errors?.["address.barangay"] || /address\.barangay/i.test(error.message);
+      if (isBarangayError) {
+        return res.status(400).json({
+          code: "BARANGAY_REQUIRED",
+          message: "Barangay is required to update the contact address.",
+        });
+      }
+      const firstErrorKey = Object.keys(error.errors || {})[0];
+      const cleanField = firstErrorKey ? firstErrorKey.replace(/^address\./, "") : "field";
+      return res.status(400).json({
+        code: "VALIDATION_ERROR",
+        message: `Invalid ${cleanField}: ${error.errors?.[firstErrorKey]?.message || "Validation failed"}`,
+      });
     }
     res.status(500).json({ message: "Failed to update user" });
   }
