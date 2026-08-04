@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,8 +12,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
   ArrowLeft,
   User,
@@ -23,26 +24,58 @@ import {
   Plus,
   Calendar,
   ShieldCheck,
-  Search,
 } from "lucide-react-native";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
 import * as ImagePicker from "expo-image-picker";
-import { CATTLE_BREEDS, CATTLE_SPECIES, CATTLE_COLORS, BREED_OPTIONS_BY_SPECIES } from "@/lib/constants";
+import {
+  CATTLE_BREEDS,
+  CATTLE_SPECIES,
+  CATTLE_COLORS,
+  BREED_OPTIONS_BY_SPECIES,
+  COLOR_OPTIONS_BY_SPECIES,
+} from "@/lib/constants";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import { PhotoOptionModal } from "@/components/PhotoOptionModal";
+
+import { useOfflineMutation } from "@/hooks/useOfflineMutation";
+import {
+  formatAddressLabel,
+  ILOILO_MUNICIPALITY_OPTIONS,
+} from "@/constants/address";
 
 export default function RegisterAnimalScreen() {
   const router = useRouter();
   const api = useApi();
   const { isDark, colors } = useTheme();
 
-  const [saving, setSaving] = useState(false);
+  const { farmerId, farmerName, phoneNumber, barangay, municipality } =
+    useLocalSearchParams<{
+      farmerId?: string;
+      farmerName?: string;
+      phoneNumber?: string;
+      barangay?: string;
+      municipality?: string;
+      source?: string;
+    }>();
+
   const [farmers, setFarmers] = useState<any[]>([]);
   const [selectedFarmer, setSelectedFarmer] = useState<any>(null);
   const [searchFarmerQuery, setSearchFarmerQuery] = useState("");
   const [showFarmerModal, setShowFarmerModal] = useState(false);
+  const [selectedMunicipality, setSelectedMunicipality] = useState<string | null>(null);
+  const [showMunicipalityDropdown, setShowMunicipalityDropdown] = useState(false);
+  const [searchMunicipality, setSearchMunicipality] = useState("");
+
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
 
   const [formData, setFormData] = useState({
     earTag: "",
@@ -50,20 +83,46 @@ export default function RegisterAnimalScreen() {
     species: CATTLE_SPECIES[0],
     breed: "",
     color: "",
-    dob: new Date().toISOString().split("T")[0],
+    dob: formatLocalDate(new Date()),
+    gender: "Female",
   });
+
+  const [showGenderModal, setShowGenderModal] = useState(false);
 
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [farmerAnimalsCount, setFarmerAnimalsCount] = useState<number>(0);
 
+  const mutation = useOfflineMutation(
+    {
+      url: "/technician/walk-in-livestock",
+      method: "POST",
+      description: `Register Animal: Tag #${formData.earTag}`,
+    },
+    {
+      onSuccess: (result) => {
+        if (result.status === "synced") {
+          toast.success("Animal registered successfully!");
+        }
+        router.back();
+      },
+      onError: (err: any) => {
+        toast.error(err.response?.data?.message || "Failed to register animal");
+      },
+    },
+  );
+
   const handleFarmerSelect = async (farmer: any) => {
     setSelectedFarmer(farmer);
     setShowFarmerModal(false);
+    if (String(farmer._id || "").startsWith("local:")) {
+      setFarmerAnimalsCount(0);
+      return;
+    }
     try {
       const res = await api.get(`/animals/farmer/${farmer._id}`);
-      const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
       setFarmerAnimalsCount(list.length);
     } catch (err) {
       console.error(err);
@@ -88,30 +147,50 @@ export default function RegisterAnimalScreen() {
   }, [api]);
 
   useEffect(() => {
+    if (farmerId) {
+      const existingFarmer = farmers.find((f: any) => f._id === farmerId);
+      if (existingFarmer) {
+        handleFarmerSelect(existingFarmer);
+      } else {
+        const fallbackFarmer = {
+          _id: farmerId,
+          name: farmerName || "Farmer",
+          phoneNumber: phoneNumber || "",
+          address: {
+            barangay: barangay || "",
+            municipality: municipality || "",
+          },
+        };
+        handleFarmerSelect(fallbackFarmer);
+      }
+    }
+  }, [farmerId, farmers]);
+
+  useEffect(() => {
     if (formData.species) {
       const validBreeds = BREED_OPTIONS_BY_SPECIES[formData.species] || [];
       if (formData.breed && !validBreeds.includes(formData.breed)) {
         setFormData((prev) => ({ ...prev, breed: "" }));
       }
+      const validColors = COLOR_OPTIONS_BY_SPECIES[formData.species] || [];
+      if (formData.color && !validColors.includes(formData.color)) {
+        setFormData((prev) => ({ ...prev, color: "" }));
+      }
     }
   }, [formData.species]);
 
-  const handlePickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+  const [showPhotoOptionModal, setShowPhotoOptionModal] = useState(false);
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source);
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
     }
   };
 
   const handleSave = async () => {
+    toast.dismiss();
     if (!selectedFarmer) {
       toast.error("Please select an owner/farmer first");
       return;
@@ -125,36 +204,48 @@ export default function RegisterAnimalScreen() {
       return;
     }
 
-    setSaving(true);
-    try {
-      const payload = {
-        farmerName: selectedFarmer._id,
-        earTag: formData.earTag.trim(),
-        brand: formData.brand.trim() || undefined,
-        species: formData.species,
-        breed: formData.breed,
-        color: formData.color,
-        dob: formData.dob,
-        gender: "Female", // Set to default Breeding Female target for programs
-        imageUrl: imageBase64 || undefined,
-      };
+    const payload = {
+      farmerName: selectedFarmer._id,
+      earTag: formData.earTag.trim(),
+      brand: formData.brand.trim() || undefined,
+      species: formData.species,
+      breed: formData.breed,
+      color: formData.color,
+      dob: formData.dob,
+      gender: formData.gender,
+      imageUrl: imageBase64 || undefined,
+    };
 
-      await api.post("/technician/walk-in-livestock", payload);
-      toast.success("Animal registered successfully!");
-      router.back();
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.message || "Failed to register animal");
-    } finally {
-      setSaving(false);
-    }
+    mutation.mutate(payload);
   };
 
-  const filteredFarmers = farmers.filter(
-    (f) =>
-      f.name?.toLowerCase().includes(searchFarmerQuery.toLowerCase()) ||
-      f.address?.phoneNumber?.includes(searchFarmerQuery),
-  );
+  const filteredMunicipalities = useMemo(() => {
+    const options = ["All Municipalities", ...ILOILO_MUNICIPALITY_OPTIONS];
+    const query = searchMunicipality.trim().toLowerCase();
+    return query
+      ? options.filter((item) => item.toLowerCase().includes(query))
+      : options;
+  }, [searchMunicipality]);
+
+  const filteredFarmers = useMemo(() => {
+    const query = searchFarmerQuery.trim().toLowerCase();
+    return farmers.filter((farmer) => {
+      const farmerMunicipality =
+        farmer.address?.city || farmer.address?.municipality || "";
+      if (
+        selectedMunicipality &&
+        farmerMunicipality.toLowerCase() !== selectedMunicipality.toLowerCase()
+      ) {
+        return false;
+      }
+      if (!query) return true;
+      return (
+        farmer.name?.toLowerCase().includes(query) ||
+        farmer.phoneNumber?.includes(query) ||
+        farmer.address?.phoneNumber?.includes(query)
+      );
+    });
+  }, [farmers, searchFarmerQuery, selectedMunicipality]);
 
   return (
     <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
@@ -172,7 +263,7 @@ export default function RegisterAnimalScreen() {
             color: colors.textPrimary,
           }}
         >
-          Register Livestock
+          Add Animal
         </Text>
       </View>
 
@@ -217,15 +308,22 @@ export default function RegisterAnimalScreen() {
                 >
                   {selectedFarmer
                     ? selectedFarmer.name
-                    : "Select Client / Owner..."}
+                    : "Select Farmer / Owner..."}
                 </Text>
                 {selectedFarmer && (
                   <Text
                     style={{ fontFamily: "Outfit_500Medium" }}
-                    className="text-[10px] text-slate-400 dark:text-slate-500 uppercase mt-0.5"
+                    className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5"
+                    numberOfLines={1}
                   >
-                    {selectedFarmer.address?.barangay || "No Barangay"} •{" "}
-                    {selectedFarmer.address?.phoneNumber || "No Phone"}
+                    {formatAddressLabel(
+                      selectedFarmer.address,
+                      selectedFarmer.farmLocation,
+                      "Location not provided",
+                    )} ·{" "}
+                    {selectedFarmer.phoneNumber ||
+                      selectedFarmer.address?.phoneNumber ||
+                      "No contact"}
                   </Text>
                 )}
               </View>
@@ -241,7 +339,7 @@ export default function RegisterAnimalScreen() {
             {/* Photo upload */}
             <View className="items-center mb-2 mt-1">
               <TouchableOpacity
-                onPress={handlePickImage}
+                onPress={() => setShowPhotoOptionModal(true)}
                 className="w-24 h-24 rounded-full items-center justify-center border border-dashed border-slate-200 dark:border-slate-700 overflow-hidden relative shadow-inner bg-slate-50 dark:bg-slate-800"
               >
                 {imageUri ? (
@@ -261,42 +359,7 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row gap-3">
-              <View className="flex-1">
-                <View className="flex-row justify-between items-center mb-1 px-1">
-                  <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">
-                    Ear Tag *
-                  </Text>
-                </View>
-                <TextInput
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                  placeholder="TAG-XXXX"
-                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                  value={formData.earTag}
-                  onChangeText={(t) => setFormData({ ...formData, earTag: t })}
-                />
-              </View>
-
-              <View className="flex-1">
-                <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase ">
-                  Brand
-                </Text>
-                <TextInput
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
-                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                  value={formData.brand}
-                  placeholder="optional"
-                  onChangeText={(t) => setFormData({ ...formData, brand: t })}
-                />
-              </View>
-            </View>
-            <EarTagGenerator
-              farmerName={selectedFarmer?.name}
-              animalCount={farmerAnimalsCount}
-              onGenerate={(tag) => setFormData({ ...formData, earTag: tag })}
-              isDark={isDark}
-            />
-
+            {/* ROW 1: Species & Breed */}
             <View className="flex-row gap-3">
               <View className="flex-1">
                 <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">
@@ -346,13 +409,40 @@ export default function RegisterAnimalScreen() {
               </View>
             </View>
 
+            {/* ROW 2: Gender & Color */}
             <View className="flex-row gap-3">
               <View className="flex-1">
                 <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">
-                  Color
+                  Gender *
                 </Text>
                 <TouchableOpacity
-                  onPress={() => setShowColorModal(true)}
+                  onPress={() => setShowGenderModal(true)}
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
+                >
+                  <Text
+                    style={{ fontFamily: "Outfit_600SemiBold" }}
+                    className="text-slate-700 dark:text-slate-200 text-xs"
+                  >
+                    {formData.gender}
+                  </Text>
+                  <ChevronDown
+                    size={14}
+                    color={isDark ? "#6b7280" : "#64748b"}
+                  />
+                </TouchableOpacity>
+              </View>
+              <View className="flex-1">
+                <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase">
+                  Color *
+                </Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (!formData.species) {
+                      toast.error("Please select a species first.");
+                      return;
+                    }
+                    setShowColorModal(true);
+                  }}
                   className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
                 >
                   <Text
@@ -367,50 +457,87 @@ export default function RegisterAnimalScreen() {
                   />
                 </TouchableOpacity>
               </View>
+            </View>
 
-              {/* Estimated DOB */}
+            {/* ROW 3: Ear Tag & Brand/Markings */}
+            <View className="flex-row gap-3">
               <View className="flex-1">
-                <View className="flex-row justify-between items-center mb-1 ml-1">
+                <View className="flex-row justify-between items-center mb-1 px-1">
                   <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">
-                    Date of Birth
+                    Ear Tag *
                   </Text>
-                  <TouchableOpacity
-                    onPress={() =>
-                      setFormData({
-                        ...formData,
-                        dob: new Date().toISOString().split("T")[0],
-                      })
-                    }
-                    className="active:opacity-50"
-                  >
-                    <Text className="text-emerald-600 dark:text-emerald-400 text-[9px] font-outfit-bold uppercase tracking-wider">
-                      Today
-                    </Text>
-                  </TouchableOpacity>
                 </View>
+                <TextInput
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
+                  placeholder="TAG-XXXX"
+                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                  value={formData.earTag}
+                  onChangeText={(t) => setFormData({ ...formData, earTag: t })}
+                />
+              </View>
+
+              <View className="flex-1">
+                <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold mb-1 ml-1 uppercase ">
+                  Brand/Markings
+                </Text>
+                <TextInput
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 text-slate-800 dark:text-white font-outfit-medium"
+                  placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                  value={formData.brand}
+                  placeholder="optional"
+                  onChangeText={(t) => setFormData({ ...formData, brand: t })}
+                />
+              </View>
+            </View>
+            <EarTagGenerator
+              farmerName={selectedFarmer?.name}
+              animalCount={farmerAnimalsCount}
+              onGenerate={(tag) => setFormData({ ...formData, earTag: tag })}
+              isDark={isDark}
+            />
+
+            {/* ROW 4: Date of Birth */}
+            <View className="mb-3">
+              <View className="flex-row justify-between items-center mb-1 ml-1">
+                <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">
+                  Date of Birth
+                </Text>
                 <TouchableOpacity
-                  onPress={() => setShowDatePicker(true)}
-                  className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
+                  onPress={() =>
+                    setFormData({
+                      ...formData,
+                      dob: formatLocalDate(new Date()),
+                    })
+                  }
+                  className="active:opacity-50"
                 >
-                  <Text
-                    style={{ fontFamily: "Outfit_600SemiBold" }}
-                    className="text-slate-700 dark:text-slate-200 text-xs"
-                  >
-                    {formData.dob}
+                  <Text className="text-emerald-600 dark:text-emerald-400 text-[9px] font-outfit-bold uppercase tracking-wider">
+                    Today
                   </Text>
-                  <Calendar size={16} color={isDark ? "#6b7280" : "#64748b"} />
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                onPress={() => setShowDatePicker(true)}
+                className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex-row justify-between items-center"
+              >
+                <Text
+                  style={{ fontFamily: "Outfit_600SemiBold" }}
+                  className="text-slate-700 dark:text-slate-200 text-xs"
+                >
+                  {formData.dob}
+                </Text>
+                <Calendar size={16} color={isDark ? "#6b7280" : "#64748b"} />
+              </TouchableOpacity>
             </View>
           </View>
 
           {/* SUBMIT BUTTON */}
           <TouchableOpacity
-            className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${saving ? "bg-slate-400" : "bg-[#00643B]"}`}
+            className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${mutation.isPending ? "bg-slate-400" : "bg-[#00643B]"}`}
             onPress={handleSave}
-            disabled={saving}
+            disabled={mutation.isPending}
           >
-            {saving ? (
+            {mutation.isPending ? (
               <ActivityIndicator color="white" />
             ) : (
               <>
@@ -428,80 +555,237 @@ export default function RegisterAnimalScreen() {
       </KeyboardAvoidingView>
 
       {/* FARMER SELECTION MODAL */}
-      <Modal visible={showFarmerModal} animationType="slide" transparent>
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[85%]">
-            <View className="flex-row justify-between items-center mb-4">
-              <Text
-                style={{
-                  fontFamily: "Outfit_900Black",
-                  fontSize: 18,
-                  color: colors.textPrimary,
-                }}
-              >
-                Select Client
-              </Text>
+      <Modal
+        visible={showFarmerModal}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowFarmerModal(false)}
+      >
+        <View className="flex-1 bg-slate-900/40 justify-end">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-6 pb-12 max-h-[90%] min-h-[60%] shadow-2xl">
+            <View className="flex-row justify-between items-center mb-5">
+              <View>
+                <Text
+                  style={{ fontFamily: "Outfit_900Black" }}
+                  className="text-2xl text-slate-800 dark:text-white"
+                >
+                  Select Farmer
+                </Text>
+                <Text className="text-xs text-slate-400 dark:text-slate-500 font-outfit-medium mt-0.5">
+                  Choose the owner of the animal
+                </Text>
+              </View>
               <TouchableOpacity
                 onPress={() => setShowFarmerModal(false)}
-                className="p-1 bg-slate-50 dark:bg-slate-800 rounded-full"
+                accessibilityRole="button"
+                accessibilityLabel="Close farmer selection"
+                className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full"
               >
-                <X size={20} color={isDark ? "#94a3b8" : "black"} />
+                <X size={22} color={isDark ? "#94a3b8" : "#64748b"} />
               </TouchableOpacity>
             </View>
 
-            <View className="flex-row bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 mb-4 items-center">
-              <Search
-                size={18}
-                color={isDark ? "#6b7280" : "#94a3b8"}
+            <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 mb-4 shadow-inner">
+              <MaterialCommunityIcons
+                name="magnify"
+                size={20}
+                color={isDark ? "#94a3b8" : "#64748b"}
                 style={{ marginRight: 8 }}
               />
               <TextInput
-                placeholder="Search client by name or phone..."
+                className="flex-1 text-slate-800 dark:text-white font-outfit-medium text-sm p-0"
+                placeholder="Search by name or phone..."
                 placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                className="flex-1 font-outfit-medium text-slate-800 dark:text-white text-sm"
                 value={searchFarmerQuery}
                 onChangeText={setSearchFarmerQuery}
               />
-            </View>
-
-            <FlatList
-              data={filteredFarmers}
-              keyExtractor={(item) => item._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => handleFarmerSelect(item)}
-                  className="py-4 border-b border-slate-100 dark:border-slate-800 flex-row justify-between items-center"
-                >
-                  <View>
-                    <Text
-                      style={{ fontFamily: "Outfit_700Bold" }}
-                      className="text-slate-800 dark:text-white text-base"
-                    >
-                      {item.name}
-                    </Text>
-                    <Text
-                      style={{ fontFamily: "Outfit_500Medium" }}
-                      className="text-xs text-slate-400 dark:text-slate-500 uppercase mt-0.5"
-                    >
-                      {item.address?.barangay || "No Barangay"} •{" "}
-                      {item.address?.phoneNumber || "No Phone"}
-                    </Text>
-                  </View>
-                  <ChevronDown
-                    size={14}
+              {searchFarmerQuery !== "" && (
+                <TouchableOpacity onPress={() => setSearchFarmerQuery("")}>
+                  <MaterialCommunityIcons
+                    name="close-circle"
+                    size={18}
                     color={isDark ? "#6b7280" : "#94a3b8"}
-                    style={{ transform: [{ rotate: "-90deg" }] }}
                   />
                 </TouchableOpacity>
               )}
-              ListEmptyComponent={
-                <View className="py-8 items-center">
-                  <Text className="font-outfit-bold text-slate-400 dark:text-slate-500">
-                    No clients found
-                  </Text>
+            </View>
+
+            <View className="mb-4">
+              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[9px] tracking-wider mb-2 ml-1">
+                Filter by Municipality
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchMunicipality("");
+                  setShowMunicipalityDropdown(!showMunicipalityDropdown);
+                }}
+                className={`bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl p-4 flex-row justify-between items-center shadow-sm ${
+                  showMunicipalityDropdown
+                    ? "border-emerald-500 dark:border-emerald-500 rounded-b-none"
+                    : ""
+                }`}
+              >
+                <Text
+                  style={{ fontFamily: "Outfit_700Bold" }}
+                  className="text-slate-700 dark:text-slate-200 text-sm"
+                >
+                  {selectedMunicipality || "All Municipalities"}
+                </Text>
+                <ChevronDown
+                  size={18}
+                  color={isDark ? "#94a3b8" : "#64748b"}
+                  style={{
+                    transform: [
+                      { rotate: showMunicipalityDropdown ? "180deg" : "0deg" },
+                    ],
+                  }}
+                />
+              </TouchableOpacity>
+
+              {showMunicipalityDropdown && (
+                <View className="bg-white dark:bg-slate-900 border-x border-b border-emerald-500 dark:border-emerald-500 rounded-b-2xl p-4 shadow-lg z-50">
+                  <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-3 py-2 mb-3 shadow-inner">
+                    <MaterialCommunityIcons
+                      name="magnify"
+                      size={18}
+                      color={isDark ? "#94a3b8" : "#64748b"}
+                      style={{ marginRight: 6 }}
+                    />
+                    <TextInput
+                      className="flex-1 text-slate-800 dark:text-white font-outfit-medium text-xs p-0"
+                      placeholder="Type to filter..."
+                      placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
+                      value={searchMunicipality}
+                      onChangeText={setSearchMunicipality}
+                    />
+                    {searchMunicipality !== "" && (
+                      <TouchableOpacity onPress={() => setSearchMunicipality("")}>
+                        <MaterialCommunityIcons
+                          name="close-circle"
+                          size={16}
+                          color={isDark ? "#6b7280" : "#94a3b8"}
+                        />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <View className="max-h-48">
+                    <FlatList
+                      data={filteredMunicipalities}
+                      keyExtractor={(item) => item}
+                      nestedScrollEnabled
+                      showsVerticalScrollIndicator
+                      renderItem={({ item }) => {
+                        const isAll = item === "All Municipalities";
+                        const isSelected = isAll
+                          ? selectedMunicipality === null
+                          : selectedMunicipality === item;
+                        return (
+                          <TouchableOpacity
+                            onPress={() => {
+                              setSelectedMunicipality(isAll ? null : item);
+                              setShowMunicipalityDropdown(false);
+                            }}
+                            className="py-2.5 border-b border-slate-50 dark:border-slate-800/50 flex-row justify-between items-center"
+                          >
+                            <Text
+                              style={{
+                                fontFamily: isSelected
+                                  ? "Outfit_700Bold"
+                                  : "Outfit_500Medium",
+                              }}
+                              className={`text-sm ${
+                                isSelected
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-slate-600 dark:text-slate-300"
+                              }`}
+                            >
+                              {item}
+                            </Text>
+                            {isSelected && (
+                              <MaterialCommunityIcons
+                                name="check"
+                                size={16}
+                                color={isDark ? "#34d399" : "#059669"}
+                              />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      }}
+                    />
+                  </View>
                 </View>
-              }
-            />
+              )}
+            </View>
+
+            {farmers.length === 0 ? (
+              <ActivityIndicator
+                size="large"
+                color={isDark ? "#34d399" : "#00643B"}
+                className="mt-10"
+              />
+            ) : filteredFarmers.length === 0 ? (
+              <View className="flex-1 items-center justify-center py-10">
+                <MaterialCommunityIcons
+                  name="account-search-outline"
+                  size={48}
+                  color={isDark ? "#4b5563" : "#cbd5e1"}
+                />
+                <Text className="text-slate-400 dark:text-slate-500 font-outfit-medium mt-4 text-center">
+                  No farmers found matching filters.
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredFarmers}
+                keyExtractor={(item) => item._id}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => {
+                  const isSelected = selectedFarmer?._id === item._id;
+                  return (
+                    <TouchableOpacity
+                      onPress={() => handleFarmerSelect(item)}
+                      className={`flex-row items-center border p-5 rounded-[24px] mb-3 ${
+                        isSelected
+                          ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20"
+                          : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700"
+                      }`}
+                    >
+                      <View className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-4">
+                        <User size={24} color={isDark ? "#34d399" : "#00643B"} />
+                      </View>
+                      <View className="flex-1">
+                        <Text
+                          style={{ fontFamily: "Outfit_700Bold" }}
+                          className="text-slate-800 dark:text-white text-base"
+                        >
+                          {item.name}
+                        </Text>
+                        <Text
+                          className="text-slate-500 dark:text-slate-400 text-xs mt-0.5"
+                          numberOfLines={1}
+                        >
+                          {formatAddressLabel(
+                            item.address,
+                            item.farmLocation,
+                            "Location not provided",
+                          )} ·{" "}
+                          {item.phoneNumber ||
+                            item.address?.phoneNumber ||
+                            "No contact"}
+                        </Text>
+                      </View>
+                      {isSelected && (
+                        <MaterialCommunityIcons
+                          name="check-circle"
+                          size={24}
+                          color={isDark ? "#34d399" : "#00643B"}
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
           </View>
         </View>
       </Modal>
@@ -573,7 +857,11 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={formData.species ? (BREED_OPTIONS_BY_SPECIES[formData.species] || []) : CATTLE_BREEDS}
+              data={
+                formData.species
+                  ? BREED_OPTIONS_BY_SPECIES[formData.species] || []
+                  : CATTLE_BREEDS
+              }
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <TouchableOpacity
@@ -618,7 +906,11 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
             <FlatList
-              data={CATTLE_COLORS}
+              data={
+                formData.species
+                  ? COLOR_OPTIONS_BY_SPECIES[formData.species] || []
+                  : CATTLE_COLORS
+              }
               keyExtractor={(item) => item}
               renderItem={({ item }) => (
                 <TouchableOpacity
@@ -641,9 +933,51 @@ export default function RegisterAnimalScreen() {
         </View>
       </Modal>
 
+      {/* GENDER SELECTION MODAL */}
+      <Modal visible={showGenderModal} animationType="slide" transparent>
+        <View className="flex-1 bg-black/50 justify-end">
+          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[70%]">
+            <View className="flex-row justify-between items-center mb-4">
+              <Text
+                style={{
+                  fontFamily: "Outfit_900Black",
+                  fontSize: 18,
+                  color: colors.textPrimary,
+                }}
+              >
+                Select Gender
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowGenderModal(false)}
+                className="p-1 bg-slate-50 dark:bg-slate-800 rounded-full"
+              >
+                <X size={20} color={isDark ? "#94a3b8" : "black"} />
+              </TouchableOpacity>
+            </View>
+            {["Female", "Male"].map((g) => (
+              <TouchableOpacity
+                key={g}
+                onPress={() => {
+                  setFormData({ ...formData, gender: g });
+                  setShowGenderModal(false);
+                }}
+                className="py-3.5 border-b border-slate-100 dark:border-slate-800"
+              >
+                <Text
+                  style={{ fontFamily: "Outfit_600SemiBold" }}
+                  className="text-sm text-slate-800 dark:text-white"
+                >
+                  {g}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
       {showDatePicker && (
         <DateTimePicker
-          value={new Date(formData.dob)}
+          value={new Date(`${formData.dob}T00:00:00`)}
           mode="date"
           display={Platform.OS === "ios" ? "spinner" : "default"}
           onChange={(event, date) => {
@@ -651,12 +985,19 @@ export default function RegisterAnimalScreen() {
             if (date) {
               setFormData({
                 ...formData,
-                dob: date.toISOString().split("T")[0],
+                dob: formatLocalDate(date),
               });
             }
           }}
         />
       )}
+
+      <PhotoOptionModal
+        visible={showPhotoOptionModal}
+        onClose={() => setShowPhotoOptionModal(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
     </SafeAreaView>
   );
 }

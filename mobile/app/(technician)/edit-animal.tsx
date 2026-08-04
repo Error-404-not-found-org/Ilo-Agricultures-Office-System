@@ -3,15 +3,18 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useApi } from '@/lib/api';
 import { useAuth } from '@clerk/clerk-expo';
 import SafeScreen from '@/components/safeScreen';
-import { ArrowLeft, ChevronDown, Calendar, Check, X, Camera, Plus, Trash2, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Calendar, Check, X, Camera, Plus, Trash2 } from 'lucide-react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { toast } from 'sonner-native';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromSource } from '@/lib/imagePickerHelper';
+import { PhotoOptionModal } from '@/components/PhotoOptionModal';
 import { useTheme } from '@/lib/theme';
 import { Text } from '@/components/ui/Text';
 import { Card } from '@/components/ui/Card';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 // --- OPTIONS ---
 const SPECIES_OPTIONS = ['Beef Cattle', 'Dairy Cattle', 'Cattle', 'Carabao', 'Goat', 'Swine'];
@@ -28,7 +31,7 @@ export default function EditAnimalWizard() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const api = useApi();
-  const { colors, isDark, themeStyle } = useTheme();
+  const { colors } = useTheme();
   
   const [activeTab, setActiveTab] = useState<TabType>('Identity');
   const { isLoaded, isSignedIn } = useAuth();
@@ -130,18 +133,13 @@ export default function EditAnimalWizard() {
   }, [id, isLoaded, isSignedIn, api]);
 
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.5,
-      base64: true,
-    });
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setImageUri(result.assets[0].uri);
-      setImageBase64(`data:image/jpeg;base64,${result.assets[0].base64}`);
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    const result = await pickImageFromSource(source);
+    if (result) {
+      setImageUri(result.uri);
+      setImageBase64(result.base64);
     }
   };
 
@@ -204,26 +202,12 @@ export default function EditAnimalWizard() {
       color: formData.color,
       imageUrl: imageBase64 || imageUri, 
       birthDate: today.toISOString(),
-      
-      aiDate: formData.aiDate,
-      noOfAI: formData.noOfAI,
-      estrusType: formData.estrusType,
-      sireBreed: formData.sireBreed,
-      sireCode: formData.sireCode,
-
-      pdDate: formData.pdDate,
-      pdResult: formData.pdResult,
-      
-      calfDate: formData.calfDate,
-      calfId: formData.calfId,
-      calfSex: formData.calfSex,
-      calvingEase: formData.calvingEase
     };
 
     try {
       setLoading(true);
       await api.put(`/animals/wizard/${id}`, finalPayload);
-      toast.success("Animal records updated!", { duration: 4000, position: 'top-center' });
+      toast.success("Animal profile updated!", { duration: 4000, position: 'top-center' });
       router.back();
     } catch (error: any) {
       console.error("Failed to update animal:", error);
@@ -241,11 +225,7 @@ export default function EditAnimalWizard() {
   };
 
   if (fetching) {
-      return (
-          <View className="flex-1 bg-white dark:bg-slate-950 items-center justify-center">
-              <ActivityIndicator size="large" color={isDark ? "#10b981" : "#00643B"} />
-          </View>
-      );
+      return <EditAnimalSkeleton onBack={() => router.back()} />;
   }
 
   return (
@@ -261,7 +241,7 @@ export default function EditAnimalWizard() {
             >
                 <ArrowLeft size={22} color={colors.textPrimary} />
             </TouchableOpacity>
-            <Text variant="bold" size={16} color="primary">Edit Records</Text>
+            <Text variant="bold" size={16} color="primary">Edit Animal</Text>
             <View className="w-10" /> 
         </View>
 
@@ -269,10 +249,7 @@ export default function EditAnimalWizard() {
         <View className="mb-4">
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingRight: 20 }}>
             {([
-              { key: 'Identity', label: 'Identity', icon: 'card-account-details-outline' },
-              { key: 'Insemination', label: 'Breeding', icon: 'needle' },
-              { key: 'Pregnancy', label: 'Preg-Check', icon: 'heart-pulse' },
-              { key: 'Calving', label: 'Calving', icon: 'baby-carriage' }
+              { key: 'Identity', label: 'Animal profile', icon: 'card-account-details-outline' }
             ] as { key: TabType, label: string, icon: string }[]).map((tab) => {
               const isActive = activeTab === tab.key;
               return (
@@ -314,7 +291,7 @@ export default function EditAnimalWizard() {
                     
                     <View className="items-center mb-6 mt-2">
                         <TouchableOpacity 
-                          onPress={pickImage} 
+                          onPress={() => setShowPhotoModal(true)} 
                           style={{ backgroundColor: colors.card, borderColor: colors.border }}
                           className="w-24 h-24 rounded-full items-center justify-center border border-dashed overflow-hidden active:opacity-75"
                         >
@@ -484,7 +461,7 @@ export default function EditAnimalWizard() {
                 ) : (
                    <>
                      <Check size={18} color="white" />
-                     <Text variant="bold" size={15} style={{ color: '#fff' }}>Save All Records</Text>
+                     <Text variant="bold" size={15} style={{ color: '#fff' }}>Save Animal Profile</Text>
                    </>
                 )}
             </TouchableOpacity>
@@ -501,10 +478,98 @@ export default function EditAnimalWizard() {
             />
         )}
 
+      <PhotoOptionModal
+        visible={showPhotoModal}
+        onClose={() => setShowPhotoModal(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+      />
       </View>
     </SafeScreen>
   );
 }
+
+const EditAnimalSkeleton = ({ onBack }: { onBack: () => void }) => {
+  const { colors } = useTheme();
+
+  return (
+    <SafeScreen>
+      <View
+        style={{ flex: 1, backgroundColor: colors.background }}
+        className="px-5"
+      >
+        <View className="flex-row items-center justify-between mb-4 mt-2">
+          <TouchableOpacity
+            onPress={onBack}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+            style={{
+              width: 40,
+              height: 40,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderWidth: 1,
+              borderRadius: 20,
+            }}
+          >
+            <ArrowLeft size={22} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text variant="bold" size={16} color="primary">
+            Edit Animal
+          </Text>
+          <View style={{ width: 40 }} />
+        </View>
+
+        <Skeleton width={150} height={42} radius={12} style={{ marginBottom: 18 }} />
+
+        <ScrollView
+          style={{ flex: 1 }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
+        >
+          <Card style={{ padding: 20 }}>
+            <Skeleton width="48%" height={22} radius={6} />
+            <Skeleton
+              width="72%"
+              height={13}
+              radius={5}
+              style={{ marginTop: 8 }}
+            />
+
+            <View style={{ alignItems: 'center', marginVertical: 24 }}>
+              <Skeleton shape="circle" height={96} />
+            </View>
+
+            {[0, 1, 2, 3].map((row) => (
+              <View
+                key={row}
+                style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}
+              >
+                {[0, 1].map((column) => (
+                  <View key={column} style={{ flex: 1 }}>
+                    <Skeleton width="52%" height={10} radius={4} />
+                    <Skeleton
+                      width="100%"
+                      height={48}
+                      radius={12}
+                      style={{ marginTop: 7 }}
+                    />
+                  </View>
+                ))}
+              </View>
+            ))}
+          </Card>
+        </ScrollView>
+
+        <View style={{ paddingTop: 16, paddingBottom: 112 }}>
+          <Skeleton width="100%" height={54} radius={27} />
+        </View>
+      </View>
+    </SafeScreen>
+  );
+};
 
 // Input component using Theme variables
 const InputField = ({ label, value, onChangeText, placeholder, keyboardType = 'default' }: any) => {

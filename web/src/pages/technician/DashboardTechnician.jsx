@@ -1,43 +1,57 @@
 import React, { useState, useEffect } from "react";
 import {
-  Zap,
   Syringe,
   Stethoscope,
   UserPlus,
   Tractor,
   HeartPulse,
   Baby,
-  Bell,
-  Moon,
-  Sun,
   Search,
   ArrowRight,
-  TrendingUp,
   Clock,
   CalendarCheck,
   CheckCircle,
   AlertTriangle,
   MapPin,
+  ClipboardList,
+  PawPrint,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import DashboardChart from "../../components/data/DashboardChart";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
+import { ui } from "../../components/ui/uiClasses";
+import {
+  getDashboardAgendaPresentation,
+  summarizeDashboardWork,
+} from "../../utils/dashboardWorkflow";
 
 // Import dedicated quick action modals
-import WalkInAIModal from "../../components/modals/WalkInAIModal";
-import WalkInHealthModal from "../../components/modals/WalkInHealthModal";
-import RegisterFarmerModal from "../../components/modals/RegisterFarmerModal";
-import RegisterLivestockModal from "../../components/modals/RegisterLivestockModal";
-import PregnancyDiagnosisModal from "../../components/modals/PregnancyDiagnosisModal";
-import RecordCalvingModal from "../../components/modals/RecordCalvingModal";
+import AIServiceModal from "../../components/dialogs/AIServiceModal";
+import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
+import RegisterFarmerModal from "../../components/dialogs/RegisterFarmerModal";
+import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
+import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
+
+function QuickAction({ icon: IconComponent, label, bgClass, textClass, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-w-0 flex-col items-center text-center cursor-pointer rounded-box focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+    >
+      <div className={`size-16 rounded-full flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-md ${bgClass} ${textClass}`}>
+        <IconComponent size={28} className="stroke-2" />
+      </div>
+      <span className="mt-3 block text-xs font-bold text-base-content/85 group-hover:text-primary transition-colors leading-tight px-1 max-w-30">
+        {label}
+      </span>
+    </button>
+  );
+}
 
 export default function Dashboard() {
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem("theme") || "emerald";
-  });
-
   const [searchQuery, setSearchQuery] = useState("");
 
   // Query logged-in user profile to check for incomplete details
@@ -58,12 +72,10 @@ export default function Dashboard() {
     agendaItems: [],
     animalRegistry: [],
   });
-  const [analytics, setAnalytics] = useState({
-    totalAI_Week: 0,
-    totalHealth_Month: 0,
-    totalInsem: 0,
-  });
   const [isLoading, setIsLoading] = useState(true);
+  const [dashboardLoadState, setDashboardLoadState] = useState({
+    dashboardData: { ok: true, label: "Dashboard schedule and requests", error: null },
+  });
 
   // Dedicated Modals Visibility States
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -74,44 +86,36 @@ export default function Dashboard() {
   const [isCalvingModalOpen, setIsCalvingModalOpen] = useState(false);
 
   // ---- FETCH INTEGRATED TELEMETRY DATA ----
-  const fetchDashboardMetrics = async () => {
-    try {
-      setIsLoading(true);
-      // Run concurrent requests using your reliable axiosInstance setup
-      const [dashRes, analyticsRes] = await Promise.all([
-        axiosInstance.get("/technician/dashboard-data"),
-        axiosInstance.get("/technician/analytics"),
-      ]);
+  const fetchDashboardMetrics = async (showInitialLoading = false) => {
+    if (showInitialLoading) setIsLoading(true);
+    const [dashRes] = await Promise.allSettled([
+      axiosInstance.get("/technician/dashboard-data?fullAgenda=true"),
+    ]);
 
-      if (dashRes.data) setDashboardData(dashRes.data);
-      if (analyticsRes.data) setAnalytics(analyticsRes.data);
-    } catch (error) {
-      console.error("Failed pulling operational ecosystem statistics:", error);
-    } finally {
-      setIsLoading(false);
+    if (dashRes.status === "fulfilled" && dashRes.value.data) {
+      setDashboardData(dashRes.value.data);
     }
+    setDashboardLoadState({
+      dashboardData: {
+        ok: dashRes.status === "fulfilled",
+        label: "Dashboard schedule and requests",
+        error:
+          dashRes.reason?.response?.data?.message ||
+          dashRes.reason?.message ||
+          null,
+      },
+    });
+    setIsLoading(false);
   };
 
   useEffect(() => {
-    fetchDashboardMetrics();
+    Promise.resolve().then(() => fetchDashboardMetrics(true));
     // Automated 30-second synchronization sequence
-    const telemetryInterval = setInterval(fetchDashboardMetrics, 1000 * 30);
+    const telemetryInterval = setInterval(
+      () => fetchDashboardMetrics(false),
+      1000 * 30,
+    );
     return () => clearInterval(telemetryInterval);
-  }, []);
-
-  // Synchronize local theme state with global theme toggle attributes
-  useEffect(() => {
-    const syncTheme = () => {
-      setTheme(localStorage.getItem("theme") || "emerald");
-    };
-    window.addEventListener("theme-change", syncTheme);
-    window.addEventListener("storage", syncTheme);
-    const interval = setInterval(syncTheme, 1000);
-    return () => {
-      window.removeEventListener("theme-change", syncTheme);
-      window.removeEventListener("storage", syncTheme);
-      clearInterval(interval);
-    };
   }, []);
 
   // ---- QUICK ACTION MODAL CONFIGURATION HANDLERS ----
@@ -127,34 +131,25 @@ export default function Dashboard() {
     todayActivities: 0,
     completedToday: 0,
   };
-  const pendingRequests = dashboardData?.pendingRequests || [];
-  const agendaItems = dashboardData?.agendaItems || [];
+  const pendingRequests = React.useMemo(
+    () => dashboardData?.pendingRequests || [],
+    [dashboardData?.pendingRequests],
+  );
+  const agendaItems = React.useMemo(
+    () => dashboardData?.agendaItems || [],
+    [dashboardData?.agendaItems],
+  );
 
-  const activePendingCount = pendingRequests.filter(
-    (r) => r.status === "pending",
-  ).length;
-  const inseminationPendingCount = pendingRequests.filter(
-    (r) => r.status === "pending" && r.type !== "health",
-  ).length;
-  const healthPendingCount = pendingRequests.filter(
-    (r) => r.status === "pending" && r.type === "health",
-  ).length;
+  const workSummary = React.useMemo(
+    () => summarizeDashboardWork(pendingRequests, agendaItems),
+    [agendaItems, pendingRequests],
+  );
 
   // Render agenda lists using live backend deployments matrix
   const mappedVisits = React.useMemo(() => {
     if (!agendaItems || agendaItems.length === 0) return [];
     return agendaItems.map((item, index) => {
-      let variantStyles = "bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b]";
-      let statusStyles = "bg-emerald-100 dark:bg-emerald-950/40 text-[#00643b]";
-
-      if (index === 1) {
-        variantStyles = "bg-amber-50 dark:bg-amber-950/20 text-amber-600";
-        statusStyles = "bg-amber-100 dark:bg-amber-950/40 text-amber-600";
-      } else if (index > 1) {
-        variantStyles = "bg-blue-50 dark:bg-blue-950/20 text-blue-600";
-        statusStyles = "bg-blue-100 dark:bg-blue-950/40 text-blue-600";
-      }
-
+      const presentation = getDashboardAgendaPresentation(item);
       return {
         id: item.id || index,
         farmer: item.farmer || "Unknown Farmer",
@@ -166,29 +161,44 @@ export default function Dashboard() {
               .toUpperCase()
               .slice(0, 2)
           : "FI",
-        bg: variantStyles,
-        location: item.location || "Oton Region",
-        time: item.time || "00:00 AM",
-        status: item.status || "Confirmed",
-        statusClass: statusStyles,
+        location: item.farmLocationLabel || item.location || "Location not recorded",
+        time: item.time || "Time not set",
+        status: presentation.statusLabel,
+        statusClass: presentation.statusClass,
+        serviceType: presentation.serviceLabel,
+        sourceLabel: presentation.sourceLabel,
+        nextActionLabel: presentation.nextActionLabel,
+        isDueToday: presentation.isDueToday,
+        isOverdue: presentation.isOverdue,
+        animalTag: item.animalTag || "Animal not specified",
       };
     });
   }, [agendaItems]);
 
   const filteredVisits = mappedVisits.filter(
     (v) =>
-      v.farmer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      v.location.toLowerCase().includes(searchQuery.toLowerCase()),
+      v.isDueToday &&
+      (v.farmer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.animalTag.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        v.serviceType.toLowerCase().includes(searchQuery.toLowerCase())),
   );
+  const failedDashboardSources = Object.values(dashboardLoadState).filter((source) => !source.ok);
+  const dashboardValue = (sourceKey, value) =>
+    dashboardLoadState[sourceKey]?.ok === false || value == null
+      ? "Unavailable"
+      : value;
+  const currentHour = new Date().getHours();
+  const timeBasedGreeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
+    <div className={`${ui.page} min-w-0 overflow-x-hidden`}>
       <Topbar
-        title="Dashboard"
-        subtitle="Welcome back! Monitor operational timelines and livestock registries."
+        title={`${timeBasedGreeting}, ${dbUser?.firstName || dbUser?.name?.split(" ")[0] || "Technician"}! 👋`}
+        subtitle="Here's what's happening on your farms today."
       />
 
-      <main className="p-4 md:p-6 space-y-6">
+      <main className={`${ui.main} min-w-0 w-full max-w-full`}>
         {/* Profile Completion Alert Banner */}
         {isProfileIncomplete && (
           <div className="bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 p-4 rounded-2xl flex items-center justify-between shadow-xs mb-2 gap-4">
@@ -213,424 +223,383 @@ export default function Dashboard() {
             </Link>
           </div>
         )}
-
-        {/* Metric Cards Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Today's Missions */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-center text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Today's Missions
-              </span>
-              <span className="p-2 bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b] rounded-xl">
-                <CalendarCheck size={16} />
-              </span>
-            </div>
-            <div className="text-3xl font-black text-slate-800 dark:text-slate-100">
-              {isLoading ? (
-                <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-              ) : (
-                (stats?.todayActivities ?? 0)
-              )}
-            </div>
-            <span className="text-[10px] text-[#00643b] font-bold mt-2 flex items-center gap-1">
-              <TrendingUp size={11} /> {stats?.completedToday ?? 0} secured
-              clean logs
-            </span>
-          </div>
-
-          {/* AI This Week */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-center text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                AI This Week
-              </span>
-              <span className="p-2 bg-amber-50 dark:bg-amber-950/20 text-amber-600 rounded-xl">
-                <Zap size={16} />
-              </span>
-            </div>
-            <div className="text-3xl font-black text-slate-800 dark:text-slate-100">
-              {isLoading ? (
-                <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-              ) : (
-                (analytics?.totalAI_Week ?? 0)
-              )}
-            </div>
-            <span className="text-[10px] text-amber-600 font-bold mt-2 flex items-center gap-1">
-              <TrendingUp size={11} /> Current breeding block window
-            </span>
-          </div>
-
-          {/* Pending Requests */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-center text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Pending Requests
-              </span>
-              <span className="p-2 bg-blue-50 dark:bg-blue-950/20 text-blue-600 rounded-xl">
-                <Clock size={16} />
-              </span>
-            </div>
-            <div className="text-3xl font-black text-slate-800 dark:text-slate-100">
-              {isLoading ? (
-                <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-              ) : (
-                activePendingCount
-              )}
-            </div>
-            <span className="text-[10px] text-slate-400 font-bold mt-2">
-              {inseminationPendingCount} Insemination &nbsp;·&nbsp;{" "}
-              {healthPendingCount} Health
-            </span>
-          </div>
-
-          {/* Monthly Clinical Ledger */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex justify-between items-center text-slate-400 mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Monthly Clinicals
-              </span>
-              <span className="p-2 bg-purple-50 dark:bg-purple-950/20 text-purple-600 rounded-xl">
-                <HeartPulse size={16} />
-              </span>
-            </div>
-            <div className="text-3xl font-black text-slate-800 dark:text-slate-100">
-              {isLoading ? (
-                <div className="h-9 w-12 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-lg" />
-              ) : (
-                (analytics?.totalHealth_Month ?? 0)
-              )}
-            </div>
-            <span className="text-[10px] text-purple-600 font-bold mt-2 flex items-center gap-1">
-              <TrendingUp size={11} /> Total sessions:{" "}
-              {analytics?.totalInsem ?? 0}
-            </span>
-          </div>
-        </div>
-
-        {/* Quick Action Console (Horizontal Ribbon) */}
-        <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <Zap className="text-[#00643b]" size={16} />
-            <h3 className="text-xs font-black uppercase text-slate-400 tracking-wider">
-              Quick Action Console
-            </h3>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            <button
-              onClick={handleRecordAI}
-              className="btn btn-outline border-slate-200 hover:border-[#00643b] hover:bg-emerald-50 dark:border-slate-800 dark:hover:bg-emerald-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-[#00643b] flex items-center justify-center">
-                <Syringe size={18} />
+        {failedDashboardSources.length > 0 && (
+          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-800 dark:text-amber-200 p-4 rounded-2xl flex items-start justify-between shadow-xs mb-2 gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <AlertTriangle size={18} />
               </div>
-              <span className="text-xs font-bold">Record AI</span>
-            </button>
-            <button
-              onClick={handleHealthLog}
-              className="btn btn-outline border-slate-200 hover:border-amber-600 hover:bg-amber-50 dark:border-slate-800 dark:hover:bg-amber-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/20 text-amber-600 flex items-center justify-center">
-                <Stethoscope size={18} />
-              </div>
-              <span className="text-xs font-bold">Health Log</span>
-            </button>
-            <button
-              onClick={handleAddClient}
-              className="btn btn-outline border-slate-200 hover:border-blue-600 hover:bg-blue-50 dark:border-slate-800 dark:hover:bg-blue-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-950/20 text-blue-600 flex items-center justify-center">
-                <UserPlus size={18} />
-              </div>
-              <span className="text-xs font-bold">Add Client</span>
-            </button>
-            <button
-              onClick={handleAddAnimal}
-              className="btn btn-outline border-slate-200 hover:border-purple-600 hover:bg-purple-50 dark:border-slate-800 dark:hover:bg-purple-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-950/20 text-purple-600 flex items-center justify-center">
-                <Tractor size={18} />
-              </div>
-              <span className="text-xs font-bold">Add Animal</span>
-            </button>
-            <button
-              onClick={handlePregnancyCheck}
-              className="btn btn-outline border-slate-200 hover:border-pink-600 hover:bg-pink-50 dark:border-slate-800 dark:hover:bg-pink-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-pink-50 dark:bg-pink-950/20 text-pink-600 flex items-center justify-center">
-                <HeartPulse size={18} />
-              </div>
-              <span className="text-xs font-bold">Pregnancy</span>
-            </button>
-            <button
-              onClick={handleCalfDrop}
-              className="btn btn-outline border-slate-200 hover:border-cyan-600 hover:bg-cyan-50 dark:border-slate-800 dark:hover:bg-cyan-950/20 flex flex-col items-center gap-2 h-auto py-4 rounded-xl text-slate-700 dark:text-slate-300"
-            >
-              <div className="w-10 h-10 rounded-xl bg-cyan-50 dark:bg-cyan-950/20 text-cyan-600 flex items-center justify-center">
-                <Baby size={18} />
-              </div>
-              <span className="text-xs font-bold">Calf Drop</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Charts Row Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-            <div className="flex justify-between items-center mb-4">
               <div>
-                <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-                  AI Performance
-                </h3>
-                <p className="text-[11px] text-slate-400 font-semibold">
-                  Monthly insemination trends
+                <h4 className="text-xs font-black uppercase tracking-wider leading-none">
+                  Some dashboard data did not load
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold mt-1.5 leading-relaxed">
+                  Loaded widgets remain visible. Failed widgets are marked unavailable.
                 </p>
-              </div>
-            </div>
-            <DashboardChart
-              type="line"
-              labels={
-                analytics.monthlyTrends?.length > 0
-                  ? analytics.monthlyTrends.map((m) => m.month)
-                  : ["Dec '25", "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26"]
-              }
-              datasets={[
-                {
-                  label: "AI service Cycle",
-                  data:
-                    analytics.monthlyTrends?.length > 0
-                      ? analytics.monthlyTrends.map((m) => m.ai)
-                      : [3, 5, 4, 7, 6, 8, 4],
-                  borderColor: "#00643B",
-                  backgroundColor: "rgba(0, 100, 59, 0.06)",
-                  fill: true,
-                },
-                {
-                  label: "Clinical Ledger",
-                  data:
-                    analytics.monthlyTrends?.length > 0
-                      ? analytics.monthlyTrends.map((m) => Math.max(0, Math.round(m.ai * 0.6)))
-                      : [2, 3, 1, 4, 3, 2, 3],
-                  borderColor: "#10b981",
-                  backgroundColor: "rgba(16, 185, 129, 0.03)",
-                  fill: true,
-                },
-              ]}
-              height={220}
-              darkTheme={theme === "night"}
-            />
-          </div>
-
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-            <div className="flex justify-between items-center mb-4">
-              <div>
-                <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-                  Procedure Overview
-                </h3>
-                <p className="text-[11px] text-slate-400 font-semibold">
-                  Breakdown of recorded appointments
-                </p>
-              </div>
-            </div>
-            <DashboardChart
-              type="bar"
-              labels={
-                analytics.monthlyTrends?.length > 0
-                  ? analytics.monthlyTrends.map((m) => m.month)
-                  : ["Dec '25", "Jan '26", "Feb '26", "Mar '26", "Apr '26", "May '26"]
-              }
-              datasets={[
-                {
-                  label: "Completed Tasks",
-                  data:
-                    analytics.monthlyTrends?.length > 0
-                      ? analytics.monthlyTrends.map((m) => Math.round(m.ai * 1.3))
-                      : [5, 8, 6, 11, 9, 10, 7],
-                  borderColor: "#00643B",
-                  backgroundColor: "rgba(0, 100, 59, 0.8)",
-                  borderWidth: 0,
-                  fill: false,
-                },
-              ]}
-              height={220}
-              darkTheme={theme === "night"}
-            />
-          </div>
-        </div>
-
-        {/* Bottom Panel Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Today's Field Visits List */}
-          <div className="card lg:col-span-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-            <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4 flex-wrap gap-2">
-              <div>
-                <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-                  Today's Field Visits
-                </h3>
-                <p className="text-[11px] text-slate-400 font-semibold">
-                  Scheduled technician deployments
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="relative w-48">
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none flex items-center justify-center">
-                    <Search size={12} />
-                  </span>
-                  <input
-                    type="text"
-                    placeholder="Search visits..."
-                    className="w-full pl-7 pr-2.5 py-1 text-[11px] rounded-lg border bg-slate-100/80! dark:bg-slate-900/50! border-slate-200 dark:border-slate-800 focus:bg-white! dark:focus:bg-slate-950! focus:border-[#00643b] dark:focus:border-emerald-500 text-slate-700 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:ring-1 focus:ring-[#00643b] dark:focus:ring-emerald-500 outline-none transition-all duration-200"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {failedDashboardSources.map((source) => (
+                    <span
+                      key={source.label}
+                      className="rounded-full bg-white/70 dark:bg-slate-950/40 border border-amber-200 dark:border-amber-800 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider"
+                      title={source.error || "Unable to load"}
+                    >
+                      {source.label}
+                    </span>
+                  ))}
                 </div>
-                <button className="btn btn-xs btn-outline border-slate-200 dark:border-slate-800 text-xs gap-1">
-                  View All <ArrowRight size={10} />
-                </button>
               </div>
             </div>
+            <button
+              onClick={fetchDashboardMetrics}
+              className="btn btn-xs h-9 bg-amber-600 hover:bg-amber-700 text-white border-none rounded-xl text-[10px] font-black uppercase tracking-wider px-4 shrink-0 transition-all flex items-center justify-center"
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
-            <div className="divide-y divide-slate-100 dark:divide-slate-800/60">
-              {isLoading ? (
-                [...Array(3)].map((_, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between py-3 animate-pulse"
-                  >
-                    <div className="flex items-center gap-3 w-2/3">
-                      <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-800" />
-                      <div className="space-y-2 flex-1">
-                        <div className="h-3 bg-slate-200 dark:bg-slate-800 rounded w-1/3" />
-                        <div className="h-2 bg-slate-200 dark:bg-slate-800 rounded w-1/2" />
-                      </div>
-                    </div>
-                    <div className="w-12 h-4 bg-slate-200 dark:bg-slate-800 rounded" />
-                  </div>
-                ))
-              ) : filteredVisits.length === 0 ? (
-                <div className="py-6 text-center text-xs text-slate-400 dark:text-slate-500 italic">
-                  No deployments scheduled for today.
-                </div>
-              ) : (
-                filteredVisits.map((v) => (
-                  <div
-                    key={v.id}
-                    className="flex items-center justify-between py-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ${v.bg}`}
-                      >
-                        {v.initials}
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-xs text-slate-800 dark:text-slate-100">
-                          {v.farmer}
-                        </h4>
-                        <span className="text-[10px] text-slate-400 flex items-center gap-0.5 mt-0.5">
-                          <MapPin size={10} /> {v.location}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs font-black text-slate-800 dark:text-slate-200">
-                        {v.time}
-                      </div>
-                      <span
-                        className={`badge badge-xs border-none font-bold p-1 px-2 mt-1 ${v.statusClass}`}
-                      >
-                        {v.status}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              )}
+
+
+        {/* 5 SaaS Dashboard Metric Cards */}
+        <div className="grid min-w-0 grid-cols-2 gap-4 mb-6 sm:grid-cols-3 xl:grid-cols-5">
+          {/* 1. Today's Visits */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
+              <CalendarCheck size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.dueTodayCount)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Today's Visits</span>
+              <span className="block text-[10px] text-base-content/60 font-semibold mt-0.5">
+                Scheduled today
+              </span>
             </div>
           </div>
 
-          {/* Alerts & Notifications Box */}
-          <div className="card bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/80 pb-3 mb-4">
+          {/* 2. Active Work */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+              <Clock size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.activeWorkCount)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Active Work</span>
+              <span className="block text-[10px] text-warning font-semibold mt-0.5">
+                Needs your attention
+              </span>
+            </div>
+          </div>
+
+          {/* 3. Animals to See */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
+              <Tractor size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.animalsToSeeCount)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Animals to See</span>
+              <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
+                Across all farms
+              </span>
+            </div>
+          </div>
+
+          {/* 4. Requests */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
+              <ClipboardList size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.activeRequestCount)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Service Requests</span>
+              <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
+                Awaiting service completion
+              </span>
+            </div>
+          </div>
+
+          {/* 5. Completed */}
+          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
+            <div className="size-11 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
+              <CheckCircle size={20} />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-2xl font-black text-base-content leading-none">
+                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", stats?.completedToday)}
+              </span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Completed</span>
+              <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
+                Today
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Actions Grid */}
+        <section className="card bg-base-100 border border-base-300 shadow-sm mb-6">
+          <div className="card-body p-6">
+            <div className="mb-6">
+              <h2 className="card-title text-base font-black tracking-tight">Quick Actions</h2>
+              <p className="mt-0.5 text-xs text-base-content/55 font-semibold">
+                Access the primary livestock workflows instantly
+              </p>
+            </div>
+
+            <div className="grid min-w-0 grid-cols-2 gap-6 py-2 sm:grid-cols-3 xl:grid-cols-6">
+              <QuickAction
+                icon={Syringe}
+                label="Record AI Service"
+                bgClass="bg-emerald-500/10 dark:bg-emerald-500/15"
+                textClass="text-emerald-600 dark:text-emerald-400"
+                onClick={handleRecordAI}
+              />
+              <QuickAction
+                icon={Stethoscope}
+                label="Record Health Assistance"
+                bgClass="bg-orange-500/10 dark:bg-orange-500/15"
+                textClass="text-orange-600 dark:text-orange-400"
+                onClick={handleHealthLog}
+              />
+              <QuickAction
+                icon={UserPlus}
+                label="Register Farmer"
+                bgClass="bg-blue-500/10 dark:bg-blue-500/15"
+                textClass="text-blue-600 dark:text-blue-400"
+                onClick={handleAddClient}
+              />
+              <QuickAction
+                icon={PawPrint}
+                label="Register Animal"
+                bgClass="bg-purple-500/10 dark:bg-purple-500/15"
+                textClass="text-purple-600 dark:text-purple-400"
+                onClick={handleAddAnimal}
+              />
+              <QuickAction
+                icon={HeartPulse}
+                label="Pregnancy Check"
+                bgClass="bg-pink-500/10 dark:bg-pink-500/15"
+                textClass="text-pink-600 dark:text-pink-400"
+                onClick={handlePregnancyCheck}
+              />
+              <QuickAction
+                icon={Baby}
+                label="Record Calving"
+                bgClass="bg-cyan-500/10 dark:bg-cyan-500/15"
+                textClass="text-cyan-600 dark:text-cyan-400"
+                onClick={handleCalfDrop}
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Main Grid: Today's Schedule + Work Queue Overview */}
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.7fr)] pb-20">
+          {/* Today's Schedule */}
+          <div className="card bg-base-100 border border-base-300 shadow-sm">
+            <div className="card-body p-6">
+              <div className="flex items-center justify-between gap-3 border-b border-base-300 pb-4 mb-5">
                 <div>
-                  <h3 className="font-extrabold text-sm text-slate-800 dark:text-slate-100 uppercase tracking-tight">
-                    Telemetry Alerts
-                  </h3>
-                  <p className="text-[11px] text-slate-400 font-semibold">
-                    Critical municipal notifications
-                  </p>
+                  <h2 className="card-title text-base font-black tracking-tight">Today’s Schedule</h2>
+                  <p className="mt-0.5 text-xs text-base-content/55 font-semibold">Today’s services and lifecycle follow-ups</p>
                 </div>
-                <span className="badge badge-error text-white text-[10px] font-bold">
-                  {activePendingCount} Active
-                </span>
+                <Link to="/technician/schedule" className="text-[10px] font-black uppercase tracking-wider text-primary hover:underline">
+                  View Calendar
+                </Link>
               </div>
 
-              <div className="space-y-3">
-                {inseminationPendingCount > 0 && (
-                  <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200/40 rounded-xl flex gap-2">
-                    <AlertTriangle
-                      className="text-amber-600 shrink-0"
-                      size={14}
-                    />
-                    <div className="text-xs text-amber-800 dark:text-amber-200 font-medium">
-                      {inseminationPendingCount} AI requests pending response
+              {/* Timeline Container */}
+              <div className="relative pl-4 border-l border-base-300/80 ml-2 space-y-6">
+                {isLoading ? (
+                  [...Array(3)].map((_, idx) => (
+                    <div key={idx} className="relative flex items-start gap-4 animate-pulse">
+                      <div className="absolute -left-5.5 top-1.5 size-2.5 rounded-full bg-base-300 border-4 border-base-100" />
+                      <div className="w-16 skeleton h-3 mt-1 shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="skeleton h-4 w-1/3" />
+                        <div className="skeleton h-3 w-1/2" />
+                      </div>
                     </div>
+                  ))
+                ) : filteredVisits.length === 0 ? (
+                  <div className="rounded-box border border-dashed border-base-300 py-10 text-center -ml-4">
+                    <CalendarCheck className="mx-auto mb-2 text-base-content/30" size={24} />
+                    <p className="text-sm font-semibold">No visits scheduled for today</p>
+                    <p className="mt-1 text-xs text-base-content/50">Scheduled visits will appear in your timeline.</p>
                   </div>
+                ) : (
+                  filteredVisits.slice(0, 3).map((v) => {
+                    const dotClass =
+                      v.statusClass === "badge-error"
+                        ? "bg-error"
+                        : v.statusClass === "badge-warning"
+                          ? "bg-warning"
+                          : v.statusClass === "badge-success"
+                            ? "bg-success"
+                            : v.statusClass === "badge-info"
+                              ? "bg-info"
+                              : "bg-primary";
+
+                    return (
+                      <div key={v.id} className="relative flex flex-col sm:flex-row items-start gap-4">
+                        {/* Timeline Bullet Point */}
+                        <div className={`absolute -left-5.5 top-1.5 size-3 rounded-full ${dotClass} border-4 border-base-100 ring-4 ring-base-100`} />
+
+                        {/* Time label */}
+                        <div className="w-20 shrink-0 text-xs font-black text-base-content/70 mt-1">
+                          {v.time}
+                        </div>
+
+                        {/* Details Card */}
+                        <div className="flex-1 flex items-center justify-between gap-4 p-3.5 bg-base-200/50 hover:bg-base-200 border border-base-300/60 rounded-2xl transition-all">
+                          <div className="flex items-center gap-3 min-w-0">
+                            {/* Animal Avatar Initials */}
+                            <div className="size-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 font-black text-sm">
+                              {v.initials}
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-xs font-black text-base-content leading-none">
+                                {v.serviceType}
+                              </h4>
+                              <p className="text-[11px] text-base-content/75 font-semibold mt-1.5 truncate">
+                                {v.farmer} · {v.animalTag}
+                              </p>
+                              <p className="text-[10px] text-base-content/40 font-bold mt-1 flex items-center gap-1">
+                                <MapPin size={11} className="text-primary shrink-0" />
+                                {v.location}
+                              </p>
+                              <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-base-content/70">
+                                {v.sourceLabel}
+                                <span aria-hidden="true"> · </span>
+                                <span className="sr-only">. Next action: </span>
+                                {v.nextActionLabel}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Right side status badge */}
+                          <span className={`badge badge-sm badge-soft shrink-0 text-[9px] font-black uppercase tracking-wider ${v.statusClass}`}>
+                            {v.status}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })
                 )}
-
-                {healthPendingCount > 0 && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200/40 rounded-xl flex gap-2">
-                    <Clock className="text-blue-600 shrink-0" size={14} />
-                    <div className="text-xs text-blue-800 dark:text-blue-200 font-medium">
-                      {healthPendingCount} unassigned field health protocols
-                    </div>
-                  </div>
-                )}
-
-                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200/40 rounded-xl flex gap-2">
-                  <CheckCircle
-                    className="text-emerald-600 shrink-0"
-                    size={14}
-                  />
-                  <div className="text-xs text-emerald-800 dark:text-emerald-200 font-medium">
-                    Core dashboard connection optimized
-                  </div>
-                </div>
               </div>
-            </div>
 
-            {/* Monthly Target Progress Calculation */}
-            <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-900 space-y-3">
-              <div>
-                <div className="flex justify-between text-[11px] font-bold text-slate-500 mb-1">
-                  <span>Monthly Insemination Target</span>
-                  <span className="text-[#00643b]">
-                    {analytics?.totalAI_Week
-                      ? Math.min(
-                          100,
-                          Math.round((analytics.totalAI_Week / 30) * 100),
-                        )
-                      : 0}
-                    %
-                  </span>
+              {!isLoading && filteredVisits.length > 0 && (
+                <div className="border-t border-base-300 mt-5 pt-4 text-center">
+                  <Link to="/technician/schedule" className="text-xs font-bold text-primary inline-flex items-center gap-1.5 hover:underline">
+                    View full schedule <ArrowRight size={14} />
+                  </Link>
                 </div>
-                <progress
-                  className="progress progress-success w-full h-1.5"
-                  value={
-                    analytics?.totalAI_Week
-                      ? Math.min(30, analytics.totalAI_Week)
-                      : 0
-                  }
-                  max="30"
-                />
-              </div>
+              )}
             </div>
           </div>
-        </div>
+
+          {/* Work Queue Overview */}
+          <div className="card bg-base-100 border border-base-300 shadow-sm">
+            <div className="card-body p-6 flex flex-col h-full">
+              <div className="flex items-center justify-between gap-3 border-b border-base-300 pb-4 mb-4">
+                <div>
+                  <h2 className="card-title text-base font-black tracking-tight">Work Queue Overview</h2>
+                  <p className="mt-0.5 text-xs text-base-content/55 font-semibold">Real active work by operational state</p>
+                </div>
+                <Link to="/technician/work-queue" className="text-[10px] font-black uppercase tracking-wider text-primary hover:underline">
+                  View all
+                </Link>
+              </div>
+
+              {/* Pie/Donut Chart Representation */}
+              <div className="flex-1 flex flex-col justify-center py-4">
+                <div className="relative size-36 mx-auto flex items-center justify-center mb-6">
+                  <div className="absolute inset-0 rounded-full border-10 border-base-300" />
+                  <div className="absolute inset-0 rounded-full border-10 border-primary border-t-warning border-r-info border-l-error animate-in spin-in duration-500" />
+                  <div className="text-center z-10">
+                    <span className="block text-3xl font-black text-base-content leading-none">
+                      {workSummary.activeWorkCount}
+                    </span>
+                    <span className="block text-[9px] text-base-content/50 font-black uppercase tracking-wider mt-1.5">
+                      Active Work
+                    </span>
+                  </div>
+                </div>
+
+                {/* Legend list */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-error" />
+                      <span className="text-base-content/70">Overdue</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.overdueCount} items</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-warning" />
+                      <span className="text-base-content/70">Due Today</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.dueTodayCount} items</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-info" />
+                      <span className="text-base-content/70">AI requests</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.aiRequestCount} cases</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-error" />
+                      <span className="text-base-content/70">Health requests</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.healthRequestCount} cases</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="size-2 rounded-full bg-secondary" />
+                      <span className="text-base-content/70">Pregnancy follow-ups</span>
+                    </div>
+                    <span className="text-base-content">{workSummary.pregnancyFollowUpCount} tasks</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Overdue Alert Banner */}
+              {workSummary.activeWorkCount > 0 && (
+                <div className={`alert alert-soft mt-4 flex items-center justify-between gap-3 p-3 ${workSummary.overdueCount > 0 ? "alert-warning" : "alert-info"}`}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AlertTriangle className="shrink-0" size={16} />
+                    <span className="text-[11px] font-black text-base-content truncate">
+                      {workSummary.overdueCount > 0
+                        ? `${workSummary.overdueCount} work items are overdue`
+                        : `${workSummary.activeWorkCount} work items are active`}
+                    </span>
+                  </div>
+                  <Link to="/technician/work-queue" className="btn btn-xs h-7 font-black uppercase tracking-wider rounded-xl text-[9px] px-3 shrink-0">
+                    View Now
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* Bottom spacing to ensure comfortable scrolling on all devices */}
+        <div className="h-12" />
       </main>
 
-      {/* Dedicated Quick Action Modals */}
-      <WalkInAIModal
+      {/* Dedicated Quick Action Modals */} 
+      <AIServiceModal
+        existingOnly
         isOpen={isAIModalOpen}
         onClose={() => {
           setIsAIModalOpen(false);
@@ -638,6 +607,7 @@ export default function Dashboard() {
         }}
       />
       <WalkInHealthModal
+        existingOnly
         isOpen={isHealthModalOpen}
         onClose={() => {
           setIsHealthModalOpen(false);

@@ -1,7 +1,77 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap");
 @import "tailwindcss";
 @plugin "daisyui" {
-  themes: emerald --default, night --prefersdark;
+  themes: black, dracula;
+}
+
+@plugin "daisyui/theme" {
+  name: "breedsmart";
+  default: true;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #ffffff;
+  --color-base-200: #f4f7f5;
+  --color-base-300: #dfe8e3;
+  --color-base-content: #17231f;
+  --color-primary: #00643b;
+  --color-primary-content: #ffffff;
+  --color-secondary: #0f766e;
+  --color-secondary-content: #ffffff;
+  --color-accent: #16a34a;
+  --color-accent-content: #ffffff;
+  --color-neutral: #1d2b27;
+  --color-neutral-content: #f5faf7;
+  --color-info: #2563eb;
+  --color-info-content: #ffffff;
+  --color-success: #15803d;
+  --color-success-content: #ffffff;
+  --color-warning: #d97706;
+  --color-warning-content: #ffffff;
+  --color-error: #dc2626;
+  --color-error-content: #ffffff;
+  --radius-selector: 0.75rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
+}
+
+@plugin "daisyui/theme" {
+  name: "breedsmart-dark";
+  default: false;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #101915;
+  --color-base-200: #17231f;
+  --color-base-300: #27372f;
+  --color-base-content: #edf5f0;
+  --color-primary: #22a56b;
+  --color-primary-content: #06140e;
+  --color-secondary: #2dd4bf;
+  --color-secondary-content: #06211d;
+  --color-accent: #4ade80;
+  --color-accent-content: #07170d;
+  --color-neutral: #0b110e;
+  --color-neutral-content: #edf5f0;
+  --color-info: #60a5fa;
+  --color-info-content: #071426;
+  --color-success: #4ade80;
+  --color-success-content: #07170d;
+  --color-warning: #fbbf24;
+  --color-warning-content: #271703;
+  --color-error: #fb7185;
+  --color-error-content: #2b0710;
+  --radius-selector: 0.75rem;
+  --radius-field: 0.75rem;
+  --radius-box: 1rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 1;
+  --noise: 0;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -10,6 +80,188 @@
   --font-sans: "Outfit", sans-serif;
 }
 
-html, body {
+html,
+body {
   font-family: "Outfit", sans-serif;
+  background: var(--color-base-200);
+  color: var(--color-base-content);
+}
+
+/* Custom scrollbar utility for navigation panels */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-neutral-content) 15%, transparent) transparent;
+  scroll-behavior: smooth;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--color-neutral-content) 15%, transparent);
+  border-radius: 9999px;
+  transition: background-color 0.2s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--color-neutral-content) 30%, transparent);
+}
+
+/* FullCalendar Layout Overrides */
+.fc .fc-view-harness {
+  @apply max-w-full overflow-x-auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-neutral-content) 15%, transparent) transparent;
+  scroll-behavior: smooth;
+}
+.fc-dayGridMonth-view.fc-view.fc-daygrid {
+  @apply min-w-179.5;
+}
+.fc .fc-scrollgrid-section > * {
+  border-right-width: 0;
+  border-bottom-width: 0;
+}
+.fc .fc-scrollgrid {
+  border-left-width: 0;
+}
+.fc .fc-toolbar.fc-header-toolbar {
+  @apply flex flex-col gap-4 px-6 pt-6 sm:flex-row mb-4;
+}
+.fc-button-group {
+  @apply gap-2;
+}
+.fc-button-group .fc-button {
+  @apply flex h-10 w-10 items-center justify-center rounded-lg! border border-base-300 bg-transparent hover:border-base-300 hover:bg-base-200 focus:shadow-none active:border-base-300! active:bg-transparent! active:shadow-none!;
+}
+
+.fc-button-group .fc-button.fc-prev-button:before {
+  @apply inline-block mt-1;
+  content: url("data:image/svg+xml,%3Csvg width='25' height='24' viewBox='0 0 25 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M16.0068 6L9.75684 12.25L16.0068 18.5' stroke='%23344054' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E%0A");
+}
+.fc-button-group .fc-button.fc-next-button:before {
+  @apply inline-block mt-1;
+  content: url("data:image/svg+xml,%3Csvg width='25' height='24' viewBox='0 0 25 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M9.50684 19L15.7568 12.75L9.50684 6.5' stroke='%23344054' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E%0A");
+}
+.dark .fc-button-group .fc-button.fc-prev-button:before {
+  content: url("data:image/svg+xml,%3Csvg width='25' height='24' viewBox='0 0 25 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M16.0068 6L9.75684 12.25L16.0068 18.5' stroke='%2398A2B3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E%0A");
+}
+.dark .fc-button-group .fc-button.fc-next-button:before {
+  content: url("data:image/svg+xml,%3Csvg width='25' height='24' viewBox='0 0 25 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M9.50684 19L15.7568 12.75L9.50684 6.5' stroke='%2398A2B3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E%0A");
+}
+.fc-button-group .fc-button .fc-icon {
+  @apply hidden;
+}
+.fc-addEventButton-button {
+  @apply rounded-lg! border-0! bg-primary! px-4! py-2.5! text-sm! font-medium! hover:opacity-90 focus:shadow-none! text-white;
+}
+.fc-toolbar-title {
+  @apply text-lg! font-medium! text-base-content;
+}
+.fc-header-toolbar.fc-toolbar .fc-toolbar-chunk:last-child {
+  @apply rounded-lg bg-base-200 p-0.5;
+}
+.fc-header-toolbar.fc-toolbar .fc-toolbar-chunk:last-child .fc-button {
+  @apply h-auto! w-auto! rounded-md border-0! bg-transparent px-5! py-2! text-sm font-medium text-base-content/60 hover:text-base-content focus:shadow-none!;
+}
+.fc-header-toolbar.fc-toolbar
+  .fc-toolbar-chunk:last-child
+  .fc-button.fc-button-active {
+  @apply text-primary! bg-primary/10! font-bold;
+}
+.fc-theme-standard th {
+  @apply border-x-0! border-t border-base-300! bg-base-200 text-left!;
+}
+.fc-theme-standard td,
+.fc-theme-standard .fc-scrollgrid {
+  @apply border-base-300!;
+}
+.fc .fc-col-header-cell-cushion {
+  @apply px-5! py-4! text-sm font-medium uppercase text-base-content/40;
+}
+.fc .fc-daygrid-day.fc-day-today {
+  @apply bg-transparent;
+}
+.fc .fc-daygrid-day {
+  @apply p-2;
+}
+.fc .fc-daygrid-day.fc-day-today .fc-scrollgrid-sync-inner {
+  @apply rounded-xl border border-primary/35 bg-primary/5;
+}
+.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  @apply font-black text-primary;
+}
+.fc .fc-daygrid-day-number {
+  @apply p-3! text-sm font-medium text-base-content/80;
+}
+.fc .fc-daygrid-day-top {
+  @apply flex-row!;
+}
+.fc .fc-day-other .fc-daygrid-day-top {
+  opacity: 1;
+}
+.fc .fc-day-other .fc-daygrid-day-top .fc-daygrid-day-number {
+  @apply text-base-content/30;
+}
+.event-fc-color {
+  @apply rounded-lg py-2.5 pl-4 pr-3;
+}
+.event-fc-color .fc-event-title {
+  @apply p-0 text-sm font-normal text-base-content;
+}
+.fc-daygrid-event-dot {
+  @apply w-1 h-5 ml-0 mr-3 border-none rounded-sm;
+}
+.fc-event {
+  @apply focus:shadow-none;
+}
+.fc-daygrid-event.fc-event-start {
+  @apply ml-3!;
+}
+
+.event-fc-color.fc-bg-success {
+  @apply border-success/10 bg-success/5;
+}
+.event-fc-color.fc-bg-danger {
+  @apply border-error/10 bg-error/5;
+}
+.event-fc-color.fc-bg-primary {
+  @apply border-primary/10 bg-primary/5;
+}
+.event-fc-color.fc-bg-warning {
+  @apply border-warning/10 bg-warning/5;
+}
+.event-fc-color.fc-bg-success .fc-daygrid-event-dot {
+  @apply bg-success;
+}
+.event-fc-color.fc-bg-danger .fc-daygrid-event-dot {
+  @apply bg-error;
+}
+.event-fc-color.fc-bg-primary .fc-daygrid-event-dot {
+  @apply bg-primary;
+}
+.event-fc-color.fc-bg-warning .fc-daygrid-event-dot {
+  @apply bg-warning;
+}
+.fc-direction-ltr .fc-timegrid-slot-label-frame {
+  @apply px-3 py-1.5 text-left text-sm font-medium text-base-content/60;
+}
+.fc .fc-timegrid-axis-cushion {
+  @apply text-sm font-medium text-base-content/60;
+}
+
+.custom-calendar .fc-h-event {
+  background-color: transparent;
+  border: none;
+  color: inherit;
+}
+.fc.fc-media-screen {
+  @apply min-h-125;
 }

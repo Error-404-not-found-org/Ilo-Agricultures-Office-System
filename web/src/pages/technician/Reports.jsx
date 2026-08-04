@@ -1,95 +1,100 @@
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   FileText,
   Clock,
-  HardDrive,
   AlertCircle,
   Download,
   Trash2,
-  Play,
-  CheckCircle,
-  Settings,
   Calendar,
-  Layers,
+  Printer,
+  FileSpreadsheet,
+  CheckCircle,
+  FileCode,
+  ShieldAlert,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
+import { downloadCsv, ensureExportableRows } from "../../lib/reportExport";
+import StatCard from "../../components/ui/StatCard";
+import SectionHeader from "../../components/ui/SectionHeader";
+import TimelineCard from "../../components/ui/TimelineCard";
+import AlertCard from "../../components/ui/AlertCard";
+
+const filterActivityRecords = (records, { searchQuery, reportType, barangay, dateRange, statusFilter }) => {
+  const query = searchQuery.toLowerCase();
+  const now = new Date().getTime();
+
+  return records.filter((record) => {
+    const matchesSearch = [record.farmer, record.animalId, record.earTag, record.breed, record.details]
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
+    if (!matchesSearch) return false;
+
+    if (reportType === "breeding-audit" && !["AI", "PD", "CD"].includes(record.type)) return false;
+    if (reportType === "health-summary" && record.type !== "HL") return false;
+    if (barangay !== "all" && record.barangay.toLowerCase() !== barangay.toLowerCase()) return false;
+
+    // Status Filter
+    if (statusFilter !== "all") {
+      const isCompleted = record.details.toLowerCase().includes("completed") || record.type !== "HL";
+      if (statusFilter === "completed" && !isCompleted) return false;
+      if (statusFilter === "pending" && isCompleted) return false;
+    }
+
+    const recordTime = record.date.getTime();
+    if (dateRange === "7-days") {
+      return recordTime >= now - 7 * 24 * 60 * 60 * 1000;
+    }
+    if (dateRange === "30-days") {
+      return recordTime >= now - 30 * 24 * 60 * 60 * 1000;
+    }
+    if (dateRange === "ytd") {
+      return recordTime >= new Date(new Date().getFullYear(), 0, 1).getTime();
+    }
+
+    return true;
+  });
+};
 
 export default function FieldReports() {
   const toast = useToast();
   const [searchQuery, setSearchQuery] = useState("");
-  const [isCompiling, setIsCompiling] = useState(false);
-  const [compilingStep, setCompilingStep] = useState("");
-  
   // ---- REPORT GENERATOR STATE ----
-  const [reportType, setReportType] = useState("breeding-audit");
-  const [dateRange, setDateRange] = useState("30-days");
-  const [barangay, setBarangay] = useState("all");
-  const [format, setFormat] = useState("pdf");
-
-  // ---- DYNAMIC AUTOMATED SCHEDULES ----
-  const [schedules, setSchedules] = useState([
-    { id: "S-1", name: "Weekly Health Bulletin to Admin", time: "Friday, 5:00 PM", active: true },
-    { id: "S-2", name: "Monthly Breeding Ledger to Regional Office", time: "1st of Month, 8:00 AM", active: true },
-    { id: "S-3", name: "Real-time Hotspot Alerts via SMS", time: "Instant on detection", active: false },
-  ]);
+  const reportType = "breeding-audit";
+  const dateRange = "30-days";
+  const barangay = "all";
+  const statusFilter = "all";
 
   // ---- REPORT LIBRARY STATE ----
-  const [reports, setReports] = useState([
-    {
-      id: "REP-2026-05",
-      name: "Monthly Breeding Ledger Audit - May 2026",
-      date: "May 30, 2026",
-      size: "2.4 MB",
-      format: "PDF",
-      type: "Breeding Audit",
-      status: "Published",
-    },
-    {
-      id: "REP-2026-04",
-      name: "Disease Outbreak Telemetry Log - San Miguel",
-      date: "May 27, 2026",
-      size: "820 KB",
-      format: "PDF",
-      type: "Health Summary",
-      status: "Published",
-    },
-    {
-      id: "REP-2026-03",
-      name: "Farmer Engagement & Activities Summary - Q1",
-      date: "May 15, 2026",
-      size: "4.1 MB",
-      format: "EXCEL",
-      type: "Farmer Activities",
-      status: "Published",
-    },
-    {
-      id: "REP-2026-02",
-      name: "Livestock Demographics Census Dataset",
-      date: "May 02, 2026",
-      size: "12.8 KB",
-      format: "CSV",
-      type: "Livestock Census",
-      status: "Archived",
-    },
-  ]);
+  const [reports, setReports] = useState([]);
 
   // ---- LIVE ACTIVITY RECORDS STATE ----
   const [bottomTab, setBottomTab] = useState("live-records");
   const [activityRecords, setActivityRecords] = useState([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
 
+  // ---- TASKS QUERY ----
+  const { data: tasksData = [] } = useQuery({
+    queryKey: ["technician", "reports-tasks"],
+    queryFn: async () => {
+      const res = await axiosInstance.get("/tasks", { params: { scope: "all", limit: 100 } });
+      return res.data?.data || res.data || [];
+    }
+  });
+
   const fetchActivityRecords = async () => {
     setIsLoadingActivities(true);
     try {
       const [insRes, pregRes, calvRes, healthRes] = await Promise.all([
-        axiosInstance.get("/technician/inseminations?limit=1000"),
-        axiosInstance.get("/technician/pregnancy-checks?limit=1000"),
-        axiosInstance.get("/technician/calvings?limit=1000"),
-        axiosInstance.get("/health-request"),
+        axiosInstance.get("/technician/inseminations?limit=100"),
+        axiosInstance.get("/technician/pregnancy-checks?limit=100"),
+        axiosInstance.get("/technician/calvings?limit=100"),
+        axiosInstance.get("/health-request", { params: { page: 1, limit: 100 } }),
       ]);
 
       const allEvents = [];
@@ -102,18 +107,18 @@ export default function FieldReports() {
           animalId: ins.animalId?.animalId || "—",
           earTag: ins.animalId?.earTag || "—",
           brand: ins.animalId?.brand || "—",
-          species: ins.animalId?.species || "—",
+          species: ins.animalId?.type || ins.animalId?.species || "—",
           breed: ins.animalId?.breed || "—",
           color: ins.animalId?.color || "—",
           barangay: ins.farmerId?.address?.barangay || "—",
           farmer: ins.farmerId?.name || "—",
           date: date,
-          formattedDate: date.toLocaleDateString("en-US", {
+          formattedDate: date.toLocaleDateString("en-PH", {
             month: "short",
             day: "numeric",
             year: "numeric",
           }),
-          details: `Sire: ${ins.sireCode || "—"} (${ins.sireBreed || "—"}) - Attempt #${ins.attemptNumber || 1}`,
+          details: `Sire: ${ins.sireCode || "—"} (${ins.sireBreed || "—"}) - Attempt #${ins.attemptNumber ?? "Not recorded"}`,
           rawDate: date.getTime(),
         });
       });
@@ -126,13 +131,13 @@ export default function FieldReports() {
           animalId: preg.animalId?.animalId || "—",
           earTag: preg.animalId?.earTag || "—",
           brand: preg.animalId?.brand || "—",
-          species: preg.animalId?.species || "—",
+          species: preg.animalId?.type || preg.animalId?.species || "—",
           breed: preg.animalId?.breed || "—",
           color: preg.animalId?.color || "—",
           barangay: preg.farmerId?.address?.barangay || "—",
           farmer: preg.farmerId?.name || "—",
           date: date,
-          formattedDate: date.toLocaleDateString("en-US", {
+          formattedDate: date.toLocaleDateString("en-PH", {
             month: "short",
             day: "numeric",
             year: "numeric",
@@ -150,23 +155,23 @@ export default function FieldReports() {
           animalId: calv.animalId?.animalId || "—",
           earTag: calv.animalId?.earTag || "—",
           brand: calv.animalId?.brand || "—",
-          species: calv.animalId?.species || "—",
+          species: calv.animalId?.type || calv.animalId?.species || "—",
           breed: calv.animalId?.breed || "—",
           color: calv.animalId?.color || "—",
           barangay: calv.farmerId?.address?.barangay || "—",
           farmer: calv.farmerId?.name || "—",
           date: date,
-          formattedDate: date.toLocaleDateString("en-US", {
+          formattedDate: date.toLocaleDateString("en-PH", {
             month: "short",
             day: "numeric",
             year: "numeric",
           }),
-          details: `Calves: ${calv.numberOfCalves || 1} (${calv.calvingEase || "Normal"})`,
+          details: `Calves: ${calv.numberOfCalves ?? calv.calves?.length ?? "Not recorded"} (${calv.calvingEase || "Not recorded"})`,
           rawDate: date.getTime(),
         });
       });
 
-      (Array.isArray(healthRes.data) ? healthRes.data : []).forEach((health) => {
+      (healthRes.data?.data || []).forEach((health) => {
         const date = new Date(health.createdAt);
         allEvents.push({
           id: health._id,
@@ -174,13 +179,13 @@ export default function FieldReports() {
           animalId: health.animalId?.animalId || "—",
           earTag: health.animalId?.earTag || "—",
           brand: health.animalId?.brand || "—",
-          species: health.animalId?.species || "—",
+          species: health.animalId?.type || health.animalId?.species || "—",
           breed: health.animalId?.breed || "—",
           color: health.animalId?.color || "—",
           barangay: health.farmerId?.address?.barangay || "—",
           farmer: health.farmerId?.name || "—",
           date: date,
-          formattedDate: date.toLocaleDateString("en-US", {
+          formattedDate: date.toLocaleDateString("en-PH", {
             month: "short",
             day: "numeric",
             year: "numeric",
@@ -201,84 +206,14 @@ export default function FieldReports() {
   };
 
   useEffect(() => {
-    fetchActivityRecords();
+    Promise.resolve().then(() => fetchActivityRecords());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const toggleSchedule = (id) => {
-    setSchedules((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, active: !s.active } : s))
-    );
-    toast.success("Notification schedule updated.");
-  };
-
-  const handleGenerateReport = (e) => {
-    e.preventDefault();
-    if (isCompiling) return;
-
-    setIsCompiling(true);
-    const steps = [
-      "Connecting to animal census database...",
-      "Aggregating regional pregnancy diagnostic metrics...",
-      "Verifying technician insemination ledger signatures...",
-      "Compiling output layouts and styles...",
-      "Publishing report token to ledger..."
-    ];
-
-    let currentStep = 0;
-    setCompilingStep(steps[0]);
-
-    const interval = setInterval(() => {
-      currentStep++;
-      if (currentStep < steps.length) {
-        setCompilingStep(steps[currentStep]);
-      } else {
-        clearInterval(interval);
-        
-        const typeLabels = {
-          "breeding-audit": "Breeding Audit",
-          "health-summary": "Health Summary",
-          "farmer-activity": "Farmer Activities",
-          "census": "Livestock Census"
-        };
-
-        const newReportName = `${typeLabels[reportType]} - ${
-          barangay === "all" ? "Global" : barangay
-        } (${dateRange === "7-days" ? "7d" : dateRange === "30-days" ? "30d" : "YTD"})`;
-
-        const newReport = {
-          id: `REP-2026-06-${Math.floor(Math.random() * 900) + 100}`,
-          name: newReportName,
-          date: new Date().toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-            year: "numeric"
-          }),
-          size: `${(Math.random() * 3 + 0.5).toFixed(1)} MB`,
-          format: format.toUpperCase(),
-          type: typeLabels[reportType],
-          status: "Published",
-          params: {
-            reportType,
-            dateRange,
-            barangay,
-            format
-          }
-        };
-
-        setReports((prev) => [newReport, ...prev]);
-        setIsCompiling(false);
-        setCompilingStep("");
-        fetchActivityRecords();
-        toast.success("Municipal report compiled and archived successfully!");
-      }
-    }, 600);
-  };
-
-  // ---- DYNAMIC DOCUMENT EXPORTER (PDF/EXCEL/CSV TELEMETRY STREAM) ----
   const handleDownloadReport = async (report) => {
     try {
       toast.info(`Fetching live data aggregates for: ${report.name}...`);
-      
+
       let monthVal, yearVal;
       const now = new Date();
       if (report.params && report.params.dateRange) {
@@ -302,20 +237,19 @@ export default function FieldReports() {
       const isPDF = report.format === "PDF";
       const reportTypeClean = report.type || "Breeding Audit";
 
-      // 1. CENSUS / LIVESTOCK DEMOGRAPHICS
-      if (reportTypeClean === "Livestock Census") {
-        const res = await axiosInstance.get("/animals/all");
-        let data = res.data || [];
+      if (["Livestock Census", "Livestock Registry"].includes(reportTypeClean)) {
+        const res = await axiosInstance.get("/animals/all", {
+          params: { page: 1, limit: 100, barangay: report.params?.barangay !== "all" ? report.params?.barangay : undefined },
+        });
+        let data = res.data?.data || res.data?.animals || [];
         const targetBrgy = report.params?.barangay || "all";
         if (targetBrgy !== "all") {
-          data = data.filter(item => 
+          data = data.filter(item =>
             item.farmerId?.address?.barangay?.toLowerCase() === targetBrgy.toLowerCase()
           );
         }
 
-        if (data.length === 0) {
-          return toast.error("Zero census records located for selected parameters.");
-        }
+        if (!ensureExportableRows(data, toast, "No livestock registry records match this report.")) return;
 
         const headers = ["Animal ID", "Ear Tag", "Species", "Breed", "Color", "Farmer Owner", "Barangay", "Reproductive Status"];
         const rows = data.map(item => [
@@ -340,41 +274,30 @@ export default function FieldReports() {
           doc.setFont("helvetica", "bold");
           doc.setFontSize(9);
           doc.text("LIVESTOCK DEMOGRAPHICS CENSUS REPORT", doc.internal.pageSize.width / 2, 18, { align: "center" });
-          doc.text(`Sector Barangay: ${targetBrgy.toUpperCase()}`, doc.internal.pageSize.width / 2, 22, { align: "center" });
-          
+
           doc.autoTable({
             head: [headers],
             body: rows,
             theme: "grid",
             styles: { fontSize: 7, cellPadding: 1.5 },
-            headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center" },
+            headStyles: { fillColor: [0, 100, 59], textColor: 255 },
             margin: { top: 26 }
           });
           doc.save(`DA_Census_Report_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
         } else {
-          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.setAttribute("href", url);
-          link.setAttribute("download", `DA_Census_Report_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+          downloadCsv({ headers, rows, fileName: `DA_Livestock_Registry_${targetBrgy}_${new Date().toLocaleDateString()}` });
         }
         return toast.success("Census dataset exported successfully.");
       }
 
-      // 2. FARMER ACTIVITIES / ENGAGEMENT LOGS
-      if (reportTypeClean === "Farmer Activities") {
+      if (["Farmer Activities", "Farmer Activity"].includes(reportTypeClean)) {
         const [farmersRes, animalsRes] = await Promise.all([
           axiosInstance.get("/user?role=farmer"),
-          axiosInstance.get("/animals/all")
+          axiosInstance.get("/animals/all", { params: { page: 1, limit: 100 } })
         ]);
         const farmers = farmersRes.data || [];
-        const animals = animalsRes.data || [];
-        
+        const animals = animalsRes.data?.data || animalsRes.data?.animals || [];
+
         const counts = {};
         animals.forEach(a => {
           const fId = typeof a.farmerId === "object" ? a.farmerId?._id : a.farmerId;
@@ -395,9 +318,7 @@ export default function FieldReports() {
           data = data.filter(item => item.barangay?.toLowerCase() === targetBrgy.toLowerCase());
         }
 
-        if (data.length === 0) {
-          return toast.error("Zero farmer records located for selected parameters.");
-        }
+        if (!ensureExportableRows(data, toast, "No farmer activity records match this report.")) return;
 
         const headers = ["Farmer Name", "Contact Number", "Barangay", "Registered Livestock", "Status", "Registration Date"];
         const rows = data.map(item => [
@@ -414,52 +335,37 @@ export default function FieldReports() {
           doc.setFont("helvetica", "bold");
           doc.setFontSize(10);
           doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 10, { align: "center" });
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(8);
-          doc.text("Unified National Artificial Insemination Program", doc.internal.pageSize.width / 2, 14, { align: "center" });
           doc.setFont("helvetica", "bold");
           doc.setFontSize(10);
           doc.text("FARMER ENGAGEMENT AND ROSTER REPORT", doc.internal.pageSize.width / 2, 20, { align: "center" });
-          
+
           doc.autoTable({
             head: [headers],
             body: rows,
             theme: "grid",
             styles: { fontSize: 8, cellPadding: 2 },
-            headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center" },
+            headStyles: { fillColor: [0, 100, 59], textColor: 255 },
             margin: { top: 25 }
           });
           doc.save(`DA_Farmer_Roster_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
         } else {
-          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.setAttribute("href", url);
-          link.setAttribute("download", `DA_Farmer_Roster_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+          downloadCsv({ headers, rows, fileName: `DA_Farmer_Activity_${targetBrgy}_${new Date().toLocaleDateString()}` });
         }
         return toast.success("Farmer activities database exported successfully.");
       }
 
-      // 3. CLINICAL HEALTH REGISTRY (HEALTH SUMMARY)
-      if (reportTypeClean === "Health Summary") {
-        const res = await axiosInstance.get("/health-request");
-        let healthData = res.data || [];
-        
+      if (["Health Summary", "Health Assistance Summary"].includes(reportTypeClean)) {
+        const res = await axiosInstance.get("/health-request", { params: { page: 1, limit: 100 } });
+        let healthData = res.data?.data || [];
+
         const targetBrgy = report.params?.barangay || "all";
         if (targetBrgy !== "all") {
-          healthData = healthData.filter(item => 
+          healthData = healthData.filter(item =>
             item.farmerId?.address?.barangay?.toLowerCase() === targetBrgy.toLowerCase()
           );
         }
 
-        if (healthData.length === 0) {
-          return toast.error("Zero health incidents located for selected parameters.");
-        }
+        if (!ensureExportableRows(healthData, toast, "No health assistance records match this report.")) return;
 
         const headers = ["Logged Date", "Animal Tag", "Farmer Owner", "Barangay", "Symptoms", "Diagnosis", "Treatment Plan", "Urgency", "Status"];
         const rows = healthData.map(item => [
@@ -479,53 +385,38 @@ export default function FieldReports() {
           doc.setFont("helvetica", "bold");
           doc.setFontSize(10);
           doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(7);
-          doc.text("Veterinary Health Diagnostics & Triage Logs", doc.internal.pageSize.width / 2, 12, { align: "center" });
           doc.setFont("helvetica", "bold");
           doc.setFontSize(9);
           doc.text("DISEASE OUTBREAK & HEALTH TELEMETRY REPORT", doc.internal.pageSize.width / 2, 18, { align: "center" });
-          
+
           doc.autoTable({
             head: [headers],
             body: rows,
             theme: "grid",
             styles: { fontSize: 7, cellPadding: 1.5 },
-            headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center" },
+            headStyles: { fillColor: [0, 100, 59], textColor: 255 },
             margin: { top: 24 }
           });
           doc.save(`DA_Health_Summary_${targetBrgy}_${new Date().toLocaleDateString()}.pdf`);
         } else {
-          const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.setAttribute("href", url);
-          link.setAttribute("download", `DA_Health_Summary_${targetBrgy}_${new Date().toLocaleDateString()}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
+          downloadCsv({ headers, rows, fileName: `DA_Health_Assistance_Summary_${targetBrgy}_${new Date().toLocaleDateString()}` });
         }
         return toast.success("Health dispatches dataset exported successfully.");
       }
 
-      // 4. BREEDING LEDGER AUDIT / UNIP
       const res = await axiosInstance.get(
         `/reports/monthly-accomplishment?month=${monthVal}&year=${yearVal}`
       );
       let data = res.data || [];
-      
+
       const targetBrgy = report.params?.barangay || "all";
       if (targetBrgy !== "all") {
-        data = data.filter(item => 
+        data = data.filter(item =>
           item.farmer?.address?.barangay?.toLowerCase() === targetBrgy.toLowerCase()
         );
       }
 
-      if (data.length === 0) {
-        return toast.error("Zero breeding ledger records located for selected parameters.");
-      }
+      if (!ensureExportableRows(data, toast, "No breeding accomplishment records match this report.")) return;
 
       const headers = [
         "Data", "No.", "Animal ID No.", "Ear Tag No.", "Brand", "Species", "Breed", "Color", "Address", "Farmer",
@@ -533,7 +424,7 @@ export default function FieldReports() {
         "PD Date", "PD Result",
         "CD Date", "No. of Calving", "Calf ID No.", "Sex", "Calving Ease"
       ];
-      
+
       const rows = data.map((item, index) => [
         item.type || "",
         index + 1,
@@ -564,17 +455,9 @@ export default function FieldReports() {
         doc.setFont("helvetica", "bold");
         doc.setFontSize(10);
         doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(6.5);
-        doc.text("Bureau of Animal Industry - Local Government Units", doc.internal.pageSize.width / 2, 11, { align: "center" });
-        doc.text("Unified National Artificial Insemination Program", doc.internal.pageSize.width / 2, 14, { align: "center" });
-        
         doc.setFont("helvetica", "bold");
         doc.setFontSize(9);
         doc.text("MONTHLY ACCOMPLISHMENT REPORT", doc.internal.pageSize.width / 2, 19, { align: "center" });
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(7.5);
-        doc.text(`For the Month of: ${monthVal} / ${yearVal}    Sector Barangay: ${targetBrgy.toUpperCase()}`, doc.internal.pageSize.width / 2, 23, { align: "center" });
 
         const structuredHeaders = [
           [
@@ -599,21 +482,12 @@ export default function FieldReports() {
           body: rows,
           theme: "grid",
           styles: { fontSize: 5, cellPadding: 1 },
-          headStyles: { fillColor: [0, 100, 59], textColor: 255, halign: "center", fontSize: 5 },
+          headStyles: { fillColor: [0, 100, 59], textColor: 255, fontSize: 5 },
           margin: { top: 26 }
         });
         doc.save(`DA_UNIP_Report_${monthVal}_${yearVal}_${targetBrgy}.pdf`);
       } else {
-        const csvContent = headers.join(",") + "\n" + rows.map(e => e.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")).join("\n");
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.setAttribute("href", url);
-        link.setAttribute("download", `DA_UNIP_Report_${monthVal}_${yearVal}_${targetBrgy}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+        downloadCsv({ headers, rows, fileName: `DA_Breeding_Accomplishment_${monthVal}_${yearVal}_${targetBrgy}` });
       }
 
       toast.success("Municipal report document downloaded successfully!");
@@ -636,362 +510,394 @@ export default function FieldReports() {
   }, [searchQuery, reports]);
 
   const filteredActivityRecords = useMemo(() => {
-    return activityRecords.filter((record) => {
-      // 1. Search Query Filter (Matches farmer name, animal ID, ear tag, breed, details)
-      const matchesSearch = [record.farmer, record.animalId, record.earTag, record.breed, record.details]
-        .join(" ")
-        .toLowerCase()
-        .includes(searchQuery.toLowerCase());
-      if (!matchesSearch) return false;
+    return filterActivityRecords(activityRecords, { searchQuery, reportType, barangay, dateRange, statusFilter });
+  }, [activityRecords, searchQuery, reportType, barangay, dateRange, statusFilter]);
 
-      // 2. Report Type Filter
-      if (reportType === "breeding-audit" && !["AI", "PD", "CD"].includes(record.type)) {
-        return false;
-      }
-      if (reportType === "health-summary" && record.type !== "HL") {
-        return false;
-      }
+  // Dynamic calculations for operational summary
+  const summaryKPIs = useMemo(() => {
+    const pendingCount = tasksData.filter((t) => ["claimed", "assigned"].includes(t.status?.toLowerCase())).length;
+    const cancelledCount = tasksData.filter((t) => t.status?.toLowerCase() === "cancelled").length;
+    return {
+      aiCompleted: activityRecords.filter((r) => r.type === "AI").length,
+      pdDue: activityRecords.filter((r) => r.type === "PD").length,
+      openHealthCases: activityRecords.filter((r) => r.type === "HL" && !r.details.toLowerCase().includes("completed") && !r.details.toLowerCase().includes("resolved")).length,
+      calvingEvents: activityRecords.filter((r) => r.type === "CD").length,
+      pendingFollowups: pendingCount,
+      cancelledRequests: cancelledCount,
+    };
+  }, [activityRecords, tasksData]);
 
-      // 3. Barangay Filter
-      if (barangay !== "all" && record.barangay.toLowerCase() !== barangay.toLowerCase()) {
-        return false;
-      }
+  // Scheduled backend tasks are the source of truth for operational planning.
+  const upcomingEvents = useMemo(() => {
+    const today = new Date();
+    return tasksData
+      .filter((task) => {
+        const dueDate = task.dueDate ? new Date(task.dueDate) : null;
+        const complete = ["completed", "done", "cancelled"].includes(
+          String(task.status || "").toLowerCase(),
+        );
+        return dueDate && !Number.isNaN(dueDate.getTime()) && dueDate >= today && !complete;
+      })
+      .map((task) => {
+        const dueDate = new Date(task.dueDate);
+        const animal = task.animalIds?.[0] || {};
+        return {
+          time: dueDate.toLocaleDateString("en-PH", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          }),
+          rawTime: dueDate.getTime(),
+          title: task.notes || String(task.taskType || "Scheduled task").replaceAll("_", " "),
+          subtitle: `${animal.earTag || animal.animalId || "Animal not recorded"} · ${task.farmerId?.name || "Farmer not recorded"}`,
+          badgeText: task.category || "Scheduled",
+          badgeColor: "badge-info",
+          icon: "📋",
+        };
+      })
+      .sort((a, b) => a.rawTime - b.rawTime)
+      .slice(0, 5);
+  }, [tasksData]);
 
-      // 4. Date Range Filter
-      const recordTime = record.date.getTime();
-      const now = new Date().getTime();
-      if (dateRange === "7-days") {
-        const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-        if (recordTime < sevenDaysAgo) return false;
-      } else if (dateRange === "30-days") {
-        const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
-        if (recordTime < thirtyDaysAgo) return false;
-      } else if (dateRange === "ytd") {
-        const startOfYear = new Date(new Date().getFullYear(), 0, 1).getTime();
-        if (recordTime < startOfYear) return false;
-      }
+  // Operational priority alerts
+  const operationalAlerts = useMemo(() => {
+    const today = new Date();
+    return tasksData
+      .filter((task) => {
+        const dueDate = task.dueDate ? new Date(task.dueDate) : null;
+        const complete = ["completed", "done", "cancelled"].includes(
+          String(task.status || "").toLowerCase(),
+        );
+        return dueDate && !Number.isNaN(dueDate.getTime()) && dueDate < today && !complete;
+      })
+      .map((task) => ({
+        id: `alert-task-${task._id}`,
+        title: "Overdue scheduled task",
+        description: task.notes || "This backend task is past its scheduled due date.",
+        urgency: task.priority === 1 ? "high" : "medium",
+        icon: "⚠️",
+      }))
+      .slice(0, 4);
+  }, [tasksData]);
 
-      return true;
+  // Barangay workload composition
+  const barangayWorkload = useMemo(() => {
+    const counts = {};
+    activityRecords.forEach(r => {
+      if (r.barangay && r.barangay !== "—") {
+        counts[r.barangay] = (counts[r.barangay] || 0) + 1;
+      }
     });
-  }, [activityRecords, searchQuery, reportType, barangay, dateRange]);
+    return Object.entries(counts)
+      .map(([name, count]) => ({
+        name,
+        count,
+        percentage: Math.round((count / (activityRecords.length || 1)) * 100)
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [activityRecords]);
+
+  // Export filtered logs
+  const handleDirectExport = (exportFormat) => {
+    const headers = ["Type", "Animal ID", "Ear Tag", "Farmer Owner", "Barangay", "Details", "Date"];
+    const rows = filteredActivityRecords.map(r => [
+      r.type,
+      r.animalId,
+      r.earTag,
+      r.farmer,
+      r.barangay,
+      r.details,
+      r.formattedDate
+    ]);
+
+    if (exportFormat === "csv") {
+      downloadCsv({ headers, rows, fileName: `DA_Filtered_Activity_${new Date().toLocaleDateString()}` });
+      toast.success("CSV dataset exported successfully.");
+    } else if (exportFormat === "print") {
+      window.print();
+    } else {
+      const doc = new jsPDF({ orientation: "landscape", format: "a4", unit: "mm" });
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.text("DEPARTMENT OF AGRICULTURE", doc.internal.pageSize.width / 2, 8, { align: "center" });
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.text("FILTERED WORKS ACTIVITY EXPORT", doc.internal.pageSize.width / 2, 14, { align: "center" });
+
+      doc.autoTable({
+        head: [headers],
+        body: rows,
+        theme: "grid",
+        styles: { fontSize: 7, cellPadding: 1.5 },
+        headStyles: { fillColor: [0, 100, 59], textColor: 255 },
+        margin: { top: 20 }
+      });
+      doc.save(`DA_Filtered_Activity_${new Date().toLocaleDateString()}.pdf`);
+      toast.success("PDF report generated successfully.");
+    }
+  };
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Field Reports"
-        subtitle="Compliance compilation, spatial telemetry logs, and officer audits"
-        searchPlaceholder="Search compiled reports..."
+        title="Operations Center"
+        subtitle="Live tracking of breeding schedules, follow-up timelines, and municipal dispatches"
+        searchPlaceholder="Search operational logs..."
         searchValue={searchQuery}
         onSearchChange={(e) => setSearchQuery(e.target.value)}
       />
 
-      <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0 font-sans">
-        {/* Metric Cards Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            {
-              label: "Reports Compiled",
-              val: `${reports.length} Records`,
-              color: "text-blue-600 bg-blue-50 dark:bg-blue-950/20",
-              icon: <FileText size={16} />,
-            },
-            {
-              label: "Schedules Configured",
-              val: `${schedules.filter((s) => s.active).length} Active`,
-              color: "text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20",
-              icon: <Clock size={16} />,
-            },
-            {
-              label: "Cloud Storage",
-              val: "7.3 MB / 100 MB",
-              color: "text-purple-600 bg-purple-50 dark:bg-purple-950/20",
-              icon: <HardDrive size={16} />,
-            },
-            {
-              label: "Officer Inspections",
-              val: "2 Pending",
-              color: "text-amber-600 bg-amber-50 dark:bg-amber-950/20",
-              icon: <AlertCircle size={16} />,
-            },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800/80 p-4 rounded-xl flex items-center gap-3 shadow-xs hover:shadow-md transition-shadow"
-            >
-              <div className={`p-2.5 rounded-xl shrink-0 ${stat.color}`}>
-                {stat.icon}
-              </div>
-              <div>
-                <div className="text-lg font-black tracking-tight">{stat.val}</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mt-0.5">
-                  {stat.label}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+      <main className="p-6 space-y-6 flex-1 flex flex-col min-h-0 font-sans">
 
-        {/* Double-column layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          {/* Left panel: Compiler form */}
-          <div className="lg:col-span-8 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
-              <Play size={13} className="text-[#00643b] dark:text-emerald-500" /> Report Compilation Engine
-            </h3>
-
-            {isCompiling ? (
-              <div className="py-10 flex flex-col items-center justify-center space-y-4 text-center">
-                <span className="loading loading-spinner loading-md text-[#00643b] dark:text-emerald-500" />
-                <div className="space-y-1">
-                  <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Compiling Ledger Metrics</h4>
-                  <p className="text-xs text-slate-400 font-mono italic animate-pulse">{compilingStep}</p>
-                </div>
-              </div>
-            ) : (
-              <form onSubmit={handleGenerateReport} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Report Scope / Type</label>
-                  <select
-                    value={reportType}
-                    onChange={(e) => setReportType(e.target.value)}
-                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
-                  >
-                    <option value="breeding-audit">Breeding Ledger Audit</option>
-                    <option value="health-summary">Health & Disease Outbreaks Summary</option>
-                    <option value="farmer-activity">Farmer Engagement logs</option>
-                    <option value="census">Livestock Demographics Census</option>
-                  </select>
-                </div>
-
-                <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Time Interval</label>
-                  <select
-                    value={dateRange}
-                    onChange={(e) => setDateRange(e.target.value)}
-                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
-                  >
-                    <option value="7-days">Last 7 Days</option>
-                    <option value="30-days">Last 30 Days</option>
-                    <option value="ytd">Year-To-Date (YTD)</option>
-                  </select>
-                </div>
-
-                <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Geographic Segment</label>
-                  <select
-                    value={barangay}
-                    onChange={(e) => setBarangay(e.target.value)}
-                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
-                  >
-                    <option value="all">All Barangays</option>
-                    <option value="San Miguel">San Miguel</option>
-                    <option value="Santa Barbara">Santa Barbara</option>
-                    <option value="Pavia">Pavia</option>
-                    <option value="Oton">Oton</option>
-                    <option value="Mandurriao">Mandurriao</option>
-                  </select>
-                </div>
-
-                <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-slate-400">Output Export Layout</label>
-                  <select
-                    value={format}
-                    onChange={(e) => setFormat(e.target.value)}
-                    className="select select-bordered select-sm rounded-xl text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
-                  >
-                    <option value="pdf">PDF Document (.pdf)</option>
-                    <option value="excel">Excel Spreadsheet (.xlsx)</option>
-                    <option value="csv">Comma Separated Dataset (.csv)</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2 pt-3 flex justify-end">
-                  <button
-                    type="submit"
-                    className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold rounded-xl px-5 flex items-center gap-1.5"
-                  >
-                    <Play size={12} /> Compile &amp; Publish Report
-                  </button>
-                </div>
-              </form>
-            )}
+        {/* 1. Operational Summary Row */}
+        <section>
+          <SectionHeader title="Operational Summary" subtitle="Key metrics detailing active field processes in the municipality" />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5">
+            <StatCard label="AI Completed" value={`${summaryKPIs.aiCompleted}`} icon={<CheckCircle size={16} />} />
+            <StatCard label="PD Checks due" value={`${summaryKPIs.pdDue}`} icon={<Calendar size={16} />} />
+            <StatCard label="Open Health Cases" value={`${summaryKPIs.openHealthCases}`} icon={<AlertCircle size={16} />} trendType="negative" />
+            <StatCard label="Calving Events" value={`${summaryKPIs.calvingEvents}`} icon={<FileCode size={16} />} />
+            <StatCard label="Pending Follow-ups" value={`${summaryKPIs.pendingFollowups}`} icon={<Clock size={16} />} />
+            <StatCard label="Cancelled Requests" value={`${summaryKPIs.cancelledRequests}`} icon={<ShieldAlert size={16} />} />
           </div>
+        </section>
 
-          {/* Right panel: schedules */}
-          <div className="lg:col-span-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 mb-4 flex items-center gap-1.5">
-              <Settings size={13} /> Automated Dispatch Schedules
-            </h3>
+        {/* Chronological & Alerts Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-            <div className="space-y-3">
-              {schedules.map((sch) => (
-                <div
-                  key={sch.id}
-                  className="flex items-start justify-between gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-800/80 rounded-xl"
-                >
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-tight">
-                      {sch.name}
-                    </h4>
-                    <p className="text-[10px] text-slate-400 mt-1 font-semibold flex items-center gap-1">
-                      <Calendar size={10} /> {sch.time}
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={sch.active}
-                    onChange={() => toggleSchedule(sch.id)}
-                    className="toggle toggle-emerald toggle-xs shrink-0 cursor-pointer"
+          {/* 2. Upcoming Events timeline */}
+          <div className="lg:col-span-6 bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+            <SectionHeader title="Upcoming Events Timeline" subtitle="Technician calendar planning: expected calvings, PDs, and heat checks" />
+            <div className="space-y-4 mt-4">
+              {upcomingEvents.length === 0 ? (
+                <p className="text-xs text-base-content/40 italic font-semibold py-4 text-center">
+                  No upcoming timeline events scheduled.
+                </p>
+              ) : (
+                upcomingEvents.map((evt, i) => (
+                  <TimelineCard
+                    key={i}
+                    time={evt.time}
+                    title={evt.title}
+                    subtitle={evt.subtitle}
+                    badgeText={evt.badgeText}
+                    badgeColor={evt.badgeColor}
+                    icon={evt.icon}
                   />
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
+
+          {/* 3. Operational Alerts */}
+          <div className="lg:col-span-6 space-y-6">
+            <div className="bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+              <SectionHeader title="Operational Alerts" subtitle="Crucial alerts requiring immediate intervention or confirmation" />
+              <div className="space-y-3 mt-4">
+                {operationalAlerts.length === 0 ? (
+                  <p className="text-xs text-base-content/40 italic font-semibold py-4 text-center">
+                    All operations are running on schedule.
+                  </p>
+                ) : (
+                  operationalAlerts.map((alert) => (
+                    <AlertCard
+                      key={alert.id}
+                      title={alert.title}
+                      description={alert.description}
+                      urgency={alert.urgency}
+                      icon={alert.icon}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* 4. Municipality Workload */}
+            <div className="bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
+              <SectionHeader title="Municipality Workload distribution" subtitle="Barangay task concentration analysis" />
+              <div className="space-y-3 mt-4">
+                {barangayWorkload.map((brgy, i) => (
+                  <div key={i} className="space-y-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-extrabold text-base-content">{brgy.name}</span>
+                      <span className="font-bold text-base-content/50 font-mono">{brgy.count} logs ({brgy.percentage}%)</span>
+                    </div>
+                    <div className="w-full h-2 bg-base-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${brgy.percentage}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
         </div>
 
-        {/* Bottom panel: list of compiled reports or live activity records */}
-        <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xs overflow-hidden flex-1 flex flex-col min-h-0">
-          <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/50 flex-wrap gap-2">
+        {/* 5. Report Workspace Table */}
+        <div className="bg-base-100 border border-base-300 rounded-2xl shadow-2xs overflow-hidden flex-1 flex flex-col min-h-0">
+
+          <div className="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50 flex-wrap gap-3">
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={() => setBottomTab("live-records")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide uppercase transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-wide uppercase transition-all cursor-pointer ${
                   bottomTab === "live-records"
-                    ? "bg-[#00643b] text-white shadow-xs"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                    ? "bg-primary text-white shadow-xs"
+                    : "text-base-content/60 hover:bg-base-200"
                 }`}
               >
-                Live Activity Records
+                Live Work Logs
               </button>
               <button
                 type="button"
                 onClick={() => setBottomTab("library")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-extrabold tracking-wide uppercase transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-wide uppercase transition-all cursor-pointer ${
                   bottomTab === "library"
-                    ? "bg-[#00643b] text-white shadow-xs"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900"
+                    ? "bg-primary text-white shadow-xs"
+                    : "text-base-content/60 hover:bg-base-200"
                 }`}
               >
-                Publications Library
+                Municipal Archives
               </button>
             </div>
-            <span className="text-[10px] text-slate-400 font-bold">
-              {bottomTab === "live-records"
-                ? `Displaying ${filteredActivityRecords.length} records`
-                : `Displaying ${filteredReports.length} publications`}
-            </span>
+
+            {/* Export Selection Tools */}
+            {bottomTab === "live-records" && filteredActivityRecords.length > 0 && (
+              <div className="flex items-center gap-1.5 border border-base-300 bg-base-100 rounded-xl p-1.5">
+                <span className="text-[9px] uppercase tracking-wider font-extrabold text-base-content/40 px-2">Export Tools:</span>
+                <button
+                  type="button"
+                  onClick={() => handleDirectExport("pdf")}
+                  className="btn btn-ghost btn-xs text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                >
+                  <FileText size={12} className="text-rose-500" /> PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDirectExport("csv")}
+                  className="btn btn-ghost btn-xs text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                >
+                  <FileSpreadsheet size={12} className="text-emerald-500" /> CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDirectExport("print")}
+                  className="btn btn-ghost btn-xs text-[10px] font-bold rounded-lg flex items-center gap-1 cursor-pointer"
+                >
+                  <Printer size={12} className="text-blue-500" /> Print
+                </button>
+              </div>
+            )}
           </div>
 
+          {/* Table content panel */}
           <div className="flex-1 overflow-x-auto">
             {bottomTab === "live-records" ? (
               isLoadingActivities ? (
-                <div className="p-12 flex flex-col items-center justify-center space-y-2 text-slate-400">
-                  <span className="loading loading-spinner loading-md text-[#00643b] dark:text-emerald-500" />
+                <div className="p-12 flex flex-col items-center justify-center space-y-2 text-base-content/40">
+                  <span className="loading loading-spinner loading-md text-primary" />
                   <p className="text-xs font-semibold italic animate-pulse">Syncing live records...</p>
                 </div>
               ) : filteredActivityRecords.length === 0 ? (
-                <div className="p-8 text-center text-slate-400 dark:text-slate-500 italic text-xs font-semibold">
-                  No live activity records matching filters.
+                <div className="p-12 text-center text-base-content/40 italic text-xs font-semibold">
+                  No live work logs match your current query filters.
                 </div>
               ) : (
-                <table className="table table-xs w-full divide-y divide-slate-100 dark:divide-slate-800">
-                  <thead className="bg-slate-50 dark:bg-slate-900 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+                <table className="table table-sm w-full divide-y divide-base-300">
+                  <thead className="bg-base-200 text-base-content/50 uppercase font-bold tracking-wider text-[10px]">
                     <tr>
-                      <th className="py-3 px-4 text-center" style={{ width: "60px" }}>Type</th>
-                      <th className="py-3 px-4 text-left">Animal / Ear Tag</th>
-                      <th className="py-3 px-4 text-left">Farmer Name</th>
-                      <th className="py-3 px-4 text-left">Barangay</th>
+                      <th className="py-3 px-5 text-center w-[70px]">Type</th>
+                      <th className="py-3 px-4 text-left">Animal / Tag</th>
+                      <th className="py-3 px-4 text-left">Farmer Client</th>
+                      <th className="py-3 px-4 text-left">Location</th>
                       <th className="py-3 px-4 text-left">Event Details</th>
-                      <th className="py-3 px-4 text-right">Date Occurred</th>
+                      <th className="py-3 px-5 text-right">Date Occurred</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                  <tbody className="divide-y divide-base-300 text-base-content/85 font-semibold text-xs">
                     {filteredActivityRecords.map((record) => (
-                      <tr key={record.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition-colors">
-                        <td className="py-3 px-4 text-center">
-                          <span className={`inline-block text-[10px] font-black px-2 py-0.5 rounded-md ${
+                      <tr key={record.id} className="hover:bg-base-200/50 transition-colors">
+                        <td className="py-3 px-5 text-center">
+                          <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] border ${
                             record.type === "AI"
-                              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400"
+                              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
                               : record.type === "PD"
-                              ? "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400"
+                              ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
                               : record.type === "HL"
-                              ? "bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400"
-                              : "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
+                              ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                              : "bg-amber-500/10 text-amber-600 border-amber-500/20"
                           }`}>
                             {record.type}
                           </span>
                         </td>
-                        <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">
-                          {record.animalId} <span className="text-slate-400 font-normal">({record.earTag})</span>
+                        <td className="py-3 px-4 font-bold text-base-content">
+                          {record.animalId} <span className="text-base-content/40 font-normal">({record.earTag})</span>
                         </td>
-                        <td className="py-3 px-4 text-xs font-semibold">{record.farmer}</td>
-                        <td className="py-3 px-4 text-xs">{record.barangay}</td>
-                        <td className="py-3 px-4 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        <td className="py-3 px-4 text-xs font-bold">{record.farmer}</td>
+                        <td className="py-3 px-4 text-xs font-medium">{record.barangay}</td>
+                        <td className="py-3 px-4 text-xs font-medium text-base-content/75">
                           {record.details}
                         </td>
-                        <td className="py-3 px-4 text-right text-xs font-mono">{record.formattedDate}</td>
+                        <td className="py-3 px-5 text-right text-xs font-mono font-bold text-base-content/60">{record.formattedDate}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               )
             ) : filteredReports.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 dark:text-slate-500 italic text-xs font-semibold">
-                No reports publications matching query criteria.
+              <div className="p-12 text-center text-base-content/40 italic text-xs font-semibold">
+                No archived report documents matching criteria.
               </div>
             ) : (
-              <table className="table table-xs w-full divide-y divide-slate-100 dark:divide-slate-800">
-                <thead className="bg-slate-50 dark:bg-slate-900 text-slate-400 uppercase font-black tracking-wider text-[10px]">
+              <table className="table table-sm w-full divide-y divide-base-300">
+                <thead className="bg-base-200 text-base-content/50 uppercase font-bold tracking-wider text-[10px]">
                   <tr>
-                    <th className="py-3 px-4 text-left">Report Document Title</th>
-                    <th className="py-3 px-4 text-left">Date Compiled</th>
-                    <th className="py-3 px-4 text-left">Scope Type</th>
+                    <th className="py-3 px-5 text-left">Document Title</th>
+                    <th className="py-3 px-4 text-left">Compiled</th>
+                    <th className="py-3 px-4 text-left">Scope</th>
                     <th className="py-3 px-4 text-left">File Size</th>
                     <th className="py-3 px-4 text-center">Format</th>
                     <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
+                    <th className="py-3 px-5 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                <tbody className="divide-y divide-base-300 text-base-content/85 font-semibold text-xs">
                   {filteredReports.map((report) => (
-                    <tr key={report.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/40 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-slate-800 dark:text-slate-200">
+                    <tr key={report.id} className="hover:bg-base-200/50 transition-colors">
+                      <td className="py-3.5 px-5 font-bold text-base-content">
                         {report.name}
                       </td>
                       <td className="py-3.5 px-4 text-xs font-mono">{report.date}</td>
-                      <td className="py-3.5 px-4 text-xs">{report.type}</td>
+                      <td className="py-3.5 px-4 text-xs font-medium">{report.type}</td>
                       <td className="py-3.5 px-4 text-xs font-mono">{report.size}</td>
                       <td className="py-3.5 px-4 text-center">
-                        <span className={`text-[8.5px] font-black px-2 py-0.5 rounded-md ${
+                        <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] border ${
                           report.format === "PDF"
-                            ? "bg-rose-50 text-rose-700 dark:bg-rose-950/20 dark:text-rose-400"
-                            : report.format === "EXCEL"
-                            ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400"
-                            : "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-400"
+                            ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                            : "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
                         }`}>
                           {report.format}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-center">
-                        <span className={`text-[9px] font-bold uppercase ${
-                          report.status === "Published" ? "text-emerald-500" : "text-slate-400"
-                        }`}>
+                        <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500">
                           {report.status}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-right">
+                      <td className="py-3.5 px-5 text-right">
                         <div className="flex justify-end gap-1.5">
                           <button
                             onClick={() => handleDownloadReport(report)}
-                            className="btn btn-ghost btn-xs btn-circle text-slate-400 hover:text-[#00643b] hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            className="btn btn-ghost btn-xs btn-circle text-base-content/40 hover:text-primary hover:bg-base-200 cursor-pointer"
                             title="Download Report"
                           >
                             <Download size={13} />
                           </button>
                           <button
                             onClick={() => handleDeleteReport(report.id)}
-                            className="btn btn-ghost btn-xs btn-circle text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                            className="btn btn-ghost btn-xs btn-circle text-base-content/40 hover:text-rose-600 hover:bg-base-200 cursor-pointer"
                             title="Delete Report"
                           >
                             <Trash2 size={13} />

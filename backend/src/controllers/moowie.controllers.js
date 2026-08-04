@@ -238,6 +238,15 @@ export const queryAnimalForVoiceflow = async (req, res) => {
       });
     }
 
+    const user = req.voiceflowUser;
+    if (user && user.role === "farmer" && animal.farmerId.toString() !== user._id.toString()) {
+      // Do not expose whether unauthorized records exist
+      return res.status(200).json({
+        found: false,
+        message: `Moo! I couldn't find any active animal in our Oton database matching ear tag ${earTag}.`
+      });
+    }
+
     // Retrieve recent inseminations and medical logs to provide complete context
     const [inseminations, healthHistory] = await Promise.all([
       Insemination.find({ animalId: animal._id, deletedAt: null }).sort({ createdAt: -1 }).limit(1).lean(),
@@ -265,18 +274,22 @@ export const queryAnimalForVoiceflow = async (req, res) => {
 
 export const getUserSummaryForVoiceflow = async (req, res) => {
   try {
-    const { user_name, user_role } = req.body;
-    const role = user_role || 'farmer';
-    const name = user_name || 'Partner';
+    const userDoc = req.voiceflowUser;
+    if (!userDoc) {
+      return res.status(404).json({ error: "User profile not found or account deactivated." });
+    }
+    const role = userDoc.role;
+    const name = userDoc.name;
 
     let message = "";
     
-    // Find the user document if possible
-    const userDoc = await User.findOne({ name: { $regex: new RegExp(name, "i") } }).lean();
-    
     if (role === 'technician' || role === 'admin') {
-      // Get counts of pending/in progress tasks
-      const activeTasksCount = await Task.countDocuments({ status: { $in: ["Pending", "In Progress"] } });
+      // Enforce technician assignment count
+      const taskQuery = { status: { $in: ["Pending", "In Progress"] } };
+      if (role === 'technician') {
+        taskQuery.technicianId = userDoc._id;
+      }
+      const activeTasksCount = await Task.countDocuments(taskQuery);
       const totalAnimals = await Animal.countDocuments({ deletedAt: null });
       const totalFarmers = await User.countDocuments({ role: 'farmer' });
 
@@ -319,13 +332,21 @@ export const getUserSummaryForVoiceflow = async (req, res) => {
 
 export const getActiveTasksForVoiceflow = async (req, res) => {
   try {
-    const { user_name, user_role } = req.body;
-    const role = user_role || 'farmer';
+    const userDoc = req.voiceflowUser;
+    if (!userDoc) {
+      return res.status(404).json({ error: "User profile not found or account deactivated." });
+    }
+    const role = userDoc.role;
+    const name = userDoc.name;
     
     let message = "";
 
     if (role === 'technician' || role === 'admin') {
-      const activeTasks = await Task.find({ status: { $in: ["Pending", "In Progress"] } })
+      const query = { status: { $in: ["Pending", "In Progress"] } };
+      if (role === 'technician') {
+        query.technicianId = userDoc._id; // enforce technician assignment!
+      }
+      const activeTasks = await Task.find(query)
         .populate("farmerId", "name")
         .sort({ priority: 1, createdAt: -1 })
         .limit(5)
@@ -349,8 +370,6 @@ export const getActiveTasksForVoiceflow = async (req, res) => {
       });
     } else {
       // Farmer asks for tasks (breeding requests / calving)
-      const userDoc = await User.findOne({ name: { $regex: new RegExp(user_name || "", "i") } }).lean();
-      
       if (!userDoc) {
         return res.status(200).json({
           success: false,
@@ -380,6 +399,25 @@ export const getActiveTasksForVoiceflow = async (req, res) => {
   } catch (error) {
     console.error("[getActiveTasksForVoiceflow ERROR]", error);
     res.status(500).json({ error: error.message });
+  }
+};
+
+export const getVoiceflowToken = async (req, res) => {
+  try {
+    const voiceflowKey = ENV.VOICEFLOW_API_KEY;
+    if (!voiceflowKey) {
+      return res.status(500).json({ error: "Voiceflow integration is not configured (API key missing)" });
+    }
+    const userId = req.user._id.toString();
+    const expiresAt = Date.now() + 3600000; // 1 hour expiration
+    const signature = crypto.createHmac("sha256", voiceflowKey)
+      .update(`${userId}:${expiresAt}`)
+      .digest("hex");
+    const token = `${userId}:${expiresAt}:${signature}`;
+    res.status(200).json({ token });
+  } catch (error) {
+    console.error("[getVoiceflowToken ERROR]", error);
+    res.status(500).json({ error: "Failed to generate session token" });
   }
 };
 

@@ -9,11 +9,10 @@ import useSocialAuth from '../../hooks/useSocialAuth';
 
 const RegisterScreen = () => {
   const router = useRouter();
-  const { signUp, setActive, isLoaded } = useSignUp();
+  const { signUp, isLoaded } = useSignUp();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [username, setUsername] = useState("");
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,15 +30,14 @@ const RegisterScreen = () => {
     if (!isLoaded) return;
     setLoading(true);
 
-    const cleanUsername = username.trim();
     const cleanEmail = emailAddress.trim().toLowerCase();
     const cleanFirstName = firstName.trim();
     const cleanLastName = lastName.trim();
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!cleanFirstName || !cleanLastName || !cleanUsername || !cleanEmail || !password) {
-      toast.error("Required Fields", { description: "Please enter your first name, last name, username, email, and password." });
+    if (!cleanFirstName || !cleanLastName || !cleanEmail || !password) {
+      toast.error("Required Fields", { description: "Please enter your first name, last name, email, and password." });
       setLoading(false);
       return;
     }
@@ -58,8 +56,7 @@ const RegisterScreen = () => {
 
     try {
       // Create user via Clerk
-      const signUpAttempt = await signUp.create({
-        username: cleanUsername,
+      await signUp.create({
         firstName: cleanFirstName,
         lastName: cleanLastName,
         emailAddress: cleanEmail,
@@ -84,7 +81,7 @@ const RegisterScreen = () => {
         className="flex-1"
       >
         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-          <View className="flex-1 px-8 pt-8 pb-4">
+          <View style={{ width: '100%', maxWidth: 480, alignSelf: 'center' }} className="flex-1 px-6 pt-6 pb-6">
             
             <View className="items-center mb-6">
               <Image 
@@ -92,8 +89,8 @@ const RegisterScreen = () => {
                 className="h-16 w-16 rounded-full mb-4"
                 resizeMode="contain"
               />
-              <Text className="text-2xl font-black text-slate-900 mb-1">Create your account</Text>
-              <Text className="text-sm font-medium text-slate-500 text-center">Welcome! Please fill in the details to get started.</Text>
+              <Text className="text-2xl font-outfit-bold text-slate-900 mb-1">Create your account</Text>
+              <Text className="text-sm font-outfit-medium text-slate-500 text-center">Enter your details to get started with BreedSmart.</Text>
             </View>
 
             <View className="space-y-4">
@@ -105,7 +102,7 @@ const RegisterScreen = () => {
                 disabled={loadingStrategy !== null}
               >
                 {loadingStrategy === 'oauth_google' ? (
-                  <ActivityIndicator size="small" color="#0000ff" />
+                  <ActivityIndicator size="small" color="#074033" />
                 ) : (
                   <View className='flex-row items-center justify-center'>
                     <Image 
@@ -113,14 +110,14 @@ const RegisterScreen = () => {
                       className='size-5 mr-3'
                       resizeMode='contain'
                     />
-                    <Text className='text-slate-700 font-bold text-[15px]'>Continue with Google</Text>
+                    <Text className='text-slate-700 font-outfit-semibold text-[15px]'>Continue with Google</Text>
                   </View>
                 )}
               </TouchableOpacity>
 
               <View className="flex-row items-center my-1">
                   <View className="flex-1 h-[1px] bg-slate-100" />
-                  <Text className="mx-4 text-slate-400 font-medium text-xs uppercase tracking-wider">or</Text>
+                  <Text className="mx-4 text-slate-400 font-outfit-semibold text-xs uppercase tracking-wider">or</Text>
                   <View className="flex-1 h-[1px] bg-slate-100" />
               </View>
 
@@ -128,10 +125,10 @@ const RegisterScreen = () => {
               <View className="flex-row gap-3">
                 <View className="flex-1">
                   <View className="flex-row justify-between mb-1.5 px-0.5">
-                    <Text className="text-[13px] font-bold text-slate-800">First name *</Text>
+                    <Text className="text-[13px] font-outfit-semibold text-slate-800">First name *</Text>
                   </View>
                   <TextInput
-                    className="w-full border border-slate-200 rounded-xl p-3.5 bg-white text-slate-800 focus:border-slate-400"
+                    className="w-full h-[50px] border border-slate-200 rounded-xl px-3.5 bg-white text-slate-800 font-outfit-medium focus:border-[#074033]"
                     placeholder="First name"
                     placeholderTextColor="#94a3b8"
                     value={firstName}
@@ -140,10 +137,10 @@ const RegisterScreen = () => {
                 </View>
                 <View className="flex-1">
                   <View className="flex-row justify-between mb-1.5 px-0.5">
-                    <Text className="text-[13px] font-bold text-slate-800">Last name *</Text>
+                    <Text className="text-[13px] font-outfit-semibold text-slate-800">Last name *</Text>
                   </View>
                   <TextInput
-                    className="w-full border border-slate-200 rounded-xl p-3.5 bg-white text-slate-800 focus:border-slate-400"
+                    className="w-full h-[50px] border border-slate-200 rounded-xl px-3.5 bg-white text-slate-800 font-outfit-medium focus:border-[#074033]"
                     placeholder="Last name"
                     placeholderTextColor="#94a3b8"
                     value={lastName}
@@ -152,26 +149,13 @@ const RegisterScreen = () => {
                 </View>
               </View>
 
-              <View>
-                <View className="flex-row justify-between mb-1.5 px-0.5">
-                  <Text className="text-[13px] font-bold text-slate-800">Username *</Text>
-                </View>
-                <TextInput
-                  className="w-full border border-slate-200 rounded-xl p-3.5 bg-white text-slate-800 focus:border-slate-400"
-                  placeholder=""
-                  placeholderTextColor="#94a3b8"
-                  autoCapitalize="none"
-                  value={username}
-                  onChangeText={setUsername}
-                />
-              </View>
 
               <View>
                 <View className="flex-row justify-between mb-1.5 px-0.5">
-                  <Text className="text-[13px] font-bold text-slate-800">Email address</Text>
+                  <Text className="text-[13px] font-outfit-semibold text-slate-800">Email address</Text>
                 </View>
                 <TextInput
-                  className="w-full border border-slate-200 rounded-xl p-3.5 bg-white text-slate-800 focus:border-slate-400"
+                  className="w-full h-[50px] border border-slate-200 rounded-xl px-3.5 bg-white text-slate-800 font-outfit-medium focus:border-[#074033]"
                   placeholder="Enter your email address"
                   placeholderTextColor="#94a3b8"
                   keyboardType="email-address"
@@ -183,11 +167,11 @@ const RegisterScreen = () => {
 
               <View>
                 <View className="flex-row justify-between mb-1.5 px-0.5">
-                  <Text className="text-[13px] font-bold text-slate-800">Password</Text>
+                  <Text className="text-[13px] font-outfit-semibold text-slate-800">Password</Text>
                 </View>
                 <View className="relative justify-center">
                   <TextInput
-                    className="w-full border border-slate-200 rounded-xl p-3.5 pr-12 bg-white text-slate-800 focus:border-slate-400"
+                    className="w-full h-[50px] border border-slate-200 rounded-xl px-3.5 pr-12 bg-white text-slate-800 font-outfit-medium focus:border-[#074033]"
                     placeholder="Enter your password"
                     placeholderTextColor="#94a3b8"
                     secureTextEntry={!showPassword}
@@ -210,21 +194,21 @@ const RegisterScreen = () => {
                 <View className="mt-2.5 space-y-1 px-0.5">
                   <View className="flex-row items-center">
                     {hasMinLength ? <Check size={12} color="#10b981" /> : <X size={12} color="#94a3b8" />}
-                    <Text className={`ml-2 text-[11px] ${hasMinLength ? 'text-emerald-600 font-bold' : 'text-slate-400 font-medium'}`}>8 or more characters</Text>
+                    <Text className={`ml-2 text-[11px] ${hasMinLength ? 'text-emerald-600 font-outfit-semibold' : 'text-slate-400 font-outfit-medium'}`}>8 or more characters</Text>
                   </View>
                   <View className="flex-row items-center">
                     {hasUppercase ? <Check size={12} color="#10b981" /> : <X size={12} color="#94a3b8" />}
-                    <Text className={`ml-2 text-[11px] ${hasUppercase ? 'text-emerald-600 font-bold' : 'text-slate-400 font-medium'}`}>At least 1 uppercase letter</Text>
+                    <Text className={`ml-2 text-[11px] ${hasUppercase ? 'text-emerald-600 font-outfit-semibold' : 'text-slate-400 font-outfit-medium'}`}>At least 1 uppercase letter</Text>
                   </View>
                   <View className="flex-row items-center">
                     {hasNumber ? <Check size={12} color="#10b981" /> : <X size={12} color="#94a3b8" />}
-                    <Text className={`ml-2 text-[11px] ${hasNumber ? 'text-emerald-600 font-bold' : 'text-slate-400 font-medium'}`}>At least 1 number</Text>
+                    <Text className={`ml-2 text-[11px] ${hasNumber ? 'text-emerald-600 font-outfit-semibold' : 'text-slate-400 font-outfit-medium'}`}>At least 1 number</Text>
                   </View>
                 </View>
               </View>
 
               <TouchableOpacity 
-                className="w-full bg-[#2d3748] py-3.5 rounded-xl mt-4 flex-row items-center justify-center shadow-sm"
+                className="w-full bg-[#074033] py-3.5 rounded-xl mt-4 flex-row items-center justify-center shadow-sm"
                 onPress={onSignUpPress}
                 disabled={loading}
               >
@@ -232,7 +216,7 @@ const RegisterScreen = () => {
                     <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <>
-                    <Text className="text-white text-[15px] font-bold mr-1.5">Continue</Text>
+                    <Text className="text-white text-[15px] font-outfit-bold mr-1.5">Continue</Text>
                     <ChevronRight size={16} color="white" strokeWidth={3} />
                   </>
                 )}
@@ -242,9 +226,9 @@ const RegisterScreen = () => {
           </View>
           
           <View className="bg-slate-50 py-5 border-t border-slate-100 flex-row justify-center mt-auto">
-            <Text className="text-slate-500 text-[13px]">Already have an account? </Text>
+            <Text className="text-slate-500 text-[13px] font-outfit-medium">Already have an account? </Text>
             <TouchableOpacity onPress={() => router.push('/(auth)')}>
-              <Text className="text-slate-800 font-bold text-[13px]">Sign in</Text>
+              <Text className="text-[#074033] font-outfit-bold text-[13px]">Sign in</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>

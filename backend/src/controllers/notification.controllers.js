@@ -1,6 +1,11 @@
 import { Notification } from "../models/notification.model.js";
 import { Insemination } from "../models/insemination.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
+import { Animal } from "../models/animal.model.js";
+import {
+  presentNotificationCopy,
+  presentNotificationDocument,
+} from "../domain/notification-presentation.js";
 
 const syncOverdueNotifications = async (userId) => {
   const today = new Date();
@@ -26,15 +31,25 @@ const syncOverdueNotifications = async (userId) => {
       title: /Overdue/i
     });
     if (!existingNotif) {
-      const title = "⏰ Overdue AI Service Log";
-      const body = `Your AI visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is uncompleted. Please mark it complete.`;
+      const { title, message } = presentNotificationCopy({
+        title: "AI service record overdue",
+        message: `The AI visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for ${request.farmerId?.name || "the farmer"}'s animal (${request.animalId?.earTag || request.animalId?.animalId}) is not yet completed. Open the visit to record the result.`,
+      });
       await Notification.create({
         recipientId: userId,
         senderId: "000000000000000000000000",
         type: "ai-request",
         relatedId: request._id,
         title,
-        message: body,
+        message,
+        category: "reminder",
+        eventType: "service_overdue",
+        linkType: "request",
+        metadata: {
+          requestId: request._id,
+          serviceType: "ai",
+          animalTag: request.animalId?.earTag || request.animalId?.animalId,
+        },
       });
     }
   }
@@ -46,15 +61,25 @@ const syncOverdueNotifications = async (userId) => {
       title: /Overdue/i
     });
     if (!existingNotif) {
-      const title = "⏰ Overdue Health Visit Log";
-      const body = `Your health visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for Mr. ${request.farmerId?.name || 'Farmer'}'s cow (${request.animalId?.earTag || request.animalId?.animalId}) is uncompleted. Please mark it complete.`;
+      const { title, message } = presentNotificationCopy({
+        title: "Health assistance record overdue",
+        message: `The health visit scheduled for ${new Date(request.scheduledDate).toLocaleDateString()} for ${request.farmerId?.name || "the farmer"}'s animal (${request.animalId?.earTag || request.animalId?.animalId}) is not yet completed. Open the visit to record the result.`,
+      });
       await Notification.create({
         recipientId: userId,
         senderId: "000000000000000000000000",
         type: "health-request",
         relatedId: request._id,
         title,
-        message: body,
+        message,
+        category: "reminder",
+        eventType: "service_overdue",
+        linkType: "request",
+        metadata: {
+          requestId: request._id,
+          serviceType: "health",
+          animalTag: request.animalId?.earTag || request.animalId?.animalId,
+        },
       });
     }
   }
@@ -72,7 +97,7 @@ export const getNotifications = async (req, res) => {
       .populate("senderId", "name imageUrl role")
       .sort({ createdAt: -1 })
       .limit(50);
-    res.status(200).json(notifications);
+    res.status(200).json(notifications.map(presentNotificationDocument));
   } catch (error) {
     console.error("[getNotifications ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch notifications." });
@@ -85,7 +110,17 @@ export const markAsRead = async (req, res) => {
     const { notificationId } = req.body || {};
     
     if (notificationId) {
-      await Notification.findByIdAndUpdate(notificationId, { isRead: true });
+      const notification = await Notification.findOneAndUpdate(
+        { _id: notificationId, recipientId: req.user._id },
+        { $set: { isRead: true } },
+        { new: true },
+      );
+      if (!notification) {
+        return res.status(404).json({
+          message: "Notification not found.",
+          code: "NOTIFICATION_NOT_FOUND",
+        });
+      }
     } else {
       // Mark all as read for the current user
       await Notification.updateMany({ recipientId: req.user._id }, { isRead: true });
@@ -119,7 +154,10 @@ export const getUnreadCount = async (req, res) => {
 export const getNotificationDetails = async (req, res) => {
   try {
     const { id } = req.params;
-    const notification = await Notification.findById(id).populate("senderId", "name imageUrl role address");
+    const notification = await Notification.findOne({
+      _id: id,
+      recipientId: req.user._id,
+    }).populate("senderId", "name imageUrl role address");
     
     if (!notification) return res.status(404).json({ message: "Notification not found." });
 
@@ -132,9 +170,15 @@ export const getNotificationDetails = async (req, res) => {
       relatedData = await HealthRequest.findById(notification.relatedId)
         .populate("animalId", "animalId earTag species breed imageUrl")
         .populate("handledBy", "name imageUrl role address");
+    } else if (notification.type === "system" && notification.linkType === "animal") {
+      relatedData = await Animal.findById(notification.relatedId)
+        .select("animalId earTag species breed imageUrl farmerId");
     }
 
-    res.status(200).json({ notification, relatedData });
+    res.status(200).json({
+      notification: presentNotificationDocument(notification),
+      relatedData,
+    });
   } catch (error) {
     console.error("[getNotificationDetails ERROR]", error.message);
     res.status(500).json({ message: "Failed to fetch notification details." });

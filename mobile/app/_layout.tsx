@@ -3,17 +3,6 @@ import { Buffer } from 'buffer';
 // @ts-ignore
 import { decode, encode } from 'base-64';
 
-// Polyfills for crypto and auth libraries
-if (typeof global.Buffer === 'undefined') {
-  global.Buffer = Buffer;
-}
-if (typeof global.btoa === 'undefined') {
-  global.btoa = encode;
-}
-if (typeof global.atob === 'undefined') {
-  global.atob = decode;
-}
-
 import { 
   useFonts,
   Outfit_400Regular,
@@ -27,14 +16,14 @@ import "../global.css"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { queryClient, persistOptions } from "../lib/queryClient";
 import { tokenCache } from "../utils/cache";
-import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo'
+import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
 import { useEffect, useState, useRef } from "react";
 import { View, ActivityIndicator, Text, Image, useColorScheme, TouchableOpacity, Animated } from "react-native";
 import { Toaster, toast } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useColorScheme as useNativeWindColorScheme } from "nativewind";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets , SafeAreaProvider } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import NetInfo from "@react-native-community/netinfo";
 import { processOfflineQueue } from "../lib/offlineQueue";
@@ -44,6 +33,19 @@ import Constants from "expo-constants";
 import * as Notifications from 'expo-notifications';
 import { useTheme } from "@/lib/theme";
 import { TranslationProvider } from "../contexts/TranslationContext";
+import { getPushNotificationTarget } from "@/features/notifications/utils/notificationPresentation";
+
+
+// Polyfills for crypto and auth libraries
+if (typeof global.Buffer === 'undefined') {
+  global.Buffer = Buffer;
+}
+if (typeof global.btoa === 'undefined') {
+  global.btoa = encode;
+}
+if (typeof global.atob === 'undefined') {
+  global.atob = decode;
+}
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -61,7 +63,6 @@ function AppContent({
   insets,
   showOfflineToast,
   showOnlineToast,
-  progressAnim,
   onlineProgressAnim,
 }: {
   isLoaded: boolean;
@@ -73,11 +74,44 @@ function AppContent({
   insets: any;
   showOfflineToast: boolean;
   showOnlineToast: boolean;
-  progressAnim: any;
   onlineProgressAnim: any;
 }) {
   const segments = useSegments();
   const navigationState = useRootNavigationState();
+  const handledNotificationResponseId = useRef<string | null>(null);
+
+  useEffect(() => {
+    const role = user?.publicMetadata?.role as string | undefined;
+    if (!isSignedIn || !navigationState?.key || !role) return;
+
+    const openNotificationResponse = (
+      response: Notifications.NotificationResponse | null,
+    ) => {
+      if (!response) return;
+      const responseId = response.notification.request.identifier;
+      if (handledNotificationResponseId.current === responseId) return;
+
+      handledNotificationResponseId.current = responseId;
+      const data = response.notification.request.content.data as
+        | Record<string, unknown>
+        | undefined;
+      const target = getPushNotificationTarget(data, role);
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      router.push(target as never);
+    };
+
+    const subscription =
+      Notifications.addNotificationResponseReceivedListener(
+        openNotificationResponse,
+      );
+    Notifications.getLastNotificationResponseAsync()
+      .then(openNotificationResponse)
+      .catch((error) =>
+        console.error("Failed to open notification response", error),
+      );
+
+    return () => subscription.remove();
+  }, [isSignedIn, navigationState?.key, user?.publicMetadata?.role]);
 
   // Clear query cache on sign-out to prevent data leakage between different accounts
   useEffect(() => {
@@ -93,11 +127,12 @@ function AppContent({
   useEffect(() => {
     if (!navigationState?.key) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
-    const isVerifying = segments[1] === 'verify';
-    const inTechnicianGroup = segments[0] === '(technician)';
-    const inFarmerGroup = segments[0] === '(farmer)';
-    const inAdminGroup = segments[0] === '(admin)';
+    const routeSegments = segments as string[];
+    const inAuthGroup = routeSegments[0] === '(auth)';
+    const isVerifying = routeSegments[1] === 'verify';
+    const inTechnicianGroup = routeSegments[0] === '(technician)';
+    const inFarmerGroup = routeSegments[0] === '(farmer)';
+    const inAdminGroup = routeSegments[0] === '(admin)';
 
     const isActuallySignedIn = isSignedIn && !!user;
 
@@ -116,7 +151,7 @@ function AppContent({
       }
 
       // 2. Redirect to correct dashboard
-      const atRoot = (segments as any).length === 0 || (segments as any)[0] === '';
+      const atRoot = routeSegments.length === 0 || routeSegments[0] === '';
       
       // FIX: Only consider it a "wrong group" if the role is actually loaded/defined
       // This prevents the "bounce" effect while role metadata is still syncing
@@ -143,139 +178,120 @@ function AppContent({
 
   return (
     <View style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+        }}
+      />
       
-      {/* Redesigned Offline Mode Dialog (Floating Top Card) */}
+      {/* Persistent connectivity banner. Kept at the top of the screen. */}
       {showOfflineToast && (
-        <View style={{
-          position: 'absolute',
-          top: insets.top + 10,
-          left: 16,
-          right: 16,
-          backgroundColor: colors.card,
-          borderRadius: 24,
-          padding: 16,
-          flexDirection: 'column',
-          zIndex: 99999,
-          borderWidth: 1,
-          borderColor: colors.border,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.08,
-          shadowRadius: 16,
-          elevation: 6,
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, width: '100%' }}>
-            <View style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
-              alignItems: 'center',
-              justifyContent: 'center',
+        <View
+          pointerEvents="none"
+          accessibilityRole="alert"
+          style={{
+            position: 'absolute',
+            top: insets.top + 10,
+            left: 16,
+            right: 16,
+            backgroundColor: isDark ? '#292524' : '#fffbeb',
+            borderRadius: 14,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            zIndex: 99999,
+            borderWidth: 1,
+            borderColor: isDark ? '#78350f' : '#fcd34d',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            elevation: 3,
+          }}
+        >
+          <MaterialCommunityIcons
+            name="wifi-off"
+            size={18}
+            color={isDark ? '#fbbf24' : '#92400e'}
+          />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={{
+              color: isDark ? '#fde68a' : '#78350f',
+              fontFamily: 'Outfit_700Bold',
+              fontSize: 12,
             }}>
-              <MaterialCommunityIcons name="wifi-off" size={22} color={colors.textSecondary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{
-                color: colors.textPrimary,
-                fontFamily: 'Outfit_700Bold',
-                fontSize: 14,
-                marginBottom: 2,
-              }}>
-                You're offline now
-              </Text>
-              <Text style={{
-                color: colors.textMuted,
-                fontFamily: 'Outfit_500Medium',
-                fontSize: 12,
-              }}>
-                Oops! Internet is disconnected.
-              </Text>
-            </View>
-          </View>
-          <View style={{
-            height: 3,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-            borderRadius: 1.5,
-            overflow: 'hidden',
-            marginTop: 12,
-            width: '100%',
-          }}>
-            <Animated.View style={{
-              height: '100%',
-              backgroundColor: isDark ? '#10b981' : '#00643B',
-              width: '30%',
-              borderRadius: 1.5,
-              transform: [{
-                translateX: progressAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-50, 300],
-                })
-              }]
-            }} />
+              Offline mode
+            </Text>
+            <Text style={{
+              color: isDark ? '#d6d3d1' : '#92400e',
+              fontFamily: 'Outfit_500Medium',
+              fontSize: 10,
+              marginTop: 1,
+            }}>
+              New records will be saved on this device and synced later.
+            </Text>
           </View>
         </View>
       )}
 
-      {/* Redesigned Online Mode Success Dialog */}
+      {/* Redesigned Online Mode Success Dialog (Positioned at the top) */}
       {showOnlineToast && (
-        <View style={{
-          position: 'absolute',
-          top: insets.top + 10,
-          left: 16,
-          right: 16,
-          backgroundColor: colors.card,
-          borderRadius: 24,
-          padding: 16,
-          flexDirection: 'column',
-          zIndex: 99999,
-          borderWidth: 1,
-          borderColor: colors.border,
-          borderLeftWidth: 4,
-          borderLeftColor: '#10b981',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.08,
-          shadowRadius: 16,
-          elevation: 6,
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, width: '100%' }}>
-            <View style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: '#10b981',
-              alignItems: 'center',
-              justifyContent: 'center',
+        <View
+          pointerEvents="none"
+          accessibilityRole="alert"
+          style={{
+            position: 'absolute',
+            top: insets.top + 10,
+            left: 16,
+            right: 16,
+            backgroundColor: isDark ? '#292524' : '#f0fdf4',
+            borderRadius: 14,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
+            flexDirection: 'row',
+            alignItems: 'center',
+            zIndex: 99999,
+            borderWidth: 1,
+            borderColor: isDark ? '#064e3b' : '#bbf7d0',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 3 },
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            elevation: 3,
+            overflow: 'hidden',
+          }}
+        >
+          <MaterialCommunityIcons
+            name="wifi"
+            size={18}
+            color={isDark ? '#34d399' : '#16a34a'}
+          />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={{
+              color: isDark ? '#a7f3d0' : '#166534',
+              fontFamily: 'Outfit_700Bold',
+              fontSize: 12,
             }}>
-              <MaterialCommunityIcons name="wifi" size={22} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{
-                color: colors.textPrimary,
-                fontFamily: 'Outfit_700Bold',
-                fontSize: 14,
-                marginBottom: 2,
-              }}>
-                You're online now
-              </Text>
-              <Text style={{
-                color: colors.textMuted,
-                fontFamily: 'Outfit_500Medium',
-                fontSize: 12,
-              }}>
-                Hurray! Internet is connected.
-              </Text>
-            </View>
+              You&apos;re online now
+            </Text>
+            <Text style={{
+              color: isDark ? '#d6d3d1' : '#166534',
+              fontFamily: 'Outfit_500Medium',
+              fontSize: 10,
+              marginTop: 1,
+            }}>
+              Hurray! Internet is connected.
+            </Text>
           </View>
           <View style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
             height: 3,
             backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-            borderRadius: 1.5,
-            overflow: 'hidden',
-            marginTop: 12,
-            width: '100%',
           }}>
             <Animated.View style={{
               height: '100%',
@@ -288,6 +304,7 @@ function AppContent({
           </View>
         </View>
       )}
+
     </View>
   );
 }
@@ -311,25 +328,18 @@ function InitialLayout() {
 
   const connectionRef = useRef<boolean | null>(null);
   const isToastCooldownRef = useRef(true);
+  const offlineBannerTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const progressAnim = useRef(new Animated.Value(0)).current;
   const onlineProgressAnim = useRef(new Animated.Value(1)).current;
 
-  // Loop for offline loading bar
+  // Clear any connection timeouts on unmount
   useEffect(() => {
-    if (showOfflineToast) {
-      progressAnim.setValue(0);
-      Animated.loop(
-        Animated.timing(progressAnim, {
-          toValue: 1,
-          duration: 1500,
-          useNativeDriver: true,
-        })
-      ).start();
-    } else {
-      progressAnim.setValue(0);
-    }
-  }, [showOfflineToast]);
+    return () => {
+      if (offlineBannerTimeoutRef.current) {
+        clearTimeout(offlineBannerTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Timer countdown for online success bar
   useEffect(() => {
@@ -382,13 +392,19 @@ function InitialLayout() {
   // Offline Sync and Connection Monitoring
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
-      const isConnected = state.isConnected ?? true;
-      const isOfflineMode = !isConnected;
+      const isConnected =
+        state.isConnected !== false && state.isInternetReachable !== false;
+      const isOfflineMode = isConnected === false;
       setIsOffline(isOfflineMode);
 
       const prev = connectionRef.current;
       if (prev !== null && prev !== isConnected) {
         if (isConnected) {
+          if (offlineBannerTimeoutRef.current) {
+            clearTimeout(offlineBannerTimeoutRef.current);
+            offlineBannerTimeoutRef.current = null;
+          }
+          toast.dismiss("connection-offline");
           processOfflineQueue(api);
           setShowOfflineToast(false);
           if (!isToastCooldownRef.current && prev === false) {
@@ -398,14 +414,27 @@ function InitialLayout() {
             }, 4000);
           }
         } else {
-          setShowOnlineToast(false);
+          if (offlineBannerTimeoutRef.current) {
+            clearTimeout(offlineBannerTimeoutRef.current);
+          }
           if (!isToastCooldownRef.current) {
-            setShowOfflineToast(true);
+            toast.info("You're offline", {
+              description: "New records will be saved on this device.",
+              duration: 2500,
+              id: "connection-offline",
+            });
+            // Show yellow banner after 2500ms (when the toast disappears)
+            offlineBannerTimeoutRef.current = setTimeout(() => {
+              setShowOfflineToast(true);
+              offlineBannerTimeoutRef.current = null;
+            }, 2500);
           }
         }
       } else if (prev === null) {
         if (isOfflineMode && !isToastCooldownRef.current) {
           setShowOfflineToast(true);
+        } else if (isConnected) {
+          processOfflineQueue(api);
         }
       }
       connectionRef.current = isConnected;
@@ -437,8 +466,9 @@ function InitialLayout() {
       setAuthTimeout(false);
       try {
         const state = await NetInfo.refresh();
-        const isConnected = state.isConnected ?? true;
-        setIsOffline(!isConnected);
+        const isConnected =
+          state.isConnected !== false && state.isInternetReachable !== false;
+        setIsOffline(isConnected === false);
         if (isConnected) {
           toast.success("Retrying connection...");
         } else {
@@ -660,13 +690,10 @@ function InitialLayout() {
       insets={insets}
       showOfflineToast={showOfflineToast}
       showOnlineToast={showOnlineToast}
-      progressAnim={progressAnim}
       onlineProgressAnim={onlineProgressAnim}
     />
   );
 }
-
-import { SafeAreaProvider } from "react-native-safe-area-context";
 
 // Only set handler if not in Expo Go to avoid SDK 53+ warnings
 if (Constants.executionEnvironment !== 'storeClient') {

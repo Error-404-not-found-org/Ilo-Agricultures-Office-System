@@ -6,6 +6,48 @@ const API_URL =
 
 let getTokenRef: ((options?: any) => Promise<string | null>) | null = null;
 
+export interface ApiErrorDetails {
+  status?: number;
+  code: string;
+  message: string;
+  retryable: boolean;
+  retryAfterSeconds?: number;
+  details?: unknown;
+}
+
+export const getApiErrorDetails = (error: any): ApiErrorDetails => {
+  const status = error?.response?.status;
+  const responseData = error?.response?.data;
+  const retryAfterHeader = error?.response?.headers?.["retry-after"];
+  const retryAfterSeconds = Number.parseInt(retryAfterHeader, 10);
+
+  if (!error?.response) {
+    return {
+      code: "NETWORK_ERROR",
+      message: "Unable to reach the server. Check your connection and try again.",
+      retryable: true,
+    };
+  }
+
+  return {
+    status,
+    code:
+      responseData?.code ||
+      (status === 429 ? "RATE_LIMITED" : `HTTP_${status || "ERROR"}`),
+    message:
+      responseData?.message ||
+      (status === 429
+        ? "Too many attempts. Please wait and try again."
+        : "The request could not be completed."),
+    retryable:
+      responseData?.retryable === true || status === 429 || status >= 500,
+    ...(Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? { retryAfterSeconds }
+      : {}),
+    details: responseData?.details,
+  };
+};
+
 const api = axios.create({
   baseURL: API_URL,
   headers: { "Content-Type": "application/json" },
@@ -37,9 +79,12 @@ api.interceptors.response.use(
   (error) => {
     const method = error.config?.method?.toUpperCase() || "UNKNOWN";
     const url = error.config?.url || "UNKNOWN";
+    error.apiError = getApiErrorDetails(error);
 
     if (error.response) {
-      console.warn(`[API Error] ${error.response.status} ${method} ${url}`);
+      console.warn(
+        `[API Error] ${error.response.status} ${error.apiError.code} ${method} ${url}`,
+      );
     } else if (error.request) {
       console.error(
         `[Network Error] No response for ${method} ${url}. Backend: ${API_URL}`,

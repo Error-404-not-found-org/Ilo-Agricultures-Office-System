@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import {
   MessageSquare,
   Send,
@@ -7,16 +7,15 @@ import {
   Sparkles,
   PawPrint,
   Loader2,
-  Clock,
   ArrowRight,
-  Bot,
   User,
   Info,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 import { useToast } from "../../contexts/ToastContext";
+import Modal from "../../components/ui/Modal";
 
 export default function MoowieChatPage() {
   const toast = useToast();
@@ -51,6 +50,7 @@ export default function MoowieChatPage() {
   const [inputMessage, setInputMessage] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedAnimalId, setSelectedAnimalId] = useState("");
+  const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
 
   // Persist chat threads to localStorage
   useEffect(() => {
@@ -101,7 +101,8 @@ export default function MoowieChatPage() {
       toast.error("You must retain at least one chat thread.");
       return;
     }
-    const index = threads.findIndex((t) => t.id === id);
+    const _idx = threads.findIndex((t) => t.id === id);
+    void _idx;
     const updated = threads.filter((t) => t.id !== id);
     setThreads(updated);
     if (activeThreadId === id) {
@@ -110,25 +111,24 @@ export default function MoowieChatPage() {
   };
 
   const handleClearAllHistory = () => {
-    if (window.confirm("Are you sure you want to delete all chat history threads?")) {
-      const defaultThread = [
-        {
-          id: "default",
-          title: "Fresh Veterinary Session",
-          messages: [
-            {
-              sender: "moowie",
-              text: "Moo! History cleared successfully. Ready for your veterinary field audit inputs!",
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            },
-          ],
-        },
-      ];
-      setThreads(defaultThread);
-      setActiveThreadId("default");
-      setSelectedAnimalId("");
-      toast.success("Chat history cleared.");
-    }
+    const defaultThread = [
+      {
+        id: "default",
+        title: "Fresh Veterinary Session",
+        messages: [
+          {
+            sender: "moowie",
+            text: "Moo! History cleared successfully. Ready for your veterinary field audit inputs!",
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ],
+      },
+    ];
+    setThreads(defaultThread);
+    setActiveThreadId("default");
+    setSelectedAnimalId("");
+    setIsClearConfirmOpen(false);
+    toast.success("Chat history cleared.");
   };
 
   // ---- SEND MESSAGE PROCESSOR ----
@@ -223,7 +223,7 @@ export default function MoowieChatPage() {
   ];
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-slate-50 dark:bg-slate-900 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-hidden bg-base-200 transition-colors duration-300 font-sans">
       <Topbar
         title="Moowie AI Assistant"
         subtitle="Operational Field Auditor — dynamic diagnostic consultation & herd intelligence"
@@ -233,17 +233,17 @@ export default function MoowieChatPage() {
       <div className="flex-1 flex overflow-hidden min-h-0">
         
         {/* LEFT HISTORICAL SIDEBAR */}
-        <aside className="w-80 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 hidden md:flex md:flex-col justify-between shrink-0">
+        <aside className="w-80 border-r border-base-300 bg-base-100 hidden md:flex md:flex-col justify-between shrink-0">
           
           {/* Top Control Block */}
           <div className="p-4 space-y-3">
             <button
               onClick={handleNewChat}
-              className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-emerald-600/10 cursor-pointer"
+              className="w-full btn btn-primary text-white rounded-xl flex items-center justify-center gap-2 text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer"
             >
               <Plus size={14} /> New Consultation
             </button>
-            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+            <div className="text-[10px] font-black text-base-content/40 uppercase tracking-widest px-1">
               Active Sessions
             </div>
           </div>
@@ -258,20 +258,20 @@ export default function MoowieChatPage() {
                   onClick={() => setActiveThreadId(thread.id)}
                   className={`group p-3 rounded-xl border flex items-center justify-between gap-3 cursor-pointer transition-all duration-200 ${
                     isActive
-                      ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-500/30 text-emerald-800 dark:text-emerald-400 font-extrabold"
-                      : "bg-transparent border-transparent hover:bg-slate-50 dark:hover:bg-slate-900/60 text-slate-600 dark:text-slate-400 font-bold"
+                      ? "bg-primary/10 border-primary/30 text-primary font-extrabold"
+                      : "bg-transparent border-transparent hover:bg-base-200 text-base-content/75 font-bold"
                   }`}
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <MessageSquare
                       size={14}
-                      className={isActive ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}
+                      className={isActive ? "text-primary" : "text-base-content/45"}
                     />
                     <span className="text-xs truncate">{thread.title}</span>
                   </div>
                   <button
                     onClick={(e) => handleDeleteThread(thread.id, e)}
-                    className="opacity-0 group-hover:opacity-100 hover:text-rose-500 text-slate-400 p-1 rounded-md transition-all"
+                    className="opacity-0 group-hover:opacity-100 hover:text-rose-500 text-base-content/45 p-1 rounded-md transition-all"
                     title="Delete session"
                   >
                     <Trash2 size={12} />
@@ -282,9 +282,9 @@ export default function MoowieChatPage() {
           </div>
 
           {/* Bottom Settings Block */}
-          <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/50">
+          <div className="p-4 border-t border-base-300 bg-base-200/50">
             <button
-              onClick={handleClearAllHistory}
+              onClick={() => setIsClearConfirmOpen(true)}
               className="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500 hover:text-white text-rose-500 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5 border border-rose-500/20 cursor-pointer"
             >
               <Trash2 size={12} /> Clear Chat History
@@ -293,23 +293,23 @@ export default function MoowieChatPage() {
         </aside>
 
         {/* RIGHT ACTIVE CHAT WRAPPER */}
-        <main className="flex-1 flex flex-col bg-slate-50 dark:bg-slate-900/40 min-w-0 relative">
+        <main className="flex-1 flex flex-col bg-base-200/40 min-w-0 relative">
           
           {/* Chat Header Status Strip */}
-          <div className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="bg-base-100 border-b border-base-300 px-6 py-4 flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/20 rounded-full flex items-center justify-center relative shrink-0 overflow-hidden">
+              <div className="w-9 h-9 bg-primary/10 border border-primary/20 rounded-full flex items-center justify-center relative shrink-0 overflow-hidden">
                 <img src="https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png" alt="Moowie AI" className="w-full h-full object-cover" />
-                <span className="absolute bottom-0.5 right-0.5 w-2 h-2 bg-emerald-500 rounded-full border border-white dark:border-slate-950 animate-pulse" />
+                <span className="absolute bottom-0.5 right-0.5 w-2 h-2 bg-emerald-500 rounded-full border border-base-100 animate-pulse" />
               </div>
               <div>
-                <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                <h4 className="text-xs font-black uppercase tracking-wider text-base-content flex items-center gap-1.5">
                   Moowie Field Auditor
-                  <span className="bg-emerald-100 dark:bg-emerald-950/50 text-[#00643b] text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-widest border border-emerald-200/50">
+                  <span className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-widest border border-emerald-500/20">
                     Online
                   </span>
                 </h4>
-                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                <p className="text-[10px] text-base-content/40 font-semibold mt-0.5">
                   Powered by Gemini 1.5 Flash Model Matrix
                 </p>
               </div>
@@ -317,7 +317,7 @@ export default function MoowieChatPage() {
 
             {/* LIVE REGISTRY CONTEXT ATTACHMENT SELECT */}
             <div className="flex items-center gap-2">
-              <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0 hidden sm:inline-block">
+              <label className="text-[9px] font-black text-base-content/40 uppercase tracking-widest shrink-0 hidden sm:inline-block">
                 Attach Herd Context:
               </label>
               <div className="relative shrink-0">
@@ -330,7 +330,7 @@ export default function MoowieChatPage() {
                       toast.success(`Context locked to Animal ${animal?.id || "Selected"}`);
                     }
                   }}
-                  className="h-9 px-3 py-1.5 text-xs font-bold rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:border-emerald-500 focus:outline-none appearance-none pr-8 cursor-pointer"
+                  className="h-9 px-3 py-1.5 text-xs font-bold rounded-xl bg-base-200 border border-base-300 text-base-content focus:border-primary focus:outline-none appearance-none pr-8 cursor-pointer"
                 >
                   <option value="">-- Attach Animal (No Context) --</option>
                   {animals.map((a) => (
@@ -341,7 +341,7 @@ export default function MoowieChatPage() {
                 </select>
                 <PawPrint
                   size={12}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-base-content/40 pointer-events-none"
                 />
               </div>
             </div>
@@ -353,13 +353,13 @@ export default function MoowieChatPage() {
             {/* Suggestion Prompt Cards Grid - display only at start of fresh session */}
             {activeThread.messages.length <= 1 && (
               <div className="max-w-3xl mx-auto space-y-4">
-                <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-4 flex items-start gap-3">
-                  <Sparkles size={16} className="text-emerald-500 mt-0.5 shrink-0" />
+                <div className="bg-primary/5 border border-primary/10 rounded-2xl p-4 flex items-start gap-3">
+                  <Sparkles size={16} className="text-primary mt-0.5 shrink-0" />
                   <div>
-                    <h5 className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-400 tracking-wider leading-none">
+                    <h5 className="text-[10px] font-black uppercase text-primary tracking-wider leading-none">
                       Suggested Consultations
                     </h5>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1.5">
+                    <p className="text-[9px] font-bold text-base-content/40 uppercase tracking-widest mt-1.5">
                       Select a veterinary template to query Moowie automatically:
                     </p>
                   </div>
@@ -370,17 +370,17 @@ export default function MoowieChatPage() {
                     <div
                       key={idx}
                       onClick={() => handleQuickPrompt(s.text)}
-                      className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-4 rounded-xl shadow-2xs hover:shadow-md hover:border-emerald-500 dark:hover:border-emerald-600 cursor-pointer transition-all duration-200 group flex flex-col justify-between"
+                      className="bg-base-100 border border-base-300 p-4 rounded-xl shadow-2xs hover:shadow-md hover:border-primary cursor-pointer transition-all duration-200 group flex flex-col justify-between"
                     >
                       <div>
-                        <h6 className="text-[10px] font-black uppercase text-[#00643b] dark:text-emerald-400 tracking-wider mb-2">
+                        <h6 className="text-[10px] font-black uppercase text-primary tracking-wider mb-2">
                           {s.title}
                         </h6>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed line-clamp-3">
+                        <p className="text-xs text-base-content/60 font-medium leading-relaxed line-clamp-3">
                           "{s.text}"
                         </p>
                       </div>
-                      <span className="text-[10px] font-bold text-slate-400 mt-4 flex items-center gap-1 group-hover:text-emerald-500 transition-colors self-end">
+                      <span className="text-[10px] font-bold text-base-content/45 mt-4 flex items-center gap-1 group-hover:text-primary transition-colors self-end">
                         Ask <ArrowRight size={10} />
                       </span>
                     </div>
@@ -391,19 +391,19 @@ export default function MoowieChatPage() {
 
             {/* Core Dialogue Loops */}
             <div className="max-w-4xl mx-auto space-y-4">
-              {activeThread.messages.map((msg, index) => {
+              {activeThread.messages.map((msg, msgIndex) => {
                 const isAI = msg.sender === "moowie";
                 return (
                   <div
-                    key={index}
+                    key={msgIndex}
                     className={`flex gap-3 max-w-[85%] ${isAI ? "self-start" : "ml-auto flex-row-reverse"}`}
                   >
                     {/* Avatar Block */}
                     <div
                       className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border shadow-2xs overflow-hidden ${
                         isAI
-                          ? "bg-emerald-500/10 border-emerald-500/20"
-                          : "bg-slate-900 border-slate-800 text-white"
+                          ? "bg-primary/10 border-primary/20"
+                          : "bg-neutral border-neutral text-neutral-content"
                       }`}
                     >
                       {isAI ? (
@@ -417,8 +417,8 @@ export default function MoowieChatPage() {
                     <div
                       className={`rounded-2xl p-4 text-xs font-bold leading-relaxed shadow-3xs ${
                         isAI
-                          ? "bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
-                          : "bg-emerald-600 border border-emerald-500 text-white"
+                          ? "bg-base-100 border border-base-300 text-base-content"
+                          : "bg-primary border border-primary text-primary-content"
                       }`}
                     >
                       {/* Message Content with proper carriage returns */}
@@ -427,7 +427,7 @@ export default function MoowieChatPage() {
                       {/* Timestamp Indicator */}
                       <div
                         className={`text-[9px] font-bold mt-2.5 text-right uppercase tracking-wider ${
-                          isAI ? "text-slate-400" : "text-emerald-200/80"
+                          isAI ? "text-base-content/40" : "text-primary-content/85"
                         }`}
                       >
                         {msg.timestamp}
@@ -440,12 +440,12 @@ export default function MoowieChatPage() {
               {/* Dynamic typist loader active state */}
               {isGenerating && (
                 <div className="flex gap-3 max-w-[85%] self-start">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border border-emerald-500/20 bg-emerald-500/10 shadow-2xs overflow-hidden">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border border-primary/20 bg-primary/10 shadow-2xs overflow-hidden">
                     <img src="https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png" alt="Moowie loading" className="w-full h-full object-cover" />
                   </div>
-                  <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center gap-2">
-                    <Loader2 size={12} className="animate-spin text-emerald-600" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  <div className="bg-base-100 border border-base-300 rounded-2xl p-4 flex items-center gap-2">
+                    <Loader2 size={12} className="animate-spin text-primary" />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-base-content/40">
                       Moowie is analyzing pasture vectors...
                     </span>
                   </div>
@@ -458,17 +458,17 @@ export default function MoowieChatPage() {
 
           {/* Selected Animal ID Indicator banner */}
           {selectedAnimalId && (
-            <div className="bg-emerald-500/5 dark:bg-emerald-950/10 border-t border-emerald-500/10 px-6 py-2 flex items-center justify-between text-[10px] font-bold text-slate-400">
+            <div className="bg-primary/5 border-t border-base-300 px-6 py-2 flex items-center justify-between text-[10px] font-bold text-base-content/40">
               <span className="flex items-center gap-1">
-                <Info size={12} className="text-emerald-500" />
+                <Info size={12} className="text-primary" />
                 Active Database Context locked on Animal Ear Tag:{" "}
-                <span className="font-mono text-emerald-600 dark:text-emerald-400 font-extrabold uppercase bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                <span className="font-mono text-primary font-extrabold uppercase bg-primary/10 px-2 py-0.5 rounded-md">
                   {animals.find((a) => a.rawId === selectedAnimalId)?.id}
                 </span>
               </span>
               <button
                 onClick={() => setSelectedAnimalId("")}
-                className="text-slate-400 hover:text-rose-500 uppercase text-[9px] font-black tracking-widest underline transition-colors"
+                className="text-base-content/40 hover:text-rose-500 uppercase text-[9px] font-black tracking-widest underline transition-colors cursor-pointer"
               >
                 Clear Context
               </button>
@@ -476,7 +476,7 @@ export default function MoowieChatPage() {
           )}
 
           {/* CHAT PANEL FOOTER INPUT CONTROL BLOCK */}
-          <div className="bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-4">
+          <div className="bg-base-100 border-t border-base-300 p-4">
             <div className="max-w-4xl mx-auto flex items-center gap-3">
               <input
                 type="text"
@@ -490,20 +490,31 @@ export default function MoowieChatPage() {
                   }
                 }}
                 disabled={isGenerating}
-                className="flex-1 h-12 px-5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none transition-all disabled:opacity-50"
+                className="flex-1 h-12 px-5 bg-base-200 border border-base-300 rounded-xl text-xs font-bold text-base-content placeholder:text-base-content/40 focus:border-primary focus:outline-none transition-all disabled:opacity-50"
               />
               <button
                 onClick={() => handleSendMessage()}
                 disabled={isGenerating || !inputMessage.trim()}
-                className="h-12 w-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl flex items-center justify-center shadow-md shadow-emerald-600/15 disabled:opacity-30 disabled:hover:bg-emerald-600 transition-all cursor-pointer shrink-0"
+                className="h-12 w-12 btn btn-primary rounded-xl flex items-center justify-center shadow-md disabled:opacity-30 transition-all cursor-pointer shrink-0"
               >
-                <Send size={16} />
+                <Send size={16} className="text-white" />
               </button>
             </div>
           </div>
 
         </main>
       </div>
+      <Modal
+        isOpen={isClearConfirmOpen}
+        onClose={() => setIsClearConfirmOpen(false)}
+        title="Clear Chat History"
+        type="warning"
+        confirmText="Clear History"
+        onConfirm={handleClearAllHistory}
+      >
+        This will remove all saved Moowie chat threads from this browser. This action cannot be undone.
+      </Modal>
     </div>
   );
 }
+

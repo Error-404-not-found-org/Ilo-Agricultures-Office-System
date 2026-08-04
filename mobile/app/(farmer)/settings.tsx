@@ -1,18 +1,17 @@
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, StatusBar } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'expo-router';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { ArrowLeft, Bell, Globe, Trash2, Info, Moon, Sun } from 'lucide-react-native';
+import { Bell, Globe, Trash2, Info, Moon, Sun } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useColorScheme } from 'nativewind';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from '../../contexts/TranslationContext';
 import { useTheme } from '@/lib/theme';
 import * as Updates from 'expo-updates';
+import { AppPageHeader } from '@/components/AppPageHeader';
 
 export default function SettingsScreen() {
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colorScheme, toggleColorScheme } = useColorScheme();
   const { colors, isDark } = useTheme();
@@ -145,23 +144,7 @@ export default function SettingsScreen() {
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-slate-950" style={{ backgroundColor: colors.background }}>
-      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      
-      {/* Header */}
-      <View 
-        style={{ paddingTop: insets.top + 16, backgroundColor: colors.card, borderBottomColor: colors.border }}
-        className="pb-6 px-6 border-b flex-row items-center justify-between"
-      >
-        <TouchableOpacity 
-          onPress={() => router.back()} 
-          className="w-10 h-10 rounded-full items-center justify-center"
-          style={{ backgroundColor: isDark ? colors.background : '#f1f5f9' }}
-        >
-          <ArrowLeft size={20} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={{ fontFamily: 'Outfit_900Black', color: colors.textPrimary }} className="text-xl">{t('appSettings')}</Text>
-        <View className="w-10" />
-      </View>
+      <AppPageHeader title={t('appSettings')} />
 
       <ScrollView 
         showsVerticalScrollIndicator={false} 
@@ -225,13 +208,14 @@ export default function SettingsScreen() {
                 <Text style={{ fontFamily: 'Outfit_600SemiBold', color: colors.textMuted }} className="text-xs">Translate core application text</Text>
               </View>
             </View>
-            <View className="flex-row gap-3">
+            <View className="flex-row flex-wrap gap-3">
               {['English', 'Hiligaynon', 'Filipino'].map((lang: any) => (
                 <TouchableOpacity 
                   key={lang}
                   onPress={() => changeLanguage(lang)}
                   style={{
-                    flex: 1,
+                    minWidth: '30%',
+                    flexGrow: 1,
                     paddingVertical: 10,
                     borderRadius: 12,
                     borderWidth: 1,
@@ -240,7 +224,7 @@ export default function SettingsScreen() {
                     alignItems: 'center'
                   }}
                 >
-                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, color: appLanguage === lang ? primaryColor : colors.textMuted }}>{lang}</Text>
+                  <Text numberOfLines={2} style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, textAlign: 'center', color: appLanguage === lang ? primaryColor : colors.textMuted }}>{lang}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -254,7 +238,7 @@ export default function SettingsScreen() {
               disabled={clearingCache || checkingUpdates}
               onPress={handleClearCache}
               style={[
-                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.error, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.05)' },
+                { flex: 1, minHeight: 68, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 14, borderWidth: 1, borderColor: colors.error, backgroundColor: isDark ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.05)' },
                 (clearingCache || checkingUpdates) && { opacity: 0.5 }
               ]}
             >
@@ -263,7 +247,7 @@ export default function SettingsScreen() {
               ) : (
                 <>
                   <Trash2 size={16} color={colors.error} />
-                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: colors.error }}>{t('clearCache')}</Text>
+                  <Text numberOfLines={2} style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, textAlign: 'center', color: colors.error }}>{t('clearCache')}</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -272,7 +256,7 @@ export default function SettingsScreen() {
               disabled={clearingCache || checkingUpdates}
               onPress={handleCheckUpdates}
               style={[
-                { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, backgroundColor: primaryColor },
+                { flex: 1, minHeight: 68, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 14, backgroundColor: primaryColor },
                 (clearingCache || checkingUpdates) && { opacity: 0.5 }
               ]}
             >
@@ -281,7 +265,7 @@ export default function SettingsScreen() {
               ) : (
                 <>
                   <Info size={16} color="#fff" />
-                  <Text style={{ fontFamily: 'Outfit_700Bold', fontSize: 13, color: '#fff' }}>{t('checkForUpdates')}</Text>
+                  <Text numberOfLines={2} style={{ fontFamily: 'Outfit_700Bold', fontSize: 12, textAlign: 'center', color: '#fff' }}>{t('checkForUpdates')}</Text>
                 </>
               )}
             </TouchableOpacity>

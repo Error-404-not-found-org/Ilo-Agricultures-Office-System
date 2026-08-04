@@ -1,71 +1,46 @@
-import React, { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   MapPin,
   Navigation,
-  Clock,
-  Syringe,
-  HeartPulse,
-  ArrowRight,
   CheckCircle2,
   List as ListIcon,
   X,
   Compass,
-  Layers,
   RefreshCw,
-  Sparkles,
-  Info
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 
 // Center point: Oton Municipal Center (deployment base)
 const BASE_LOCATION = [10.6942, 122.4833];
 
-// Predefined fallback barangay coordinates for Oton region
-const OTON_BARANGAY_COORDS = {
-  "Abilay Norte": [10.7442, 122.492],
-  "Abilay Sur": [10.725, 122.4938],
-  Alegre: [10.686948, 122.490561],
-  "Batuan Ilaud": [10.7217, 122.4311],
-  "Batuan Ilaya": [10.7398, 122.4331],
-  "Bita Norte": [10.7461, 122.4721],
-  "Bita Sur": [10.7327, 122.4792],
-  Botong: [10.6852, 122.4378],
-  Buray: [10.7006, 122.4662],
-  Cabanbanan: [10.684, 122.4303],
-  "Cabolo-an Norte": [10.7531, 122.4767],
-  "Cabolo-an Sur": [10.7413, 122.4832],
-  Cadinglian: [10.739, 122.4393],
-  Cagbang: [10.6992, 122.5018],
-  "Calam-isan": [10.71, 122.4415],
-  Galang: [10.7245, 122.4447],
-  Lambuyao: [10.7108, 122.4924],
-  Mambog: [10.7329, 122.485],
-  Pakiad: [10.7109, 122.5173],
-  "Poblacion East": [10.6892, 122.4811],
-  "Poblacion North": [10.6916, 122.4836],
-  "Poblacion South": [10.6913, 122.4712],
-  "Poblacion West": [10.6949, 122.4732],
-  "Pulo Maestra Vita": [10.689, 122.4285],
-  Rizal: [10.7566, 122.4494],
-  Salngan: [10.7154, 122.4424],
-  Sambaludan: [10.7054, 122.4304],
-  "San Antonio": [10.6933, 122.4839],
-  "San Nicolas": [10.6929, 122.494],
-  "Santa Clara": [10.7661, 122.444],
-  "Santa Monica": [10.7405, 122.4508],
-  "Santa Rita": [10.7194, 122.4571],
-  "Tagbac Norte": [10.7257, 122.4686],
-  "Tagbac Sur": [10.7207, 122.4765],
-  Trapiche: [10.6895, 122.4534],
-  Tuburan: [10.7216, 122.4875],
-  "Turog-Turog": [10.7465, 122.429],
+const getFarmerCoordinates = (farmer = {}) => {
+  const farmLocation = farmer.farmLocation;
+  if (
+    Number.isFinite(farmLocation?.latitude) &&
+    Number.isFinite(farmLocation?.longitude)
+  ) {
+    return [farmLocation.latitude, farmLocation.longitude];
+  }
+
+  const coordinates = farmer.address?.coordinates;
+  if (Array.isArray(coordinates) && coordinates.length >= 2) {
+    const [longitude, latitude] = coordinates;
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      return [latitude, longitude];
+    }
+  }
+
+  if (Number.isFinite(coordinates?.lat) && Number.isFinite(coordinates?.lng)) {
+    return [coordinates.lat, coordinates.lng];
+  }
+
+  return null;
 };
 
 // HTML/CSS divIcon factory
@@ -142,7 +117,7 @@ export default function RouteOptimizer() {
   const { data: inseminations = [], isLoading: loadingInsem, refetch: refetchInsem } = useQuery({
     queryKey: ["inseminations-route"],
     queryFn: async () => {
-      const res = await axiosInstance.get("/technician/inseminations?limit=1000");
+      const res = await axiosInstance.get("/technician/inseminations?limit=100");
       return res.data?.inseminations || [];
     },
   });
@@ -151,8 +126,8 @@ export default function RouteOptimizer() {
   const { data: healthRequests = [], isLoading: loadingHealth, refetch: refetchHealth } = useQuery({
     queryKey: ["health-route"],
     queryFn: async () => {
-      const res = await axiosInstance.get("/health-request");
-      return res.data || [];
+      const res = await axiosInstance.get("/health-request", { params: { page: 1, limit: 100 } });
+      return res.data?.data || res.data || [];
     },
   });
 
@@ -164,34 +139,30 @@ export default function RouteOptimizer() {
       list
         .filter((t) => {
           const status = t.status?.toLowerCase();
-          return status === "in-progress" || status === "approved" || status === "pending";
+          return (
+            (status === "in-progress" || status === "approved" || status === "pending") &&
+            Boolean(getFarmerCoordinates(t.farmerId))
+          );
         })
-        .map((item, index) => {
-          const brgy = item.farmerId?.address?.barangay || "Abilay Norte";
-          const baseCoords = OTON_BARANGAY_COORDS[brgy] || BASE_LOCATION;
-          
-          // Slight jitter around barangay center to prevent exact overlaps
-          const latJitter = (Math.random() - 0.5) * 0.006;
-          const lngJitter = (Math.random() - 0.5) * 0.006;
+        .map((item) => {
+          const brgy = item.farmerId?.address?.barangay || "Location unavailable";
+          const coords = getFarmerCoordinates(item.farmerId);
           
           return {
             id: item._id,
             type,
             title:
               type === "insem"
-                ? `AI Protocol #${item.attemptNumber || 1}`
-                : `Health Check - ${item.issueCategory || "Veterinary Service"}`,
-            farmer: item.farmerId?.name || "Anonymous Farmer",
+                ? `AI Protocol #${item.attemptNumber ?? "Not recorded"}`
+                : `Health Check - ${item.issueCategory || "Service type unavailable"}`,
+            farmer: item.farmerId?.name || "Farmer unavailable",
             address: brgy,
-            animalTag: item.animalId?.earTag || "Unspecified Tag",
-            coords: [
-              baseCoords[0] + latJitter,
-              baseCoords[1] + lngJitter,
-            ],
+            animalTag: item.animalId?.earTag || item.animalId?.animalId || "Not recorded",
+            coords,
             color,
             icon: iconObj,
             originalDate: new Date(item.scheduledDate || item.preferredDate || item.createdAt),
-            status: item.status || "Assigned",
+            status: item.status || "Status unavailable",
           };
         });
 

@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-28T10:10:20.3818508Z",
+  "title": "Design System: BreedSmart Mobile",
+  "extensions": {
+    "colorMeta": {
+      "field-green": {
+        "role": "primary",
+        "displayName": "Field Green",
+        "canonical": "#00643B",
+        "tonalRamp": ["#032B1D", "#064E3B", "#00643B", "#087F4D", "#10B981", "#6EE7B7", "#D1FAE5", "#F0FDF4"]
+      },
+      "canvas-light": {
+        "role": "neutral",
+        "displayName": "Open Sky Canvas",
+        "canonical": "#F8FAFC",
+        "tonalRamp": ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0", "#F8FAFC"]
+      },
+      "danger-light": {
+        "role": "danger",
+        "displayName": "Action Red",
+        "canonical": "#B91C1C",
+        "tonalRamp": ["#450A0A", "#7F1D1D", "#991B1B", "#B91C1C", "#EF4444", "#FCA5A5", "#FEE2E2", "#FEF2F2"]
+      },
+      "warning-light": {
+        "role": "warning",
+        "displayName": "Review Ochre",
+        "canonical": "#A16207",
+        "tonalRamp": ["#422006", "#713F12", "#854D0E", "#A16207", "#EAB308", "#FDE047", "#FEF9C3", "#FEFCE8"]
+      },
+      "information-light": {
+        "role": "information",
+        "displayName": "Information Blue",
+        "canonical": "#1D4ED8",
+        "tonalRamp": ["#172554", "#1E3A8A", "#1E40AF", "#1D4ED8", "#3B82F6", "#93C5FD", "#DBEAFE", "#EFF6FF"]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Screen Headline",
+        "purpose": "Top-level screen titles and the most important empty-state title."
+      },
+      "title": {
+        "displayName": "Section Title",
+        "purpose": "Card headings, section headings, and detail-page subjects."
+      },
+      "body": {
+        "displayName": "Working Copy",
+        "purpose": "Field values, descriptions, and supporting copy."
+      },
+      "label": {
+        "displayName": "Operational Label",
+        "purpose": "Field labels, navigation, metadata headings, tabs, and statuses."
+      }
+    },
+    "shadows": [
+      {
+        "name": "raised-control",
+        "value": "0 2px 6px rgba(15, 23, 42, 0.08)",
+        "purpose": "Sticky navigation and controls that must remain above scrolling content; Android elevation 2."
+      },
+      {
+        "name": "modal-overlay",
+        "value": "0 8px 24px rgba(15, 23, 42, 0.16)",
+        "purpose": "Dialogs and bottom sheets only; Android elevation 6."
+      }
+    ],
+    "motion": [
+      {
+        "name": "pressed-feedback",
+        "value": "120ms cubic-bezier(0.2, 0, 0, 1)",
+        "purpose": "Immediate press and selection feedback without changing control geometry."
+      },
+      {
+        "name": "state-transition",
+        "value": "180ms cubic-bezier(0.2, 0, 0, 1)",
+        "purpose": "Tabs, chips, disclosure, and inline state changes."
+      },
+      {
+        "name": "sheet-transition",
+        "value": "220ms cubic-bezier(0.2, 0, 0, 1)",
+        "purpose": "Bottom sheets and modal presentation; use a crossfade or instant change when reduced motion is enabled."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "0-599px"
+      },
+      {
+        "name": "medium",
+        "value": "600-839px"
+      },
+      {
+        "name": "expanded",
+        "value": "840px+"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single highest-priority action in a view or focused form section.",
+      "html": "<button class=\"ds-btn-primary\">Submit request</button>",
+      "css": ".ds-btn-primary { min-height: 48px; padding: 12px 16px; border: 0; border-radius: 12px; background: #00643B; color: #FFFFFF; font: 600 14px/20px Outfit, sans-serif; transition: background-color 120ms cubic-bezier(0.2, 0, 0, 1), transform 120ms cubic-bezier(0.2, 0, 0, 1); } .ds-btn-primary:hover { background: #064E3B; } .ds-btn-primary:active { transform: scale(0.985); } .ds-btn-primary:focus-visible { outline: 2px solid #10B981; outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A supporting action such as Cancel, Edit, or View details.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { min-height: 48px; padding: 12px 16px; border: 1px solid #CBD5E1; border-radius: 12px; background: #FFFFFF; color: #00643B; font: 600 14px/20px Outfit, sans-serif; transition: background-color 120ms cubic-bezier(0.2, 0, 0, 1), border-color 120ms cubic-bezier(0.2, 0, 0, 1); } .ds-btn-secondary:hover { background: #F0FDF4; border-color: #00643B; } .ds-btn-secondary:active { background: #D1FAE5; } .ds-btn-secondary:focus-visible { outline: 2px solid #10B981; outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A labeled field for task and animal data with persistent error space.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Animal name</span><input class=\"ds-input\" value=\"Bituin\" /></label>",
+      "css": ".ds-field { display: grid; gap: 8px; color: #475569; font: 600 12px/16px Outfit, sans-serif; } .ds-input { min-height: 48px; padding: 12px 14px; border: 1px solid #CBD5E1; border-radius: 12px; background: #FFFFFF; color: #1E293B; font: 400 14px/20px Outfit, sans-serif; transition: border-color 120ms cubic-bezier(0.2, 0, 0, 1), box-shadow 120ms cubic-bezier(0.2, 0, 0, 1); } .ds-input:hover { border-color: #94A3B8; } .ds-input:focus { border-color: #00643B; box-shadow: 0 0 0 2px rgba(0, 100, 59, 0.18); outline: none; }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-selected",
+      "description": "A compact records filter with a full touch target and unmistakable selected state.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Health</button>",
+      "css": ".ds-chip { min-height: 44px; padding: 8px 12px; border: 1px solid #86EFAC; border-radius: 999px; background: #F0FDF4; color: #00643B; font: 600 12px/16px Outfit, sans-serif; transition: background-color 120ms cubic-bezier(0.2, 0, 0, 1), border-color 120ms cubic-bezier(0.2, 0, 0, 1); } .ds-chip:hover { background: #DCFCE7; } .ds-chip:active { background: #BBF7D0; } .ds-chip:focus-visible { outline: 2px solid #10B981; outline-offset: 2px; }"
+    },
+    {
+      "name": "Record Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A single livestock record with subject-first hierarchy and one domain-specific status.",
+      "html": "<article class=\"ds-card\"><div class=\"ds-card-top\"><div><h3>Bituin</h3><p>Health service · Jul 28, 2026</p></div><span class=\"ds-status\">For review</span></div><div class=\"ds-card-rule\"></div><p class=\"ds-card-meta\">Assigned to Technician Santos</p></article>",
+      "css": ".ds-card { padding: 16px; border: 1px solid #CBD5E1; border-radius: 16px; background: #FFFFFF; color: #1E293B; font-family: Outfit, sans-serif; } .ds-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; } .ds-card h3 { margin: 0; font-size: 18px; line-height: 24px; font-weight: 700; } .ds-card p { margin: 4px 0 0; color: #475569; font-size: 14px; line-height: 20px; } .ds-status { flex: none; padding: 6px 10px; border-radius: 999px; background: #FEF9C3; color: #854D0E; font-size: 12px; line-height: 16px; font-weight: 600; } .ds-card-rule { height: 1px; margin: 12px 0; background: #E2E8F0; } .ds-card .ds-card-meta { margin: 0; font-size: 12px; line-height: 16px; }"
+    },
+    {
+      "name": "Bottom Navigation",
+      "kind": "nav",
+      "description": "A stable role-aware destination bar whose selected icon remains circular.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-nav-item ds-nav-active\"><span class=\"ds-nav-icon\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z\" /></svg></span><span>Home</span></button><button class=\"ds-nav-item\"><span class=\"ds-nav-icon\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 3v3M18 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1z\" /></svg></span><span>Visits</span></button><button class=\"ds-nav-item\"><span class=\"ds-nav-icon\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M6 4h12v16H6zM9 8h6M9 12h6M9 16h4\" /></svg></span><span>Requests</span></button></nav>",
+      "css": ".ds-nav { display: flex; justify-content: space-around; padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 20px; background: #FFFFFF; box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08); font-family: Outfit, sans-serif; } .ds-nav-item { min-width: 64px; min-height: 56px; padding: 4px 8px; border: 0; border-radius: 12px; background: transparent; color: #64748B; display: grid; justify-items: center; gap: 2px; font: 600 12px/16px Outfit, sans-serif; } .ds-nav-icon { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 999px; } .ds-nav svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; } .ds-nav-active { color: #00643B; } .ds-nav-active .ds-nav-icon { background: #F0FDF4; } .ds-nav-item:hover .ds-nav-icon { background: #F1F5F9; } .ds-nav-active:hover .ds-nav-icon, .ds-nav-active:active .ds-nav-icon { background: #DCFCE7; border-radius: 999px; } .ds-nav-item:focus-visible { outline: 2px solid #10B981; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Field Ledger",
+    "overview": "BreedSmart Mobile should feel like a durable field notebook translated into a modern service tool: calm, direct, high-contrast, and dependable in bright outdoor conditions. Information is organized in compact, legible rows and clearly titled sections so a farmer or technician can understand the next action without decoding the interface.\n\nThe design is task-first rather than decorative. It uses neutral canvas and surface layers, with BreedSmart green reserved for navigation, selection, and primary action. It explicitly rejects marketing-page layouts, decorative bento grids, glassmorphism, oversized empty hero sections, and motion-heavy dashboards.\n\nThe same visual grammar serves every role while preserving role identity through content, permissions, labels, and navigation. Farmer screens prioritize requests and animal history; technician screens prioritize assigned work, new requests, visits, and diagnostic follow-up; admin screens prioritize oversight and exceptions.",
+    "keyCharacteristics": [
+      "Durable, calm, and professional",
+      "Compact enough for field work without feeling crowded",
+      "High-contrast in light and dark mode",
+      "Flat by default, with elevation used only to clarify hierarchy",
+      "Consistent across farmer, technician, and admin workflows",
+      "Built from reusable React Native primitives and semantic tokens"
+    ],
+    "rules": [
+      {
+        "name": "The Green Earns Attention Rule",
+        "body": "Green should occupy roughly 10–15% of a screen. Use it for the current selection, the primary action, or a meaningful state—not decorative blocks.",
+        "section": "colors"
+      },
+      {
+        "name": "The Status Has a Domain Rule",
+        "body": "Color and copy must distinguish service progress, reproductive outcome, farmer observation, technician review, official pregnancy diagnosis, continuation recheck, and diagnostic follow-up. Never collapse them into a vague “Status.”",
+        "section": "colors"
+      },
+      {
+        "name": "The Token-Only Rule",
+        "body": "Screen and component code must not introduce raw hex values. Add or reuse a semantic token in the shared theme.",
+        "section": "colors"
+      },
+      {
+        "name": "The Twelve-Pixel Floor Rule",
+        "body": "No meaningful text may render below 12px. If content does not fit, improve the layout or copy instead of shrinking it.",
+        "section": "typography"
+      },
+      {
+        "name": "The Sentence-Case Rule",
+        "body": "Use sentence case for navigation, actions, labels, and statuses. Uppercase is reserved for genuinely established short codes.",
+        "section": "typography"
+      },
+      {
+        "name": "The Two-Weight Rule",
+        "body": "A card should normally use only regular and semibold or semibold and bold. Extra weight changes create noise rather than hierarchy.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-by-Default Rule",
+        "body": "Resting cards and list rows use a tonal surface plus a one-pixel outline, not a shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The One Depth Cue Rule",
+        "body": "Do not combine a prominent border and a wide shadow on the same surface.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do use the 4px spacing grid and prefer 8px, 12px, 16px, 24px, and 32px for repeated layout rhythm.",
+      "Do use 16px horizontal screen gutters on compact phones and 24px on wider phones or tablets.",
+      "Do cap readable tablet content instead of stretching every card across the viewport.",
+      "Do keep interactive targets at least 48px high for the shared Android/iOS implementation.",
+      "Do support safe areas, dynamic text growth, keyboard avoidance, screen readers, switch input, and reduced motion.",
+      "Do pair every status color with human-readable text and preserve the product’s domain terminology.",
+      "Do use shared components for headers, status badges, detail rows, async states, layout wrappers, buttons, cards, fields, and chips.",
+      "Do prefer Lucide icons for application actions and navigation. Use a second icon source only for a missing livestock-specific pictogram, and document the exception.",
+      "Do keep transitions functional and brief: about 120ms for pressed feedback and 180–220ms for state or sheet transitions.",
+      "Do verify every shared primitive in light mode, dark mode, compact phones, and tablet widths."
+    ],
+    "donts": [
+      "Don't use marketing-page layouts.",
+      "Don't use excessive animation or motion-heavy dashboard layouts.",
+      "Don't use decorative bento grids.",
+      "Don't use glassmorphism.",
+      "Don't use oversized empty hero sections.",
+      "Don't show unclear generic statuses.",
+      "Don't create page-specific copies of an existing shared component.",
+      "Don't add a new design system or UI library; improve the existing React Native primitives and theme.",
+      "Don't use raw enum values, backend error codes, test-seed prefixes, or unexplained “N/A.”",
+      "Don't use raw hex colors, arbitrary spacing, or one-off radii inside screen files.",
+      "Don't use 24–32px corner radii for ordinary cards; reserve the full pill for chips, statuses, and circular controls.",
+      "Don't place a standard action button in the visual center of a card. Anchor actions after content with at least 16px of separation and bottom padding.",
+      "Don't nest cards, stack multiple outlines, or combine a strong border with a wide shadow.",
+      "Don't shrink labels below 12px to make dense content fit.",
+      "Don't rely on color, icon shape, or opacity alone to communicate state.",
+      "Don't duplicate a record or request identifier in the same list item or card."
+    ]
+  }
+}

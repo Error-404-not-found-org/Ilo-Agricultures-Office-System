@@ -1,132 +1,247 @@
+import { lazy, Suspense, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import { SignedIn, SignedOut } from "@clerk/clerk-react";
+import { SignedIn, SignedOut, useClerk, useAuth } from "@clerk/clerk-react";
 
 // Utilities
-import PageMeta from "./components/PageMeta";
+import PageMeta from "./components/layout/PageMeta";
 import { ToastProvider } from "./contexts/ToastContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
 
 // Components
-import Layout from "./components/ui/Layout";
-import ProtectedAdminRoute from "./components/ProtectedAdminRoute";
-import ProtectedTechnicianRoute from "./components/ProtectedTechnicianRoute";
+import Layout from "./components/layout/AppLayout";
+import ProtectedAdminRoute from "./components/layout/ProtectedAdminRoute";
+import ProtectedTechnicianRoute from "./components/layout/ProtectedTechnicianRoute";
 // Public Pages
 import Landing from "./pages/Landing";
 import DownloadApp from "./pages/DownloadApp";
 
 // Admin Pages
-import AdminDashboard from "./pages/admin/Dashboard";
-import Technicians from "./pages/admin/Technicians";
-import TechnicianProfile from "./pages/admin/TechnicianProfile";
-import Livestock from "./pages/admin/Livestock";
-import LivestockProfile from "./pages/admin/LivestockProfile";
-import Inseminations from "./pages/admin/Inseminations";
-import Users from "./pages/admin/Users";
-import AdminSettings from "./pages/admin/Settings";
-import Reports from "./pages/admin/Reports";
+const AdminDashboard = lazy(() => import("./pages/admin/Dashboard"));
+const Technicians = lazy(() => import("./pages/admin/Technicians"));
+const TechnicianProfile = lazy(() => import("./pages/admin/TechnicianProfile"));
+const Livestock = lazy(() => import("./pages/admin/Livestock"));
+const LivestockProfile = lazy(() => import("./pages/admin/LivestockProfile"));
+const Inseminations = lazy(() => import("./pages/admin/Inseminations"));
+const Users = lazy(() => import("./pages/admin/Users"));
+const AdminSettings = lazy(() => import("./pages/admin/Settings"));
+const Reports = lazy(() => import("./pages/admin/Reports"));
+const AdminMonitoring = lazy(() => import("./pages/admin/Monitoring"));
+const BarangayInsights = lazy(() => import("./pages/admin/BarangayInsights"));
+const SupportTickets = lazy(() => import("./pages/admin/SupportTickets"));
+const AuditLogs = lazy(() => import("./pages/admin/AuditLogs"));
+const ArchivedRecords = lazy(() => import("./pages/admin/ArchivedRecords"));
 
 // Technician Pages
-import TechnicianDashboard from "./pages/technician/DashboardTechnician";
-import FarmersDirectory from "./pages/technician/FarmersDirectory";
-import FarmerProfile from "./pages/technician/FarmerProfile";
-import TechnicianAnimals from "./pages/technician/Animals";
-import TechnicianInseminations from "./pages/technician/Inseminations";
-import TechnicianHealth from "./pages/technician/Health";
-import TechnicianHealthMap from "./pages/technician/HealthMap";
-import WalkInInsemination from "./pages/technician/WalkInInsemination";
-import TechMyProfile from "./pages/technician/Profile";
-import TechnicianAnalytics from "./pages/technician/Analytics";
-import TechnicianReports from "./pages/technician/Reports";
-import TechnicianSchedule from "./pages/technician/Schedule";
-import TechnicianRequests from "./pages/technician/Requests";
-import BreedingLedger from "./pages/technician/BreedingLedger";
-import FieldNotes from "./pages/technician/FieldNotes";
-import TechSettings from "./pages/technician/Settings";
-import Moowie from "./pages/technician/Moowie";
-import Newborns from "./pages/technician/Newborns";
+const TechnicianDashboard = lazy(
+  () => import("./pages/technician/DashboardTechnician"),
+);
+const FarmersDirectory = lazy(
+  () => import("./pages/technician/FarmersDirectory"),
+);
+const FarmerProfile = lazy(() => import("./pages/technician/FarmerProfile"));
+const TechnicianAnimals = lazy(() => import("./pages/technician/Animals"));
+const TechnicianInseminations = lazy(
+  () => import("./pages/technician/Inseminations"),
+);
+const TechnicianHealth = lazy(() => import("./pages/technician/Health"));
+const TechnicianHealthMap = lazy(() => import("./pages/technician/HealthMap"));
+const WalkInInsemination = lazy(
+  () => import("./pages/technician/WalkInInsemination"),
+);
+const TechMyProfile = lazy(() => import("./pages/technician/Profile"));
+const TechnicianAnalytics = lazy(() => import("./pages/technician/Analytics"));
+const TechnicianReports = lazy(() => import("./pages/technician/Reports"));
+const TechnicianSchedule = lazy(() => import("./pages/technician/Schedule"));
+const TechnicianRequestDetails = lazy(
+  () => import("./pages/technician/RequestDetails"),
+);
+const TechnicianRequests = lazy(() => import("./pages/technician/Requests"));
+const TechnicianWorkQueue = lazy(() => import("./pages/technician/WorkQueue"));
+const BreedingLedger = lazy(() => import("./pages/technician/BreedingLedger"));
+const TechSettings = lazy(() => import("./pages/technician/Settings"));
+const Moowie = lazy(() => import("./pages/technician/Moowie"));
+const Newborns = lazy(() => import("./pages/technician/Newborns"));
+
+const LoadingView = () => (
+  <div className="min-h-screen flex items-center justify-center bg-base-200">
+    <div className="flex flex-col items-center gap-4">
+      <span className="loading loading-spinner loading-lg text-primary"></span>
+
+      <h2 className="text-lg font-bold text-base-content">BreedSmart</h2>
+
+      <p className="text-sm text-base-content/60">Loading...</p>
+    </div>
+  </div>
+);
 
 function App() {
+  const { signOut } = useClerk();
+  const { isSignedIn } = useAuth();
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      localStorage.removeItem("breedsmart_last_activity");
+      localStorage.removeItem("breedsmart_session_start");
+      return;
+    }
+
+    const now = Date.now();
+
+    // Set initial activity and session timestamps
+    if (!localStorage.getItem("breedsmart_session_start")) {
+      localStorage.setItem("breedsmart_session_start", String(now));
+    }
+    if (!localStorage.getItem("breedsmart_last_activity")) {
+      localStorage.setItem("breedsmart_last_activity", String(now));
+    }
+
+    const updateActivity = () => {
+      localStorage.setItem("breedsmart_last_activity", String(Date.now()));
+    };
+
+    const events = [
+      "mousedown",
+      "mousemove",
+      "keypress",
+      "scroll",
+      "touchstart",
+    ];
+    events.forEach((event) => window.addEventListener(event, updateActivity));
+
+    // Check session status every 30 seconds
+    const interval = setInterval(() => {
+      const lastActivity = localStorage.getItem("breedsmart_last_activity");
+      const sessionStart = localStorage.getItem("breedsmart_session_start");
+      const currentTime = Date.now();
+
+      const INACTIVITY_TIMEOUT = 24 * 60 * 60 * 1000; // 24 Hours inactivity limit
+      const ABSOLUTE_TIMEOUT = 7 * 24 * 60 * 60 * 1000; // 7 Days absolute limit
+
+      if (lastActivity) {
+        const inactiveElapsed = currentTime - Number(lastActivity);
+        if (inactiveElapsed > INACTIVITY_TIMEOUT) {
+          localStorage.removeItem("breedsmart_last_activity");
+          localStorage.removeItem("breedsmart_session_start");
+          signOut();
+          return;
+        }
+      }
+
+      if (sessionStart) {
+        const absoluteElapsed = currentTime - Number(sessionStart);
+        if (absoluteElapsed > ABSOLUTE_TIMEOUT) {
+          localStorage.removeItem("breedsmart_last_activity");
+          localStorage.removeItem("breedsmart_session_start");
+          signOut();
+        }
+      }
+    }, 30000);
+
+    return () => {
+      events.forEach((event) =>
+        window.removeEventListener(event, updateActivity),
+      );
+      clearInterval(interval);
+    };
+  }, [isSignedIn, signOut]);
+
   return (
     <ToastProvider>
       <SidebarProvider>
         <PageMeta />
-        <Routes>
-          {/* Public Landing Page */}
-          <Route path="/" element={<Landing />} />
-          <Route path="/download-app" element={<DownloadApp />} />
+        <Suspense fallback={<LoadingView />}>
+          <Routes>
+            {/* Public Landing Page */}
+            <Route path="/" element={<Landing />} />
+            <Route path="/download-app" element={<DownloadApp />} />
 
-          {/* Protected Admin Routes */}
-          <Route
-            path="/admin"
-            element={
-              <>
-                <SignedIn>
-                  <ProtectedAdminRoute>
-                    <Layout />
-                  </ProtectedAdminRoute>
-                </SignedIn>
-                <SignedOut>
-                  <Navigate to="/" replace />
-                </SignedOut>
-              </>
-            }
-          >
-            <Route index element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="dashboard" element={<AdminDashboard />} />
-            <Route path="technicians" element={<Technicians />} />
-            <Route path="technicians/:id" element={<TechnicianProfile />} />
-            <Route path="livestock" element={<Livestock />} />
-            <Route path="livestock/:id" element={<LivestockProfile />} />
-            <Route path="inseminations" element={<Inseminations />} />
-            <Route path="users" element={<Users />} />
-            <Route path="settings" element={<AdminSettings />} />
-            <Route path="reports" element={<Reports />} />
-            <Route path="requests" element={<TechnicianRequests />} />
-            <Route path="newborns" element={<Newborns />} />
-          </Route>
+            {/* Protected Admin Routes */}
+            <Route
+              path="/admin"
+              element={
+                <>
+                  <SignedIn>
+                    <ProtectedAdminRoute>
+                      <Layout />
+                    </ProtectedAdminRoute>
+                  </SignedIn>
+                  <SignedOut>
+                    <Navigate to="/" replace />
+                  </SignedOut>
+                </>
+              }
+            >
+              <Route
+                index
+                element={<Navigate to="/admin/dashboard" replace />}
+              />
+              <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="technicians" element={<Technicians />} />
+              <Route path="technicians/:id" element={<TechnicianProfile />} />
+              <Route path="livestock" element={<Livestock />} />
+              <Route path="livestock/:id" element={<LivestockProfile />} />
+              <Route path="inseminations" element={<Inseminations />} />
+              <Route path="users" element={<Users />} />
+              <Route path="settings" element={<AdminSettings />} />
+              <Route path="reports" element={<Reports />} />
+              <Route path="monitoring" element={<AdminMonitoring />} />
+              <Route path="barangays" element={<BarangayInsights />} />
+              <Route path="support-tickets" element={<SupportTickets />} />
+              <Route path="audit-logs" element={<AuditLogs />} />
+              <Route path="archived" element={<ArchivedRecords />} />
+              <Route path="requests" element={<TechnicianRequests />} />
+              <Route path="work-queue" element={<TechnicianWorkQueue />} />
+              <Route path="newborns" element={<Newborns />} />
+            </Route>
 
-          {/* Protected Technician Routes */}
-          <Route
-            path="/technician"
-            element={
-              <>
-                <SignedIn>
-                  <ProtectedTechnicianRoute>
-                    <Layout />
-                  </ProtectedTechnicianRoute>
-                </SignedIn>
-                <SignedOut>
-                  <Navigate to="/" replace />
-                </SignedOut>
-              </>
-            }
-          >
-            <Route path="dashboard" element={<TechnicianDashboard />} />
-            <Route path="farmers" element={<FarmersDirectory />} />
-            <Route path="farmers/:id" element={<FarmerProfile />} />
-            <Route path="animals" element={<TechnicianAnimals />} />
-            <Route path="animals/:id" element={<LivestockProfile />} />
-            <Route path="inseminations" element={<TechnicianInseminations />} />
-            <Route path="newborns" element={<Newborns />} />
-            <Route path="health" element={<TechnicianHealth />} />
-            {/* <Route path="health-map" element={<TechnicianHealthMap />} /> */}
-            <Route path="ledger" element={<BreedingLedger />} />
-            <Route path="walk-in" element={<WalkInInsemination />} />
-            <Route path="profile" element={<TechMyProfile />} />
-            <Route path="analytics" element={<TechnicianAnalytics />} />
-            <Route path="reports" element={<TechnicianReports />} />
-            <Route path="schedule" element={<TechnicianSchedule />} />
-            <Route path="requests" element={<TechnicianRequests />} />
-            <Route path="field-notes" element={<FieldNotes />} />
-            <Route path="moowie" element={<Moowie />} />
-            <Route path="settings" element={<TechSettings />} />
-          </Route>
+            {/* Protected Technician Routes */}
+            <Route
+              path="/technician"
+              element={
+                <>
+                  <SignedIn>
+                    <ProtectedTechnicianRoute>
+                      <Layout />
+                    </ProtectedTechnicianRoute>
+                  </SignedIn>
+                  <SignedOut>
+                    <Navigate to="/" replace />
+                  </SignedOut>
+                </>
+              }
+            >
+              <Route path="dashboard" element={<TechnicianDashboard />} />
+              <Route path="farmers" element={<FarmersDirectory />} />
+              <Route path="farmers/:id" element={<FarmerProfile />} />
+              <Route path="animals" element={<TechnicianAnimals />} />
+              <Route path="animals/:id" element={<LivestockProfile />} />
+              <Route
+                path="inseminations"
+                element={<TechnicianInseminations />}
+              />
+              <Route path="newborns" element={<Newborns />} />
+              <Route path="health" element={<TechnicianHealth />} />
+              <Route path="health-map" element={<TechnicianHealthMap />} />
+              <Route path="ledger" element={<BreedingLedger />} />
+              <Route path="walk-in" element={<WalkInInsemination />} />
+              <Route path="profile" element={<TechMyProfile />} />
+              <Route path="analytics" element={<TechnicianAnalytics />} />
+              <Route path="reports" element={<TechnicianReports />} />
+              <Route path="schedule" element={<TechnicianSchedule />} />
+              <Route
+                path="schedule/details"
+                element={<TechnicianRequestDetails />}
+              />
+              <Route path="requests" element={<TechnicianRequests />} />
+              <Route path="work-queue" element={<TechnicianWorkQueue />} />
+              <Route path="moowie" element={<Moowie />} />
+              <Route path="settings" element={<TechSettings />} />
+            </Route>
 
-
-
-          {/* Catch-all redirect */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Catch-all redirect */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
       </SidebarProvider>
     </ToastProvider>
   );

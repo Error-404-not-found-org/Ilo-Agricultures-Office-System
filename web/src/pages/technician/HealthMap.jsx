@@ -1,15 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker, Circle, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   MapPin,
-  HeartPulse,
-  Syringe,
-  Activity,
-  ShieldAlert,
-  Search,
   Layers,
   Map as MapIcon,
   RefreshCw,
@@ -19,8 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
-import Topbar from "../../components/ui/Topbar";
-import { TableRowSkeleton } from "../../components/Skeleton";
+import Topbar from "../../components/layout/Topbar";
 import {
   ILOILO_MUNICIPALITIES,
   MUNICIPALITY_BARANGAYS,
@@ -41,6 +35,7 @@ const MUNICIPALITY_CENTROIDS = {
 const DEFAULT_CENTER = MUNICIPALITY_CENTROIDS["Oton"];
 
 // Predefined fallback barangay coordinates for Oton region
+/* eslint-disable-next-line no-unused-vars */
 const OTON_BARANGAY_COORDS = {
   "Abilay Norte": [10.7442, 122.492],
   "Abilay Sur": [10.725, 122.4938],
@@ -294,26 +289,12 @@ export default function GISFieldHub() {
     }
   };
 
-  const activeCount = useMemo(() => {
-    switch (activeTab) {
-      case "health":
-        return filteredHealth.length;
-      case "breeding":
-        return filteredBreeding.length;
-      case "dispatches":
-        return filteredDispatches.length;
-      case "demographics":
-        return filteredDemographics.length;
-      default:
-        return 0;
-    }
-  }, [activeTab, filteredHealth, filteredBreeding, filteredDispatches, filteredDemographics]);
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] gap-4 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100">
-        <span className="loading loading-infinity loading-lg text-[#00643b] scale-150"></span>
-        <p className="text-[#00643b] dark:text-emerald-400 font-bold tracking-widest animate-pulse uppercase text-[10px]">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] gap-4 bg-base-100 text-base-content">
+        <span className="loading loading-infinity loading-lg text-primary scale-150"></span>
+        <p className="text-primary font-bold tracking-widest animate-pulse uppercase text-[10px]">
           Configuring GIS Layers...
         </p>
       </div>
@@ -321,7 +302,7 @@ export default function GISFieldHub() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <style>{`
         @keyframes pin-ping {
           0% {
@@ -375,13 +356,13 @@ export default function GISFieldHub() {
       <main className="p-6 space-y-4 flex-1 flex flex-col min-h-0">
         
         {/* Dynamic Filters Ribbon */}
-        <div className="flex items-center gap-2 flex-wrap bg-white dark:bg-slate-950 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-800/80 shadow-2xs">
+        <div className="flex items-center gap-2 flex-wrap bg-base-100 p-2.5 rounded-2xl border border-base-300 shadow-2xs">
           
           {/* Municipality Selector */}
           <select
             value={selectedMunicipality}
             onChange={handleMunicipalityChange}
-            className="select select-bordered select-sm text-xs rounded-xl bg-slate-50! dark:bg-slate-900/60! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:border-[#00643b] dark:focus:border-emerald-500 transition-all duration-200 font-bold"
+            className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 text-base-content focus:border-primary transition-all duration-200 font-bold"
           >
             {ILOILO_MUNICIPALITIES.map((mun) => (
               <option key={mun} value={mun}>
@@ -397,7 +378,7 @@ export default function GISFieldHub() {
               setSelectedBarangay(e.target.value);
               setSelectedItem(null);
             }}
-            className="select select-bordered select-sm text-xs rounded-xl bg-slate-50! dark:bg-slate-900/60! border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 focus:border-[#00643b] dark:focus:border-emerald-500 transition-all duration-200 font-bold"
+            className="select select-bordered select-sm text-xs rounded-xl bg-base-200 border-base-300 text-base-content focus:border-primary transition-all duration-200 font-bold"
           >
             <option value="All">All Barangays</option>
             {activeBarangays.map((brgy) => (
@@ -408,7 +389,7 @@ export default function GISFieldHub() {
           </select>
 
           {/* Dynamic Layer Tabs selector */}
-          <div className="join border border-slate-200 dark:border-slate-850 rounded-xl overflow-hidden shadow-2xs ml-auto shrink-0 bg-slate-50 dark:bg-slate-950 p-0.5">
+          <div className="join border border-base-300 rounded-xl overflow-hidden shadow-2xs ml-auto shrink-0 bg-base-200 p-0.5">
             {[
               { id: "health", label: "Health Layer" },
               { id: "breeding", label: "Breeding Layer" },
@@ -423,8 +404,8 @@ export default function GISFieldHub() {
                 }}
                 className={`join-item btn btn-xs h-7 px-3.5 font-bold uppercase text-[9px] tracking-wider transition-all border-none ${
                   activeTab === tab.id
-                    ? "bg-[#00643b]! text-white shadow-xs"
-                    : "bg-transparent text-slate-500 hover:bg-slate-200/50 dark:hover:bg-slate-900"
+                    ? "bg-primary! text-white shadow-xs"
+                    : "bg-transparent text-base-content/60 hover:bg-base-300"
                 }`}
               >
                 {tab.label}
@@ -436,20 +417,20 @@ export default function GISFieldHub() {
           <div className="dropdown dropdown-end shrink-0">
             <button
               tabIndex={0}
-              className="btn btn-sm select-sm rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold gap-1.5 cursor-pointer text-slate-600 dark:text-slate-300"
+              className="btn btn-sm select-sm rounded-xl border border-base-300 bg-base-200 hover:bg-base-300 text-xs font-bold gap-1.5 cursor-pointer text-base-content/70"
             >
               <Layers size={13} /> Visible Layers
             </button>
             <ul
               tabIndex={0}
-              className="dropdown-content menu p-3 shadow-xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-850 rounded-2xl w-48 z-50 mt-1 gap-1.5 text-[11px] font-bold text-slate-600 dark:text-slate-350"
+              className="dropdown-content menu p-3 shadow-xl bg-base-100 border border-base-300 rounded-2xl w-48 z-50 mt-1 gap-1.5 text-[11px] font-bold text-base-content/70"
             >
-              <span className="text-[9px] uppercase tracking-wider text-slate-400 pl-1.5 pb-1">
+              <span className="text-[9px] uppercase tracking-wider text-base-content/40 pl-1.5 pb-1">
                 Spatial Filters
               </span>
               {Object.keys(layers).map((layerKey) => (
                 <li key={layerKey}>
-                  <label className="flex items-center gap-2 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-xl cursor-pointer">
+                  <label className="flex items-center gap-2 py-1.5 hover:bg-base-200 rounded-xl cursor-pointer">
                     <input
                       type="checkbox"
                       checked={layers[layerKey]}
@@ -468,8 +449,8 @@ export default function GISFieldHub() {
           {/* Manual Refresh Trigger */}
           <button
             onClick={() => refetch()}
-            className={`btn btn-sm btn-square border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl ${
-              isRefetching ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"
+            className={`btn btn-sm btn-square border border-base-300 bg-base-200 hover:bg-base-300 rounded-xl ${
+              isRefetching ? "text-primary" : "text-base-content/60"
             }`}
             title="Synchronize coordinate matrix"
           >
@@ -478,13 +459,13 @@ export default function GISFieldHub() {
         </div>
 
         {/* GIS Hub split layout canvas */}
-        <div className="grow border border-slate-200 dark:border-slate-800/80 rounded-3xl relative z-0 overflow-hidden bg-slate-100 dark:bg-slate-950 shadow-inner flex flex-col lg:flex-row min-h-[500px]">
+        <div className="grow border border-base-300 rounded-3xl relative z-0 overflow-hidden bg-base-200 shadow-inner flex flex-col lg:flex-row min-h-[500px]">
           
           {/* Collapse toggle button */}
           {!isListOpen && (
             <button
               onClick={() => setIsListOpen(true)}
-              className="absolute top-4 left-4 z-10 btn btn-sm h-10 w-10 btn-circle bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-200 shadow-lg flex items-center justify-center cursor-pointer transition-all hover:scale-105"
+              className="absolute top-4 left-4 z-10 btn btn-sm h-10 w-10 btn-circle bg-base-100 border border-base-300 hover:bg-base-200 text-base-content shadow-lg flex items-center justify-center cursor-pointer transition-all hover:scale-105"
               title="Expand telemetry sidebar"
             >
               <ListIcon size={16} />
@@ -493,21 +474,21 @@ export default function GISFieldHub() {
 
           {/* Backdrop-blurred Collapsible HUD Sidebar */}
           {isListOpen && (
-            <div className="absolute lg:relative top-4 lg:top-0 left-4 lg:left-0 z-10 w-76 lg:w-80 h-[calc(100%-32px)] lg:h-full bg-white/95 dark:bg-slate-950/95 backdrop-blur-md lg:rounded-none rounded-2xl shadow-2xl lg:shadow-none border lg:border-r lg:border-y-0 lg:border-l-0 border-slate-200 dark:border-slate-850 flex flex-col overflow-hidden">
+            <div className="absolute lg:relative top-4 lg:top-0 left-4 lg:left-0 z-10 w-76 lg:w-80 h-[calc(100%-32px)] lg:h-full bg-base-100/95 backdrop-blur-md lg:rounded-none rounded-2xl shadow-2xl lg:shadow-none border lg:border-r lg:border-y-0 lg:border-l-0 border-base-300 flex flex-col overflow-hidden">
               
               {/* Telemetry Header */}
-              <div className="p-4 border-b border-slate-100 dark:border-slate-900 bg-slate-50/50 dark:bg-slate-900/20 flex justify-between items-center shrink-0">
+              <div className="p-4 border-b border-base-300 bg-base-200/50 flex justify-between items-center shrink-0">
                 <div>
-                  <h3 className="text-[9px] font-black uppercase tracking-widest text-slate-400 leading-none">
+                  <h3 className="text-[9px] font-black uppercase tracking-widest text-base-content/40 leading-none">
                     Telemetry Stream
                   </h3>
-                  <h2 className="text-xs font-black uppercase text-slate-850 dark:text-slate-100 tracking-tight mt-1 flex items-center gap-1.5">
-                    <MapIcon className="text-[#00643b] dark:text-emerald-500" size={13} /> Sector Registry
+                  <h2 className="text-xs font-black uppercase text-base-content tracking-tight mt-1 flex items-center gap-1.5">
+                    <MapIcon className="text-primary" size={13} /> Sector Registry
                   </h2>
                 </div>
                 <button
                   onClick={() => setIsListOpen(false)}
-                  className="btn btn-ghost btn-xs btn-circle text-slate-400 hover:text-rose-500"
+                  className="btn btn-ghost btn-xs btn-circle text-base-content/40 hover:text-rose-500"
                   title="Collapse telemetry sidebar"
                 >
                   <X size={14} />
@@ -516,8 +497,8 @@ export default function GISFieldHub() {
 
               {/* Subfilters inside sidebar */}
               {activeTab === "health" && (
-                <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-900/60 bg-slate-50/20 flex items-center justify-between shrink-0 text-xs">
-                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">Severity:</span>
+                <div className="px-4 py-2 border-b border-base-300 bg-base-200/20 flex items-center justify-between shrink-0 text-xs">
+                  <span className="text-[9px] font-black uppercase text-base-content/40 tracking-widest">Severity:</span>
                   <div className="flex gap-1">
                     {["All", "High", "Medium", "Low"].map((sev) => (
                       <button
@@ -525,8 +506,8 @@ export default function GISFieldHub() {
                         onClick={() => setSelectedSeverity(sev)}
                         className={`px-1.5 py-0.5 rounded-md text-[8px] font-black uppercase border transition-all ${
                           selectedSeverity === sev
-                            ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/20 dark:text-rose-400 dark:border-rose-900/40"
-                            : "text-slate-400 border-transparent hover:text-slate-700"
+                            ? "bg-rose-500/10 text-rose-600 border-rose-200/50"
+                            : "text-base-content/40 border-transparent hover:text-base-content"
                         }`}
                       >
                         {sev}
@@ -541,7 +522,7 @@ export default function GISFieldHub() {
                 {activeTab === "health" && (
                   <div className="space-y-2">
                     {filteredHealth.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 dark:text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+                      <div className="text-center py-12 text-base-content/40 text-[10px] uppercase font-bold tracking-widest">
                         No health vectors mapped.
                       </div>
                     ) : (
@@ -549,29 +530,29 @@ export default function GISFieldHub() {
                         <div
                           key={item.id}
                           onClick={() => handleSelectItem(item, "health")}
-                          className={`p-3 rounded-xl border transition-all cursor-pointer bg-white dark:bg-slate-900/40 hover:shadow-xs hover:border-rose-500/35 ${
+                          className={`p-3 rounded-xl border transition-all cursor-pointer bg-base-100 hover:shadow-xs hover:border-rose-500/35 ${
                             selectedItem?.id === item.id && selectedItem?.type === "health"
-                              ? "border-rose-500 bg-rose-500/2 shadow-xs"
-                              : "border-slate-100 dark:border-slate-850"
+                              ? "border-rose-500 bg-rose-500/5 shadow-xs"
+                              : "border-base-300"
                           }`}
                         >
                           <div className="flex justify-between items-start">
-                            <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 uppercase truncate max-w-[130px]">
+                            <h4 className="font-extrabold text-xs text-base-content uppercase truncate max-w-[130px]">
                               {item.animal}
                             </h4>
                             <span
                               className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
                                 item.severity === "High"
-                                  ? "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/25 dark:text-rose-400 dark:border-rose-900/45 animate-pulse"
+                                  ? "bg-rose-500/10 text-rose-600 border-rose-200/50 animate-pulse"
                                   : item.severity === "Medium"
-                                  ? "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/25 dark:text-amber-400 dark:border-amber-900/45"
-                                  : "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/25 dark:text-blue-400 dark:border-blue-900/45"
+                                  ? "bg-amber-500/10 text-amber-600 border-amber-200/50"
+                                  : "bg-blue-500/10 text-blue-600 border-blue-200/50"
                               }`}
                             >
                               {item.severity}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                          <p className="text-[10px] text-base-content/50 font-semibold mt-1">
                             Tag: #{item.tag} &bull; Farmer: {item.farmer}
                           </p>
                           <div className="mt-2 flex justify-between items-center text-[9.5px] border-t border-slate-100 dark:border-slate-800/40 pt-2 font-bold">
@@ -591,7 +572,7 @@ export default function GISFieldHub() {
                 {activeTab === "breeding" && (
                   <div className="space-y-2">
                     {filteredBreeding.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 dark:text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+                      <div className="text-center py-12 text-base-content/40 text-[10px] uppercase font-bold tracking-widest">
                         No breeding vectors mapped.
                       </div>
                     ) : (
@@ -599,32 +580,32 @@ export default function GISFieldHub() {
                         <div
                           key={item.id}
                           onClick={() => handleSelectItem(item, "breeding")}
-                          className={`p-3 rounded-xl border transition-all cursor-pointer bg-white dark:bg-slate-900/40 hover:shadow-xs hover:border-emerald-500/35 ${
+                          className={`p-3 rounded-xl border transition-all cursor-pointer bg-base-100 hover:shadow-xs hover:border-emerald-500/35 ${
                             selectedItem?.id === item.id && selectedItem?.type === "breeding"
-                              ? "border-emerald-500 bg-emerald-500/2 shadow-xs"
-                              : "border-slate-100 dark:border-slate-850"
+                              ? "border-emerald-500 bg-emerald-500/5 shadow-xs"
+                              : "border-base-300"
                           }`}
                         >
                           <div className="flex justify-between items-start">
-                            <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 uppercase truncate max-w-[140px]">
+                            <h4 className="font-extrabold text-xs text-base-content uppercase truncate max-w-[140px]">
                               Sire: {item.breed}
                             </h4>
                             <span
                               className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
                                 item.status === "Confirmed Pregnant"
-                                  ? "bg-purple-50 text-purple-750 border-purple-200 dark:bg-purple-950/25 dark:text-purple-400 dark:border-purple-900/45"
-                                  : "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/25 dark:text-emerald-400 dark:border-emerald-900/45"
+                                  ? "bg-purple-500/10 text-purple-600 border-purple-200/50"
+                                  : "bg-emerald-500/10 text-emerald-600 border-emerald-200/50"
                               }`}
                             >
                               {item.status === "Confirmed Pregnant" ? "Pregnant" : "Inseminated"}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                          <p className="text-[10px] text-base-content/50 font-semibold mt-1">
                             Animal Tag: #{item.tag} &bull; Owner: {item.farmer}
                           </p>
-                          <div className="mt-2 flex justify-between items-center text-[9.5px] border-t border-slate-100 dark:border-slate-800/40 pt-2 font-bold">
-                            <span className="text-slate-400">Date: {item.date}</span>
-                            <span className="text-slate-400 uppercase flex items-center gap-0.5">
+                          <div className="mt-2 flex justify-between items-center text-[9.5px] border-t border-base-300 pt-2 font-bold">
+                            <span className="text-base-content/40">Date: {item.date}</span>
+                            <span className="text-base-content/40 uppercase flex items-center gap-0.5">
                               <MapPin size={9} /> {item.barangay}
                             </span>
                           </div>
@@ -637,7 +618,7 @@ export default function GISFieldHub() {
                 {activeTab === "dispatches" && (
                   <div className="space-y-2">
                     {filteredDispatches.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 dark:text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+                      <div className="text-center py-12 text-base-content/40 text-[10px] uppercase font-bold tracking-widest">
                         No active dispatch dispatches.
                       </div>
                     ) : (
@@ -645,34 +626,34 @@ export default function GISFieldHub() {
                         <div
                           key={item.id}
                           onClick={() => handleSelectItem(item, "dispatch")}
-                          className={`p-3 rounded-xl border transition-all cursor-pointer bg-white dark:bg-slate-900/40 hover:shadow-xs hover:border-purple-500/35 ${
+                          className={`p-3 rounded-xl border transition-all cursor-pointer bg-base-100 hover:shadow-xs hover:border-purple-500/35 ${
                             selectedItem?.id === item.id && selectedItem?.type === "dispatch"
-                              ? "border-purple-500 bg-purple-500/2 shadow-xs"
-                              : "border-slate-100 dark:border-slate-850"
+                              ? "border-purple-500 bg-purple-500/5 shadow-xs"
+                              : "border-base-300"
                           }`}
                         >
                           <div className="flex justify-between items-start">
-                            <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 uppercase truncate max-w-[140px]">
+                            <h4 className="font-extrabold text-xs text-base-content uppercase truncate max-w-[140px]">
                               {item.task}
                             </h4>
                             <span
                               className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${
                                 item.urgency === "High"
-                                  ? "bg-rose-50 text-rose-750 border-rose-200 dark:bg-rose-950/25 dark:text-rose-400 dark:border-rose-900/45 animate-pulse"
-                                  : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                                  ? "bg-rose-500/10 text-rose-600 border-rose-250/50 animate-pulse"
+                                  : "bg-base-200 text-base-content/70 border-base-300"
                               }`}
                             >
                               {item.urgency}
                             </span>
                           </div>
-                          <p className="text-[10px] text-slate-500 dark:text-slate-400 font-semibold mt-1">
+                          <p className="text-[10px] text-base-content/50 font-semibold mt-1">
                             Client: {item.farmer} &bull; Dispatch: {item.time}
                           </p>
-                          <div className="mt-2 flex justify-between items-center text-[9.5px] border-t border-slate-100 dark:border-slate-800/40 pt-2 font-bold">
-                            <span className="text-[#00643b] dark:text-emerald-400 uppercase">
+                          <div className="mt-2 flex justify-between items-center text-[9.5px] border-t border-base-300 pt-2 font-bold">
+                            <span className="text-primary uppercase">
                               {item.status || "Assigned"}
                             </span>
-                            <span className="text-slate-400 uppercase flex items-center gap-0.5">
+                            <span className="text-base-content/40 uppercase flex items-center gap-0.5">
                               <MapPin size={9} /> {item.barangay}
                             </span>
                           </div>
@@ -685,7 +666,7 @@ export default function GISFieldHub() {
                 {activeTab === "demographics" && (
                   <div className="space-y-2">
                     {filteredDemographics.length === 0 ? (
-                      <div className="text-center py-12 text-slate-400 dark:text-slate-500 text-[10px] uppercase font-bold tracking-widest">
+                      <div className="text-center py-12 text-base-content/40 text-[10px] uppercase font-bold tracking-widest">
                         Demographics circles scoped to Oton.
                       </div>
                     ) : (
@@ -695,32 +676,32 @@ export default function GISFieldHub() {
                           <div
                             key={item.id}
                             onClick={() => handleSelectItem(item, "demographics")}
-                            className={`p-3 rounded-xl border transition-all cursor-pointer bg-white dark:bg-slate-900/40 hover:shadow-xs hover:border-emerald-500/35 ${
+                            className={`p-3 rounded-xl border transition-all cursor-pointer bg-base-100 hover:shadow-xs hover:border-emerald-500/35 ${
                               selectedItem?.id === item.id && selectedItem?.type === "demographics"
-                                ? "border-emerald-500 bg-emerald-500/2 shadow-xs"
-                                : "border-slate-100 dark:border-slate-850"
+                                ? "border-emerald-500 bg-emerald-500/5 shadow-xs"
+                                : "border-base-300"
                             }`}
                           >
                             <div className="flex justify-between items-center">
-                              <h4 className="font-extrabold text-xs text-slate-800 dark:text-slate-200 uppercase truncate max-w-[140px]">
+                              <h4 className="font-extrabold text-xs text-base-content uppercase truncate max-w-[140px]">
                                 {item.barangay}
                               </h4>
-                              <span className="badge bg-[#00643b] text-white border-none font-bold text-[9px] px-2 py-0.5 h-auto">
+                              <span className="badge bg-primary text-white border-none font-bold text-[9px] px-2 py-0.5 h-auto">
                                 {total} Heads
                               </span>
                             </div>
-                            <div className="grid grid-cols-3 gap-1 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800/40 text-center text-[10px] font-bold">
+                            <div className="grid grid-cols-3 gap-1 mt-3 pt-2 border-t border-base-300 text-center text-[10px] font-bold">
                               <div>
-                                <span className="text-[8px] font-black uppercase text-slate-400 block">Cattle</span>
-                                <span className="text-slate-700 dark:text-slate-300">{item.cattle}</span>
+                                <span className="text-[8px] font-black uppercase text-base-content/40 block">Cattle</span>
+                                <span className="text-base-content">{item.cattle}</span>
                               </div>
-                              <div className="border-x border-slate-100 dark:border-slate-800/60">
-                                <span className="text-[8px] font-black uppercase text-slate-400 block">Carabao</span>
-                                <span className="text-slate-700 dark:text-slate-300">{item.carabao}</span>
+                              <div className="border-x border-base-300">
+                                <span className="text-[8px] font-black uppercase text-base-content/40 block">Carabao</span>
+                                <span className="text-base-content">{item.carabao}</span>
                               </div>
                               <div>
-                                <span className="text-[8px] font-black uppercase text-slate-400 block">Swine</span>
-                                <span className="text-slate-700 dark:text-slate-300">{item.swine}</span>
+                                <span className="text-[8px] font-black uppercase text-base-content/40 block">Swine</span>
+                                <span className="text-base-content">{item.swine}</span>
                               </div>
                             </div>
                           </div>
@@ -733,57 +714,57 @@ export default function GISFieldHub() {
 
               {/* Collapsible details inspector HUD drawer */}
               {selectedItem && (
-                <div className="bg-slate-50 dark:bg-slate-900 border-t border-slate-150 dark:border-slate-850 p-4 shrink-0 animate-in slide-in-from-bottom duration-250">
+                <div className="bg-base-200 border-t border-base-300 p-4 shrink-0 animate-in slide-in-from-bottom duration-250">
                   <div className="flex justify-between items-start mb-2">
                     <div>
-                      <span className="inline-block text-[8px] font-black uppercase text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-250 px-2 py-0.5 rounded-md tracking-wider">
+                      <span className="inline-block text-[8px] font-black uppercase text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-md tracking-wider">
                         Geographic Node Focused
                       </span>
-                      <h3 className="font-extrabold text-xs uppercase text-slate-850 dark:text-slate-100 mt-1 truncate max-w-[200px]">
+                      <h3 className="font-extrabold text-xs uppercase text-base-content mt-1 truncate max-w-[200px]">
                         {selectedItem.animal || selectedItem.task || selectedItem.barangay || "Breeding Records"}
                       </h3>
                     </div>
                     <button
                       onClick={() => setSelectedItem(null)}
-                      className="btn btn-ghost btn-xs btn-circle text-slate-400 hover:text-slate-600"
+                      className="btn btn-ghost btn-xs btn-circle text-base-content/40 hover:text-base-content"
                     >
                       <X size={12} />
                     </button>
                   </div>
 
-                  <div className="text-[11px] bg-white dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs font-semibold leading-relaxed">
+                  <div className="text-[11px] bg-base-100 p-3 rounded-xl border border-base-300 shadow-2xs font-semibold leading-relaxed">
                     {selectedItem.type === "health" && (
-                      <div className="grid grid-cols-2 gap-2 text-slate-500 dark:text-slate-400">
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Owner:</span> <span className="font-bold text-slate-700 dark:text-slate-300 truncate block">{selectedItem.farmer}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Sector Address:</span> <span className="font-bold text-slate-700 dark:text-slate-300 truncate block">{selectedItem.barangay}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Symptoms Alert:</span> <span className="font-bold text-rose-600 truncate block">{selectedItem.symptoms}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Severity:</span> <span className="font-bold text-slate-700 dark:text-slate-300 block">{selectedItem.severity}</span></div>
+                      <div className="grid grid-cols-2 gap-2 text-base-content/60">
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Owner:</span> <span className="font-bold text-base-content truncate block">{selectedItem.farmer}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Sector Address:</span> <span className="font-bold text-base-content truncate block">{selectedItem.barangay}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Symptoms Alert:</span> <span className="font-bold text-rose-600 truncate block">{selectedItem.symptoms}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Severity:</span> <span className="font-bold text-base-content block">{selectedItem.severity}</span></div>
                       </div>
                     )}
 
                     {selectedItem.type === "breeding" && (
-                      <div className="grid grid-cols-2 gap-2 text-slate-500 dark:text-slate-400">
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Owner:</span> <span className="font-bold text-slate-700 dark:text-slate-300 truncate block">{selectedItem.farmer}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Sector Address:</span> <span className="font-bold text-slate-700 dark:text-slate-300 truncate block">{selectedItem.barangay}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Sire Genotype:</span> <span className="font-bold text-blue-500 truncate block">{selectedItem.breed}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Outcome Status:</span> <span className="font-bold text-emerald-600 truncate block">{selectedItem.status}</span></div>
+                      <div className="grid grid-cols-2 gap-2 text-base-content/60">
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Owner:</span> <span className="font-bold text-base-content truncate block">{selectedItem.farmer}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Sector Address:</span> <span className="font-bold text-base-content truncate block">{selectedItem.barangay}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Sire Genotype:</span> <span className="font-bold text-blue-500 truncate block">{selectedItem.breed}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Outcome Status:</span> <span className="font-bold text-emerald-650 dark:text-emerald-400 truncate block">{selectedItem.status}</span></div>
                       </div>
                     )}
 
                     {selectedItem.type === "dispatch" && (
-                      <div className="grid grid-cols-2 gap-2 text-slate-500 dark:text-slate-400">
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Client:</span> <span className="font-bold text-slate-700 dark:text-slate-300 truncate block">{selectedItem.farmer}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Sector Address:</span> <span className="font-bold text-slate-700 dark:text-slate-300 truncate block">{selectedItem.barangay}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Dispatch Time:</span> <span className="font-bold text-slate-700 dark:text-slate-300 block">{selectedItem.time}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Priority:</span> <span className="font-bold text-purple-600 block">{selectedItem.urgency}</span></div>
+                      <div className="grid grid-cols-2 gap-2 text-base-content/60">
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Client:</span> <span className="font-bold text-base-content truncate block">{selectedItem.farmer}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Sector Address:</span> <span className="font-bold text-base-content truncate block">{selectedItem.barangay}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Dispatch Time:</span> <span className="font-bold text-base-content block">{selectedItem.time}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Priority:</span> <span className="font-bold text-purple-600 block">{selectedItem.urgency}</span></div>
                       </div>
                     )}
 
                     {selectedItem.type === "demographics" && (
-                      <div className="grid grid-cols-3 gap-1 text-center font-bold text-slate-700 dark:text-slate-300">
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Cattle</span><span className="block mt-0.5">{selectedItem.cattle}</span></div>
-                        <div className="border-x border-slate-150 dark:border-slate-800/80"><span className="text-[8px] font-black uppercase text-slate-400 block">Carabao</span><span className="block mt-0.5">{selectedItem.carabao}</span></div>
-                        <div><span className="text-[8px] font-black uppercase text-slate-400 block">Swine</span><span className="block mt-0.5">{selectedItem.swine}</span></div>
+                      <div className="grid grid-cols-3 gap-1 text-center font-bold text-base-content/80">
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Cattle</span><span className="block mt-0.5">{selectedItem.cattle}</span></div>
+                        <div className="border-x border-base-300"><span className="text-[8px] font-black uppercase text-base-content/40 block">Carabao</span><span className="block mt-0.5">{selectedItem.carabao}</span></div>
+                        <div><span className="text-[8px] font-black uppercase text-base-content/40 block">Swine</span><span className="block mt-0.5">{selectedItem.swine}</span></div>
                       </div>
                     )}
                   </div>
@@ -793,7 +774,7 @@ export default function GISFieldHub() {
                       setMapCenter(selectedItem.coords);
                       setMapZoom(16);
                     }}
-                    className="w-full btn btn-xs bg-[#00643b] hover:bg-[#004d2e] text-white border-none mt-2.5 rounded-xl font-bold uppercase text-[9px] tracking-wider"
+                    className="w-full btn btn-xs btn-primary text-white border-none mt-2.5 rounded-xl font-bold uppercase text-[9px] tracking-wider"
                   >
                     Focus coordinate Pin
                   </button>
@@ -828,7 +809,7 @@ export default function GISFieldHub() {
                   );
                   return (
                     <Marker
-                      key={`health-pin-${h.id}`}
+                       key={`health-pin-${h.id}`}
                       position={h.coords}
                       icon={icon}
                       eventHandlers={{ click: () => handleSelectItem(h, "health") }}
@@ -901,11 +882,11 @@ export default function GISFieldHub() {
             </MapContainer>
 
             {/* Floating Map Legend overlay */}
-            <div className="absolute bottom-4 right-4 z-10 hidden sm:block bg-white/90 dark:bg-slate-950/90 backdrop-blur-md px-4 py-3 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl w-48 text-[11px] font-bold pointer-events-auto">
-              <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 pb-2 border-b border-slate-100 dark:border-slate-800/80 flex items-center gap-1.5">
-                <Sparkles size={11} className="text-[#00643b] dark:text-emerald-400" /> GIS Map Legend
+            <div className="absolute bottom-4 right-4 z-10 hidden sm:block bg-base-100/90 backdrop-blur-md px-4 py-3 border border-base-300 rounded-2xl shadow-xl w-48 text-[11px] font-bold pointer-events-auto">
+              <span className="text-[9px] font-black uppercase tracking-widest text-base-content/40 pb-2 border-b border-base-300 flex items-center gap-1.5">
+                <Sparkles size={11} className="text-primary" /> GIS Map Legend
               </span>
-              <div className="space-y-1.5 mt-2.5 font-bold text-slate-700 dark:text-slate-350">
+              <div className="space-y-1.5 mt-2.5 font-bold text-base-content/80">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.35)] shrink-0"></span>
                   <span>Health Risk Incidents 🩺</span>
@@ -923,9 +904,9 @@ export default function GISFieldHub() {
                   <span>Active Dispatches 📋</span>
                 </div>
                 {layers.demographics && (
-                  <div className="flex items-center gap-2 border-t border-slate-100 dark:border-slate-800/60 pt-2 mt-2">
+                  <div className="flex items-center gap-2 border-t border-base-300 pt-2 mt-2">
                     <span className="w-3.5 h-3.5 rounded-full border border-emerald-500 bg-emerald-500/10 shrink-0"></span>
-                    <span className="text-[9.5px] text-slate-400">Sector Census Density</span>
+                    <span className="text-[9.5px] text-base-content/40">Sector Census Density</span>
                   </div>
                 )}
               </div>

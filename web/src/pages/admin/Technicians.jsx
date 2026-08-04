@@ -1,12 +1,10 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import { TableRowSkeleton } from "../../components/Skeleton";
 import {
   Users,
-  Search,
   Plus,
   Shield,
   Phone,
@@ -15,12 +13,9 @@ import {
   ChevronRight,
   TrendingUp,
   Award,
-  Calendar,
   X,
-  UserCheck,
-  CheckCircle,
 } from "lucide-react";
-import Topbar from "../../components/ui/Topbar";
+import Topbar from "../../components/layout/Topbar";
 
 export default function Technicians() {
   const navigate = useNavigate();
@@ -77,6 +72,10 @@ export default function Technicians() {
       toast.error("Please fill in all required fields.");
       return;
     }
+    if (!/^09\d{9}$/.test(invitePhone)) {
+      toast.error("Phone number must be exactly 11 digits, start with 09, and contain no letters.");
+      return;
+    }
     setIsSubmitting(true);
     const nameParts = inviteName.trim().split(" ");
     const firstName = nameParts[0] || "";
@@ -90,7 +89,7 @@ export default function Technicians() {
         role: "technician",
         specialty: inviteSpecialty,
       });
-      toast.success(`Invitation sent to ${inviteName}!`);
+      toast.success(`Invitation email sent successfully to ${inviteEmail}!`);
       queryClient.invalidateQueries({ queryKey: ["admin", "technicians-list"] });
       setIsInviteModalOpen(false);
       setInviteName("");
@@ -111,7 +110,14 @@ export default function Technicians() {
         searchPlaceholder="Search officers name, email..."
         searchValue={searchQuery}
         onSearchChange={(e) => setSearchQuery(e.target.value)}
-      />
+      >
+        <button 
+          onClick={() => setIsInviteModalOpen(true)}
+          className="btn btn-sm bg-[#00643b] hover:bg-[#004d2e] border-none text-white text-xs font-bold gap-1.5 rounded-xl px-4 flex items-center transition-all cursor-pointer active:scale-95 shadow-md shadow-emerald-500/10"
+        >
+          <Plus size={13} /> Invite Officer
+        </button>
+      </Topbar>
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">
         {/* Dynamic Metric Ribbon */}
@@ -211,8 +217,13 @@ export default function Technicians() {
                             {initials}
                           </div>
                           <div>
-                            <h4 className="font-extrabold text-slate-800 dark:text-slate-200 group-hover:text-[#00643b] dark:group-hover:text-emerald-400 transition-colors truncate max-w-[160px]">
-                              {tech.name}
+                            <h4 className="font-extrabold text-slate-800 dark:text-slate-200 group-hover:text-[#00643b] dark:group-hover:text-emerald-400 transition-colors truncate max-w-[160px] flex items-center gap-1.5">
+                              <span>{tech.name}</span>
+                              {!tech.clerkId && (
+                                <span className="inline-block text-[8px] font-black uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded">
+                                  Invited
+                                </span>
+                              )}
                             </h4>
                             <span className="inline-block text-[9px] font-black uppercase bg-slate-100 dark:bg-slate-900 px-2 py-0.5 rounded-md text-slate-400 mt-1">
                               {tech.specialty || "Veterinary Officer"}
@@ -305,9 +316,14 @@ export default function Technicians() {
                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Phone Number</label>
                 <input
                   type="tel"
-                  placeholder="e.g. +63 917 123 4567"
+                  placeholder="e.g. 09171234567"
                   value={invitePhone}
-                  onChange={(e) => setInvitePhone(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, "");
+                    if (value.length <= 11) {
+                      setInvitePhone(value);
+                    }
+                  }}
                   className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-850 rounded-xl px-4 py-2.5 outline-none font-bold"
                   required
                 />

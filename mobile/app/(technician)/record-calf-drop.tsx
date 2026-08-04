@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, FlatList, Image } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Save, Plus, Trash2, Calendar, Info, User, ChevronDown, Search, X, ShieldAlert, Camera, Image as ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, Save, Info, User, ChevronDown, Search, X, Camera, Image as ImageIcon } from 'lucide-react-native';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -10,6 +10,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import EarTagGenerator from '@/components/EarTagGenerator';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
+import {
+    OfflineMutationLifecycleState,
+    useOfflineMutation,
+} from '@/hooks/useOfflineMutation';
+import { ConfirmationModal } from '@/components/ConfirmationModal';
+import { animalKeys, animalRecordKeys, breedingKeys, notificationKeys, technicianKeys } from '@/lib/queryKeys';
+import { tasksQueryKeys } from '@/features/technician/hooks/useTechnicianTasks';
+import { recordsQueryKeys } from '@/features/technician/hooks/useTechnicianRecords';
+import { animalQueryKeys } from '@/features/technician/hooks/useTechnicianAnimal';
+import { Skeleton } from "@/components/ui/Skeleton";
 
 interface CalfEntry {
     sex: string;
@@ -18,7 +29,18 @@ interface CalfEntry {
     brand: string;
     imageUri?: string;
     imageBase64?: string;
+    isLiving?: boolean;
 }
+
+const CALF_COLOR_OPTIONS = [
+    'Black',
+    'Brown',
+    'White',
+    'Red',
+    'Gray',
+    'Spotted',
+    'Mixed',
+];
 
 export default function RecordCalfDropScreen() {
     const router = useRouter();
@@ -31,6 +53,7 @@ export default function RecordCalfDropScreen() {
     const initialMotherId = params.motherId as string;
     const initialPregnancyId = params.pregnancyId as string;
     const initialMotherTag = params.motherTag as string;
+    const taskId = params.taskId as string;
 
     const [motherId, setMotherId] = useState(initialMotherId || '');
     const [pregnancyId, setPregnancyId] = useState(initialPregnancyId || '');
@@ -43,31 +66,95 @@ export default function RecordCalfDropScreen() {
 
     const [animals, setAnimals] = useState<any[]>([]);
     const [selectedAnimal, setSelectedAnimal] = useState<any>(null);
+    const [selectedPregnancy, setSelectedPregnancy] = useState<any>(null);
     const [showAnimalModal, setShowAnimalModal] = useState(false);
     const [searchAnimalQuery, setSearchAnimalQuery] = useState('');
-    const [loadingPregnancies, setLoadingPregnancies] = useState(false);
 
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [calvingEase, setCalvingEase] = useState('Natural');
+    const [outcome, setOutcome] = useState<'live_birth' | 'mixed' | 'stillbirth' | 'abortion'>('live_birth');
     const [numCalves, setNumCalves] = useState(1);
+    const [numCalvesInput, setNumCalvesInput] = useState('1');
     const [calves, setCalves] = useState<CalfEntry[]>([
         { sex: 'F', earTag: '', color: '', brand: '' }
     ]);
     const [note, setNote] = useState('');
     const [saving, setSaving] = useState(false);
+    const [submissionState, setSubmissionState] =
+        useState<OfflineMutationLifecycleState>('idle');
+    const submitLockRef = useRef(false);
+    const [confirmSubmitVisible, setConfirmSubmitVisible] = useState(false);
+    const calvingMutation = useOfflineMutation(
+        {
+            url: '/technician/record-calving',
+            method: 'POST',
+            description: `Technician calving record for ${motherTag || 'mother animal'}`,
+            reconcileOnTimeout: true,
+        },
+        {
+            onLifecycleStateChange: setSubmissionState,
+            onSuccess: (result) => {
+                if (result.status === 'synced') {
+                    toast.success("Calving recorded successfully!");
+                    [
+                        technicianKeys.dashboard(),
+                        recordsQueryKeys.official,
+                        tasksQueryKeys.all,
+                        animalKeys.all,
+                        animalQueryKeys.all,
+                        animalKeys.detail(motherId),
+                        animalKeys.timeline(motherId),
+                        breedingKeys.tracker(motherId),
+                        animalRecordKeys.records(motherId),
+                        notificationKeys.all,
+                    ].forEach((queryKey) => queryClient.invalidateQueries({ queryKey }));
+                    router.back();
+                }
+            },
+            onError: (err: any) => {
+                submitLockRef.current = false;
+                setSubmissionState('idle');
+                console.error(err);
+                toast.error(err.response?.data?.message || "Failed to record calving event");
+            },
+        },
+    );
 
     const [farmerName, setFarmerName] = useState('');
     const [farmerAnimalCount, setFarmerAnimalCount] = useState(0);
+    const [loadingDetails, setLoadingDetails] = useState(!!initialMotherId);
+
+    const selectActivePregnancy = (history: any, requestedPregnancyId?: string) => {
+        const calvedIds = new Set(
+            (history.calvings || []).map((item: any) => String(item.pregnancyId?._id || item.pregnancyId)),
+        );
+        const eligible = (history.pregnancies || []).filter((item: any) =>
+            item.pregnancyDiagnosis?.result === 'Pregnant' &&
+            !['completed', 'lost'].includes(item.cycleStatus) &&
+            !calvedIds.has(String(item._id || item.id)),
+        );
+        const pregnancy = requestedPregnancyId
+            ? eligible.find((item: any) => String(item._id || item.id) === String(requestedPregnancyId))
+            : eligible[0];
+        if (!pregnancy) return null;
+        const insemination = (history.inseminations || []).find(
+            (item: any) => String(item._id || item.id) === String(pregnancy.inseminationId?._id || pregnancy.inseminationId),
+        );
+        return { ...pregnancy, insemination };
+    };
 
     // Fetch mother details if initialMotherId is provided (to get farmer details for EarTagGenerator)
     useEffect(() => {
         const fetchDetailsForInitialMother = async () => {
             if (initialMotherId) {
+                setLoadingDetails(true);
                 try {
                     const animalRes = await api.get(`/animals/${initialMotherId}`);
                     const animalData = animalRes.data;
                     if (animalData && animalData.farmerId) {
                         setFarmerName(animalData.farmerId.name || '');
+                        setSelectedAnimal(animalData);
+                        setMotherTag(animalData.earTag || animalData.animalId || '');
                         
                         // Fetch all animals for this farmer to get the count
                         const farmerId = animalData.farmerId._id || animalData.farmerId;
@@ -76,14 +163,25 @@ export default function RecordCalfDropScreen() {
                             ? farmerAnimalsRes.data 
                             : (farmerAnimalsRes.data?.data || []);
                         setFarmerAnimalCount(list.length);
+                        const historyRes = await api.get(`/technician/animal-history/${initialMotherId}`);
+                        const activePregnancy = selectActivePregnancy(historyRes.data, initialPregnancyId);
+                        if (!activePregnancy) {
+                            setPregnancyId('');
+                            toast.error('This animal has no active technician-confirmed pregnancy.');
+                            return;
+                        }
+                        setPregnancyId(String(activePregnancy._id || activePregnancy.id));
+                        setSelectedPregnancy(activePregnancy);
                     }
                 } catch (err) {
                     console.error("Error fetching mother details:", err);
+                } finally {
+                    setLoadingDetails(false);
                 }
             }
         };
         fetchDetailsForInitialMother();
-    }, [initialMotherId, api]);
+    }, [initialMotherId, initialPregnancyId, api]);
 
     // Fetch farmers for standalone mode
     useEffect(() => {
@@ -106,6 +204,7 @@ export default function RecordCalfDropScreen() {
         setSelectedAnimal(null);
         setMotherId('');
         setPregnancyId('');
+        setSelectedPregnancy(null);
         setMotherTag('');
         setShowFarmerModal(false);
 
@@ -129,30 +228,31 @@ export default function RecordCalfDropScreen() {
         setMotherId(animal._id);
         setMotherTag(animal.earTag);
         setShowAnimalModal(false);
-        setLoadingPregnancies(true);
-
         try {
-            // Load animal history to get the latest positive pregnancy check
+            // Load animal history and select only an uncalved, confirmed pregnancy.
             const res = await api.get(`/technician/animal-history/${animal._id}`);
             const history = res.data;
-            const pregnanciesList = history.pregnancies || [];
-            if (pregnanciesList.length > 0) {
-                // Pick the most recent pregnancy that is still active
-                setPregnancyId(pregnanciesList[0]._id || pregnanciesList[0].id);
+            const activePregnancy = selectActivePregnancy(history);
+            if (activePregnancy) {
+                setPregnancyId(activePregnancy._id || activePregnancy.id);
+                setSelectedPregnancy(activePregnancy);
             } else {
+                setPregnancyId('');
+                setSelectedPregnancy(null);
                 toast.error('No pregnancy record found for this animal');
             }
         } catch (err) {
             console.error(err);
             toast.error('Failed to load pregnancy details');
-        } finally {
-            setLoadingPregnancies(false);
         }
     };
 
     const handleNumChange = (val: string) => {
-        const count = parseInt(val) || 1;
-        if (count < 1) return;
+        const cleaned = val.replace(/[^0-9]/g, '');
+        setNumCalvesInput(cleaned);
+        if (!cleaned) return;
+
+        const count = Math.min(Math.max(parseInt(cleaned, 10), 1), 5);
         
         let newCalves = [...calves];
         if (count > newCalves.length) {
@@ -166,50 +266,46 @@ export default function RecordCalfDropScreen() {
         setCalves(newCalves);
     };
 
+    const handleNumBlur = () => {
+        if (!numCalvesInput) {
+            setNumCalvesInput(numCalves.toString());
+        }
+    };
+
+    const isLiveBirth = outcome === 'live_birth';
+    const isAbortion = outcome === 'abortion';
+    const handleOutcomeSelect = (value: string) => {
+        const nextOutcome = value as typeof outcome;
+        setOutcome(nextOutcome);
+        if (nextOutcome === 'abortion') {
+            setNumCalves(0);
+            setNumCalvesInput('0');
+            setCalves([]);
+        } else if (calves.length === 0) {
+            setNumCalves(1);
+            setNumCalvesInput('1');
+            setCalves([{ sex: 'F', earTag: '', color: '', brand: '', isLiving: nextOutcome !== 'stillbirth' }]);
+        } else {
+            setCalves(calves.map((calf, index) => ({
+                ...calf,
+                isLiving: nextOutcome === 'live_birth' ? true : nextOutcome === 'stillbirth' ? false : index === 0,
+            })));
+        }
+    };
+
     const updateCalf = (index: number, field: string, value: string) => {
         const newCalves = [...calves];
         (newCalves[index] as any)[field] = value;
         setCalves(newCalves);
     };
 
-    const pickCalfImage = async (index: number) => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ["images"],
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.5,
-            base64: true,
-        });
-        if (!result.canceled && result.assets?.length > 0) {
+    const handleSelectCalfPhoto = async (index: number, source: "camera" | "library") => {
+        const result = await pickImageFromSource(source, { aspect: [4, 3] });
+        if (result) {
             const newCalves = [...calves];
-            newCalves[index].imageUri = result.assets[0].uri;
-            newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
+            newCalves[index].imageUri = result.uri;
+            newCalves[index].imageBase64 = result.base64;
             setCalves(newCalves);
-            toast.success(`Photo attached to Calf #${index + 1}`);
-        }
-    };
-
-    const takeCalfPhoto = async (index: number) => {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        if (status !== 'granted') {
-            toast.error("Permission to access camera was denied");
-            return;
-        }
-
-        const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ["images"],
-            allowsEditing: true,
-            aspect: [4, 3],
-            quality: 0.5,
-            base64: true,
-        });
-
-        if (!result.canceled && result.assets?.length > 0) {
-            const newCalves = [...calves];
-            newCalves[index].imageUri = result.assets[0].uri;
-            newCalves[index].imageBase64 = `data:image/jpeg;base64,${result.assets[0].base64}`;
-            setCalves(newCalves);
-            toast.success(`Photo attached to Calf #${index + 1}`);
         }
     };
 
@@ -220,12 +316,74 @@ export default function RecordCalfDropScreen() {
         setCalves(newCalves);
     };
 
-    const handleSave = async () => {
+    const validateCalvingForm = () => {
+        toast.dismiss();
         if (!motherId || !pregnancyId) {
             toast.error("Please select a mother with an active pregnancy.");
-            return;
+            return false;
         }
 
+        const parsedDate = new Date(date);
+        if (!date || Number.isNaN(parsedDate.getTime())) {
+            toast.error("Enter a valid calving date.");
+            return false;
+        }
+        if (parsedDate.getTime() > Date.now()) {
+            toast.error("Calving date cannot be in the future.");
+            return false;
+        }
+
+        const normalizedCalves = calves.map((calf) => ({
+            ...calf,
+            sex: calf.sex?.trim(),
+            earTag: calf.earTag?.trim(),
+            color: calf.color?.trim(),
+            brand: calf.brand?.trim(),
+        }));
+
+        if (numCalves !== normalizedCalves.length) {
+            toast.error('The number of calves must match the entered calf rows.');
+            return false;
+        }
+
+        if (isAbortion) return true;
+
+        const incompleteIndex = normalizedCalves.findIndex((calf) =>
+            calf.isLiving !== false
+                ? !["F", "M"].includes(calf.sex) || !calf.earTag || !calf.color
+                : calf.sex && !["F", "M"].includes(calf.sex),
+        );
+
+        if (incompleteIndex >= 0) {
+            toast.error(isLiveBirth
+                ? `Please complete sex, ear tag, and color for Calf #${incompleteIndex + 1}.`
+                : `Please correct the sex for Stillborn Calf #${incompleteIndex + 1}.`);
+            return false;
+        }
+
+        const livingCalves = normalizedCalves.filter((calf) => calf.isLiving !== false);
+        if (outcome === 'mixed' && (livingCalves.length === 0 || livingCalves.length === normalizedCalves.length)) {
+            toast.error('Mixed outcome requires at least one living and one stillborn calf.');
+            return false;
+        }
+        const duplicateEarTag = livingCalves.find((calf, index) =>
+            livingCalves.findIndex(
+                (item) => item.earTag.toLowerCase() === calf.earTag.toLowerCase(),
+            ) !== index,
+        );
+
+        if (duplicateEarTag) {
+            toast.error(`Duplicate calf ear tag detected: ${duplicateEarTag.earTag}`);
+            return false;
+        }
+
+        setCalves(normalizedCalves);
+        return true;
+    };
+
+    const submitCalvingRecord = async () => {
+        if (submitLockRef.current) return;
+        submitLockRef.current = true;
         setSaving(true);
         try {
             const payload = {
@@ -233,28 +391,48 @@ export default function RecordCalfDropScreen() {
                 animalId: motherId,
                 date,
                 calvingEase,
+                outcome,
                 numberOfCalves: numCalves,
-                calves: calves.map(c => ({
+                calves: calves.filter(c => c.isLiving !== false).map(c => ({
                     sex: c.sex,
                     earTag: c.earTag,
                     color: c.color,
                     brand: c.brand,
                     imageUrl: c.imageBase64 || ""
                 })),
-                technicianNote: note
+                nonLivingCalves: calves.filter(c => c.isLiving === false).map(c => ({
+                    sex: c.sex, earTag: c.earTag, color: c.color, brand: c.brand,
+                })),
+                technicianNote: note,
+                taskId: taskId || undefined,
             };
 
-            await api.post('/technician/record-calving', payload);
-            toast.success("Calf Drop recorded successfully!");
-            queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
-            router.back();
-        } catch (err: any) {
-            console.error(err);
-            toast.error(err.response?.data?.message || "Failed to record calving event");
+            await calvingMutation.mutateAsync(payload);
+        } catch {
+            // Handled by mutation callbacks.
         } finally {
             setSaving(false);
         }
     };
+
+    const handleSave = () => {
+        if (submitLockRef.current || saving || calvingMutation.isPending || !validateCalvingForm()) return;
+
+        setConfirmSubmitVisible(true);
+    };
+
+    const submissionLocked =
+        submitLockRef.current ||
+        saving ||
+        calvingMutation.isPending ||
+        ['submitting', 'reconciling', 'replaying', 'queued'].includes(submissionState);
+    const submissionStatusMessage = submissionState === 'queued'
+        ? 'Submission saved safely and queued. It will continue with the same operation ID.'
+        : ['reconciling', 'replaying'].includes(submissionState)
+            ? 'Checking submission status…'
+            : submissionState === 'submitting'
+                ? 'Submitting calving record…'
+                : null;
 
     const filteredFarmers = farmers.filter(f => 
         f.name?.toLowerCase().includes(searchFarmerQuery.toLowerCase()) ||
@@ -266,6 +444,26 @@ export default function RecordCalfDropScreen() {
         a.breed?.toLowerCase().includes(searchAnimalQuery.toLowerCase())
     );
 
+    const aiDate = selectedPregnancy?.insemination?.inseminationDate;
+    const diagnosisDate = selectedPregnancy?.pregnancyDiagnosis?.date;
+    const expectedCalvingDate = selectedPregnancy?.targetCalvingDate || selectedAnimal?.expectedCalvingDate;
+    const eventTiming = (() => {
+        if (!expectedCalvingDate || !date) return 'Timing unavailable';
+        const differenceDays = Math.round(
+            (new Date(date).getTime() - new Date(expectedCalvingDate).getTime()) / 86400000,
+        );
+        if (differenceDays < -7) return `${Math.abs(differenceDays)} days early`;
+        if (differenceDays > 7) return `${differenceDays} days overdue`;
+        return 'Due window';
+    })();
+    const formatDate = (value: any) => value
+        ? new Date(value).toLocaleDateString()
+        : 'Not available';
+
+    if (loadingDetails) {
+        return <RecordCalfDropSkeleton onBack={() => router.back()} />;
+    }
+
     return (
         <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
             {/* Header */}
@@ -274,7 +472,7 @@ export default function RecordCalfDropScreen() {
                     <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e2937'} />
                 </TouchableOpacity>
                 <View>
-                    <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colors.textPrimary }}>Record Calf Drop</Text>
+                    <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colors.textPrimary }}>Record Calving / Offspring</Text>
                     {motherTag && (
                         <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 10, color: isDark ? '#6b7280' : '#94a3b8', textTransform: 'uppercase' }}>Mother: #{motherTag}</Text>
                     )}
@@ -338,6 +536,19 @@ export default function RecordCalfDropScreen() {
                             <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 dark:text-emerald-400 text-sm uppercase tracking-widest">Event Basics</Text>
                         </View>
 
+                        <View className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-5 border border-emerald-100 dark:border-slate-700">
+                            <Text className="text-slate-800 dark:text-white font-outfit-black text-sm">
+                                Mother #{motherTag || selectedAnimal?.earTag || 'N/A'}
+                            </Text>
+                            <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-1">
+                                Breed: {selectedAnimal?.breed || 'Unknown'}
+                            </Text>
+                            <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-3">AI date: {formatDate(aiDate)}</Text>
+                            <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-1">Diagnosis: {formatDate(diagnosisDate)}</Text>
+                            <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-1">Expected calving: {formatDate(expectedCalvingDate)}</Text>
+                            <Text className="text-emerald-700 dark:text-emerald-400 font-outfit-bold text-xs mt-2">{eventTiming}</Text>
+                        </View>
+
                         <View className="gap-y-4">
                             <View>
                                 <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Drop Date</Text>
@@ -351,9 +562,21 @@ export default function RecordCalfDropScreen() {
                             </View>
 
                             <View>
-                                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Ease (Calving Type)</Text>
+                                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Outcome</Text>
+                                <View className="flex-row flex-wrap gap-2 mb-4">
+                                    {[
+                                        ['live_birth', 'Live Birth'], ['mixed', 'Mixed'],
+                                        ['stillbirth', 'Stillbirth'], ['abortion', 'Abortion'],
+                                    ].map(([value, label]) => (
+                                        <TouchableOpacity key={value} onPress={() => handleOutcomeSelect(value)} className={`px-4 py-2.5 rounded-xl border ${outcome === value ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-800 border-emerald-100 dark:border-slate-700'}`}>
+                                            <Text className={`font-outfit-bold text-[11px] ${outcome === value ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>{label}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                                {!isAbortion && <>
+                                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Delivery Method</Text>
                                 <View className="flex-row flex-wrap gap-2">
-                                    {['Natural', 'Difficult', 'Abortion', 'Stillbirth'].map(opt => (
+                                    {['Natural', 'Normal', 'Difficult', 'Cesarean'].map(opt => (
                                         <TouchableOpacity 
                                             key={opt}
                                             onPress={() => setCalvingEase(opt)}
@@ -363,20 +586,24 @@ export default function RecordCalfDropScreen() {
                                         </TouchableOpacity>
                                     ))}
                                 </View>
+                                </>}
                             </View>
 
-                            <View>
+                            {!isAbortion && <View>
                                 <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Number of Calves</Text>
                                 <View className="flex-row items-center gap-3">
                                     <TextInput 
                                         className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-black shadow-sm flex-1"
-                                        value={numCalves.toString()}
+                                        value={numCalvesInput}
                                         onChangeText={handleNumChange}
+                                        onBlur={handleNumBlur}
                                         keyboardType="numeric"
+                                        placeholder="1"
+                                        placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
                                     />
                                     <Text className="text-slate-400 dark:text-slate-500 font-outfit-bold text-xs uppercase">Head</Text>
                                 </View>
-                            </View>
+                            </View>}
                         </View>
                     </View>
                 ) : (
@@ -394,22 +621,44 @@ export default function RecordCalfDropScreen() {
                 {motherId && pregnancyId && (
                     <>
                         <View className="flex-row justify-between items-end mb-4 px-1">
-                            <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest">Offspring Registry</Text>
+                            <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest">
+                                {isAbortion ? 'Pregnancy Loss Details' : isLiveBirth ? 'Offspring Registry' : 'Stillborn Calf Details'}
+                            </Text>
                             <View className="flex-row items-center gap-1.5">
-                                <View className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                                <Text className="text-emerald-600 dark:text-emerald-400 font-outfit-bold text-[9px] uppercase">Auto-Registering</Text>
+                                <View className={`w-1.5 h-1.5 rounded-full ${isLiveBirth ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                <Text className={`${isLiveBirth ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'} font-outfit-bold text-[9px] uppercase`}>
+                                    {isLiveBirth ? 'Auto-Registering' : 'No livestock profile'}
+                                </Text>
                             </View>
                         </View>
 
-                        <View className="gap-y-4 mb-8">
+                        {isAbortion ? (
+                            <View className="bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/50 p-5 rounded-3xl mb-8">
+                                <Text className="text-amber-900 dark:text-amber-200 font-outfit-bold text-sm">
+                                    No living calf record will be created. Add clinical observations in Technical Notes.
+                                </Text>
+                            </View>
+                        ) : <View className="gap-y-4 mb-8">
                             {calves.map((calf, idx) => (
                                 <View key={idx} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] p-6 shadow-sm">
                                     <View className="flex-row items-center gap-2 mb-4">
                                         <View className="w-6 h-6 bg-emerald-500 rounded-full items-center justify-center">
                                             <Text className="text-white text-[10px] font-outfit-black">{idx + 1}</Text>
                                         </View>
-                                        <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-sm">Calf Details</Text>
+                                        <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-slate-800 dark:text-white text-sm">
+                                            {calf.isLiving !== false ? 'Living Calf Details' : 'Stillborn Calf Details'}
+                                        </Text>
                                     </View>
+
+                                    {outcome === 'mixed' && (
+                                        <View className="flex-row gap-2 mb-4">
+                                            {[[true, 'Living'], [false, 'Stillborn']].map(([value, label]) => (
+                                                <TouchableOpacity key={String(value)} onPress={() => updateCalf(idx, 'isLiving', value as any)} className={`flex-1 py-2 rounded-xl items-center border ${calf.isLiving !== false === value ? 'bg-emerald-600 border-emerald-600' : 'border-slate-200 dark:border-slate-700'}`}>
+                                                    <Text className={calf.isLiving !== false === value ? 'text-white font-outfit-bold' : 'text-slate-500 font-outfit-bold'}>{label as string}</Text>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    )}
 
                                     <View className="gap-y-4">
                                         <View>
@@ -433,13 +682,29 @@ export default function RecordCalfDropScreen() {
                                         <View className="flex-row gap-3">
                                             <View className="flex-1">
                                                 <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Color</Text>
-                                                <TextInput 
-                                                    className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-white font-outfit-bold text-xs"
-                                                    placeholder="White, Brown, Black..."
-                                                    placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                                                    value={calf.color}
-                                                    onChangeText={(v) => updateCalf(idx, 'color', v)}
-                                                />
+                                                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                                    <View className="flex-row gap-2 pr-2">
+                                                        {CALF_COLOR_OPTIONS.map((color) => (
+                                                            <TouchableOpacity
+                                                                key={color}
+                                                                onPress={() => updateCalf(idx, 'color', color)}
+                                                                className={`px-3 py-2 rounded-xl border ${
+                                                                    calf.color === color
+                                                                        ? 'bg-emerald-600 border-emerald-600'
+                                                                        : 'bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+                                                                }`}
+                                                            >
+                                                                <Text className={`font-outfit-black text-[10px] ${
+                                                                    calf.color === color
+                                                                        ? 'text-white'
+                                                                        : 'text-slate-500 dark:text-slate-300'
+                                                                }`}>
+                                                                    {color}
+                                                                </Text>
+                                                            </TouchableOpacity>
+                                                        ))}
+                                                    </View>
+                                                </ScrollView>
                                             </View>
                                             <View className="flex-1">
                                                 <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Brand Mark</Text>
@@ -462,25 +727,44 @@ export default function RecordCalfDropScreen() {
                                                 value={calf.earTag}
                                                 onChangeText={(v) => updateCalf(idx, 'earTag', v)}
                                             />
-                                            <View className="mt-2 ml-1">
+                                            {calf.isLiving !== false && <View className="mt-2 ml-1">
                                                 <EarTagGenerator
                                                     farmerName={farmerName}
                                                     animalCount={farmerAnimalCount + idx}
                                                     onGenerate={(tag) => updateCalf(idx, 'earTag', tag)}
                                                     isDark={isDark}
                                                 />
-                                            </View>
+                                            </View>}
                                         </View>
 
                                         {/* Calf Image Picker */}
-                                        <View className="mt-2">
+                                        {calf.isLiving !== false && <View className="mt-2">
                                             <Text className="text-slate-500 dark:text-slate-400 text-[9px] font-outfit-bold mb-1.5 ml-1 uppercase">Calf Image / Photo (Optional)</Text>
                                             {calf.imageUri ? (
-                                                <View className="rounded-xl overflow-hidden border border-slate-100 dark:border-slate-800 shadow-sm relative">
-                                                    <Image source={{ uri: calf.imageUri }} className="w-full h-32" resizeMode="cover" />
+                                                <View
+                                                    style={{
+                                                        borderRadius: 12,
+                                                        overflow: "hidden",
+                                                        borderWidth: 1,
+                                                        borderColor: isDark ? "#334155" : "#f1f5f9",
+                                                        position: "relative",
+                                                    }}
+                                                >
+                                                    <Image
+                                                        source={{ uri: calf.imageUri }}
+                                                        style={{ width: "100%", height: 128 }}
+                                                        resizeMode="cover"
+                                                    />
                                                     <TouchableOpacity
                                                         onPress={() => removeCalfImage(idx)}
-                                                        className="absolute top-2 right-2 p-2 bg-black/60 rounded-full"
+                                                        style={{
+                                                            position: "absolute",
+                                                            top: 8,
+                                                            right: 8,
+                                                            padding: 8,
+                                                            backgroundColor: "rgba(0,0,0,0.6)",
+                                                            borderRadius: 999,
+                                                        }}
                                                     >
                                                         <X size={14} color="white" />
                                                     </TouchableOpacity>
@@ -488,14 +772,14 @@ export default function RecordCalfDropScreen() {
                                             ) : (
                                                 <View className="flex-row gap-2">
                                                     <TouchableOpacity
-                                                        onPress={() => takeCalfPhoto(idx)}
+                                                        onPress={() => handleSelectCalfPhoto(idx, "camera")}
                                                         className="flex-1 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5 shadow-sm"
                                                     >
                                                         <Camera size={14} color={isDark ? '#34d399' : '#00643B'} />
                                                         <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-600 dark:text-slate-300 text-[10px]">Take Photo</Text>
                                                     </TouchableOpacity>
                                                     <TouchableOpacity
-                                                        onPress={() => pickCalfImage(idx)}
+                                                        onPress={() => handleSelectCalfPhoto(idx, "library")}
                                                         className="flex-1 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl flex-row justify-center items-center gap-1.5 shadow-sm"
                                                     >
                                                         <ImageIcon size={14} color={isDark ? '#34d399' : '#00643B'} />
@@ -503,11 +787,11 @@ export default function RecordCalfDropScreen() {
                                                     </TouchableOpacity>
                                                 </View>
                                             )}
-                                        </View>
+                                        </View>}
                                     </View>
                                 </View>
                             ))}
-                        </View>
+                        </View>}
 
                         <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Technical Notes</Text>
                         <TextInput
@@ -520,12 +804,26 @@ export default function RecordCalfDropScreen() {
                             onChangeText={setNote}
                         />
 
+                        {submissionStatusMessage ? (
+                            <View
+                                className="mb-3 rounded-2xl border px-4 py-3"
+                                style={{ backgroundColor: isDark ? colors.background : '#eff6ff', borderColor: colors.border }}
+                            >
+                                <Text
+                                    className="text-center text-xs font-outfit-bold"
+                                    style={{ color: colors.textPrimary }}
+                                >
+                                    {submissionStatusMessage}
+                                </Text>
+                            </View>
+                        ) : null}
+
                         <TouchableOpacity 
-                            className={`py-5 rounded-[28px] flex-row justify-center items-center shadow-xl mb-20 ${saving ? 'bg-slate-400' : 'bg-emerald-600'}`}
+                            className={`py-5 rounded-[28px] flex-row justify-center items-center shadow-xl mb-20 ${submissionLocked ? 'bg-slate-400' : 'bg-emerald-600'}`}
                             onPress={handleSave}
-                            disabled={saving}
+                            disabled={submissionLocked}
                         >
-                            {saving ? <ActivityIndicator color="white" /> : (
+                            {submissionLocked ? <ActivityIndicator color="white" /> : (
                                 <>
                                     <Save size={20} color="white" style={{ marginRight: 10 }} />
                                     <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-white text-base uppercase tracking-widest">Submit Calving Registry</Text>
@@ -633,6 +931,59 @@ export default function RecordCalfDropScreen() {
                  </View>
               </View>
             </Modal>
+
+            <ConfirmationModal
+              visible={confirmSubmitVisible}
+              onClose={() => setConfirmSubmitVisible(false)}
+              onConfirm={submitCalvingRecord}
+              title="Submit Calving Registry?"
+              message={isLiveBirth
+                ? `This will create ${numCalves} living offspring record${numCalves > 1 ? "s" : ""} for ${motherTag || "the selected mother"}.`
+                : `This will record a ${calvingEase.toLowerCase()} without creating living livestock profiles for ${motherTag || "the selected mother"}.`}
+              confirmText="Submit"
+              cancelText="Review"
+              isDestructive={false}
+            />
+        </SafeAreaView>
+    );
+}
+
+function RecordCalfDropSkeleton({ onBack }: { onBack: () => void }) {
+    const { isDark } = useTheme();
+
+    return (
+        <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
+            <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
+                <TouchableOpacity onPress={onBack} className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
+                    <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e2937'} />
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                    <Skeleton width="60%" height={20} radius={6} />
+                    <Skeleton width="35%" height={12} radius={4} style={{ marginTop: 6 }} />
+                </View>
+            </View>
+
+            <ScrollView className="flex-1 px-6 pt-6" showsVerticalScrollIndicator={false}>
+                <View className="bg-emerald-50/50 dark:bg-emerald-900/10 p-6 rounded-[32px] mb-8 border border-emerald-100 dark:border-emerald-800/50">
+                    <Skeleton width="40%" height={16} radius={6} style={{ marginBottom: 16 }} />
+                    <View className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-5 border border-emerald-100 dark:border-slate-700">
+                        <Skeleton width="50%" height={16} radius={4} />
+                        <Skeleton width="35%" height={12} radius={4} style={{ marginTop: 8 }} />
+                        <Skeleton width="70%" height={12} radius={4} style={{ marginTop: 12 }} />
+                        <Skeleton width="65%" height={12} radius={4} style={{ marginTop: 6 }} />
+                        <Skeleton width="75%" height={12} radius={4} style={{ marginTop: 6 }} />
+                    </View>
+                    <Skeleton width="30%" height={12} radius={4} style={{ marginBottom: 8 }} />
+                    <Skeleton width="100%" height={48} radius={16} style={{ marginBottom: 16 }} />
+                    <Skeleton width="30%" height={12} radius={4} style={{ marginBottom: 8 }} />
+                    <Skeleton width="100%" height={48} radius={16} />
+                </View>
+
+                <View className="bg-white dark:bg-slate-900 p-6 rounded-[32px] mb-8 border border-slate-100 dark:border-slate-800">
+                    <Skeleton width="50%" height={18} radius={6} style={{ marginBottom: 16 }} />
+                    <Skeleton width="100%" height={140} radius={20} />
+                </View>
+            </ScrollView>
         </SafeAreaView>
     );
 }
