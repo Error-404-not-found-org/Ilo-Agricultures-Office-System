@@ -484,7 +484,7 @@ export function FarmerHomeScreen() {
                       lineHeight: 42,
                     }}
                   >
-                    {isLoading ? "-" : stats.totalAnimals}
+                    {isLoading ? "-" : stats.totalAnimals  <= 0 ? "0" : stats.totalAnimals}
                   </Text>
                   <Text
                     numberOfLines={1}
