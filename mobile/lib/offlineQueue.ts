@@ -41,6 +41,8 @@ export interface QueuedMutation {
   entityType?: string;
   dependsOn?: string[];
   resultServerId?: string;
+  ownerUserId?: string;
+  ownerRole?: string;
 }
 
 export const createStableId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -241,6 +243,9 @@ export const addToOfflineQueue = async (
   },
 ) => {
   try {
+    if (!mutation.ownerUserId) {
+      throw new Error("Cannot queue offline mutation without an authoritative ownerUserId");
+    }
     // Process payload to extract base64 images to local files
     const { data: cleanData, filePaths } = await cacheImagesInPayload(mutation.data);
     const outcome = await mutateStoredQueue((queue) => {
@@ -355,7 +360,7 @@ export const addToHistory = async (item: QueuedMutation) => {
 
 let isProcessingQueue = false;
 
-export const processOfflineQueue = async (api: any) => {
+export const processOfflineQueue = async (api: any, getCurrentUserId?: () => string | undefined) => {
   if (isProcessingQueue) {
     console.log("[OfflineQueue] Sync already in progress, skipping concurrent run.");
     return;
@@ -380,6 +385,25 @@ export const processOfflineQueue = async (api: any) => {
 
     for (const item of activeQueue) {
       if (item.status === "failed" || item.status === "synced") continue;
+
+      if (!item.ownerUserId) {
+        await updateQueueItem(item.id, {
+          status: "pending",
+          lastError: "Blocked: Legacy item missing account ownership verification.",
+        });
+        console.warn(`[OfflineQueue] Blocked legacy item ${item.id} without ownerUserId`);
+        continue;
+      }
+
+      const activeUserIdPreRequest = getCurrentUserId ? getCurrentUserId() : undefined;
+      if (activeUserIdPreRequest && item.ownerUserId !== activeUserIdPreRequest) {
+        await updateQueueItem(item.id, {
+          status: "pending",
+          lastError: "Blocked: Account identity mismatch. Sign in as the original user to sync.",
+        });
+        console.warn(`[OfflineQueue] Blocked item ${item.id} due to account mismatch`);
+        continue;
+      }
 
       const currentQueue = await getOfflineQueue();
       const dependencies = (item.dependsOn || []).map((id) => currentQueue.find((entry) => entry.id === id));
@@ -422,6 +446,10 @@ export const processOfflineQueue = async (api: any) => {
         console.log(`[OfflineQueue] Successfully synced: ${item.description}`);
         await addToHistory({ ...item, status: "synced", resultServerId: serverId, updatedAt: Date.now() });
         await clearQueueItem(item.id);
+        const activeUserIdPostRequest = getCurrentUserId ? getCurrentUserId() : undefined;
+        if (!activeUserIdPostRequest || activeUserIdPostRequest === item.ownerUserId) {
+          queryClient.invalidateQueries();
+        }
       } catch (error: any) {
         const { retryable, message, apiError } = classifySyncError(error);
 
@@ -453,8 +481,7 @@ export const processOfflineQueue = async (api: any) => {
       }
     }
 
-    // Refresh all queries to show latest data from server
-    queryClient.invalidateQueries();
+    // Cache was invalidated safely during processing
   } finally {
     isProcessingQueue = false;
   }

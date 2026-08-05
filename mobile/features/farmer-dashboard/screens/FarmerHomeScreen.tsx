@@ -484,7 +484,11 @@ export function FarmerHomeScreen() {
                       lineHeight: 42,
                     }}
                   >
-                    {isLoading ? "-" : stats.totalAnimals  <= 0 ? "0" : stats.totalAnimals}
+                    {isLoading
+                      ? "-"
+                      : stats.totalAnimals <= 0
+                        ? "0"
+                        : stats.totalAnimals}
                   </Text>
                   <Text
                     numberOfLines={1}
@@ -612,73 +616,6 @@ export function FarmerHomeScreen() {
             </View>
           </View>
         </View>
-
-        {/* --- MOOWIE ASSISTANT CTA ---
-        <View className="px-6 mb-8">
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => router.push("/ask-moowie")}
-            className="p-4 flex-row items-center border"
-            style={{
-              borderRadius: 8,
-              backgroundColor: isDark ? "#102A20" : "#EAF7EE",
-              borderColor: isDark ? "#24563A" : "#B7DFC4",
-            }}
-          >
-            <View
-              className="w-16 h-16 items-center justify-center overflow-hidden"
-              style={{
-                borderRadius: 8,
-                backgroundColor: isDark ? "#173C2A" : "#FFFFFF",
-              }}
-            >
-              <Image
-                source={{
-                  uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
-                }}
-                className="w-full h-full"
-                resizeMode="contain"
-              />
-            </View>
-
-            <View className="flex-1 ml-4">
-              <Text
-                style={{
-                  color: isDark ? "#DDF7E5" : "#123B24",
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 18,
-                }}
-              >
-                {t("moowieGreeting")}
-              </Text>
-              <Text
-                className="mt-0.5"
-                style={{
-                  color: isDark ? "#A8CDB4" : "#4E6F59",
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 12,
-                  lineHeight: 17,
-                }}
-              >
-                {t("moowieHelperText")}
-              </Text>
-            </View>
-
-            <View
-              className="w-10 h-10 items-center justify-center"
-              style={{
-                borderRadius: 8,
-                backgroundColor: isDark ? colors.primary : "#00643B",
-              }}
-            >
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={24}
-                color="white"
-              />
-            </View>
-          </TouchableOpacity>
-        </View> */}
 
         {/* --- UPCOMING VISITS --- */}
         <View

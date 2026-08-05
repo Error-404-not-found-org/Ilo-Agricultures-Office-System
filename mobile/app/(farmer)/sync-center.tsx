@@ -20,6 +20,8 @@ import {
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { useApi } from "@/lib/api";
 import { AppPageHeader } from "@/components/AppPageHeader";
+import { useUser } from "@clerk/clerk-expo";
+import { queryClient } from "@/lib/queryClient";
 
 export default function FarmerSyncCenter() {
   const api = useApi();
@@ -28,6 +30,10 @@ export default function FarmerSyncCenter() {
   const [history, setHistory] = useState<QueuedMutation[]>([]);
   const [loading, setLoading] = useState(true);
   const [discardTarget, setDiscardTarget] = useState<QueuedMutation | null>(null);
+
+  const { user } = useUser();
+  const dbUserResponse = queryClient.getQueryData(["mongodb-user", user?.id]) as any;
+  const currentUserId = dbUserResponse?.user?._id;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,7 +129,7 @@ export default function FarmerSyncCenter() {
                   <TouchableOpacity
                     onPress={async () => {
                       await retryQueueItem(item.id);
-                      await processOfflineQueue(api);
+                      await processOfflineQueue(api, () => currentUserId);
                       await load();
                     }}
                     className="h-9 px-3 flex-row items-center justify-center"

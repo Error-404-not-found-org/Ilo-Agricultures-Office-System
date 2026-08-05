@@ -378,6 +378,14 @@ function AppContent({
 function InitialLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
+  const dbUserResponse = queryClient.getQueryData(["mongodb-user", user?.id]) as any;
+  const currentUserId = dbUserResponse?.user?._id;
+  const currentUserIdRef = useRef<string | undefined>(currentUserId);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
   const [appReady, setAppReady] = useState(false);
   const { setColorScheme } = useNativeWindColorScheme();
   const api = useApi();
@@ -471,7 +479,7 @@ function InitialLayout() {
             offlineBannerTimeoutRef.current = null;
           }
           toast.dismiss("connection-offline");
-          processOfflineQueue(api);
+          processOfflineQueue(api, () => currentUserIdRef.current);
           setShowOfflineToast(false);
           if (!isToastCooldownRef.current && prev === false) {
             setShowOnlineToast(true);
@@ -500,7 +508,7 @@ function InitialLayout() {
         if (isOfflineMode && !isToastCooldownRef.current) {
           setShowOfflineToast(true);
         } else if (isConnected) {
-          processOfflineQueue(api);
+          processOfflineQueue(api, () => currentUserIdRef.current);
         }
       }
       connectionRef.current = isConnected;

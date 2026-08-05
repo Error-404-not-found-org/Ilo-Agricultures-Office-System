@@ -14,6 +14,8 @@ import SafeScreen from '@/components/safeScreen';
 import { format } from 'date-fns';
 import { ConfirmationModal } from '@/components/ConfirmationModal';
 import { useApi } from '@/lib/api';
+import { useUser } from '@clerk/clerk-expo';
+import { queryClient } from '@/lib/queryClient';
 
 export default function SyncHistoryScreen() {
   const router = useRouter();
@@ -22,6 +24,10 @@ export default function SyncHistoryScreen() {
   const [history, setHistory] = useState<QueuedMutation[]>([]);
   const [activeTab, setActiveTab] = useState<'pending' | 'synced'>('pending');
   const [discardTarget, setDiscardTarget] = useState<QueuedMutation | null>(null);
+
+  const { user } = useUser();
+  const dbUserResponse = queryClient.getQueryData(["mongodb-user", user?.id]) as any;
+  const currentUserId = dbUserResponse?.user?._id;
 
   const loadData = useCallback(async () => {
     const q = await getOfflineQueue();
@@ -98,7 +104,7 @@ export default function SyncHistoryScreen() {
                   status="pending"
                   onRetry={async () => {
                     await retryQueueItem(item.id);
-                    await processOfflineQueue(api);
+                    await processOfflineQueue(api, () => currentUserId);
                     await loadData();
                   }}
                   onDiscard={() => discard(item)}
