@@ -2,7 +2,7 @@ import { Router } from "express";
 
 import { protectedRoute, AdminOnly } from "../middleware/auth.middleware.js";
 
-import { getDashboardStats, getAdminAnalytics, getSystemMonitoringData } from "../controllers/admin.controllers.js";
+import { getDashboardStats, getAdminAnalytics, getSystemMonitoringData, getRecentActivities } from "../controllers/admin.controllers.js";
 import { createInvitedUser, createTechnician, listAllUsersForAdmin } from "../controllers/user.controllers.js";
 import { getAllInseminations } from "../controllers/admin.controllers.js";
 import { getAllReInseminations } from "../controllers/admin.controllers.js";
@@ -19,6 +19,7 @@ router.use(protectedRoute, AdminOnly);
 router.post("/create-user", createInvitedUser);
 router.post("/technicians", createTechnician);
 router.get("/list-users", listAllUsersForAdmin);
+router.get("/recent-activities", getRecentActivities);
 router.post("/sync-metadata", syncUserMetadata);
 router.post("/delete-user", deleteUser);
 router.post("/suspend-user", suspendUser);
