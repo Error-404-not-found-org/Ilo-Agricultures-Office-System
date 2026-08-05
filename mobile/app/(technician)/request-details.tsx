@@ -171,7 +171,7 @@ function RequestDetailsSkeleton({
 export default function RequestDetailsScreen() {
   const { colors, isDark } = useTheme();
   const router = useRouter();
-  const { id, type } = useLocalSearchParams();
+  const { id, type, taskId, workflowId } = useLocalSearchParams();
   const api = useApi();
 
   const [loading, setLoading] = useState(true);
@@ -186,15 +186,6 @@ export default function RequestDetailsScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [note, setNote] = useState("");
-  const [diagnosis, setDiagnosis] = useState("");
-  const [treatment, setTreatment] = useState("");
-  const [advice, setAdvice] = useState("");
-  const [sireBreed, setSireBreed] = useState("");
-  const [sireCode, setSireCode] = useState("");
-  const [estrus, setEstrus] = useState("Natural");
-  const [showBreedModal, setShowBreedModal] = useState(false);
-  const [followUpDate, setFollowUpDate] = useState<Date | null>(null);
-  const [showFollowUpDatePicker, setShowFollowUpDatePicker] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
     message: string;
@@ -228,12 +219,6 @@ export default function RequestDetailsScreen() {
       } else if (requestData.preferredDate) {
         setScheduledDate(new Date(requestData.preferredDate));
       }
-      setDiagnosis(requestData.diagnosis || "");
-      setTreatment(requestData.treatment || "");
-      setAdvice(requestData.advice || "");
-      setSireBreed(requestData.sireBreed || "");
-      setSireCode(requestData.sireCode || "");
-      setEstrus(requestData.estrus || "Natural");
 
       if (requestData.animalId?._id) {
         const historyTimeline = await getTechnicianAnimalHistory(
@@ -392,146 +377,37 @@ export default function RequestDetailsScreen() {
         scheduledDate: scheduledDate.toISOString(),
         technicianNote: "Scheduled visit.",
       });
-    } else if (status === "scheduled") {
-      const earlyStartMinutes = getEarlyStartMinutes(request.scheduledDate);
-      const startService = async () => {
-        await handleUpdateStatus("in-progress", {
-          technicianNote:
-            earlyStartMinutes > 0
-              ? `Started ${earlyStartMinutes} minutes before the scheduled visit.`
-              : "Started service.",
-          earlyStartConfirmed: earlyStartMinutes > 0,
-        });
-      };
-
-      if (earlyStartMinutes > 0) {
-        setConfirmAction({
-          title: "Start service early?",
-          message: `This visit is scheduled for ${formatDate(request.scheduledDate)}, about ${earlyStartMinutes} minutes from now. Start the ${isAI ? "AI service" : "health visit"} anyway?`,
-          cancelText: "Wait",
-          confirmText: "Start early",
-          isDestructive: false,
-          onConfirm: startService,
-        });
-      } else {
-        await startService();
-      }
-    } else if (status === "in-progress" || status === "in_progress") {
-      // Complete/Resolve
+    } else if (status === "scheduled" || status === "in-progress" || status === "in_progress") {
+      // Navigate to the dedicated canonical form
       if (isAI) {
-        if (!sireBreed || !sireBreed.trim()) {
-          const message =
-            "Select the sire breed before completing the AI service.";
-          setActionNotice(message);
-          return;
-        }
-        if (!sireCode || !sireCode.trim()) {
-          const message =
-            "Provide the sire code before completing the AI service.";
-          setActionNotice(message);
-          return;
-        }
-        if (!estrus || !estrus.trim()) {
-          const message =
-            "Select the estrus type before completing the AI service.";
-          setActionNotice(message);
-          return;
-        }
-
-        const proceed = async () => {
-          await handleUpdateStatus("done", {
-            sireBreed,
-            sireCode,
-            estrus,
-            technicianNote:
-              note.trim() || "AI service completed by technician.",
-          });
-        };
-
-        Keyboard.dismiss();
-        const isTooEarly =
-          request.scheduledDate &&
-          new Date(request.scheduledDate).getTime() - Date.now() >
-            2 * 60 * 60 * 1000;
-        if (isTooEarly) {
-          setConfirmAction({
-            title: "Complete Early?",
-            message: `This service is scheduled for ${new Date(request.scheduledDate).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Are you sure you want to log it complete now?`,
-            cancelText: "Review",
-            confirmText: "Yes, Complete",
-            isDestructive: false,
-            onConfirm: proceed,
-          });
-        } else {
-          setConfirmAction({
-            title: "Complete AI Service?",
-            message:
-              "This will create the official AI service record and update the animal breeding history. Please confirm the sire details and notes are correct.",
-            cancelText: "Review",
-            confirmText: "Complete",
-            isDestructive: false,
-            onConfirm: proceed,
-          });
-        }
+        router.push({
+          pathname: "/(technician)/record-ai",
+          params: {
+            mode: "request-linked",
+            requestId: request._id,
+            ...(request.workflowId || workflowId ? { workflowId: request.workflowId || workflowId } : {}),
+            ...(request.taskId || taskId ? { taskId: request.taskId?._id || request.taskId || taskId } : {}),
+            farmerId: request.farmerId?._id || request.farmerId,
+            farmerName: request.farmerId?.name || undefined,
+            animalId: request.animalId?._id || request.animalId,
+            animalName: request.animalId?.name || undefined,
+            earTag: request.animalId?.earTag || undefined,
+            scheduleDate: request.scheduledDate || undefined,
+          },
+        });
       } else {
-        if (!diagnosis || !diagnosis.trim()) {
-          const message =
-            "Enter the diagnosis or findings before resolving this request.";
-          setActionNotice(message);
-          return;
-        }
-        if (!treatment || !treatment.trim()) {
-          const message =
-            "Record the treatment or medicine given before resolving this request.";
-          setActionNotice(message);
-          return;
-        }
-        if (!advice || !advice.trim()) {
-          const message =
-            "Enter advice for the farmer before resolving this request.";
-          setActionNotice(message);
-          return;
-        }
-
-        const payload: any = {
-          diagnosis: diagnosis.trim(),
-          treatment: treatment.trim(),
-          advice: advice.trim(),
-          technicianNote: note.trim() || "Resolved by technician.",
-        };
-        if (followUpDate) {
-          payload.followUpDate = followUpDate.toISOString();
-        }
-
-        const proceed = async () => {
-          await handleUpdateStatus("resolved", payload);
-        };
-
-        Keyboard.dismiss();
-        const isTooEarly =
-          request.scheduledDate &&
-          new Date(request.scheduledDate).getTime() - Date.now() >
-            2 * 60 * 60 * 1000;
-        if (isTooEarly) {
-          setConfirmAction({
-            title: "Complete Early?",
-            message: `This visit is scheduled for ${new Date(request.scheduledDate).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}. Are you sure you want to resolve it now?`,
-            cancelText: "Review",
-            confirmText: "Yes, Resolve",
-            isDestructive: false,
-            onConfirm: proceed,
-          });
-        } else {
-          setConfirmAction({
-            title: "Resolve Health Request?",
-            message:
-              "This will save the findings, treatment, and resolution notes as the official health assistance record.",
-            cancelText: "Review",
-            confirmText: "Resolve",
-            isDestructive: false,
-            onConfirm: proceed,
-          });
-        }
+        router.push({
+          pathname: "/(technician)/health-log",
+          params: {
+            source: "task",
+            requestId: request._id,
+            healthRequestId: request._id,
+            ...(request.workflowId || workflowId ? { workflowId: request.workflowId || workflowId } : {}),
+            ...(request.taskId || taskId ? { taskId: request.taskId?._id || request.taskId || taskId } : {}),
+            farmerId: request.farmerId?._id || request.farmerId,
+            animalId: request.animalId?._id || request.animalId,
+          },
+        });
       }
     }
   };
@@ -722,32 +598,20 @@ export default function RequestDetailsScreen() {
   );
   const normalizedStatus = request.status?.toLowerCase() || "";
   const statusPresentation = getTechnicianRequestStatusPresentation(request);
-  const primaryActionLabel =
-    isAI
-      ? ["scheduled", "in-progress", "in_progress"].includes(normalizedStatus)
-        ? "Open My Work"
-        : "Open Requests"
-      : normalizedStatus === "pending"
-      ? "Claim request"
-      : ["approved", "assigned", "triaged"].includes(normalizedStatus)
-        ? "Schedule visit"
-        : normalizedStatus === "scheduled"
-          ? "Start service"
-          : isAI
-            ? "Complete AI service"
-            : "Resolve health request";
-  const nextActionDescription =
-    isAI
-      ? ["scheduled", "in-progress", "in_progress"].includes(normalizedStatus)
-        ? "Use the backend-provided action in My Work to record this insemination."
-        : "Use Claim & Set Visit from Requests to schedule this AI service."
-      : normalizedStatus === "pending"
-      ? "Claim this request to unlock the farmer's full contact and farm directions."
-      : ["approved", "assigned", "triaged"].includes(normalizedStatus)
-        ? "Confirm a visit date and time before notifying the farmer."
-        : normalizedStatus === "scheduled"
-          ? "Start the service when you arrive at the farm."
-          : "Record the work completed so it becomes part of the animal's history.";
+  const primaryActionLabel = normalizedStatus === "pending"
+    ? "Claim request"
+    : ["approved", "assigned", "triaged"].includes(normalizedStatus)
+      ? "Schedule visit"
+      : ["scheduled", "in-progress", "in_progress"].includes(normalizedStatus)
+        ? isAI ? "Record AI Service" : "Record Health Assistance"
+        : isAI ? "Complete AI service" : "Resolve health request";
+  const nextActionDescription = normalizedStatus === "pending"
+    ? "Claim this request to unlock the farmer's full contact and farm directions."
+    : ["approved", "assigned", "triaged"].includes(normalizedStatus)
+      ? "Confirm a visit date and time before notifying the farmer."
+      : ["scheduled", "in-progress", "in_progress"].includes(normalizedStatus)
+        ? "Navigate to the dedicated canonical form to record this service."
+        : "Record the work completed so it becomes part of the animal's history.";
   const sectionCardStyle = {
     padding: 16,
     backgroundColor: colors.card,
@@ -2012,262 +1876,7 @@ export default function RequestDetailsScreen() {
                   </View>
                 )}
 
-                {/* Inline completed forms */}
-                {!isAI &&
-                  (request.status?.toLowerCase() === "in-progress" ||
-                    request.status?.toLowerCase() === "in_progress") && (
-                  <View style={{ gap: 14, marginBottom: 16 }}>
-                    <Text
-                      style={{ color: colors.textMuted }}
-                      variant="bold"
-                      size={12}
-                    >
-                      RECORD WORK DETAILS
-                    </Text>
 
-                    {isAI ? (
-                      <>
-                        <TouchableOpacity
-                          onPress={() => setShowBreedModal(true)}
-                          style={{
-                            flexDirection: "row",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            backgroundColor: colors.border,
-                            padding: 14,
-                            borderRadius: 12,
-                          }}
-                        >
-                          <View>
-                            <Text
-                              style={{ color: colors.textMuted, fontSize: 10 }}
-                            >
-                              SIRE BREED
-                            </Text>
-                            <Text
-                              style={{
-                                color: colors.textPrimary,
-                                fontSize: 15,
-                              }}
-                              variant="bold"
-                            >
-                              {sireBreed || "Select Breed"}
-                            </Text>
-                          </View>
-                          <MaterialCommunityIcons
-                            name="chevron-down"
-                            size={20}
-                            color={colors.textMuted}
-                          />
-                        </TouchableOpacity>
-
-                        <View
-                          style={{
-                            backgroundColor: colors.border,
-                            padding: 14,
-                            borderRadius: 12,
-                          }}
-                        >
-                          <Text
-                            style={{ color: colors.textMuted, fontSize: 10 }}
-                          >
-                            SIRE CODE
-                          </Text>
-                          <Text
-                            style={{ color: colors.textPrimary, fontSize: 15 }}
-                            variant="bold"
-                          >
-                            {sireCode || "Select Sire Breed to set Code"}
-                          </Text>
-                        </View>
-
-                        <View>
-                          <Text
-                            style={{
-                              color: colors.textMuted,
-                              fontSize: 10,
-                              marginBottom: 6,
-                            }}
-                          >
-                            ESTRUS TYPE
-                          </Text>
-                          <View style={{ flexDirection: "row", gap: 8 }}>
-                            {["Natural", "Synchronized", "Induced"].map(
-                              (item) => (
-                                <TouchableOpacity
-                                  key={item}
-                                  onPress={() => setEstrus(item)}
-                                  style={{
-                                    flex: 1,
-                                    paddingVertical: 10,
-                                    borderRadius: 10,
-                                    alignItems: "center",
-                                    backgroundColor:
-                                      estrus === item
-                                        ? colors.primary
-                                        : colors.border,
-                                  }}
-                                >
-                                  <Text
-                                    style={{
-                                      color:
-                                        estrus === item
-                                          ? "#fff"
-                                          : colors.textPrimary,
-                                    }}
-                                    variant="bold"
-                                  >
-                                    {item}
-                                  </Text>
-                                </TouchableOpacity>
-                              ),
-                            )}
-                          </View>
-                        </View>
-                      </>
-                    ) : (
-                      <>
-                        <View>
-                          <Text
-                            style={{
-                              color: colors.textMuted,
-                              fontSize: 10,
-                              marginBottom: 4,
-                            }}
-                          >
-                            DIAGNOSIS
-                          </Text>
-                          <TextInput
-                            placeholder="Enter diagnosis..."
-                            placeholderTextColor={colors.textMuted}
-                            style={{
-                              backgroundColor: colors.border,
-                              padding: 12,
-                              borderRadius: 12,
-                              color: colors.textPrimary,
-                              fontFamily: "Outfit_600SemiBold",
-                            }}
-                            value={diagnosis}
-                            onChangeText={setDiagnosis}
-                          />
-                        </View>
-
-                        <View>
-                          <Text
-                            style={{
-                              color: colors.textMuted,
-                              fontSize: 10,
-                              marginBottom: 4,
-                            }}
-                          >
-                            TREATMENT
-                          </Text>
-                          <TextInput
-                            placeholder="Enter treatment given..."
-                            placeholderTextColor={colors.textMuted}
-                            style={{
-                              backgroundColor: colors.border,
-                              padding: 12,
-                              borderRadius: 12,
-                              color: colors.textPrimary,
-                              fontFamily: "Outfit_600SemiBold",
-                            }}
-                            value={treatment}
-                            onChangeText={setTreatment}
-                          />
-                        </View>
-
-                        <View>
-                          <Text
-                            style={{
-                              color: colors.textMuted,
-                              fontSize: 10,
-                              marginBottom: 4,
-                            }}
-                          >
-                            ADVICE FOR FARMER
-                          </Text>
-                          <TextInput
-                            placeholder="Enter advice..."
-                            placeholderTextColor={colors.textMuted}
-                            style={{
-                              backgroundColor: colors.border,
-                              padding: 12,
-                              borderRadius: 12,
-                              color: colors.textPrimary,
-                              fontFamily: "Outfit_600SemiBold",
-                            }}
-                            value={advice}
-                            onChangeText={setAdvice}
-                          />
-                        </View>
-
-                        {/* Follow up date */}
-                        <View>
-                          <Text
-                            style={{
-                              color: colors.textMuted,
-                              fontSize: 10,
-                              marginBottom: 4,
-                            }}
-                          >
-                            FOLLOW-UP DATE (OPTIONAL)
-                          </Text>
-                          <TouchableOpacity
-                            onPress={() => setShowFollowUpDatePicker(true)}
-                            style={{
-                              flexDirection: "row",
-                              alignItems: "center",
-                              gap: 8,
-                              backgroundColor: colors.border,
-                              padding: 12,
-                              borderRadius: 12,
-                            }}
-                          >
-                            <Calendar size={16} color={colors.textPrimary} />
-                            <Text
-                              style={{ color: colors.textPrimary }}
-                              variant="bold"
-                            >
-                              {followUpDate
-                                ? followUpDate.toLocaleDateString()
-                                : "Set Follow-up Date"}
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </>
-                    )}
-
-                    <View>
-                      <Text
-                        style={{
-                          color: colors.textMuted,
-                          fontSize: 10,
-                          marginBottom: 4,
-                        }}
-                      >
-                        FIELD NOTES / COMMENTS
-                      </Text>
-                      <TextInput
-                        placeholder="Enter technician notes..."
-                        placeholderTextColor={colors.textMuted}
-                        multiline
-                        numberOfLines={3}
-                        style={{
-                          backgroundColor: colors.border,
-                          padding: 12,
-                          borderRadius: 12,
-                          color: colors.textPrimary,
-                          fontFamily: "Outfit_600SemiBold",
-                          height: 70,
-                          textAlignVertical: "top",
-                        }}
-                        value={note}
-                        onChangeText={setNote}
-                      />
-                    </View>
-                  </View>
-                )}
 
                 {actionNotice && (
                   <View
@@ -2381,170 +1990,17 @@ export default function RequestDetailsScreen() {
             >
               Service Record (Completed)
             </Text>
-            {isAI ? (
-              <View style={{ gap: 8 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted }} variant="medium">
-                    Sire Breed
-                  </Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">
-                    {request.sireBreed || "N/A"}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted }} variant="medium">
-                    Sire Code
-                  </Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">
-                    {request.sireCode || "N/A"}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted }} variant="medium">
-                    Estrus Type
-                  </Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">
-                    {request.estrus || "N/A"}
-                  </Text>
-                </View>
-                {[
-                  [
-                    "Actual Service",
-                    request.inseminationDate
-                      ? new Date(request.inseminationDate).toLocaleString("en-PH", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })
-                      : "N/A",
-                  ],
-                  ["Semen Doses", String(request.semenDosesUsed || 1)],
-                  ["Technician", technician?.name || "N/A"],
-                  ["Attempt", String(request.attemptNumber || 1)],
-                  [
-                    "Scheduled Visit",
-                    request.scheduledDate
-                      ? `${new Date(request.scheduledDate).toLocaleDateString("en-PH")}${request.visitPeriod ? ` · ${String(request.visitPeriod).replace(/^./, (value) => value.toUpperCase())}` : ""}`
-                      : "N/A",
-                  ],
-                ].map(([label, value]) => (
-                  <View
-                    key={label}
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      gap: 12,
-                    }}
-                  >
-                    <Text style={{ color: colors.textMuted }} variant="medium">
-                      {label}
-                    </Text>
-                    <Text
-                      style={{ color: colors.textPrimary, flex: 1, textAlign: "right" }}
-                      variant="bold"
-                    >
-                      {value}
-                    </Text>
-                  </View>
-                ))}
-                <View style={{ marginTop: 4 }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">
-                    Notes / Remarks
-                  </Text>
-                  <Text
-                    style={{ color: colors.textPrimary, marginTop: 2 }}
-                    variant="medium"
-                  >
-                    {request.technicianNote || "No notes recorded."}
-                  </Text>
-                </View>
-              </View>
-            ) : (
-              <View style={{ gap: 8 }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted }} variant="medium">
-                    Diagnosis
-                  </Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">
-                    {request.diagnosis || "N/A"}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted }} variant="medium">
-                    Treatment
-                  </Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">
-                    {request.treatment || "N/A"}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text style={{ color: colors.textMuted }} variant="medium">
-                    Advice
-                  </Text>
-                  <Text style={{ color: colors.textPrimary }} variant="bold">
-                    {request.advice || "N/A"}
-                  </Text>
-                </View>
-                {request.followUpDate && (
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <Text style={{ color: colors.textMuted }} variant="medium">
-                      Follow-Up Date
-                    </Text>
-                    <Text style={{ color: colors.textPrimary }} variant="bold">
-                      {formatDate(request.followUpDate)}
-                    </Text>
-                  </View>
-                )}
-                <View style={{ marginTop: 4 }}>
-                  <Text style={{ color: colors.textMuted }} variant="medium">
-                    Notes / Remarks
-                  </Text>
-                  <Text
-                    style={{ color: colors.textPrimary, marginTop: 2 }}
-                    variant="medium"
-                  >
-                    {request.technicianNote || "No notes recorded."}
-                  </Text>
-                </View>
-              </View>
-            )}
+            <View
+              style={{
+                backgroundColor: colors.primary + "15",
+                padding: 16,
+                borderRadius: 12,
+              }}
+            >
+              <Text style={{ color: colors.primary, fontFamily: "Outfit_500Medium", fontSize: 14, textAlign: "center" }}>
+                This request has been completed.
+              </Text>
+            </View>
           </View>
         )}
 
@@ -2716,31 +2172,7 @@ export default function RequestDetailsScreen() {
         />
       )}
 
-      {showFollowUpDatePicker && (
-        <DateTimePicker
-          value={followUpDate || new Date()}
-          mode="date"
-          display="default"
-          onChange={(event: DateTimePickerEvent, date?: Date) => {
-            setShowFollowUpDatePicker(false);
-            if (date) {
-              setFollowUpDate(date);
-            }
-          }}
-        />
-      )}
 
-      {/* Sire Breed Selector Modal */}
-      <BreedSelectorModal
-        visible={showBreedModal}
-        onClose={() => setShowBreedModal(false)}
-        sireBreed={sireBreed}
-        onSelectBreed={(breed, code) => {
-          setSireBreed(breed);
-          setSireCode(code);
-          setShowBreedModal(false);
-        }}
-      />
 
       <ConfirmationModal
         visible={!!confirmAction}

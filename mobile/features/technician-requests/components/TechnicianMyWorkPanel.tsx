@@ -118,43 +118,22 @@ export default function TechnicianMyWorkPanel({
     }
 
     if (isAIShapedItem) {
-      if (!isCanonicalWorkflowId(item.workflowId)) {
-        toast.error("This AI work item is missing its workflow identifier.");
+      if (!item.id && !item.workflowId) {
+        toast.error("This AI work item is missing its canonical identifier.");
         return;
       }
-      if (item.allowedAction === "RECORD_SERVICE") {
-        router.push({
-          pathname: "/(technician)/record-ai",
-          params: {
-            mode: "request-linked",
-            workflowId: item.workflowId,
-            taskId: item.taskId || undefined,
-            farmerId: item.farmer?.id || undefined,
-            farmerName: item.farmer?.name || undefined,
-            animalId: item.animal?.id || undefined,
-            animalName: item.animal?.name || undefined,
-            earTag: item.animal?.earTag || undefined,
-            scheduleDate: item.schedule?.date || undefined,
-            visitPeriod: item.schedule?.visitPeriod || undefined,
-          },
-        });
-        return;
-      }
-      if (item.allowedAction === "VIEW_RECORD") {
-        router.push({
-          pathname: "/(technician)/request-details",
-          params: { id: item.workflowId, type: "ai", viewOnly: "true" },
-        });
-        return;
-      }
-      toast.error("This AI work item has no supported action.");
+
+      router.push({
+        pathname: "/(technician)/request-details",
+        params: { id: item.id || item.workflowId, type: "ai", viewOnly: item.allowedAction === "VIEW_RECORD" ? "true" : undefined, taskId: item.taskId || undefined, workflowId: item.workflowId || undefined },
+      });
       return;
     }
 
-    if (item.workflowType === "Health" && item.workflowId) {
+    if (item.workflowType === "Health" && (item.id || item.workflowId)) {
       router.push({
         pathname: "/(technician)/request-details",
-        params: { id: item.workflowId, type: "health" },
+        params: { id: item.id || item.workflowId, type: "health", taskId: item.taskId || undefined, workflowId: item.workflowId || undefined },
       });
       return;
     }

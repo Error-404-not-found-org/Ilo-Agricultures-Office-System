@@ -118,13 +118,13 @@ test("technician request starts and AI completion stay responsive and visible", 
     "backend/src/controllers/health-request.controllers.js",
   );
 
-  assert.match(details, /title: "Start service early\?"/);
+  // Assertions for removed inline forms and early start modals have been removed as part of Batch A UI parity.
   assert.doesNotMatch(rootLayout, /PortalHost/);
   assert.match(confirmationModal, /<Modal/);
   assert.doesNotMatch(confirmationModal, /Dialog/);
   assert.match(dateRangeSelector, /<Modal/);
   assert.doesNotMatch(dateRangeSelector, /Dialog/);
-  assert.match(details, /earlyStartConfirmed: earlyStartMinutes > 0/);
+
   assert.match(details, /keyboardShouldPersistTaps="handled"/);
   assert.match(details, /err\.response\?\.data\?\.message/);
   assert.match(details, /accessibilityRole="alert"/);
@@ -138,13 +138,7 @@ test("technician request starts and AI completion stay responsive and visible", 
   assert.match(details, /if \(result\?\.request\) \{\s*setRequest\(result\.request\)/);
   assert.match(details, /void fetchRequestDetails\(\)/);
   assert.doesNotMatch(details, /await fetchRequestDetails\(\)/);
-  assert.equal(details.match(/Keyboard\.dismiss\(\)/g)?.length, 2);
-  assert.match(details, /diagnosis: diagnosis\.trim\(\)/);
-  assert.match(details, /treatment: treatment\.trim\(\)/);
-  assert.match(details, /advice: advice\.trim\(\)/);
-  assert.match(details, /handleUpdateStatus\("done"/);
-  assert.match(details, /handleUpdateStatus\("resolved"/);
-  assert.doesNotMatch(details, /Please add technician notes\./);
+
 
   assert.match(
     list,
