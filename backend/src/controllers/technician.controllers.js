@@ -628,7 +628,11 @@ export const getMyInseminations = async (req, res) => {
     const outcome = String(req.query.outcome || "").trim();
 
     if (estrus) query.estrus = estrus;
-    if (outcome) query.outcome = outcome;
+    if (outcome) {
+      query.outcome = outcome;
+    } else {
+      query.outcome = { $ne: "Pregnant" };
+    }
 
     if (search) {
       const searchPattern = new RegExp(

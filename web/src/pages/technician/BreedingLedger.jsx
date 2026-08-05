@@ -965,8 +965,8 @@ export default function BreedingLedger() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Breeding Ledger"
-        subtitle="Review inseminations, pregnancy checks, and calving history"
+        title="Pregnancy & Breeding Records"
+        subtitle="Track insemination attempts, pregnancy outcomes, and calving history"
       />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">

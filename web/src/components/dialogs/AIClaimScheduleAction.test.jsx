@@ -124,7 +124,8 @@ describe("Unified AI Request modal", () => {
     expect(detailsDialog).toHaveTextContent("09171234567");
     expect(detailsDialog).toHaveTextContent("Bessie · Tag EAR-17");
     expect(detailsDialog).toHaveTextContent("San Roque, Iloilo City");
-    expect(detailsDialog).toHaveTextContent("Standing heat, Clear mucus");
+    expect(detailsDialog).toHaveTextContent("Standing heat");
+    expect(detailsDialog).toHaveTextContent("Clear mucus");
     expect(detailsDialog).toHaveTextContent("August 4, 2026");
     expect(detailsDialog).toHaveTextContent("1 attachment");
     expect(detailsDialog).toHaveTextContent("Pending");

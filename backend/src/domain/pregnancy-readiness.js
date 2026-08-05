@@ -148,7 +148,9 @@ export const getPregnancyCheckReadiness = ({
     reason: isEligible
       ? "Pregnancy check is available."
       : availableDateLabel
-        ? `Pregnancy check not yet available. This animal is currently ${daysPostAI} days after insemination. The pregnancy check will be available on ${availableDateLabel}.`
+        ? daysPostAI <= 21
+          ? `Pregnancy check not yet available. Animal is in the 18–21 day return-to-heat observation window (${daysPostAI} days post-AI). The pregnancy check will be available on ${availableDateLabel}.`
+          : `Pregnancy check not yet available. This animal is currently ${daysPostAI} days after insemination. The pregnancy check will be available on ${availableDateLabel}.`
         : "No pregnancy confirmation method is currently enabled.",
     daysPostAI,
     minimumDays: policyMode === "method_based"

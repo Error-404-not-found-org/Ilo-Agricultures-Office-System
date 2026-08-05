@@ -153,7 +153,7 @@ export default function Sidebar() {
       {
         path: "/technician/work-queue",
         icon: <ListChecks size={16} />,
-        label: "My Work",
+        label: "Field Assignments",
       },
       { type: "label", label: "Records" },
       {

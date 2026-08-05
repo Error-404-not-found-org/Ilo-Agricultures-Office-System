@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+import AnimalImageFallback from "../../components/technician/AnimalImageFallback";
 import Topbar from "../../components/layout/Topbar";
 import AnimalAvatar from "../../components/ui/AnimalAvatar";
 import TableNameLink from "../../components/ui/TableNameLink";
@@ -72,9 +73,7 @@ function MetricCard({ icon, value, label, note }) {
 function AnimalCard({ animal, onOpen, onEdit }) {
   return (
     <article className="card card-sm card-border overflow-hidden bg-base-100 shadow-sm sm:card-side">
-      <figure className="h-36 bg-base-200 sm:h-auto sm:w-44 sm:shrink-0">
-        {animal.imageUrl ? <img src={animal.imageUrl} alt={`Animal ${animal.tag}`} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-primary/45"><Beef size={44} /></div>}
-      </figure>
+      <AnimalImageFallback imageUrl={animal.imageUrl} tag={animal.tag} iconSize={44} className="h-36 sm:h-auto sm:w-44 sm:shrink-0" />
       <div className="card-body min-w-0 gap-4">
         <div className="flex flex-col items-start gap-2 sm:flex-row sm:justify-between">
           <div>
@@ -89,7 +88,7 @@ function AnimalCard({ animal, onOpen, onEdit }) {
           <p><span className="text-base-content/50">Sex:</span> {animal.gender}</p>
           <p><span className="text-base-content/50">Last AI:</span> {animal.lastAI}</p>
         </div>
-        <div className="card-actions grid grid-cols-2 border-t border-base-300 pt-3">
+        <div className="card-actions grid grid-cols-1 gap-2 border-t border-base-300 pt-3 sm:grid-cols-2">
           <button type="button" className="btn btn-sm" onClick={() => onOpen(animal)}><History size={15} /> Open history</button>
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => onEdit(animal)}><Edit size={15} /> Edit animal</button>
         </div>
@@ -238,14 +237,14 @@ export default function AnimalRegistry() {
           <MetricCard icon={<CircleDot size={21} />} value={isLoading ? "—" : summary.available ?? 0} label="Available for assessment" note="Normal or legacy open status" />
         </section>
 
-        <section className="card card-border bg-base-100 shadow-sm">
+        <section className="card card-border bg-base-100 shadow-sm" aria-busy={isLoading || isFetching}>
           <div className="card-body gap-4 p-4 md:p-5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <label className="input w-full xl:max-w-md"><Search size={16} className="text-base-content/45" /><input type="search" aria-label="Search animals" placeholder="Search animal tag, farmer, or species" value={searchQuery} onChange={(event) => updateParams({ search: event.target.value })} /></label>
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => setIsRegisterLivestockOpen(true)}><Plus size={15} /> Register animal</button>
                 <button type="button" className="btn btn-sm" onClick={exportPage} disabled={isLoading || animals.length === 0}><Download size={15} /> Export this page</button>
-                <span className="text-sm font-medium text-base-content/70">{isFetching && !isLoading ? "Updating…" : `${totalItems} animal${totalItems === 1 ? "" : "s"}`}</span>
+                <span className="text-sm font-medium text-base-content/70" aria-live="polite">{isFetching && !isLoading ? "Updating…" : `${totalItems} animal${totalItems === 1 ? "" : "s"}`}</span>
               </div>
             </div>
 
@@ -254,7 +253,7 @@ export default function AnimalRegistry() {
               <select className="select w-full md:w-auto" aria-label="Filter animals by species" value={speciesFilter} onChange={(event) => updateParams({ species: event.target.value })}><option value="">All species</option><option value="Cattle">Cattle</option><option value="Carabao">Carabao</option><option value="Goat">Goat</option><option value="Swine">Swine</option></select>
               <select className="select w-full md:w-auto" aria-label="Filter animals by reproductive status" value={reproductiveFilter} onChange={(event) => updateParams({ repro: event.target.value })}><option value="">All reproductive statuses</option>{REPRODUCTIVE_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}</select>
               <select className="select w-full md:w-auto" aria-label="Filter animals by sex" value={genderFilter} onChange={(event) => updateParams({ gender: event.target.value })}><option value="">All sexes</option><option value="Female">Female</option><option value="Male">Male</option></select>
-              <input className="input w-full md:w-44" aria-label="Filter animals by breed" placeholder="Breed contains…" value={breedFilter} onChange={(event) => updateParams({ breed: event.target.value })} />
+              <input type="search" className="input w-full md:w-44" aria-label="Filter animals by breed" placeholder="Breed contains…" value={breedFilter} onChange={(event) => updateParams({ breed: event.target.value })} />
               <select className="select w-full md:w-auto" aria-label="Filter animals by municipality" value={municipalityFilter} onChange={(event) => setMunicipality(event.target.value)}><option value="">All municipalities</option>{ILOILO_MUNICIPALITY_OPTIONS.map((name) => <option key={name} value={name}>{name}</option>)}</select>
               {municipalityFilter === ILOILO_CITY_NAME && <select className="select w-full md:w-auto" aria-label="Filter animals by Iloilo City district" value={districtFilter} onChange={(event) => setDistrict(event.target.value)}><option value="">Select district</option>{ILOILO_CITY_DISTRICT_OPTIONS.map((name) => <option key={name} value={name}>{name}</option>)}</select>}
               <select className="select w-full md:w-auto" aria-label="Filter animals by barangay" value={barangayFilter} disabled={!municipalityFilter || (municipalityFilter === ILOILO_CITY_NAME && !districtFilter)} onChange={(event) => updateParams({ barangay: event.target.value })}><option value="">All barangays</option>{getIloiloBarangayOptions(municipalityFilter, districtFilter).map((name) => <option key={name} value={name}>{name}</option>)}</select>
@@ -266,7 +265,7 @@ export default function AnimalRegistry() {
             ) : isLoading ? (
               <>
                 <div className="grid gap-3 lg:hidden">{[0, 1, 2].map((item) => <div key={item} className="skeleton h-72 w-full" />)}</div>
-                <div className="hidden overflow-hidden rounded-box border border-base-300 lg:block" aria-label="Loading animal records">
+                <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block" aria-label="Loading animal records">
                   <table className="table table-sm"><thead><tr><th>Animal</th><th>Farmer</th><th>Location</th><th>Species / breed</th><th>Sex</th><th>Reproductive status</th><th>Last AI</th><th><span className="sr-only">Actions</span></th></tr></thead>
                     <tbody>{[0, 1, 2, 3, 4].map((row) => <tr key={row}><td colSpan={8}><div className="grid grid-cols-[.7fr_1.2fr_1.2fr_1.2fr_.6fr_1fr_.8fr_.8fr] gap-5 py-1"><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /><span className="skeleton h-4" /></div></td></tr>)}</tbody>
                   </table>

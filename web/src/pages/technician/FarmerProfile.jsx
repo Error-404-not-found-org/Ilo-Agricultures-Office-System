@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockModal";
+import AnimalImageFallback from "../../components/technician/AnimalImageFallback";
 
 const REPRODUCTIVE_STATUSES = ["Normal", "In Heat", "Inseminated", "Likely Pregnant", "Pregnant", "Dry", "Lactating", "Post-partum"];
 const CATTLE_SPECIES = new Set(["beef", "dairy", "beef cattle", "dairy cattle", "cattle", "bovine"]);
@@ -74,7 +75,7 @@ function MetricCard({ value, label, note }) {
 function AnimalCard({ animal, onOpen }) {
   return (
     <article className="card card-sm card-border overflow-hidden bg-base-100 shadow-sm sm:card-side">
-      <figure className="h-32 bg-base-200 sm:h-auto sm:w-36 sm:shrink-0">{animal.imageUrl ? <img src={animal.imageUrl} alt={`Animal ${animal.tag}`} className="h-full w-full object-cover" /> : <Beef size={38} className="text-primary/40" />}</figure>
+      <AnimalImageFallback imageUrl={animal.imageUrl} tag={animal.tag} iconSize={38} className="h-32 sm:h-auto sm:w-36 sm:shrink-0" />
       <div className="card-body min-w-0 gap-3">
         <div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="card-title text-base">#{animal.tag}</h3><p className="text-sm text-base-content/60">{animal.species} · {animal.breed}</p></div><span className={`badge badge-sm badge-soft ${statusClass(animal.status)}`}>{animal.status}</span></div>
         <p className="text-sm text-base-content/65">{animal.gender} · Last AI: {animal.lastAI}</p>

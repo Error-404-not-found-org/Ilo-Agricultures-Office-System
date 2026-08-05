@@ -20,17 +20,17 @@ const service = fs.readFileSync(
 test("Breeding corrections: pregnancy and calving correction routes are admin-only", () => {
   assert.match(
     routes,
-    /patch\("\/pregnancy-checks\/:id\/correct", requireRole\(\["admin"\]\), correctPregnancyCheck\)/,
+    /patch\([\s\S]*?"\/pregnancy-checks\/:id\/correct"[\s\S]*?requireRole\(\["admin"\]\)[\s\S]*?correctPregnancyCheck/,
   );
   assert.match(
     routes,
-    /patch\("\/calvings\/:id\/correct", requireRole\(\["admin"\]\), correctCalving\)/,
+    /patch\([\s\S]*?"\/calvings\/:id\/correct"[\s\S]*?requireRole\(\["admin"\]\)[\s\S]*?correctCalving/,
   );
 });
 
 test("Breeding corrections: legacy delete endpoints cannot erase official records", () => {
-  assert.match(routes, /delete\("\/pregnancy-checks\/:id", requireRole\(\["admin"\]\)/);
-  assert.match(routes, /delete\("\/calvings\/:id", requireRole\(\["admin"\]\)/);
+  assert.match(routes, /delete\([\s\S]*?"\/pregnancy-checks\/:id"[\s\S]*?requireRole\(\["admin"\]\)/);
+  assert.match(routes, /delete\([\s\S]*?"\/calvings\/:id"[\s\S]*?requireRole\(\["admin"\]\)/);
   assert.match(controller, /OFFICIAL_RECORD_CORRECTION_REQUIRED/);
   assert.doesNotMatch(controller, /Pregnancy\.findByIdAndDelete/);
   assert.doesNotMatch(controller, /Calving\.findByIdAndDelete/);

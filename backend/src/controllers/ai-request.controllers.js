@@ -1091,12 +1091,12 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     request.farmerObservationSigns = Array.isArray(signs) ? signs : [];
     request.farmerObservationNotes = notes || "";
     request.evidencePhotos = photos;
-    const technicianVerificationRequired =
-      reportType === "return_to_heat" || Boolean(verificationRequested);
+    const technicianVerificationRequired = reportType === "return_to_heat" || Boolean(verificationRequested);
     request.verificationRequested = technicianVerificationRequired;
     request.verificationStatus = technicianVerificationRequired
       ? "pending"
       : "not_requested";
+    request.outcomeVerificationStatus = "reported";
 
     let nextAction = "Observation saved.";
 

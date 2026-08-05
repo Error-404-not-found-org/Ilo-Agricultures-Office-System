@@ -238,8 +238,8 @@ export default function NewbornsLog() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Newborns Log"
-        subtitle="Registers of new calving events, newborn specifications, and parturition ease audits"
+        title="Calving & Newborns Records"
+        subtitle="Track new calving events, newborn specifications, and parturition ease audits"
       />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">

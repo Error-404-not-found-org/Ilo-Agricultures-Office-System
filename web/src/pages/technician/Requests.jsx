@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   Search,
   MapPin,
@@ -15,7 +15,7 @@ import {
   AlertCircle,
   Filter,
   Eye,
-  CirclePlus,
+  MoreVertical,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -54,6 +54,30 @@ const toTitleCase = (str) => {
     .split(" ")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+};
+
+const formatRequestLocation = (address, fallback) => {
+  if (typeof address === "string" && address.trim()) return address.trim();
+  const normalizedAddress = Array.isArray(address) ? address[0] || {} : address || {};
+  const city = String(normalizedAddress.city || normalizedAddress.municipality || "").trim();
+  const barangay = String(normalizedAddress.barangay || "").trim();
+  const zonePurok = String(
+    normalizedAddress.zone ||
+      normalizedAddress.purok ||
+      normalizedAddress.sitio ||
+      normalizedAddress.streetPurok ||
+      normalizedAddress.street ||
+      ""
+  ).trim();
+
+  if (city && barangay) {
+    const formattedBarangay = barangay.toLowerCase().startsWith("brgy.")
+      ? barangay
+      : `Brgy. ${barangay}`;
+    return `${city}, ${formattedBarangay}${zonePurok ? ` ${zonePurok}` : ""}`;
+  }
+
+  return String(fallback || "Location unavailable").trim() || "Location unavailable";
 };
 
 const localDateKey = (value) => {
@@ -136,7 +160,7 @@ const getServiceMeta = (request = {}) => {
     return {
       workflow: "insemination",
       serviceType: "ai",
-      label: "AI Service",
+      label: "",
       badge: "AI",
       badgeClass: "badge-info",
       iconColor: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
@@ -218,6 +242,7 @@ const getServiceMeta = (request = {}) => {
 };
 
 export default function OperationalInbox() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const isAdmin = window.location.pathname.startsWith("/admin");
   const [searchParams] = useSearchParams();
@@ -269,7 +294,7 @@ export default function OperationalInbox() {
   });
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const itemsPerPage = 6; // Set to 6 to match the pagination of the redesigned screen
+  const itemsPerPage = 6;
   const toast = useToast();
 
   const statusParam =
@@ -328,7 +353,6 @@ export default function OperationalInbox() {
           includeOperationalTasks: true,
           page: currentPage,
           limit: itemsPerPage,
-          requestId: requestedId || undefined,
         },
       });
       return res.data;
@@ -421,6 +445,10 @@ export default function OperationalInbox() {
           : req.farmerDetails || null;
       const animalDetails =
         req.animal && typeof req.animal === "object" ? req.animal : null;
+      const requestLocation = formatRequestLocation(
+        req.raw?.farmerId?.address || farmerDetails?.address,
+        req.locationLabel || req.location,
+      );
 
       return {
         id: req.id,
@@ -438,11 +466,7 @@ export default function OperationalInbox() {
           farmerDetails?.phone ||
           req.raw?.farmerId?.phoneNumber ||
           "Not provided",
-        location:
-          req.locationLabel ||
-          req.location ||
-          req.raw?.farmerId?.address?.barangay ||
-          "Location unavailable",
+        location: requestLocation,
         type: service.workflow,
         queueType: req.type,
         serviceType: service.serviceType,
@@ -997,7 +1021,7 @@ export default function OperationalInbox() {
                           className="select select-sm w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                         >
                           <option value="all">All service types</option>
-                          <option value="ai">AI Services</option>
+                          <option value="ai">AI Service</option>
                           <option value="health">Health Assistance</option>
                         </select>
                       </label>
@@ -1184,11 +1208,11 @@ export default function OperationalInbox() {
                 <div className="overflow-x-auto overflow-y-auto flex-1">
                   <table className="table table-pin-rows table-fixed w-full min-w-155 text-left">
                     <colgroup>
-                      <col className="w-[22%] min-w-32.5" />
-                      <col className="w-[32%] min-w-45" />
-                      <col className="w-[22%] min-w-32.5" />
-                      <col className="w-[14%] min-w-25" />
-                      <col className="w-[10%] min-w-20" />
+                      <col className="w-[23%] min-w-32.5" />
+                      <col className="w-[27%] min-w-45" />
+                      <col className="w-[27%] min-w-37.5" />
+                      <col className="w-[16%] min-w-27.5" />
+                      <col className="w-[7%] min-w-16" />
                     </colgroup>
                     <thead>
                       <tr className="bg-base-200/70 text-xs font-semibold text-base-content/70 border-b border-base-300 uppercase tracking-wider">
@@ -1325,11 +1349,8 @@ export default function OperationalInbox() {
                                     <h4 className="text-sm font-semibold text-base-content tracking-tight truncate">
                                       {toTitleCase(req.farmer)}
                                     </h4>
-                                    <p className="text-xs font-medium text-base-content/70 mt-0.5 truncate">
-                                      Brgy. {toTitleCase(req.location)}
-                                    </p>
                                     <p
-                                      className="text-xs font-medium text-primary mt-1 flex items-center gap-1.5 truncate"
+                                      className="text-xs font-medium text-primary mt-1.5 flex items-center gap-1.5 truncate"
                                       aria-label={`Farmer contact: ${req.farmerPhone}`}
                                     >
                                       <Phone
@@ -1355,226 +1376,124 @@ export default function OperationalInbox() {
 
                               {/* COLUMN 2: SERVICE DETAILS */}
                               <td className="p-4 align-top">
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span
-                                      className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider border shrink-0 ${req.iconColor}`}
-                                    >
-                                      {req.serviceBadge}
-                                    </span>
-                                    <span className="font-semibold text-sm text-base-content truncate">
-                                      {req.serviceLabel}
-                                    </span>
-
-                                    {req.previousTechnician && (
-                                      <span className="badge badge-sm badge-soft badge-info font-medium text-[10px] shrink-0">
-                                        Re-insemination
-                                      </span>
-                                    )}
+                                <dl className="grid gap-2 text-xs">
+                                  <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-2">
+                                    <dt className="font-medium text-base-content/55">Service request</dt>
+                                    <dd className="flex min-w-0 items-center gap-2">
+                                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider border shrink-0 ${req.iconColor}`}>{req.serviceBadge}</span>
+                                      <span className="truncate font-semibold text-sm text-base-content">{req.serviceLabel}</span>
+                                    </dd>
                                   </div>
-                                  <p className="text-xs font-medium text-base-content/90 mt-1 truncate">
-                                    Animal:{" "}
-                                    {req.breed
-                                      ? toTitleCase(req.breed)
-                                      : "Livestock"}{" "}
-                                    (Tag #{req.animalTag})
-                                  </p>
-                                  <p className="text-xs text-base-content/65 mt-1 leading-relaxed line-clamp-2">
-                                    Details: {req.taskDetails}
-                                  </p>
-                                  {req.formattedSentAt ? (
-                                    <p className="text-xs text-base-content/60 mt-1.5 flex items-center gap-1.5">
-                                      <Clock
-                                        size={13}
-                                        aria-hidden="true"
-                                        className="shrink-0"
-                                      />
-                                      <time
-                                        dateTime={req.createdAt}
-                                        className="truncate"
-                                      >
-                                        Sent {req.formattedSentAt}
+                                  <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-2">
+                                    <dt className="font-medium text-base-content/55">Animal</dt>
+                                    <dd className="truncate font-medium text-base-content/90">
+                                      Tag #{req.animalTag}
+                                    </dd>
+                                  </div>
+                                  <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-2">
+                                    <dt className="font-medium text-base-content/55">Timeframe</dt>
+                                    <dd className="flex min-w-0 items-center gap-1.5 text-base-content/70">
+                                      <Clock size={13} aria-hidden="true" className="shrink-0 text-base-content/50" />
+                                      <time dateTime={req.createdAt} className="truncate">
+                                        {req.formattedSentAt ? `Requested: ${req.formattedSentAt}` : req.date}
                                       </time>
-                                    </p>
-                                  ) : null}
-                                </div>
+                                    </dd>
+                                  </div>
+                                </dl>
                               </td>
 
                               {/* COLUMN 3: GEOGRAPHIC AND DATETIME */}
                               <td className="p-4 align-top">
-                                <div className="flex flex-col gap-1 min-w-0">
-                                  <div>
-                                    <span className="font-medium text-sm text-base-content block truncate">
-                                      Brgy.{" "}
-                                      {toTitleCase(req.location.split(",")[0])}
-                                    </span>
+                                <dl className="grid gap-2.5 text-xs">
+                                  <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2">
+                                    <dt className="font-medium text-base-content/55">Schedule</dt>
+                                    <dd className="flex min-w-0 items-start gap-1.5 font-medium text-base-content/85">
+                                      <Calendar size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-base-content/45" />
+                                      <span className="break-words">{req.workflowType === "AI" ? req.date : `${req.formattedDateOnly}, ${req.formattedTimeOnly}`}</span>
+                                    </dd>
                                   </div>
-
-                                  <div className="mt-1">
-                                    <span className="text-xs font-medium text-base-content/80 flex items-center gap-1.5 truncate">
-                                      <Calendar
-                                        size={15}
-                                        className="text-base-content/40 shrink-0"
-                                      />
-                                      {req.workflowType === "AI"
-                                        ? req.date
-                                        : req.formattedDateOnly}
-                                    </span>
-                                    {req.workflowType !== "AI" && (
-                                      <span className="text-xs text-base-content/65 flex items-center gap-1.5 mt-0.5 truncate">
-                                        <Clock
-                                          size={14}
-                                          className="text-base-content/40 shrink-0"
-                                        />
-                                        {req.formattedTimeOnly}
-                                      </span>
-                                    )}
+                                  <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2">
+                                    <dt className="font-medium text-base-content/55">Location</dt>
+                                    <dd className="flex min-w-0 items-start gap-1.5 font-medium text-base-content/85">
+                                      <MapPin size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-base-content/45" />
+                                      <span className="break-words">{req.location}</span>
+                                    </dd>
                                   </div>
-                                </div>
+                                </dl>
                               </td>
 
                               {/* COLUMN 4: STATUS */}
                               <td className="p-4 align-top text-center">
-                                <div className="flex flex-col items-center justify-center gap-1.5 pt-0.5">
+                                <div className="flex items-center justify-center pt-1">
                                   <span
-                                    className={`badge text-xs font-semibold shadow-2xs ${statusPresentation.badgeClass}`}
+                                    className={`badge badge-soft text-xs font-semibold px-3 py-1 shadow-2xs ${statusPresentation.badgeClass}`}
                                   >
                                     {statusPresentation.label}
                                   </span>
-                                  {["approved", "assigned"].includes(
-                                    req.status,
-                                  ) && (
-                                    <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-500/10 dark:bg-amber-500/15 px-2.5 py-0.5 rounded-full border border-amber-500/25 tracking-wide max-w-full truncate">
-                                      <AlertCircle
-                                        size={15}
-                                        className="shrink-0 text-amber-600 dark:text-amber-400"
-                                      />
-                                      <span className="truncate">
-                                        Review date
-                                      </span>
-                                    </span>
-                                  )}
                                 </div>
                               </td>
 
                               {/* COLUMN 5: ACTIONS */}
                               <td className="p-4 pr-6 align-top text-right">
-                                <div className="flex items-center justify-end gap-2 pt-0.5">
-                                  <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="flex items-center gap-2 justify-end"
-                                  >
-                                    {isAIClaimAndSchedule && (
-                                      <button
-                                        type="button"
-                                        className="btn btn-sm whitespace-nowrap"
-                                        disabled={isUpdating}
-                                        onClick={(event) => {
-                                          event.stopPropagation();
-                                          openAIRequest(req, "schedule");
-                                        }}
-                                      >
-                                        <Calendar
-                                          size={16}
-                                          aria-hidden="true"
-                                        />
-                                        {req.actionLabel}
+                                <div className="flex items-start justify-end pt-0.5" onClick={(event) => event.stopPropagation()}>
+                                  {isAssignedToOther ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 uppercase tracking-wider select-none bg-amber-500/5 px-2.5 py-1 rounded-lg border border-amber-500/10">
+                                      <Lock size={15} /> Assigned
+                                    </span>
+                                  ) : (
+                                    <div className="dropdown dropdown-end">
+                                      <button tabIndex={0} type="button" className="btn btn-ghost btn-sm btn-square" aria-label={`Actions for ${req.serviceLabel} request from ${req.farmer}`}>
+                                        <MoreVertical size={18} aria-hidden="true" />
                                       </button>
-                                    )}
+                                      <ul tabIndex={0} className="dropdown-content menu z-30 mt-1 w-52 rounded-box border border-base-300 bg-base-100 p-1.5 shadow-lg">
+                                        {isAIClaimAndSchedule && (
+                                          <li>
+                                            <button type="button" disabled={isUpdating} onClick={() => openAIRequest(req, "schedule")}>
+                                              <Calendar size={16} aria-hidden="true" />
+                                              Claim &amp; Scheduled
+                                            </button>
+                                          </li>
+                                        )}
 
-                                    {!isAIClaimAndSchedule &&
-                                      req.status === "pending" &&
-                                      !reqTechId && (
-                                      <button
-                                        type="button"
-                                        disabled={isUpdating}
-                                        onClick={() => handleClaimRequest(req)}
-                                        className="btn btn-sm btn-square btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer shadow-xs"
-                                        title="Claim Request"
-                                        aria-label={`Claim request for ${req.farmer}`}
-                                      >
-                                        <CirclePlus
-                                          size={18}
-                                          aria-hidden="true"
-                                        />
-                                      </button>
-                                      )}
+                                        {!isAIClaimAndSchedule &&
+                                          req.status === "pending" &&
+                                          !reqTechId && (
+                                          <li>
+                                            <button type="button" disabled={isUpdating} onClick={() => handleClaimRequest(req)}>
+                                              <CheckCircle size={16} aria-hidden="true" />
+                                              Claim &amp; Scheduled
+                                            </button>
+                                          </li>
+                                        )}
 
-                                    {(req.type === "breeding_verification" ||
-                                      primaryView ===
-                                        REQUEST_BOARD_VIEWS.HISTORY) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => openRequest(req)}
-                                        className="btn btn-sm btn-square btn-ghost text-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary cursor-pointer"
-                                        title={
-                                          primaryView ===
-                                          REQUEST_BOARD_VIEWS.HISTORY
-                                            ? "View request details"
-                                            : "View farmer observation"
-                                        }
-                                        aria-label={`View request details for ${req.farmer}`}
-                                      >
-                                        <Eye size={18} aria-hidden="true" />
-                                      </button>
-                                    )}
+                                        <li>
+                                          <button type="button" onClick={() => openRequest(req)}>
+                                            <Eye size={16} aria-hidden="true" />
+                                            View details
+                                          </button>
+                                        </li>
 
-                                    {req.status === "in-progress" &&
-                                      req.type !== "breeding_verification" &&
-                                      !isAssignedToOther && (
-                                        <button
-                                          type="button"
-                                          disabled={isUpdating}
-                                          onClick={() => openRequest(req)}
-                                          className="btn btn-sm btn-square btn-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                                          title={
-                                            req.type === "health"
-                                              ? "Submit health record"
-                                              : `Complete ${req.serviceLabel}`
-                                          }
-                                          aria-label={
-                                            req.type === "health"
-                                              ? `Submit health record for ${req.farmer}`
-                                              : `Complete ${req.serviceLabel} for ${req.farmer}`
-                                          }
-                                        >
-                                          <CheckCircle
-                                            size={18}
-                                            aria-hidden="true"
-                                          />
-                                        </button>
-                                      )}
+                                        {req.status === "in-progress" &&
+                                          req.type !== "breeding_verification" && (
+                                          <li>
+                                            <button type="button" disabled={isUpdating} onClick={() => openRequest(req)}>
+                                              <CheckCircle size={16} aria-hidden="true" />
+                                              {req.type === "health" ? "Submit health record" : `Complete ${req.serviceLabel}`}
+                                            </button>
+                                          </li>
+                                        )}
 
-                                    {!isAssignedToOther &&
-                                      ["insemination", "health"].includes(
-                                        req.type,
-                                      ) && (
-                                        <button
-                                          type="button"
-                                          disabled={isUpdating}
-                                          onClick={() =>
-                                            handleDeleteRequest(
-                                              req.id,
-                                              req.type,
-                                            )
-                                          }
-                                          className="btn btn-sm btn-circle btn-ghost text-rose-500 hover:bg-rose-500/10 cursor-pointer"
-                                          title="Cancel Request"
-                                          aria-label={`Cancel request for ${req.farmer}`}
-                                        >
-                                          <Trash2
-                                            size={18}
-                                            aria-hidden="true"
-                                          />
-                                        </button>
-                                      )}
-
-                                    {isAssignedToOther && (
-                                      <div className="flex items-center gap-1 text-sm font-semibold text-amber-600 uppercase tracking-wider select-none bg-amber-500/5 px-2.5 py-1 rounded-lg border border-amber-500/10 shrink-0">
-                                        <Lock size={15} /> Locked
-                                      </div>
-                                    )}
-                                  </div>
+                                        {["insemination", "health"].includes(req.type) && (
+                                          <li>
+                                            <button type="button" disabled={isUpdating} className="text-error hover:bg-error/10 hover:text-error" onClick={() => handleDeleteRequest(req.id, req.type)}>
+                                              <Trash2 size={16} aria-hidden="true" />
+                                              Delete request
+                                            </button>
+                                          </li>
+                                        )}
+                                      </ul>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1721,11 +1640,9 @@ export default function OperationalInbox() {
                   </h3>
                 </div>
                 <button
+                  type="button"
                   onClick={() => {
-                    setPrimaryView(REQUEST_BOARD_VIEWS.MINE);
-                    setStatusFilter("all");
-                    setAssignmentFilter("mine");
-                    setCurrentPage(1);
+                    navigate(isAdmin ? "/admin/work-queue" : "/technician/work-queue");
                   }}
                   className="btn btn-sm btn-ghost text-primary text-[10px] uppercase font-semibold"
                 >
@@ -1742,7 +1659,10 @@ export default function OperationalInbox() {
                   claimedRequests.map((claimed) => (
                     <li
                       key={claimed.id}
-                      className="list-row items-center gap-3 rounded-xl bg-base-200/60 p-3"
+                      onClick={() => {
+                        navigate(isAdmin ? "/admin/work-queue" : "/technician/work-queue");
+                      }}
+                      className="list-row items-center gap-3 rounded-xl bg-base-200/60 p-3 cursor-pointer hover:bg-base-200/80 transition-colors"
                     >
                       <div className="list-col-grow min-w-0">
                         <span className="text-sm font-semibold text-base-content block leading-tight truncate">

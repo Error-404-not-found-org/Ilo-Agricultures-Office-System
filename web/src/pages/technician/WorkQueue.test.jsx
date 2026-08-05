@@ -116,9 +116,14 @@ const aiItem = (overrides = {}) => ({
 });
 
 const renderQueue = (items) => {
-  mocks.get.mockResolvedValueOnce({ data: { data: items } });
+  mocks.get.mockImplementation(() =>
+    Promise.resolve({ data: { data: items } }),
+  );
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: Infinity },
+      mutations: { retry: false },
+    },
   });
   render(
     <MemoryRouter>

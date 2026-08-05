@@ -10,8 +10,13 @@ import {
   Printer,
   FileSpreadsheet,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   FileCode,
+  RefreshCw,
   ShieldAlert,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import Topbar from "../../components/layout/Topbar";
 import axiosInstance from "../../lib/axios";
@@ -23,6 +28,20 @@ import StatCard from "../../components/ui/StatCard";
 import SectionHeader from "../../components/ui/SectionHeader";
 import TimelineCard from "../../components/ui/TimelineCard";
 import AlertCard from "../../components/ui/AlertCard";
+
+const ACTIVITY_PAGE_SIZE = 10;
+
+const RECORD_TYPE_PRESENTATION = {
+  AI: { label: "AI service", badgeClass: "badge-success" },
+  PD: { label: "Pregnancy diagnosis", badgeClass: "badge-info" },
+  CD: { label: "Calving record", badgeClass: "badge-warning" },
+  HL: { label: "Health record", badgeClass: "badge-error" },
+};
+
+const getRecordPresentation = (type) => RECORD_TYPE_PRESENTATION[type] || {
+  label: "Service record",
+  badgeClass: "badge-ghost",
+};
 
 const filterActivityRecords = (records, { searchQuery, reportType, barangay, dateRange, statusFilter }) => {
   const query = searchQuery.toLowerCase();
@@ -61,14 +80,57 @@ const filterActivityRecords = (records, { searchQuery, reportType, barangay, dat
   });
 };
 
+function ActivityRecordCard({ record }) {
+  const presentation = getRecordPresentation(record.type);
+
+  return (
+    <article className="rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-bold text-base-content">{record.earTag === "—" ? record.animalId : `#${record.earTag}`}</p>
+          <p className="truncate text-sm text-base-content/60">{record.farmer}</p>
+        </div>
+        <span className={`badge badge-sm badge-soft shrink-0 ${presentation.badgeClass}`}>{presentation.label}</span>
+      </div>
+      <dl className="mt-4 grid gap-3 text-sm">
+        <div className="grid grid-cols-[5.75rem_minmax(0,1fr)] gap-2"><dt className="text-base-content/55">Location</dt><dd className="font-medium">{record.barangay}</dd></div>
+        <div className="grid grid-cols-[5.75rem_minmax(0,1fr)] gap-2"><dt className="text-base-content/55">Details</dt><dd className="break-words font-medium text-base-content/80">{record.details}</dd></div>
+        <div className="grid grid-cols-[5.75rem_minmax(0,1fr)] gap-2"><dt className="text-base-content/55">Date</dt><dd className="font-medium">{record.formattedDate}</dd></div>
+      </dl>
+    </article>
+  );
+}
+
+function ReportCard({ report, onDownload, onDelete }) {
+  const formatBadgeClass = report.format === "PDF" ? "badge-error" : "badge-success";
+
+  return (
+    <article className="rounded-box border border-base-300 bg-base-100 p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="min-w-0 break-words font-bold text-base-content">{report.name}</h3>
+        <span className={`badge badge-sm badge-soft shrink-0 ${formatBadgeClass}`}>{report.format}</span>
+      </div>
+      <dl className="mt-4 grid gap-2 text-sm">
+        <div className="flex justify-between gap-3"><dt className="text-base-content/55">Compiled</dt><dd className="font-medium text-right">{report.date}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-base-content/55">Scope</dt><dd className="font-medium text-right">{report.type}</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-base-content/55">File size</dt><dd className="font-medium text-right">{report.size}</dd></div>
+      </dl>
+      <div className="mt-4 grid grid-cols-2 gap-2 border-t border-base-300 pt-3">
+        <button type="button" className="btn btn-sm" onClick={onDownload}><Download size={14} /> Download</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onDelete}><Trash2 size={14} /> Delete</button>
+      </div>
+    </article>
+  );
+}
+
 export default function FieldReports() {
   const toast = useToast();
   const [searchQuery, setSearchQuery] = useState("");
-  // ---- REPORT GENERATOR STATE ----
-  const reportType = "breeding-audit";
-  const dateRange = "30-days";
-  const barangay = "all";
-  const statusFilter = "all";
+  const [reportType, setReportType] = useState("all");
+  const [dateRange, setDateRange] = useState("all");
+  const [barangay, setBarangay] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [activityPage, setActivityPage] = useState(1);
 
   // ---- REPORT LIBRARY STATE ----
   const [reports, setReports] = useState([]);
@@ -77,6 +139,7 @@ export default function FieldReports() {
   const [bottomTab, setBottomTab] = useState("live-records");
   const [activityRecords, setActivityRecords] = useState([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+  const [activityError, setActivityError] = useState(null);
 
   // ---- TASKS QUERY ----
   const { data: tasksData = [] } = useQuery({
@@ -89,6 +152,7 @@ export default function FieldReports() {
 
   const fetchActivityRecords = async () => {
     setIsLoadingActivities(true);
+    setActivityError(null);
     try {
       const [insRes, pregRes, calvRes, healthRes] = await Promise.all([
         axiosInstance.get("/technician/inseminations?limit=100"),
@@ -199,6 +263,7 @@ export default function FieldReports() {
       setActivityRecords(allEvents);
     } catch (error) {
       console.error("Failed to fetch activity records:", error);
+      setActivityError(error);
       toast.error("Failed to fetch live activity records.");
     } finally {
       setIsLoadingActivities(false);
@@ -513,6 +578,30 @@ export default function FieldReports() {
     return filterActivityRecords(activityRecords, { searchQuery, reportType, barangay, dateRange, statusFilter });
   }, [activityRecords, searchQuery, reportType, barangay, dateRange, statusFilter]);
 
+  const barangayOptions = useMemo(() => Array.from(new Set(
+    activityRecords
+      .map((record) => record.barangay)
+      .filter((value) => value && value !== "—"),
+  )).sort((left, right) => left.localeCompare(right)), [activityRecords]);
+
+  const totalActivityPages = Math.max(1, Math.ceil(filteredActivityRecords.length / ACTIVITY_PAGE_SIZE));
+  const visibleActivityRecords = useMemo(() => {
+    const start = (activityPage - 1) * ACTIVITY_PAGE_SIZE;
+    return filteredActivityRecords.slice(start, start + ACTIVITY_PAGE_SIZE);
+  }, [activityPage, filteredActivityRecords]);
+  const activityStart = filteredActivityRecords.length === 0 ? 0 : (activityPage - 1) * ACTIVITY_PAGE_SIZE + 1;
+  const activityEnd = Math.min(activityPage * ACTIVITY_PAGE_SIZE, filteredActivityRecords.length);
+  const hasActivityFilters = Boolean(searchQuery || reportType !== "all" || dateRange !== "all" || barangay !== "all" || statusFilter !== "all");
+
+  const resetActivityFilters = () => {
+    setSearchQuery("");
+    setReportType("all");
+    setDateRange("all");
+    setBarangay("all");
+    setStatusFilter("all");
+    setActivityPage(1);
+  };
+
   // Dynamic calculations for operational summary
   const summaryKPIs = useMemo(() => {
     const pendingCount = tasksData.filter((t) => ["claimed", "assigned"].includes(t.status?.toLowerCase())).length;
@@ -645,7 +734,7 @@ export default function FieldReports() {
         subtitle="Live tracking of breeding schedules, follow-up timelines, and municipal dispatches"
         searchPlaceholder="Search operational logs..."
         searchValue={searchQuery}
-        onSearchChange={(e) => setSearchQuery(e.target.value)}
+        onSearchChange={(e) => { setSearchQuery(e.target.value); setActivityPage(1); }}
       />
 
       <main className="p-6 space-y-6 flex-1 flex flex-col min-h-0 font-sans">
@@ -742,6 +831,7 @@ export default function FieldReports() {
               <button
                 type="button"
                 onClick={() => setBottomTab("live-records")}
+                aria-pressed={bottomTab === "live-records"}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-wide uppercase transition-all cursor-pointer ${
                   bottomTab === "live-records"
                     ? "bg-primary text-white shadow-xs"
@@ -753,6 +843,7 @@ export default function FieldReports() {
               <button
                 type="button"
                 onClick={() => setBottomTab("library")}
+                aria-pressed={bottomTab === "library"}
                 className={`px-3 py-1.5 rounded-lg text-[10px] font-extrabold tracking-wide uppercase transition-all cursor-pointer ${
                   bottomTab === "library"
                     ? "bg-primary text-white shadow-xs"
@@ -792,66 +883,98 @@ export default function FieldReports() {
             )}
           </div>
 
+          {bottomTab === "live-records" && (
+            <div className="flex flex-col gap-2 border-b border-base-300 bg-base-200/40 p-3 md:flex-row md:flex-wrap md:items-center" aria-label="Live work log filters">
+              <span className="flex items-center gap-1.5 text-sm font-bold text-base-content/75"><SlidersHorizontal size={14} /> Filters</span>
+              <select className="select select-sm w-full md:w-auto" aria-label="Filter live work logs by record type" value={reportType} onChange={(event) => { setReportType(event.target.value); setActivityPage(1); }}>
+                <option value="all">All record types</option>
+                <option value="breeding-audit">Breeding records</option>
+                <option value="health-summary">Health records</option>
+              </select>
+              <select className="select select-sm w-full md:w-auto" aria-label="Filter live work logs by date range" value={dateRange} onChange={(event) => { setDateRange(event.target.value); setActivityPage(1); }}>
+                <option value="all">All dates</option>
+                <option value="7-days">Past 7 days</option>
+                <option value="30-days">Past 30 days</option>
+                <option value="ytd">Year to date</option>
+              </select>
+              <select className="select select-sm w-full md:w-auto" aria-label="Filter live work logs by barangay" value={barangay} onChange={(event) => { setBarangay(event.target.value); setActivityPage(1); }}>
+                <option value="all">All barangays</option>
+                {barangayOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+              <select className="select select-sm w-full md:w-auto" aria-label="Filter live work logs by status" value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setActivityPage(1); }}>
+                <option value="all">All statuses</option>
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+              </select>
+              {hasActivityFilters && <button type="button" className="btn btn-ghost btn-sm md:ml-auto" onClick={resetActivityFilters}><X size={14} /> Clear filters</button>}
+            </div>
+          )}
+
           {/* Table content panel */}
-          <div className="flex-1 overflow-x-auto">
+          <div className="flex-1 overflow-x-auto" aria-busy={bottomTab === "live-records" && isLoadingActivities}>
             {bottomTab === "live-records" ? (
-              isLoadingActivities ? (
+              activityError ? (
+                <div role="alert" className="m-4 flex flex-wrap items-center gap-3 rounded-box border border-error/30 bg-error/10 p-4 text-sm text-error">
+                  <AlertCircle size={18} />
+                  <span className="font-medium">Live work logs could not be loaded.</span>
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={fetchActivityRecords}><RefreshCw size={14} /> Retry</button>
+                </div>
+              ) : isLoadingActivities ? (
                 <div className="p-12 flex flex-col items-center justify-center space-y-2 text-base-content/40">
                   <span className="loading loading-spinner loading-md text-primary" />
-                  <p className="text-xs font-semibold italic animate-pulse">Syncing live records...</p>
+                  <p className="text-xs font-semibold italic animate-pulse motion-reduce:animate-none">Syncing live records...</p>
                 </div>
               ) : filteredActivityRecords.length === 0 ? (
-                <div className="p-12 text-center text-base-content/40 italic text-xs font-semibold">
-                  No live work logs match your current query filters.
+                <div className="p-12 text-center text-base-content/55">
+                  <FileText size={28} className="mx-auto mb-3 text-base-content/35" />
+                  <p className="font-semibold">No live work logs match these filters.</p>
+                  {hasActivityFilters && <button type="button" className="btn btn-sm mt-4" onClick={resetActivityFilters}>Clear filters</button>}
                 </div>
               ) : (
-                <table className="table table-sm w-full divide-y divide-base-300">
-                  <thead className="bg-base-200 text-base-content/50 uppercase font-bold tracking-wider text-[10px]">
-                    <tr>
-                      <th className="py-3 px-5 text-center w-[70px]">Type</th>
-                      <th className="py-3 px-4 text-left">Animal / Tag</th>
-                      <th className="py-3 px-4 text-left">Farmer Client</th>
-                      <th className="py-3 px-4 text-left">Location</th>
-                      <th className="py-3 px-4 text-left">Event Details</th>
-                      <th className="py-3 px-5 text-right">Date Occurred</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-base-300 text-base-content/85 font-semibold text-xs">
-                    {filteredActivityRecords.map((record) => (
-                      <tr key={record.id} className="hover:bg-base-200/50 transition-colors">
-                        <td className="py-3 px-5 text-center">
-                          <span className={`badge badge-sm rounded-full font-bold uppercase tracking-wider text-[9px] border ${
-                            record.type === "AI"
-                              ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20"
-                              : record.type === "PD"
-                              ? "bg-blue-500/10 text-blue-600 border-blue-500/20"
-                              : record.type === "HL"
-                              ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
-                              : "bg-amber-500/10 text-amber-600 border-amber-500/20"
-                          }`}>
-                            {record.type}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 font-bold text-base-content">
-                          {record.animalId} <span className="text-base-content/40 font-normal">({record.earTag})</span>
-                        </td>
-                        <td className="py-3 px-4 text-xs font-bold">{record.farmer}</td>
-                        <td className="py-3 px-4 text-xs font-medium">{record.barangay}</td>
-                        <td className="py-3 px-4 text-xs font-medium text-base-content/75">
-                          {record.details}
-                        </td>
-                        <td className="py-3 px-5 text-right text-xs font-mono font-bold text-base-content/60">{record.formattedDate}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <>
+                  <div className="grid gap-3 p-4 md:hidden">
+                    {visibleActivityRecords.map((record) => <ActivityRecordCard key={record.id} record={record} />)}
+                  </div>
+                  <div className="hidden overflow-x-auto md:block">
+                    <table className="table table-sm min-w-[780px] w-full divide-y divide-base-300">
+                      <thead className="bg-base-200 text-base-content/50 uppercase font-bold tracking-wider text-[10px]">
+                        <tr>
+                          <th className="py-3 px-5 text-left">Record type</th>
+                          <th className="py-3 px-4 text-left">Animal / tag</th>
+                          <th className="py-3 px-4 text-left">Farmer client</th>
+                          <th className="py-3 px-4 text-left">Location</th>
+                          <th className="py-3 px-4 text-left">Event details</th>
+                          <th className="py-3 px-5 text-right">Date occurred</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-base-300 text-base-content/85 font-semibold text-xs">
+                        {visibleActivityRecords.map((record) => {
+                          const presentation = getRecordPresentation(record.type);
+                          return <tr key={record.id} className="hover:bg-base-200/50 transition-colors">
+                            <td className="py-3 px-5"><span className={`badge badge-sm badge-soft whitespace-nowrap ${presentation.badgeClass}`}>{presentation.label}</span></td>
+                            <td className="py-3 px-4 font-bold text-base-content">{record.earTag === "—" ? record.animalId : `#${record.earTag}`}</td>
+                            <td className="py-3 px-4 text-xs font-bold">{record.farmer}</td>
+                            <td className="py-3 px-4 text-xs font-medium">{record.barangay}</td>
+                            <td className="max-w-sm break-words py-3 px-4 text-xs font-medium text-base-content/75">{record.details}</td>
+                            <td className="whitespace-nowrap py-3 px-5 text-right text-xs font-mono font-bold text-base-content/60">{record.formattedDate}</td>
+                          </tr>;
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  {totalActivityPages > 1 && <div className="flex flex-col gap-3 border-t border-base-300 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"><span className="text-sm text-base-content/60">Showing {activityStart}–{activityEnd} of {filteredActivityRecords.length}</span><div className="join self-end sm:self-auto"><button type="button" className="btn btn-sm join-item" aria-label="Previous live records page" disabled={activityPage === 1} onClick={() => setActivityPage((page) => Math.max(1, page - 1))}><ChevronLeft size={16} /></button><span className="btn btn-sm join-item pointer-events-none">Page {activityPage} of {totalActivityPages}</span><button type="button" className="btn btn-sm join-item" aria-label="Next live records page" disabled={activityPage === totalActivityPages} onClick={() => setActivityPage((page) => Math.min(totalActivityPages, page + 1))}><ChevronRight size={16} /></button></div></div>}
+                </>
               )
             ) : filteredReports.length === 0 ? (
               <div className="p-12 text-center text-base-content/40 italic text-xs font-semibold">
                 No archived report documents matching criteria.
               </div>
             ) : (
-              <table className="table table-sm w-full divide-y divide-base-300">
+              <>
+              <div className="grid gap-3 p-4 md:hidden">
+                {filteredReports.map((report) => <ReportCard key={report.id} report={report} onDownload={() => handleDownloadReport(report)} onDelete={() => handleDeleteReport(report.id)} />)}
+              </div>
+              <div className="hidden overflow-x-auto md:block"><table className="table table-sm min-w-[760px] w-full divide-y divide-base-300">
                 <thead className="bg-base-200 text-base-content/50 uppercase font-bold tracking-wider text-[10px]">
                   <tr>
                     <th className="py-3 px-5 text-left">Document Title</th>
@@ -907,7 +1030,8 @@ export default function FieldReports() {
                     </tr>
                   ))}
                 </tbody>
-              </table>
+              </table></div>
+              </>
             )}
           </div>
         </div>

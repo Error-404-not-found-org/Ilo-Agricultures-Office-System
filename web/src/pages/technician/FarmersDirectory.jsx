@@ -102,7 +102,7 @@ function FarmerCard({ farmer, onOpen, onEdit }) {
           <p className="flex items-center gap-2"><Beef size={15} className="shrink-0" /> {farmer.animals} registered animal{farmer.animals === 1 ? "" : "s"}</p>
         </div>
 
-        <div className="card-actions grid grid-cols-2 border-t border-base-300 pt-3">
+        <div className="card-actions grid grid-cols-1 gap-2 border-t border-base-300 pt-3 sm:grid-cols-2">
           <button type="button" className="btn btn-sm" onClick={() => onOpen(farmer)}><Beef size={15} /> View animals</button>
           <button type="button" className="btn btn-sm btn-ghost" onClick={() => onEdit(farmer)}><Edit size={15} /> Edit profile</button>
         </div>
@@ -255,7 +255,7 @@ export default function ClientRegistry() {
           <MetricCard icon={<Beef size={21} />} value={isLoading ? "—" : pageStats.animals} label="Registered animals" note="For farmers on this page" />
         </section>
 
-        <section className="card card-border bg-base-100 shadow-sm">
+        <section className="card card-border bg-base-100 shadow-sm" aria-busy={isLoading || isFetching}>
           <div className="card-body gap-4 p-4 md:p-5">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <label className="input w-full xl:max-w-md">
@@ -265,7 +265,7 @@ export default function ClientRegistry() {
               <div className="flex flex-wrap items-center gap-2">
                 <button type="button" className="btn btn-primary btn-sm" onClick={() => setIsRegisterFarmerOpen(true)}><UserPlus size={15} /> Register farmer</button>
                 <button type="button" className="btn btn-sm" onClick={exportPage} disabled={isLoading || farmers.length === 0}><Download size={15} /> Export this page</button>
-                <span className="text-sm font-medium text-base-content/70">{isFetching && !isLoading ? "Updating…" : `${totalItems} farmer${totalItems === 1 ? "" : "s"}`}</span>
+                <span className="text-sm font-medium text-base-content/70" aria-live="polite">{isFetching && !isLoading ? "Updating…" : `${totalItems} farmer${totalItems === 1 ? "" : "s"}`}</span>
               </div>
             </div>
 
@@ -299,7 +299,7 @@ export default function ClientRegistry() {
             ) : isLoading ? (
               <>
                 <div className="grid gap-3 lg:hidden">{[0, 1, 2].map((item) => <div key={item} className="skeleton h-60 w-full" />)}</div>
-                <div className="hidden overflow-hidden rounded-box border border-base-300 lg:block" aria-label="Loading farmer records">
+                <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block" aria-label="Loading farmer records">
                   <table className="table table-pin-rows w-full text-left min-w-[1000px]">
                     <thead>
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
@@ -322,7 +322,7 @@ export default function ClientRegistry() {
               <>
                 <div className="grid gap-3 lg:hidden">{farmers.map((farmer) => <FarmerCard key={farmer.id} farmer={farmer} onOpen={openFarmer} onEdit={editFarmer} />)}</div>
                 <div className="hidden overflow-x-auto rounded-box border border-base-300 lg:block">
-                  <table className="table table-pin-rows w-full text-left min-w-250">
+                  <table className="table table-pin-rows w-full min-w-[1000px] text-left">
                     <thead>
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                         <th className="p-3.5 pl-6">Farmer</th>

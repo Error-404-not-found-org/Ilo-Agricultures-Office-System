@@ -6,6 +6,7 @@ import {
   Search,
   Clock,
   Calendar,
+  MapPin,
   CheckCircle,
   ChevronLeft,
   ChevronRight,
@@ -41,6 +42,108 @@ const toTitleCase = (str) => {
 };
 
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
+
+const getStatusBadgeClass = (status, overdue) => {
+  if (overdue) {
+    return "badge-error border-error/20 bg-error/10 text-error";
+  }
+  const s = String(status || "")
+    .toLowerCase()
+    .replaceAll("_", "-")
+    .replaceAll(" ", "-");
+  switch (s) {
+    case "scheduled":
+      return "badge-info border-info/20 bg-info/10 text-info";
+    case "in-progress":
+      return "badge-primary border-primary/20 bg-primary/10 text-primary";
+    case "pending":
+    case "triaged":
+    case "unassigned":
+      return "badge-warning border-warning/20 bg-warning/10 text-warning";
+    case "approved":
+    case "assigned":
+      return "badge-accent border-accent/20 bg-accent/10 text-accent";
+    case "completed":
+    case "done":
+    case "resolved":
+      return "badge-success border-success/20 bg-success/10 text-success";
+    case "declined":
+    case "cancelled":
+    case "rejected":
+      return "badge-error border-error/20 bg-error/10 text-error";
+    default:
+      return "badge-neutral border-base-300 bg-base-200 text-base-content/70";
+  }
+};
+
+const localDateKey = (value) => {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatWorkQueueSchedule = (task = {}) => {
+  const scheduleObj = task.schedule || task.raw?.schedule || {};
+  const dateValue =
+    scheduleObj.date ||
+    task.scheduledDate ||
+    task.displayDate ||
+    task.preferredDate ||
+    task.dueDate ||
+    task.raw?.scheduledDate ||
+    task.raw?.dueDate;
+
+  if (!dateValue) return { dateStr: "Not scheduled", periodStr: "" };
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return { dateStr: "Not scheduled", periodStr: "" };
+
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const targetKey = localDateKey(date);
+  let dateStr = "";
+  if (targetKey === localDateKey(today)) {
+    dateStr = "Today";
+  } else if (targetKey === localDateKey(tomorrow)) {
+    dateStr = "Tomorrow";
+  } else if (targetKey === localDateKey(yesterday)) {
+    dateStr = "Yesterday";
+  } else {
+    dateStr = date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+
+  const rawPeriod =
+    scheduleObj.visitPeriod ||
+    task.visitPeriod ||
+    task.raw?.visitPeriod ||
+    task.raw?.schedule?.visitPeriod ||
+    "";
+
+  let periodStr = "";
+  if (rawPeriod) {
+    const lower = String(rawPeriod).toLowerCase();
+    if (lower === "morning" || lower === "am") {
+      periodStr = "Morning";
+    } else if (lower === "afternoon" || lower === "pm") {
+      periodStr = "Afternoon";
+    } else {
+      periodStr = `${toTitleCase(rawPeriod)}`;
+    }
+  }
+
+  return { dateStr, periodStr };
+};
 
 const formatCanonicalAISchedule = (schedule = {}) => {
   if (!schedule.date) return "Not scheduled";
@@ -323,7 +426,7 @@ export default function WorkQueue() {
   return (
     <div className={ui.page}>
       <Topbar
-        title="Work Queue"
+        title="Field Assignments"
         subtitle="Complete assigned field tasks and lifecycle follow-ups"
       />
 
@@ -435,6 +538,7 @@ export default function WorkQueue() {
                     <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                       <th className="p-3.5 pl-6">Service</th>
                       <th className="p-3.5">Farmer & Animal</th>
+                      <th className="p-3.5">Location</th>
                       <th className="p-3.5">Schedule</th>
                       <th className="p-3.5">Status</th>
                       <th className="p-3.5 w-40 text-right pr-6">Action</th>
@@ -444,8 +548,9 @@ export default function WorkQueue() {
                   <tbody>
                     {[0, 1, 2, 3, 4].map((row) => (
                       <tr key={row}>
-                        <td colSpan={6}>
-                          <div className="grid grid-cols-[1fr_1.5fr_1fr_1fr_1fr_.2fr] gap-5 py-2">
+                        <td colSpan={7}>
+                          <div className="grid grid-cols-[1fr_1.5fr_1.2fr_1fr_1fr_1fr_.2fr] gap-5 py-2">
+                            <span className="skeleton h-4" />
                             <span className="skeleton h-4" />
                             <span className="skeleton h-4" />
                             <span className="skeleton h-4" />
@@ -493,6 +598,7 @@ export default function WorkQueue() {
                       <tr className="bg-base-200 border-b border-base-300 text-base-content/60 text-[11px] font-bold uppercase tracking-wider">
                         <th className="p-3.5 pl-6">Service</th>
                         <th className="p-3.5">Farmer & Animal</th>
+                        <th className="p-3.5">Location</th>
                         <th className="p-3.5">Schedule</th>
                         <th className="p-3.5">Status</th>
                         <th className="p-3.5 w-40 text-right pr-6">Action</th>
@@ -547,59 +653,57 @@ export default function WorkQueue() {
 
                             {/* 2. FARMER & ANIMAL */}
                             <td className="p-3.5 align-top">
-                              <div className="flex flex-col gap-0.5">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="font-bold text-sm text-base-content leading-tight">
-                                    {toTitleCase(task.farmerName)}
-                                  </span>
-                                  <span className="font-mono text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-bold tracking-tight">
-                                    #
-                                    {animalReference.length > 12
-                                      ? animalReference.slice(0, 12) + "..."
-                                      : animalReference}
-                                  </span>
+                              <div className="flex flex-col gap-1">
+                                <div className="font-bold text-sm text-base-content leading-tight">
+                                  {toTitleCase(
+                                    task.farmerName ||
+                                      task.farmer?.name ||
+                                      task.raw?.farmerId?.name ||
+                                      "Farmer unavailable",
+                                  )}
                                 </div>
-                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] mt-0.5">
-                                  <span className="text-base-content/50 truncate max-w-30">
-                                    {task.location || "Location not set"}
-                                  </span>
-                                  <span className="text-base-content/30">
-                                    •
-                                  </span>
-                                  <span className="text-base-content/40 truncate max-w-24">
-                                    {task.raw?.animalId?.species ||
-                                      task.raw?.animalIds?.[0]?.species ||
-                                      "Livestock"}
+                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                  <span className="font-semibold text-primary">
+                                    Tag #{task.animalTag || task.animal?.earTag || task.animal?.name || "Not recorded"}
                                   </span>
                                 </div>
                               </div>
                             </td>
 
+                            {/* 3. LOCATION */}
+                            <td className="p-3.5 align-top">
+                              <div className="flex items-start gap-1.5 text-xs font-medium text-base-content/85 mt-0.5">
+                                <MapPin size={14} className="mt-0.5 shrink-0 text-base-content/45" />
+                                <span className="break-words">
+                                  {task.location || task.farmer?.location || "Location not set"}
+                                </span>
+                              </div>
+                            </td>
+
                             {/* 3. SCHEDULE */}
                             <td className="p-3.5 align-top">
-                              {task.workflowType === "AI" ? (
-                                <span
-                                  className={`block font-bold text-xs ${task.overdue ? "text-error" : "text-base-content"}`}
-                                >
+                              {task.workflowType === "AI" && task.schedule?.date ? (
+                                <span className="block font-bold text-xs text-base-content">
                                   {formatCanonicalAISchedule(task.schedule)}
                                 </span>
                               ) : (
                                 (() => {
-                                const sched = formatRelativeSchedule(
-                                  task.displayDate,
-                                );
-                                return (
-                                  <div>
-                                    <span
-                                      className={`block font-bold text-xs ${task.overdue ? "text-error" : "text-base-content"}`}
-                                    >
-                                      {sched.date}
-                                    </span>
-                                    <span className="text-[11px] text-base-content/60 block mt-0.5 font-medium">
-                                      {sched.time}
-                                    </span>
-                                  </div>
-                                );
+                                  const { dateStr, periodStr } =
+                                    formatWorkQueueSchedule(task);
+                                  return (
+                                    <div>
+                                      <span
+                                        className={`block font-bold text-xs ${task.overdue ? "text-error" : "text-base-content"}`}
+                                      >
+                                        {dateStr}
+                                      </span>
+                                      {periodStr && (
+                                        <span className="text-[11px] font-semibold text-primary block mt-0.5">
+                                          {periodStr}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
                                 })()
                               )}
                             </td>
@@ -607,18 +711,22 @@ export default function WorkQueue() {
                             {/* 4. STATUS */}
                             <td className="p-3.5 align-top">
                               <span
-                                className={`badge badge-sm font-bold uppercase tracking-wider text-[9px] border bg-base-200`}
+                                className={`badge badge-sm font-bold uppercase tracking-wider text-[9px] px-2.5 py-1 ${getStatusBadgeClass(complete ? "completed" : (task.displayStatus || task.status), task.overdue && !complete)}`}
                               >
-                                {task.displayStatus}
+                                {complete ? "Completed" : (task.displayStatus || task.status || "Pending")}
                               </span>
                             </td>
 
                             {/* 5. PRIMARY ACTION */}
                             <td className="p-3.5 align-top pr-6 text-right">
-                              {complete && !canViewCompletedAI ? (
-                                <span className="text-[11px] font-bold text-emerald-600 flex items-center justify-end gap-1 mt-1">
-                                  <CheckCircle size={13} /> Completed
-                                </span>
+                              {complete && task.allowedAction !== "VIEW_RECORD" ? (
+                                <button
+                                  type="button"
+                                  disabled
+                                  className="btn btn-xs px-4 bg-base-200 border border-base-300 text-base-content/40 cursor-not-allowed font-bold select-none"
+                                >
+                                  Recorded
+                                </button>
                               ) : (
                                 <div
                                   className={
@@ -638,9 +746,14 @@ export default function WorkQueue() {
                                     onClick={() => openTask(task)}
                                     className={`btn btn-xs px-4 btn-primary`}
                                   >
-                                    {task.workflowType === "AI"
-                                      ? task.actionLabel
-                                      : getTaskPrimaryActionLabel(task)}
+                                    {task.allowedAction === "RECORD_SERVICE" && task.workflowType === "AI"
+                                      ? (task.actionLabel || "Record Insemination")
+                                      : task.allowedAction === "COMPLETE_TASK"
+                                        ? getTaskPrimaryActionLabel(task)
+                                        : (task.actionLabel ||
+                                          (task.workflowType === "AI"
+                                            ? "Record"
+                                            : getTaskPrimaryActionLabel(task)))}
                                   </button>
                                 </div>
                               )}

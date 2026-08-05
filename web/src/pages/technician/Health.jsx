@@ -211,8 +211,8 @@ export default function HealthLog() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <Topbar
-        title="Health & Diagnostics Ledger"
-        subtitle="Triage dashboard tracking livestock symptoms, medication regimes, and clinical response dispatches"
+        title="Animal Health & Request Records"
+        subtitle="Track livestock symptoms, treatment plans, and clinical response"
       />
 
       <main className="p-6 space-y-5 flex-1 flex flex-col min-h-0">

@@ -5,9 +5,14 @@ import {
   CalendarDays,
   Check,
   Clock3,
+  Eye,
+  Flame,
   MapPin,
   Paperclip,
   Phone,
+  Sparkles,
+  Tag,
+  User,
 } from "lucide-react";
 
 import axiosInstance from "../../lib/axios";
@@ -35,6 +40,20 @@ const humanizeStatus = (status) =>
     .replaceAll("-", " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
+const getStatusBadgeClass = (status) => {
+  const s = String(status || "").toLowerCase();
+  if (s.includes("pending")) {
+    return "badge-warning bg-warning/15 text-warning border-warning/30";
+  }
+  if (s.includes("schedule")) {
+    return "badge-info bg-info/15 text-info border-info/30";
+  }
+  if (s.includes("completed") || s.includes("done") || s.includes("resolved")) {
+    return "badge-success bg-success/15 text-success border-success/30";
+  }
+  return "badge-ghost";
+};
+
 const AIRequestSummary = ({ request, compact = false }) => {
   const farmerName =
     request.farmerDetails?.name || request.farmer || "Unknown farmer";
@@ -46,7 +65,17 @@ const AIRequestSummary = ({ request, compact = false }) => {
   const animalName =
     request.animalName || request.animal || request.animalTag || "Unknown";
   const animalTag = request.animalTag || request.earTag || null;
-  const heatSigns = Array.isArray(request.heatSigns) ? request.heatSigns : [];
+  const heatSigns = (
+    Array.isArray(request.heatSigns) ? request.heatSigns : []
+  )
+    .map((sign) =>
+      String(sign || "")
+        .replaceAll("_", " ")
+        .replaceAll("-", " ")
+        .replaceAll(",", "")
+        .trim(),
+    )
+    .filter(Boolean);
   const submittedAt = request.requestSubmissionDate || request.createdAt;
   const submittedDate = submittedAt ? new Date(submittedAt) : null;
   const submittedLabel =
@@ -57,6 +86,7 @@ const AIRequestSummary = ({ request, compact = false }) => {
           day: "numeric",
         })
       : "Not recorded";
+
   const attachmentUrls = [
     ...new Set(
       (Array.isArray(request.attachments?.urls)
@@ -70,102 +100,247 @@ const AIRequestSummary = ({ request, compact = false }) => {
     attachmentUrls.length,
   );
 
-  return (
-    <section
-      aria-label={compact ? "AI request summary" : "AI request details"}
-      className="rounded-box border border-base-300 bg-base-200/50 p-4"
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-base-content/55">
-          Artificial Insemination
-        </p>
-        <span className="badge badge-sm">
-          {humanizeStatus(request.status)}
-        </span>
-      </div>
+  const statusLabel = humanizeStatus(request.status);
+  const statusBadge = getStatusBadgeClass(request.status);
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <div>
-          <p className="text-xs text-base-content/55">Farmer</p>
-          <p className="font-semibold text-base-content">{farmerName}</p>
-        </div>
-        <div>
-          <p className="text-xs text-base-content/55">Animal</p>
-          <p className="font-semibold text-base-content">
-            {animalName}
-            {animalTag && animalTag !== animalName ? ` · Tag ${animalTag}` : ""}
-          </p>
-        </div>
-
-        {!compact && (
-          <div className="flex items-start gap-2">
-            <Phone
-              size={15}
-              className="mt-0.5 shrink-0 text-base-content/55"
-              aria-hidden="true"
-            />
-            <span>{phone}</span>
-          </div>
-        )}
-        <div className="flex items-start gap-2">
-          <MapPin
-            size={15}
-            className="mt-0.5 shrink-0 text-base-content/55"
-            aria-hidden="true"
-          />
-          <span>{request.location || "Location unavailable"}</span>
-        </div>
-
-        {!compact && (
-          <>
+  if (compact) {
+    return (
+      <section
+        aria-label="AI request summary"
+        className="rounded-xl border border-base-300 bg-base-200/40 p-4 space-y-3.5"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-base-300/60 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Sparkles size={14} />
+            </span>
             <div>
-              <p className="text-xs text-base-content/55">Heat signs</p>
-              <p>
-                {heatSigns.length ? heatSigns.join(", ") : "None submitted"}
+              <p className="text-xs font-bold uppercase tracking-wider text-base-content/60">
+                Artificial Insemination
               </p>
             </div>
-            <div>
-              <p className="text-xs text-base-content/55">Submitted</p>
-              <p>{submittedLabel}</p>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+          <span className={`badge badge-sm font-medium ${statusBadge}`}>
+            {statusLabel}
+          </span>
+        </div>
 
-      {!compact && (
-        <div className="mt-4 space-y-2">
-          <p className="flex items-center gap-2 text-sm font-medium text-base-content/70">
-            <Paperclip size={15} aria-hidden="true" />
-            {attachmentCount} attachment{attachmentCount === 1 ? "" : "s"}
-          </p>
-          {attachmentUrls.length > 0 && (
-            <div
-              className="grid grid-cols-2 gap-2 sm:grid-cols-3"
-              aria-label="Submitted request images"
-            >
-              {attachmentUrls.map((url, index) => (
-                <a
-                  key={url}
-                  href={url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="card card-border overflow-hidden bg-base-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                  aria-label={`Open request image ${index + 1}`}
-                >
-                  <figure className="aspect-video bg-base-200">
-                    <img
-                      src={url}
-                      alt={`AI request attachment ${index + 1}`}
-                      className="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                  </figure>
-                </a>
-              ))}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+          <div className="flex items-start gap-2.5">
+            <User size={16} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+            <div>
+              <span className="text-xs text-base-content/60 block">Farmer</span>
+              <span className="font-semibold text-base-content">{farmerName}</span>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2.5">
+            <Tag size={16} className="mt-0.5 shrink-0 text-secondary" aria-hidden="true" />
+            <div>
+              <span className="text-xs text-base-content/60 block">Animal</span>
+              <span className="font-semibold text-base-content">
+                {animalName}
+                {animalTag && animalTag !== animalName ? ` · Tag ${animalTag}` : ""}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2.5">
+            <Phone size={15} className="mt-0.5 shrink-0 text-base-content/55" aria-hidden="true" />
+            <div>
+              <span className="text-xs text-base-content/60 block">Contact</span>
+              <span className="font-medium text-base-content">{phone}</span>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2.5">
+            <CalendarDays size={15} className="mt-0.5 shrink-0 text-base-content/55" aria-hidden="true" />
+            <div>
+              <span className="text-xs text-base-content/60 block">Submitted</span>
+              <span className="font-medium text-base-content">{submittedLabel}</span>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2.5 sm:col-span-2">
+            <MapPin size={16} className="mt-0.5 shrink-0 text-error" aria-hidden="true" />
+            <div>
+              <span className="text-xs text-base-content/60 block">Location</span>
+              <span className="font-medium text-base-content/90">{request.location || "Location unavailable"}</span>
+            </div>
+          </div>
+
+          {heatSigns.length > 0 && (
+            <div className="sm:col-span-2 pt-1">
+              <span className="text-xs text-base-content/60 block mb-1">Heat Signs</span>
+              <div className="flex flex-wrap gap-1">
+                {heatSigns.map((sign, idx) => (
+                  <span key={idx} className="badge badge-warning badge-soft text-[11px] px-2 py-0.5">
+                    {sign}
+                  </span>
+                ))}
+              </div>
             </div>
           )}
         </div>
-      )}
+      </section>
+    );
+  }
+
+  return (
+    <section
+      aria-label="AI request details"
+      className="space-y-4"
+    >
+      {/* Top Banner Bar (Horizontal Full Width) */}
+      <div className="rounded-xl border border-base-300 bg-gradient-to-r from-primary/10 via-base-200/60 to-base-200/30 p-4 shadow-2xs">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary shadow-xs">
+              <Sparkles size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider text-primary">
+                Artificial Insemination
+              </p>
+              <h4 className="text-sm font-semibold text-base-content/90">
+                {request.serviceLabel || "AI Service Request"}
+              </h4>
+            </div>
+          </div>
+          <span className={`badge badge-md font-semibold ${statusBadge}`}>
+            {statusLabel}
+          </span>
+        </div>
+      </div>
+
+      {/* Main 2-Column Horizontal Layout (Left-to-Right Redistribution) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+        {/* Left Column: Farmer & Animal Info Cards */}
+        <div className="space-y-4">
+          {/* Farmer Card */}
+          <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-2xs space-y-3">
+            <div className="flex items-center gap-2 border-b border-base-200 pb-2.5">
+              <User size={16} className="text-primary" />
+              <h5 className="text-xs font-bold uppercase tracking-wider text-base-content/70">
+                Farmer Information
+              </h5>
+            </div>
+            <div className="space-y-2.5 text-sm">
+              <div>
+                <p className="text-xs text-base-content/55">Farmer</p>
+                <p className="font-semibold text-base-content">{farmerName}</p>
+              </div>
+              <div className="flex items-start gap-2 pt-0.5">
+                <Phone size={15} className="mt-0.5 shrink-0 text-base-content/55" aria-hidden="true" />
+                <div>
+                  <p className="text-xs text-base-content/55">Contact</p>
+                  <p className="font-medium text-base-content">{phone}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 pt-0.5">
+                <MapPin size={15} className="mt-0.5 shrink-0 text-base-content/55" aria-hidden="true" />
+                <div>
+                  <p className="text-xs text-base-content/55">Location</p>
+                  <p className="font-medium text-base-content">{request.location || "Location unavailable"}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Animal Details Card */}
+          <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-2xs space-y-3">
+            <div className="flex items-center gap-2 border-b border-base-200 pb-2.5">
+              <Tag size={16} className="text-secondary" />
+              <h5 className="text-xs font-bold uppercase tracking-wider text-base-content/70">
+                Animal & Request Info
+              </h5>
+            </div>
+            <div className="space-y-2.5 text-sm">
+              <div>
+                <p className="text-xs text-base-content/55">Animal</p>
+                <p className="font-semibold text-base-content">
+                  {animalName}
+                  {animalTag && animalTag !== animalName ? ` · Tag ${animalTag}` : ""}
+                </p>
+              </div>
+              <div className="flex items-start gap-2 pt-0.5">
+                <CalendarDays size={15} className="mt-0.5 shrink-0 text-base-content/55" aria-hidden="true" />
+                <div>
+                  <p className="text-xs text-base-content/55">Submitted</p>
+                  <p className="font-medium text-base-content">{submittedLabel}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Heat Signs & Attachments Cards */}
+        <div className="space-y-4">
+          {/* Heat Signs Card */}
+          <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-2xs space-y-3">
+            <div className="flex items-center gap-2 border-b border-base-200 pb-2.5">
+              <Flame size={16} className="text-warning" />
+              <h5 className="text-xs font-bold uppercase tracking-wider text-base-content/70">
+                Clinical Observations
+              </h5>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="text-xs text-base-content/55">Heat signs</p>
+              {heatSigns.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {heatSigns.map((sign, idx) => (
+                    <span
+                      key={idx}
+                      className="badge badge-warning badge-soft text-xs font-medium px-2.5 py-1"
+                    >
+                      {sign}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="font-medium text-base-content">None submitted</p>
+              )}
+            </div>
+          </div>
+
+          {/* Attachment Gallery Section */}
+          <div className="rounded-xl border border-base-300 bg-base-100 p-4 shadow-2xs space-y-3">
+            <p className="flex items-center gap-2 text-sm font-medium text-base-content/70">
+              <Paperclip size={15} aria-hidden="true" />
+              {attachmentCount} attachment{attachmentCount === 1 ? "" : "s"}
+            </p>
+            {attachmentUrls.length > 0 && (
+              <div
+                className="grid grid-cols-2 gap-2.5 sm:grid-cols-3"
+                aria-label="Submitted request images"
+              >
+                {attachmentUrls.map((url, index) => (
+                  <a
+                    key={url}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group relative card card-border overflow-hidden bg-base-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all hover:border-primary/50 hover:shadow-md"
+                    aria-label={`Open request image ${index + 1}`}
+                  >
+                    <figure className="aspect-video bg-base-200 overflow-hidden">
+                      <img
+                        src={url}
+                        alt={`AI request attachment ${index + 1}`}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                      />
+                    </figure>
+                    <div className="absolute inset-0 bg-black/25 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center text-white">
+                      <Eye size={18} />
+                    </div>
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </section>
   );
 };
@@ -309,7 +484,7 @@ export default function AIRequestModal({
         {canClaimAndSchedule && (
           <button
             type="button"
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm btn-primary gap-1.5"
             onClick={() => onViewChange("schedule")}
           >
             <CalendarDays size={16} aria-hidden="true" />
@@ -321,7 +496,7 @@ export default function AIRequestModal({
       <>
         <button
           type="button"
-          className="btn btn-sm btn-ghost mr-auto"
+          className="btn btn-sm btn-ghost mr-auto gap-1.5"
           disabled={isSubmitting}
           onClick={() => onViewChange("details")}
         >
@@ -338,7 +513,7 @@ export default function AIRequestModal({
         </button>
         <button
           type="button"
-          className="btn btn-sm btn-primary"
+          className="btn btn-sm btn-primary gap-1.5"
           disabled={isSubmitting || !canClaimAndSchedule}
           onClick={confirmSchedule}
         >
@@ -366,110 +541,138 @@ export default function AIRequestModal({
           ? "Choose the visit date and service period before assignment."
           : "Review the farmer's artificial insemination request."
       }
-      size="lg"
+      size="4xl"
       actions={actions}
     >
       {view === "details" ? (
         <AIRequestSummary request={request} />
       ) : (
-        <div className="space-y-5">
-          <AIRequestSummary request={request} compact />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* Left Column: Compact Summary */}
+          <div className="lg:col-span-5">
+            <AIRequestSummary request={request} compact />
+          </div>
 
-          {errors.form && (
-            <div role="alert" className="alert alert-error alert-soft text-sm">
-              <span>{errors.form}</span>
+          {/* Right Column: Schedule Selection Form */}
+          <div className="lg:col-span-7 space-y-5 rounded-xl border border-base-300 bg-base-100 p-4 shadow-2xs">
+            <div className="border-b border-base-200 pb-2.5">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-base-content/70 flex items-center gap-1.5">
+                <CalendarDays size={16} className="text-primary" />
+                Schedule Assignment
+              </h5>
             </div>
-          )}
 
-          <fieldset className="fieldset">
-            <legend className="fieldset-legend">Visit date</legend>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {[
-                ["today", "Today"],
-                ["tomorrow", "Tomorrow"],
-                ["custom", "Custom date"],
-              ].map(([value, label]) => (
-                <label
-                  key={value}
-                  className="flex cursor-pointer items-center gap-2 rounded-box border border-base-300 bg-base-100 px-3 py-2.5"
-                >
-                  <input
-                    type="radio"
-                    name={`ai-visit-date-choice-${fieldId}`}
-                    value={value}
-                    checked={dateChoice === value}
-                    onChange={() => {
-                      setDateChoice(value);
-                      setErrors((current) => ({ ...current, date: null }));
-                    }}
-                    className="radio radio-sm"
-                  />
-                  <span className="font-medium text-base-content">{label}</span>
-                </label>
-              ))}
-            </div>
-            {dateChoice === "custom" && (
-              <input
-                type="date"
-                aria-label="Custom visit date"
-                className={`input input-sm mt-2 w-full ${errors.date ? "input-error" : ""}`}
-                min={dateKeyWithOffset(0)}
-                value={customDate}
-                onChange={(event) => {
-                  setCustomDate(event.target.value);
-                  setErrors((current) => ({ ...current, date: null }));
-                }}
-              />
+            {errors.form && (
+              <div role="alert" className="alert alert-error alert-soft text-sm">
+                <span>{errors.form}</span>
+              </div>
             )}
-            {errors.date && (
-              <p role="alert" className="label text-error">
-                {errors.date}
-              </p>
-            )}
-          </fieldset>
 
-          <fieldset className="fieldset">
-            <legend className="fieldset-legend">Visit period</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                ["morning", "Morning"],
-                ["afternoon", "Afternoon"],
-              ].map(([value, label]) => (
-                <label
-                  key={value}
-                  className="flex cursor-pointer items-center gap-2 rounded-box border border-base-300 bg-base-100 px-3 py-2.5"
-                >
-                  <input
-                    type="radio"
-                    name={`ai-visit-period-${fieldId}`}
-                    value={value}
-                    checked={visitPeriod === value}
-                    onChange={() => {
-                      setVisitPeriod(value);
-                      setErrors((current) => ({
-                        ...current,
-                        visitPeriod: null,
-                      }));
-                    }}
-                    className="radio radio-sm"
-                  />
-                  <Clock3
-                    size={15}
-                    className="text-base-content/55"
-                    aria-hidden="true"
-                  />
-                  <span className="font-medium text-base-content">{label}</span>
-                </label>
-              ))}
-            </div>
-            {errors.visitPeriod && (
-              <p role="alert" className="label text-error">
-                {errors.visitPeriod}
-              </p>
-            )}
-          </fieldset>
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend font-semibold text-base-content/80 mb-2">Visit date</legend>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  ["today", "Today"],
+                  ["tomorrow", "Tomorrow"],
+                  ["custom", "Custom date"],
+                ].map(([value, label]) => {
+                  const isChecked = dateChoice === value;
+                  return (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-3 transition-all ${
+                        isChecked
+                          ? "border-primary bg-primary/5 text-primary shadow-xs font-semibold"
+                          : "border-base-300 bg-base-100 hover:bg-base-200/50 text-base-content"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`ai-visit-date-choice-${fieldId}`}
+                        value={value}
+                        checked={isChecked}
+                        onChange={() => {
+                          setDateChoice(value);
+                          setErrors((current) => ({ ...current, date: null }));
+                        }}
+                        className="radio radio-primary radio-sm"
+                      />
+                      <span className="font-medium text-sm text-base-content">{label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {dateChoice === "custom" && (
+                <input
+                  type="date"
+                  aria-label="Custom visit date"
+                  className={`input input-sm mt-2.5 w-full ${errors.date ? "input-error" : ""}`}
+                  min={dateKeyWithOffset(0)}
+                  value={customDate}
+                  onChange={(event) => {
+                    setCustomDate(event.target.value);
+                    setErrors((current) => ({ ...current, date: null }));
+                  }}
+                />
+              )}
+              {errors.date && (
+                <p role="alert" className="label text-error text-xs mt-1">
+                  {errors.date}
+                </p>
+              )}
+            </fieldset>
+
+            <fieldset className="fieldset">
+              <legend className="fieldset-legend font-semibold text-base-content/80 mb-2">Visit period</legend>
+              <div className="grid grid-cols-2 gap-2.5">
+                {[
+                  ["morning", "Morning"],
+                  ["afternoon", "Afternoon"],
+                ].map(([value, label]) => {
+                  const isChecked = visitPeriod === value;
+                  return (
+                    <label
+                      key={value}
+                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-3 transition-all ${
+                        isChecked
+                          ? "border-primary bg-primary/5 text-primary shadow-xs font-semibold"
+                          : "border-base-300 bg-base-100 hover:bg-base-200/50 text-base-content"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name={`ai-visit-period-${fieldId}`}
+                        value={value}
+                        checked={isChecked}
+                        onChange={() => {
+                          setVisitPeriod(value);
+                          setErrors((current) => ({
+                            ...current,
+                            visitPeriod: null,
+                          }));
+                        }}
+                        className="radio radio-primary radio-sm"
+                      />
+                      <Clock3
+                        size={15}
+                        className={isChecked ? "text-primary" : "text-base-content/55"}
+                        aria-hidden="true"
+                      />
+                      <span className="font-medium text-sm text-base-content">{label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              {errors.visitPeriod && (
+                <p role="alert" className="label text-error text-xs mt-1">
+                  {errors.visitPeriod}
+                </p>
+              )}
+            </fieldset>
+          </div>
         </div>
       )}
     </Modal>
   );
 }
+
