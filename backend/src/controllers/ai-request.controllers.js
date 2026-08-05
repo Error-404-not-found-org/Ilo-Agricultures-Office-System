@@ -1507,24 +1507,57 @@ export const getAIRequestDetail = async (req, res) => {
     requestObj.nextAction = nextAction;
     requestObj.nextActionAt = nextAction?.at || null;
 
-    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin") {
-      if (requestObj.farmerId) {
-        requestObj.farmerId.phoneNumber = "";
+    if (req.user.role === "technician") {
+      const isAssignedToMe =
+        requestObj.approvedBy?._id?.toString() === req.user._id.toString() ||
+        requestObj.technicianId?._id?.toString() === req.user._id.toString();
 
-        if (requestObj.farmerId.address) {
-          requestObj.farmerId.address.landmark = "";
-          requestObj.farmerId.address.street = "";
-          requestObj.farmerId.address.houseNumber = "";
-          requestObj.farmerId.address.coordinates = null;
-        }
-
-        if (requestObj.farmerId.farmLocation) {
-          requestObj.farmerId.farmLocation.landmark = "";
-          requestObj.farmerId.farmLocation.directionsNote = "";
-          requestObj.farmerId.farmLocation.latitude = null;
-          requestObj.farmerId.farmLocation.longitude = null;
-        }
+      if (!isUnclaimed && !isAssignedToMe) {
+        return res.status(403).json({
+          message: "Request is assigned to another technician.",
+          code: "AI_REQUEST_ASSIGNED_TO_OTHER",
+        });
       }
+
+      if (isUnclaimed) {
+        const candidateDetail = {
+          id: requestObj._id,
+          _id: requestObj._id,
+          type: requestObj.type,
+          serviceType: "Artificial Insemination",
+          status: requestObj.status,
+          urgency: requestObj.urgency,
+          preferredDate: requestObj.preferredDate,
+          createdAt: requestObj.createdAt,
+          updatedAt: requestObj.updatedAt,
+          heatSigns: requestObj.heatSigns,
+          note: requestObj.note,
+          animalId: requestObj.animalId,
+          municipality: requestObj.farmerId?.address?.city || requestObj.farmerId?.address?.municipality || "",
+          barangay: requestObj.farmerId?.address?.barangay || "",
+        };
+        return res.status(200).json(candidateDetail);
+      }
+    }
+
+    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin" && req.user.role !== "technician") {
+      const candidateDetail = {
+        id: requestObj._id,
+        _id: requestObj._id,
+        type: requestObj.type,
+        serviceType: "Artificial Insemination",
+        status: requestObj.status,
+        urgency: requestObj.urgency,
+        preferredDate: requestObj.preferredDate,
+        createdAt: requestObj.createdAt,
+        updatedAt: requestObj.updatedAt,
+        heatSigns: requestObj.heatSigns,
+        note: requestObj.note,
+        animalId: requestObj.animalId,
+        municipality: requestObj.farmerId?.address?.city || requestObj.farmerId?.address?.municipality || "",
+        barangay: requestObj.farmerId?.address?.barangay || "",
+      };
+      return res.status(200).json(candidateDetail);
     }
 
     return res.status(200).json({

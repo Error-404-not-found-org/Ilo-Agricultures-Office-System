@@ -25,26 +25,66 @@ export const getHealthRequestDetail = async (req, res) => {
     const request = await getRequest(req.params.id);
     assertHealthRequestAccess(req.user, request);
 
-    const isUnclaimed = !request.handledBy;
+    const isUnclaimed = !request.handledBy && !request.assignedTechnicianId && !request.assignedVeterinarianId;
     const isFarmerRole = req.user.role === "farmer";
     const isOwnFarmer = isFarmerRole && request.farmerId?._id?.toString() === req.user._id.toString();
 
-    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin") {
-      if (request.farmerId) {
-        request.farmerId.phoneNumber = "";
-        if (request.farmerId.address) {
-          request.farmerId.address.landmark = "";
-          request.farmerId.address.street = "";
-          request.farmerId.address.houseNumber = "";
-          request.farmerId.address.coordinates = null;
-        }
-        if (request.farmerId.farmLocation) {
-          request.farmerId.farmLocation.landmark = "";
-          request.farmerId.farmLocation.directionsNote = "";
-          request.farmerId.farmLocation.latitude = null;
-          request.farmerId.farmLocation.longitude = null;
-        }
+    if (req.user.role === "technician" || req.user.role === "veterinarian") {
+      const isAssignedToMe =
+        request.handledBy?._id?.toString() === req.user._id.toString() ||
+        request.assignedTechnicianId?._id?.toString() === req.user._id.toString() ||
+        request.assignedVeterinarianId?._id?.toString() === req.user._id.toString();
+
+      if (!isUnclaimed && !isAssignedToMe) {
+        return res.status(403).json({
+          message: "Request is assigned to another person.",
+          code: "HEALTH_REQUEST_ASSIGNED_TO_OTHER",
+        });
       }
+
+      if (isUnclaimed) {
+        const candidateDetail = {
+          id: request._id,
+          _id: request._id,
+          type: "health",
+          serviceType: request.requestType || "Health Assistance",
+          status: request.status,
+          urgency: request.urgency,
+          requestType: request.requestType,
+          preferredDate: request.preferredDate,
+          createdAt: request.createdAt,
+          updatedAt: request.updatedAt,
+          findings: request.findings,
+          symptoms: request.symptoms,
+          note: request.note,
+          animalId: request.animalId,
+          municipality: request.farmerId?.address?.city || request.farmerId?.address?.municipality || "",
+          barangay: request.farmerId?.address?.barangay || "",
+        };
+        return sendDetail(res, candidateDetail);
+      }
+    }
+
+    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin" && req.user.role !== "technician" && req.user.role !== "veterinarian") {
+      const candidateDetail = {
+        id: request._id,
+        _id: request._id,
+        type: "health",
+        serviceType: request.requestType || "Health Assistance",
+        status: request.status,
+        urgency: request.urgency,
+        requestType: request.requestType,
+        preferredDate: request.preferredDate,
+        createdAt: request.createdAt,
+        updatedAt: request.updatedAt,
+        findings: request.findings,
+        symptoms: request.symptoms,
+        note: request.note,
+        animalId: request.animalId,
+        municipality: request.farmerId?.address?.city || request.farmerId?.address?.municipality || "",
+        barangay: request.farmerId?.address?.barangay || "",
+      };
+      return sendDetail(res, candidateDetail);
     }
 
     sendDetail(res, request);

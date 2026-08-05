@@ -229,14 +229,15 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(String(request.workflowId), ids.pending);
       assert.equal(request.allowedAction, "CLAIM_AND_SCHEDULE");
       assert.equal(request.actionLabel, "Claim & Set Visit");
-      assert.equal(request.farmer, farmer.name);
-      assert.equal(request.farmerPhone, farmer.phoneNumber);
-      assert.equal(request.phone, farmer.phoneNumber);
-      assert.equal(request.animal, animal.animalId);
-      assert.equal(request.location, "San Roque, Iloilo City");
+      const expectedKeys = [
+        "id", "workflowId", "workflowType", "type", "serviceType",
+        "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",
+        "urgency", "animal", "earTag", "breed", "species", "municipality", "barangay",
+        "preferredDate", "scheduledDate", "visitPeriod", "heatSigns", "requestSubmissionDate", "createdAt"
+      ].sort();
+      assert.deepEqual(Object.keys(request).sort(), expectedKeys);
+      assert.equal(request.farmer, undefined);
       assert.deepEqual(request.heatSigns, ["standing heat"]);
-      assert.equal(request.attachments.count, 1);
-      assert.equal(request.requestSubmissionDate.toISOString(), "2026-08-01T00:00:00.000Z");
 
       const workQueue = responseRecorder();
       await getWorkQueue(

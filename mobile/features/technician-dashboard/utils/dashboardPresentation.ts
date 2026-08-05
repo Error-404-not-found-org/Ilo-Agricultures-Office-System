@@ -122,21 +122,13 @@ export function formatSentAt(value?: string | Date | null): string {
   return `Sent ${day} at ${time}`;
 }
 
-export function getTechnicianRequestBadge(item: any, isLocked?: boolean) {
+export function getTechnicianRequestBadge(item: any) {
   const status = String(
     item?.status || item?.raw?.status || "pending",
   ).toLowerCase();
   const statusPresentation =
     getTechnicianRequestStatusPresentation(item);
   const now = new Date();
-
-  if (isLocked) {
-    return {
-      label: "Assigned",
-      variant: "info",
-      isAvailable: false,
-    };
-  }
 
   if (statusPresentation) {
     return {

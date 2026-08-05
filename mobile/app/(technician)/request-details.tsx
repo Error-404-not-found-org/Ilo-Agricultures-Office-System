@@ -20,6 +20,7 @@ import { getTechnicianRequestStatusPresentation } from "@/features/technician-re
 import { useTheme } from "@/lib/theme";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useApi } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 import {
   Calendar,
@@ -201,6 +202,8 @@ export default function RequestDetailsScreen() {
   const [declineModalVisible, setDeclineModalVisible] = useState(false);
   const [declineReason, setDeclineReason] = useState("");
 
+  const queryClient = useQueryClient();
+
   const fetchRequestDetails = async (showFullSkeleton = false) => {
     try {
       if (showFullSkeleton) setLoading(true);
@@ -228,6 +231,12 @@ export default function RequestDetailsScreen() {
         setTimeline(historyTimeline);
       }
     } catch (err: any) {
+      if (err.response?.status === 403 || err.response?.status === 404) {
+        toast.error("This request is no longer available or assigned to another technician.");
+        void queryClient.invalidateQueries();
+        router.back();
+        return;
+      }
       toast.error(err.message || "Failed to fetch request details");
     } finally {
       setLoading(false);

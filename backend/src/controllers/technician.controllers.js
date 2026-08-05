@@ -68,6 +68,21 @@ export const getTechnicianDashboardData = async (req, res) => {
 
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
+    const isAdmin = req.user?.role === "admin";
+    const assigneeFilterAI = isAdmin ? {} : {
+      $or: [
+        { approvedBy: req.user._id },
+        { technicianId: req.user._id }
+      ]
+    };
+    const healthAssigneeField = req.user?.role === "veterinarian" ? "assignedVeterinarianId" : "assignedTechnicianId";
+    const assigneeFilterHealth = isAdmin ? {} : {
+      $or: [
+        { handledBy: req.user._id },
+        { [healthAssigneeField]: req.user._id }
+      ]
+    };
+
     // 1. FETCH ALL STATS & DATA STREAMS IN PARALLEL
     const [
       totalInseminationsRecordToday,
@@ -90,22 +105,31 @@ export const getTechnicianDashboardData = async (req, res) => {
           { scheduledDate: { $gte: todayStart, $lt: todayEnd } },
           { inseminationDate: { $gte: todayStart, $lt: todayEnd } },
         ],
+        ...assigneeFilterAI,
       }),
-      HealthRequest.countDocuments({ status: "pending" }),
+      HealthRequest.countDocuments({
+        status: "pending",
+        // Unassigned requests don't have handledBy yet, so global unassigned stat is acceptable or scoped to local
+      }),
       Insemination.countDocuments({
         inseminationDate: { $gte: ninetyDaysAgo },
+        ...assigneeFilterAI,
       }),
       Pregnancy.countDocuments({
         createdAt: { $gte: ninetyDaysAgo },
         "pregnancyDiagnosis.result": "Pregnant",
+        // Should pregnancy be scoped? Usually technicianId is on pregnancy, but the model might just be global. We'll leave as is or add if exists.
+        ...(isAdmin ? {} : { "confirmation.confirmedBy": req.user._id })
       }),
       // 5. Total Visits Scheduled for Today (AI + Health)
       Promise.all([
         Insemination.countDocuments({
           scheduledDate: { $gte: todayStart, $lt: todayEnd },
+          ...assigneeFilterAI,
         }),
         HealthRequest.countDocuments({
           scheduledDate: { $gte: todayStart, $lt: todayEnd },
+          ...assigneeFilterHealth,
         }),
       ]),
       // 6. Total Completed Today
@@ -113,10 +137,12 @@ export const getTechnicianDashboardData = async (req, res) => {
         Insemination.countDocuments({
           status: "done",
           updatedAt: { $gte: todayStart, $lt: todayEnd },
+          ...assigneeFilterAI,
         }),
         HealthRequest.countDocuments({
           status: "resolved",
           updatedAt: { $gte: todayStart, $lt: todayEnd },
+          ...assigneeFilterHealth,
         }),
       ]),
       // Data Streams (Using .lean() for performance)
@@ -221,14 +247,17 @@ export const getTechnicianDashboardData = async (req, res) => {
       // 7. Total AI Month
       Insemination.countDocuments({
         inseminationDate: { $gte: monthStart },
+        ...assigneeFilterAI,
       }),
       Pregnancy.countDocuments({
         createdAt: { $gte: monthStart },
         deletedAt: null,
+        ...(isAdmin ? {} : { "confirmation.confirmedBy": req.user._id })
       }),
       Calving.countDocuments({
         createdAt: { $gte: monthStart },
         deletedAt: null,
+        ...(isAdmin ? {} : { technicianId: req.user._id })
       }),
       // 8. Tasks (Claimed/Scheduled tasks)
       Task.find({
@@ -245,6 +274,7 @@ export const getTechnicianDashboardData = async (req, res) => {
     // 2. Fetch Success Rate from Cache or Calculate
     const totalInsem_90 = await Insemination.countDocuments({
       inseminationDate: { $gte: ninetyDaysAgo },
+      ...assigneeFilterAI,
     });
     const successRate =
       totalInsem_90 > 0
@@ -374,10 +404,40 @@ export const getTechnicianDashboardData = async (req, res) => {
         raw: ins,
       };
 
+      const assignedToMeAI =
+        req.user?.role === "admin" ||
+        ins.approvedBy?._id?.toString() === req.user?._id?.toString() ||
+        ins.technicianId?.toString() === req.user?._id?.toString();
+
+      const isUnassignedAI = !ins.approvedBy && !ins.technicianId;
+
       if (
         ["pending", "approved", "scheduled", "in-progress"].includes(ins.status)
       ) {
-        pendingRequests.push(item);
+        if (isUnassignedAI) {
+          const candidateItem = {
+            id: ins._id,
+            type: "insemination",
+            status: ins.status,
+            isReadyToday,
+            time: formatTime(itemDisplayDate),
+            preferredTime: formatTime(itemDisplayDate),
+            displayDate: itemDisplayDate,
+            animalTag: ins.animalId?.earTag || ins.animalId?.animalId || null,
+            municipality: ins.farmerId?.address?.city || ins.farmerId?.address?.municipality || "",
+            barangay: ins.farmerId?.address?.barangay || "",
+            displayStatus: isReadyToday ? "Ready Today" : ins.status,
+            task: isMobileRequest
+              ? `AI Request (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`
+              : `AI Service (Attempt #${ins.attemptNumber || 1}) - ${ins.animalId?.animalId || ins.animalId?.earTag || "Unknown"}`,
+            urgent: isMobileRequest,
+            overdue: isOverdue,
+            sentTime: formatTime(ins.createdAt),
+          };
+          pendingRequests.push(candidateItem);
+        } else if (assignedToMeAI) {
+          pendingRequests.push(item);
+        }
       }
 
       if (
@@ -385,7 +445,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd) ||
         isOverdue
       ) {
-        if (ins.status !== "pending") {
+        if (ins.status !== "pending" && assignedToMeAI) {
           agendaItems.push(item);
         }
       }
@@ -444,6 +504,15 @@ export const getTechnicianDashboardData = async (req, res) => {
         raw: req,
       };
 
+      const assignedToMeHealth =
+        req.user?.role === "admin" ||
+        req.handledBy?._id?.toString() === req.user?._id?.toString() ||
+        req.assignedTechnicianId?.toString() === req.user?._id?.toString() ||
+        req.assignedVeterinarianId?.toString() === req.user?._id?.toString();
+
+      const isUnassignedHealth =
+        !req.handledBy && !req.assignedTechnicianId && !req.assignedVeterinarianId;
+
       if (
         [
           "pending",
@@ -455,7 +524,30 @@ export const getTechnicianDashboardData = async (req, res) => {
           "in_progress",
         ].includes(req.status)
       ) {
-        pendingRequests.push(item);
+        if (isUnassignedHealth) {
+          const candidateItem = {
+            id: req._id,
+            type: "health",
+            taskType: "Health",
+            serviceType: req.requestType || "Health Assistance",
+            status: req.status,
+            isReadyToday,
+            time: formatTime(itemDisplayDate),
+            preferredTime: formatTime(itemDisplayDate),
+            displayDate: itemDisplayDate,
+            animalTag: req.animalId?.earTag || req.animalId?.animalId || null,
+            municipality: req.farmerId?.address?.city || req.farmerId?.address?.municipality || "",
+            barangay: req.farmerId?.address?.barangay || "",
+            displayStatus: isReadyToday ? "Ready Today" : req.status,
+            task: `Health Check - ${req.animalId?.animalId || req.animalId?.earTag || "Unknown"}`,
+            urgent: ["high", "emergency"].includes(req.urgency),
+            overdue: isOverdue,
+            sentTime: formatTime(req.createdAt),
+          };
+          pendingRequests.push(candidateItem);
+        } else if (assignedToMeHealth) {
+          pendingRequests.push(item);
+        }
       }
 
       if (
@@ -463,7 +555,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd) ||
         isOverdue
       ) {
-        if (req.status !== "pending") {
+        if (req.status !== "pending" && assignedToMeHealth) {
           agendaItems.push(item);
         }
       }
@@ -3256,6 +3348,11 @@ export const getTechnicianRequests = async (req, res) => {
         rec.approvedBy?._id || rec.approvedBy || rec.technicianId || null;
       const isUnassigned = !assignedTechnicianId;
 
+      const safeFarmerPhone = isUnassigned ? null : (farmer.phoneNumber || "");
+      const safeFarmerPhoneAlt = isUnassigned ? null : (farmer.phone || null);
+      const safeFarmerImageUrl = isUnassigned ? "" : (farmer.imageUrl || "");
+      const safeLocation = isUnassigned ? null : formatAddress(farmer.address);
+
       let allowedAction = null;
       let actionLabel = null;
       if (rec.status === "pending" && isUnassigned) {
@@ -3295,6 +3392,38 @@ export const getTechnicianRequests = async (req, res) => {
         );
       }
 
+      if (isUnassigned) {
+        return {
+          id: rec._id,
+          workflowId: rec._id,
+          workflowType: "AI",
+          type: "ai",
+          serviceType: "Artificial Insemination",
+          status: rec.status,
+          allowedAction,
+          actionLabel,
+          isReadyToday: !!isReady,
+          displayStatus: isReady
+            ? "Ready Today"
+            : rec.status === "approved"
+              ? "Assigned"
+              : rec.status,
+          urgency: "normal",
+          animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
+          earTag: rec.animalId?.earTag || "",
+          breed: rec.animalId?.breed || "",
+          species: rec.animalId?.species || "",
+          municipality: city,
+          barangay: barangay,
+          preferredDate: rec.preferredDate || rec.createdAt,
+          scheduledDate: rec.scheduledDate || null,
+          visitPeriod: rec.visitPeriod,
+          heatSigns: Array.isArray(rec.heatSigns) ? rec.heatSigns : [],
+          requestSubmissionDate: rec.createdAt,
+          createdAt: rec.createdAt,
+        };
+      }
+
       return {
         id: rec._id,
         workflowId: rec._id,
@@ -3316,11 +3445,11 @@ export const getTechnicianRequests = async (req, res) => {
         farmerId: farmer._id || farmer,
         farmerImageUrl: farmer.imageUrl || "",
         farmerPhone: farmer.phoneNumber || "",
-        phone: farmer.phoneNumber || farmer.phone || null,
+        phone: farmer.phone || null,
         farmerDetails: {
           id: farmer._id || null,
           name: farmer.name || "Unknown Farmer",
-          phone: farmer.phoneNumber || farmer.phone || null,
+          phone: farmer.phoneNumber || "",
           location: formatAddress(farmer.address),
         },
         animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
@@ -3329,10 +3458,9 @@ export const getTechnicianRequests = async (req, res) => {
         breed: rec.animalId?.breed || "",
         species: rec.animalId?.species || "",
         location: formatAddress(farmer.address),
-        locationLabel:
-          barangay && city
-            ? `${barangay}, ${city}`
-            : formatAddress(farmer.address) || "Unknown Location",
+        locationLabel: barangay && city
+          ? `${barangay}, ${city}`
+          : formatAddress(farmer.address) || "Unknown Location",
         municipality: city,
         barangay: barangay,
         hasFarmPin,
@@ -3374,6 +3502,15 @@ export const getTechnicianRequests = async (req, res) => {
       const city = addr.city || "";
       const barangay = addr.barangay || "";
 
+      const assignedTechnicianId =
+        rec.handledBy?._id || rec.handledBy || null;
+      const isUnassigned = !assignedTechnicianId;
+
+      const safeFarmerPhone = isUnassigned ? null : (farmer.phoneNumber || "");
+      const safeFarmerPhoneAlt = isUnassigned ? null : (farmer.phone || null);
+      const safeFarmerImageUrl = isUnassigned ? "" : (farmer.imageUrl || "");
+      const safeLocation = isUnassigned ? null : formatAddress(farmer.address);
+
       let distanceKm = null;
       if (
         techLat !== null &&
@@ -3390,6 +3527,35 @@ export const getTechnicianRequests = async (req, res) => {
             farmLoc.longitude,
           ).toFixed(2),
         );
+      }
+
+      if (isUnassigned) {
+        return {
+          id: rec._id,
+          type: "health",
+          serviceType: rec.requestType || "health",
+          requestType: rec.requestType || "health",
+          status: rec.status,
+          isReadyToday: !!isReady,
+          displayStatus: isReady
+            ? "Ready Today"
+            : rec.status === "approved"
+              ? "Assigned"
+              : rec.status,
+          urgency:
+            rec.urgency === "high" || rec.urgency === "emergency"
+              ? "urgent"
+              : "normal",
+          animal: rec.animalId?.animalId || rec.animalId?.earTag || "Unknown",
+          earTag: rec.animalId?.earTag || "",
+          breed: rec.animalId?.breed || "",
+          species: rec.animalId?.species || "",
+          municipality: city,
+          barangay: barangay,
+          preferredDate: rec.preferredDate || rec.createdAt,
+          scheduledDate: rec.scheduledDate || null,
+          createdAt: rec.createdAt,
+        };
       }
 
       return {
@@ -3418,10 +3584,9 @@ export const getTechnicianRequests = async (req, res) => {
         breed: rec.animalId?.breed || "",
         species: rec.animalId?.species || "",
         location: formatAddress(farmer.address),
-        locationLabel:
-          barangay && city
-            ? `${barangay}, ${city}`
-            : formatAddress(farmer.address) || "Unknown Location",
+        locationLabel: barangay && city
+          ? `${barangay}, ${city}`
+          : formatAddress(farmer.address) || "Unknown Location",
         municipality: city,
         barangay: barangay,
         hasFarmPin,

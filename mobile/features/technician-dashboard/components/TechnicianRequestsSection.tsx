@@ -4,7 +4,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   Hand,
-  LockKeyhole,
   MapPin,
   Send,
   Stethoscope,
@@ -98,8 +97,6 @@ export function TechnicianRequestsSection({
             <RequestRow
               key={`${request.type}-${request._id || request.id || index}`}
               item={request}
-              isLocked={assignedToOther}
-              lockedByName={assignedTechnicianName}
               isUpdating={isUpdating}
               onPress={() => handleAction(request)}
             />
@@ -113,8 +110,6 @@ export function TechnicianRequestsSection({
 function RequestRow({
   item,
   onPress,
-  isLocked,
-  lockedByName,
   isUpdating,
 }: any) {
   const { colors, isDark } = useTheme();
@@ -143,7 +138,7 @@ function RequestRow({
     item.raw?.requestedAt ||
     item.sentTime;
 
-  const badgeInfo = getTechnicianRequestBadge(item, isLocked);
+  const badgeInfo = getTechnicianRequestBadge(item);
   const ServiceIcon = isPregnancyCheck
     ? ClipboardCheck
     : isHealth
@@ -281,25 +276,6 @@ function RequestRow({
               style={{ flex: 1, color: colors.warningForeground }}
             >
               Tap to review and claim
-            </Text>
-          </View>
-        ) : isLocked ? (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              marginTop: 4,
-            }}
-          >
-            <LockKeyhole size={13} color={colors.warning} />
-            <Text
-              variant="semibold"
-              size={12}
-              numberOfLines={1}
-              style={{ flex: 1, color: colors.warningForeground }}
-            >
-              Assigned to {lockedByName}
             </Text>
           </View>
         ) : null}

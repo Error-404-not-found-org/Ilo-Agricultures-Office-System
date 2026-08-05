@@ -3,7 +3,6 @@ import { View, TouchableOpacity, useWindowDimensions } from "react-native";
 import {
   CalendarDays,
   HeartPulse,
-  LockKeyhole,
   MapPin,
   Send,
   Stethoscope,
@@ -169,8 +168,6 @@ export function TechnicianRouteSection({
             <VisitRow
               key={`${item.type}-${item.id || index}`}
               item={item}
-              isLocked={assignedToOther}
-              lockedByName={assignedTechnicianName}
               onPress={() => handleAction(item)}
             />
           );
@@ -180,7 +177,7 @@ export function TechnicianRouteSection({
   );
 }
 
-function VisitRow({ item, onPress, isLocked, lockedByName }: any) {
+function VisitRow({ item, onPress }: any) {
   const { width } = useWindowDimensions();
   const { colors, isDark } = useTheme();
   const compact = width < 390;
@@ -234,9 +231,7 @@ function VisitRow({ item, onPress, isLocked, lockedByName }: any) {
     normalizedStatus.includes("in progress");
   const statusLabel = overdue
     ? "Overdue"
-    : isLocked
-      ? "Assigned"
-      : inProgress
+    : inProgress
         ? "In progress"
         : "Scheduled";
   const timeLabel =
@@ -248,7 +243,6 @@ function VisitRow({ item, onPress, isLocked, lockedByName }: any) {
   const canStart =
     !isAIService &&
     !overdue &&
-    !isLocked &&
     !inProgress &&
     item.isReadyToday === true;
   const actionLabel = isAIService
@@ -265,12 +259,10 @@ function VisitRow({ item, onPress, isLocked, lockedByName }: any) {
         : CalendarDays;
   const statusVariant = overdue
     ? "danger"
-    : inProgress || isLocked
+    : inProgress
       ? "info"
       : "warning";
-  const exceptionLabel = isLocked
-    ? `Assigned to ${lockedByName}`
-    : !hasFarmPin
+  const exceptionLabel = !hasFarmPin
       ? "Farm location not set"
       : null;
 
@@ -456,11 +448,7 @@ function VisitRow({ item, onPress, isLocked, lockedByName }: any) {
                   marginTop: 2,
                 }}
               >
-                {isLocked ? (
-                  <LockKeyhole size={13} color={colors.warning} />
-                ) : (
-                  <MapPin size={13} color={colors.warning} />
-                )}
+                <MapPin size={13} color={colors.warning} />
                 <Text
                   textRole="label"
                   numberOfLines={1}
