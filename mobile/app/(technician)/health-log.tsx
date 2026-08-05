@@ -40,7 +40,7 @@ import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useAnimalContext } from "@/hooks/useAnimalContext";
 import AnimalContextHeader from "@/components/AnimalContextHeader";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
-import { completeTask } from "@/features/technician/services/tasks.service";
+
 import { ILOILO_MUNICIPALITY_OPTIONS } from "@/constants/address";
 
 const getReproductiveStatusStyle = (status?: string) => {
@@ -207,26 +207,6 @@ export default function HealthLogScreen() {
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showTypeModal, setShowTypeModal] = useState(false);
 
-  const completeLinkedTask = async (result: any) => {
-    if (!taskId || result.status !== "synced") return;
-    const recordId =
-      result.data?.request?._id ||
-      result.data?.healthRequest?._id ||
-      result.data?.data?._id;
-    if (!recordId) return;
-    try {
-      await completeTask(api, taskId, {
-        relatedRecordType: "health",
-        relatedRecordId: recordId,
-      });
-    } catch (err) {
-      console.error("Failed to complete linked health task", err);
-      toast.error(
-        "Health record saved, but the linked task was not completed.",
-      );
-    }
-  };
-
   const handleSuccess = async (result: any) => {
     if (result.status === "synced") {
       toast.success(
@@ -235,7 +215,6 @@ export default function HealthLogScreen() {
           : "Visit scheduled successfully!",
       );
     }
-    await completeLinkedTask(result);
     if (
       (source === "animal-profile" || source === "task") &&
       selectedAnimal?._id
@@ -321,6 +300,9 @@ export default function HealthLogScreen() {
         advice: medicine,
         scheduledDate: preferredDate.toISOString(),
       };
+      if (taskId && source === "task") {
+        patchPayload.taskId = taskId;
+      }
       if (status === "resolved" && followUpDate) {
         patchPayload.followUpDate = followUpDate.toISOString();
       }

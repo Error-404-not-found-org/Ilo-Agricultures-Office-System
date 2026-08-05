@@ -462,6 +462,7 @@ export const updateHealthRequestStatus = async (req, res) => {
         id,
         updateFields,
         technicianId: req.user._id,
+        taskId: req.body.taskId,
         medicalRecord: {
           animalId: existing.animalId,
           farmerId: existing.farmerId,
@@ -749,6 +750,7 @@ export const walkInHealthRequest = async (req, res) => {
     if (requestedStatus === "resolved") {
       const created = await createResolvedWalkInHealth({
         requestData,
+        taskId: req.body.taskId,
         medicalRecord: {
           animalId: animal._id,
           farmerId: farmer._id,
