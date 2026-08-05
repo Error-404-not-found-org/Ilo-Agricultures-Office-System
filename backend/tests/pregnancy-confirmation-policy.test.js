@@ -227,7 +227,7 @@ test("farmer return-to-heat remains reported until technician verification", () 
   const start = controller.indexOf("export const submitFarmerBreedingObservation");
   const end = controller.indexOf("export const deleteRequest", start);
   const handler = controller.slice(start, end);
-  assert.match(handler, /technicianVerificationRequired = reportType === "return_to_heat"/);
+  assert.match(handler, /technicianVerificationRequired[\s\S]*?reportType === "return_to_heat"/);
   assert.match(handler, /outcomeVerificationStatus = "reported"/);
   assert.doesNotMatch(handler, /request\.outcome = "Failed \(Re-heat\)"/);
   assert.doesNotMatch(handler, /Pregnancy\.create/);

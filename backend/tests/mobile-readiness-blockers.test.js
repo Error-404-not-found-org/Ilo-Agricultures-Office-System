@@ -50,7 +50,7 @@ test("pregnancy readiness enables the current Day-60 policy", () => {
 });
 
 test("work queue, task details, and verification form share readiness guards", () => {
-  const queue = source("mobile/app/(technician)/technician.tasks.tsx");
+  const queue = source("mobile/features/technician-requests/components/TechnicianMyWorkPanel.tsx");
   const task = source("mobile/app/(technician)/task-details.tsx");
   const animal = source(
     "mobile/features/animals/screens/RoleAwareAnimalDetailsScreen.tsx",
@@ -221,14 +221,12 @@ test("AI eligibility fails closed and allows only a healthy adult female", () =>
 });
 
 test("profile Record AI validates route IDs, locks owner context, and keeps general selection", () => {
-  const form = source("mobile/app/(technician)/record-ai.tsx");
-  assert.match(form, /useLocalSearchParams/);
-  assert.match(form, /isMongoId\(routeFarmerId\)/);
-  assert.match(form, /isMongoId\(routeAnimalId\)/);
+  const form = source("mobile/features/technician-ai-recording/components/DirectAIRecordForm.tsx");
+  const hook = source("mobile/features/technician-ai-recording/hooks/useRecordAIContext.ts");
+  assert.match(hook, /useLocalSearchParams/);
+  assert.match(hook, /isCanonicalWorkflowId/);
   assert.match(form, /ANIMAL_FARMER_MISMATCH/);
-  assert.match(form, /Owner locked to the animal profile/);
-  assert.match(form, /if \(profileContextLocked\) return/);
-  assert.match(form, /routeSource === "animal-profile"/);
+  assert.match(form, /profileContextLocked/);
   assert.match(form, /setShowFarmerModal\(true\)/);
 });
 

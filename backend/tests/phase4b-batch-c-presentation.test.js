@@ -104,7 +104,7 @@ test("notification open behavior preserves mark-read and handles missing identif
   assert.match(listSource, /getNotificationTarget\(item, role\)/);
 });
 
-test("Technician dashboard padding remains responsive while Quick Actions scroll horizontally", () => {
+test("Technician dashboard quick actions use a dense responsive grid", () => {
   const expected = [[320, 2, 16, 12], [360, 2, 16, 12], [390, 2, 16, 12], [768, 3, 24, 16], [1024, 4, 24, 16]];
   expected.forEach(([width, columns, padding, gap]) => {
     const metrics = getQuickActionGridMetrics(width);
@@ -115,9 +115,8 @@ test("Technician dashboard padding remains responsive while Quick Actions scroll
   });
   const quickActions = source("mobile/features/technician-dashboard/components/TechnicianQuickActions.tsx");
   assert.doesNotMatch(quickActions, /width:\s*["']30%["']/);
-  assert.match(quickActions, /<ScrollView[\s\S]*?horizontal/);
-  assert.match(quickActions, /width:\s*136/);
-  assert.match(quickActions, /minHeight:\s*112/);
+  assert.match(quickActions, /flexDirection:\s*["']row["']/);
+  assert.doesNotMatch(quickActions, /<ScrollView/);
 });
 
 test("Batch C screens preserve touch targets, safe-area padding, flexible text, and theme-aware details", () => {
