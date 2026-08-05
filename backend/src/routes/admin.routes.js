@@ -3,7 +3,7 @@ import { Router } from "express";
 import { protectedRoute, AdminOnly } from "../middleware/auth.middleware.js";
 
 import { getDashboardStats, getAdminAnalytics, getSystemMonitoringData } from "../controllers/admin.controllers.js";
-import { createInvitedUser, listAllUsersForAdmin } from "../controllers/user.controllers.js";
+import { createInvitedUser, createTechnician, listAllUsersForAdmin } from "../controllers/user.controllers.js";
 import { getAllInseminations } from "../controllers/admin.controllers.js";
 import { getAllReInseminations } from "../controllers/admin.controllers.js";
 import { getAllPregnancyChecks } from "../controllers/admin.controllers.js";
@@ -17,6 +17,7 @@ const router = Router();
 router.use(protectedRoute, AdminOnly);
 
 router.post("/create-user", createInvitedUser);
+router.post("/technicians", createTechnician);
 router.get("/list-users", listAllUsersForAdmin);
 router.post("/sync-metadata", syncUserMetadata);
 router.post("/delete-user", deleteUser);

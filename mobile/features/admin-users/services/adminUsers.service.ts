@@ -31,6 +31,26 @@ export const createUser = async (
   return res.data;
 };
 
+export const createTechnician = async (
+  api: AxiosInstance,
+  userData: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phoneNumber?: string;
+    address?: {
+      street?: string;
+      barangay?: string;
+      city?: string;
+      district?: string;
+      province?: string;
+    };
+  }
+) => {
+  const res = await api.post("/admin/technicians", userData);
+  return res.data;
+};
+
 export const suspendUser = async (api: AxiosInstance, id: string) => {
   const res = await api.post("/admin/suspend-user", { id });
   return res.data;

@@ -274,6 +274,297 @@ export const getMe = async (req, res) => {
   }
 };
 
+export const createTechnician = async (req, res) => {
+  try {
+    const {
+      firstName,
+      middleName,
+      lastName,
+      suffix,
+      email,
+      phoneNumber,
+      address,
+      imageUrl,
+    } = req.body;
+
+    // 1. Authorization Guard
+    if (!req.user || req.user.role !== "admin") {
+      return res.status(403).json({
+        message: "Access denied. Admin permission required.",
+        code: "FORBIDDEN",
+      });
+    }
+
+    // 2. Input Validation
+    const rawFirstName = (firstName || "").trim();
+    const rawLastName = (lastName || "").trim();
+    if (!rawFirstName || !rawLastName) {
+      return res.status(400).json({
+        message: "First name and last name are required.",
+        code: "MISSING_NAME",
+      });
+    }
+
+    const rawEmail = (email || "").trim().toLowerCase();
+    if (!rawEmail) {
+      return res.status(400).json({
+        message: "Email address is required to onboard a technician.",
+        code: "MISSING_EMAIL",
+      });
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(rawEmail)) {
+      return res.status(400).json({
+        message: "Invalid email address format.",
+        code: "INVALID_EMAIL",
+      });
+    }
+
+    const city = (address?.city || address?.municipality || "").trim();
+    const barangay = (address?.barangay || "").trim();
+    if (!city || !barangay) {
+      return res.status(400).json({
+        message: "Municipality/City and Barangay are required for technician service assignment.",
+        code: "INVALID_ADDRESS",
+      });
+    }
+
+    // Phone normalization (if provided)
+    let rawPhone = (phoneNumber || "").trim();
+    let phoneLocal = "";
+    let phoneNorm = "";
+    if (rawPhone) {
+      try {
+        const parsedPhone = normalizePhilippineMobileNumber(rawPhone);
+        phoneLocal = parsedPhone.local;
+        phoneNorm = parsedPhone.normalized;
+      } catch (phoneErr) {
+        return res.status(400).json({
+          message: phoneErr.message || "Invalid Philippine phone number format.",
+          code: "INVALID_PHONE",
+        });
+      }
+    }
+
+    const fullName = [rawFirstName, middleName, rawLastName, suffix]
+      .filter(Boolean)
+      .map((s) => String(s).trim())
+      .join(" ");
+
+    // 3. Duplicate Detection (5 Tiers)
+
+    // Tier 1: MongoDB Search by Email (case-insensitive)
+    const escapedEmail = rawEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const existingEmailUser = await User.findOne({
+      email: { $regex: new RegExp(`^${escapedEmail}$`, "i") },
+    });
+
+    if (existingEmailUser) {
+      if (existingEmailUser.deletedAt || existingEmailUser.status === "suspended") {
+        return res.status(409).json({
+          message: "An existing account was found for this email. Restore or reactivate it instead of creating a duplicate.",
+          code: "ACCOUNT_EXISTS_SUSPENDED_OR_DELETED",
+        });
+      }
+      return res.status(409).json({
+        message: "An account or pending invitation already exists for this email.",
+        code: "EMAIL_ALREADY_REGISTERED",
+      });
+    }
+
+    // Tier 2: MongoDB Search by Phone Number (if provided)
+    if (phoneLocal || phoneNorm) {
+      const phoneQueries = [];
+      if (phoneLocal) phoneQueries.push({ phoneNumber: phoneLocal });
+      if (phoneNorm) phoneQueries.push({ normalizedPhoneNumber: phoneNorm });
+      if (phoneNorm) phoneQueries.push({ phoneNumber: phoneNorm });
+
+      const existingPhoneUser = await User.findOne({ $or: phoneQueries });
+      if (existingPhoneUser) {
+        return res.status(409).json({
+          message: "This phone number is already connected to another account.",
+          code: "PHONE_ALREADY_REGISTERED",
+        });
+      }
+    }
+
+    // Tier 3: Clerk Search for Existing User Account
+    try {
+      if (typeof clerkClient?.users?.getUserList === "function") {
+        const clerkUsers = await clerkClient.users.getUserList({
+          emailAddress: [rawEmail],
+        });
+        const usersList = Array.isArray(clerkUsers)
+          ? clerkUsers
+          : clerkUsers?.data || [];
+        if (usersList.length > 0) {
+          return res.status(409).json({
+            message: "A Clerk account already exists for this email. Review the existing BreedSmart profile before continuing.",
+            code: "CLERK_USER_EXISTS",
+          });
+        }
+      }
+    } catch (clerkListErr) {
+      console.warn("[Technician Onboarding] Warning checking Clerk users list:", clerkListErr?.message);
+    }
+
+    // Tier 4: Clerk Search for Pending Invitation
+    try {
+      if (typeof clerkClient?.invitations?.getInvitationList === "function") {
+        const invResult = await clerkClient.invitations.getInvitationList({
+          status: "pending",
+        });
+        const invitations = Array.isArray(invResult)
+          ? invResult
+          : invResult?.data || [];
+        const pendingInv = invitations.find(
+          (inv) => inv.emailAddress?.trim()?.toLowerCase() === rawEmail,
+        );
+        if (pendingInv) {
+          return res.status(409).json({
+            message: "An invitation is already pending for this email.",
+            code: "INVITATION_ALREADY_PENDING",
+          });
+        }
+      }
+    } catch (invListErr) {
+      console.warn("[Technician Onboarding] Warning checking pending Clerk invitations:", invListErr?.message);
+    }
+
+    // Tier 5: Image Upload (if applicable)
+    let finalImageUrl = imageUrl || "";
+    if (imageUrl && imageUrl.startsWith("data:image")) {
+      try {
+        const uploadResponse = await cloudinary.uploader.upload(imageUrl, {
+          folder: "agriculture_profiles",
+        });
+        finalImageUrl = uploadResponse.secure_url;
+      } catch (err) {
+        console.error("Cloudinary upload failed", err);
+        return res.status(500).json({ message: "Image upload failed." });
+      }
+    }
+
+    // 4. Send Clerk Invitation & Pre-create User with Compensating Rollback
+
+    // Step A: Send Clerk Invitation
+    let invitation;
+    try {
+      invitation = await clerkClient.invitations.createInvitation({
+        emailAddress: rawEmail,
+        publicMetadata: {
+          role: "technician",
+          isVerified: true,
+        },
+      });
+    } catch (clerkErr) {
+      console.error("[Technician Onboarding] Clerk invitation failed:", clerkErr);
+      const clerkMessage =
+        clerkErr.errors?.[0]?.longMessage || clerkErr.errors?.[0]?.message;
+      return res.status(400).json({
+        message: clerkMessage || "The technician was not created because the invitation could not be sent.",
+        code: "CLERK_INVITATION_FAILED",
+      });
+    }
+
+    // Step B: Pre-create MongoDB technician user profile
+    let invitedUser;
+    try {
+      invitedUser = await User.create({
+        name: fullName,
+        email: rawEmail,
+        phoneNumber: phoneLocal || rawPhone,
+        normalizedPhoneNumber: phoneNorm || "",
+        address: {
+          street: (address?.street || "").trim(),
+          barangay: barangay,
+          city: city,
+          district: (address?.district || "").trim(),
+          province: (address?.province || "Iloilo").trim(),
+        },
+        imageUrl: finalImageUrl,
+        role: "technician",
+        status: "active",
+        profileClaimStatus: "unclaimed",
+        isVerified: false,
+      });
+    } catch (dbErr) {
+      console.error("[Technician Onboarding] MongoDB creation failed. Initiating compensating rollback for Clerk invitation ID:", invitation?.id, dbErr);
+      let rollbackSuccess = false;
+      if (invitation?.id && typeof clerkClient?.invitations?.revokeInvitation === "function") {
+        try {
+          await clerkClient.invitations.revokeInvitation(invitation.id);
+          rollbackSuccess = true;
+          console.log("[Technician Onboarding] Successfully revoked Clerk invitation during rollback:", invitation.id);
+        } catch (revokeErr) {
+          console.error("[Technician Onboarding] CRITICAL ROLLBACK FAILURE: Failed to revoke Clerk invitation:", invitation.id, revokeErr);
+        }
+      }
+
+      // Format clean database validation message
+      let errorMsg = "The technician was not created. The incomplete invitation was cancelled.";
+      if (dbErr.name === "ValidationError" && dbErr.errors) {
+        const firstKey = Object.keys(dbErr.errors)[0];
+        errorMsg = `Validation failed for ${firstKey.replace("address.", "")}: ${dbErr.errors[firstKey]?.message}`;
+      } else if (dbErr.code === 11000) {
+        errorMsg = "A database conflict occurred. Duplicate technician profile detected.";
+      }
+
+      return res.status(500).json({
+        message: errorMsg,
+        code: "TECHNICIAN_CREATION_FAILED",
+        rollbackSuccess,
+      });
+    }
+
+    // 5. Log Action & Emit Notification
+    logAdminAction("technician onboarding created", req.user, invitedUser, {
+      role: "technician",
+      email: rawEmail,
+      invitationId: invitation?.id,
+    });
+
+    await createAuditLog({
+      entityType: "User",
+      entityId: invitedUser._id,
+      action: "create_technician",
+      actorId: req.user?._id,
+      before: null,
+      after: {
+        name: invitedUser.name,
+        email: invitedUser.email,
+        role: "technician",
+        status: invitedUser.status,
+        profileClaimStatus: invitedUser.profileClaimStatus,
+      },
+      metadata: {
+        actingAdmin: req.user?.email || req.user?.name,
+        targetUser: invitedUser.email,
+        invitationId: invitation?.id,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    req.app.get("io")?.emit("dashboardUpdate", {
+      type: "TECHNICIAN_REGISTERED",
+      message: `New technician ${fullName} registered.`,
+    });
+
+    return res.status(201).json({
+      message: `Technician invitation sent to ${rawEmail} successfully!`,
+      technician: invitedUser,
+      invitationSent: true,
+    });
+  } catch (err) {
+    console.error("[Technician Onboarding] Unexpected Error:", err);
+    return res.status(500).json({
+      message: err.message || "Technician onboarding failed.",
+      code: "INTERNAL_ERROR",
+    });
+  }
+};
+
 export const createInvitedUser = async (req, res) => {
   try {
     const {
@@ -302,68 +593,8 @@ export const createInvitedUser = async (req, res) => {
         .json({ message: "Farmers cannot create accounts." });
     }
 
-    if (targetRole === "technician" && !email) {
-      return res
-        .status(400)
-        .json({ message: "Email is required to invite a field officer." });
-    }
-
-    if (email) {
-      const existingUser = await User.findOne({ email });
-      if (existingUser) {
-        return res
-          .status(400)
-          .json({ message: "User with this email already exists." });
-      }
-    }
-
-    let finalImageUrl = imageUrl || "";
-    if (imageUrl && imageUrl.startsWith("data:image")) {
-      try {
-        const uploadResponse = await cloudinary.uploader.upload(imageUrl, {
-          folder: "agriculture_profiles",
-        });
-        finalImageUrl = uploadResponse.secure_url;
-      } catch (err) {
-        console.error("Cloudinary upload failed", err);
-        return res.status(500).json({ message: "Image upload failed." });
-      }
-    }
-
-    const fullName = [firstName, middleName, lastName, suffix]
-      .filter(Boolean)
-      .join(" ");
-
-    let invitedUser;
-    if (email) {
-      // 1. Send Clerk Invitation (automatically emails the user)
-      try {
-        await clerkClient.invitations.createInvitation({
-          emailAddress: email,
-          publicMetadata: {
-            role: targetRole,
-            isVerified: true,
-          },
-        });
-      } catch (clerkErr) {
-        console.error("Clerk invitation failed:", clerkErr);
-        return res.status(400).json({
-          message:
-            clerkErr.errors?.[0]?.message ||
-            "Failed to send invitation via Clerk.",
-        });
-      }
-
-      // 2. Pre-create user in local database
-      invitedUser = await User.create({
-        name: fullName,
-        email,
-        phoneNumber,
-        address,
-        imageUrl: finalImageUrl,
-        role: targetRole,
-        isVerified: false,
-      });
+    if (targetRole === "technician") {
+      return createTechnician(req, res);
     } else {
       // Create local offline user (no Clerk account/invitation)
       invitedUser = await User.create({
