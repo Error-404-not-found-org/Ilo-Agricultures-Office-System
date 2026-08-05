@@ -40,3 +40,36 @@ export const useWalkInInseminationMutation = () => {
     },
   );
 };
+
+export const useCompleteAIRequestMutation = (requestId: string) => {
+  const queryClient = useQueryClient();
+
+  return useOfflineMutation(
+    {
+      url: `/ai-request/${requestId}/status`,
+      method: "PATCH",
+      description: "Complete AI Request",
+    },
+    {
+      onSuccess: (_result, variables: any) => {
+        queryClient.invalidateQueries({ queryKey: technicianKeys.workQueue() });
+        queryClient.invalidateQueries({ queryKey: technicianKeys.requests() });
+        queryClient.invalidateQueries({ queryKey: technicianKeys.dashboard() });
+        queryClient.invalidateQueries({ queryKey: technicianKeys.records() });
+        queryClient.invalidateQueries({ queryKey: technicianKeys.tasks() });
+        queryClient.invalidateQueries({ queryKey: aiRequestKeys.all });
+        queryClient.invalidateQueries({ queryKey: animalKeys.all });
+        queryClient.invalidateQueries({ queryKey: animalRecordKeys.all });
+        queryClient.invalidateQueries({ queryKey: notificationKeys.all });
+        if (variables?.animalId) {
+          queryClient.invalidateQueries({
+            queryKey: animalKeys.detail(String(variables.animalId)),
+          });
+          queryClient.invalidateQueries({
+            queryKey: animalKeys.timeline(String(variables.animalId)),
+          });
+        }
+      },
+    },
+  );
+};
