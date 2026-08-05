@@ -20,7 +20,7 @@ const PRIMARY = "#074033";
 export default function VerifyScreen() {
   const { user, isLoaded: isUserLoaded } = useUser();
   const { signUp, isLoaded: isSignUpLoaded, setActive } = useSignUp();
-  const { signOut } = useAuth();
+  const { signOut, getToken } = useAuth();
   const router = useRouter();
   const api = useApi();
 
@@ -28,6 +28,7 @@ export default function VerifyScreen() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
+  const [setupFailed, setSetupFailed] = useState(false);
 
   const isSigningUp =
     isSignUpLoaded &&
@@ -77,7 +78,32 @@ export default function VerifyScreen() {
     }
   }, [isUserLoaded, user, sendVerificationCode]);
 
+  const handleBootstrap = async () => {
+    try {
+      const token = await getToken();
+      await api.post("/user/bootstrap", undefined, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      toast.success("Registration successful!");
+      setSetupFailed(false);
+    } catch (err: any) {
+      console.error("Bootstrap error:", err);
+      setSetupFailed(true);
+      toast.error("Account setup incomplete.", {
+        description: "Your email was verified, but we couldn't finish setting up your profile. Please tap Retry Setup."
+      });
+    }
+  };
+
   const onVerifyPress = async () => {
+    if (setupFailed) {
+      // If we are just retrying the bootstrap because it failed earlier
+      setIsVerifying(true);
+      await handleBootstrap();
+      setIsVerifying(false);
+      return;
+    }
+
     if (code.length < 6) return;
     setIsVerifying(true);
     try {
@@ -86,9 +112,8 @@ export default function VerifyScreen() {
           code,
         });
         if (completeSignUp.status === "complete") {
-          await setActive({ session: completeSignUp.createdSessionId });
-          toast.success("Registration successful!");
-          // Routing handles automatically via _layout
+          if (setActive) await setActive({ session: completeSignUp.createdSessionId });
+          await handleBootstrap();
         } else {
           toast.error("Additional info required.", {
             description: "Registration incomplete.",
@@ -99,9 +124,7 @@ export default function VerifyScreen() {
           code,
         });
         if (result?.verification.status === "verified") {
-          await api.post("/user/mark-verified");
-          toast.success("Email verified successfully!");
-          await user.reload();
+          await handleBootstrap();
         }
       }
     } catch (err: any) {
@@ -144,32 +167,36 @@ export default function VerifyScreen() {
 
           <View className="space-y-6">
             <View>
-              <Text className="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-3 ml-1">
-                Verification Code
-              </Text>
-              <TextInput
-                value={code}
-                onChangeText={setCode}
-                placeholder="000000"
-                placeholderTextColor="#cbd5e1"
-                keyboardType="number-pad"
-                maxLength={6}
-                className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-5 text-center text-3xl font-bold tracking-[10px] text-slate-800"
-              />
+              {!setupFailed && (
+                <>
+                  <Text className="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-3 ml-1">
+                    Verification Code
+                  </Text>
+                  <TextInput
+                    value={code}
+                    onChangeText={setCode}
+                    placeholder="000000"
+                    placeholderTextColor="#cbd5e1"
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    className="bg-slate-50 border border-slate-200 rounded-2xl px-6 py-5 text-center text-3xl font-bold tracking-[10px] text-slate-800"
+                  />
+                </>
+              )}
             </View>
 
             <TouchableOpacity
               onPress={onVerifyPress}
-              disabled={isVerifying || code.length < 6}
-              style={{ marginTop: 28 }}
-              className={`flex-row items-center justify-center py-4 rounded-2xl shadow-sm ${code.length === 6 ? "bg-[#074033]" : "bg-slate-200"}`}
+              disabled={isVerifying || (!setupFailed && code.length < 6)}
+              style={{ marginTop: setupFailed ? 0 : 28 }}
+              className={`flex-row items-center justify-center py-4 rounded-2xl shadow-sm ${setupFailed || code.length === 6 ? "bg-[#074033]" : "bg-slate-200"}`}
             >
               {isVerifying ? (
                 <ActivityIndicator color="white" />
               ) : (
                 <>
                   <Text className="text-white font-bold text-lg mr-2">
-                    Verify & Continue
+                    {setupFailed ? "Retry Setup" : "Verify & Continue"}
                   </Text>
                   <ArrowRight size={20} color="white" />
                 </>

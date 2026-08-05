@@ -50,10 +50,13 @@ function useSocialAuth() {
         await setActive({ session: createdSessionId });
         
         try {
-          await api.post("/user/sync-manual");
-          console.log("✅ User synced to MongoDB");
+          // Add a small delay to ensure Clerk session is fully active and token is available
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          await api.post("/user/bootstrap");
+          console.log("✅ User bootstrapped in MongoDB");
         } catch (syncErr) {
-          console.warn("⚠️ Sync failed, but session is active:", syncErr);
+          console.error("⚠️ Bootstrap failed:", syncErr);
+          throw new Error("Account setup failed. Please check your connection and try again.");
         }
       }
 

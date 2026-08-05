@@ -17,11 +17,14 @@ import {
   getArchivedUsers,
   sendPhoneOtp,
   verifyPhoneOtp,
+  bootstrapUser,
 } from "../controllers/user.controllers.js";
-import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
+import { protectedRoute, requireRole, requireClerkAuthentication } from "../middleware/auth.middleware.js";
 import { otpLimiter } from "../middleware/rateLimit.middleware.js";
 
 const router = Router();
+
+router.post("/bootstrap", requireClerkAuthentication, bootstrapUser);
 
 router.post(
   "/create-invited-user",
