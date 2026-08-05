@@ -33,7 +33,6 @@ export const FarmerProfileScreen = () => {
     isSavingContactAddressLocation,
     isSavingFarmGpsPin,
     isSavingFarmLocationNotes,
-    isCopyingContactAddressToFarm,
     phoneOtpSent,
     phoneOtpCode,
     setPhoneOtpCode,
@@ -55,14 +54,13 @@ export const FarmerProfileScreen = () => {
     handleChooseFromGallery,
     handleChangeProfileImage,
     handleUpdate,
-    handleUseCurrentContactAddress,
     handleSaveCurrentFarmLocation,
     handleSaveFarmLocationNotes,
-    handleUseContactAddressForFarmLocation,
     handleResendOtp,
     handleChangePhoneNumber,
     handleStartPhoneNumberChange,
     handleOpenPhoneEditor,
+    handleOpenAddressEditor,
     handleCloseProfileEditor,
     colors,
     isDark,
@@ -117,9 +115,7 @@ export const FarmerProfileScreen = () => {
           clerkUser={clerkUser}
           dbUser={dbUser}
           onEditPhone={handleOpenPhoneEditor}
-          onUseCurrentContactAddress={handleUseCurrentContactAddress}
-          isSavingLocation={isSavingContactAddressLocation}
-          isLocationBusy={mutation.isPending || isSavingFarmLocation}
+          onEditAddress={handleOpenAddressEditor}
         />
 
         <FarmLocationCard
@@ -128,10 +124,8 @@ export const FarmerProfileScreen = () => {
           setFormData={setFormData}
           isBusy={mutation.isPending || isSavingFarmLocation}
           isSavingCurrentLocation={isSavingFarmGpsPin}
-          isSavingContactAddress={isCopyingContactAddressToFarm}
           isSavingNotes={isSavingFarmLocationNotes}
           onUseCurrentLocation={() => setFarmLocationConfirmVisible(true)}
-          onUseContactAddress={handleUseContactAddressForFarmLocation}
           onSaveNotes={handleSaveFarmLocationNotes}
         />
 

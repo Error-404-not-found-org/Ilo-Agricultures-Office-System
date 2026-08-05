@@ -173,3 +173,172 @@ export const formatBarangayWithDistrict = (
 
   return barangay;
 };
+
+export interface LocationGeocodedAddressLike {
+  name?: string | null;
+  street?: string | null;
+  streetNumber?: string | null;
+  district?: string | null;
+  subregion?: string | null;
+  city?: string | null;
+  region?: string | null;
+  postalCode?: string | null;
+  country?: string | null;
+  neighborhood?: string | null;
+  neighbourhood?: string | null;
+  sublocality?: string | null;
+  village?: string | null;
+}
+
+export interface NormalizeAddressResult {
+  address: {
+    street: string;
+    barangay: string;
+    city: string;
+    district: string;
+    province: string;
+    zipCode: string;
+    region: string;
+    detectedAddress: string;
+  };
+  hasBarangay: boolean;
+  detectionConfidence: "high" | "medium" | "low";
+}
+
+export const normalizeContactAddress = (
+  rawGeocode: LocationGeocodedAddressLike | null | undefined,
+  existingAddress?: AddressLike,
+): NormalizeAddressResult => {
+  if (!rawGeocode) {
+    const existingObj =
+      typeof existingAddress === "object" && existingAddress !== null
+        ? existingAddress
+        : {};
+    const existingBarangay =
+      existingObj.barangay && !isAddressPlaceholder(existingObj.barangay)
+        ? existingObj.barangay.trim()
+        : "";
+    return {
+      address: {
+        street: existingObj.street || "",
+        barangay: existingBarangay,
+        city: existingObj.city || existingObj.municipality || "",
+        district: existingObj.district || "",
+        province: existingObj.province || "Iloilo",
+        zipCode: "",
+        region: "Region VI",
+        detectedAddress: "",
+      },
+      hasBarangay: Boolean(existingBarangay),
+      detectionConfidence: "low",
+    };
+  }
+
+  const detectedAddressParts = [
+    rawGeocode.name,
+    rawGeocode.streetNumber,
+    rawGeocode.street,
+    rawGeocode.neighborhood || rawGeocode.neighbourhood || rawGeocode.sublocality || rawGeocode.village,
+    rawGeocode.district,
+    rawGeocode.city,
+    rawGeocode.subregion,
+    rawGeocode.region,
+  ]
+    .filter((part): part is string => Boolean(part?.trim()))
+    .filter((part, index, list) => list.indexOf(part) === index);
+
+  const detectedAddress = detectedAddressParts.join(", ");
+
+  let resolvedCity = rawGeocode.city || rawGeocode.subregion || "";
+  let resolvedBarangay = "";
+  let resolvedDistrict = "";
+  let confidence: "high" | "medium" | "low" = "low";
+
+  const normalizedLocalities = [rawGeocode.city, rawGeocode.subregion]
+    .filter((locality): locality is string => Boolean(locality?.trim()))
+    .map((locality) => locality.trim().toLowerCase());
+  const isIloiloCity =
+    normalizedLocalities.includes("iloilo city") ||
+    normalizedLocalities.some((locality) =>
+      Object.keys(ILOILO_CITY_BARANGAYS_BY_DISTRICT).some(
+        (district) => district.toLowerCase() === locality,
+      ),
+    );
+
+  if (isIloiloCity) {
+    resolvedCity = ILOILO_CITY_NAME;
+    const match = findIloiloCityBarangay(
+      [
+        rawGeocode.name,
+        rawGeocode.street,
+        rawGeocode.district,
+        rawGeocode.subregion,
+        rawGeocode.neighborhood,
+        rawGeocode.neighbourhood,
+        rawGeocode.sublocality,
+        rawGeocode.village,
+      ],
+      rawGeocode.district || rawGeocode.city || "",
+    );
+    if (match) {
+      resolvedBarangay = match.barangay;
+      resolvedDistrict = match.district;
+      confidence = "high";
+    }
+  } else {
+    const barangayOptions = getIloiloBarangayOptions(resolvedCity);
+    if (barangayOptions.length > 0) {
+      const candidates = [
+        rawGeocode.district,
+        rawGeocode.neighborhood,
+        rawGeocode.neighbourhood,
+        rawGeocode.sublocality,
+        rawGeocode.village,
+        rawGeocode.name,
+        rawGeocode.street,
+      ].filter((c): c is string => Boolean(c?.trim()));
+
+      for (const candidate of candidates) {
+        const normCandidate = candidate.trim().toLowerCase();
+        const matched = barangayOptions.find(
+          (b) => b.trim().toLowerCase() === normCandidate,
+        );
+        if (matched) {
+          resolvedBarangay = matched;
+          confidence = "high";
+          break;
+        }
+      }
+    }
+  }
+
+  if (!resolvedBarangay) {
+    const existingObj =
+      typeof existingAddress === "object" && existingAddress !== null
+        ? existingAddress
+        : {};
+    if (existingObj.barangay && !isAddressPlaceholder(existingObj.barangay)) {
+      resolvedBarangay = existingObj.barangay.trim();
+      confidence = "medium";
+    }
+  }
+
+  const streetNumber = rawGeocode.streetNumber ? `${rawGeocode.streetNumber} ` : "";
+  const streetName = rawGeocode.street || rawGeocode.name || "";
+  const street = `${streetNumber}${streetName}`.trim();
+
+  return {
+    address: {
+      street,
+      barangay: resolvedBarangay,
+      city: resolvedCity,
+      district: resolvedDistrict,
+      province: isIloiloCity ? "Iloilo" : rawGeocode.region || "Iloilo",
+      zipCode: rawGeocode.postalCode || "",
+      region: "Region VI",
+      detectedAddress,
+    },
+    hasBarangay: Boolean(resolvedBarangay && !isAddressPlaceholder(resolvedBarangay)),
+    detectionConfidence: confidence,
+  };
+};

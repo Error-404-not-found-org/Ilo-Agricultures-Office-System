@@ -12,10 +12,8 @@ interface FarmLocationCardProps {
   setFormData: (data: any) => void;
   isBusy: boolean;
   isSavingCurrentLocation: boolean;
-  isSavingContactAddress: boolean;
   isSavingNotes: boolean;
   onUseCurrentLocation: () => void;
-  onUseContactAddress: () => void;
   onSaveNotes: () => void;
 }
 
@@ -25,10 +23,8 @@ const FarmLocationCard = ({
   setFormData,
   isBusy,
   isSavingCurrentLocation,
-  isSavingContactAddress,
   isSavingNotes,
   onUseCurrentLocation,
-  onUseContactAddress,
   onSaveNotes,
 }: FarmLocationCardProps) => {
   const { colors, isDark } = useTheme();
@@ -46,7 +42,6 @@ const FarmLocationCard = ({
       })
     : null;
   const detectedAddress = location?.detectedAddress;
-  const isSameAsContact = Boolean(location?.sameAsContactAddress);
 
   return (
     <View className="px-6 mt-2 gap-4">
@@ -88,7 +83,7 @@ const FarmLocationCard = ({
                 style={{ color: colors.textSecondary }}
               >
                 {hasPin
-                  ? `${isSameAsContact ? "Same as contact address" : accuracy}${capturedAt ? ` · Updated ${capturedAt}` : ""}`
+                  ? `${accuracy}${capturedAt ? ` · Updated ${capturedAt}` : ""}`
                   : "Save your location while you are at the farm so technicians can navigate faster."}
               </Text>
               {hasPin && detectedAddress ? (
@@ -119,36 +114,11 @@ const FarmLocationCard = ({
             </View>
           ) : null}
 
-          <View className="mt-5 flex-row gap-3">
-            <TouchableOpacity
-              onPress={onUseContactAddress}
-              disabled={isBusy}
-              className="flex-1 rounded-2xl py-3 flex-row items-center justify-center border"
-              style={{
-                borderColor: colors.primary,
-                backgroundColor: isDark ? "rgba(16, 185, 129, 0.04)" : "transparent",
-                opacity: isBusy && !isSavingContactAddress ? 0.6 : 1,
-              }}
-            >
-              {isSavingContactAddress ? (
-                <ActivityIndicator color={colors.primary} size="small" />
-              ) : (
-                <>
-                  <MapPin size={14} color={colors.primary} />
-                  <Text
-                    className="font-outfit-bold ml-1.5 text-xs"
-                    style={{ color: colors.primary }}
-                  >
-                    Same as Home
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
+          <View className="mt-5">
             <TouchableOpacity
               onPress={onUseCurrentLocation}
               disabled={isBusy}
-              className="flex-1 rounded-2xl py-3 flex-row items-center justify-center"
+              className="rounded-2xl py-3 flex-row items-center justify-center"
               style={{
                 backgroundColor: isSavingCurrentLocation
                   ? colors.textMuted

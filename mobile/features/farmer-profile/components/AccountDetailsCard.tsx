@@ -10,9 +10,7 @@ interface AccountDetailsCardProps {
   clerkUser: any;
   dbUser: any;
   onEditPhone: () => void;
-  onUseCurrentContactAddress: () => void;
-  isSavingLocation: boolean;
-  isLocationBusy: boolean;
+  onEditAddress: () => void;
 }
 
 const Divider = () => {
@@ -29,9 +27,7 @@ const AccountDetailsCard = ({
   clerkUser,
   dbUser,
   onEditPhone,
-  onUseCurrentContactAddress,
-  isSavingLocation,
-  isLocationBusy,
+  onEditAddress,
 }: AccountDetailsCardProps) => {
   const { colors, isDark } = useTheme();
   const { t } = useTranslation();
@@ -87,33 +83,24 @@ const AccountDetailsCard = ({
           icon={<MapPin size={18} color={colors.textMuted} />}
           label="Home / Contact Address"
           value={addressParts.length ? addressParts.join(", ") : t("notSet")}
+          onPress={onEditAddress}
         />
         <View
           className="px-5 pb-5"
           style={{ backgroundColor: colors.card }}
         >
           <TouchableOpacity
-            onPress={onUseCurrentContactAddress}
-            disabled={isLocationBusy}
+            onPress={onEditAddress}
             className="rounded-2xl py-3 flex-row items-center justify-center border"
             style={{
-              backgroundColor: isSavingLocation
-                ? colors.card
-                : isDark ? "rgba(16, 185, 129, 0.08)" : "#f0fdf4",
-              borderColor: isSavingLocation ? colors.border : (isDark ? "rgba(16, 185, 129, 0.3)" : "#bbf7d0"),
-              opacity: isLocationBusy && !isSavingLocation ? 0.6 : 1,
+              backgroundColor: isDark ? "rgba(16, 185, 129, 0.08)" : "#f0fdf4",
+              borderColor: isDark ? "rgba(16, 185, 129, 0.3)" : "#bbf7d0",
             }}
           >
-            {isSavingLocation ? (
-              <ActivityIndicator color={colors.primary} size="small" />
-            ) : (
-              <>
-                <Navigation size={14} color={colors.primary} />
-                <Text className="font-outfit-bold ml-2 text-xs" style={{ color: colors.primary }}>
-                  Update Address with Current GPS
-                </Text>
-              </>
-            )}
+            <MapPin size={14} color={colors.primary} />
+            <Text className="font-outfit-bold ml-2 text-xs" style={{ color: colors.primary }}>
+              Edit Contact Address
+            </Text>
           </TouchableOpacity>
         </View>
       </View>

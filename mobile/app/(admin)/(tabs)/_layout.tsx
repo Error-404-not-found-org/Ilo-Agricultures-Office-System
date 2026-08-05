@@ -11,6 +11,7 @@ export default function AdminTabLayout() {
     >
       <Tabs.Screen name="admin.dashboard" />
       <Tabs.Screen name="admin.users" />
+      <Tabs.Screen name="admin.insights" />
       <Tabs.Screen name="admin.animals" />
       <Tabs.Screen name="admin.records" />
     </Tabs>

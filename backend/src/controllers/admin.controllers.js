@@ -1847,3 +1847,250 @@ export const getBarangayInsightsDetails = async (req, res) => {
     );
   }
 };
+
+export const getRecentActivities = async (req, res) => {
+  try {
+    // 1. Authorization Guard
+    if (!req.user || req.user.role !== "admin") {
+      return res.status(403).json({
+        message: "Access denied. Admin permission required.",
+        code: "FORBIDDEN",
+      });
+    }
+
+    // 2. Parse & normalize limit parameter
+    const rawLimit = parseInt(req.query.limit, 10);
+    const limit = Math.min(Math.max(isNaN(rawLimit) ? 6 : rawLimit, 1), 20);
+    const queryLimit = Math.max(limit, 10);
+
+    // 3. Parallel fetching from operational models
+    const [animals, inseminations, pregnancies, healthRequests, calvings, userInvites] = await Promise.all([
+      // Animal Registration
+      Animal.find({ deletedAt: null })
+        .sort({ createdAt: -1 })
+        .limit(queryLimit)
+        .populate("farmerId", "name address")
+        .select("earTag breed species farmerId createdAt")
+        .lean(),
+
+      // Artificial Insemination Completed
+      Insemination.find({})
+        .sort({ createdAt: -1 })
+        .limit(queryLimit)
+        .populate("technicianId", "name")
+        .populate("farmerId", "name address")
+        .populate("animalId", "earTag breed species")
+        .select("animalId technicianId farmerId pregnancyStatus createdAt completedAt")
+        .lean(),
+
+      // Pregnancy Confirmed
+      Pregnancy.find({})
+        .sort({ createdAt: -1 })
+        .limit(queryLimit)
+        .populate("animalId", "earTag breed species")
+        .populate("farmerId", "name address")
+        .select("animalId farmerId status confirmedAt createdAt")
+        .lean(),
+
+      // Health Requests
+      HealthRequest.find({})
+        .sort({ createdAt: -1 })
+        .limit(queryLimit)
+        .populate("farmerId", "name address")
+        .populate("animalId", "earTag breed species")
+        .select("animalId farmerId requestType urgency status createdAt")
+        .lean(),
+
+      // Calving Recorded
+      Calving.find({})
+        .sort({ createdAt: -1 })
+        .limit(queryLimit)
+        .populate("farmerId", "name address")
+        .populate("motherId", "earTag breed species")
+        .select("motherId farmerId calfSex calfEarTag createdAt")
+        .lean(),
+
+      // User / Technician Created or Invited
+      User.find({ role: { $in: ["technician", "farmer"] } })
+        .sort({ createdAt: -1 })
+        .limit(queryLimit)
+        .select("name email role status profileClaimStatus address createdAt")
+        .lean(),
+    ]);
+
+    // 4. Normalize records into stable AdminRecentActivity items
+    const rawEvents = [];
+
+    // Animals
+    for (const item of animals) {
+      if (!item.createdAt) continue;
+      const farmerName = item.farmerId?.name || "Farmer";
+      const barangay = item.farmerId?.address?.barangay
+        ? `in Brgy. ${item.farmerId.address.barangay}`
+        : item.farmerId?.address?.city
+        ? `in ${item.farmerId.address.city}`
+        : "";
+      const tag = item.earTag ? `(#${item.earTag})` : "";
+      const species = item.species || item.breed || "animal";
+
+      rawEvents.push({
+        id: `animal-${item._id}`,
+        type: "animal_registered",
+        title: "Animal Registered",
+        description: `Farmer ${farmerName} registered a ${species} ${tag} ${barangay}`.trim() + ".",
+        occurredAt: item.createdAt.toISOString(),
+        entityType: "Animal",
+        entityId: item._id.toString(),
+        metadata: {
+          animalTag: item.earTag || "",
+          species: item.species || "",
+          breed: item.breed || "",
+          farmerName,
+          barangay: item.farmerId?.address?.barangay || "",
+        },
+      });
+    }
+
+    // Inseminations
+    for (const item of inseminations) {
+      const date = item.completedAt || item.createdAt;
+      if (!date) continue;
+      const techName = item.technicianId?.name || "Field Officer";
+      const tag = item.animalId?.earTag ? `Tag #${item.animalId.earTag}` : "animal record";
+
+      rawEvents.push({
+        id: `insemination-${item._id}`,
+        type: "ai_completed",
+        title: "AI Completed",
+        description: `Technician ${techName} completed insemination service for ${tag}.`,
+        occurredAt: new Date(date).toISOString(),
+        entityType: "Insemination",
+        entityId: item._id.toString(),
+        metadata: {
+          animalTag: item.animalId?.earTag || "",
+          technicianName: techName,
+          farmerName: item.farmerId?.name || "",
+        },
+      });
+    }
+
+    // Pregnancies
+    for (const item of pregnancies) {
+      const date = item.confirmedAt || item.createdAt;
+      if (!date) continue;
+      const tag = item.animalId?.earTag ? `Tag #${item.animalId.earTag}` : "Animal";
+      const barangay = item.farmerId?.address?.barangay ? `in Brgy. ${item.farmerId.address.barangay}` : "";
+
+      rawEvents.push({
+        id: `pregnancy-${item._id}`,
+        type: "pregnancy_confirmed",
+        title: "Pregnancy Confirmed",
+        description: `${tag} confirmed pregnant ${barangay}`.trim() + ".",
+        occurredAt: new Date(date).toISOString(),
+        entityType: "Pregnancy",
+        entityId: item._id.toString(),
+        metadata: {
+          animalTag: item.animalId?.earTag || "",
+          farmerName: item.farmerId?.name || "",
+          barangay: item.farmerId?.address?.barangay || "",
+        },
+      });
+    }
+
+    // Health Requests
+    for (const item of healthRequests) {
+      if (!item.createdAt) continue;
+      const farmerName = item.farmerId?.name || "Farmer";
+      const isEmergency = item.urgency === "emergency" || item.urgency === "high";
+      const tag = item.animalId?.earTag ? `for Tag #${item.animalId.earTag}` : "";
+      const isCompleted = item.status === "completed";
+
+      rawEvents.push({
+        id: `health-${item._id}`,
+        type: isCompleted ? "health_service_completed" : "health_request_created",
+        title: isCompleted ? "Health Service Completed" : isEmergency ? "Emergency Health Request" : "Health Request",
+        description: isCompleted
+          ? `Health service completed ${tag} for ${farmerName}.`.trim()
+          : `${isEmergency ? "Emergency health" : "Health"} assistance requested ${tag} by ${farmerName}.`.trim(),
+        occurredAt: item.createdAt.toISOString(),
+        entityType: "HealthRequest",
+        entityId: item._id.toString(),
+        metadata: {
+          farmerName,
+          animalTag: item.animalId?.earTag || "",
+          urgency: item.urgency || "normal",
+        },
+      });
+    }
+
+    // Calvings
+    for (const item of calvings) {
+      if (!item.createdAt) continue;
+      const tag = item.motherId?.earTag ? `Tag #${item.motherId.earTag}` : "mother animal";
+      const sex = item.calfSex ? `(${item.calfSex})` : "";
+
+      rawEvents.push({
+        id: `calving-${item._id}`,
+        type: "calving_recorded",
+        title: "Calving Recorded",
+        description: `Calf drop ${sex} successfully registered for ${tag}.`.trim(),
+        occurredAt: item.createdAt.toISOString(),
+        entityType: "Calving",
+        entityId: item._id.toString(),
+        metadata: {
+          animalTag: item.motherId?.earTag || "",
+          calfSex: item.calfSex || "",
+        },
+      });
+    }
+
+    // Users / Technician Invitations
+    for (const item of userInvites) {
+      if (!item.createdAt) continue;
+      const isTech = item.role === "technician";
+      const isPending = item.profileClaimStatus === "unclaimed" || item.status === "pending";
+
+      rawEvents.push({
+        id: `user-${item._id}`,
+        type: isTech ? "user_invited" : "user_registered",
+        title: isTech ? "Technician Invited" : "Farmer Registered",
+        description: isTech
+          ? `${isPending ? "Technician invitation sent to" : "Technician account active for"} ${item.name}.`
+          : `New farmer profile created for ${item.name}.`,
+        occurredAt: item.createdAt.toISOString(),
+        entityType: "User",
+        entityId: item._id.toString(),
+        metadata: {
+          userRole: item.role,
+          farmerName: item.name,
+        },
+      });
+    }
+
+    // 5. Sort by occurredAt descending
+    rawEvents.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
+
+    // 6. Deduplicate by entityType + entityId
+    const seen = new Set();
+    const deduplicated = [];
+    for (const event of rawEvents) {
+      const key = `${event.entityType}-${event.entityId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduplicated.push(event);
+      }
+      if (deduplicated.length >= limit) break;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: deduplicated,
+    });
+  } catch (error) {
+    console.error("[getRecentActivities ERROR]", error);
+    return res.status(500).json({
+      message: "Failed to fetch recent activities.",
+      code: "INTERNAL_ERROR",
+    });
+  }
+};
