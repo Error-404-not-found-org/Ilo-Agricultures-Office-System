@@ -198,7 +198,7 @@ function RequestRow({
             numberOfLines={1}
             style={{ flex: 1, color: colors.textPrimary }}
           >
-            {item.farmer || "Farmer"}
+            {item.farmer || "Farmer Request"}
           </Text>
           <StatusBadge
             label={badgeInfo.label}
@@ -283,5 +283,6 @@ function RequestRow({
 
       <ChevronRight size={18} color={colors.textMuted} />
     </TouchableOpacity>
+
   );
 }

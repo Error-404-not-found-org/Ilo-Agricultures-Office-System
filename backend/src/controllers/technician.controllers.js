@@ -402,6 +402,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         urgent: isMobileRequest,
         overdue: isOverdue,
         sentTime: formatTime(ins.createdAt),
+        createdAt: ins.createdAt,
         raw: ins,
       };
 
@@ -424,6 +425,7 @@ export const getTechnicianDashboardData = async (req, res) => {
             time: formatTime(itemDisplayDate),
             preferredTime: formatTime(itemDisplayDate),
             displayDate: itemDisplayDate,
+            farmer: ins.farmerId?.name || "Unknown Farmer",
             animalTag: ins.animalId?.earTag || ins.animalId?.animalId || null,
             municipality:
               ins.farmerId?.address?.city ||
@@ -437,6 +439,7 @@ export const getTechnicianDashboardData = async (req, res) => {
             urgent: isMobileRequest,
             overdue: isOverdue,
             sentTime: formatTime(ins.createdAt),
+            createdAt: ins.createdAt,
           };
           pendingRequests.push(candidateItem);
         } else if (assignedToMeAI) {
@@ -456,12 +459,12 @@ export const getTechnicianDashboardData = async (req, res) => {
     });
 
     // Process Health Requests
-    healthReqs.forEach((req) => {
-      const farmLocationDetails = getFarmLocationDetails(req.farmerId);
+    healthReqs.forEach((healthRequest) => {
+      const farmLocationDetails = getFarmLocationDetails(healthRequest.farmerId);
       const itemDisplayDate =
-        req.status === "resolved" || req.status === "done"
-          ? req.scheduledDate || req.preferredDate || req.createdAt // Health doesn't have inseminationDate
-          : req.scheduledDate || req.preferredDate || req.createdAt;
+        healthRequest.status === "resolved" || healthRequest.status === "done"
+          ? healthRequest.scheduledDate || healthRequest.preferredDate || healthRequest.createdAt // Health doesn't have inseminationDate
+          : healthRequest.scheduledDate || healthRequest.preferredDate || healthRequest.createdAt;
 
       const isOverdue =
         [
@@ -472,50 +475,51 @@ export const getTechnicianDashboardData = async (req, res) => {
           "scheduled",
           "in-progress",
           "in_progress",
-        ].includes(req.status) && new Date(itemDisplayDate) < todayStart;
+        ].includes(healthRequest.status) && new Date(itemDisplayDate) < todayStart;
       const isReadyToday =
-        ["approved", "scheduled"].includes(req.status) &&
+        ["approved", "scheduled"].includes(healthRequest.status) &&
         new Date(itemDisplayDate) >= todayStart &&
         new Date(itemDisplayDate) < todayEnd;
 
       const item = {
-        id: req._id,
+        id: healthRequest._id,
         type: "health",
         taskType: "Health",
-        serviceType: req.requestType || "Health Assistance",
-        status: req.status,
+        serviceType: healthRequest.requestType || "Health Assistance",
+        status: healthRequest.status,
         isReadyToday,
         time: formatTime(itemDisplayDate),
         preferredTime: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
-        farmer: req.farmerId?.name || "Unknown Farmer",
-        farmerName: req.farmerId?.name || "Unknown Farmer",
-        farmerPhone: req.farmerId?.phoneNumber || req.farmerId?.phone || null,
+        farmer: healthRequest.farmerId?.name || "Unknown Farmer",
+        farmerName: healthRequest.farmerId?.name || "Unknown Farmer",
+        farmerPhone: healthRequest.farmerId?.phoneNumber || healthRequest.farmerId?.phone || null,
         farmerImageUrl:
-          req.farmerId?.imageUrl ||
-          req.farmerId?.avatarUrl ||
-          req.farmerId?.profilePicture ||
-          req.farmerId?.avatar ||
+          healthRequest.farmerId?.imageUrl ||
+          healthRequest.farmerId?.avatarUrl ||
+          healthRequest.farmerId?.profilePicture ||
+          healthRequest.farmerId?.avatar ||
           "",
-        location: formatAddress(req.farmerId?.address),
+        location: formatAddress(healthRequest.farmerId?.address),
         ...farmLocationDetails,
-        animalTag: req.animalId?.earTag || req.animalId?.animalId || null,
-        displayStatus: isReadyToday ? "Ready Today" : req.status,
-        task: `Health Check - ${req.animalId?.animalId || req.animalId?.earTag || "Unknown"}`,
-        urgent: ["high", "emergency"].includes(req.urgency),
+        animalTag: healthRequest.animalId?.earTag || healthRequest.animalId?.animalId || null,
+        displayStatus: isReadyToday ? "Ready Today" : healthRequest.status,
+        task: `Health Check - ${healthRequest.animalId?.animalId || healthRequest.animalId?.earTag || "Unknown"}`,
+        urgent: ["high", "emergency"].includes(healthRequest.urgency),
         overdue: isOverdue,
-        sentTime: formatTime(req.createdAt),
-        raw: req,
+        sentTime: formatTime(healthRequest.createdAt),
+        createdAt: healthRequest.createdAt,
+        raw: healthRequest,
       };
 
       const assignedToMeHealth =
         req.user?.role === "admin" ||
-        req.handledBy?._id?.toString() === req.user?._id?.toString() ||
-        req.assignedTechnicianId?.toString() === req.user?._id?.toString();
+        healthRequest.handledBy?._id?.toString() === req.user?._id?.toString() ||
+        healthRequest.assignedTechnicianId?.toString() === req.user?._id?.toString();
 
       const isUnassignedHealth =
-        !req.handledBy &&
-        !req.assignedTechnicianId;
+        !healthRequest.handledBy &&
+        !healthRequest.assignedTechnicianId;
 
       if (
         [
@@ -526,30 +530,32 @@ export const getTechnicianDashboardData = async (req, res) => {
           "scheduled",
           "in-progress",
           "in_progress",
-        ].includes(req.status)
+        ].includes(healthRequest.status)
       ) {
         if (isUnassignedHealth) {
           const candidateItem = {
-            id: req._id,
+            id: healthRequest._id,
             type: "health",
             taskType: "Health",
-            serviceType: req.requestType || "Health Assistance",
-            status: req.status,
+            serviceType: healthRequest.requestType || "Health Assistance",
+            status: healthRequest.status,
             isReadyToday,
             time: formatTime(itemDisplayDate),
             preferredTime: formatTime(itemDisplayDate),
             displayDate: itemDisplayDate,
-            animalTag: req.animalId?.earTag || req.animalId?.animalId || null,
+            farmer: healthRequest.farmerId?.name || "Unknown Farmer",
+            animalTag: healthRequest.animalId?.earTag || healthRequest.animalId?.animalId || null,
             municipality:
-              req.farmerId?.address?.city ||
-              req.farmerId?.address?.municipality ||
+              healthRequest.farmerId?.address?.city ||
+              healthRequest.farmerId?.address?.municipality ||
               "",
-            barangay: req.farmerId?.address?.barangay || "",
-            displayStatus: isReadyToday ? "Ready Today" : req.status,
-            task: `Health Check - ${req.animalId?.animalId || req.animalId?.earTag || "Unknown"}`,
-            urgent: ["high", "emergency"].includes(req.urgency),
+            barangay: healthRequest.farmerId?.address?.barangay || "",
+            displayStatus: isReadyToday ? "Ready Today" : healthRequest.status,
+            task: `Health Check - ${healthRequest.animalId?.animalId || healthRequest.animalId?.earTag || "Unknown"}`,
+            urgent: ["high", "emergency"].includes(healthRequest.urgency),
             overdue: isOverdue,
-            sentTime: formatTime(req.createdAt),
+            sentTime: formatTime(healthRequest.createdAt),
+            createdAt: healthRequest.createdAt,
           };
           pendingRequests.push(candidateItem);
         } else if (assignedToMeHealth) {
@@ -562,7 +568,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         (itemDisplayDate >= todayStart && itemDisplayDate < todayEnd) ||
         isOverdue
       ) {
-        if (req.status !== "pending" && assignedToMeHealth) {
+        if (healthRequest.status !== "pending" && assignedToMeHealth) {
           agendaItems.push(item);
         }
       }
@@ -640,8 +646,21 @@ export const getTechnicianDashboardData = async (req, res) => {
     agendaItems.sort(
       (a, b) => new Date(a.displayDate) - new Date(b.displayDate),
     );
+
+    const getSortableTimestamp = (item) => {
+      const value = item?.createdAt || item?.displayDate;
+
+      if (!value) {
+        return 0;
+      }
+
+      const timestamp = new Date(value).getTime();
+
+      return Number.isFinite(timestamp) ? timestamp : 0;
+    };
+
     pendingRequests.sort(
-      (a, b) => new Date(b.raw.createdAt) - new Date(a.raw.createdAt),
+      (a, b) => getSortableTimestamp(b) - getSortableTimestamp(a),
     );
 
     const animalRegistry = animalRegistryData.map((a) => {
@@ -3409,6 +3428,7 @@ export const getTechnicianRequests = async (req, res) => {
           status: rec.status,
           allowedAction,
           actionLabel,
+          farmer: farmer.name || "Unknown Farmer",
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -3543,6 +3563,7 @@ export const getTechnicianRequests = async (req, res) => {
           serviceType: rec.requestType || "health",
           requestType: rec.requestType || "health",
           status: rec.status,
+          farmer: farmer.name || "Unknown Farmer",
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"

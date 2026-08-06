@@ -390,7 +390,7 @@ function VisitRow({ item, onPress }: any) {
               {service}
             </Text>
             <Text textRole="body" numberOfLines={1}>
-              {item.farmer || "Farmer"}
+              {item.farmer || "Farmer Request"}
             </Text>
             {animal ? (
               <Text textRole="caption" color="secondary" numberOfLines={1}>

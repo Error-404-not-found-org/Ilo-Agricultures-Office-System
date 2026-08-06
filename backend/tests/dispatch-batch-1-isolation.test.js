@@ -125,10 +125,13 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
 
     assert.equal(res2.body.pendingRequests.length, 1);
     const candidateItem = res2.body.pendingRequests[0];
+    // Farmer display name is required by the request-card contract.
+    // Contact information and precise location remain claim-gated.
+    // Only the display name is exposed.
     const expectedKeys = [
       "id", "type", "status", "isReadyToday", "time", "preferredTime",
-      "displayDate", "animalTag", "municipality", "barangay", "displayStatus",
-      "task", "urgent", "overdue", "sentTime"
+      "displayDate", "farmer", "animalTag", "municipality", "barangay", "displayStatus",
+      "task", "urgent", "overdue", "sentTime", "createdAt"
     ].sort();
     assert.deepEqual(Object.keys(candidateItem).sort(), expectedKeys);
 
@@ -161,5 +164,42 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     assert.equal(capturedPregnancyQuery["confirmation.confirmedBy"], "tech-a");
     assert.equal(capturedPregnancyQuery.technicianId, undefined);
     assert.equal(capturedCalvingQuery.technicianId, "tech-a");
+  });
+
+  await t.test("Requests: unassigned AI and Health responses contain Farmer name while remaining candidate-safe", async () => {
+    Insemination.find = () => queryResult([{
+      _id: "ai-unassigned",
+      status: "pending",
+      createdAt: new Date(),
+      farmerId: { name: "Test Farmer", phoneNumber: "1234", address: { city: "Iloilo" } },
+      animalId: { earTag: "T1" }
+    }]);
+    HealthRequest.find = () => queryResult([{
+      _id: "health-unassigned",
+      status: "pending",
+      createdAt: new Date(),
+      farmerId: { name: "Health Farmer", phone: "5678", address: { city: "Oton" } },
+      animalId: { earTag: "T2" }
+    }]);
+
+    const req = { user: { _id: "tech-a", role: "technician" }, query: { assignment: "unassigned" } };
+    const res = mockResponse();
+
+    await getTechnicianRequests(req, res);
+
+    assert.equal(res.statusCode, 200);
+    const requests = res.body.requests;
+
+    const aiReq = requests.find(r => r.type === "ai");
+    assert.ok(aiReq, "Should return an AI request");
+    assert.equal(aiReq.farmer, "Test Farmer");
+    assert.equal(aiReq.raw, undefined);
+    assert.equal(aiReq.farmerPhone, undefined);
+
+    const healthReq = requests.find(r => r.type === "health");
+    assert.ok(healthReq, "Should return a Health request");
+    assert.equal(healthReq.farmer, "Health Farmer");
+    assert.equal(healthReq.raw, undefined);
+    assert.equal(healthReq.farmerPhone, undefined);
   });
 });

@@ -233,10 +233,10 @@ test("Technician Work Queue backend contract", async (t) => {
         "id", "workflowId", "workflowType", "type", "serviceType",
         "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",
         "urgency", "animal", "earTag", "breed", "species", "municipality", "barangay",
-        "preferredDate", "scheduledDate", "visitPeriod", "heatSigns", "requestSubmissionDate", "createdAt"
+        "preferredDate", "scheduledDate", "visitPeriod", "heatSigns", "requestSubmissionDate", "createdAt", "farmer"
       ].sort();
       assert.deepEqual(Object.keys(request).sort(), expectedKeys);
-      assert.equal(request.farmer, undefined);
+      assert.equal(request.farmer, "Maria Santos");
       assert.deepEqual(request.heatSigns, ["standing heat"]);
 
       const workQueue = responseRecorder();

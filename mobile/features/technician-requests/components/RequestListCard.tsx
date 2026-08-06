@@ -130,11 +130,13 @@ export function RequestListCard({
       ? colors.warningContainer
       : colors.tint;
 
+  const farmerLabel = item.farmer?.trim() || "Farmer Request";
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${serviceLabel} request from ${item.farmer}`}
+      accessibilityLabel={`Open ${serviceLabel} request from ${farmerLabel}`}
       className="mb-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm active:opacity-80 dark:border-slate-800 dark:bg-slate-900"
     >
       <View
@@ -175,7 +177,7 @@ export function RequestListCard({
               lineHeight: 20,
             }}
           >
-            {item.farmer}
+            {farmerLabel}
           </Text>
           <View
             style={{
