@@ -31,7 +31,7 @@ export function evaluateTechnicianDispatchEligibility({
   }
 
   // 1. Account Level Checks
-  if (technician.deletedAt !== null) {
+  if (technician.deletedAt != null) {
     result.blockingReasons.push("ACCOUNT_DELETED");
   }
   if (!technician.isVerified) {
@@ -39,6 +39,10 @@ export function evaluateTechnicianDispatchEligibility({
   }
   if (technician.status === "suspended") {
     result.blockingReasons.push("ACCOUNT_SUSPENDED");
+  } else if (technician.status === "on-leave") {
+    result.blockingReasons.push("ACCOUNT_ON_LEAVE");
+  } else if (technician.status !== "active" && technician.status !== "on-site") {
+    result.blockingReasons.push("ACCOUNT_STATUS_INELIGIBLE");
   }
   
   const allowedRoles = ["technician"];
@@ -51,13 +55,15 @@ export function evaluateTechnicianDispatchEligibility({
   if (!profile) {
     result.blockingReasons.push("NO_DISPATCH_PROFILE");
   } else {
-    if (!profile.acceptsNewRequests) {
+    if (profile.acceptsNewRequests !== true) {
       result.blockingReasons.push("NOT_ACCEPTING_REQUESTS");
     }
     if (profile.availabilityStatus === "off_duty") {
       result.blockingReasons.push("OFF_DUTY");
     } else if (profile.availabilityStatus === "busy") {
       result.blockingReasons.push("BUSY");
+    } else if (profile.availabilityStatus !== "available") {
+      result.blockingReasons.push("AVAILABILITY_UNKNOWN");
     }
 
     // Capability Match

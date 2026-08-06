@@ -17,7 +17,7 @@ describe("evaluateTechnicianDispatchEligibility", () => {
   });
 
   it("blocks if technician is off_duty", () => {
-    const tech = { deletedAt: null, isVerified: true, dispatchProfile: { availabilityStatus: "off_duty", acceptsNewRequests: true }, role: "technician" };
+    const tech = { status: "active", deletedAt: null, isVerified: true, dispatchProfile: { availabilityStatus: "off_duty", acceptsNewRequests: true }, role: "technician" };
     const req = { type: "AI", dispatch: { municipalityCode: "063022000" } };
     
     const res = evaluateTechnicianDispatchEligibility({
@@ -30,7 +30,7 @@ describe("evaluateTechnicianDispatchEligibility", () => {
   });
 
   it("blocks if not accepting new requests", () => {
-    const tech = { deletedAt: null, isVerified: true, dispatchProfile: { availabilityStatus: "available", acceptsNewRequests: false }, role: "technician" };
+    const tech = { status: "active", deletedAt: null, isVerified: true, dispatchProfile: { availabilityStatus: "available", acceptsNewRequests: false }, role: "technician" };
     const req = { type: "AI", dispatch: { municipalityCode: "063022000" } };
     
     const res = evaluateTechnicianDispatchEligibility({
@@ -44,6 +44,7 @@ describe("evaluateTechnicianDispatchEligibility", () => {
 
   it("blocks if missing capability", () => {
     const tech = {
+      status: "active",
       deletedAt: null, isVerified: true,
       role: "technician",
       dispatchProfile: {
@@ -66,6 +67,7 @@ describe("evaluateTechnicianDispatchEligibility", () => {
 
   it("blocks if geographic mismatch", () => {
     const tech = {
+      status: "active",
       deletedAt: null, isVerified: true,
       role: "technician",
       dispatchProfile: {
@@ -88,6 +90,7 @@ describe("evaluateTechnicianDispatchEligibility", () => {
 
   it("succeeds with strict match", () => {
     const tech = {
+      status: "active",
       deletedAt: null, isVerified: true,
       role: "technician",
       dispatchProfile: {

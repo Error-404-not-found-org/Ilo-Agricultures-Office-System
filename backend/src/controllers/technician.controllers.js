@@ -4382,26 +4382,34 @@ export const updateDispatchStatus = async (req, res) => {
     }
 
     if (acceptsNewRequests !== undefined) {
-      updates["dispatchProfile.acceptsNewRequests"] =
-        Boolean(acceptsNewRequests);
+      if (typeof acceptsNewRequests !== "boolean") {
+        return res.status(400).json({ message: "acceptsNewRequests must be a boolean." });
+      }
+      updates["dispatchProfile.acceptsNewRequests"] = acceptsNewRequests;
     }
 
     if (Object.keys(updates).length > 0) {
       updates["dispatchProfile.updatedAt"] = new Date();
 
-      // Ensure dispatchProfile object exists
-      const user = await User.findById(req.user._id);
+      // Ensure dispatchProfile object exists with safe defaults if missing
+      const user = await User.findById(req.user._id).select("dispatchProfile").lean();
+      if (!user) {
+        return res.status(404).json({ message: "Technician not found." });
+      }
+      
       if (!user.dispatchProfile) {
-        user.dispatchProfile = {
-          availabilityStatus: "off_duty",
-          acceptsNewRequests: false,
-        };
+        if (!updates["dispatchProfile.availabilityStatus"]) {
+          updates["dispatchProfile.availabilityStatus"] = "off_duty";
+        }
+        if (updates["dispatchProfile.acceptsNewRequests"] === undefined) {
+          updates["dispatchProfile.acceptsNewRequests"] = false;
+        }
       }
 
       const updatedUser = await User.findByIdAndUpdate(
         req.user._id,
         { $set: updates },
-        { new: true },
+        { returnDocument: "after", runValidators: true }
       );
 
       return res.status(200).json({

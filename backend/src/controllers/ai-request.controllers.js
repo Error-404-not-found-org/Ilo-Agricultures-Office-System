@@ -43,6 +43,7 @@ import {
   normalizeTechnicianNoteInput,
   normalizeVisitPeriod,
 } from "../domain/ai-recording-fields.js";
+import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -242,52 +243,14 @@ export const createAIRequest = async (req, res) => {
 
     // --- TRIGGER NOTIFICATIONS ---
     try {
-      const technicians = await User.find({ role: "technician" });
-      const admins = await User.find({ role: "admin" });
-      const farmerBarangay = req.user.address?.barangay;
-      const farmerMunicipality =
-        req.user.address?.municipality || req.user.address?.city || "Iloilo";
-      const generalLocation = farmerBarangay
-        ? `Brgy. ${farmerBarangay}, ${farmerMunicipality}`
-        : farmerMunicipality;
-
-      const metadata = {
-        requestId: request._id,
-        animalId: animal._id,
-        animalTag: animal.earTag || animal.animalId,
-        farmerName: req.user.name,
-        serviceType: "ai",
-        location: generalLocation,
-      };
-      await Promise.all([
-        ...technicians.map((technician) =>
-          notifyUser({
-            recipient: technician,
-            senderId: farmerId,
-            type: "ai-request",
-            relatedId: request._id,
-            category: "ai",
-            eventType: "service_request_submitted",
-            linkType: "request",
-            metadata,
-          }),
-        ),
-        ...admins.map((admin) =>
-          notifyUser({
-            recipient: admin,
-            senderId: farmerId,
-            type: "ai-request",
-            relatedId: request._id,
-            category: "ai",
-            eventType: "service_request_submitted",
-            linkType: "request",
-            metadata,
-            sendPush: false,
-          }),
-        ),
-      ]);
+      await notifyDispatchRequestSubmitted({
+        request,
+        requestType: "AI",
+        animal,
+        farmer: req.user,
+      });
     } catch (notifyErr) {
-      console.error("[Notification Trigger Error]", notifyErr.message);
+      console.error("[Notification Delivery Error]", notifyErr.message);
     }
 
     // --- TRIGGER SOCKET UPDATE ---

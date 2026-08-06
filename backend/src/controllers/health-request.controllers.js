@@ -21,7 +21,7 @@ import {
   findActiveHealthCase,
 } from "../services/health-request-creation.service.js";
 import { notifyUser } from "../services/notification-delivery.service.js";
-
+import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
 
 // POST /api/health-request
 export const createHealthRequest = async (req, res) => {
@@ -84,54 +84,16 @@ export const createHealthRequest = async (req, res) => {
 
     console.log(`[Health Request Created] Farmer: ${farmerId} | Animal: ${animal.animalId} | Type: ${requestType} | Urgency: ${urgency}`);
 
-    // --- TRIGGER NOTIFICATIONS to all technicians + summary to admin ---
+    // --- TRIGGER NOTIFICATIONS ---
     try {
-      const technicians = await User.find({ role: "technician" });
-      const admins = await User.find({ role: "admin" });
-      const farmerBarangay = req.user.address?.barangay;
-      const farmerMunicipality =
-        req.user.address?.municipality || req.user.address?.city || "Iloilo";
-      const generalLocation = farmerBarangay
-        ? `Brgy. ${farmerBarangay}, ${farmerMunicipality}`
-        : farmerMunicipality;
-      const metadata = {
-        requestId: request._id,
-        animalId: animal._id,
-        animalTag: animal.earTag || animal.animalId,
-        farmerName: req.user.name,
-        serviceType: "health",
-        urgency: normalizedUrgency,
-        location: generalLocation,
-      };
-      await Promise.all([
-        ...technicians.map((technician) =>
-          notifyUser({
-            recipient: technician,
-            senderId: farmerId,
-            type: "health-request",
-            relatedId: request._id,
-            category: "health",
-            eventType: "service_request_submitted",
-            linkType: "request",
-            metadata,
-          }),
-        ),
-        ...admins.map((admin) =>
-          notifyUser({
-            recipient: admin,
-            senderId: farmerId,
-            type: "health-request",
-            relatedId: request._id,
-            category: "health",
-            eventType: "service_request_submitted",
-            linkType: "request",
-            metadata,
-            sendPush: false,
-          }),
-        ),
-      ]);
+      await notifyDispatchRequestSubmitted({
+        request,
+        requestType: "HEALTH",
+        animal,
+        farmer: req.user,
+      });
     } catch (notifyErr) {
-      console.error("[Notification Trigger Error]", notifyErr.message);
+      console.error("[Notification Delivery Error]", notifyErr.message);
     }
 
     // --- TRIGGER SOCKET UPDATE ---
