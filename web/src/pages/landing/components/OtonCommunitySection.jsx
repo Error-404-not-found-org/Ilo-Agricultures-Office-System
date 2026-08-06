@@ -1,4 +1,3 @@
-import { MapPin, Building2 } from "lucide-react";
 import { OTON_LOGO, MUNICIPAL_SEAL } from "../data/landingContent";
 
 export default function OtonCommunitySection() {

@@ -265,7 +265,7 @@ export default function OperationalInbox() {
     enabled: !isAdmin,
   });
 
-  const [primaryView, setPrimaryView] = useState(initialRequestView);
+  const [primaryView] = useState(initialRequestView);
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const [typeFilter, setTypeFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");

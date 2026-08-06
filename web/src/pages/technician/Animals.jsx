@@ -228,7 +228,7 @@ export default function AnimalRegistry() {
 
   return (
     <div className={ui.page}>
-      <Topbar title="Animals" subtitle="Find an animal and open its complete service and breeding history" />
+      <Topbar title="Animal Records" subtitle="Find an animal and open its complete service and breeding history" />
       <main className={ui.main}>
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <MetricCard icon={<Beef size={21} />} value={isLoading ? "—" : summary.total ?? totalItems} label="Animals found" note="Matching current filters" />

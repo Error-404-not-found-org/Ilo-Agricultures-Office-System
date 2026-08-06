@@ -7,7 +7,6 @@ import {
   Clock,
   Calendar,
   MapPin,
-  CheckCircle,
   ChevronLeft,
   ChevronRight,
   MoreVertical,
@@ -108,7 +107,7 @@ const formatWorkQueueSchedule = (task = {}) => {
   yesterday.setDate(yesterday.getDate() - 1);
 
   const targetKey = localDateKey(date);
-  let dateStr = "";
+  let dateStr;
   if (targetKey === localDateKey(today)) {
     dateStr = "Today";
   } else if (targetKey === localDateKey(tomorrow)) {
@@ -201,52 +200,6 @@ export default function WorkQueue() {
   const [selectedAIRecord, setSelectedAIRecord] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
-
-  const formatRelativeSchedule = (value) => {
-    if (!value) return { date: "No date", time: "—" };
-    const targetDate = new Date(value);
-    if (Number.isNaN(targetDate.getTime()))
-      return { date: "No date", time: "—" };
-
-    const today = new Date();
-
-    // Calculate difference in days (midnight to midnight)
-    const tDate = new Date(
-      targetDate.getFullYear(),
-      targetDate.getMonth(),
-      targetDate.getDate(),
-    );
-    const currDate = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      today.getDate(),
-    );
-    const diffTime = tDate - currDate;
-    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-
-    let datePart;
-    if (diffDays === 0) {
-      datePart = "Today";
-    } else if (diffDays === 1) {
-      datePart = "Tomorrow";
-    } else if (diffDays === -1) {
-      datePart = "Yesterday";
-    } else if (diffDays > 1 && diffDays <= 7) {
-      datePart = `In ${diffDays} days`;
-    } else {
-      datePart = targetDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      });
-    }
-
-    const timePart = targetDate.toLocaleTimeString(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-
-    return { date: datePart, time: timePart };
-  };
 
   const query = useQuery({
     queryKey: ["technician", "work-queue", "mine"],
@@ -612,12 +565,7 @@ export default function WorkQueue() {
                           "resolved",
                           "Completed",
                         ].includes(task.status);
-                        const canViewCompletedAI =
-                          task.workflowType === "AI" &&
-                          task.allowedAction === "VIEW_RECORD";
                         const priority = task.urgent ? 1 : 0;
-                        const animalReference =
-                          task.animalTag || "Not recorded";
                         const readiness = getTaskReadiness(task.raw || task);
                         const actionDisabled =
                           !readiness.ready ||

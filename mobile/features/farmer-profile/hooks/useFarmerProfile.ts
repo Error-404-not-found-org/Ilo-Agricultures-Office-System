@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useClerk, useUser } from "@clerk/clerk-expo";
 import { useRouter } from "expo-router";
-import * as ImagePicker from "expo-image-picker";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import * as Location from "expo-location";
 import { useColorScheme } from "nativewind";
@@ -462,7 +461,7 @@ export const useFarmerProfile = () => {
     try {
       await signOut();
       router.replace("/(auth)");
-    } catch (e) {}
+    } catch {}
   };
 
   const handleToggleTheme = async () => {
@@ -470,7 +469,7 @@ export const useFarmerProfile = () => {
     toggleColorScheme();
     try {
       await AsyncStorage.setItem("theme_preference", newScheme);
-    } catch (e) {}
+    } catch {}
   };
 
   const handleSelectProfileImage = async (source: "camera" | "library") => {

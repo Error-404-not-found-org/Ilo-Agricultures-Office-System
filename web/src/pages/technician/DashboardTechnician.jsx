@@ -6,7 +6,6 @@ import {
   Tractor,
   HeartPulse,
   Baby,
-  Search,
   ArrowRight,
   Clock,
   CalendarCheck,
@@ -52,7 +51,7 @@ function QuickAction({ icon: IconComponent, label, bgClass, textClass, onClick }
 }
 
 export default function Dashboard() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery] = useState("");
 
   // Query logged-in user profile to check for incomplete details
   const { data: dbUser } = useQuery({

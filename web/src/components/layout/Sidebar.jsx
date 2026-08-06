@@ -14,7 +14,6 @@ import {
   CalendarDays,
   MapPin,
   FileText,
-  BarChart3,
   Settings as SettingsIcon,
   LogOut,
   BookOpen,
@@ -159,12 +158,12 @@ export default function Sidebar() {
       {
         path: "/technician/farmers",
         icon: <Users size={16} />,
-        label: "Farmers",
+        label: "Farmer  Records",
       },
       {
         path: "/technician/animals",
         icon: <Tractor size={16} />,
-        label: "Animals",
+        label: "Animal Records",
       },
 
       {

@@ -1,11 +1,10 @@
 import { useState } from "react";
 import {
   SignInButton,
-  SignedIn,
   SignOutButton,
   useUser,
 } from "@clerk/clerk-react";
-import { Menu, X, ArrowRight, ShieldCheck } from "lucide-react";
+import { Menu, X, ArrowRight } from "lucide-react";
 import { OTON_LOGO, NAV_LINKS } from "../data/landingContent";
 
 export default function PublicNavbar() {

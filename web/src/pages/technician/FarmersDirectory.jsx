@@ -246,7 +246,7 @@ export default function ClientRegistry() {
 
   return (
     <div className={ui.page}>
-      <Topbar title="Farmers" subtitle="Find a farmer, check app access, and open their animal records" />
+      <Topbar title="Farmer Records" subtitle="Find a farmer, check app access, and open their animal records" />
       <main className={ui.main}>
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <MetricCard icon={<Users size={21} />} value={isLoading ? "—" : totalItems} label="Farmers found" note="Matching current filters" />

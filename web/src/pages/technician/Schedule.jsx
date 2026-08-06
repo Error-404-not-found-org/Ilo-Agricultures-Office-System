@@ -18,7 +18,6 @@ import Modal from "../../components/ui/Modal";
 import UserAvatar from "../../components/ui/UserAvatar";
 import AIServiceModal from "../../components/dialogs/AIServiceModal";
 import WalkInHealthModal from "../../components/dialogs/WalkInHealthModal";
-import { getCalendarTarget } from "../../utils/taskNavigation";
 import {
   getRequestWorkflowSummary,
   getTaskWorkflowSummary,

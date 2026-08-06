@@ -807,7 +807,7 @@ export default function InseminationLog() {
                                       type="button"
                                       role="menuitem"
                                       onClick={(event) => {
-                                        try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch {}
+                                        try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch { /* ignore */ }
                                         setSelectedLog(record);
                                       }}
                                       className="text-xs font-extrabold"
@@ -821,7 +821,7 @@ export default function InseminationLog() {
                                         type="button"
                                         role="menuitem"
                                         onClick={(event) => {
-                                          try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch {}
+                                          try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch { /* ignore */ }
                                           handleOpenConfirmOutcomeModal(record);
                                         }}
                                         className="text-xs font-extrabold text-info"
@@ -837,7 +837,7 @@ export default function InseminationLog() {
                                         type="button"
                                         role="menuitem"
                                         onClick={(event) => {
-                                          try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch {}
+                                          try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch { /* ignore */ }
                                           handleNavigateWorkQueue(record.tag);
                                         }}
                                         className="text-xs font-extrabold text-primary"
@@ -854,7 +854,7 @@ export default function InseminationLog() {
                                         data-testid="re-inseminate-menu-btn"
                                         role="menuitem"
                                         onClick={(event) => {
-                                          try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch {}
+                                          try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch { /* ignore */ }
                                           handleOpenReInseminationModal(record);
                                         }}
                                         className="text-xs font-extrabold text-warning"
@@ -868,7 +868,7 @@ export default function InseminationLog() {
                                       type="button"
                                       role="menuitem"
                                       onClick={(event) => {
-                                        try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch {}
+                                        try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch { /* ignore */ }
                                         handleNavigateWorkQueue(record.tag);
                                       }}
                                       className="text-xs font-extrabold text-primary"
@@ -882,7 +882,7 @@ export default function InseminationLog() {
                                         type="button"
                                         role="menuitem"
                                         onClick={(event) => {
-                                          try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch {}
+                                          try { event.currentTarget.closest("[popover]")?.hidePopover?.(); } catch { /* ignore */ }
                                           navigate(`/technician/animals/${record.animalId}`);
                                         }}
                                         className="text-xs font-bold"
