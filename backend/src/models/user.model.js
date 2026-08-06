@@ -1,13 +1,27 @@
 import mongoose from "mongoose";
 
+const AdministrativeAreaSchema = new mongoose.Schema(
+  {
+    municipalityCode: { type: String },
+    municipalityName: { type: String },
+    localityType: { type: String, enum: ["municipality", "city"] },
+    provinceCode: { type: String },
+    provinceName: { type: String },
+    barangayCode: { type: String },
+    barangayName: { type: String },
+    psgcVersion: { type: String },
+  },
+  { _id: false }
+);
+
 const AddressSchema = new mongoose.Schema({
   houseNumber: { type: String },
   street: { type: String, required: false },
   subdivision: { type: String },
-  barangay: { type: String, required: true },
-  city: { type: String, required: true },
+  barangay: { type: String, required: true }, // legacy
+  city: { type: String, required: true }, // legacy
   district: { type: String, required: false },
-  province: { type: String, required: true },
+  province: { type: String, required: true }, // legacy
   region: { type: String, required: false },
   zipCode: {
     type: String,
@@ -28,6 +42,10 @@ const AddressSchema = new mongoose.Schema({
   isDefault: {
     type: Boolean,
     default: false,
+  },
+  administrativeArea: {
+    type: AdministrativeAreaSchema,
+    default: null,
   },
 });
 
@@ -76,6 +94,19 @@ const FarmLocationSchema = new mongoose.Schema(
         "manual",
       ],
       default: "manual",
+    },
+    administrativeArea: {
+      type: AdministrativeAreaSchema,
+      default: null,
+    },
+    administrativeAreaSource: {
+      type: String,
+      enum: [
+        "psgc_selection",
+        "trusted_geocoder",
+        "legacy_text_match",
+        "unresolved",
+      ],
     },
   },
   { _id: false },
@@ -172,6 +203,56 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["admin", "technician", "veterinarian", "farmer"],
       default: "farmer",
+    },
+    dispatchProfile: {
+      serviceMunicipalities: [
+        {
+          municipalityCode: { type: String },
+          municipalityName: { type: String },
+          localityType: {
+            type: String,
+            enum: ["municipality", "city"],
+          },
+          provinceCode: { type: String },
+          provinceName: { type: String },
+          source: {
+            type: String,
+            enum: ["admin_assigned"],
+            default: "admin_assigned",
+          },
+          assignedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "User",
+          },
+          assignedAt: { type: Date },
+        },
+      ],
+      serviceCapabilities: [
+        {
+          type: String,
+          enum: ["AI", "HEALTH", "PREGNANCY_DIAGNOSIS", "CALVING"],
+        },
+      ],
+      availabilityStatus: {
+        type: String,
+        enum: ["available", "busy", "off_duty"],
+        default: "off_duty",
+      },
+      acceptsNewRequests: {
+        type: Boolean,
+        default: false,
+      },
+      legacyCoverageFallback: {
+        municipalityCode: { type: String },
+        municipalityName: { type: String },
+        source: { type: String, default: "legacy_address_fallback" },
+        requiresAdminConfirmation: { type: Boolean, default: true },
+      },
+      profileVersion: {
+        type: Number,
+        default: 1,
+      },
+      updatedAt: { type: Date },
     },
     isVerified: {
       type: Boolean,

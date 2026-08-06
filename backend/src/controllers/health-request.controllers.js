@@ -5,6 +5,7 @@ import { clerkClient } from "@clerk/clerk-sdk-node";
 import { Insemination } from "../models/insemination.model.js";
 import cloudinary from "../config/cloudinary.js";
 import { assertStatusTransition } from "../domain/livestock-workflow.js";
+import { resolveRequestLocation } from "../domain/geographic/municipalityResolver.js";
 import {
   createResolvedWalkInHealth,
   resolveHealthRequest,
@@ -61,6 +62,15 @@ export const createHealthRequest = async (req, res) => {
       });
     }
 
+    const dispatchLocation = resolveRequestLocation(req.user);
+    const dispatchSnapshot = {
+      location: dispatchLocation,
+      stage: "local",
+      resolutionStatus: dispatchLocation.source === "unresolved" ? "unresolved" : "resolved",
+      version: 1,
+      resolvedAt: new Date()
+    };
+
     const request = await createHealthRequestWithGuard({
       farmerId,
       animalId,
@@ -69,6 +79,7 @@ export const createHealthRequest = async (req, res) => {
       urgency: normalizedUrgency,
       imageUrl: imageUrl || "",
       preferredDate: req.body.preferredDate || new Date(),
+      dispatch: dispatchSnapshot,
     });
 
     console.log(`[Health Request Created] Farmer: ${farmerId} | Animal: ${animal.animalId} | Type: ${requestType} | Urgency: ${urgency}`);

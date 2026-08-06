@@ -69,19 +69,23 @@ export const getTechnicianDashboardData = async (req, res) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const isAdmin = req.user?.role === "admin";
-    const assigneeFilterAI = isAdmin ? {} : {
-      $or: [
-        { approvedBy: req.user._id },
-        { technicianId: req.user._id }
-      ]
-    };
-    const healthAssigneeField = req.user?.role === "veterinarian" ? "assignedVeterinarianId" : "assignedTechnicianId";
-    const assigneeFilterHealth = isAdmin ? {} : {
-      $or: [
-        { handledBy: req.user._id },
-        { [healthAssigneeField]: req.user._id }
-      ]
-    };
+    const assigneeFilterAI = isAdmin
+      ? {}
+      : {
+          $or: [{ approvedBy: req.user._id }, { technicianId: req.user._id }],
+        };
+    const healthAssigneeField =
+      req.user?.role === "veterinarian"
+        ? "assignedVeterinarianId"
+        : "assignedTechnicianId";
+    const assigneeFilterHealth = isAdmin
+      ? {}
+      : {
+          $or: [
+            { handledBy: req.user._id },
+            { [healthAssigneeField]: req.user._id },
+          ],
+        };
 
     // 1. FETCH ALL STATS & DATA STREAMS IN PARALLEL
     const [
@@ -119,7 +123,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         createdAt: { $gte: ninetyDaysAgo },
         "pregnancyDiagnosis.result": "Pregnant",
         // Should pregnancy be scoped? Usually technicianId is on pregnancy, but the model might just be global. We'll leave as is or add if exists.
-        ...(isAdmin ? {} : { "confirmation.confirmedBy": req.user._id })
+        ...(isAdmin ? {} : { "confirmation.confirmedBy": req.user._id }),
       }),
       // 5. Total Visits Scheduled for Today (AI + Health)
       Promise.all([
@@ -252,12 +256,12 @@ export const getTechnicianDashboardData = async (req, res) => {
       Pregnancy.countDocuments({
         createdAt: { $gte: monthStart },
         deletedAt: null,
-        ...(isAdmin ? {} : { "confirmation.confirmedBy": req.user._id })
+        ...(isAdmin ? {} : { "confirmation.confirmedBy": req.user._id }),
       }),
       Calving.countDocuments({
         createdAt: { $gte: monthStart },
         deletedAt: null,
-        ...(isAdmin ? {} : { technicianId: req.user._id })
+        ...(isAdmin ? {} : { technicianId: req.user._id }),
       }),
       // 8. Tasks (Claimed/Scheduled tasks)
       Task.find({
@@ -424,7 +428,10 @@ export const getTechnicianDashboardData = async (req, res) => {
             preferredTime: formatTime(itemDisplayDate),
             displayDate: itemDisplayDate,
             animalTag: ins.animalId?.earTag || ins.animalId?.animalId || null,
-            municipality: ins.farmerId?.address?.city || ins.farmerId?.address?.municipality || "",
+            municipality:
+              ins.farmerId?.address?.city ||
+              ins.farmerId?.address?.municipality ||
+              "",
             barangay: ins.farmerId?.address?.barangay || "",
             displayStatus: isReadyToday ? "Ready Today" : ins.status,
             task: isMobileRequest
@@ -511,7 +518,9 @@ export const getTechnicianDashboardData = async (req, res) => {
         req.assignedVeterinarianId?.toString() === req.user?._id?.toString();
 
       const isUnassignedHealth =
-        !req.handledBy && !req.assignedTechnicianId && !req.assignedVeterinarianId;
+        !req.handledBy &&
+        !req.assignedTechnicianId &&
+        !req.assignedVeterinarianId;
 
       if (
         [
@@ -536,7 +545,10 @@ export const getTechnicianDashboardData = async (req, res) => {
             preferredTime: formatTime(itemDisplayDate),
             displayDate: itemDisplayDate,
             animalTag: req.animalId?.earTag || req.animalId?.animalId || null,
-            municipality: req.farmerId?.address?.city || req.farmerId?.address?.municipality || "",
+            municipality:
+              req.farmerId?.address?.city ||
+              req.farmerId?.address?.municipality ||
+              "",
             barangay: req.farmerId?.address?.barangay || "",
             displayStatus: isReadyToday ? "Ready Today" : req.status,
             task: `Health Check - ${req.animalId?.animalId || req.animalId?.earTag || "Unknown"}`,
@@ -3348,9 +3360,9 @@ export const getTechnicianRequests = async (req, res) => {
         rec.approvedBy?._id || rec.approvedBy || rec.technicianId || null;
       const isUnassigned = !assignedTechnicianId;
 
-      const safeFarmerPhone = isUnassigned ? null : (farmer.phoneNumber || "");
-      const safeFarmerPhoneAlt = isUnassigned ? null : (farmer.phone || null);
-      const safeFarmerImageUrl = isUnassigned ? "" : (farmer.imageUrl || "");
+      const safeFarmerPhone = isUnassigned ? null : farmer.phoneNumber || "";
+      const safeFarmerPhoneAlt = isUnassigned ? null : farmer.phone || null;
+      const safeFarmerImageUrl = isUnassigned ? "" : farmer.imageUrl || "";
       const safeLocation = isUnassigned ? null : formatAddress(farmer.address);
 
       let allowedAction = null;
@@ -3458,9 +3470,10 @@ export const getTechnicianRequests = async (req, res) => {
         breed: rec.animalId?.breed || "",
         species: rec.animalId?.species || "",
         location: formatAddress(farmer.address),
-        locationLabel: barangay && city
-          ? `${barangay}, ${city}`
-          : formatAddress(farmer.address) || "Unknown Location",
+        locationLabel:
+          barangay && city
+            ? `${barangay}, ${city}`
+            : formatAddress(farmer.address) || "Unknown Location",
         municipality: city,
         barangay: barangay,
         hasFarmPin,
@@ -3502,13 +3515,12 @@ export const getTechnicianRequests = async (req, res) => {
       const city = addr.city || "";
       const barangay = addr.barangay || "";
 
-      const assignedTechnicianId =
-        rec.handledBy?._id || rec.handledBy || null;
+      const assignedTechnicianId = rec.handledBy?._id || rec.handledBy || null;
       const isUnassigned = !assignedTechnicianId;
 
-      const safeFarmerPhone = isUnassigned ? null : (farmer.phoneNumber || "");
-      const safeFarmerPhoneAlt = isUnassigned ? null : (farmer.phone || null);
-      const safeFarmerImageUrl = isUnassigned ? "" : (farmer.imageUrl || "");
+      const safeFarmerPhone = isUnassigned ? null : farmer.phoneNumber || "";
+      const safeFarmerPhoneAlt = isUnassigned ? null : farmer.phone || null;
+      const safeFarmerImageUrl = isUnassigned ? "" : farmer.imageUrl || "";
       const safeLocation = isUnassigned ? null : formatAddress(farmer.address);
 
       let distanceKm = null;
@@ -3584,9 +3596,10 @@ export const getTechnicianRequests = async (req, res) => {
         breed: rec.animalId?.breed || "",
         species: rec.animalId?.species || "",
         location: formatAddress(farmer.address),
-        locationLabel: barangay && city
-          ? `${barangay}, ${city}`
-          : formatAddress(farmer.address) || "Unknown Location",
+        locationLabel:
+          barangay && city
+            ? `${barangay}, ${city}`
+            : formatAddress(farmer.address) || "Unknown Location",
         municipality: city,
         barangay: barangay,
         hasFarmPin,
@@ -4350,5 +4363,64 @@ export const getWorkQueue = async (req, res) => {
   } catch (error) {
     console.error("[getWorkQueue ERROR]", error);
     res.status(500).json({ message: "Failed to load work queue data." });
+  }
+};
+
+/**
+ * Update Technician Dispatch Status
+ * PATCH /api/technician/dispatch-status
+ */
+export const updateDispatchStatus = async (req, res) => {
+  try {
+    const { availabilityStatus, acceptsNewRequests } = req.body;
+
+    // Authorization
+    if (req.user.role !== "technician" && req.user.role !== "veterinarian") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const updates = {};
+    if (availabilityStatus !== undefined) {
+      if (!["available", "busy", "off_duty"].includes(availabilityStatus)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid availability status." });
+      }
+      updates["dispatchProfile.availabilityStatus"] = availabilityStatus;
+    }
+
+    if (acceptsNewRequests !== undefined) {
+      updates["dispatchProfile.acceptsNewRequests"] =
+        Boolean(acceptsNewRequests);
+    }
+
+    if (Object.keys(updates).length > 0) {
+      updates["dispatchProfile.updatedAt"] = new Date();
+
+      // Ensure dispatchProfile object exists
+      const user = await User.findById(req.user._id);
+      if (!user.dispatchProfile) {
+        user.dispatchProfile = {
+          availabilityStatus: "off_duty",
+          acceptsNewRequests: false,
+        };
+      }
+
+      const updatedUser = await User.findByIdAndUpdate(
+        req.user._id,
+        { $set: updates },
+        { new: true },
+      );
+
+      return res.status(200).json({
+        message: "Dispatch status updated successfully.",
+        dispatchProfile: updatedUser.dispatchProfile,
+      });
+    }
+
+    return res.status(200).json({ message: "No updates provided." });
+  } catch (error) {
+    console.error("[Update Dispatch Status] Error:", error);
+    res.status(500).json({ message: "Failed to update dispatch status." });
   }
 };

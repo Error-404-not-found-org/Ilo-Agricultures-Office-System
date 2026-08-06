@@ -341,12 +341,10 @@ export const getAllReInseminations = async (req, res) => {
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
-    res
-      .status(500)
-      .send({
-        message: "Error fetching re-inseminations",
-        error: error.message,
-      });
+    res.status(500).send({
+      message: "Error fetching re-inseminations",
+      error: error.message,
+    });
   }
 };
 
@@ -376,12 +374,10 @@ export const getAllPregnancyChecks = async (req, res) => {
       pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     });
   } catch (error) {
-    res
-      .status(500)
-      .send({
-        message: "Error fetching pregnancy checks",
-        error: error.message,
-      });
+    res.status(500).send({
+      message: "Error fetching pregnancy checks",
+      error: error.message,
+    });
   }
 };
 
@@ -484,12 +480,10 @@ export const deleteUser = async (req, res) => {
         deletedAt: null,
       });
       if (activeAdminCount <= 1) {
-        return res
-          .status(400)
-          .send({
-            message:
-              "Operation blocked: This is the last active admin account in the system.",
-          });
+        return res.status(400).send({
+          message:
+            "Operation blocked: This is the last active admin account in the system.",
+        });
       }
     }
 
@@ -768,12 +762,10 @@ export const suspendUser = async (req, res) => {
         deletedAt: null,
       });
       if (activeAdminCount <= 1) {
-        return res
-          .status(400)
-          .send({
-            message:
-              "Operation blocked: This is the last active admin account in the system.",
-          });
+        return res.status(400).send({
+          message:
+            "Operation blocked: This is the last active admin account in the system.",
+        });
       }
     }
 
@@ -969,12 +961,10 @@ export const resetPassword = async (req, res) => {
         );
       }
     } else {
-      return res
-        .status(400)
-        .send({
-          message:
-            "Password reset is only supported for online users registered via Clerk.",
-        });
+      return res.status(400).send({
+        message:
+          "Password reset is only supported for online users registered via Clerk.",
+      });
     }
 
     logAdminAction("password reset", req.user, user, {
@@ -1034,12 +1024,10 @@ export const updateRole = async (req, res) => {
         deletedAt: null,
       });
       if (activeAdminCount <= 1) {
-        return res
-          .status(400)
-          .send({
-            message:
-              "Operation blocked: This is the last active admin account in the system.",
-          });
+        return res.status(400).send({
+          message:
+            "Operation blocked: This is the last active admin account in the system.",
+        });
       }
     }
 
@@ -1864,7 +1852,14 @@ export const getRecentActivities = async (req, res) => {
     const queryLimit = Math.max(limit, 10);
 
     // 3. Parallel fetching from operational models
-    const [animals, inseminations, pregnancies, healthRequests, calvings, userInvites] = await Promise.all([
+    const [
+      animals,
+      inseminations,
+      pregnancies,
+      healthRequests,
+      calvings,
+      userInvites,
+    ] = await Promise.all([
       // Animal Registration
       Animal.find({ deletedAt: null })
         .sort({ createdAt: -1 })
@@ -1880,7 +1875,9 @@ export const getRecentActivities = async (req, res) => {
         .populate("technicianId", "name")
         .populate("farmerId", "name address")
         .populate("animalId", "earTag breed species")
-        .select("animalId technicianId farmerId pregnancyStatus createdAt completedAt")
+        .select(
+          "animalId technicianId farmerId pregnancyStatus createdAt completedAt",
+        )
         .lean(),
 
       // Pregnancy Confirmed
@@ -1928,8 +1925,8 @@ export const getRecentActivities = async (req, res) => {
       const barangay = item.farmerId?.address?.barangay
         ? `in Brgy. ${item.farmerId.address.barangay}`
         : item.farmerId?.address?.city
-        ? `in ${item.farmerId.address.city}`
-        : "";
+          ? `in ${item.farmerId.address.city}`
+          : "";
       const tag = item.earTag ? `(#${item.earTag})` : "";
       const species = item.species || item.breed || "animal";
 
@@ -1937,7 +1934,9 @@ export const getRecentActivities = async (req, res) => {
         id: `animal-${item._id}`,
         type: "animal_registered",
         title: "Animal Registered",
-        description: `Farmer ${farmerName} registered a ${species} ${tag} ${barangay}`.trim() + ".",
+        description:
+          `Farmer ${farmerName} registered a ${species} ${tag} ${barangay}`.trim() +
+          ".",
         occurredAt: item.createdAt.toISOString(),
         entityType: "Animal",
         entityId: item._id.toString(),
@@ -1956,7 +1955,9 @@ export const getRecentActivities = async (req, res) => {
       const date = item.completedAt || item.createdAt;
       if (!date) continue;
       const techName = item.technicianId?.name || "Field Officer";
-      const tag = item.animalId?.earTag ? `Tag #${item.animalId.earTag}` : "animal record";
+      const tag = item.animalId?.earTag
+        ? `Tag #${item.animalId.earTag}`
+        : "animal record";
 
       rawEvents.push({
         id: `insemination-${item._id}`,
@@ -1978,8 +1979,12 @@ export const getRecentActivities = async (req, res) => {
     for (const item of pregnancies) {
       const date = item.confirmedAt || item.createdAt;
       if (!date) continue;
-      const tag = item.animalId?.earTag ? `Tag #${item.animalId.earTag}` : "Animal";
-      const barangay = item.farmerId?.address?.barangay ? `in Brgy. ${item.farmerId.address.barangay}` : "";
+      const tag = item.animalId?.earTag
+        ? `Tag #${item.animalId.earTag}`
+        : "Animal";
+      const barangay = item.farmerId?.address?.barangay
+        ? `in Brgy. ${item.farmerId.address.barangay}`
+        : "";
 
       rawEvents.push({
         id: `pregnancy-${item._id}`,
@@ -2001,14 +2006,23 @@ export const getRecentActivities = async (req, res) => {
     for (const item of healthRequests) {
       if (!item.createdAt) continue;
       const farmerName = item.farmerId?.name || "Farmer";
-      const isEmergency = item.urgency === "emergency" || item.urgency === "high";
-      const tag = item.animalId?.earTag ? `for Tag #${item.animalId.earTag}` : "";
+      const isEmergency =
+        item.urgency === "emergency" || item.urgency === "high";
+      const tag = item.animalId?.earTag
+        ? `for Tag #${item.animalId.earTag}`
+        : "";
       const isCompleted = item.status === "completed";
 
       rawEvents.push({
         id: `health-${item._id}`,
-        type: isCompleted ? "health_service_completed" : "health_request_created",
-        title: isCompleted ? "Health Service Completed" : isEmergency ? "Emergency Health Request" : "Health Request",
+        type: isCompleted
+          ? "health_service_completed"
+          : "health_request_created",
+        title: isCompleted
+          ? "Health Service Completed"
+          : isEmergency
+            ? "Emergency Health Request"
+            : "Health Request",
         description: isCompleted
           ? `Health service completed ${tag} for ${farmerName}.`.trim()
           : `${isEmergency ? "Emergency health" : "Health"} assistance requested ${tag} by ${farmerName}.`.trim(),
@@ -2026,14 +2040,17 @@ export const getRecentActivities = async (req, res) => {
     // Calvings
     for (const item of calvings) {
       if (!item.createdAt) continue;
-      const tag = item.motherId?.earTag ? `Tag #${item.motherId.earTag}` : "mother animal";
+      const tag = item.motherId?.earTag
+        ? `Tag #${item.motherId.earTag}`
+        : "mother animal";
       const sex = item.calfSex ? `(${item.calfSex})` : "";
 
       rawEvents.push({
         id: `calving-${item._id}`,
         type: "calving_recorded",
         title: "Calving Recorded",
-        description: `Calf drop ${sex} successfully registered for ${tag}.`.trim(),
+        description:
+          `Calf drop ${sex} successfully registered for ${tag}.`.trim(),
         occurredAt: item.createdAt.toISOString(),
         entityType: "Calving",
         entityId: item._id.toString(),
@@ -2048,7 +2065,8 @@ export const getRecentActivities = async (req, res) => {
     for (const item of userInvites) {
       if (!item.createdAt) continue;
       const isTech = item.role === "technician";
-      const isPending = item.profileClaimStatus === "unclaimed" || item.status === "pending";
+      const isPending =
+        item.profileClaimStatus === "unclaimed" || item.status === "pending";
 
       rawEvents.push({
         id: `user-${item._id}`,
@@ -2068,7 +2086,10 @@ export const getRecentActivities = async (req, res) => {
     }
 
     // 5. Sort by occurredAt descending
-    rawEvents.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
+    rawEvents.sort(
+      (a, b) =>
+        new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
+    );
 
     // 6. Deduplicate by entityType + entityId
     const seen = new Set();
@@ -2092,5 +2113,99 @@ export const getRecentActivities = async (req, res) => {
       message: "Failed to fetch recent activities.",
       code: "INTERNAL_ERROR",
     });
+  }
+};
+
+/**
+ * Update Technician Dispatch Profile (Admin Only)
+ * PATCH /api/admin/technician/:id/dispatch-profile
+ */
+export const updateTechnicianDispatchProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { serviceMunicipalities, serviceCapabilities } = req.body;
+
+    const technician = await User.findById(id);
+    if (
+      !technician ||
+      (technician.role !== "technician" && technician.role !== "veterinarian")
+    ) {
+      return res.status(404).json({ message: "Technician not found." });
+    }
+
+    if (!technician.dispatchProfile) {
+      technician.dispatchProfile = {
+        availabilityStatus: "off_duty",
+        acceptsNewRequests: false,
+        profileVersion: 1,
+      };
+    }
+
+    if (serviceMunicipalities !== undefined) {
+      if (!Array.isArray(serviceMunicipalities)) {
+        return res
+          .status(400)
+          .json({ message: "serviceMunicipalities must be an array." });
+      }
+
+      const mappedMunicipalities = serviceMunicipalities.map((m) => ({
+        municipalityCode: m.municipalityCode,
+        municipalityName: m.municipalityName,
+        localityType: m.localityType || "municipality",
+        provinceCode: m.provinceCode,
+        provinceName: m.provinceName,
+        source: "admin_assigned",
+        assignedBy: req.user._id,
+        assignedAt: new Date(),
+      }));
+
+      // Deduplicate by code
+      const uniqueMunicipalities = [];
+      const seen = new Set();
+      for (const m of mappedMunicipalities) {
+        if (!seen.has(m.municipalityCode)) {
+          seen.add(m.municipalityCode);
+          uniqueMunicipalities.push(m);
+        }
+      }
+
+      technician.dispatchProfile.serviceMunicipalities = uniqueMunicipalities;
+    }
+
+    if (serviceCapabilities !== undefined) {
+      if (!Array.isArray(serviceCapabilities)) {
+        return res
+          .status(400)
+          .json({ message: "serviceCapabilities must be an array." });
+      }
+
+      const validCapabilities = [
+        "AI",
+        "HEALTH",
+        "PREGNANCY_DIAGNOSIS",
+        "CALVING",
+      ];
+      const filteredCapabilities = [...new Set(serviceCapabilities)].filter(
+        (c) => validCapabilities.includes(c),
+      );
+
+      technician.dispatchProfile.serviceCapabilities = filteredCapabilities;
+    }
+
+    technician.dispatchProfile.updatedAt = new Date();
+    technician.dispatchProfile.profileVersion =
+      (technician.dispatchProfile.profileVersion || 1) + 1;
+
+    await technician.save();
+
+    res.status(200).json({
+      message: "Dispatch profile updated successfully.",
+      dispatchProfile: technician.dispatchProfile,
+    });
+  } catch (error) {
+    console.error("[Update Technician Dispatch Profile] Error:", error);
+    res
+      .status(500)
+      .json({ message: "Failed to update technician dispatch profile." });
   }
 };

@@ -7,6 +7,7 @@ import {
 } from "../domain/status-vocabulary.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
+import { resolveRequestLocation } from "../domain/geographic/municipalityResolver.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { inngest } from "../config/inngest.js";
 import { checkInseminationAgeEligibility } from "../utils/cattleCore.js";
@@ -193,6 +194,15 @@ export const createAIRequest = async (req, res) => {
       });
     }
 
+    const dispatchLocation = resolveRequestLocation(req.user);
+    const dispatchSnapshot = {
+      location: dispatchLocation,
+      stage: "local",
+      resolutionStatus: dispatchLocation.source === "unresolved" ? "unresolved" : "resolved",
+      version: 1,
+      resolvedAt: new Date()
+    };
+
     const request = await createAIRequestWithGuard({
       farmerId,
       animalId,
@@ -201,6 +211,7 @@ export const createAIRequest = async (req, res) => {
       heatSigns: heatSigns || [],
       preferredDate: req.body.preferredDate || new Date(),
       status: "pending",
+      dispatch: dispatchSnapshot,
       ...attemptLink,
     });
     const attemptNumber = request.attemptNumber;
