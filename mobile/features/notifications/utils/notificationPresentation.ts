@@ -224,7 +224,7 @@ const value = (item: NotificationData, key: string) =>
 
 export const getNotificationTarget = (item: NotificationData, role?: string) => {
   const taskId = value(item, "taskId");
-  if (taskId && ["technician", "veterinarian"].includes(String(role))) {
+  if (taskId && ["technician"].includes(String(role))) {
     return { pathname: "/(technician)/task-details", params: { id: String(taskId) } };
   }
   const requestId = value(item, "requestId") ||
@@ -235,7 +235,7 @@ export const getNotificationTarget = (item: NotificationData, role?: string) => 
     const type = ["health", "health-request"].includes(rawType)
       ? "health"
       : "ai";
-    if (["technician", "veterinarian"].includes(String(role))) {
+    if (["technician"].includes(String(role))) {
       return { pathname: "/(technician)/request-details", params: { id: String(requestId), type } };
     }
     if (role === "farmer") {

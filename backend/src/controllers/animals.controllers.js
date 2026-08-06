@@ -586,7 +586,7 @@ export const recordCalving = async (req, res) => {
         code: "EARLY_CALVING_OVERRIDE_FORBIDDEN",
       });
     }
-    if (!["farmer", "technician", "veterinarian", "admin"].includes(req.user.role)) {
+    if (!["farmer", "technician", "admin"].includes(req.user.role)) {
       return res.status(403).json({ message: "Unauthorized role." });
     }
 

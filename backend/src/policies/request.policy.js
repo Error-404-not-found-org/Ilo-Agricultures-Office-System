@@ -79,8 +79,8 @@ export const assertHealthRequestAccess = (user, request) => {
     throw new AppError("Health Request record not found", { status: 404, code: "HEALTH_REQUEST_NOT_FOUND" });
   }
 
-  // Clinical roles (admin, technician, veterinarian) can access any health request
-  if (["admin", "technician", "veterinarian"].includes(user.role)) {
+  // Clinical roles (admin, technician) can access any health request
+  if (["admin", "technician"].includes(user.role)) {
     return;
   }
 

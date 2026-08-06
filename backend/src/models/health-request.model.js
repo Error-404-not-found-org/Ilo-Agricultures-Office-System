@@ -73,7 +73,6 @@ const HealthRequestSchema = new mongoose.Schema(
       default: null,
     },
     assignedTechnicianId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    assignedVeterinarianId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     technicianNote: {
       type: String,
       default: "",
@@ -151,7 +150,7 @@ HealthRequestSchema.index({ status: 1 });
 HealthRequestSchema.index({ urgency: -1, createdAt: -1 });
 HealthRequestSchema.index({ scheduledDate: 1 });
 HealthRequestSchema.index({ assignedTechnicianId: 1, status: 1 });
-HealthRequestSchema.index({ assignedVeterinarianId: 1, status: 1 });
+
 HealthRequestSchema.index({ deletedAt: 1 });
 HealthRequestSchema.index({ declinedByTechnicianIds: 1 });
 HealthRequestSchema.index(

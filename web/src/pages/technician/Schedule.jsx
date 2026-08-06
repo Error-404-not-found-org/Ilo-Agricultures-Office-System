@@ -390,7 +390,7 @@ export default function DeploymentSchedule() {
     <div className="flex-1 flex flex-col h-screen overflow-y-auto bg-base-200 text-base-content transition-colors duration-300">
       <PageMeta
         title="Deployment Schedule | BreedSmart"
-        description="View and manage technician veterinarian visits and artificial inseminations"
+        description="View and manage technician visits and artificial inseminations"
       />
 
       {/* Topbar Layout */}

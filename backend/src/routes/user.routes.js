@@ -42,7 +42,7 @@ router.get("/archived", protectedRoute, requireRole(["admin"]), getArchivedUsers
 router.post("/push-token", protectedRoute, updatePushToken);
 router.post("/otp/send", protectedRoute, otpLimiter, sendPhoneOtp);
 router.post("/otp/verify", protectedRoute, otpLimiter, verifyPhoneOtp);
-router.patch("/:id/technician-update", protectedRoute, requireRole(["technician", "veterinarian", "admin"]), updateFarmerProfileByTechnician);
+router.patch("/:id/technician-update", protectedRoute, requireRole(["technician", "admin"]), updateFarmerProfileByTechnician);
 router.get("/:id", protectedRoute, getUserById);
 router.put("/:id", protectedRoute, updateUser);
 router.delete("/:id", protectedRoute, deleteUser);

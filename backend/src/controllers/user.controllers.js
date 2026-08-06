@@ -842,16 +842,16 @@ export const getUsers = async (req, res) => {
     const query = { deletedAt: null };
 
     if (req.user.role === "farmer") {
-      if (role && !["technician", "veterinarian"].includes(role)) {
+      if (role && !["technician"].includes(role)) {
         return res
           .status(403)
           .json({
             message:
-              "Forbidden - farmers can only query technicians or veterinarians.",
+              "Forbidden - farmers can only query technicians.",
           });
       }
       if (!role) {
-        query.role = { $in: ["technician", "veterinarian"] };
+        query.role = { $in: ["technician"] };
       } else {
         query.role = role;
       }
@@ -1209,7 +1209,7 @@ export const getUserById = async (req, res) => {
       }
     }
 
-    if (user.role === "technician" || user.role === "veterinarian") {
+    if (user.role === "technician") {
       const totalInseminations = await Insemination.countDocuments({
         approvedBy: id,
         deletedAt: null,

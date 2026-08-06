@@ -21,13 +21,13 @@ router.get("/my", protectedRoute, getMyInseminations);
 router.get(
   "/all",
   protectedRoute,
-  requireRole(["technician", "veterinarian", "admin"]),
+  requireRole(["technician", "admin"]),
   getAllInseminations,
 );
 router.put(
   "/:id",
   protectedRoute,
-  requireRole(["technician", "veterinarian", "admin"]),
+  requireRole(["technician", "admin"]),
   updateInsemination,
 );
 router.delete(

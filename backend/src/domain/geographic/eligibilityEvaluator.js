@@ -41,7 +41,7 @@ export function evaluateTechnicianDispatchEligibility({
     result.blockingReasons.push("ACCOUNT_SUSPENDED");
   }
   
-  const allowedRoles = requestType === "HEALTH" ? ["technician", "veterinarian"] : ["technician"];
+  const allowedRoles = ["technician"];
   if (!allowedRoles.includes(technician.role)) {
     result.blockingReasons.push("ROLE_NOT_ELIGIBLE");
   }

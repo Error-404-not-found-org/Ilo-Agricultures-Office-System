@@ -5,7 +5,7 @@ import { getDashboardStats, getTasks, createTask, completeTask, getTaskById, cla
 const router = express.Router();
 
 router.use(protectedRoute);
-router.use(requireRole(["admin", "technician", "veterinarian"]));
+router.use(requireRole(["admin", "technician"]));
 
 router.get("/stats", getDashboardStats);
 router.get("/", getTasks);

@@ -9,7 +9,7 @@ export const assertAnimalAccess = (user, animal) => {
 };
 
 export const assertClinicalRole = (user) => {
-  if (!["technician", "veterinarian", "admin"].includes(user.role)) {
+  if (!["technician", "admin"].includes(user.role)) {
     throw new AppError("Clinical access is required", { status: 403, code: "CLINICAL_ACCESS_REQUIRED" });
   }
 };

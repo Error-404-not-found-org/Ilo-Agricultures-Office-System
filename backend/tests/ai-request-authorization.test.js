@@ -87,7 +87,7 @@ test("AI authorization: list and status routes require technician or admin", () 
   assert.equal(runRoleGuard("technician").nextCalled, true);
   assert.equal(runRoleGuard("admin").nextCalled, true);
   assert.equal(runRoleGuard("farmer").statusCode, 403);
-  assert.equal(runRoleGuard("veterinarian").statusCode, 403);
+  assert.equal(runRoleGuard().statusCode, 403);
 
   const technicianOnly = createResponseRecorder();
   let technicianOnlyNext = false;

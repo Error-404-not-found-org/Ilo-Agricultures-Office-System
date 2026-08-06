@@ -74,10 +74,7 @@ export const getTechnicianDashboardData = async (req, res) => {
       : {
           $or: [{ approvedBy: req.user._id }, { technicianId: req.user._id }],
         };
-    const healthAssigneeField =
-      req.user?.role === "veterinarian"
-        ? "assignedVeterinarianId"
-        : "assignedTechnicianId";
+    const healthAssigneeField = "assignedTechnicianId";
     const assigneeFilterHealth = isAdmin
       ? {}
       : {
@@ -514,13 +511,11 @@ export const getTechnicianDashboardData = async (req, res) => {
       const assignedToMeHealth =
         req.user?.role === "admin" ||
         req.handledBy?._id?.toString() === req.user?._id?.toString() ||
-        req.assignedTechnicianId?.toString() === req.user?._id?.toString() ||
-        req.assignedVeterinarianId?.toString() === req.user?._id?.toString();
+        req.assignedTechnicianId?.toString() === req.user?._id?.toString();
 
       const isUnassignedHealth =
         !req.handledBy &&
-        !req.assignedTechnicianId &&
-        !req.assignedVeterinarianId;
+        !req.assignedTechnicianId;
 
       if (
         [
@@ -3797,10 +3792,7 @@ export const getWorkQueue = async (req, res) => {
           }),
     };
 
-    const healthAssigneeField =
-      req.user?.role === "veterinarian"
-        ? "assignedVeterinarianId"
-        : "assignedTechnicianId";
+    const healthAssigneeField = "assignedTechnicianId";
     const healthQuery = {
       status: {
         $in: [
@@ -4375,7 +4367,7 @@ export const updateDispatchStatus = async (req, res) => {
     const { availabilityStatus, acceptsNewRequests } = req.body;
 
     // Authorization
-    if (req.user.role !== "technician" && req.user.role !== "veterinarian") {
+    if (req.user.role !== "technician") {
       return res.status(403).json({ message: "Forbidden" });
     }
 

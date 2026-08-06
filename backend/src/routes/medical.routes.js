@@ -5,6 +5,6 @@ import { addMedicalRecord, getAnimalMedicalHistory } from "../controllers/medica
 const router = Router();
 
 router.get("/:animalId", protectedRoute, getAnimalMedicalHistory);
-router.post("/", protectedRoute, requireRole(["technician", "veterinarian"]), addMedicalRecord);
+router.post("/", protectedRoute, requireRole(["technician"]), addMedicalRecord);
 
 export default router;

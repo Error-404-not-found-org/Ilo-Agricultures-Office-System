@@ -212,10 +212,7 @@ export default function HealthRequestDetailScreen() {
 
   const request: any = query.data;
   const animal: any = request.animalId || {};
-  const handler: any =
-    request.assignedVeterinarianId ||
-    request.assignedTechnicianId ||
-    request.handledBy;
+  const handler: any = request.assignedTechnicianId || request.handledBy;
 
   const statusLabel = getRequestText(request.status);
   const status = statusLabel?.toLowerCase() || "unknown";

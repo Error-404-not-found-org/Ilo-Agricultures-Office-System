@@ -999,7 +999,7 @@ export const updateRole = async (req, res) => {
     if (!id || !role)
       return res.status(400).send({ message: "User ID and role are required" });
 
-    const validRoles = ["admin", "technician", "veterinarian", "farmer"];
+    const validRoles = ["admin", "technician", "farmer"];
     if (!validRoles.includes(role)) {
       return res.status(400).send({ message: "Invalid role specified" });
     }
@@ -2128,7 +2128,7 @@ export const updateTechnicianDispatchProfile = async (req, res) => {
     const technician = await User.findById(id);
     if (
       !technician ||
-      (technician.role !== "technician" && technician.role !== "veterinarian")
+      (technician.role !== "technician")
     ) {
       return res.status(404).json({ message: "Technician not found." });
     }

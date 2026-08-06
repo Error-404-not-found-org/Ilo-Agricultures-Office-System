@@ -14,7 +14,7 @@ const getRequest = async (id) => {
   const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
     .populate("farmerId", "name address phoneNumber imageUrl farmLocation")
     .populate("animalId", "animalId earTag species breed imageUrl reproductiveStatus birthDate")
-    .populate("handledBy assignedTechnicianId assignedVeterinarianId", "name role phoneNumber")
+    .populate("handledBy assignedTechnicianId", "name role phoneNumber")
     .lean();
   if (!request) throw new AppError("Health request not found", { status: 404, code: "HEALTH_REQUEST_NOT_FOUND" });
   return request;
@@ -25,15 +25,14 @@ export const getHealthRequestDetail = async (req, res) => {
     const request = await getRequest(req.params.id);
     assertHealthRequestAccess(req.user, request);
 
-    const isUnclaimed = !request.handledBy && !request.assignedTechnicianId && !request.assignedVeterinarianId;
+    const isUnclaimed = !request.handledBy && !request.assignedTechnicianId;
     const isFarmerRole = req.user.role === "farmer";
     const isOwnFarmer = isFarmerRole && request.farmerId?._id?.toString() === req.user._id.toString();
 
-    if (req.user.role === "technician" || req.user.role === "veterinarian") {
+    if (req.user.role === "technician") {
       const isAssignedToMe =
         request.handledBy?._id?.toString() === req.user._id.toString() ||
-        request.assignedTechnicianId?._id?.toString() === req.user._id.toString() ||
-        request.assignedVeterinarianId?._id?.toString() === req.user._id.toString();
+        request.assignedTechnicianId?._id?.toString() === req.user._id.toString();
 
       if (!isUnclaimed && !isAssignedToMe) {
         return res.status(403).json({
@@ -65,7 +64,7 @@ export const getHealthRequestDetail = async (req, res) => {
       }
     }
 
-    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin" && req.user.role !== "technician" && req.user.role !== "veterinarian") {
+    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin" && req.user.role !== "technician") {
       const candidateDetail = {
         id: request._id,
         _id: request._id,
@@ -102,11 +101,11 @@ export const triageHealthRequest = async (req, res) => {
       throw new AppError("Only active health requests can be triaged", { status: 409, code: "HEALTH_REQUEST_NOT_ACTIVE" });
     }
 
-    const { urgency, findings = "", technicianNote = "", scheduledDate, assignedTechnicianId, assignedVeterinarianId } = req.body;
+    const { urgency, findings = "", technicianNote = "", scheduledDate, assignedTechnicianId } = req.body;
     if (urgency && !["low", "medium", "high", "emergency"].includes(urgency)) {
       throw new AppError("Invalid urgency value", { status: 400, code: "INVALID_URGENCY" });
     }
-    const nextStatus = scheduledDate ? "scheduled" : assignedTechnicianId || assignedVeterinarianId ? "assigned" : "triaged";
+    const nextStatus = scheduledDate ? "scheduled" : assignedTechnicianId ? "assigned" : "triaged";
     const before = { status: existing.status, urgency: existing.urgency };
     const update = {
       status: nextStatus,
@@ -117,7 +116,6 @@ export const triageHealthRequest = async (req, res) => {
       technicianNote,
       ...(scheduledDate ? { scheduledDate: new Date(scheduledDate) } : {}),
       ...(assignedTechnicianId ? { assignedTechnicianId } : {}),
-      ...(assignedVeterinarianId ? { assignedVeterinarianId } : {}),
       $push: { statusHistory: { status: nextStatus, note: technicianNote || findings, actorId: req.user._id } },
     };
     const request = await HealthRequest.findByIdAndUpdate(existing._id, update, { new: true });

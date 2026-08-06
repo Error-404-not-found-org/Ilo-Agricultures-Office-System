@@ -252,7 +252,7 @@ test("AI claim schedule rejects another technician, cancelled requests, and dele
 
 test("AI claim schedule rejects unauthorized roles", async (t) => {
   const state = installHarness(t);
-  for (const role of ["farmer", "veterinarian", "admin"]) {
+  for (const role of ["farmer", "admin"]) {
     const recorder = createResponseRecorder();
     await claimAndScheduleAIRequest(createRequest({ role }), recorder.response);
     assert.equal(recorder.statusCode, 403);

@@ -2,7 +2,7 @@ export interface UserItem {
   _id: string;
   name?: string;
   email?: string;
-  role: 'farmer' | 'technician' | 'admin' | 'veterinarian';
+  role: 'farmer' | 'technician' | 'admin';
   clerkId?: string;
   isVerified?: boolean;
   createdAt?: string;

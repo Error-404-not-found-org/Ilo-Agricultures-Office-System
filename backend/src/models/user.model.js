@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { USER_ROLES } from "../domain/userRoles.js";
 
 const AdministrativeAreaSchema = new mongoose.Schema(
   {
@@ -201,8 +202,8 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["admin", "technician", "veterinarian", "farmer"],
-      default: "farmer",
+      enum: Object.values(USER_ROLES),
+      default: USER_ROLES.FARMER,
     },
     dispatchProfile: {
       serviceMunicipalities: [

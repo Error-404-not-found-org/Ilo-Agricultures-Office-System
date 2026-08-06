@@ -48,7 +48,7 @@ const router = Router();
 
 router.use(
   protectedRoute,
-  requireRole(["admin", "technician", "veterinarian"]),
+  requireRole(["admin", "technician"]),
 );
 
 // Maintenance

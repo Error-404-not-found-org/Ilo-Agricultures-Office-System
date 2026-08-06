@@ -98,4 +98,4 @@ export const AdminOnly = requireRole(["admin"]);
 
 // Example: Technician-only route
 export const TechnicianOnly = requireRole(["technician"]);
-export const ClinicalOnly = requireRole(["technician", "veterinarian", "admin"]);
+export const ClinicalOnly = requireRole(["technician", "admin"]);

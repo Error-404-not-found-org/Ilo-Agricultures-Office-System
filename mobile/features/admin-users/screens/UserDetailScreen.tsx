@@ -89,7 +89,6 @@ export default function UserDetailScreen() {
   const roleLabels: Record<string, string> = {
     admin: "Administrator",
     technician: "Technician",
-    veterinarian: "Veterinarian",
     farmer: "Farmer",
   };
 

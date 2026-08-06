@@ -15,7 +15,6 @@ export const triageHealthRequest = async (
     technicianNote?: string;
     scheduledDate?: string;
     assignedTechnicianId?: string;
-    assignedVeterinarianId?: string;
   },
 ) => {
   const response = await api.patch(`/health-request/${requestId}/triage`, payload);
