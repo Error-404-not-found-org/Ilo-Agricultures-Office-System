@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, FlatList, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, FlatList, Image } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Save, Info, User, ChevronDown, Search, X, Camera, Image as ImageIcon } from 'lucide-react-native';
+import { ArrowLeft, Save, Info, X, Camera, Image as ImageIcon } from 'lucide-react-native';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '@/lib/theme';
 import EarTagGenerator from '@/components/EarTagGenerator';
-import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import {
     OfflineMutationLifecycleState,
@@ -21,6 +19,19 @@ import { tasksQueryKeys } from '@/features/technician/hooks/useTechnicianTasks';
 import { recordsQueryKeys } from '@/features/technician/hooks/useTechnicianRecords';
 import { animalQueryKeys } from '@/features/technician/hooks/useTechnicianAnimal';
 import { Skeleton } from "@/components/ui/Skeleton";
+import { AppPageHeader } from '@/components/AppPageHeader';
+import { ScreenLayout } from '@/components/ScreenLayout';
+import { Button } from '@/components/ui/Button';
+import {
+    TechnicianAnimalSelector,
+    TechnicianFarmerListItem,
+    TechnicianFarmerSelector,
+    TechnicianFormInfo,
+    TechnicianFormSection,
+    TechnicianPickerSearch,
+    TechnicianPickerSheet,
+} from '@/components/technician/TechnicianFormUI';
+import { AnimalSummaryCard } from '@/features/farmer-ui/components/AnimalSummaryCard';
 
 interface CalfEntry {
     sex: string;
@@ -465,64 +476,52 @@ export default function RecordCalfDropScreen() {
     }
 
     return (
-        <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
-            {/* Header */}
-            <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
-                <TouchableOpacity onPress={() => router.back()} className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
-                    <ArrowLeft size={20} color={isDark ? '#f8fafc' : '#1e2937'} />
-                </TouchableOpacity>
-                <View>
-                    <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colors.textPrimary }}>Record Calving / Offspring</Text>
-                    {motherTag && (
-                        <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 10, color: isDark ? '#6b7280' : '#94a3b8', textTransform: 'uppercase' }}>Mother: #{motherTag}</Text>
-                    )}
-                </View>
-            </View>
+        <ScreenLayout edges={[]}>
+            <AppPageHeader
+                title="Record Calving / Offspring"
+                onBack={() => router.back()}
+                rightAction={motherTag ? (
+                    <Text style={{ fontFamily: 'Outfit_600SemiBold', fontSize: 11, color: colors.textSecondary }}>
+                        Mother #{motherTag}
+                    </Text>
+                ) : undefined}
+            />
 
-            <ScrollView className="flex-1 px-6 pt-6" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+            <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{ padding: 16, paddingBottom: 72, gap: 14 }}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+            >
                 
                 {/* Standalone Selection Flow */}
                 {!initialMotherId && (
                     <>
                         {/* Farmer Selection */}
                         <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Owner / Client</Text>
-                        <TouchableOpacity 
-                           onPress={() => setShowFarmerModal(true)} 
-                           className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
-                        >
-                           <View className="flex-row items-center flex-1">
-                              <View className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
-                                 <User size={20} color={isDark ? '#34d399' : '#00643B'} />
-                              </View>
-                              <View className="flex-1">
-                                 <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-base ${selectedFarmer ? 'text-slate-800 dark:text-white' : 'text-slate-300 dark:text-slate-600'}`}>
-                                    {selectedFarmer ? selectedFarmer.name : 'Select Farmer...'}
-                                 </Text>
-                              </View>
-                           </View>
-                           <ChevronDown size={20} color={isDark ? '#6b7280' : '#94a3b8'} />
-                        </TouchableOpacity>
+                        <View className="mb-6">
+                            <TechnicianFarmerSelector
+                                farmer={selectedFarmer}
+                                secondaryText={selectedFarmer
+                                    ? [selectedFarmer.address?.barangay, selectedFarmer.address?.city]
+                                        .filter(Boolean)
+                                        .join(', ') || selectedFarmer.phoneNumber
+                                    : undefined}
+                                onPress={() => setShowFarmerModal(true)}
+                            />
+                        </View>
 
                         {/* Mother selection */}
                         {selectedFarmer && (
                             <>
                                 <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Pregnant Mother (Cattle)</Text>
-                                <TouchableOpacity 
-                                   onPress={() => setShowAnimalModal(true)} 
-                                   className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
-                                >
-                                   <View className="flex-row items-center flex-1">
-                                      <View className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
-                                         <MaterialCommunityIcons name="cow" size={20} color={isDark ? '#34d399' : '#00643B'} />
-                                      </View>
-                                      <View className="flex-1">
-                                         <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-base ${selectedAnimal ? 'text-slate-800 dark:text-white' : 'text-slate-300 dark:text-slate-600'}`}>
-                                            {selectedAnimal ? `Tag: #${selectedAnimal.earTag} (${selectedAnimal.breed || 'Unknown'})` : 'Select Pregnant Cow...'}
-                                         </Text>
-                                      </View>
-                                   </View>
-                                   <ChevronDown size={20} color={isDark ? '#6b7280' : '#94a3b8'} />
-                                </TouchableOpacity>
+                                <View className="mb-6">
+                                    <TechnicianAnimalSelector
+                                        animal={selectedAnimal}
+                                        placeholder="Select pregnant cow"
+                                        onPress={() => setShowAnimalModal(true)}
+                                    />
+                                </View>
                             </>
                         )}
                     </>
@@ -530,13 +529,12 @@ export default function RecordCalfDropScreen() {
 
                 {/* Event Basics Card */}
                 {motherId && pregnancyId ? (
-                    <View className="bg-emerald-50/50 dark:bg-emerald-900/10 p-6 rounded-[32px] mb-8 border border-emerald-100 dark:border-emerald-800/50">
-                        <View className="flex-row items-center gap-2 mb-4">
-                            <MaterialCommunityIcons name="baby-carriage" size={20} color={isDark ? '#34d399' : '#00643B'} />
-                            <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-emerald-800 dark:text-emerald-400 text-sm uppercase tracking-widest">Event Basics</Text>
-                        </View>
+                    <TechnicianFormSection
+                        title="Calving Details"
+                        description="Record the delivery, outcome, and offspring count for this pregnancy."
+                    >
 
-                        <View className="bg-white dark:bg-slate-800 rounded-2xl p-4 mb-5 border border-emerald-100 dark:border-slate-700">
+                        <View className="bg-slate-50 dark:bg-slate-800 rounded-[14px] p-4 mb-5 border border-slate-200 dark:border-slate-700">
                             <Text className="text-slate-800 dark:text-white font-outfit-black text-sm">
                                 Mother #{motherTag || selectedAnimal?.earTag || 'N/A'}
                             </Text>
@@ -551,9 +549,9 @@ export default function RecordCalfDropScreen() {
 
                         <View className="gap-y-4">
                             <View>
-                                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Drop Date</Text>
+                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Drop Date</Text>
                                 <TextInput 
-                                    className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-medium shadow-sm"
+                                    className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 text-slate-800 dark:text-white font-outfit-medium"
                                     value={date}
                                     onChangeText={setDate}
                                     placeholder="YYYY-MM-DD"
@@ -562,27 +560,27 @@ export default function RecordCalfDropScreen() {
                             </View>
 
                             <View>
-                                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Outcome</Text>
+                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Outcome</Text>
                                 <View className="flex-row flex-wrap gap-2 mb-4">
                                     {[
                                         ['live_birth', 'Live Birth'], ['mixed', 'Mixed'],
                                         ['stillbirth', 'Stillbirth'], ['abortion', 'Abortion'],
                                     ].map(([value, label]) => (
-                                        <TouchableOpacity key={value} onPress={() => handleOutcomeSelect(value)} className={`px-4 py-2.5 rounded-xl border ${outcome === value ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-800 border-emerald-100 dark:border-slate-700'}`}>
-                                            <Text className={`font-outfit-bold text-[11px] ${outcome === value ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>{label}</Text>
+                                        <TouchableOpacity key={value} onPress={() => handleOutcomeSelect(value)} className={`px-4 py-2.5 rounded-xl border ${outcome === value ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}>
+                                            <Text className={`font-outfit-bold text-[11px] ${outcome === value ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{label}</Text>
                                         </TouchableOpacity>
                                     ))}
                                 </View>
                                 {!isAbortion && <>
-                                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Delivery Method</Text>
+                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Delivery Method</Text>
                                 <View className="flex-row flex-wrap gap-2">
                                     {['Natural', 'Normal', 'Difficult', 'Cesarean'].map(opt => (
                                         <TouchableOpacity 
                                             key={opt}
                                             onPress={() => setCalvingEase(opt)}
-                                            className={`px-4 py-2.5 rounded-xl border ${calvingEase === opt ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-800 border-emerald-100 dark:border-slate-700'}`}
+                                            className={`px-4 py-2.5 rounded-xl border ${calvingEase === opt ? 'bg-emerald-600 border-emerald-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'}`}
                                         >
-                                            <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[11px] ${calvingEase === opt ? 'text-white' : 'text-emerald-700 dark:text-emerald-400'}`}>{opt}</Text>
+                                            <Text style={{ fontFamily: 'Outfit_700Bold' }} className={`text-[11px] ${calvingEase === opt ? 'text-white' : 'text-slate-600 dark:text-slate-300'}`}>{opt}</Text>
                                         </TouchableOpacity>
                                     ))}
                                 </View>
@@ -590,10 +588,10 @@ export default function RecordCalfDropScreen() {
                             </View>
 
                             {!isAbortion && <View>
-                                <Text className="text-emerald-700 dark:text-emerald-400 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Number of Calves</Text>
+                                <Text className="text-slate-600 dark:text-slate-300 text-[11px] font-outfit-bold mb-1.5 ml-1 uppercase">Number of Calves</Text>
                                 <View className="flex-row items-center gap-3">
                                     <TextInput 
-                                        className="bg-white dark:bg-slate-800 border border-emerald-100 dark:border-slate-700 rounded-2xl p-4 text-slate-800 dark:text-white font-outfit-black shadow-sm flex-1"
+                                        className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 text-slate-800 dark:text-white font-outfit-bold flex-1"
                                         value={numCalvesInput}
                                         onChangeText={handleNumChange}
                                         onBlur={handleNumBlur}
@@ -605,15 +603,12 @@ export default function RecordCalfDropScreen() {
                                 </View>
                             </View>}
                         </View>
-                    </View>
+                    </TechnicianFormSection>
                 ) : (
                     !initialMotherId && (
-                        <View className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/50 p-6 rounded-3xl items-center mb-8">
-                            <Info size={32} color={isDark ? '#60a5fa' : '#2563eb'} style={{ marginBottom: 8 }} />
-                            <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-blue-900 dark:text-blue-300 text-sm text-center">
-                                Select a farmer and a pregnant cow to unlock calving entry details.
-                            </Text>
-                        </View>
+                        <TechnicianFormInfo icon={<Info size={18} color={colors.primary} />}>
+                            Select a farmer and a pregnant cow to unlock calving entry details.
+                        </TechnicianFormInfo>
                     )
                 )}
 
@@ -640,7 +635,7 @@ export default function RecordCalfDropScreen() {
                             </View>
                         ) : <View className="gap-y-4 mb-8">
                             {calves.map((calf, idx) => (
-                                <View key={idx} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] p-6 shadow-sm">
+                                <View key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
                                     <View className="flex-row items-center gap-2 mb-4">
                                         <View className="w-6 h-6 bg-emerald-500 rounded-full items-center justify-center">
                                             <Text className="text-white text-[10px] font-outfit-black">{idx + 1}</Text>
@@ -793,16 +788,17 @@ export default function RecordCalfDropScreen() {
                             ))}
                         </View>}
 
-                        <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Technical Notes</Text>
-                        <TextInput
-                            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-5 h-32 text-slate-800 dark:text-white shadow-sm mb-10 font-outfit-medium"
-                            multiline
-                            textAlignVertical="top"
-                            placeholder="Observations, complications, etc..."
-                            placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                            value={note}
-                            onChangeText={setNote}
-                        />
+                        <TechnicianFormSection title="Technical Notes">
+                            <TextInput
+                                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 h-32 text-slate-800 dark:text-white font-outfit-medium"
+                                multiline
+                                textAlignVertical="top"
+                                placeholder="Observations, complications, etc..."
+                                placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
+                                value={note}
+                                onChangeText={setNote}
+                            />
+                        </TechnicianFormSection>
 
                         {submissionStatusMessage ? (
                             <View
@@ -818,119 +814,102 @@ export default function RecordCalfDropScreen() {
                             </View>
                         ) : null}
 
-                        <TouchableOpacity 
-                            className={`py-5 rounded-[28px] flex-row justify-center items-center shadow-xl mb-20 ${submissionLocked ? 'bg-slate-400' : 'bg-emerald-600'}`}
+                        <Button
+                            size="lg"
+                            className="mb-4"
                             onPress={handleSave}
+                            loading={submissionLocked}
                             disabled={submissionLocked}
                         >
-                            {submissionLocked ? <ActivityIndicator color="white" /> : (
-                                <>
-                                    <Save size={20} color="white" style={{ marginRight: 10 }} />
-                                    <Text style={{ fontFamily: 'Outfit_900Black' }} className="text-white text-base uppercase tracking-widest">Submit Calving Registry</Text>
-                                </>
-                            )}
-                        </TouchableOpacity>
+                            <Save size={19} color="white" style={{ marginRight: 9 }} />
+                            <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-white text-sm">Submit Calving Registry</Text>
+                        </Button>
                     </>
                 )}
             </ScrollView>
 
             {/* FARMER SELECTION MODAL */}
-            <Modal visible={showFarmerModal} animationType="slide" transparent>
-              <View className="flex-1 bg-black/50 justify-end">
-                 <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[85%]">
-                    <View className="flex-row justify-between items-center mb-4">
-                       <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colors.textPrimary }}>Select Client</Text>
-                       <TouchableOpacity onPress={() => setShowFarmerModal(false)} className="p-1 bg-slate-50 dark:bg-slate-800 rounded-full">
-                          <X size={20} color={isDark ? '#94a3b8' : 'black'} />
-                       </TouchableOpacity>
-                    </View>
-
-                    <View className="flex-row bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 mb-4 items-center">
-                       <Search size={18} color={isDark ? '#6b7280' : '#94a3b8'} style={{ marginRight: 8 }} />
-                       <TextInput 
-                           placeholder="Search client by name..."
-                           placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                           className="flex-1 font-outfit-medium text-slate-800 dark:text-white text-sm"
-                           value={searchFarmerQuery}
-                           onChangeText={setSearchFarmerQuery}
-                       />
-                    </View>
-
-                    <FlatList 
-                       data={filteredFarmers}
-                       keyExtractor={(item) => item._id}
-                       renderItem={({ item }) => (
-                           <TouchableOpacity 
-                              onPress={() => handleFarmerSelect(item)} 
-                              className="py-4 border-b border-slate-100 dark:border-slate-800 flex-row justify-between items-center"
-                           >
-                              <View>
-                                 <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 dark:text-white text-base">{item.name}</Text>
-                                 <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-xs text-slate-400 dark:text-slate-500 uppercase mt-0.5">
-                                   {item.address?.barangay || 'No Barangay'} • {item.address?.phoneNumber || 'No Phone'}
-                                 </Text>
-                              </View>
-                              <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} style={{ transform: [{ rotate: '-90deg' }] }} />
-                           </TouchableOpacity>
-                       )}
-                       ListEmptyComponent={
-                           <View className="py-8 items-center">
-                              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500">No clients found</Text>
-                           </View>
-                       }
-                    />
-                 </View>
-              </View>
-            </Modal>
+            <TechnicianPickerSheet
+              visible={showFarmerModal}
+              title="Select Farmer"
+              subtitle="Choose the owner of the pregnant cow"
+              onClose={() => setShowFarmerModal(false)}
+            >
+              <TechnicianPickerSearch
+                value={searchFarmerQuery}
+                onChangeText={setSearchFarmerQuery}
+                placeholder="Search name or phone"
+              />
+              <FlatList
+                data={filteredFarmers}
+                keyExtractor={(item) => item._id}
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={
+                  <Text
+                    style={{
+                      color: colors.textSecondary,
+                      fontFamily: 'Outfit_500Medium',
+                      fontSize: 13,
+                      textAlign: 'center',
+                      paddingVertical: 40,
+                    }}
+                  >
+                    No farmers match this search.
+                  </Text>
+                }
+                renderItem={({ item }) => (
+                  <TechnicianFarmerListItem
+                    farmer={item}
+                    selected={selectedFarmer?._id === item._id}
+                    secondaryText={`${
+                      [item.address?.barangay, item.address?.city]
+                        .filter(Boolean)
+                        .join(', ') || 'No address provided'
+                    } · ${item.phoneNumber || item.address?.phoneNumber || 'No phone'}`}
+                    onPress={() => handleFarmerSelect(item)}
+                  />
+                )}
+              />
+            </TechnicianPickerSheet>
 
             {/* ANIMAL SELECTION MODAL */}
-            <Modal visible={showAnimalModal} animationType="slide" transparent>
-              <View className="flex-1 bg-black/50 justify-end">
-                 <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[85%]">
-                    <View className="flex-row justify-between items-center mb-4">
-                       <Text style={{ fontFamily: 'Outfit_900Black', fontSize: 18, color: colors.textPrimary }}>Select Pregnant Cow</Text>
-                       <TouchableOpacity onPress={() => setShowAnimalModal(false)} className="p-1 bg-slate-50 dark:bg-slate-800 rounded-full">
-                          <X size={20} color={isDark ? '#94a3b8' : 'black'} />
-                       </TouchableOpacity>
-                    </View>
-
-                    <View className="flex-row bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 mb-4 items-center">
-                       <Search size={18} color={isDark ? '#6b7280' : '#94a3b8'} style={{ marginRight: 8 }} />
-                       <TextInput 
-                           placeholder="Search cow by tag or breed..."
-                           placeholderTextColor={isDark ? '#6b7280' : '#94a3b8'}
-                           className="flex-1 font-outfit-medium text-slate-800 dark:text-white text-sm"
-                           value={searchAnimalQuery}
-                           onChangeText={setSearchAnimalQuery}
-                       />
-                    </View>
-
-                    <FlatList 
-                       data={filteredAnimals}
-                       keyExtractor={(item) => item._id}
-                       renderItem={({ item }) => (
-                           <TouchableOpacity 
-                              onPress={() => handleAnimalSelect(item)} 
-                              className="py-4 border-b border-slate-100 dark:border-slate-800 flex-row justify-between items-center"
-                           >
-                              <View>
-                                 <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-slate-800 dark:text-white text-base">Ear Tag: #{item.earTag || 'N/A'}</Text>
-                                 <Text style={{ fontFamily: 'Outfit_500Medium' }} className="text-xs text-slate-400 dark:text-slate-500 uppercase mt-0.5">
-                                   Breed: {item.breed || 'Unknown'} • Color: {item.color || 'N/A'}
-                                 </Text>
-                              </View>
-                              <ChevronDown size={14} color={isDark ? '#6b7280' : '#94a3b8'} style={{ transform: [{ rotate: '-90deg' }] }} />
-                           </TouchableOpacity>
-                       )}
-                       ListEmptyComponent={
-                           <View className="py-8 items-center">
-                              <Text className="font-outfit-bold text-slate-400 dark:text-slate-500">No pregnant cows found for this client</Text>
-                           </View>
-                       }
-                    />
-                 </View>
-              </View>
-            </Modal>
+            <TechnicianPickerSheet
+              visible={showAnimalModal}
+              title="Select Pregnant Cow"
+              subtitle="Only eligible pregnancy records are shown"
+              onClose={() => setShowAnimalModal(false)}
+            >
+              <TechnicianPickerSearch
+                value={searchAnimalQuery}
+                onChangeText={setSearchAnimalQuery}
+                placeholder="Search ear tag or breed"
+              />
+              <FlatList
+                data={filteredAnimals}
+                keyExtractor={(item) => item._id}
+                showsVerticalScrollIndicator={false}
+                ListEmptyComponent={
+                  <Text
+                    style={{
+                      color: colors.textSecondary,
+                      fontFamily: 'Outfit_500Medium',
+                      fontSize: 13,
+                      textAlign: 'center',
+                      paddingVertical: 40,
+                    }}
+                  >
+                    No pregnant cows found for this farmer.
+                  </Text>
+                }
+                renderItem={({ item }) => (
+                  <AnimalSummaryCard
+                    animal={item}
+                    onPress={() => handleAnimalSelect(item)}
+                    alert={selectedAnimal?._id === item._id ? 'Currently selected' : undefined}
+                  />
+                )}
+              />
+            </TechnicianPickerSheet>
 
             <ConfirmationModal
               visible={confirmSubmitVisible}
@@ -944,7 +923,7 @@ export default function RecordCalfDropScreen() {
               cancelText="Review"
               isDestructive={false}
             />
-        </SafeAreaView>
+        </ScreenLayout>
     );
 }
 

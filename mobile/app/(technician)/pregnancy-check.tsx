@@ -13,18 +13,13 @@ import {
   Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  ArrowLeft,
-  User,
   ChevronDown,
   Sparkles,
   X,
   Calendar,
   AlertCircle,
-  HeartPulse,
   History,
-  Search,
 } from "lucide-react-native";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
@@ -35,6 +30,19 @@ import {
   PREGNANCY_DIAGNOSIS_MINIMUM_DAYS,
 } from "@/lib/reproductionEligibility";
 import { useQueryClient } from "@tanstack/react-query";
+import { AppPageHeader } from "@/components/AppPageHeader";
+import { ScreenLayout } from "@/components/ScreenLayout";
+import { Button } from "@/components/ui/Button";
+import {
+  TechnicianAnimalSelector,
+  TechnicianFarmerListItem,
+  TechnicianFarmerSelector,
+  TechnicianFormInfo,
+  TechnicianFormSection,
+  TechnicianPickerSearch,
+  TechnicianPickerSheet,
+} from "@/components/technician/TechnicianFormUI";
+import { AnimalSummaryCard } from "@/features/farmer-ui/components/AnimalSummaryCard";
 
 export default function PregnancyCheckScreen() {
   const router = useRouter();
@@ -390,70 +398,51 @@ export default function PregnancyCheckScreen() {
     : "Select an AI attempt";
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
-      <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full"
-        >
-          <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
-        </TouchableOpacity>
-        <Text
-          style={{
-            fontFamily: "Outfit_900Black",
-            fontSize: 20,
-            color: colors.textPrimary,
-          }}
-        >
-          Pregnancy Check
-        </Text>
-      </View>
+    <ScreenLayout edges={[]}>
+      <AppPageHeader title="Pregnancy Check" onBack={() => router.back()} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
         <ScrollView
-          className="flex-1 px-6 pt-6"
-          contentContainerStyle={{ paddingBottom: 100 }}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 72, gap: 14 }}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="bg-purple-50 dark:bg-purple-900/20 rounded-2xl p-4 mb-6 border border-purple-100 dark:border-purple-800/50 flex-row items-center">
-            <View className="w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-full items-center justify-center mr-3">
-              <Sparkles size={20} color={isDark ? "#a78bfa" : "#7c3aed"} />
-            </View>
-            <Text
-              style={{ fontFamily: "Outfit_600SemiBold" }}
-              className="text-purple-800 dark:text-purple-300 text-xs flex-1"
-            >
-              Record pregnancy diagnosis outcome for breeding tracking. This
-              directly updates the cow&apos;s status in the system registry.
-            </Text>
-          </View>
+          <TechnicianFormInfo
+            icon={<Sparkles size={18} color={colors.primary} />}
+          >
+            Record pregnancy diagnosis outcome for breeding tracking. This
+            directly updates the cow&apos;s status in the system registry.
+          </TechnicianFormInfo>
+
+          <TechnicianFormSection
+            title="Farmer and Animal"
+            description="Choose the owner, animal, and completed breeding attempt."
+          >
 
           {/* FARMER SELECTION */}
           <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
             Owner / Client
           </Text>
-          <TouchableOpacity
-            onPress={() => setShowFarmerModal(true)}
-            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
-          >
-            <View className="flex-row items-center flex-1">
-              <View className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
-                <User size={20} color={isDark ? "#34d399" : "#00643B"} />
-              </View>
-              <View className="flex-1">
-                <Text
-                  style={{ fontFamily: "Outfit_700Bold" }}
-                  className={`text-base ${selectedFarmer ? "text-slate-800 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}
-                >
-                  {selectedFarmer ? selectedFarmer.name : "Select Farmer..."}
-                </Text>
-              </View>
-            </View>
-            <ChevronDown size={20} color={isDark ? "#6b7280" : "#94a3b8"} />
-          </TouchableOpacity>
+          <View className="mb-4">
+            <TechnicianFarmerSelector
+              farmer={selectedFarmer}
+              secondaryText={
+                selectedFarmer
+                  ? [
+                      selectedFarmer.address?.barangay,
+                      selectedFarmer.address?.city,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") || selectedFarmer.phoneNumber
+                  : undefined
+              }
+              onPress={() => setShowFarmerModal(true)}
+            />
+          </View>
 
           {/* ANIMAL SELECTION */}
           {selectedFarmer && (
@@ -461,30 +450,13 @@ export default function PregnancyCheckScreen() {
               <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
                 Livestock Animal
               </Text>
-              <TouchableOpacity
-                onPress={() => setShowAnimalModal(true)}
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
-              >
-                <View className="flex-row items-center flex-1">
-                  <View className="w-10 h-10 bg-purple-50 dark:bg-purple-900/30 rounded-full items-center justify-center mr-3">
-                    <HeartPulse
-                      size={20}
-                      color={isDark ? "#a78bfa" : "#7c3aed"}
-                    />
-                  </View>
-                  <View className="flex-1">
-                    <Text
-                      style={{ fontFamily: "Outfit_700Bold" }}
-                      className={`text-base ${selectedAnimal ? "text-slate-800 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}
-                    >
-                      {selectedAnimal
-                        ? `Tag: #${selectedAnimal.earTag} (${selectedAnimal.breed || "Unknown"})`
-                        : "Select Animal..."}
-                    </Text>
-                  </View>
-                </View>
-                <ChevronDown size={20} color={isDark ? "#6b7280" : "#94a3b8"} />
-              </TouchableOpacity>
+              <View className="mb-4">
+                <TechnicianAnimalSelector
+                  animal={selectedAnimal}
+                  placeholder="Select animal"
+                  onPress={() => setShowAnimalModal(true)}
+                />
+              </View>
             </>
           )}
 
@@ -502,7 +474,7 @@ export default function PregnancyCheckScreen() {
               ) : validInseminations.length > 0 ? (
                 <TouchableOpacity
                   onPress={() => setShowInsemModal(true)}
-                  className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
+                  className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-[14px] p-4 flex-row items-center justify-between"
                 >
                   <View className="flex-row items-center flex-1">
                     <View className="w-10 h-10 bg-blue-50 dark:bg-blue-900/30 rounded-full items-center justify-center mr-3">
@@ -547,6 +519,7 @@ export default function PregnancyCheckScreen() {
               )}
             </>
           )}
+          </TechnicianFormSection>
 
           {/* LINKED AI ATTEMPT CARD */}
           {selectedInsemination && (
@@ -807,7 +780,7 @@ export default function PregnancyCheckScreen() {
                   style={{
                     opacity: isDiagnosisReady ? 1 : 0.45,
                   }}
-                  className={`flex-1 py-6 rounded-2xl border-2 items-center gap-2 ${result === "Pregnant" ? "border-purple-600 bg-purple-50 dark:bg-purple-900/20" : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"}`}
+                  className={`flex-1 min-h-[54px] py-4 rounded-[14px] border items-center justify-center gap-2 ${result === "Pregnant" ? "border-purple-600 bg-purple-50 dark:bg-purple-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
                 >
                   <Sparkles
                     size={24}
@@ -837,7 +810,7 @@ export default function PregnancyCheckScreen() {
                   style={{
                     opacity: isDiagnosisReady ? 1 : 0.45,
                   }}
-                  className={`flex-1 py-6 rounded-2xl border-2 items-center gap-2 ${result === "Empty" ? "border-rose-600 bg-rose-50 dark:bg-rose-900/20" : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm"}`}
+                  className={`flex-1 min-h-[54px] py-4 rounded-[14px] border items-center justify-center gap-2 ${result === "Empty" ? "border-rose-600 bg-rose-50 dark:bg-rose-900/20" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
                 >
                   <AlertCircle
                     size={24}
@@ -860,7 +833,7 @@ export default function PregnancyCheckScreen() {
 
               {/* Estimated Calving Date Banner */}
               {result === "Pregnant" && (
-                <View className="bg-purple-600 rounded-3xl p-5 flex-row justify-between items-center mb-6 shadow-lg shadow-purple-200">
+                <View className="bg-purple-600 rounded-2xl p-4 flex-row justify-between items-center mb-6">
                   <View className="flex-row items-center gap-3">
                     <Calendar size={22} color="rgba(255,255,255,0.7)" />
                     <View>
@@ -884,7 +857,7 @@ export default function PregnancyCheckScreen() {
                 Findings / Technical Observations
               </Text>
               <TextInput
-                className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-5 h-28 text-slate-800 dark:text-white shadow-sm mb-8 font-outfit-medium"
+                className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[14px] px-4 py-3.5 h-28 text-slate-800 dark:text-white mb-4 font-outfit-medium"
                 multiline
                 textAlignVertical="top"
                 placeholder="Optional details, conditions, notes..."
@@ -894,197 +867,118 @@ export default function PregnancyCheckScreen() {
               />
 
               {/* SAVE BUTTON */}
-              <TouchableOpacity
-                className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${
-                  saving || !isDiagnosisReady
-                    ? "bg-slate-400"
-                    : "bg-[#00643B]"
-                }`}
+              <Button
+                size="lg"
+                className="mb-4"
                 onPress={handleSave}
+                loading={saving}
                 disabled={saving || !isDiagnosisReady}
               >
-                {saving ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <>
-                    <Sparkles
-                      size={20}
-                      color="white"
-                      style={{ marginRight: 10 }}
-                    />
-                    <Text
-                      style={{ fontFamily: "Outfit_800ExtraBold" }}
-                      className="text-white text-base"
-                    >
-                      {isDiagnosisReady
-                        ? "Save Diagnosis"
-                        : "Pregnancy Diagnosis Not Yet Available"}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+                <Sparkles
+                  size={19}
+                  color="white"
+                  style={{ marginRight: 9 }}
+                />
+                <Text
+                  style={{ fontFamily: "Outfit_700Bold" }}
+                  className="text-white text-sm"
+                >
+                  {isDiagnosisReady
+                    ? "Save Diagnosis"
+                    : "Pregnancy Diagnosis Not Yet Available"}
+                </Text>
+              </Button>
             </>
           )}
         </ScrollView>
       </KeyboardAvoidingView>
 
       {/* FARMER SELECTION MODAL */}
-      <Modal visible={showFarmerModal} animationType="slide" transparent>
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[85%]">
-            <View className="flex-row justify-between items-center mb-4">
-              <Text
-                style={{
-                  fontFamily: "Outfit_900Black",
-                  fontSize: 18,
-                  color: colors.textPrimary,
-                }}
-              >
-                Select Owner
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowFarmerModal(false)}
-                className="p-1 bg-slate-50 dark:bg-slate-800 rounded-full"
-              >
-                <X size={20} color={isDark ? "#94a3b8" : "black"} />
-              </TouchableOpacity>
-            </View>
-
-            <View className="flex-row bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 mb-4 items-center">
-              <Search
-                size={18}
-                color={isDark ? "#6b7280" : "#94a3b8"}
-                style={{ marginRight: 8 }}
-              />
-              <TextInput
-                placeholder="Search client by name..."
-                placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                className="flex-1 font-outfit-medium text-slate-800 dark:text-white text-sm"
-                value={searchFarmerQuery}
-                onChangeText={setSearchFarmerQuery}
-              />
-            </View>
-
-            <FlatList
-              data={filteredFarmers}
-              keyExtractor={(item) => item._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => handleFarmerSelect(item)}
-                  className="py-4 border-b border-slate-100 dark:border-slate-800 flex-row justify-between items-center"
-                >
-                  <View>
-                    <Text
-                      style={{ fontFamily: "Outfit_700Bold" }}
-                      className="text-slate-800 dark:text-white text-base"
-                    >
-                      {item.name}
-                    </Text>
-                    <Text
-                      style={{ fontFamily: "Outfit_500Medium" }}
-                      className="text-xs text-slate-400 dark:text-slate-500 uppercase mt-0.5"
-                    >
-                      {item.address?.barangay || "No Barangay"} •{" "}
-                      {item.phoneNumber || "No Phone"}
-                    </Text>
-                  </View>
-                  <ChevronDown
-                    size={14}
-                    color={isDark ? "#6b7280" : "#94a3b8"}
-                    style={{ transform: [{ rotate: "-90deg" }] }}
-                  />
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View className="py-8 items-center">
-                  <Text className="font-outfit-bold text-slate-400 dark:text-slate-500">
-                    No clients found
-                  </Text>
-                </View>
-              }
+      <TechnicianPickerSheet
+        visible={showFarmerModal}
+        title="Select Farmer"
+        subtitle="Choose the owner of the animal"
+        onClose={() => setShowFarmerModal(false)}
+      >
+        <TechnicianPickerSearch
+          value={searchFarmerQuery}
+          onChangeText={setSearchFarmerQuery}
+          placeholder="Search name or phone"
+        />
+        <FlatList
+          data={filteredFarmers}
+          keyExtractor={(item) => item._id}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <Text
+              style={{
+                color: colors.textSecondary,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 13,
+                textAlign: "center",
+                paddingVertical: 40,
+              }}
+            >
+              No farmers match this search.
+            </Text>
+          }
+          renderItem={({ item }) => (
+            <TechnicianFarmerListItem
+              farmer={item}
+              selected={selectedFarmer?._id === item._id}
+              secondaryText={`${
+                [item.address?.barangay, item.address?.city]
+                  .filter(Boolean)
+                  .join(", ") || "No address provided"
+              } · ${item.phoneNumber || "No phone"}`}
+              onPress={() => handleFarmerSelect(item)}
             />
-          </View>
-        </View>
-      </Modal>
+          )}
+        />
+      </TechnicianPickerSheet>
 
       {/* ANIMAL SELECTION MODAL */}
-      <Modal visible={showAnimalModal} animationType="slide" transparent>
-        <View className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[32px] p-6 pb-10 max-h-[85%]">
-            <View className="flex-row justify-between items-center mb-4">
-              <Text
-                style={{
-                  fontFamily: "Outfit_900Black",
-                  fontSize: 18,
-                  color: colors.textPrimary,
-                }}
-              >
-                Select Animal
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowAnimalModal(false)}
-                className="p-1 bg-slate-50 dark:bg-slate-800 rounded-full"
-              >
-                <X size={20} color={isDark ? "#94a3b8" : "black"} />
-              </TouchableOpacity>
-            </View>
-
-            <View className="flex-row bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3 mb-4 items-center">
-              <Search
-                size={18}
-                color={isDark ? "#6b7280" : "#94a3b8"}
-                style={{ marginRight: 8 }}
-              />
-              <TextInput
-                placeholder="Search animal by tag or breed..."
-                placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                className="flex-1 font-outfit-medium text-slate-800 dark:text-white text-sm"
-                value={searchAnimalQuery}
-                onChangeText={setSearchAnimalQuery}
-              />
-            </View>
-
-            <FlatList
-              data={filteredAnimals}
-              keyExtractor={(item) => item._id}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => handleAnimalSelect(item)}
-                  className="py-4 border-b border-slate-100 dark:border-slate-800 flex-row justify-between items-center"
-                >
-                  <View>
-                    <Text
-                      style={{ fontFamily: "Outfit_700Bold" }}
-                      className="text-slate-800 dark:text-white text-base"
-                    >
-                      Ear Tag: #{item.earTag || "N/A"}
-                    </Text>
-                    <Text
-                      style={{ fontFamily: "Outfit_500Medium" }}
-                      className="text-xs text-slate-400 dark:text-slate-500 uppercase mt-0.5"
-                    >
-                      Breed: {item.breed || "Unknown"} • Status:{" "}
-                      {item.reproductiveStatus || "Open"}
-                    </Text>
-                  </View>
-                  <ChevronDown
-                    size={14}
-                    color={isDark ? "#6b7280" : "#94a3b8"}
-                    style={{ transform: [{ rotate: "-90deg" }] }}
-                  />
-                </TouchableOpacity>
-              )}
-              ListEmptyComponent={
-                <View className="py-8 items-center">
-                  <Text className="font-outfit-bold text-slate-400 dark:text-slate-500">
-                    No animals found for this farmer
-                  </Text>
-                </View>
+      <TechnicianPickerSheet
+        visible={showAnimalModal}
+        title="Select Animal"
+        subtitle="Choose an animal for pregnancy diagnosis"
+        onClose={() => setShowAnimalModal(false)}
+      >
+        <TechnicianPickerSearch
+          value={searchAnimalQuery}
+          onChangeText={setSearchAnimalQuery}
+          placeholder="Search ear tag or breed"
+        />
+        <FlatList
+          data={filteredAnimals}
+          keyExtractor={(item) => item._id}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <Text
+              style={{
+                color: colors.textSecondary,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 13,
+                textAlign: "center",
+                paddingVertical: 40,
+              }}
+            >
+              No animals found for this farmer.
+            </Text>
+          }
+          renderItem={({ item }) => (
+            <AnimalSummaryCard
+              animal={item}
+              onPress={() => handleAnimalSelect(item)}
+              alert={
+                selectedAnimal?._id === item._id
+                  ? "Currently selected"
+                  : undefined
               }
             />
-          </View>
-        </View>
-      </Modal>
+          )}
+        />
+      </TechnicianPickerSheet>
 
       {/* INSEMINATION SELECTOR MODAL */}
       <Modal visible={showInsemModal} animationType="slide" transparent>
@@ -1170,6 +1064,6 @@ export default function PregnancyCheckScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </ScreenLayout>
   );
 }

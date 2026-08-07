@@ -1,15 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, FlatList, Image, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, Modal, FlatList, Image, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, UserPlus, X, ChevronDown, User, Camera } from 'lucide-react-native';
-import { useApi } from '@/lib/api';
+import { UserPlus, X, ChevronDown, Camera } from 'lucide-react-native';
 import { toast } from 'sonner-native';
 import { useTheme } from '@/lib/theme';
-import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
 import { AppPageHeader } from '@/components/AppPageHeader';
+import { ScreenLayout } from '@/components/ScreenLayout';
+import { Button } from '@/components/ui/Button';
+import {
+  TechnicianFormInfo,
+  TechnicianFormSection,
+} from '@/components/technician/TechnicianFormUI';
 import { useOfflineMutation } from '@/hooks/useOfflineMutation';
 import {
   formatBarangayWithDistrict,
@@ -24,7 +27,6 @@ const SUBMIT_ERROR_COOLDOWN_MS = 2500;
 
 export default function RegisterClientScreen() {
   const router = useRouter();
-  const api = useApi();
   const { isDark, colors } = useTheme();
   
   const [formData, setFormData] = useState({
@@ -206,31 +208,33 @@ export default function RegisterClientScreen() {
     mutation.isPending || isSubmitCoolingDown || isSubmittingRef.current;
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
+    <ScreenLayout edges={[]}>
       <AppPageHeader
-        title="Walk-in Registration"
+        title="Register Farmer"
         onBack={() => router.back()}
-        includeSafeTop={false}
       />
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView className="flex-1 px-6 pt-6" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 72, gap: 14 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
           
-          <View className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-4 mb-6 border border-emerald-100 dark:border-emerald-800/50 flex-row items-center">
-             <View className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
-                <UserPlus size={20} color={isDark ? '#34d399' : '#059669'} />
-              </View>
-             <Text style={{ fontFamily: 'Outfit_600SemiBold' }} className="text-emerald-800 dark:text-emerald-300 text-xs flex-1">
-               Register a farmer for immediate service. If no email is added, they can later claim this profile by verifying the same phone number in the app.
-             </Text>
-          </View>
+          <TechnicianFormInfo
+            icon={<UserPlus size={18} color={colors.primary} />}
+          >
+            Register a farmer for immediate service. If no email is added, they can later claim this profile by verifying the same phone number in the app.
+          </TechnicianFormInfo>
 
           {/* Profile Photo Picker */}
-          <View className="items-center mb-8">
+          <View className="items-center py-4">
             <TouchableOpacity 
               onPress={() => setPhotoModalVisible(true)} 
-              className="w-[100px] h-[100px] rounded-full bg-white dark:bg-slate-900 border-2 border-dashed border-slate-200 dark:border-slate-800 items-center justify-center overflow-hidden shadow-sm"
-              style={{ elevation: 1 }}
+              accessibilityRole="button"
+              accessibilityLabel={imageUri ? "Change farmer photo" : "Add farmer photo"}
+              className="w-[88px] h-[88px] rounded-full bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-800 items-center justify-center overflow-hidden"
             >
               {imageUri ? (
                 <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
@@ -246,8 +250,8 @@ export default function RegisterClientScreen() {
           </View>
 
           {/* PERSONAL DETAILS */}
-          <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Personal Details</Text>
-          <View className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm mb-6 gap-4">
+          <TechnicianFormSection title="Personal Details">
+          <View className="gap-4">
              <View>
                 <View className="flex-row justify-between mb-1 ml-1">
                    <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">First Name *</Text>
@@ -278,10 +282,11 @@ export default function RegisterClientScreen() {
                 />
              </View>
           </View>
+          </TechnicianFormSection>
 
           {/* CONTACT & ADDRESS */}
-          <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">Contact & Address</Text>
-          <View className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm mb-6 gap-4">
+          <TechnicianFormSection title="Contact & Address">
+          <View className="gap-4">
              <View>
                 <View className="flex-row justify-between mb-1 ml-1">
                    <Text className="text-slate-700 dark:text-slate-300 text-[11px] font-outfit-bold uppercase">Phone Number *</Text>
@@ -365,20 +370,19 @@ export default function RegisterClientScreen() {
                    </TouchableOpacity>
              </View>
           </View>
+          </TechnicianFormSection>
 
           {/* SAVE BUTTON */}
-          <TouchableOpacity 
-              className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${isSubmitDisabled ? 'bg-slate-400' : 'bg-[#00643B]'}`}
+          <Button
+              size="lg"
+              className="mt-1 mb-4"
               onPress={handleSave}
+              loading={mutation.isPending}
               disabled={isSubmitDisabled}
           >
-              {mutation.isPending ? <ActivityIndicator color="white" /> : (
-                 <>
-                    <UserPlus size={20} color="white" style={{ marginRight: 10 }} />
-                    <Text style={{ fontFamily: 'Outfit_800ExtraBold' }} className="text-white text-base">Register Farmer</Text>
-                 </>
-              )}
-          </TouchableOpacity>
+              <UserPlus size={19} color="white" style={{ marginRight: 9 }} />
+              <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-white text-sm">Register Farmer</Text>
+          </Button>
 
         </ScrollView>
       </KeyboardAvoidingView>
@@ -440,6 +444,6 @@ export default function RegisterClientScreen() {
         onSelectCamera={() => handleSelectPhoto("camera")}
         onSelectLibrary={() => handleSelectPhoto("library")}
       />
-    </SafeAreaView>
+    </ScreenLayout>
   );
 }
