@@ -158,16 +158,16 @@ export default function TechMyProfile() {
       />
 
       {/* Main Framework Container */}
-      <main className="p-6 space-y-6 flex-1 max-w-5xl mx-auto w-full">
+      <main className="p-4 md:p-6 space-y-6 sm:space-y-8 flex-1 w-full max-w-6xl mx-auto">
         {/* Cover Banner + Avatar Overlay */}
-        <div className="bg-base-100 border border-base-300 rounded-2xl overflow-hidden shadow-2xs">
+        <div className="card card-border bg-base-100 rounded-3xl shadow-sm overflow-hidden">
           {/* Banner Cover Gradient */}
-          <div className="h-36 bg-linear-to-r from-primary to-primary/80 relative" />
+          <div className="h-40 sm:h-48 bg-linear-to-r from-primary via-primary/90 to-primary/80 relative" />
 
           {/* Profile Metadata Header */}
-          <div className="p-6 pt-0 relative flex flex-col sm:flex-row items-center sm:items-end gap-5 -mt-16 sm:pb-6 border-b border-base-300">
+          <div className="p-6 sm:p-8 pt-0 relative flex flex-col sm:flex-row items-center sm:items-end gap-6 -mt-16 sm:-mt-20 border-b border-base-300">
             {/* Avatar Circle Container */}
-            <div className="w-28 h-28 rounded-full border-4 border-base-100 bg-primary text-white font-black text-3xl flex items-center justify-center shadow-lg relative shrink-0 overflow-hidden">
+            <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl border-4 border-base-100 bg-primary text-primary-content font-black text-3xl flex items-center justify-center shadow-md relative shrink-0 overflow-hidden">
               {editForm.imageUrl ? (
                 <img
                   src={editForm.imageUrl}
@@ -187,9 +187,9 @@ export default function TechMyProfile() {
               {/* IMAGE UPLOAD & DELETION OVERLAYS */}
               {isEditing && (
                 <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex flex-col items-center justify-center text-white z-20">
-                  <label className="flex flex-col items-center justify-center cursor-pointer text-white gap-1 hover:text-emerald-400 transition-colors w-full h-1/2 pt-1 border-b border-white/10">
-                    <Edit2 size={13} />
-                    <span className="text-[8px] font-black uppercase tracking-wider">Change</span>
+                  <label className="flex flex-col items-center justify-center cursor-pointer text-white gap-1 hover:text-primary transition-colors w-full h-1/2 pt-1 border-b border-white/10">
+                    <Edit2 size={14} />
+                    <span className="text-[9px] font-black uppercase tracking-wider">Change</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -210,36 +210,36 @@ export default function TechMyProfile() {
                     <button
                       type="button"
                       onClick={() => setEditForm((prev) => ({ ...prev, imageUrl: "" }))}
-                      className="flex flex-col items-center justify-center cursor-pointer text-rose-400 hover:text-rose-500 transition-colors w-full h-1/2 pb-1 bg-transparent border-none"
+                      className="flex flex-col items-center justify-center cursor-pointer text-error hover:text-error transition-colors w-full h-1/2 pb-1 bg-transparent border-none"
                     >
-                      <Trash2 size={13} />
-                      <span className="text-[8px] font-black uppercase tracking-wider">Delete</span>
+                      <Trash2 size={14} />
+                      <span className="text-[9px] font-black uppercase tracking-wider">Delete</span>
                     </button>
                   )}
                 </div>
               )}
 
               <span
-                className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-emerald-500 border-2 border-base-100 flex items-center justify-center z-10"
+                className="absolute bottom-1 right-1 w-7 h-7 rounded-full bg-success border-2 border-base-100 flex items-center justify-center z-10 text-success-content"
                 title="Verified Officer"
               >
-                <Check size={12} className="text-white font-extrabold" />
+                <Check size={14} className="font-extrabold" />
               </span>
             </div>
 
-            <div className="text-center sm:text-left min-w-0 flex-1 space-x-1.5">
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
-                <h2 className="text-2xl font-black text-base-content leading-none">
+            <div className="text-center sm:text-left min-w-0 flex-1 space-y-2">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3">
+                <h2 className="text-2xl sm:text-3xl font-black text-base-content tracking-tight truncate">
                   {dbUser?.name}
                 </h2>
-                <span className="text-[9.5px] font-black tracking-wider uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md leading-none">
+                <span className="badge badge-soft badge-primary font-bold text-xs uppercase px-3 py-1">
                   Senior Specialist
                 </span>
               </div>
 
-              <p className="text-sm text-base-content/40 font-medium">
+              <p className="text-xs font-semibold text-base-content/60">
                 {dbUser?.role?.toUpperCase()} &bull; Sector ID:{" "}
-                <span className="font-mono font-bold text-base-content/60">
+                <span className="font-mono font-extrabold text-base-content">
                   {dbUser?._id?.substring(0, 10).toUpperCase()}
                 </span>
               </p>
@@ -248,68 +248,59 @@ export default function TechMyProfile() {
             {/* Edit Profile Action Trigger */}
             <div className="shrink-0 flex items-center justify-center">
               <button
+                type="button"
                 onClick={isEditing ? handleCancel : () => setIsEditing(true)}
-                className={`btn btn-sm rounded-xl text-xs font-black uppercase tracking-wider transition-all gap-1.5 shadow-xs border cursor-pointer ${
+                className={`btn btn-md rounded-xl font-extrabold text-xs uppercase tracking-wider transition-all gap-2 px-5 shadow-xs cursor-pointer ${
                   isEditing
-                    ? "btn-ghost border-base-300 hover:bg-base-200 text-base-content"
-                    : "btn-primary text-white"
+                    ? "btn-ghost border border-base-300 hover:bg-base-200 text-base-content"
+                    : "btn-primary"
                 }`}
               >
                 {isEditing ? (
                   <>
-                    <X size={13} /> Cancel
+                    <X size={15} /> Cancel
                   </>
                 ) : (
                   <>
-                    <Edit2 size={13} /> Edit Profile
+                    <Edit2 size={15} /> Edit Profile
                   </>
                 )}
               </button>
             </div>
           </div>
 
-          {/* Impact Stats Grid (counters display) */}
-          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-base-300 bg-base-200/40 text-center">
+          {/* Impact Stats Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-y md:divide-y-0 divide-base-300 bg-base-200/50 text-center">
             {[
               {
                 label: "AI Services Done",
                 val: `${analytics?.totalAI_Week || 0} Operations`,
-                icon: (
-                  <Award
-                    size={14}
-                    className="text-emerald-600 dark:text-emerald-400"
-                  />
-                ),
+                icon: <Award size={16} className="text-success shrink-0" />,
               },
               {
                 label: "Calvings Monitored",
                 val: `${analytics?.totalPreg || 0} Deliveries`,
-                icon: <Star size={14} className="text-amber-500" />,
+                icon: <Star size={16} className="text-warning shrink-0" />,
               },
               {
                 label: "PD Success Rate",
                 val: `${analytics?.successRate || 0}% Accuracy`,
-                icon: <Heart size={14} className="text-rose-500" />,
+                icon: <Heart size={16} className="text-error shrink-0" />,
               },
               {
                 label: "Monthly Clinicals",
                 val: `${analytics?.totalHealth_Month || 0} Cases`,
-                icon: (
-                  <Clock
-                    size={14}
-                    className="text-blue-600 dark:text-blue-400"
-                  />
-                ),
+                icon: <Clock size={16} className="text-info shrink-0" />,
               },
             ].map((stat, idx) => (
               <div
                 key={idx}
-                className="p-4 flex flex-col items-center justify-center space-y-1"
+                className="p-4 sm:p-5 flex flex-col items-center justify-center space-y-1.5"
               >
-                <span className="flex items-center gap-1 text-base-content/40 text-[10px] font-bold uppercase tracking-wider">
+                <span className="flex items-center gap-1.5 text-base-content/50 text-[11px] font-bold uppercase tracking-wider">
                   {stat.icon} {stat.label}
                 </span>
-                <span className="text-base font-black text-base-content font-mono leading-none">
+                <span className="text-base sm:text-lg font-black text-base-content font-mono leading-none">
                   {stat.val}
                 </span>
               </div>
@@ -318,17 +309,17 @@ export default function TechMyProfile() {
         </div>
 
         {/* Double Column layout for profile details & checklists */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
           {/* Left panel: Info form details */}
-          <div className="md:col-span-7 bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
-            <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
-              <User size={13} /> Personnel Details Summary
+          <div className="xl:col-span-7 card card-border bg-base-100 rounded-3xl p-6 shadow-sm">
+            <h3 className="font-extrabold text-sm uppercase tracking-wider text-base-content/60 mb-5 flex items-center gap-2">
+              <User size={16} className="text-primary" /> Personnel Details Summary
             </h3>
 
             {isEditing ? (
               <form onSubmit={handleSave} className="space-y-4">
                 <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
+                  <label className="label text-[11px] font-extrabold uppercase tracking-wider text-base-content/50">
                     Full Official Name
                   </label>
                   <input
@@ -337,14 +328,14 @@ export default function TechMyProfile() {
                     onChange={(e) =>
                       setEditForm({ ...editForm, name: e.target.value })
                     }
-                    className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
+                    className="input input-bordered input-md rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
                     required
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="form-control">
-                    <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
+                    <label className="label text-[11px] font-extrabold uppercase tracking-wider text-base-content/50">
                       Contact Number
                     </label>
                     <input
@@ -353,13 +344,13 @@ export default function TechMyProfile() {
                       onChange={(e) =>
                         setEditForm({ ...editForm, phone: e.target.value })
                       }
-                      className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
+                      className="input input-bordered input-md rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
                       required
                     />
                   </div>
 
                   <div className="form-control">
-                    <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
+                    <label className="label text-[11px] font-extrabold uppercase tracking-wider text-base-content/50">
                       Email Address
                     </label>
                     <input
@@ -368,7 +359,7 @@ export default function TechMyProfile() {
                       onChange={(e) =>
                         setEditForm({ ...editForm, email: e.target.value })
                       }
-                      className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
+                      className="input input-bordered input-md rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
                       required
                     />
                   </div>
@@ -376,7 +367,7 @@ export default function TechMyProfile() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="form-control">
-                    <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
+                    <label className="label text-[11px] font-extrabold uppercase tracking-wider text-base-content/50">
                       Barangay
                     </label>
                     <input
@@ -385,13 +376,13 @@ export default function TechMyProfile() {
                       onChange={(e) =>
                         setEditForm({ ...editForm, barangay: e.target.value })
                       }
-                      className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
+                      className="input input-bordered input-md rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
                       required
                     />
                   </div>
 
                   <div className="form-control">
-                    <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
+                    <label className="label text-[11px] font-extrabold uppercase tracking-wider text-base-content/50">
                       City/Municipality
                     </label>
                     <input
@@ -400,13 +391,13 @@ export default function TechMyProfile() {
                       onChange={(e) =>
                         setEditForm({ ...editForm, city: e.target.value })
                       }
-                      className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
+                      className="input input-bordered input-md rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
                       required
                     />
                   </div>
 
                   <div className="form-control">
-                    <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
+                    <label className="label text-[11px] font-extrabold uppercase tracking-wider text-base-content/50">
                       Province
                     </label>
                     <input
@@ -415,14 +406,14 @@ export default function TechMyProfile() {
                       onChange={(e) =>
                         setEditForm({ ...editForm, province: e.target.value })
                       }
-                      className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
+                      className="input input-bordered input-md rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
                       required
                     />
                   </div>
                 </div>
 
                 <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
+                  <label className="label text-[11px] font-extrabold uppercase tracking-wider text-base-content/50">
                     Veterinarian Specialization
                   </label>
                   <input
@@ -430,12 +421,12 @@ export default function TechMyProfile() {
                     value={editForm.specialty}
                     placeholder="Unavailable"
                     disabled
-                    className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
+                    className="input input-bordered input-md rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
                   />
                 </div>
 
                 <div className="form-control">
-                  <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
+                  <label className="label text-[11px] font-extrabold uppercase tracking-wider text-base-content/50">
                     Board Certificate / License Code
                   </label>
                   <input
@@ -443,7 +434,7 @@ export default function TechMyProfile() {
                     value={editForm.license}
                     placeholder="Unavailable"
                     disabled
-                    className="input input-bordered input-sm rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
+                    className="input input-bordered input-md rounded-xl text-xs bg-base-200 border-base-300 text-base-content focus:bg-base-100 focus:border-primary outline-none"
                   />
                 </div>
 
@@ -451,18 +442,18 @@ export default function TechMyProfile() {
                   <button
                     type="button"
                     onClick={handleCancel}
-                    className="btn btn-sm btn-outline border-base-300 text-base-content/75 rounded-xl px-4 cursor-pointer"
+                    className="btn btn-md btn-outline border-base-300 text-base-content/75 rounded-xl px-5 cursor-pointer font-bold"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={mutation.isPending}
-                    className="btn btn-sm btn-primary text-white text-xs font-bold rounded-xl px-5 cursor-pointer"
+                    className="btn btn-md btn-primary text-white text-xs font-extrabold rounded-xl px-6 cursor-pointer"
                   >
                     {mutation.isPending ? (
                       <>
-                        <Loader2 size={12} className="animate-spin" />
+                        <Loader2 size={14} className="animate-spin" />
                         Saving...
                       </>
                     ) : (
@@ -477,12 +468,12 @@ export default function TechMyProfile() {
                   {
                     label: "Contact Phone",
                     val: dbUser?.phoneNumber || "Not Provided",
-                    icon: <Phone size={13} className="text-base-content/40" />,
+                    icon: <Phone size={16} className="text-primary shrink-0" />,
                   },
                   {
                     label: "Official Email",
                     val: dbUser?.email || "Not Provided",
-                    icon: <Mail size={13} className="text-base-content/40" />,
+                    icon: <Mail size={16} className="text-primary shrink-0" />,
                   },
                   {
                     label: "Assigned Boundary District Office",
@@ -491,31 +482,31 @@ export default function TechMyProfile() {
                           .filter(Boolean)
                           .join(", ") || "Not provided"
                       : "Not provided",
-                    icon: <MapPin size={13} className="text-base-content/40" />,
+                    icon: <MapPin size={16} className="text-primary shrink-0" />,
                   },
                   {
                     label: "Livestock Specialty Area",
                     val: specialty,
-                    icon: <Award size={13} className="text-base-content/40" />,
+                    icon: <Award size={16} className="text-primary shrink-0" />,
                   },
                   {
                     label: "Regional Board License Code",
                     val: license,
-                    icon: <FileText size={13} className="text-base-content/40" />,
+                    icon: <FileText size={16} className="text-primary shrink-0" />,
                   },
                 ].map((item, i) => (
                   <div
                     key={i}
-                    className="p-3 bg-base-200/50 border border-base-300 rounded-xl flex items-center gap-3.5"
+                    className="p-4 bg-base-200/60 border border-base-300 rounded-2xl flex items-center gap-4"
                   >
-                    <div className="p-2 rounded-lg bg-base-100 border border-base-300 shrink-0">
+                    <div className="p-2.5 rounded-xl bg-primary/10 text-primary shrink-0">
                       {item.icon}
                     </div>
                     <div>
-                      <div className="text-[10px] text-base-content/40 uppercase font-bold tracking-wider leading-none">
+                      <div className="text-[11px] text-base-content/50 uppercase font-bold tracking-wider leading-none">
                         {item.label}
                       </div>
-                      <div className="text-xs font-bold text-base-content mt-1">
+                      <div className="text-sm font-extrabold text-base-content mt-1">
                         {item.val}
                       </div>
                     </div>
@@ -526,11 +517,11 @@ export default function TechMyProfile() {
           </div>
 
           {/* Right panel: Credentials lists & Timelines */}
-          <div className="md:col-span-5 space-y-6">
+          <div className="xl:col-span-5 space-y-6">
             {/* Certifications and credentials card */}
-            <div className="bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
-              <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
-                <Award size={13} /> Certifications &amp; Permits
+            <div className="card card-border bg-base-100 rounded-3xl p-6 shadow-sm">
+              <h3 className="font-extrabold text-sm uppercase tracking-wider text-base-content/60 mb-5 flex items-center gap-2">
+                <Award size={16} className="text-primary" /> Certifications &amp; Permits
               </h3>
 
               <div className="space-y-3.5">
@@ -553,23 +544,24 @@ export default function TechMyProfile() {
                 ].map((cert, idx) => (
                   <div
                     key={idx}
-                    className="flex justify-between items-center gap-3 p-2 bg-base-200/50 rounded-xl border border-base-300"
+                    className="flex justify-between items-center gap-3 p-3.5 bg-base-200/60 rounded-2xl border border-base-300"
                   >
                     <div className="min-w-0 flex-1">
                       <h4 className="text-xs font-bold text-base-content truncate leading-tight">
                         {cert.name}
                       </h4>
-                      <p className="text-[9.5px] text-base-content/40 mt-0.5 font-medium leading-none">
+                      <p className="text-[10px] text-base-content/50 mt-1 font-semibold leading-none">
                         {cert.issuer} &bull; Issued {cert.year}
                       </p>
                     </div>
                     <button
+                      type="button"
                       onClick={() =>
                         toast.info(
                           `Reviewing credential certificate verification: ${cert.name}`,
                         )
                       }
-                      className="btn btn-xs btn-ghost border-base-300 hover:bg-base-200 rounded-lg text-[9px] font-black uppercase text-base-content shrink-0 cursor-pointer"
+                      className="btn btn-xs btn-ghost border border-base-300 hover:bg-base-200 rounded-xl text-[10px] font-black uppercase text-base-content shrink-0 cursor-pointer px-3"
                     >
                       Verify
                     </button>
@@ -579,27 +571,27 @@ export default function TechMyProfile() {
             </div>
 
             {/* Recent activity timeline */}
-            <div className="bg-base-100 border border-base-300 rounded-2xl p-5 shadow-2xs">
-              <h3 className="font-extrabold text-xs uppercase tracking-wider text-base-content/50 mb-4 flex items-center gap-1.5">
-                <Activity size={13} /> Recent Operations Telemetry
+            <div className="card card-border bg-base-100 rounded-3xl p-6 shadow-sm">
+              <h3 className="font-extrabold text-sm uppercase tracking-wider text-base-content/60 mb-5 flex items-center gap-2">
+                <Activity size={16} className="text-primary" /> Recent Operations Telemetry
               </h3>
 
-              <div className="pl-4 border-l-2 border-base-300 space-y-4 relative ml-1">
+              <div className="pl-4 border-l-2 border-base-300 space-y-4.5 relative ml-1">
                 {[
                   {
                     act: "Completed AI check for Simmental cow",
                     time: "2 hours ago",
-                    color: "bg-emerald-500",
+                    color: "bg-success",
                   },
                   {
                     act: "Assigned containment protocol zone - Pavia",
                     time: "1 day ago",
-                    color: "bg-rose-500 animate-pulse",
+                    color: "bg-error animate-pulse",
                   },
                   {
                     act: "Submitted monthly breeding ledger audits report",
                     time: "2 days ago",
-                    color: "bg-blue-500",
+                    color: "bg-info",
                   },
                   {
                     act: "Registered calving tracking profile for Farmer Lopez",
@@ -617,7 +609,7 @@ export default function TechMyProfile() {
                       <p className="text-xs font-semibold text-base-content leading-normal">
                         {item.act}
                       </p>
-                      <span className="text-[9px] font-bold text-base-content/40 uppercase tracking-wider mt-0.5 block">
+                      <span className="text-[10px] font-bold text-base-content/50 uppercase tracking-wider mt-0.5 block">
                         {item.time}
                       </span>
                     </div>

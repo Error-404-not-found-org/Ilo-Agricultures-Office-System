@@ -692,7 +692,7 @@ export default function WorkQueue() {
                                     type="button"
                                     disabled={actionDisabled}
                                     onClick={() => openTask(task)}
-                                    className={`btn btn-xs px-4 btn-primary`}
+                                    className="btn btn-xs sm:btn-sm px-4 btn-primary font-bold whitespace-nowrap"
                                   >
                                     {task.allowedAction === "RECORD_SERVICE" && task.workflowType === "AI"
                                       ? (task.actionLabel || "Record Insemination")
@@ -700,7 +700,7 @@ export default function WorkQueue() {
                                         ? getTaskPrimaryActionLabel(task)
                                         : (task.actionLabel ||
                                           (task.workflowType === "AI"
-                                            ? "Record"
+                                            ? "Record Insemination"
                                             : getTaskPrimaryActionLabel(task)))}
                                   </button>
                                 </div>
