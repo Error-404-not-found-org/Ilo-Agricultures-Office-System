@@ -540,6 +540,20 @@ export default function UserDetailScreen() {
             </Text>
           </TouchableOpacity>
 
+          {/* Manage Dispatch Trigger */}
+          {user.role === "technician" && (
+            <TouchableOpacity
+              onPress={() => router.push({ pathname: "/(admin)/manage-dispatch" as any, params: { id: user._id } })}
+              disabled={actionLoading}
+              className="border border-slate-200 dark:border-slate-700 py-3.5 rounded-2xl flex-row justify-center items-center gap-2"
+            >
+              <MaterialCommunityIcons name="map-marker-path" size={18} color={PRIMARY} />
+              <Text className="font-bold text-[15px]" style={{ color: PRIMARY }}>
+                Manage Dispatch
+              </Text>
+            </TouchableOpacity>
+          )}
+
           {/* Soft Delete Account Action */}
           <TouchableOpacity
             onPress={() => setDeleteDialogVisible(true)}

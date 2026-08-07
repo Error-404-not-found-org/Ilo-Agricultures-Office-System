@@ -85,3 +85,21 @@ export const restoreUser = async (api: AxiosInstance, id: string) => {
   const res = await api.post(`/user/${id}/restore`);
   return res.data;
 };
+
+export const updateDispatchProfile = async (
+  api: AxiosInstance,
+  id: string,
+  profileData: {
+    serviceMunicipalities?: {
+      municipalityCode: string;
+      municipalityName: string;
+      localityType: string;
+      provinceCode: string;
+      provinceName: string;
+    }[];
+    serviceCapabilities?: string[];
+  }
+) => {
+  const res = await api.patch(`/admin/technician/${id}/dispatch-profile`, profileData);
+  return res.data;
+};

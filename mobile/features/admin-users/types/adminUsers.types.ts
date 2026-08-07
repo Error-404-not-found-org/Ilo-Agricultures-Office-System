@@ -20,4 +20,16 @@ export interface UserItem {
     province?: string;
   };
   deletedAt?: string;
+  dispatchProfile?: {
+    serviceMunicipalities?: {
+      municipalityCode: string;
+      municipalityName: string;
+      localityType: string;
+      provinceCode: string;
+      provinceName: string;
+    }[];
+    serviceCapabilities?: string[];
+    availabilityStatus?: string;
+    acceptsNewRequests?: boolean;
+  };
 }
