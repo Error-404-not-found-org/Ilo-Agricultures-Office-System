@@ -318,7 +318,7 @@ export default function TechnicianMyWorkPanel({
                     >
                       {t.farmer?.name || t.farmerId?.name || "Unknown Farmer"}
                     </Text>
-                    {(t.schedule?.date || t.dueDate) && (
+                    {t.workflowType === "Health" || t.workflowType === "AI" ? (
                       <Text
                         style={{
                           fontFamily: "Outfit_500Medium",
@@ -327,19 +327,39 @@ export default function TechnicianMyWorkPanel({
                           marginTop: 2,
                         }}
                       >
-                        {t.workflowType === "AI" ? "Scheduled" : "Due Date"}:{" "}
-                        {new Date(
-                          t.schedule?.date || t.dueDate,
-                        ).toLocaleDateString("en-US", {
+                        {t.schedule?.date ? (
+                          <>
+                            Scheduled:{" "}
+                            {new Date(t.schedule.date).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                            {t.schedule.visitPeriod
+                              ? ` · ${String(t.schedule.visitPeriod).replace(/^./, (value: string) => value.toUpperCase())}`
+                              : " · Period not recorded"}
+                          </>
+                        ) : (
+                          "Claimed · Needs scheduling"
+                        )}
+                      </Text>
+                    ) : t.dueDate ? (
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_500Medium",
+                          color: colors.textSecondary,
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        Due Date:{" "}
+                        {new Date(t.dueDate).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
                           year: "numeric",
                         })}
-                        {t.schedule?.visitPeriod
-                          ? ` · ${String(t.schedule.visitPeriod).replace(/^./, (value: string) => value.toUpperCase())}`
-                          : ""}
                       </Text>
-                    )}
+                    ) : null}
                     {t.animal ? (
                       <Text
                         style={{
@@ -389,7 +409,17 @@ export default function TechnicianMyWorkPanel({
                           marginLeft: 6,
                         }}
                       >
-                        {t.actionLabel || "View Details"}
+                        {t.workflowType === "Health" || t.type === "health"
+                          ? (String(t.status || "").toLowerCase() === "pending"
+                            ? "Claim Request"
+                            : ["approved", "assigned", "triaged"].includes(String(t.status || "").toLowerCase())
+                              ? "Schedule Visit"
+                              : String(t.status || "").toLowerCase() === "scheduled"
+                                ? "Record Health Assistance"
+                                : ["in-progress", "in_progress"].includes(String(t.status || "").toLowerCase())
+                                  ? "Continue Service"
+                                  : "View Record")
+                          : (t.actionLabel || "View Details")}
                       </Text>
                     </View>
                   </View>

@@ -93,14 +93,22 @@ export function RequestListCard({
       : null
     : isPregnancyCheck
     ? "Open task"
-    : normalizedStatus === "pending"
-      ? "Claim"
-      : ["approved", "assigned", "triaged"].includes(normalizedStatus)
-        ? "Schedule"
-        : normalizedStatus === "scheduled"
-          ? "Start"
-          : isHealth
-            ? "Resolve"
+    : isHealth
+      ? normalizedStatus === "pending"
+        ? "Claim Request"
+        : ["approved", "assigned", "triaged"].includes(normalizedStatus)
+          ? "Schedule Visit"
+          : normalizedStatus === "scheduled"
+            ? "Record Health Assistance"
+            : ["in-progress", "in_progress"].includes(normalizedStatus)
+              ? "Continue Service"
+              : "View Record"
+      : normalizedStatus === "pending"
+        ? "Claim"
+        : ["approved", "assigned", "triaged"].includes(normalizedStatus)
+          ? "Schedule"
+          : normalizedStatus === "scheduled"
+            ? "Start"
             : "Complete";
 
   const displayDate =

@@ -10,6 +10,7 @@ export interface UpdateStatusPayload {
   sireCode?: string;
   estrus?: string;
   scheduledDate?: string;
+  visitPeriod?: string;
   earlyStartConfirmed?: boolean;
 }
 

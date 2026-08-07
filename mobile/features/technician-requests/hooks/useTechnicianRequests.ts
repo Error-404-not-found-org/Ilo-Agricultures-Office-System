@@ -288,7 +288,13 @@ export function useTechnicianRequests() {
     requestId: string,
     type: "health" | "ai" | "breeding_verification"
   ) => {
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<void>(async (resolve, reject) => {
+      const connectivity = await NetInfo.fetch();
+      if (!connectivity.isConnected || !connectivity.isInternetReachable) {
+        const err = new Error("Claiming requests requires an internet connection.");
+        reject(err);
+        return;
+      }
       claimMutation.mutate(
         {
           type,
@@ -298,7 +304,11 @@ export function useTechnicianRequests() {
           onSuccess: () => {
             resolve();
           },
-          onError: (err) => {
+          onError: (err: any) => {
+            if (err?.response?.status === 409) {
+              toast.error("This request was claimed by another technician. Refreshing your work list.");
+              invalidateTechnicianWorkflow();
+            }
             reject(err);
           },
         }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import NetInfo from "@react-native-community/netinfo";
 import {
   View,
   TouchableOpacity,
@@ -54,6 +55,8 @@ import {
   getBreedingObservationSignLabel,
   isBreedingObservationAwaitingReview,
 } from "@/features/breeding/utils/breedingObservationPresentation";
+import { formatLocalCalendarDate } from "@/features/technician-requests/utils/aiWorkflow";
+import type { VisitPeriod } from "@/features/technician-requests/types/technicianRequests.types";
 
 function SkeletonBlock({
   width = "100%",
@@ -185,7 +188,8 @@ export default function RequestDetailsScreen() {
   // Action input states
   const [scheduledDate, setScheduledDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [dateChoice, setDateChoice] = useState<"today" | "tomorrow" | "custom">("today");
+  const [visitPeriod, setVisitPeriod] = useState<VisitPeriod | null>(null);
   const [note, setNote] = useState("");
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
@@ -219,8 +223,10 @@ export default function RequestDetailsScreen() {
       // Prepopulate scheduling or details
       if (requestData.scheduledDate) {
         setScheduledDate(new Date(requestData.scheduledDate));
-      } else if (requestData.preferredDate) {
-        setScheduledDate(new Date(requestData.preferredDate));
+      }
+
+      if (requestData.visitPeriod) {
+        setVisitPeriod(requestData.visitPeriod as VisitPeriod);
       }
 
       if (requestData.animalId?._id) {
@@ -254,6 +260,11 @@ export default function RequestDetailsScreen() {
 
   const handleUpdateStatus = async (nextStatus: string, payload: any) => {
     try {
+      const connectivity = await NetInfo.fetch();
+      if (!connectivity.isConnected || !connectivity.isInternetReachable) {
+        toast.error("Scheduling requires an internet connection.");
+        return false;
+      }
       setUpdating(true);
       setActionNotice(null);
       const result = await updateRequestStatus(
@@ -272,6 +283,12 @@ export default function RequestDetailsScreen() {
       void fetchRequestDetails();
       return true;
     } catch (err: any) {
+      if (err.response?.status === 409) {
+        toast.error("This request was claimed by another technician. Refreshing your work list.");
+        void queryClient.invalidateQueries();
+        router.back();
+        return false;
+      }
       const message =
         err.response?.data?.message ||
         err.message ||
@@ -381,9 +398,14 @@ export default function RequestDetailsScreen() {
       status === "assigned" ||
       status === "triaged"
     ) {
+      if (!visitPeriod) {
+        toast.error("Please select Morning or Afternoon for the visit.");
+        return;
+      }
       // Schedule Visit
       await handleUpdateStatus("scheduled", {
-        scheduledDate: scheduledDate.toISOString(),
+        scheduledDate: formatLocalCalendarDate(scheduledDate),
+        visitPeriod,
         technicianNote: "Scheduled visit.",
       });
     } else if (status === "scheduled" || status === "in-progress" || status === "in_progress") {
@@ -415,6 +437,8 @@ export default function RequestDetailsScreen() {
             ...(request.taskId || taskId ? { taskId: request.taskId?._id || request.taskId || taskId } : {}),
             farmerId: request.farmerId?._id || request.farmerId,
             animalId: request.animalId?._id || request.animalId,
+            scheduleDate: request.scheduledDate || undefined,
+            visitPeriod: request.visitPeriod || undefined,
           },
         });
       }
@@ -448,6 +472,12 @@ export default function RequestDetailsScreen() {
       setRescheduleMode(false);
       fetchRequestDetails();
     } catch (err: any) {
+      if (err.response?.status === 409) {
+        toast.error("This request was claimed by another technician. Refreshing your work list.");
+        void queryClient.invalidateQueries();
+        router.back();
+        return;
+      }
       toast.error(
         err.response?.data?.message ||
           err.message ||
@@ -459,7 +489,16 @@ export default function RequestDetailsScreen() {
   };
 
   const handleRescheduleConfirm = async () => {
+    if (!visitPeriod) {
+      toast.error("Please select Morning or Afternoon for the rescheduled visit.");
+      return;
+    }
     try {
+      const connectivity = await NetInfo.fetch();
+      if (!connectivity.isConnected || !connectivity.isInternetReachable) {
+        toast.error("Scheduling requires an internet connection.");
+        return;
+      }
       setCancelResponding(true);
       // Step 1: Reject the cancellation request with a reschedule note
       await respondToCancellationRequest(
@@ -479,7 +518,8 @@ export default function RequestDetailsScreen() {
         String(id),
         {
           status: "scheduled",
-          scheduledDate: scheduledDate.toISOString(),
+          scheduledDate: formatLocalCalendarDate(scheduledDate),
+          visitPeriod,
           technicianNote: note || "Rescheduled by technician.",
         },
       );
@@ -489,6 +529,12 @@ export default function RequestDetailsScreen() {
       setNote("");
       fetchRequestDetails();
     } catch (err: any) {
+      if (err.response?.status === 409) {
+        toast.error("This request was claimed by another technician. Refreshing your work list.");
+        void queryClient.invalidateQueries();
+        router.back();
+        return;
+      }
       toast.error(
         err.response?.data?.message ||
           err.message ||
@@ -767,28 +813,30 @@ export default function RequestDetailsScreen() {
                 </Text>
               </View>
             )}
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                gap: 16,
-              }}
-            >
-              <Text style={{ color: colors.textMuted }} variant="medium">
-                Preferred Date
-              </Text>
-              <Text
-                numberOfLines={2}
+            {!isAI && request.preferredDate && (
+              <View
                 style={{
-                  color: colors.textPrimary,
-                  flex: 1,
-                  textAlign: "right",
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  gap: 16,
                 }}
-                variant="bold"
               >
-                {formatDate(request.preferredDate)}
-              </Text>
-            </View>
+                <Text style={{ color: colors.textMuted }} variant="medium">
+                  Preferred Date (Legacy)
+                </Text>
+                <Text
+                  numberOfLines={2}
+                  style={{
+                    color: colors.textPrimary,
+                    flex: 1,
+                    textAlign: "right",
+                  }}
+                  variant="bold"
+                >
+                  {formatDate(request.preferredDate)}
+                </Text>
+              </View>
+            )}
             <View
               style={{
                 flexDirection: "row",
@@ -809,7 +857,7 @@ export default function RequestDetailsScreen() {
                 variant="bold"
               >
                 {request.scheduledDate
-                  ? formatDate(request.scheduledDate)
+                  ? new Date(request.scheduledDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + (request.visitPeriod ? ` · ${String(request.visitPeriod).replace(/^./, (c: string) => c.toUpperCase())}` : "")
                   : "Not Scheduled Yet"}
               </Text>
             </View>
@@ -1646,58 +1694,76 @@ export default function RequestDetailsScreen() {
                 ) : (
                   // Reschedule mode within cancellation review
                   <View style={{ gap: 12 }}>
-                    <Text
-                      style={{ color: colors.textMuted }}
-                      variant="bold"
-                      size={12}
-                    >
-                      SELECT NEW VISIT SCHEDULE
+                    <Text style={{ color: colors.textPrimary, marginBottom: 4 }} variant="bold">
+                      Visit date
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {(["today", "tomorrow", "custom"] as const).map((choice) => (
+                        <TouchableOpacity
+                          key={choice}
+                          onPress={() => {
+                            if (choice === "custom") {
+                              setDateChoice("custom");
+                              setShowDatePicker(true);
+                            } else {
+                              setDateChoice(choice);
+                              const d = new Date();
+                              d.setHours(0,0,0,0);
+                              if (choice === "tomorrow") d.setDate(d.getDate() + 1);
+                              setScheduledDate(d);
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            minHeight: 44,
+                            borderRadius: 12,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderWidth: 1,
+                            borderColor: dateChoice === choice ? colors.primary : colors.border,
+                            backgroundColor: dateChoice === choice ? (isDark ? "rgba(16,185,129,0.15)" : colors.tint) : colors.card,
+                          }}
+                        >
+                          <Text style={{ color: dateChoice === choice ? colors.primary : colors.textSecondary, fontSize: 12 }} variant="bold">
+                            {choice === "today" ? "Today" : choice === "tomorrow" ? "Tomorrow" : "Custom"}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <Calendar size={17} color={colors.primary} />
+                      <Text style={{ color: colors.textPrimary }} variant="bold">
+                        {scheduledDate.toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })}
+                      </Text>
+                    </View>
+
+                    <Text style={{ color: colors.textPrimary, marginBottom: 4 }} variant="bold">
+                      Visit period
                     </Text>
                     <View style={{ flexDirection: "row", gap: 10 }}>
-                      <TouchableOpacity
-                        onPress={() => setShowDatePicker(true)}
-                        style={{
-                          flex: 1,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                          backgroundColor: colors.border,
-                          padding: 12,
-                          borderRadius: 12,
-                        }}
-                      >
-                        <Calendar size={16} color={colors.textPrimary} />
-                        <Text
-                          style={{ color: colors.textPrimary }}
-                          variant="bold"
+                      {(["morning", "afternoon"] as const).map((period) => (
+                        <TouchableOpacity
+                          key={period}
+                          onPress={() => setVisitPeriod(period)}
+                          style={{
+                            flex: 1,
+                            minHeight: 48,
+                            borderRadius: 12,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 7,
+                            borderWidth: 1,
+                            borderColor: visitPeriod === period ? colors.primary : colors.border,
+                            backgroundColor: visitPeriod === period ? (isDark ? "rgba(16,185,129,0.15)" : colors.tint) : colors.card,
+                          }}
                         >
-                          {scheduledDate.toLocaleDateString()}
-                        </Text>
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => setShowTimePicker(true)}
-                        style={{
-                          flex: 1,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                          backgroundColor: colors.border,
-                          padding: 12,
-                          borderRadius: 12,
-                        }}
-                      >
-                        <Clock size={16} color={colors.textPrimary} />
-                        <Text
-                          style={{ color: colors.textPrimary }}
-                          variant="bold"
-                        >
-                          {scheduledDate.toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </Text>
-                      </TouchableOpacity>
+                          <Clock size={16} color={colors.primary} />
+                          <Text style={{ color: colors.textPrimary, textTransform: "capitalize" }} variant="bold">
+                            {period}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
 
                     <Text
@@ -1807,80 +1873,76 @@ export default function RequestDetailsScreen() {
                   request.status?.toLowerCase() === "assigned" ||
                   request.status?.toLowerCase() === "triaged") && (
                   <View style={{ gap: 10, marginBottom: 16 }}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
-                    >
-                      <Text
-                        style={{ color: colors.textMuted }}
-                        variant="bold"
-                        size={12}
-                      >
-                        SELECT VISIT SCHEDULE
-                      </Text>
-                      {request.preferredDate && (
+                    <Text style={{ color: colors.textPrimary, marginBottom: 4 }} variant="bold">
+                      Visit date
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 8 }}>
+                      {(["today", "tomorrow", "custom"] as const).map((choice) => (
                         <TouchableOpacity
-                          onPress={() =>
-                            setScheduledDate(new Date(request.preferredDate))
-                          }
+                          key={choice}
+                          onPress={() => {
+                            if (choice === "custom") {
+                              setDateChoice("custom");
+                              setShowDatePicker(true);
+                            } else {
+                              setDateChoice(choice);
+                              const d = new Date();
+                              d.setHours(0,0,0,0);
+                              if (choice === "tomorrow") d.setDate(d.getDate() + 1);
+                              setScheduledDate(d);
+                            }
+                          }}
+                          style={{
+                            flex: 1,
+                            minHeight: 44,
+                            borderRadius: 12,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderWidth: 1,
+                            borderColor: dateChoice === choice ? colors.primary : colors.border,
+                            backgroundColor: dateChoice === choice ? (isDark ? "rgba(16,185,129,0.15)" : colors.tint) : colors.card,
+                          }}
                         >
-                          <Text
-                            style={{ color: colors.primary, fontSize: 11 }}
-                            variant="semibold"
-                          >
-                            Farmer Prefers: {formatDate(request.preferredDate)}
+                          <Text style={{ color: dateChoice === choice ? colors.primary : colors.textSecondary, fontSize: 12 }} variant="bold">
+                            {choice === "today" ? "Today" : choice === "tomorrow" ? "Tomorrow" : "Custom"}
                           </Text>
                         </TouchableOpacity>
-                      )}
+                      ))}
                     </View>
-                    <View style={{ flexDirection: "row", gap: 10 }}>
-                      <TouchableOpacity
-                        onPress={() => setShowDatePicker(true)}
-                        style={{
-                          flex: 1,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                          backgroundColor: colors.border,
-                          padding: 12,
-                          borderRadius: 12,
-                        }}
-                      >
-                        <Calendar size={16} color={colors.textPrimary} />
-                        <Text
-                          style={{ color: colors.textPrimary }}
-                          variant="bold"
-                        >
-                          {scheduledDate.toLocaleDateString()}
-                        </Text>
-                      </TouchableOpacity>
+                    <View style={{ marginTop: 4, flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <Calendar size={17} color={colors.primary} />
+                      <Text style={{ color: colors.textPrimary }} variant="bold">
+                        {scheduledDate.toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })}
+                      </Text>
+                    </View>
 
-                      <TouchableOpacity
-                        onPress={() => setShowTimePicker(true)}
-                        style={{
-                          flex: 1,
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 8,
-                          backgroundColor: colors.border,
-                          padding: 12,
-                          borderRadius: 12,
-                        }}
-                      >
-                        <Clock size={16} color={colors.textPrimary} />
-                        <Text
-                          style={{ color: colors.textPrimary }}
-                          variant="bold"
+                    <Text style={{ color: colors.textPrimary, marginBottom: 4 }} variant="bold">
+                      Visit period
+                    </Text>
+                    <View style={{ flexDirection: "row", gap: 10 }}>
+                      {(["morning", "afternoon"] as const).map((period) => (
+                        <TouchableOpacity
+                          key={period}
+                          onPress={() => setVisitPeriod(period)}
+                          style={{
+                            flex: 1,
+                            minHeight: 48,
+                            borderRadius: 12,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 7,
+                            borderWidth: 1,
+                            borderColor: visitPeriod === period ? colors.primary : colors.border,
+                            backgroundColor: visitPeriod === period ? (isDark ? "rgba(16,185,129,0.15)" : colors.tint) : colors.card,
+                          }}
                         >
-                          {scheduledDate.toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </Text>
-                      </TouchableOpacity>
+                          <Clock size={16} color={colors.primary} />
+                          <Text style={{ color: colors.textPrimary, textTransform: "capitalize" }} variant="bold">
+                            {period}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
                     </View>
                   </View>
                 )}
@@ -2150,31 +2212,12 @@ export default function RequestDetailsScreen() {
           value={scheduledDate}
           mode="date"
           display="default"
+          minimumDate={new Date(new Date().setHours(0,0,0,0))}
           onChange={(event: DateTimePickerEvent, date?: Date) => {
             setShowDatePicker(false);
             if (date) {
-              const newDate = new Date(scheduledDate);
-              newDate.setFullYear(
-                date.getFullYear(),
-                date.getMonth(),
-                date.getDate(),
-              );
-              setScheduledDate(newDate);
-            }
-          }}
-        />
-      )}
-
-      {showTimePicker && (
-        <DateTimePicker
-          value={scheduledDate}
-          mode="time"
-          display="default"
-          onChange={(event: DateTimePickerEvent, date?: Date) => {
-            setShowTimePicker(false);
-            if (date) {
-              const newDate = new Date(scheduledDate);
-              newDate.setHours(date.getHours(), date.getMinutes());
+              const newDate = new Date(date);
+              newDate.setHours(0,0,0,0);
               setScheduledDate(newDate);
             }
           }}
