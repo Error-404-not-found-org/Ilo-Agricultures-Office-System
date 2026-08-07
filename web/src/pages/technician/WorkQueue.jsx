@@ -29,6 +29,13 @@ import {
 import {
   getTaskPrimaryActionLabel,
 } from "../../utils/taskNavigation";
+import {
+  MY_WORK_FILTERS,
+  getServicePresentation,
+  normalizeServiceType,
+  normalizeWorkflowStatus,
+  getWorkflowStatusPresentation,
+} from "../../utils/requestWorkPresentation";
 
 // Helper to convert strings to Title Case
 const toTitleCase = (str) => {
@@ -42,107 +49,11 @@ const toTitleCase = (str) => {
 
 const isMongoId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
 
-const getStatusBadgeClass = (status, overdue) => {
-  if (overdue) {
-    return "badge-error border-error/20 bg-error/10 text-error";
-  }
-  const s = String(status || "")
-    .toLowerCase()
-    .replaceAll("_", "-")
-    .replaceAll(" ", "-");
-  switch (s) {
-    case "scheduled":
-      return "badge-info border-info/20 bg-info/10 text-info";
-    case "in-progress":
-      return "badge-primary border-primary/20 bg-primary/10 text-primary";
-    case "pending":
-    case "triaged":
-    case "unassigned":
-      return "badge-warning border-warning/20 bg-warning/10 text-warning";
-    case "approved":
-    case "assigned":
-      return "badge-accent border-accent/20 bg-accent/10 text-accent";
-    case "completed":
-    case "done":
-    case "resolved":
-      return "badge-success border-success/20 bg-success/10 text-success";
-    case "declined":
-    case "cancelled":
-    case "rejected":
-      return "badge-error border-error/20 bg-error/10 text-error";
-    default:
-      return "badge-neutral border-base-300 bg-base-200 text-base-content/70";
-  }
-};
 
-const localDateKey = (value) => {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
 
-const formatWorkQueueSchedule = (task = {}) => {
-  const scheduleObj = task.schedule || task.raw?.schedule || {};
-  const dateValue =
-    scheduleObj.date ||
-    task.scheduledDate ||
-    task.displayDate ||
-    task.preferredDate ||
-    task.dueDate ||
-    task.raw?.scheduledDate ||
-    task.raw?.dueDate;
 
-  if (!dateValue) return { dateStr: "Not scheduled", periodStr: "" };
 
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) return { dateStr: "Not scheduled", periodStr: "" };
 
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const targetKey = localDateKey(date);
-  let dateStr;
-  if (targetKey === localDateKey(today)) {
-    dateStr = "Today";
-  } else if (targetKey === localDateKey(tomorrow)) {
-    dateStr = "Tomorrow";
-  } else if (targetKey === localDateKey(yesterday)) {
-    dateStr = "Yesterday";
-  } else {
-    dateStr = date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  }
-
-  const rawPeriod =
-    scheduleObj.visitPeriod ||
-    task.visitPeriod ||
-    task.raw?.visitPeriod ||
-    task.raw?.schedule?.visitPeriod ||
-    "";
-
-  let periodStr = "";
-  if (rawPeriod) {
-    const lower = String(rawPeriod).toLowerCase();
-    if (lower === "morning" || lower === "am") {
-      periodStr = "Morning";
-    } else if (lower === "afternoon" || lower === "pm") {
-      periodStr = "Afternoon";
-    } else {
-      periodStr = `${toTitleCase(rawPeriod)}`;
-    }
-  }
-
-  return { dateStr, periodStr };
-};
 
 const formatCanonicalAISchedule = (schedule = {}) => {
   if (!schedule.date) return "Not scheduled";
@@ -193,13 +104,58 @@ export default function WorkQueue() {
   const [typeFilter, setTypeFilter] = useState(
     () => searchParams.get("typeFilter") || "all",
   );
-  const [statusFilter, setStatusFilter] = useState(
-    () => searchParams.get("statusFilter") || "all",
+  const [workStateFilter, setWorkStateFilter] = useState(
+    () => searchParams.get("workStateFilter") || "active",
   );
   const [selectedTaskWrapper, setSelectedTaskWrapper] = useState(null);
   const [selectedAIRecord, setSelectedAIRecord] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
+  const formatRelativeSchedule = (value) => {
+    if (!value) return { date: "No date", time: "—" };
+    const targetDate = new Date(value);
+    if (Number.isNaN(targetDate.getTime()))
+      return { date: "No date", time: "—" };
+
+    const today = new Date();
+
+    // Calculate difference in days (midnight to midnight)
+    const tDate = new Date(
+      targetDate.getFullYear(),
+      targetDate.getMonth(),
+      targetDate.getDate(),
+    );
+    const currDate = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+    const diffTime = tDate - currDate;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    let datePart;
+    if (diffDays === 0) {
+      datePart = "Today";
+    } else if (diffDays === 1) {
+      datePart = "Tomorrow";
+    } else if (diffDays === -1) {
+      datePart = "Yesterday";
+    } else if (diffDays > 1 && diffDays <= 7) {
+      datePart = `In ${diffDays} days`;
+    } else {
+      datePart = targetDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+    }
+
+    const timePart = targetDate.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+
+    return { date: datePart, time: timePart };
+  };
 
   const query = useQuery({
     queryKey: ["technician", "work-queue", "mine"],
@@ -262,41 +218,21 @@ export default function WorkQueue() {
         .toLowerCase();
 
       let matchesStatus = true;
-      if (statusFilter === "due_today") {
-        matchesStatus = task.isReadyToday || task.overdue;
-      } else if (statusFilter === "upcoming") {
-        matchesStatus =
-          !task.isReadyToday &&
-          !task.overdue &&
-          new Date(task.displayDate) > new Date();
-      } else if (statusFilter === "completed") {
-        matchesStatus = ["done", "resolved", "Completed"].includes(task.status);
-      } else if (statusFilter === "all") {
-        matchesStatus = !["done", "resolved", "Completed"].includes(
-          task.status,
-        );
+      const isCompleted = ["done", "resolved", "completed"].includes(String(task.status).toLowerCase());
+      if (workStateFilter === "active") {
+        matchesStatus = !isCompleted;
+      } else if (workStateFilter === "completed") {
+        matchesStatus = isCompleted;
       }
 
       let matchesType = true;
       if (typeFilter !== "all") {
-        if (typeFilter === "AI" && task.type !== "insemination")
-          matchesType = false;
-        if (typeFilter === "Health" && task.type !== "health")
-          matchesType = false;
-        if (typeFilter === "PD" && task.raw?.taskType !== "PD")
-          matchesType = false;
-        if (
-          typeFilter === "CD" &&
-          !["CD", "Calving"].includes(task.raw?.taskType)
-        )
-          matchesType = false;
-        if (typeFilter === "FollowUp" && task.raw?.taskType !== "Follow-up")
-          matchesType = false;
+        matchesType = normalizeServiceType(task) === typeFilter;
       }
 
       return (!q || haystack.includes(q)) && matchesType && matchesStatus;
     });
-  }, [query.data, search, statusFilter, typeFilter]);
+  }, [query.data, search, workStateFilter, typeFilter]);
 
   const paginatedTasks = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
@@ -419,27 +355,19 @@ export default function WorkQueue() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="join w-full sm:w-auto overflow-x-auto">
                 {[
-                  { id: "all", label: "All" },
-                  { id: "due_today", label: "Today" },
-                  { id: "upcoming", label: "Upcoming" },
+                  { id: "active", label: "Active" },
                   { id: "completed", label: "Completed" },
-                  { id: "on_hold", label: "On Hold" },
                 ].map((status) => (
                   <button
                     type="button"
                     key={status.id}
                     onClick={() => {
-                      setStatusFilter(status.id);
+                      setWorkStateFilter(status.id);
                       setCurrentPage(1);
                     }}
-                    className={`join-item btn btn-sm px-4 whitespace-nowrap ${statusFilter === status.id ? "btn-neutral" : "bg-base-100 border-base-200 hover:bg-base-200"}`}
+                    className={`join-item btn btn-sm px-4 whitespace-nowrap ${workStateFilter === status.id ? "btn-neutral" : "bg-base-100 border-base-200 hover:bg-base-200"}`}
                   >
                     {status.label}
-                    {status.id === "due_today" && dueTodayCounts > 0 && (
-                      <span className="badge badge-sm badge-error badge-outline ml-1">
-                        {dueTodayCounts}
-                      </span>
-                    )}
                   </button>
                 ))}
               </div>
@@ -453,12 +381,11 @@ export default function WorkQueue() {
                   }}
                   className="select select-sm select-bordered w-full sm:w-36 bg-base-100 border-base-200 font-medium"
                 >
-                  <option value="all">All Services</option>
-                  <option value="AI">AI Service</option>
-                  <option value="PD">Pregnancy</option>
-                  <option value="Health">Health</option>
-                  <option value="CD">Calving</option>
-                  <option value="FollowUp">Follow-up</option>
+                  {MY_WORK_FILTERS.map((filter) => (
+                    <option key={filter.value} value={filter.value}>
+                      {filter.value === "all" ? "All Services" : filter.label}
+                    </option>
+                  ))}
                 </select>
 
                 <div className="relative w-full sm:w-64">
@@ -525,16 +452,16 @@ export default function WorkQueue() {
                 />
                 <h2 className="font-bold">No tasks found</h2>
                 <p className="mt-1 text-sm text-base-content/60">
-                  {search || typeFilter !== "all" || statusFilter !== "all"
+                  {search || typeFilter !== "all" || workStateFilter !== "all"
                     ? "Try adjusting your filters to see more tasks."
                     : "You're all caught up! No tasks assigned to you right now."}
                 </p>
-                {(search || typeFilter !== "all" || statusFilter !== "all") && (
+                {(search || typeFilter !== "all" || workStateFilter !== "all") && (
                   <button
                     onClick={() => {
                       setSearch("");
                       setTypeFilter("all");
-                      setStatusFilter("all");
+                      setWorkStateFilter("all");
                       setCurrentPage(1);
                     }}
                     className="btn btn-sm mt-4"
@@ -560,11 +487,12 @@ export default function WorkQueue() {
                     </thead>
                     <tbody className="divide-y divide-base-300">
                       {paginatedTasks.map((task) => {
-                        const complete = [
-                          "done",
-                          "resolved",
-                          "Completed",
-                        ].includes(task.status);
+                        const workflowStatus = normalizeWorkflowStatus(task);
+                        const statusPresentation = getWorkflowStatusPresentation(workflowStatus);
+                        const serviceType = normalizeServiceType(task);
+                        const servicePresentation = getServicePresentation(serviceType);
+                        const complete = workflowStatus === "completed";
+
                         const priority = task.urgent ? 1 : 0;
                         const readiness = getTaskReadiness(task.raw || task);
                         const actionDisabled =
@@ -587,9 +515,7 @@ export default function WorkQueue() {
                             <td className="p-3.5 pl-6 align-top">
                               <div className="flex flex-col gap-1.5 mt-0.5">
                                 <span className="font-bold text-xs text-base-content leading-tight">
-                                  {task.serviceType ||
-                                    task.taskType ||
-                                    "Service"}
+                                  {servicePresentation.label}
                                 </span>
                                 {priority === 1 && (
                                   <span className="badge badge-error badge-xs badge-outline font-bold uppercase text-[9px]">
@@ -630,28 +556,29 @@ export default function WorkQueue() {
 
                             {/* 3. SCHEDULE */}
                             <td className="p-3.5 align-top">
-                              {task.workflowType === "AI" && task.schedule?.date ? (
-                                <span className="block font-bold text-xs text-base-content">
+                              {task.workflowType === "AI" ? (
+                                <span
+                                  className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
+                                >
                                   {formatCanonicalAISchedule(task.schedule)}
                                 </span>
                               ) : (
                                 (() => {
-                                  const { dateStr, periodStr } =
-                                    formatWorkQueueSchedule(task);
-                                  return (
-                                    <div>
-                                      <span
-                                        className={`block font-bold text-xs ${task.overdue ? "text-error" : "text-base-content"}`}
-                                      >
-                                        {dateStr}
-                                      </span>
-                                      {periodStr && (
-                                        <span className="text-[11px] font-semibold text-primary block mt-0.5">
-                                          {periodStr}
-                                        </span>
-                                      )}
-                                    </div>
-                                  );
+                                const sched = formatRelativeSchedule(
+                                  task.displayDate,
+                                );
+                                return (
+                                  <div>
+                                    <span
+                                      className={`block font-bold text-xs ${workflowStatus === "overdue" ? "text-error" : "text-base-content"}`}
+                                    >
+                                      {sched.date}
+                                    </span>
+                                    <span className="text-[11px] text-base-content/60 block mt-0.5 font-medium">
+                                      {sched.time}
+                                    </span>
+                                  </div>
+                                );
                                 })()
                               )}
                             </td>
@@ -659,9 +586,9 @@ export default function WorkQueue() {
                             {/* 4. STATUS */}
                             <td className="p-3.5 align-top">
                               <span
-                                className={`badge badge-sm font-bold uppercase tracking-wider text-[9px] px-2.5 py-1 ${getStatusBadgeClass(complete ? "completed" : (task.displayStatus || task.status), task.overdue && !complete)}`}
+                                className={`badge badge-sm font-bold uppercase tracking-wider text-[9px] border ${statusPresentation.badgeClass}`}
                               >
-                                {complete ? "Completed" : (task.displayStatus || task.status || "Pending")}
+                                {statusPresentation.label}
                               </span>
                             </td>
 

@@ -176,24 +176,13 @@ const AdminBottomNavigator = ({
             onPress={() => navigation.navigate("admin.users")}
             isDark={isDark}
           />
-
-          <View style={styles.fabSlot}>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={() => setModalVisible(true)}
-              style={[
-                styles.fab,
-                {
-                  backgroundColor: COLORS.active,
-                  borderColor: isDark ? COLORS.darkBackground : "#FFFFFF",
-                  shadowColor: COLORS.active,
-                },
-              ]}
-            >
-              <Plus color="#fff" size={28} strokeWidth={3} />
-            </TouchableOpacity>
-          </View>
-
+          <TabItem
+            icon={MapPin}
+            label="Insights"
+            isFocused={isFocused("admin.insights")}
+            onPress={() => navigation.navigate("admin.insights")}
+            isDark={isDark}
+          />
           <TabItem
             icon={Dog}
             label="Animals"

@@ -99,7 +99,7 @@ export default function TechnicianDashboardScreen() {
             alignSelf: "center",
           }}
         >
-          <TechnicianStatsCard stats={stats} agendaItems={agendaItems} />
+          <TechnicianStatsCard loading={loading} agendaItems={agendaItems} />
 
           <TechnicianQuickActions />
 

@@ -17,6 +17,12 @@ export const formatLocalTime = (date: Date) => {
   return `${hours}:${minutes}`;
 };
 
+export const getStaticDefaultTime = (): Date => {
+  const t = new Date();
+  t.setHours(8, 0, 0, 0); // Static 8:00 AM baseline
+  return t;
+};
+
 export const isCanonicalWorkflowId = (value: unknown): value is string =>
   typeof value === "string" && /^[a-f\d]{24}$/i.test(value);
 
@@ -61,6 +67,7 @@ export const getClaimScheduleErrorMessage = (error: any) => {
 };
 
 export interface AIRecordingInput {
+  estrus: string;
   sireBreed: string;
   sireCode: string;
   semenDosesUsed: string;
@@ -70,6 +77,9 @@ export interface AIRecordingInput {
 }
 
 export const validateAIRecording = (input: AIRecordingInput) => {
+  if (!["Natural", "Synchronized", "Induced"].includes(input.estrus)) {
+    return "Select the estrus type observed for this insemination.";
+  }
   const sireBreed = input.sireBreed.trim();
   const sireCode = input.sireCode.trim();
   const technicianNote = input.technicianNote.trim();

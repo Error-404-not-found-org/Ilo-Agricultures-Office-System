@@ -23,6 +23,7 @@ import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
 import { RequestListCard } from "../components/RequestListCard";
 import { AIRequestModal } from "../components/AIRequestModal";
 import TechnicianMyWorkPanel from "../components/TechnicianMyWorkPanel";
+import { RequestWorkFilterChips } from "../components/RequestWorkBadge";
 import type {
   RequestItem,
   VisitPeriod,
@@ -32,9 +33,9 @@ import {
   isCanonicalWorkflowId,
 } from "../utils/aiWorkflow";
 import { technicianKeys } from "@/lib/queryKeys";
+import { OPEN_REQUEST_FILTERS } from "../utils/requestWorkPresentation";
 import {
   SearchBar,
-  FilterChips,
   AsyncState,
   Pagination,
   SelectDropdown,
@@ -79,6 +80,8 @@ export default function TechnicianRequestsScreen({
     setBarangay,
     requests,
     pagination,
+    openRequestCounts,
+    areOpenRequestCountsLoading,
     isLoading,
     isRefetching,
     handleRefresh,
@@ -102,14 +105,6 @@ export default function TechnicianRequestsScreen({
       normalizedSection === "myWork" ? "myWork" : "openRequests",
     );
   }, [normalizedSection]);
-
-  // Filter option arrays
-  const typeOptions = [
-    { label: "All", value: "all" },
-    { label: "AI Service", value: "ai" },
-    { label: "Health", value: "health" },
-    { label: "Pregnancy Check", value: "breeding_verification" },
-  ];
 
   const sortOptions = [
     { label: "Newest First", value: "newest" },
@@ -359,7 +354,15 @@ export default function TechnicianRequestsScreen({
     scheduleSubmissionRef.current = true;
     try {
       await handleClaimAndSchedule(workflowId, payload);
+      await Promise.all([
+        handleRefresh(),
+        queryClient.invalidateQueries({
+          queryKey: technicianKeys.workQueue(),
+        }),
+      ]);
       setAIModal(null);
+      setActiveSection("myWork");
+      router.setParams({ section: "myWork" });
       toast.success("Visit scheduled successfully.");
     } catch (error: any) {
       toast.error(getClaimScheduleErrorMessage(error));
@@ -373,6 +376,21 @@ export default function TechnicianRequestsScreen({
       scheduleSubmissionRef.current = false;
     }
   };
+
+  const selectSection = (nextSection: RequestSection) => {
+    if (nextSection === "myWork") setAIModal(null);
+    setActiveSection(nextSection);
+    router.setParams({ section: nextSection });
+  };
+
+  const hasOpenRequestFilters = Boolean(
+    search.trim() ||
+      type !== "all" ||
+      municipality ||
+      barangay ||
+      nearLat ||
+      sortBy !== "newest",
+  );
 
   return (
     <ScreenLayout edges={[]}>
@@ -405,7 +423,10 @@ export default function TechnicianRequestsScreen({
           }}
         >
           <TouchableOpacity
-            onPress={() => setActiveSection("openRequests")}
+            onPress={() => selectSection("openRequests")}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeSection === "openRequests" }}
+            accessibilityLabel="Open Requests section"
             style={{
               flex: 1,
               minHeight: 48,
@@ -433,17 +454,18 @@ export default function TechnicianRequestsScreen({
               }}
             >
               Open Requests
-              {activeSection === "openRequests" && pagination.total > 0
-                ? `  ${pagination.total}`
+              {!areOpenRequestCountsLoading &&
+              openRequestCounts.all !== undefined
+                ? `  ${openRequestCounts.all}`
                 : ""}
             </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => {
-              setAIModal(null);
-              setActiveSection("myWork");
-            }}
+            onPress={() => selectSection("myWork")}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeSection === "myWork" }}
+            accessibilityLabel="My Work section"
             style={{
               flex: 1,
               minHeight: 48,
@@ -496,11 +518,12 @@ export default function TechnicianRequestsScreen({
                 variant="directory"
               />
 
-              <FilterChips
-                options={typeOptions}
+              <RequestWorkFilterChips
+                options={OPEN_REQUEST_FILTERS}
                 value={type}
-                onChange={(val) => setType(val as any)}
-                containerStyle={{ paddingHorizontal: 0, marginBottom: 8 }}
+                onChange={setType}
+                counts={openRequestCounts}
+                countsLoading={areOpenRequestCountsLoading}
               />
 
               <View
@@ -653,8 +676,11 @@ export default function TechnicianRequestsScreen({
             isLoading || isRefetching ? null : (
               <AsyncState
                 state="empty"
-                title="No open requests"
-                message="New farmer service requests will appear here."
+                title={
+                  hasOpenRequestFilters
+                    ? "No open requests match this filter."
+                    : "No open requests."
+                }
                 onAction={handleRefresh}
                 actionLabel="Refresh"
                 style={{ paddingVertical: 32 }}

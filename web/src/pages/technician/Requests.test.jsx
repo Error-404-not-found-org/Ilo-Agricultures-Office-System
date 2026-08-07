@@ -162,7 +162,7 @@ describe("Technician Requests unified AI modal", () => {
     fireEvent.click(
       await screen.findByRole(
         "button",
-        { name: "Claim & Set Visit" },
+        { name: "Claim & Scheduled" },
         { timeout: 5000 },
       ),
     );

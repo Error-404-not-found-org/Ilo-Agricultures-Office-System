@@ -110,9 +110,13 @@ export interface WorkQueueItem {
   [key: string]: any;
 }
 
+export interface RequestsResponse {
+  requests: RequestItem[];
+  pagination: PaginationInfo;
+}
 export interface RequestFilters {
-  type: "all" | "ai" | "health" | "breeding_verification";
-  status: "all" | "pending" | "approved" | "scheduled" | "in_progress" | "completed" | "declined";
+  type: "all" | "ai" | "health" | "breeding_verification" | "calving";
+  status: "all" | "pending" | "approved" | "scheduled" | "in_progress" | "completed" | "declined" | "active";
   urgency: "all" | "urgent";
   assignment: "all" | "mine" | "unassigned";
   search: string;
@@ -130,9 +134,4 @@ export interface PaginationInfo {
   page: number;
   limit: number;
   totalPages: number;
-}
-
-export interface RequestsResponse {
-  requests: RequestItem[];
-  pagination: PaginationInfo;
 }

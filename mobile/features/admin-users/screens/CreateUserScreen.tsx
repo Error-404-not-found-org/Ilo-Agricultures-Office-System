@@ -277,7 +277,7 @@ export default function CreateUserScreen() {
             </View>
 
             <AddressPickerButton
-              label="Municipality / City"
+              label={`Municipality / City ${role === 'technician' ? '*' : ''}`}
               value={city}
               placeholder="Select municipality or city"
               onPress={() => setPicker('city')}
@@ -293,7 +293,7 @@ export default function CreateUserScreen() {
             )}
 
             <AddressPickerButton
-              label="Barangay"
+              label={`Barangay ${role === 'technician' ? '*' : ''}`}
               value={barangay}
               placeholder={
                 !city

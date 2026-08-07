@@ -23,6 +23,7 @@ import {
   ILOILO_CITY_BARANGAYS_BY_DISTRICT,
   ILOILO_CITY_NAME,
   isAddressPlaceholder,
+  normalizeContactAddress,
 } from "@/constants/address";
 
 const LOCATION_CAPTURE_COOLDOWN_MS = 5 * 60 * 1000;
@@ -52,7 +53,7 @@ export const useFarmerProfile = () => {
 
   const [passwordUpdating, setPasswordUpdating] = useState(false);
   const [locationAction, setLocationAction] = useState<
-    "contact-gps" | "farm-gps" | "farm-notes" | "same-as-home" | null
+    "contact-gps" | "farm-gps" | "farm-notes" | null
   >(null);
   const [phoneOtpSent, setPhoneOtpSent] = useState(false);
   const [phoneOtpCode, setPhoneOtpCode] = useState("");
@@ -63,9 +64,7 @@ export const useFarmerProfile = () => {
   const [phoneOtpRemainingSeconds, setPhoneOtpRemainingSeconds] = useState(0);
   const [isChangingPhoneNumber, setIsChangingPhoneNumber] = useState(false);
   const [phoneError, setPhoneError] = useState("");
-  const [sameAsHomeClicks, setSameAsHomeClicks] = useState(0);
-  const [sameAsHomeCooldownEnd, setSameAsHomeCooldownEnd] = useState<number | null>(null);
-  const lastClickRef = useRef(0);
+
 
   useEffect(() => {
     if (editMode === "password") {
@@ -320,11 +319,15 @@ export const useFarmerProfile = () => {
     const normalizedAddress = normalizeIloiloCityAddressForForm(user.address);
     return {
       phoneNumber: user.phoneNumber || "",
+      houseNumber: user.address?.houseNumber || "",
+      purokSitio: user.address?.purokSitio || "",
       street: user.address?.street || "",
+      subdivision: user.address?.subdivision || "",
       barangay: normalizedAddress.barangay,
       city: user.address?.city || "",
       district: normalizedAddress.district,
       province: user.address?.province || "Iloilo",
+      zipCode: user.address?.zipCode || "",
       farmLandmark: user.farmLocation?.landmark || "",
       farmDirectionsNote: user.farmLocation?.directionsNote || "",
     };
@@ -354,6 +357,17 @@ export const useFarmerProfile = () => {
       setEditMode(null);
     },
     onError: (error: any) => {
+      toast.dismiss();
+      const code = error?.response?.data?.code;
+      const message = error?.response?.data?.message;
+
+      if (code === "BARANGAY_REQUIRED") {
+        toast.error("Please select your barangay before saving.", {
+          description: message || "Barangay is required to update your contact address.",
+        });
+        return;
+      }
+
       toast.error(t("updateFailed") || "Update failed.", {
         description: getApiErrorMessage(error, "Please try again."),
       });
@@ -565,79 +579,31 @@ export const useFarmerProfile = () => {
       } finally {
         setPasswordUpdating(false);
       }
-    }
-  };
-
-  const handleUseCurrentContactAddress = async () => {
-    if (mutation.isPending || locationAction || !dbUser?._id) return;
-
-    const cooldownMessage = getLocationCooldownMessage(
-      dbUser.address?.locationCapturedAt,
-      "Contact address location",
-    );
-    if (cooldownMessage) {
-      toast.dismiss();
-      toast.error("Please wait before updating", {
-        description: cooldownMessage,
-      });
-      return;
-    }
-
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      toast.error("Location permission denied", {
-        description: "Enable location access to detect your contact address.",
-      });
-      return;
-    }
-
-    let locationToastId: string | number | undefined;
-    try {
-      setLocationAction("contact-gps");
-      locationToastId = toast.info("Detecting contact address...");
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      const suggestion = await getAddressSuggestion({
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude,
-      });
-      const existingBarangay = isAddressPlaceholder(formData.barangay)
-        ? ""
-        : formData.barangay;
-      const nextBarangay = suggestion.barangay || existingBarangay;
-
-      if (locationToastId !== undefined) toast.dismiss(locationToastId);
-      await mutation.mutateAsync({
-        address: {
-          street: suggestion.street || formData.street,
-          ...(nextBarangay ? { barangay: nextBarangay } : {}),
-          city: suggestion.city || formData.city || "",
-          district: suggestion.district || formData.district || "",
-          province: suggestion.province || "Iloilo",
-          zipCode: suggestion.zipCode || dbUser.address?.zipCode || "",
-          region: "Region VI",
-          detectedAddress: suggestion.detectedAddress,
-          coordinates: {
-            lat: current.coords.latitude,
-            lng: current.coords.longitude,
+    } else if (editMode === "address") {
+      if (!formData.barangay || isAddressPlaceholder(formData.barangay)) {
+        return toast.error("Please select your barangay before saving.");
+      }
+      try {
+        await mutation.mutateAsync({
+          address: {
+            houseNumber: formData.houseNumber || "",
+            purokSitio: formData.purokSitio || "",
+            street: formData.street || "",
+            subdivision: formData.subdivision || "",
+            barangay: formData.barangay,
+            city: formData.city || "",
+            district: formData.district || "",
+            province: formData.province || "Iloilo",
+            zipCode: formData.zipCode || "",
+            region: "Region VI",
           },
-          locationCapture: true,
-        },
-      });
-    } catch (err: any) {
-      if (locationToastId !== undefined) toast.dismiss(locationToastId);
-      const status = err?.response?.status;
-      toast.error(status === 429 ? "Please wait before updating" : "Could not detect contact address", {
-        description: getApiErrorMessage(
-          err,
-          "Please try again outdoors or enter it manually.",
-        ),
-      });
-    } finally {
-      setLocationAction(null);
+        });
+      } catch (err) {
+        // Error toast handled by mutation.onError
+      }
     }
   };
+
 
   const handleSaveCurrentFarmLocation = async () => {
     if (mutation.isPending || locationAction || !dbUser?._id) return;
@@ -693,7 +659,6 @@ export const useFarmerProfile = () => {
           landmark,
           directionsNote,
           detectedAddress: suggestion.detectedAddress,
-          sameAsContactAddress: false,
           isConfirmed: true,
           locationCapture: true,
         },
@@ -744,7 +709,6 @@ export const useFarmerProfile = () => {
           landmark,
           directionsNote,
           detectedAddress: existingLocation.detectedAddress || "",
-          sameAsContactAddress: existingLocation.sameAsContactAddress || false,
           isConfirmed: true,
         },
       });
@@ -757,92 +721,10 @@ export const useFarmerProfile = () => {
     }
   };
 
-  const handleUseContactAddressForFarmLocation = async () => {
-    const now = Date.now();
-    if (now - lastClickRef.current < 1000) return;
-    lastClickRef.current = now;
 
-    toast.dismiss();
-    if (mutation.isPending || locationAction || !dbUser?._id) return;
 
-    if (sameAsHomeCooldownEnd) {
-      const remainingMs = sameAsHomeCooldownEnd - Date.now();
-      if (remainingMs > 0) {
-        const remainingSec = Math.ceil(remainingMs / 1000);
-        toast.error("Please wait before trying again", {
-          description: `Too many attempts. Please wait ${remainingSec}s before copying address again.`,
-        });
-        return;
-      } else {
-        setSameAsHomeCooldownEnd(null);
-        setSameAsHomeClicks(0);
-      }
-    }
-
-    const nextClicks = sameAsHomeClicks + 1;
-    if (nextClicks >= 5) {
-      setSameAsHomeCooldownEnd(Date.now() + 30 * 1000); // 30 seconds cooldown
-      toast.error("Too many attempts", {
-        description: "Limit reached. Please wait 30s before copying address again.",
-      });
-      return;
-    }
-    setSameAsHomeClicks(nextClicks);
-
-    const contactCoordinates = dbUser.address?.coordinates;
-    if (
-      typeof contactCoordinates?.lat !== "number" ||
-      typeof contactCoordinates?.lng !== "number"
-    ) {
-      toast.error("Contact location pin missing", {
-        description:
-          `Use current location for your contact address before copying it. (Attempt ${nextClicks}/5)`,
-      });
-      return;
-    }
-
-    try {
-      setLocationAction("same-as-home");
-      const landmark = cleanFarmLocationText(
-        formData.farmLandmark,
-        "Farm landmark",
-        80,
-      );
-      const directionsNote = cleanFarmLocationText(
-        formData.farmDirectionsNote,
-        "Directions note",
-        250,
-      );
-
-      await mutation.mutateAsync({
-        farmLocation: {
-          latitude: contactCoordinates.lat,
-          longitude: contactCoordinates.lng,
-          landmark,
-          directionsNote,
-          detectedAddress:
-            dbUser.address?.detectedAddress ||
-            [
-              dbUser.address?.street,
-              dbUser.address?.barangay,
-              dbUser.address?.city,
-              dbUser.address?.province,
-            ]
-              .filter(Boolean)
-              .join(", "),
-          sameAsContactAddress: true,
-          isConfirmed: true,
-        },
-      });
-      setSameAsHomeClicks(0);
-    } catch (err: any) {
-      toast.error("Could not copy contact location", {
-        description:
-          err.message || "Please review your contact address and try again.",
-      });
-    } finally {
-      setLocationAction(null);
-    }
+  const handleOpenAddressEditor = () => {
+    setEditMode("address");
   };
 
   return {
@@ -861,7 +743,6 @@ export const useFarmerProfile = () => {
     isSavingContactAddressLocation: locationAction === "contact-gps",
     isSavingFarmGpsPin: locationAction === "farm-gps",
     isSavingFarmLocationNotes: locationAction === "farm-notes",
-    isCopyingContactAddressToFarm: locationAction === "same-as-home",
     phoneOtpSent,
     phoneOtpCode,
     setPhoneOtpCode,
@@ -883,14 +764,13 @@ export const useFarmerProfile = () => {
     handleChooseFromGallery,
     handleChangeProfileImage,
     handleUpdate,
-    handleUseCurrentContactAddress,
     handleSaveCurrentFarmLocation,
     handleSaveFarmLocationNotes,
-    handleUseContactAddressForFarmLocation,
     handleResendOtp,
     handleChangePhoneNumber,
     handleStartPhoneNumberChange,
     handleOpenPhoneEditor,
+    handleOpenAddressEditor,
     handleCloseProfileEditor,
     colors,
     isDark,
