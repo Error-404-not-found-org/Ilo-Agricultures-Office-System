@@ -45,7 +45,7 @@ export const useCompleteHealthRequestMutation = (requestId: string) => {
 
   return useMutation({
     mutationFn: async (payload: any) => {
-      const res = await api.patch(`/technician/requests/${requestId}/status`, payload);
+      const res = await api.patch(`/health-request/${requestId}/status`, payload);
       return res.data;
     },
     onSuccess: (_result, variables: any) => {

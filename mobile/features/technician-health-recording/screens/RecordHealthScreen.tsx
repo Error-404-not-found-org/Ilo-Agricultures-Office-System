@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { View, ScrollView, Text } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { toast } from "sonner-native";
 import { useNetInfo } from "@react-native-community/netinfo";
 import { AppPageHeader } from "@/components/AppPageHeader";
@@ -14,6 +14,7 @@ import HealthReviewModal from "../components/HealthReviewModal";
 import FarmerAnimalPickers from "../components/FarmerAnimalPickers";
 import { useCompleteHealthRequestMutation, useWalkInHealthMutation } from "../hooks/useHealthRecord";
 import { useTechnicianClients } from "@/features/technician/hooks/useTechnicianClients";
+import { getTechnicianRequestDetail } from "@/features/technician/services/technician.service";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 
@@ -21,6 +22,7 @@ const MY_WORK_PATH = "/(technician)/(tabs)/technician.requests?section=myWork";
 
 export default function RecordHealthScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const netInfo = useNetInfo();
   const { colors } = useTheme();
   const [reviewSnapshot, setReviewSnapshot] = useState<any>(null);
@@ -43,22 +45,28 @@ export default function RecordHealthScreen() {
     handleClearAll,
   } = useAnimalContext();
 
-  const requestMutation = useCompleteHealthRequestMutation(requestId || "");
+  const actualRequestId = (params.healthRequestId || params.requestId || requestId) as string;
+  const routeVisitPeriod = params.visitPeriod as string;
+  const requestMutation = useCompleteHealthRequestMutation(actualRequestId || "");
 
   const mode = {
-    kind: (isLocked && requestId) ? "request-linked" : "direct",
+    kind: (isLocked && actualRequestId) ? "request-linked" : "direct",
     taskId,
-    requestId,
+    requestId: actualRequestId,
   };
 
   const { data: request, isLoading: requestLoading, error: requestError, refetch } = useQuery({
-    queryKey: ["technician", "request", requestId],
+    queryKey: ["technician", "request", actualRequestId],
     queryFn: async () => {
-      if (!requestId) return null;
-      const res = await api.get(`/technician/requests/${requestId}`);
-      return res.data;
+      if (!actualRequestId) return null;
+      if (!actualRequestId || actualRequestId === taskId) {
+         // Defensive guard against using taskId as request detail ID
+         if (taskId && actualRequestId === taskId) return null;
+      }
+      const res = await getTechnicianRequestDetail(api, "health", actualRequestId);
+      return res; // getTechnicianRequestDetail directly returns data in some implementations or response. Check it. Wait.
     },
-    enabled: mode.kind === "request-linked" && !!requestId,
+    enabled: mode.kind === "request-linked" && !!actualRequestId,
   });
 
   const onReview = (data: any) => {
@@ -207,6 +215,7 @@ export default function RecordHealthScreen() {
         <RequestLinkedHealthForm 
           onSubmit={onReview} 
           request={request} 
+          routeVisitPeriod={routeVisitPeriod}
           saving={saving}
           onStartService={handleStartService}
         />

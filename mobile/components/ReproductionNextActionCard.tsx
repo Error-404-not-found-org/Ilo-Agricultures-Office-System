@@ -14,6 +14,7 @@ interface ReproductionNextActionCardProps {
   action?: ReproductionNextAction | null;
   title?: string;
   compact?: boolean;
+  overrideDateLabel?: string | null;
 }
 
 const formatPhase = (phase: string) =>
@@ -55,6 +56,7 @@ export function ReproductionNextActionCard({
   action,
   title = "Next Reproductive Action",
   compact = false,
+  overrideDateLabel,
 }: ReproductionNextActionCardProps) {
   const { colors, isDark } = useTheme();
 
@@ -230,7 +232,7 @@ export function ReproductionNextActionCard({
             ) : null}
           </View>
 
-          {formattedDate ? (
+          {overrideDateLabel || formattedDate ? (
             <View
               style={{
                 flexDirection: "row",
@@ -248,7 +250,7 @@ export function ReproductionNextActionCard({
                   marginLeft: 6,
                 }}
               >
-                {formattedDate}
+                {overrideDateLabel || formattedDate}
               </Text>
             </View>
           ) : (

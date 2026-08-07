@@ -1,7 +1,7 @@
 import React from "react";
 import { Image, Pressable, View } from "react-native";
 import {
-  CalendarDays,
+  Send,
   Link2,
   MapPin,
   PawPrint,
@@ -117,7 +117,10 @@ export function RequestListCard({
     .filter(Boolean)
     .join(" · ");
   const locationLabel =
-    item.locationLabel || item.location || "Location not provided";
+    item.locationLabel ||
+    item.location ||
+    [item.barangay, item.municipality].filter(Boolean).join(", ") ||
+    "Location not provided";
   const typeIcon = isPregnancyCheck
     ? "clipboard-pulse-outline"
     : isHealth
@@ -317,7 +320,7 @@ export function RequestListCard({
           colors={colors}
         />
         <MetadataRow
-          icon={CalendarDays}
+          icon={Send}
           text={formatDate(displayDate)}
           colors={colors}
         />

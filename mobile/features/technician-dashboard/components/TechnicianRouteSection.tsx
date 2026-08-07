@@ -232,8 +232,8 @@ function VisitRow({ item, onPress }: any) {
   const statusLabel = overdue
     ? "Overdue"
     : inProgress
-        ? "In progress"
-        : "Scheduled";
+      ? "In progress"
+      : "Scheduled";
   const timeLabel =
     item.time || formatShortTime(item.displayDate || item.scheduledDate);
   const timeParts = splitTimeLabel(timeLabel);
@@ -241,10 +241,7 @@ function VisitRow({ item, onPress }: any) {
     service.toLowerCase().includes("insemination") ||
     service.toLowerCase().includes("ai service");
   const canStart =
-    !isAIService &&
-    !overdue &&
-    !inProgress &&
-    item.isReadyToday === true;
+    !isAIService && !overdue && !inProgress && item.isReadyToday === true;
   const actionLabel = isAIService
     ? "View My Work"
     : canStart
@@ -257,14 +254,8 @@ function VisitRow({ item, onPress }: any) {
       : isAIService
         ? Syringe
         : CalendarDays;
-  const statusVariant = overdue
-    ? "danger"
-    : inProgress
-      ? "info"
-      : "warning";
-  const exceptionLabel = !hasFarmPin
-      ? "Farm location not set"
-      : null;
+  const statusVariant = overdue ? "danger" : inProgress ? "info" : "warning";
+  const exceptionLabel = !hasFarmPin ? "Farm location not set" : null;
 
   const serviceTheme = getServiceTheme(service, overdue, isDark, colors);
 
@@ -286,34 +277,6 @@ function VisitRow({ item, onPress }: any) {
         domain="service"
         compact
       />
-      <TouchableOpacity
-        onPress={onPress}
-        activeOpacity={0.78}
-        accessibilityRole="button"
-        accessibilityLabel={`${actionLabel}: ${service} for ${item.farmer || "farmer"}`}
-        style={{
-          width: 76,
-          height: 34,
-          borderRadius: 8,
-          borderWidth: canStart ? 0 : 1,
-          borderColor: colors.primary,
-          backgroundColor: canStart ? colors.primary : colors.card,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingHorizontal: 8,
-        }}
-      >
-        <Text
-          numberOfLines={1}
-          style={{
-            fontFamily: "Outfit_700Bold",
-            fontSize: 12,
-            color: canStart ? colors.onPrimary : colors.primary,
-          }}
-        >
-          {actionLabel}
-        </Text>
-      </TouchableOpacity>
     </View>
   );
 
@@ -340,37 +303,6 @@ function VisitRow({ item, onPress }: any) {
             alignItems: "center",
           }}
         >
-          <View
-            style={{
-              width: 44,
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 8,
-            }}
-          >
-            <Text
-              numberOfLines={1}
-              style={{
-                fontFamily: "Outfit_800ExtraBold",
-                fontSize: 13,
-                color: isDark ? "#ffffff" : "#000000",
-              }}
-            >
-              {timeParts.time}
-            </Text>
-            {timeParts.period ? (
-              <Text
-                style={{
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 10,
-                  color: isDark ? "#cbd5e1" : "#000000",
-                }}
-              >
-                {timeParts.period}
-              </Text>
-            ) : null}
-          </View>
-
           <View
             style={{
               width: 44,
@@ -405,10 +337,7 @@ function VisitRow({ item, onPress }: any) {
                 marginTop: 3,
               }}
             >
-              <MapPin
-                size={13}
-                color={colors.textMuted}
-              />
+              <MapPin size={13} color={colors.textMuted} />
               <Text
                 textRole="caption"
                 color="secondary"
@@ -426,17 +355,17 @@ function VisitRow({ item, onPress }: any) {
                 marginTop: 2,
               }}
             >
-              <Send
-                size={13}
-                color={colors.textMuted}
-              />
+              <CalendarDays size={13} color={colors.textMuted} />
               <Text
                 textRole="caption"
                 color="secondary"
                 numberOfLines={1}
                 style={{ flex: 1 }}
               >
-                {formatSentAt(sentAt)}
+                {formatScheduleDateTime(
+                  item.displayDate || item.scheduledDate,
+                  item.time || item.visitPeriod,
+                )}
               </Text>
             </View>
             {exceptionLabel ? (
@@ -494,4 +423,23 @@ function formatShortTime(value?: string) {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function formatScheduleDateTime(dateStr?: string, timeStr?: string) {
+  if (!dateStr) return "Schedule not set";
+  const date = new Date(dateStr);
+  let label = "Schedule not set";
+  if (!Number.isNaN(date.getTime())) {
+    label = date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  } else {
+    label = dateStr;
+  }
+
+  if (timeStr) {
+    label += ` - ${timeStr}`;
+  }
+  return label;
 }

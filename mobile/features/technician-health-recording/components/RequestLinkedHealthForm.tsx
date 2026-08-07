@@ -10,6 +10,7 @@ import FarmerConcernSection from "./FarmerConcernSection";
 interface Props {
   onSubmit: (data: any) => void;
   request: any;
+  routeVisitPeriod?: string;
   saving?: boolean;
   onStartService?: () => void;
 }
@@ -24,7 +25,7 @@ const formatAddress = (address: any) => {
   );
 };
 
-export default function RequestLinkedHealthForm({ onSubmit, request, saving, onStartService }: Props) {
+export default function RequestLinkedHealthForm({ onSubmit, request, routeVisitPeriod, saving, onStartService }: Props) {
   const { colors } = useTheme();
   
   const [diagnosis, setDiagnosis] = useState("");
@@ -51,12 +52,11 @@ export default function RequestLinkedHealthForm({ onSubmit, request, saving, onS
 
   if (!request) return null;
 
-  const animalName =
-    request.animal?.name ||
-    request.animal?.earTag ||
-    request.animal?.animalId ||
-    "Animal";
-  const earTag = request.animal?.earTag || request.animal?.animalId || "Not provided";
+  const farmer = request?.farmerId && typeof request.farmerId === "object" ? request.farmerId : null;
+  const animal = request?.animalId && typeof request.animalId === "object" ? request.animalId : null;
+
+  const animalName = animal?.name || "Animal";
+  const earTag = animal?.earTag || animal?.animalId || "Not provided";
   const sDate = request["scheduled" + "Date"];
   const displayDate = sDate
     ? new Date(sDate).toLocaleDateString("en-PH", {
@@ -66,7 +66,7 @@ export default function RequestLinkedHealthForm({ onSubmit, request, saving, onS
       })
     : "Not scheduled";
   
-  const vPeriod = request["visit" + "Period"];
+  const vPeriod = request["visit" + "Period"] || routeVisitPeriod;
   const period = vPeriod
     ? vPeriod.replace(/^./, (value: string) => value.toUpperCase())
     : "Period not recorded";
@@ -100,7 +100,7 @@ export default function RequestLinkedHealthForm({ onSubmit, request, saving, onS
                 fontSize: 15,
               }}
             >
-              {request.farmer?.name || "Farmer"}
+              {farmer?.name || "Farmer"}
             </Text>
             <Text
               style={{
@@ -110,14 +110,14 @@ export default function RequestLinkedHealthForm({ onSubmit, request, saving, onS
                 marginTop: 2,
               }}
             >
-              {request.farmer?.phoneNumber || "No phone provided"}
+              {farmer?.phoneNumber || "No phone provided"}
             </Text>
           </View>
         </View>
         <SummaryLine label="Animal" value={animalName} />
         <SummaryLine label="Ear tag" value={earTag} />
-        <SummaryLine label="Breed" value={request.animal?.breed || "Not provided"} />
-        <SummaryLine label="Location" value={formatAddress(request.farmer?.address)} />
+        <SummaryLine label="Breed" value={animal?.breed || "Not provided"} />
+        <SummaryLine label="Location" value={formatAddress(farmer?.farmLocation?.detectedAddress || farmer?.address)} />
         <SummaryLine label="Service" value="Health Assistance" />
       </SectionCard>
 

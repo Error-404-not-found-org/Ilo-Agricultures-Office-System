@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { CalendarDays, Clock3, MapPin, Phone, X } from "lucide-react-native";
+import { CalendarDays, Clock3, MapPin, Phone, Send, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Text } from "@/components/ui/Text";
@@ -43,6 +43,87 @@ const addDays = (date: Date, days: number) => {
   return value;
 };
 
+const cleanText = (value: unknown) => {
+  const text = typeof value === "string" ? value.trim() : "";
+  return text &&
+    !["n/a", "na", "none", "null", "undefined"].includes(text.toLowerCase())
+    ? text
+    : "";
+};
+
+const formatFarmerLocation = (request: RequestItem) => {
+  const rawFarmer =
+    request.raw?.farmerId && typeof request.raw.farmerId === "object"
+      ? request.raw.farmerId
+      : null;
+
+  const farmLocation = rawFarmer?.farmLocation;
+
+  const detectedAddress =
+    typeof farmLocation?.detectedAddress === "string"
+      ? farmLocation.detectedAddress.trim()
+      : "";
+
+  if (detectedAddress) return detectedAddress;
+
+  const landmark =
+    typeof farmLocation?.landmark === "string"
+      ? farmLocation.landmark.trim()
+      : "";
+
+  const address = rawFarmer?.address;
+
+  if (address && typeof address === "object" && !Array.isArray(address)) {
+    const barangay = cleanText(address.barangay);
+    const municipality = cleanText(address.city || address.municipality);
+    const province = cleanText(address.province);
+    const label = [barangay, municipality, province].filter(Boolean).join(", ");
+    if (label) return label;
+  }
+
+  if (Array.isArray(address) && address.length > 0) {
+    const first = address[0] || {};
+    const label = [
+      cleanText(first.barangay),
+      cleanText(first.city || first.municipality),
+      cleanText(first.province),
+    ]
+      .filter(Boolean)
+      .join(", ");
+
+    if (label) return label;
+  }
+
+  return (
+    cleanText(request.farmerDetails?.location) ||
+    cleanText(request.locationLabel) ||
+    cleanText(request.location) ||
+    landmark ||
+    "Location not provided"
+  );
+};
+
+const getAttachmentUrls = (request: RequestItem) => {
+  const raw = request.raw || {};
+
+  return Array.from(
+    new Set(
+      [
+        request.attachments?.urls,
+        request.attachments?.primaryUrl,
+        raw.imageUrl,
+        raw.evidencePhotos,
+        raw.attachments?.urls,
+        raw.attachments,
+      ]
+        .flatMap((value) => (Array.isArray(value) ? value : [value]))
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+};
+
 export function AIRequestModal({
   request,
   visible,
@@ -70,17 +151,36 @@ export function AIRequestModal({
   if (!request) return null;
 
   const workflowId = request.workflowId;
-  const farmerName = request.farmerDetails?.name || request.farmer;
+  const rawFarmer =
+    request.raw?.farmerId && typeof request.raw.farmerId === "object"
+      ? request.raw.farmerId
+      : null;
+
+  const farmerName =
+    request.farmerDetails?.name ||
+    rawFarmer?.name ||
+    request.farmer ||
+    "Unknown Farmer";
+
   const farmerPhone =
-    request.farmerDetails?.phone || request.phone || request.farmerPhone;
-  const location =
-    request.farmerDetails?.location ||
-    request.locationLabel ||
-    request.location ||
-    "Location not provided";
+    request.farmerDetails?.phone ||
+    request.farmerPhone ||
+    request.phone ||
+    rawFarmer?.phoneNumber ||
+    rawFarmer?.phone ||
+    null;
+
+  const location = formatFarmerLocation(request);
+
   const submittedAt = request.requestSubmissionDate || request.createdAt;
-  const heatSigns = request.heatSigns || request.raw?.heatSigns || [];
-  const attachments = request.attachments?.urls || [];
+
+  const heatSigns = Array.isArray(request.heatSigns)
+    ? request.heatSigns
+    : Array.isArray(request.raw?.heatSigns)
+      ? request.raw.heatSigns
+      : [];
+
+  const attachments = getAttachmentUrls(request);
   const canSchedule =
     request.workflowType === "AI" &&
     request.allowedAction === "CLAIM_AND_SCHEDULE" &&
@@ -90,7 +190,6 @@ export function AIRequestModal({
     setDateChoice(choice);
     setSelectedDate(addDays(startOfToday(), choice === "tomorrow" ? 1 : 0));
   };
-
 
   const confirmSchedule = async () => {
     if (
@@ -199,7 +298,7 @@ export function AIRequestModal({
               />
               <SummaryRow icon={MapPin} text={location} />
               <SummaryRow
-                icon={CalendarDays}
+                icon={Send}
                 text={`Submitted ${new Date(submittedAt).toLocaleDateString(
                   "en-PH",
                   {
@@ -212,76 +311,65 @@ export function AIRequestModal({
             </View>
           </View>
 
+          <View style={cardStyle}>
+            <Text
+              style={{ color: colors.textMuted, fontSize: 11 }}
+              variant="bold"
+            >
+              HEAT SIGNS
+            </Text>
+            <Text
+              style={{
+                color: colors.textPrimary,
+                marginTop: 6,
+                lineHeight: 20,
+              }}
+            >
+              {heatSigns.length > 0
+                ? heatSigns
+                    .map((sign: string) =>
+                      sign
+                        .replace(/_/g, " ")
+                        .replace(/\b\w/g, (c: string) => c.toUpperCase()),
+                    )
+                    .join(", ")
+                : "No heat signs submitted."}
+            </Text>
+          </View>
 
-              <View style={cardStyle}>
-                <Text
-                  style={{ color: colors.textMuted, fontSize: 11 }}
-                  variant="bold"
-                >
-                  HEAT SIGNS
-                </Text>
-                <Text
-                  style={{
-                    color: colors.textPrimary,
-                    marginTop: 6,
-                    lineHeight: 20,
-                  }}
-                >
-                  {heatSigns.length > 0
-                    ? heatSigns.join(", ")
-                    : "No heat signs submitted."}
-                </Text>
-              </View>
+          <View style={cardStyle}>
+            <Text
+              style={{ color: colors.textMuted, fontSize: 11 }}
+              variant="bold"
+            >
+              ATTACHMENTS ({attachments.length})
+            </Text>
+            {attachments.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ marginTop: 10 }}
+                contentContainerStyle={{ gap: 10 }}
+              >
+                {attachments.map((uri, index) => (
+                  <Image
+                    key={`${uri}-${index}`}
+                    source={{ uri }}
+                    style={{ width: 150, height: 120, borderRadius: 12 }}
+                    resizeMode="cover"
+                    accessibilityLabel={`AI request attachment ${index + 1}`}
+                  />
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={{ color: colors.textSecondary, marginTop: 6 }}>
+                No attachments submitted.
+              </Text>
+            )}
+          </View>
 
-              <View style={cardStyle}>
-                <Text
-                  style={{ color: colors.textMuted, fontSize: 11 }}
-                  variant="bold"
-                >
-                  ATTACHMENTS (
-                  {request.attachments?.count || attachments.length})
-                </Text>
-                {attachments.length > 0 ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    style={{ marginTop: 10 }}
-                    contentContainerStyle={{ gap: 10 }}
-                  >
-                    {attachments.map((uri, index) => (
-                      <Image
-                        key={`${uri}-${index}`}
-                        source={{ uri }}
-                        style={{ width: 150, height: 120, borderRadius: 12 }}
-                        resizeMode="cover"
-                        accessibilityLabel={`AI request attachment ${index + 1}`}
-                      />
-                    ))}
-                  </ScrollView>
-                ) : (
-                  <Text style={{ color: colors.textSecondary, marginTop: 6 }}>
-                    No attachments submitted.
-                  </Text>
-                )}
-              </View>
-
-              <View style={cardStyle}>
-                <Text
-                  style={{ color: colors.textMuted, fontSize: 11 }}
-                  variant="bold"
-                >
-                  STATUS
-                </Text>
-                <Text
-                  style={{ color: colors.textPrimary, marginTop: 6 }}
-                  variant="bold"
-                >
-                  {request.status}
-                </Text>
-              </View>
-
-              {canSchedule ? (
-                <>
+          {canSchedule ? (
+            <>
               <View style={cardStyle}>
                 <Text
                   style={{ color: colors.textPrimary, marginBottom: 10 }}
@@ -406,7 +494,7 @@ export function AIRequestModal({
                 </View>
               </View>
 
-              <View style={{ flexDirection: "row", gap: 8 }}>
+              <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
                 <TouchableOpacity
                   onPress={onClose}
                   disabled={isSubmitting}

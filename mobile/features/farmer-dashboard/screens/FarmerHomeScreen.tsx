@@ -602,17 +602,6 @@ export function FarmerHomeScreen() {
                 iconBg={isDark ? "rgba(251,191,36,0.15)" : "#FEF9C3"}
                 onPress={() => router.push("/(farmer)/register-animal" as any)}
               />
-              <QuickActionItem
-                title={t("askMoowie")}
-                icon={
-                  <MessageSquare
-                    size={24}
-                    color={isDark ? colors.primary : "#166534"}
-                  />
-                }
-                iconBg={isDark ? "rgba(16,185,129,0.15)" : "#F0FDF4"}
-                onPress={() => router.push("/ask-moowie")}
-              />
             </View>
           </View>
         </View>

@@ -8,11 +8,24 @@ export default function FarmerConcernSection({ request }: { request: any }) {
   const { colors } = useTheme();
   
   if (!request) return null;
-  
-  const attachmentUrls: string[] = request.attachments || request.photos || [];
-  if (request.imageUrl && !attachmentUrls.includes(request.imageUrl)) {
-    attachmentUrls.push(request.imageUrl);
-  }
+  const symptomsText = Array.isArray(request?.symptoms)
+    ? request.symptoms.filter(Boolean).join(", ")
+    : String(request?.symptoms || "").trim();
+
+  const farmerNotesText = Array.isArray(request?.farmerNotes)
+    ? request.farmerNotes.filter(Boolean).join("\n\n")
+    : String(request?.farmerNotes || "").trim();
+
+  const photos = Array.isArray(request?.photos)
+    ? request.photos.filter(Boolean)
+    : [];
+
+  const attachmentUrls = [
+    ...new Set([
+      ...photos,
+      request?.imageUrl || null,
+    ].filter(Boolean)),
+  ];
 
   return (
     <SectionCard title="Farmer-submitted Observations">
@@ -37,9 +50,7 @@ export default function FarmerConcernSection({ request }: { request: any }) {
               marginTop: 3,
             }}
           >
-            {request.symptoms && request.symptoms.length > 0
-              ? request.symptoms.join(", ")
-              : "No symptoms provided"}
+            {symptomsText || "No symptoms provided"}
           </Text>
           <Text
             style={{
@@ -60,9 +71,7 @@ export default function FarmerConcernSection({ request }: { request: any }) {
               marginTop: 3,
             }}
           >
-            {request.farmerNotes && request.farmerNotes.length > 0
-              ? request.farmerNotes
-              : "No farmer note provided"}
+            {farmerNotesText || "No farmer note provided"}
           </Text>
         </View>
       </View>
@@ -80,8 +89,7 @@ export default function FarmerConcernSection({ request }: { request: any }) {
             Attachments ({attachmentUrls.length})
           </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {/* Compatibility with request.imageUrl and request.photos.map */}
-            {(request.photos ? request.photos : attachmentUrls).map((url: string) => (
+            {attachmentUrls.map((url: string) => (
               <Image
                 key={url}
                 source={{ uri: url }}

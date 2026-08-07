@@ -317,6 +317,17 @@ export default function RequestDetailsScreen() {
     });
   };
 
+  const formatScheduledDateOnly = (dateString: string) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "N/A";
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
   const getAge = (birthDate: string) => {
     if (!birthDate) return "N/A";
     const birth = new Date(birthDate);
@@ -372,26 +383,31 @@ export default function RequestDetailsScreen() {
     );
   })();
 
+  const aiScheduledAction = (() => {
+    if (!request?.nextAction || request.nextAction.label !== "Attend the scheduled AI visit") {
+      return request?.nextAction;
+    }
+    if (!request.scheduledDate) return request.nextAction;
+
+    const offset = 8 * 60 * 60 * 1000;
+    const nowLocal = new Date(Date.now() + offset);
+    const dateLocal = new Date(new Date(request.scheduledDate).getTime() + offset);
+
+    const nowDays = Date.UTC(nowLocal.getUTCFullYear(), nowLocal.getUTCMonth(), nowLocal.getUTCDate());
+    const schedDays = Date.UTC(dateLocal.getUTCFullYear(), dateLocal.getUTCMonth(), dateLocal.getUTCDate());
+
+    return {
+      ...request.nextAction,
+      isOverdue: schedDays < nowDays
+    };
+  })();
+
   const handleAction = async () => {
     if (!request) return;
     setActionNotice(null);
     const status = request.status?.toLowerCase();
 
-    if (isAI) {
-      const destination = ["scheduled", "in-progress", "in_progress"].includes(
-        status,
-      )
-        ? "/(technician)/(tabs)/technician.requests?section=myWork"
-        : "/(technician)/(tabs)/technician.requests";
-      toast.error(
-        ["scheduled", "in-progress", "in_progress"].includes(status)
-          ? "Open My Work to use the current AI action."
-          : "Open Requests to use Claim & Set Visit.",
-      );
-      router.replace(destination as any);
-      return;
-    }
-
+    // AI and Health both share the same lifecycle steps now.
     if (status === "pending") {
       // Assign to Me
       await handleUpdateStatus("approved", {
@@ -428,6 +444,7 @@ export default function RequestDetailsScreen() {
             animalName: request.animalId?.name || undefined,
             earTag: request.animalId?.earTag || undefined,
             scheduleDate: request.scheduledDate || undefined,
+            visitPeriod: request.visitPeriod || undefined,
           },
         });
       } else {
@@ -916,10 +933,21 @@ export default function RequestDetailsScreen() {
           </View>
         </View>
 
-        {isAI && request.nextAction ? (
+        {isAI && aiScheduledAction ? (
           <ReproductionNextActionCard
-            action={request.nextAction}
+            action={aiScheduledAction}
             title="Required Reproductive Action"
+            overrideDateLabel={
+              aiScheduledAction.label === "Attend the scheduled AI visit"
+                ? request.scheduledDate
+                  ? `${formatScheduledDateOnly(request.scheduledDate)} · ${
+                      request.visitPeriod 
+                        ? request.visitPeriod.charAt(0).toUpperCase() + request.visitPeriod.slice(1) 
+                        : "Period not recorded"
+                    }`
+                  : null
+                : null
+            }
           />
         ) : null}
 
@@ -1495,7 +1523,7 @@ export default function RequestDetailsScreen() {
         </View>
 
         {/* Action / Input Section */}
-        {!isTerminal && (!isAI || request.cancellationStatus === "requested") && (
+        {!isTerminal && (
           <View style={sectionCardStyle}>
             {request.cancellationStatus === "requested" ? (
               // Cancellation Requested Review Panel
@@ -1873,7 +1901,7 @@ export default function RequestDetailsScreen() {
                 </View>
 
                 {/* Inline scheduling date/time picker */}
-                {!isAI && (request.status?.toLowerCase() === "approved" ||
+                {(request.status?.toLowerCase() === "approved" ||
                   request.status?.toLowerCase() === "assigned" ||
                   request.status?.toLowerCase() === "triaged") && (
                   <View style={{ gap: 10, marginBottom: 16 }}>
