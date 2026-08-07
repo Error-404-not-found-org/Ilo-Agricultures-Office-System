@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { BadgeCheck, Loader2, PawPrint, Upload } from "lucide-react";
+import { BadgeCheck, Loader2, PawPrint, Sparkles, Upload } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
@@ -143,6 +143,34 @@ const RegisterLivestockModal = ({
   }, [formData.breed, formData.species]);
 
   if (!isOpen) return null;
+
+  const handleGenerateEarTag = () => {
+    const selectedFarmer = farmers.find(
+      (f) => f._id === formData.farmerName || f.id === formData.farmerName,
+    );
+    const farmerNameStr = selectedFarmer?.name || searchFarmer;
+
+    if (!farmerNameStr || !farmerNameStr.trim()) {
+      toast.error("Please select or enter a livestock owner first.");
+      return;
+    }
+
+    const nameParts = farmerNameStr.trim().toUpperCase().split(/\s+/).filter(Boolean);
+    let initials = "";
+    if (nameParts.length > 1) {
+      initials = nameParts[0][0] + nameParts[nameParts.length - 1][0];
+    } else if (nameParts.length === 1 && nameParts[0].length > 0) {
+      initials = nameParts[0].substring(0, 2);
+    }
+
+    const count = selectedFarmer?.animalsCount ?? selectedFarmer?.totalAnimals ?? 0;
+    const nextNum = (count || 0) + 1;
+    const numStr = String(nextNum).padStart(2, "0");
+    const generatedTag = `${numStr}${initials}`;
+
+    setFormData((current) => ({ ...current, earTag: generatedTag }));
+    toast.success(`Generated ear tag: ${generatedTag}`);
+  };
 
   const updateField = (field) => (event) => {
     setFormData((current) => ({ ...current, [field]: event.target.value }));
@@ -296,7 +324,33 @@ const RegisterLivestockModal = ({
           <fieldset className="fieldset">
             <legend className="fieldset-legend text-sm font-bold">Animal details</legend>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Input id="livestock-ear-tag" label="Ear tag number" required value={formData.earTag} maxLength={3} onChange={updateField("earTag")} placeholder="e.g. 123" />
+              <div className="space-y-1.5 w-full">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="livestock-ear-tag" className="label text-xs font-semibold text-base-content/70 flex items-center gap-1 p-0">
+                    Ear tag number
+                    <span className="text-error font-bold" aria-hidden="true">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateEarTag}
+                    className="btn btn-xs btn-outline btn-primary gap-1 text-[11px] font-semibold"
+                    title="Auto-generate ear tag based on owner initials and sequence"
+                  >
+                    <Sparkles size={12} />
+                    Generate TAG
+                  </button>
+                </div>
+                <input
+                  id="livestock-ear-tag"
+                  type="text"
+                  required
+                  value={formData.earTag}
+                  maxLength={15}
+                  onChange={updateField("earTag")}
+                  placeholder="e.g. 01JC or 123"
+                  className="input input-bordered w-full bg-base-100 text-sm text-base-content placeholder:text-base-content/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                />
+              </div>
               <Select id="livestock-species" label="Species" required value={formData.species} onChange={updateField("species")} options={CATTLE_SPECIES} placeholder="" />
               <Select id="livestock-breed" label="Genetic breed" required value={formData.breed} onChange={updateField("breed")} options={BREED_OPTIONS_BY_SPECIES[formData.species] || CATTLE_BREEDS} placeholder="Select breed" />
               <Select id="livestock-color" label="Primary color" required value={formData.color} onChange={updateField("color")} options={CATTLE_COLORS} placeholder="Select color" />
