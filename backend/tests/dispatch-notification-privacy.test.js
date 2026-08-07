@@ -41,9 +41,9 @@ test("Dispatch Notification Privacy", async (t) => {
       dispatch: {
         location: {
           municipalityCode: "123",
-          municipality: "Testville",
+          municipalityName: "Testville",
           barangayCode: "456",
-          barangay: "Test Barangay"
+          barangayName: "Test Barangay"
         },
         stage: "local",
         resolutionStatus: "resolved"
@@ -91,6 +91,7 @@ test("Dispatch Notification Privacy", async (t) => {
       "municipalityName",
       "barangayCode",
       "barangayName",
+      "location",
       "dispatchStage"
     ];
 

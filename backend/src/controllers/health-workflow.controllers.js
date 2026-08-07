@@ -10,6 +10,71 @@ import { activeHealthCaseKey } from "../services/health-request-creation.service
 
 const ACTIVE_STATUSES = new Set(["pending", "triaged", "assigned", "approved", "scheduled", "in-progress", "in_progress"]);
 
+const safeText = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+export const buildCandidateHealthDetail = (request) => {
+  const farmer =
+    request?.farmerId && typeof request.farmerId === "object"
+      ? request.farmerId
+      : {};
+  const address =
+    farmer.address && typeof farmer.address === "object"
+      ? farmer.address
+      : {};
+  const dispatchLocation = request?.dispatch?.location || {};
+  const photos = Array.isArray(request?.photos)
+    ? request.photos.map(safeText).filter(Boolean)
+    : [];
+
+  return {
+    id: request._id,
+    _id: request._id,
+    type: "health",
+    serviceType: request.requestType || "Health Assistance",
+    status: request.status,
+    urgency: request.urgency,
+    requestType: request.requestType,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    symptoms: request.symptoms,
+    farmerNotes: safeText(request.farmerNotes),
+    photos,
+    imageUrl: safeText(request.imageUrl),
+    animalId: request.animalId,
+    farmerName: safeText(farmer.name),
+    municipality:
+      safeText(dispatchLocation.municipalityName) ||
+      safeText(address.administrativeArea?.municipalityName) ||
+      safeText(address.municipality) ||
+      safeText(address.city),
+    barangay:
+      safeText(dispatchLocation.barangayName) ||
+      safeText(address.administrativeArea?.barangayName) ||
+      safeText(address.barangay),
+  };
+};
+
+export const buildTechnicianCandidateHealthDetail = (request) => {
+  const candidate = buildCandidateHealthDetail(request);
+  const farmer =
+    request?.farmerId && typeof request.farmerId === "object"
+      ? request.farmerId
+      : {};
+
+  return {
+    ...candidate,
+    farmerId: {
+      _id: farmer._id,
+      name: safeText(farmer.name),
+      phoneNumber: safeText(farmer.phoneNumber),
+      imageUrl: safeText(farmer.imageUrl),
+      address: farmer.address || null,
+      farmLocation: farmer.farmLocation || null,
+    },
+  };
+};
+
 const getRequest = async (id) => {
   const request = await HealthRequest.findOne({ _id: id, deletedAt: null })
     .populate("farmerId", "name address phoneNumber imageUrl farmLocation")
@@ -42,48 +107,12 @@ export const getHealthRequestDetail = async (req, res) => {
       }
 
       if (isUnclaimed) {
-        const candidateDetail = {
-          id: request._id,
-          _id: request._id,
-          type: "health",
-          serviceType: request.requestType || "Health Assistance",
-          status: request.status,
-          urgency: request.urgency,
-          requestType: request.requestType,
-          preferredDate: request.preferredDate,
-          createdAt: request.createdAt,
-          updatedAt: request.updatedAt,
-          findings: request.findings,
-          symptoms: request.symptoms,
-          note: request.note,
-          animalId: request.animalId,
-          municipality: request.farmerId?.address?.city || request.farmerId?.address?.municipality || "",
-          barangay: request.farmerId?.address?.barangay || "",
-        };
-        return sendDetail(res, candidateDetail);
+        return sendDetail(res, buildTechnicianCandidateHealthDetail(request));
       }
     }
 
     if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin" && req.user.role !== "technician") {
-      const candidateDetail = {
-        id: request._id,
-        _id: request._id,
-        type: "health",
-        serviceType: request.requestType || "Health Assistance",
-        status: request.status,
-        urgency: request.urgency,
-        requestType: request.requestType,
-        preferredDate: request.preferredDate,
-        createdAt: request.createdAt,
-        updatedAt: request.updatedAt,
-        findings: request.findings,
-        symptoms: request.symptoms,
-        note: request.note,
-        animalId: request.animalId,
-        municipality: request.farmerId?.address?.city || request.farmerId?.address?.municipality || "",
-        barangay: request.farmerId?.address?.barangay || "",
-      };
-      return sendDetail(res, candidateDetail);
+      return sendDetail(res, buildCandidateHealthDetail(request));
     }
 
     sendDetail(res, request);

@@ -42,6 +42,11 @@ import type {
   Technician,
 } from "@/types";
 import { safeBack } from "@/utils/navigation";
+import {
+  formatVisitSchedule,
+  getFarmerRequestListStatusLabel,
+  isVisitTodayOrLater,
+} from "@/features/farmer-requests/utils/requestDetailPresentation";
 
 export type AnimalDetailsRole = "farmer" | "technician" | "admin";
 
@@ -73,6 +78,8 @@ type ServiceSummary = {
   status: string;
   activityDate?: string;
   scheduledDate?: string;
+  visitPeriod?: "morning" | "afternoon" | null;
+  createdAt?: string;
   technician?: string;
   location?: string;
 };
@@ -210,6 +217,8 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
       title: "AI Service",
       status,
       scheduledDate: item.scheduledDate,
+      visitPeriod: item.visitPeriod,
+      createdAt: item.createdAt,
       activityDate:
         item.scheduledDate ||
         item.inseminationDate ||
@@ -233,6 +242,8 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
         title: getHealthTitle(item.requestType),
         status,
         scheduledDate: item.scheduledDate,
+        visitPeriod: item.visitPeriod,
+        createdAt: item.createdAt,
         activityDate:
           item.scheduledDate || item.preferredDate || item.createdAt,
         technician:
@@ -405,8 +416,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
           ) {
             return false;
           }
-          const scheduledAt = new Date(service.scheduledDate).getTime();
-          return Number.isFinite(scheduledAt) && scheduledAt > Date.now();
+          return isVisitTodayOrLater(service.scheduledDate);
         })
         .sort(
           (first, second) =>
@@ -893,7 +903,10 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                         lineHeight: 18,
                       }}
                     >
-                      Next Visit: {formatDate(nextVisit.scheduledDate, true)}
+                      Next Visit: {formatVisitSchedule(
+                        nextVisit.scheduledDate,
+                        nextVisit.visitPeriod,
+                      )}
                     </Text>
                     <Text
                       numberOfLines={1}
@@ -1280,7 +1293,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       >
                         {activeRequest.title}
                       </Text>
-                      {activeRequest.activityDate ? (
+                      {activeRequest.scheduledDate ? (
                         <Text
                           numberOfLines={1}
                           style={{
@@ -1290,7 +1303,22 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                             lineHeight: 16,
                           }}
                         >
-                          📅 {formatDate(activeRequest.activityDate, true)}
+                          📅 Scheduled: {formatVisitSchedule(
+                            activeRequest.scheduledDate,
+                            activeRequest.visitPeriod,
+                          )}
+                        </Text>
+                      ) : activeRequest.createdAt ? (
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            color: colors.textSecondary,
+                            fontFamily: "Outfit_500Medium",
+                            fontSize: 12,
+                            lineHeight: 16,
+                          }}
+                        >
+                          Submitted: {formatDate(activeRequest.createdAt)}
                         </Text>
                       ) : null}
                       {activeRequest.location ? (
@@ -1332,7 +1360,9 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                         label={
                           isUnclaimedActiveRequest
                             ? "Unclaimed"
-                            : activeRequest.status
+                            : getFarmerRequestListStatusLabel(
+                                activeRequest.status,
+                              )
                         }
                         variant={isUnclaimedActiveRequest ? "warning" : undefined}
                         domain="request"

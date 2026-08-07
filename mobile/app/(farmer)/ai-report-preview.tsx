@@ -16,6 +16,7 @@ import {
 import { generateSingleRecordPdfHtml } from "@/features/farmer-reports/utils/reportPdfGenerator";
 import type { ActivityFeedItem } from "@/features/farmer-reports/types/farmerReports.types";
 import { AppPageHeader } from "@/components/AppPageHeader";
+import { formatVisitSchedule } from "@/features/farmer-requests/utils/requestDetailPresentation";
 
 function AIReportPreviewSkeleton() {
   const { colors } = useTheme();
@@ -99,6 +100,7 @@ export default function AIReportPreviewScreen() {
         technicianNote: d.technicianNote || d.notes || "",
         serviceDate: d.inseminationDate,
         scheduledDate: d.scheduledDate,
+        visitPeriod: d.visitPeriod,
         preferredDate: d.preferredDate,
         requestedAt: d.createdAt,
         outcomeVerificationStatus: d.outcomeVerificationStatus,
@@ -157,8 +159,15 @@ export default function AIReportPreviewScreen() {
     ["Breed / Species", [animal.breed, animal.species].filter(Boolean).join(" / ") || "Not recorded"],
     ["Request status", details.status || "Not recorded"],
     ["Requested", formatDateTime(details.requestedAt)],
-    ["Preferred visit", formatDateTime(details.preferredDate)],
-    ["Scheduled visit", formatDateTime(details.scheduledDate)],
+    [
+      "Legacy preferred date",
+      formatVisitSchedule(details.preferredDate, null) || "Not recorded",
+    ],
+    [
+      "Scheduled visit",
+      formatVisitSchedule(details.scheduledDate, details.visitPeriod) ||
+        "Not recorded",
+    ],
     ["AI performed", formatDateTime(details.serviceDate)],
     ["Attempt number", details.attemptNumber ? `Attempt ${details.attemptNumber}` : "Not recorded"],
     ["Sire breed", details.sireBreed || "Not recorded"],

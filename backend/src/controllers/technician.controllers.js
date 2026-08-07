@@ -383,6 +383,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         time: formatTime(itemDisplayDate),
         preferredTime: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
+        visitPeriod: ins.visitPeriod || null,
         farmer: ins.farmerId?.name || "Unknown Farmer",
         farmerName: ins.farmerId?.name || "Unknown Farmer",
         farmerPhone: ins.farmerId?.phoneNumber || ins.farmerId?.phone || null,
@@ -491,6 +492,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         time: formatTime(itemDisplayDate),
         preferredTime: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
+        visitPeriod: healthRequest.visitPeriod || null,
         farmer: healthRequest.farmerId?.name || "Unknown Farmer",
         farmerName: healthRequest.farmerId?.name || "Unknown Farmer",
         farmerPhone: healthRequest.farmerId?.phoneNumber || healthRequest.farmerId?.phone || null,
@@ -603,6 +605,7 @@ export const getTechnicianDashboardData = async (req, res) => {
         displayStatus: taskDoc.status,
         time: formatTime(itemDisplayDate),
         displayDate: itemDisplayDate,
+        visitPeriod: taskDoc.metadata?.visitPeriod || null,
         farmer: taskDoc.farmerId?.name || "Unknown Farmer",
         farmerName: taskDoc.farmerId?.name || "Unknown Farmer",
         farmerPhone:
@@ -3383,7 +3386,7 @@ export const getTechnicianRequests = async (req, res) => {
       let actionLabel = null;
       if (rec.status === "pending" && isUnassigned) {
         allowedAction = "CLAIM_AND_SCHEDULE";
-        actionLabel = "Claim & Set Visit";
+        actionLabel = "Accept & Set Visit";
       } else if (rec.status === "approved") {
         allowedAction = "SCHEDULE_VISIT";
         actionLabel = "Schedule Visit";
@@ -4320,7 +4323,10 @@ export const getWorkQueue = async (req, res) => {
         actionLabel,
         farmer: serializeFarmer(taskDoc.farmerId),
         animal: serializeAnimal(firstAnimal),
-        schedule: { date: taskDoc.dueDate || null, visitPeriod: null },
+        schedule: {
+          date: taskDoc.dueDate || null,
+          visitPeriod: taskDoc.metadata?.visitPeriod || null,
+        },
         requestedAt: taskDoc.createdAt || null,
         completedAt: terminal
           ? taskDoc.completedAt || taskDoc.updatedAt || null
@@ -4348,7 +4354,7 @@ export const getWorkQueue = async (req, res) => {
         overdue: isOverdue(taskDoc.dueDate, terminal),
         sentTime: formatTime(taskDoc.createdAt),
         scheduledDate: taskDoc.dueDate || null,
-        visitPeriod: null,
+        visitPeriod: taskDoc.metadata?.visitPeriod || null,
         raw: taskDoc,
       };
 

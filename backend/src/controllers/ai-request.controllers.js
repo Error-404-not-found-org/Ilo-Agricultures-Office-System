@@ -712,6 +712,7 @@ export const updateRequestStatus = async (req, res) => {
             serviceType: "ai",
             technicianName: req.user.name,
             scheduledDate: request.scheduledDate,
+            visitPeriod: request.visitPeriod,
             reason: normalizedTechnicianNote || "",
           },
         });
@@ -1351,6 +1352,72 @@ export const getUpcomingVisits = async (req, res) => {
   }
 };
 
+const safeCandidateText = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+export const buildCandidateAIDetail = (request) => {
+  const farmer =
+    request?.farmerId && typeof request.farmerId === "object"
+      ? request.farmerId
+      : {};
+  const address =
+    farmer.address && typeof farmer.address === "object"
+      ? farmer.address
+      : {};
+  const dispatchLocation = request?.dispatch?.location || {};
+
+  return {
+    id: request._id,
+    _id: request._id,
+    workflowId: request._id,
+    workflowType: "AI",
+    allowedAction: "CLAIM_AND_SCHEDULE",
+    actionLabel: "Accept & Set Visit",
+    type: request.type,
+    serviceType: "Artificial Insemination",
+    status: request.status,
+    urgency: request.urgency,
+    preferredDate: request.preferredDate,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    heatSigns: request.heatSigns,
+    farmerNotes: safeCandidateText(request.comment),
+    comment: safeCandidateText(request.comment),
+    imageUrl: safeCandidateText(request.imageUrl),
+    animalId: request.animalId,
+    farmerName: safeCandidateText(farmer.name),
+    municipality:
+      safeCandidateText(dispatchLocation.municipalityName) ||
+      safeCandidateText(address.administrativeArea?.municipalityName) ||
+      safeCandidateText(address.municipality) ||
+      safeCandidateText(address.city),
+    barangay:
+      safeCandidateText(dispatchLocation.barangayName) ||
+      safeCandidateText(address.administrativeArea?.barangayName) ||
+      safeCandidateText(address.barangay),
+  };
+};
+
+export const buildTechnicianCandidateAIDetail = (request) => {
+  const candidate = buildCandidateAIDetail(request);
+  const farmer =
+    request?.farmerId && typeof request.farmerId === "object"
+      ? request.farmerId
+      : {};
+
+  return {
+    ...candidate,
+    farmerId: {
+      _id: farmer._id,
+      name: safeCandidateText(farmer.name),
+      phoneNumber: safeCandidateText(farmer.phoneNumber),
+      imageUrl: safeCandidateText(farmer.imageUrl),
+      address: farmer.address || null,
+      farmLocation: farmer.farmLocation || null,
+    },
+  };
+};
+
 // GET /api/ai-request/:id
 export const getAIRequestDetail = async (req, res) => {
   try {
@@ -1476,44 +1543,14 @@ export const getAIRequestDetail = async (req, res) => {
       }
 
       if (isUnclaimed) {
-        const candidateDetail = {
-          id: requestObj._id,
-          _id: requestObj._id,
-          type: requestObj.type,
-          serviceType: "Artificial Insemination",
-          status: requestObj.status,
-          urgency: requestObj.urgency,
-          preferredDate: requestObj.preferredDate,
-          createdAt: requestObj.createdAt,
-          updatedAt: requestObj.updatedAt,
-          heatSigns: requestObj.heatSigns,
-          note: requestObj.note,
-          animalId: requestObj.animalId,
-          municipality: requestObj.farmerId?.address?.city || requestObj.farmerId?.address?.municipality || "",
-          barangay: requestObj.farmerId?.address?.barangay || "",
-        };
-        return res.status(200).json(candidateDetail);
+        return res
+          .status(200)
+          .json(buildTechnicianCandidateAIDetail(requestObj));
       }
     }
 
     if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin" && req.user.role !== "technician") {
-      const candidateDetail = {
-        id: requestObj._id,
-        _id: requestObj._id,
-        type: requestObj.type,
-        serviceType: "Artificial Insemination",
-        status: requestObj.status,
-        urgency: requestObj.urgency,
-        preferredDate: requestObj.preferredDate,
-        createdAt: requestObj.createdAt,
-        updatedAt: requestObj.updatedAt,
-        heatSigns: requestObj.heatSigns,
-        note: requestObj.note,
-        animalId: requestObj.animalId,
-        municipality: requestObj.farmerId?.address?.city || requestObj.farmerId?.address?.municipality || "",
-        barangay: requestObj.farmerId?.address?.barangay || "",
-      };
-      return res.status(200).json(candidateDetail);
+      return res.status(200).json(buildCandidateAIDetail(requestObj));
     }
 
     return res.status(200).json({

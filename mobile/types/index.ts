@@ -192,6 +192,7 @@ export interface ServiceRequest {
   serviceType?: ServiceType;
   preferredDate?: string;
   scheduledDate?: string;
+  visitPeriod?: "morning" | "afternoon" | null;
   createdAt?: string;
   updatedAt?: string;
 }

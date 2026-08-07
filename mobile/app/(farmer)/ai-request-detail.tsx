@@ -42,10 +42,13 @@ import {
 } from "@/features/farmer-requests/components/RequestDetailPrimitives";
 import {
   formatRequestDateTime,
+  formatVisitSchedule,
+  getFarmerAINextStepMessage,
+  getFarmerAIProgressIndex,
+  getFarmerAIStatusLabel,
   getRequestList,
   getRequestText,
 } from "@/features/farmer-requests/utils/requestDetailPresentation";
-import { ReproductionNextActionCard } from "@/components/ReproductionNextActionCard";
 import {
   getBreedingObservationLabel,
   getBreedingObservationSignLabel,
@@ -54,25 +57,10 @@ import type { AIRequest } from "@/types";
 
 const stages = [
   { key: "pending", label: "Submitted" },
-  { key: "approved", label: "Approved" },
   { key: "scheduled", label: "Scheduled" },
   { key: "in-progress", label: "In Progress" },
   { key: "done", label: "Completed" },
 ];
-
-const stageIndex = (status?: string) =>
-  ({
-    pending: 0,
-    approved: 1,
-    assigned: 1,
-    triaged: 1,
-    scheduled: 2,
-    "in-progress": 3,
-    in_progress: 3,
-    done: 4,
-    resolved: 4,
-    completed: 4,
-  })[status || "pending"] ?? 0;
 
 const getAdditionalNotesOnly = (fullComment: string) => {
   if (!fullComment) return "";
@@ -293,8 +281,8 @@ export default function AiRequestDetailScreen() {
   const animal: any = request.animalId || {};
   const handler: any = request.technicianId || request.approvedBy;
 
-  const statusLabel = getRequestText(request.status);
-  const status = statusLabel?.toLowerCase() || "unknown";
+  const status = getRequestText(request.status)?.toLowerCase() || "unknown";
+  const statusLabel = getFarmerAIStatusLabel(status);
   const animalLabel =
     getRequestText(animal.earTag) ||
     getRequestText(animal.animalId) ||
@@ -323,12 +311,11 @@ export default function AiRequestDetailScreen() {
       (typeof handler === "string" ? getRequestText(handler) : handler?._id),
   );
   const handlerRole = getRequestText(handler?.role) || "technician";
-  const scheduledDate = formatRequestDateTime(request.scheduledDate, (date) =>
-    format(date, "MMM d, yyyy 'at' h:mm a"),
+  const visitSchedule = formatVisitSchedule(
+    request.scheduledDate,
+    request.visitPeriod,
   );
-  const preferredDate = formatRequestDateTime(request.preferredDate, (date) =>
-    format(date, "MMM d, yyyy 'at' h:mm a"),
-  );
+  const preferredDate = formatVisitSchedule(request.preferredDate, null);
   const inseminationDate = formatRequestDateTime(
     request.inseminationDate,
     (date) => format(date, "MMM d, yyyy 'at' h:mm a"),
@@ -344,6 +331,7 @@ export default function AiRequestDetailScreen() {
   const hasBreedingDetails = Boolean(estrus || sireBreed || sireCode);
   const showProgress =
     status !== "unknown" && status !== "cancelled" && status !== "rejected";
+  const nextStepMessage = getFarmerAINextStepMessage(status, visitSchedule);
 
   return (
     <FarmerScreen scroll={false}>
@@ -489,14 +477,9 @@ export default function AiRequestDetailScreen() {
           ) : null}
         </View>
 
-        {request.nextAction ? (
-          <View className="mx-5 mt-5">
-            <ReproductionNextActionCard
-              action={request.nextAction}
-              title="What Happens Next"
-            />
-          </View>
-        ) : null}
+        <RequestDetailCard title="What Happens Next">
+          <RequestDetailNotice message={nextStepMessage} />
+        </RequestDetailCard>
 
         {/* Progress Card */}
         <View
@@ -512,7 +495,7 @@ export default function AiRequestDetailScreen() {
             <View className="mt-2">
               <WorkflowProgress
                 steps={stages}
-                currentIndex={stageIndex(status)}
+                currentIndex={getFarmerAIProgressIndex(status)}
               />
             </View>
           ) : null}
@@ -529,27 +512,7 @@ export default function AiRequestDetailScreen() {
                 fontFamily: "Outfit_500Medium",
               }}
             >
-              {(() => {
-                const s = status;
-                if (s === "pending")
-                  return "Your request has been submitted. A technician will review and assign your request shortly.";
-                if (s === "approved" || s === "assigned" || s === "triaged")
-                  return "Your request has been approved. A technician will schedule your insemination visit soon.";
-                if (s === "scheduled") {
-                  return scheduledDate
-                    ? `Your insemination visit has been scheduled for ${scheduledDate}. Please ensure the animal is secured.`
-                    : "The visit is marked as scheduled, but the appointment time is not yet available. Please wait for the technician's confirmation.";
-                }
-                if (s === "in-progress" || s === "in_progress")
-                  return "The technician is currently on-site or performing the insemination service.";
-                if (s === "done" || s === "resolved" || s === "completed")
-                  return "The insemination procedure has been completed. Continue monitoring the animal and follow the next reproductive action.";
-                if (s === "rejected")
-                  return "This request was rejected. Please review notes or submit a new request.";
-                if (s === "cancelled")
-                  return "This request has been cancelled.";
-                return "Current service progress is not yet available.";
-              })()}
+              {nextStepMessage}
             </Text>
           </View>
         </View>
@@ -571,12 +534,17 @@ export default function AiRequestDetailScreen() {
           />
           <RequestDetailRow
             icon={<CalendarClock size={17} color={colors.primary} />}
-            label={scheduledDate ? "Confirmed visit" : "Visit schedule"}
+            label={
+              visitSchedule
+                ? "Confirmed visit"
+                : preferredDate
+                  ? "Legacy preferred date"
+                  : "Visit schedule"
+            }
             value={
-              scheduledDate ||
-              (preferredDate
-                ? `Preferred: ${preferredDate}`
-                : "Not scheduled yet")
+              visitSchedule ||
+              preferredDate ||
+              "Not scheduled yet"
             }
             isLast={!inseminationDate}
           />

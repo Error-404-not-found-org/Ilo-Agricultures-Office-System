@@ -12,15 +12,29 @@ import { Animal } from "../src/models/animal.model.js";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Calving } from "../src/models/calving.model.js";
+import { HealthRequest } from "../src/models/health-request.model.js";
+import { MedicalRecord } from "../src/models/medical-record.model.js";
 import { Task } from "../src/models/task.model.js";
 import { Notification } from "../src/models/notification.model.js";
 import { AnimalTimelineEvent } from "../src/models/animal-timeline-event.model.js";
 import { AuditLog } from "../src/models/audit-log.model.js";
 import { SCENARIO_NAMES, SEED_PREFIX, assertDevelopmentEnvironment } from "./seed-reproduction-lifecycle.js";
 
-const MODELS = { Animal, Insemination, Pregnancy, Calving, Task, Notification, AnimalTimelineEvent, AuditLog };
+const MODELS = {
+  Animal,
+  Insemination,
+  Pregnancy,
+  Calving,
+  HealthRequest,
+  MedicalRecord,
+  Task,
+  Notification,
+  AnimalTimelineEvent,
+  AuditLog,
+};
 const ID_FIELDS = Object.freeze([
   "insertedAnimalIds", "insertedInseminationIds", "insertedPregnancyIds", "insertedCalvingIds",
+  "insertedHealthRequestIds", "insertedMedicalRecordIds",
   "insertedTaskIds", "insertedNotificationIds", "insertedTimelineIds", "insertedAuditIds", "offspringIds",
   "motherAnimalIds",
 ]);
@@ -80,6 +94,8 @@ export const buildCleanupOperations = (manifest) => {
     { name: "audits", model: "AuditLog", filter: { _id: { $in: ids(manifest.insertedAuditIds) } } },
     { name: "timelines", model: "AnimalTimelineEvent", filter: { _id: { $in: ids(manifest.insertedTimelineIds) } } },
     { name: "tasks", model: "Task", filter: { _id: { $in: ids(manifest.insertedTaskIds) } } },
+    { name: "medicalRecords", model: "MedicalRecord", filter: { _id: { $in: ids(manifest.insertedMedicalRecordIds) } } },
+    { name: "healthRequests", model: "HealthRequest", filter: { _id: { $in: ids(manifest.insertedHealthRequestIds) } } },
     { name: "calvings", model: "Calving", filter: { _id: { $in: ids(manifest.insertedCalvingIds) } } },
     { name: "pregnancies", model: "Pregnancy", filter: { _id: { $in: ids(manifest.insertedPregnancyIds) } } },
     { name: "inseminations", model: "Insemination", filter: { _id: { $in: ids(manifest.insertedInseminationIds) } } },

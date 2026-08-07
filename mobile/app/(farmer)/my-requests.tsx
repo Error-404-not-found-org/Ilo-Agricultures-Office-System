@@ -32,6 +32,12 @@ import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { ScreenLayout } from "@/components/ScreenLayout";
 import { FarmerRequestHeader } from "@/features/farmer-requests/components/FarmerRequestHeader";
+import {
+  formatVisitSchedule,
+  getRequestText,
+  getFarmerRequestListStatusLabel,
+  mapFarmerRequestFilterStatus,
+} from "@/features/farmer-requests/utils/requestDetailPresentation";
 
 type MyRequestsProps = {
   showBackButton?: boolean;
@@ -65,7 +71,7 @@ export default function MyRequests({
   } = useQuery({
     queryKey: ["farmer", "ai-requests", page, status],
     queryFn: async () => {
-      let aiStatus = status;
+      const aiStatus = mapFarmerRequestFilterStatus("ai", status);
       const res = await api.get(
         `/ai-request/my?page=${page}&limit=10&status=${aiStatus}`,
       );
@@ -81,9 +87,7 @@ export default function MyRequests({
   } = useQuery({
     queryKey: ["farmer", "health-requests", page, status],
     queryFn: async () => {
-      let healthStatus = status;
-      if (status === "done") healthStatus = "resolved";
-      if (status === "rejected") healthStatus = "cancelled";
+      const healthStatus = mapFarmerRequestFilterStatus("health", status);
 
       const res = await api.get(
         `/health-request/my?page=${page}&limit=10&status=${healthStatus}`,
@@ -152,10 +156,9 @@ export default function MyRequests({
   const STATUS_FILTERS = [
     { label: "All", value: "all" },
     { label: "Pending", value: "pending" },
-    { label: "Approved", value: "approved" },
     { label: "Scheduled", value: "scheduled" },
-    { label: "In-Progress", value: "in-progress" },
-    { label: "Resolved", value: "done" },
+    { label: "In Progress", value: "in-progress" },
+    { label: "Completed", value: "completed" },
     { label: "Pending Cancellation", value: "pending_cancellation" },
   ];
 
@@ -241,6 +244,8 @@ export default function MyRequests({
           text: isDark ? "#fbbf24" : "#92400E",
         };
       case "approved":
+      case "assigned":
+      case "triaged":
         return {
           bg: isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5",
           text: isDark ? "#34d399" : "#065F46",
@@ -251,12 +256,14 @@ export default function MyRequests({
           text: isDark ? "#38bdf8" : "#0369A1",
         };
       case "in-progress":
+      case "in_progress":
         return {
           bg: isDark ? "rgba(59, 130, 246, 0.15)" : "#EFF6FF",
           text: isDark ? "#60a5fa" : "#1E40AF",
         };
       case "done":
       case "resolved":
+      case "completed":
         return {
           bg: isDark ? "rgba(107, 114, 128, 0.15)" : "#F1F5F9",
           text: isDark ? "#9ca3af" : "#475569",
@@ -423,15 +430,55 @@ export default function MyRequests({
           </View>
         ) : allRequests.length > 0 ? (
           allRequests.map((req: any) => {
-            const statusStyle = getStatusColor(req.status);
             const isHealth = req.type === "health";
             const isPendingCancellation = req.cancellationStatus === "requested";
+            const displayedStatus = isPendingCancellation
+              ? "pending_cancellation"
+              : req.status;
+            const statusStyle = getStatusColor(displayedStatus);
             const canCancelDirectly = ["pending", "approved"].includes(req.status) && !isPendingCancellation;
             const canRequestCancellation = req.status === "scheduled" && !isPendingCancellation;
             const canRemove = ["rejected", "cancelled"].includes(req.status);
             const canDelete = canCancelDirectly || canRequestCancellation || canRemove;
+            const scheduledVisit = formatVisitSchedule(
+              req.scheduledDate,
+              req.visitPeriod,
+            );
+            const legacyPreferredDate = formatVisitSchedule(
+              req.preferredDate,
+              null,
+            );
+            const requestStatusLabel = getFarmerRequestListStatusLabel(
+              displayedStatus,
+            );
+            const animalImage = getRequestText(req.animalId?.imageUrl);
+            const animalIdentity = getRequestText(
+              req.animalId?.earTag || req.animalId?.animalId,
+            );
+            const animalBreed = getRequestText(req.animalId?.breed);
+            const hasAnimalSummary = Boolean(
+              animalImage || animalIdentity || animalBreed,
+            );
+            const attemptNumber = Number.isFinite(req.attemptNumber)
+              ? req.attemptNumber
+              : null;
+            const healthSymptoms = Array.isArray(req.symptoms)
+              ? req.symptoms.map(getRequestText).filter(Boolean).join(", ")
+              : getRequestText(req.symptoms || req.comment || req.reason);
+            const farmerNotes = getRequestText(req.farmerNotes);
+            const assignedTechnician = getRequestText(
+              req.approvedBy?.name ||
+                req.handledBy?.name ||
+                req.technicianId?.name,
+            );
             // Filter for pending_cancellation tab
             if (status === "pending_cancellation" && !isPendingCancellation) return null;
+            if (
+              status === "in-progress" &&
+              !["in-progress", "in_progress"].includes(req.status)
+            ) {
+              return null;
+            }
 
             return (
               <View
@@ -483,13 +530,13 @@ export default function MyRequests({
                       className="text-[9px] font-black uppercase tracking-widest"
                       style={{ color: statusStyle.text }}
                     >
-                      {req.status}
+                      {requestStatusLabel}
                     </Text>
                   </View>
                 </View>
 
                 {/* Animal Info */}
-                <View
+                {hasAnimalSummary ? <View
                   className="p-4 rounded-2xl flex-row items-center justify-between mb-4"
                   style={{
                     backgroundColor: isDark ? colors.background : "#f8fafc",
@@ -503,33 +550,33 @@ export default function MyRequests({
                         borderColor: colors.border,
                       }}
                     >
-                      <Image
-                        source={{
-                          uri:
-                            req.animalId?.imageUrl ||
-                            "https://via.placeholder.com/100",
-                        }}
-                        className="w-8 h-8 rounded-lg"
-                      />
+                      {animalImage ? (
+                        <Image
+                          source={{ uri: animalImage }}
+                          className="w-8 h-8 rounded-lg"
+                        />
+                      ) : isHealth ? (
+                        <Stethoscope size={18} color={colors.textMuted} />
+                      ) : (
+                        <Syringe size={18} color={colors.textMuted} />
+                      )}
                     </View>
                     <View>
                       <Text
                         className="text-[13px] font-bold"
                         style={{ color: colors.textPrimary }}
                       >
-                        {req.animalId?.earTag ||
-                          req.animalId?.animalId ||
-                          "N/A"}
+                        {animalIdentity}
                       </Text>
-                      <Text
+                      {animalBreed ? <Text
                         className="text-[10px]"
                         style={{ color: colors.textMuted }}
                       >
-                        {req.animalId?.breed || "Unknown"}
-                      </Text>
+                        {animalBreed}
+                      </Text> : null}
                     </View>
                   </View>
-                  {!isHealth && (
+                  {!isHealth && attemptNumber !== null && (
                     <View className="items-end">
                       <Text
                         className="text-[10px] font-bold uppercase"
@@ -541,14 +588,14 @@ export default function MyRequests({
                         className="text-[12px] font-black"
                         style={{ color: colors.textPrimary }}
                       >
-                        #{req.attemptNumber || 1}
+                        #{attemptNumber}
                       </Text>
                     </View>
                   )}
-                </View>
+                </View> : null}
 
                 {/* Comment / Reason */}
-                {(isHealth && (req.comment || req.reason)) || (!isHealth && getAdditionalNotesOnly(req.comment || req.reason)) ? (
+                {(isHealth ? healthSymptoms : getAdditionalNotesOnly(req.comment || req.reason)) ? (
                   <View className="mb-4">
                     <Text
                       className="text-[10px] font-bold uppercase mb-1"
@@ -560,7 +607,24 @@ export default function MyRequests({
                       className="text-[12px] italic"
                       style={{ color: colors.textSecondary }}
                     >
-                      &quot;{isHealth ? (req.comment || req.reason) : getAdditionalNotesOnly(req.comment || req.reason)}&quot;
+                      &quot;{isHealth ? healthSymptoms : getAdditionalNotesOnly(req.comment || req.reason)}&quot;
+                    </Text>
+                  </View>
+                ) : null}
+
+                {isHealth && farmerNotes && farmerNotes !== healthSymptoms ? (
+                  <View className="mb-4">
+                    <Text
+                      className="text-[10px] font-bold uppercase mb-1"
+                      style={{ color: colors.textMuted }}
+                    >
+                      Farmer Notes
+                    </Text>
+                    <Text
+                      className="text-[12px]"
+                      style={{ color: colors.textSecondary }}
+                    >
+                      {farmerNotes}
                     </Text>
                   </View>
                 ) : null}
@@ -629,7 +693,7 @@ export default function MyRequests({
                 ) : null}
 
                 {/* Scheduled Info if scheduledDate is set */}
-                {req.scheduledDate ? (
+                {scheduledVisit ? (
                   <View
                     className="flex-row items-center gap-2 mb-4 p-3 rounded-xl border"
                     style={{
@@ -644,11 +708,10 @@ export default function MyRequests({
                       className="text-[12px] font-bold"
                       style={{ color: isDark ? "#7dd3fc" : "#0369a1" }}
                     >
-                      Scheduled for{" "}
-                      {format(new Date(req.scheduledDate), "MMM d, h:mm a")}
+                      Scheduled for {scheduledVisit}
                     </Text>
                   </View>
-                ) : req.preferredDate ? (
+                ) : legacyPreferredDate ? (
                   <View
                     className="flex-row items-center gap-2 mb-4 p-3 rounded-xl border"
                     style={{
@@ -663,14 +726,13 @@ export default function MyRequests({
                       className="text-[12px] font-bold"
                       style={{ color: isDark ? "#fde68a" : "#b45309" }}
                     >
-                      Preferred:{" "}
-                      {format(new Date(req.preferredDate), "MMM d, h:mm a")}
+                      Legacy preferred date: {legacyPreferredDate}
                     </Text>
                   </View>
                 ) : null}
 
                 {/* Technician Info */}
-                {(req.approvedBy || req.handledBy || req.technicianId) && (
+                {assignedTechnician ? (
                   <View className="flex-row items-center gap-2 mb-4">
                     <CheckCircle2 size={14} color={primaryColor} />
                     <Text
@@ -678,13 +740,10 @@ export default function MyRequests({
                       style={{ color: colors.textSecondary }}
                     >
                       Assigned to:{" "}
-                      {req.approvedBy?.name ||
-                        req.handledBy?.name ||
-                        req.technicianId?.name ||
-                        "Technician"}
+                      {assignedTechnician}
                     </Text>
                   </View>
-                )}
+                ) : null}
 
                 {/* Pending Cancellation Badge */}
                 {isPendingCancellation && (
@@ -777,7 +836,7 @@ export default function MyRequests({
                     </TouchableOpacity>
                   )}
 
-                  {isHealth && (req.status === "resolved" || req.status === "done") && (
+                  {isHealth && ["resolved", "done", "completed"].includes(req.status) && (
                     <TouchableOpacity
                       onPress={() =>
                         router.push({

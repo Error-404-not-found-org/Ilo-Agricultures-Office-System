@@ -105,6 +105,9 @@ test("walk-in AI rejects a non-string technician note before recording", async (
 
 test("technician request starts and AI completion stay responsive and visible", () => {
   const details = source("mobile/app/(technician)/request-details.tsx");
+  const aiDetails = source(
+    "mobile/features/technician-requests/components/AIRequestDetails.tsx",
+  );
   const rootLayout = source("mobile/app/_layout.tsx");
   const confirmationModal = source("mobile/components/ConfirmationModal.tsx");
   const dateRangeSelector = source(
@@ -125,25 +128,16 @@ test("technician request starts and AI completion stay responsive and visible", 
   assert.match(dateRangeSelector, /<Modal/);
   assert.doesNotMatch(dateRangeSelector, /Dialog/);
 
-  assert.match(details, /keyboardShouldPersistTaps="handled"/);
-  assert.match(details, /err\.response\?\.data\?\.message/);
-  assert.match(details, /accessibilityRole="alert"/);
-  assert.doesNotMatch(
-    details.slice(
-      details.indexOf("const handleUpdateStatus"),
-      details.indexOf("const formatDate"),
-    ),
-    /toast\.error/,
-  );
-  assert.match(details, /if \(result\?\.request\) \{\s*setRequest\(result\.request\)/);
-  assert.match(details, /void fetchRequestDetails\(\)/);
-  assert.doesNotMatch(details, /await fetchRequestDetails\(\)/);
+  assert.match(details, /<AIRequestDetails/);
+  assert.doesNotMatch(details, /handleUpdateStatus|DateTimePicker/);
+  assert.match(aiDetails, /keyboardShouldPersistTaps="handled"/);
+  assert.match(aiDetails, /error\?\.response\?\.data\?\.message/);
+  assert.match(aiDetails, /accessibilityRole="alert"/);
+  assert.match(aiDetails, /await onRefresh\(\)/);
 
 
-  assert.match(
-    list,
-    /if \(currentStatus === "scheduled"\) \{\s*handleActionPress\(item\)/,
-  );
+  assert.match(list, /pathname: "\/\(technician\)\/request-details"/);
+  assert.doesNotMatch(list, /pathname: "\/\(technician\)\/record-ai"/);
   assert.match(controller, /EARLY_START_CONFIRMATION_REQUIRED/);
   assert.match(controller, /updateData\.serviceStartedAt/);
   assert.match(controller, /updateData\.earlyStartMinutes/);

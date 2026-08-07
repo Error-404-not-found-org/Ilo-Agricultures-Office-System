@@ -1,4 +1,5 @@
 const EVENT_ALIASES = {
+  request_submitted: "service_request_submitted",
   farmer_breeding_observation_reported: "farmer_observation_submitted",
   breeding_observation_submitted: "farmer_observation_submitted",
   observation_review_required: "technician_review_required",
@@ -61,19 +62,6 @@ const animalLabel = (metadata = {}) =>
     "the animal",
   );
 
-const dateLabel = (value) => {
-  if (!value) return "the scheduled time";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return sanitizeNotificationText(value);
-  return new Intl.DateTimeFormat("en-PH", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-};
-
 const dateOnlyLabel = (value) => {
   if (!value) return "the recorded date";
   const date = new Date(value);
@@ -83,6 +71,25 @@ const dateOnlyLabel = (value) => {
     day: "numeric",
     year: "numeric",
   }).format(date);
+};
+
+export const visitScheduleLabel = (scheduledDate, visitPeriod) => {
+  const parsedDate = new Date(scheduledDate);
+  const date = !scheduledDate
+    ? "the scheduled date"
+    : Number.isNaN(parsedDate.getTime())
+      ? sanitizeNotificationText(scheduledDate)
+      : new Intl.DateTimeFormat("en-PH", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "Asia/Manila",
+        }).format(parsedDate);
+  const normalizedPeriod = String(visitPeriod || "").trim().toLowerCase();
+  if (!scheduledDate || !["morning", "afternoon"].includes(normalizedPeriod)) {
+    return date;
+  }
+  return `${date} · ${normalizedPeriod[0].toUpperCase()}${normalizedPeriod.slice(1)}`;
 };
 
 const reasonSentence = (reason) => {
@@ -117,11 +124,11 @@ const structuredCopy = (eventType, metadata = {}) => {
     },
     service_visit_scheduled: {
       title: `${service} visit scheduled`,
-      message: `The visit for ${animal} is scheduled for ${dateLabel(metadata.scheduledDate)} with ${technician}.`,
+      message: `The visit for ${animal} is scheduled for ${visitScheduleLabel(metadata.scheduledDate, metadata.visitPeriod)} with ${technician}.`,
     },
     service_visit_rescheduled: {
       title: `${service} visit rescheduled`,
-      message: `The visit for ${animal} was moved to ${dateLabel(metadata.scheduledDate)} with ${technician}.`,
+      message: `The visit for ${animal} was moved to ${visitScheduleLabel(metadata.scheduledDate, metadata.visitPeriod)} with ${technician}.`,
     },
     service_started: {
       title: `${service} started`,

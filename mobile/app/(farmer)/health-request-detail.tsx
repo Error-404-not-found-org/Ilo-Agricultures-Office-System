@@ -22,7 +22,6 @@ import {
 import { toast } from "sonner-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -42,7 +41,7 @@ import {
   RequestDetailRow,
 } from "@/features/farmer-requests/components/RequestDetailPrimitives";
 import {
-  formatRequestDateTime,
+  formatVisitSchedule,
   getRequestList,
   getRequestText,
 } from "@/features/farmer-requests/utils/requestDetailPresentation";
@@ -239,12 +238,11 @@ export default function HealthRequestDetailScreen() {
       (typeof handler === "string" ? getRequestText(handler) : handler?._id),
   );
   const handlerRole = getRequestText(handler?.role) || "technician";
-  const scheduledDate = formatRequestDateTime(request.scheduledDate, (date) =>
-    format(date, "MMM d, yyyy 'at' h:mm a"),
+  const scheduledDate = formatVisitSchedule(
+    request.scheduledDate,
+    request.visitPeriod,
   );
-  const preferredDate = formatRequestDateTime(request.preferredDate, (date) =>
-    format(date, "MMM d, yyyy 'at' h:mm a"),
-  );
+  const preferredDate = formatVisitSchedule(request.preferredDate, null);
   const responseFields = [
     ["Findings", getRequestText(request.findings)],
     ["Diagnosis", getRequestText(request.diagnosis)],
@@ -425,12 +423,17 @@ export default function HealthRequestDetailScreen() {
           />
           <RequestDetailRow
             icon={<CalendarClock size={17} color={colors.primary} />}
-            label={scheduledDate ? "Confirmed visit" : "Visit schedule"}
+            label={
+              scheduledDate
+                ? "Confirmed visit"
+                : preferredDate
+                  ? "Legacy preferred date"
+                  : "Visit schedule"
+            }
             value={
               scheduledDate ||
-              (preferredDate
-                ? `Preferred: ${preferredDate}`
-                : "Not scheduled yet")
+              preferredDate ||
+              "Not scheduled yet"
             }
             isLast={responseFields.length === 0}
           />

@@ -47,6 +47,10 @@ import {
   selectUpcomingVisits,
 } from "../utils/farmerDashboard.transforms";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  formatVisitPeriod,
+  formatVisitSchedule,
+} from "@/features/farmer-requests/utils/requestDetailPresentation";
 
 const PRIMARY = "#00643B";
 
@@ -659,6 +663,11 @@ export function FarmerHomeScreen() {
                 const canCancel =
                   normalizedStatus === "scheduled" &&
                   visit.cancellationStatus !== "requested";
+                const visitPeriod = formatVisitPeriod(visit.visitPeriod);
+                const visitSchedule = formatVisitSchedule(
+                  visit.scheduledDate,
+                  visit.visitPeriod,
+                );
 
                 return (
                   <View key={visit._id}>
@@ -670,7 +679,7 @@ export function FarmerHomeScreen() {
                         new Date(visit.scheduledDate),
                         "EEE, MMM d, yyyy",
                       )}
-                      timeStr={format(new Date(visit.scheduledDate), "h:mm a")}
+                      timeStr={visitPeriod || undefined}
                       technician={visit.technician || "Pending Assignment"}
                       serviceStatus={statusLabel}
                       reproductiveOutcome={reproductiveOutcome}
@@ -678,7 +687,9 @@ export function FarmerHomeScreen() {
                         isHealthVisit ? "Health check" : "AI service"
                       } for ${getFullAnimalReference(
                         visit.animalId,
-                      )}. Service status ${visit.status}.`}
+                      )}.${
+                        visitSchedule ? ` Scheduled ${visitSchedule}.` : ""
+                      } Service status ${visit.status}.`}
                       icon={
                         isHealthVisit ? (
                           <Stethoscope

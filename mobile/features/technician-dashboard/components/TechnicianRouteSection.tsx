@@ -4,7 +4,6 @@ import {
   CalendarDays,
   HeartPulse,
   MapPin,
-  Send,
   Stethoscope,
   Syringe,
 } from "lucide-react-native";
@@ -13,10 +12,7 @@ import { useRouter } from "expo-router";
 import { AsyncState, SectionHeader, StatusBadge } from "@/components/shared";
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
-import {
-  formatDashboardLocation,
-  formatSentAt,
-} from "../utils/dashboardPresentation";
+import { formatDashboardLocation } from "../utils/dashboardPresentation";
 import { TechnicianRouteSkeleton } from "./skeletons/TechnicianDashboardSkeletons";
 import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
 
@@ -32,6 +28,7 @@ function cleanServiceTitle(
   defaultLabel = "Farm visit",
 ): string {
   if (!rawTask) return defaultLabel;
+
   // Remove test seed prefixes like SEED-repro-..., RC26-..., etc.
   let text = rawTask
     .replace(/-?\s*SEED-[A-Za-z0-9-]+/gi, "")
@@ -66,24 +63,28 @@ function getServiceTheme(
   }
 
   const name = serviceName.toLowerCase();
+
   if (name.includes("health")) {
     return {
       iconColor: isDark ? "#FBBF24" : "#F59E0B",
       bgColor: isDark ? "rgba(245,158,11,0.15)" : "#FFFBEB",
     };
   }
+
   if (name.includes("pregnancy") || name.includes("pd")) {
     return {
       iconColor: isDark ? "#F472B6" : "#EC4899",
       bgColor: isDark ? "rgba(236,72,153,0.15)" : "#FDF2F8",
     };
   }
+
   if (name.includes("calving") || name.includes("calf")) {
     return {
       iconColor: isDark ? "#22D3EE" : "#06B6D4",
       bgColor: isDark ? "rgba(6,182,212,0.15)" : "#ECFEFF",
     };
   }
+
   // Default: AI / Artificial Insemination / Farm visit
   return {
     iconColor: isDark ? "#34D399" : "#10B981",
@@ -122,10 +123,13 @@ export function TechnicianRouteSection({
             }}
           >
             <CalendarDays size={17} color={colors.primary} />
+
             <Text
               variant="semibold"
               size={14}
-              style={{ color: colors.primary }}
+              style={{
+                color: colors.primary,
+              }}
             >
               Open calendar
             </Text>
@@ -138,13 +142,18 @@ export function TechnicianRouteSection({
       ) : previewItems.length === 0 ? (
         <View
           className={TECHNICIAN_DASHBOARD_CARD_CLASSNAME}
-          style={{ padding: 16 }}
+          style={{
+            padding: 16,
+          }}
         >
           <AsyncState
             state="empty"
             title="No visits scheduled today"
             message="Scheduled field work will appear here."
-            style={{ paddingVertical: 20, paddingHorizontal: 8 }}
+            style={{
+              paddingVertical: 20,
+              paddingHorizontal: 8,
+            }}
           />
         </View>
       ) : (
@@ -155,14 +164,19 @@ export function TechnicianRouteSection({
             item.raw?.handledBy?._id ||
             item.raw?.handledBy ||
             null;
+
           const assignedTechnicianName =
             item.raw?.approvedBy?.name ||
             item.raw?.handledBy?.name ||
             (assignedTechnicianId ? "another technician" : null);
+
           const assignedToOther =
             assignedTechnicianId &&
             dbUser?._id &&
             String(assignedTechnicianId) !== String(dbUser._id);
+
+          void assignedTechnicianName;
+          void assignedToOther;
 
           return (
             <VisitRow
@@ -179,15 +193,22 @@ export function TechnicianRouteSection({
 
 function VisitRow({ item, onPress }: any) {
   const { width } = useWindowDimensions();
+
   const { colors, isDark } = useTheme();
+
   const compact = width < 390;
+
   const overdue = item.overdue === true;
+
   const farmer = item.raw?.farmerId || {};
+
   const farmLocation = farmer.farmLocation || {};
+
   const hasFarmPin =
     item.hasFarmPin ??
     (Number.isFinite(farmLocation.latitude) &&
       Number.isFinite(farmLocation.longitude));
+
   const location = formatDashboardLocation(
     item,
     item.farmLocationLabel ||
@@ -195,6 +216,7 @@ function VisitRow({ item, onPress }: any) {
       farmLocation.landmark ||
       item.location,
   );
+
   const sentAt =
     item.sentTime ||
     item.createdAt ||
@@ -202,19 +224,26 @@ function VisitRow({ item, onPress }: any) {
     item.raw?.createdAt ||
     item.raw?.requestedAt ||
     item.raw?.requestId?.createdAt;
+
+  void sentAt;
+
   const rawService =
     item.serviceType || item.taskType || item.task || "Farm visit";
+
   const service = cleanServiceTitle(rawService);
+
   const animalName =
     item.animalName ||
     item.animal ||
     item.raw?.animalId?.name ||
     item.raw?.animalId?.animalName;
+
   const animalTag =
     item.animalTag ||
     item.earTag ||
     item.raw?.animalId?.earTag ||
     item.raw?.animalId?.animalId;
+
   const animal = animalName
     ? animalTag
       ? `${animalName} (${animalTag})`
@@ -222,31 +251,37 @@ function VisitRow({ item, onPress }: any) {
     : animalTag
       ? `Animal ${animalTag}`
       : null;
+
   const normalizedStatus = String(
     item.status || item.displayStatus || "",
   ).toLowerCase();
+
   const inProgress =
     normalizedStatus.includes("in-progress") ||
     normalizedStatus.includes("in_progress") ||
     normalizedStatus.includes("in progress");
+
   const statusLabel = overdue
     ? "Overdue"
     : inProgress
       ? "In progress"
       : "Scheduled";
-  const timeLabel =
-    item.time || formatShortTime(item.displayDate || item.scheduledDate);
-  const timeParts = splitTimeLabel(timeLabel);
+
   const isAIService =
     service.toLowerCase().includes("insemination") ||
     service.toLowerCase().includes("ai service");
+
   const canStart =
     !isAIService && !overdue && !inProgress && item.isReadyToday === true;
+
   const actionLabel = isAIService
     ? "View My Work"
     : canStart
       ? "Start service"
       : "View";
+
+  void actionLabel;
+
   const ServiceIcon = service.toLowerCase().includes("health")
     ? Stethoscope
     : service.toLowerCase().includes("pregnancy")
@@ -254,10 +289,18 @@ function VisitRow({ item, onPress }: any) {
       : isAIService
         ? Syringe
         : CalendarDays;
+
   const statusVariant = overdue ? "danger" : inProgress ? "info" : "warning";
+
   const exceptionLabel = !hasFarmPin ? "Farm location not set" : null;
 
   const serviceTheme = getServiceTheme(service, overdue, isDark, colors);
+  const visitPeriod =
+    item.visitPeriod ||
+    item.schedule?.visitPeriod ||
+    item.raw?.visitPeriod ||
+    item.raw?.metadata?.visitPeriod ||
+    item.raw?.requestId?.visitPeriod;
 
   const actionColumn = (
     <View
@@ -283,7 +326,10 @@ function VisitRow({ item, onPress }: any) {
   return (
     <View
       className={TECHNICIAN_DASHBOARD_CARD_CLASSNAME}
-      style={{ marginBottom: 12, padding: 12 }}
+      style={{
+        marginBottom: 12,
+        padding: 12,
+      }}
     >
       <View
         style={{
@@ -317,18 +363,31 @@ function VisitRow({ item, onPress }: any) {
             <ServiceIcon size={20} color={serviceTheme.iconColor} />
           </View>
 
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontFamily: "Outfit_700Bold" }} numberOfLines={2}>
+          <View
+            style={{
+              flex: 1,
+              minWidth: 0,
+            }}
+          >
+            <Text
+              style={{
+                fontFamily: "Outfit_700Bold",
+              }}
+              numberOfLines={2}
+            >
               {service}
             </Text>
+
             <Text textRole="body" numberOfLines={1}>
               {item.farmer || "Farmer Request"}
             </Text>
+
             {animal ? (
               <Text textRole="caption" color="secondary" numberOfLines={1}>
                 {animal}
               </Text>
             ) : null}
+
             <View
               style={{
                 flexDirection: "row",
@@ -338,15 +397,19 @@ function VisitRow({ item, onPress }: any) {
               }}
             >
               <MapPin size={13} color={colors.textMuted} />
+
               <Text
                 textRole="caption"
                 color="secondary"
                 numberOfLines={1}
-                style={{ flex: 1 }}
+                style={{
+                  flex: 1,
+                }}
               >
                 {location}
               </Text>
             </View>
+
             <View
               style={{
                 flexDirection: "row",
@@ -356,18 +419,22 @@ function VisitRow({ item, onPress }: any) {
               }}
             >
               <CalendarDays size={13} color={colors.textMuted} />
+
               <Text
                 textRole="caption"
                 color="secondary"
                 numberOfLines={1}
-                style={{ flex: 1 }}
+                style={{
+                  flex: 1,
+                }}
               >
                 {formatScheduleDateTime(
                   item.displayDate || item.scheduledDate,
-                  item.time || item.visitPeriod,
+                  visitPeriod,
                 )}
               </Text>
             </View>
+
             {exceptionLabel ? (
               <View
                 style={{
@@ -378,6 +445,7 @@ function VisitRow({ item, onPress }: any) {
                 }}
               >
                 <MapPin size={13} color={colors.warning} />
+
                 <Text
                   textRole="label"
                   numberOfLines={1}
@@ -401,34 +469,15 @@ function VisitRow({ item, onPress }: any) {
   );
 }
 
-function splitTimeLabel(value: string) {
-  const normalized = value.trim();
-  const match = normalized.match(/^(.+?)\s+(AM|PM)$/i);
-
-  if (!match) {
-    return { time: normalized, period: undefined };
+function formatScheduleDateTime(dateStr?: string, visitPeriod?: string) {
+  if (!dateStr) {
+    return "Schedule not set";
   }
 
-  return {
-    time: match[1],
-    period: match[2].toUpperCase(),
-  };
-}
-
-function formatShortTime(value?: string) {
-  if (!value) return "Time not set";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Time not set";
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatScheduleDateTime(dateStr?: string, timeStr?: string) {
-  if (!dateStr) return "Schedule not set";
   const date = new Date(dateStr);
+
   let label = "Schedule not set";
+
   if (!Number.isNaN(date.getTime())) {
     label = date.toLocaleDateString("en-US", {
       month: "short",
@@ -438,8 +487,15 @@ function formatScheduleDateTime(dateStr?: string, timeStr?: string) {
     label = dateStr;
   }
 
-  if (timeStr) {
-    label += ` - ${timeStr}`;
+  const period = String(visitPeriod || "")
+    .trim()
+    .toLowerCase();
+
+  if (period === "morning") {
+    label += " · Morning";
+  } else if (period === "afternoon") {
+    label += " · Afternoon";
   }
+
   return label;
 }

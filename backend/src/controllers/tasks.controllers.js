@@ -6,6 +6,7 @@ import {
 } from "../domain/status-vocabulary.js";
 import { User } from "../models/user.model.js";
 import { Insemination } from "../models/insemination.model.js";
+import { Pregnancy } from "../models/pregnancy.model.js";
 import { HealthRequest } from "../models/health-request.model.js";
 import mongoose from "mongoose";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
@@ -58,6 +59,39 @@ const MANUAL_FIELD_TASK_TYPES = new Set([
   "Registration",
   "Other",
 ]);
+
+const TASK_ANIMAL_DETAIL_FIELDS = [
+  "animalId",
+  "earTag",
+  "species",
+  "breed",
+  "color",
+  "imageUrl",
+  "gender",
+  "birthDate",
+  "parity",
+  "reproductiveStatus",
+  "expectedCalvingDate",
+].join(" ");
+
+const INSEMINATION_DETAIL_FIELDS = [
+  "animalId",
+  "inseminationDate",
+  "scheduledDate",
+  "attemptNumber",
+  "sireBreed",
+  "sireCode",
+  "estrus",
+  "heatSigns",
+  "comment",
+  "technicianNote",
+  "farmerOutcomeReport",
+  "farmerOutcomeReportedAt",
+  "farmerObservationSigns",
+  "farmerObservationNotes",
+  "evidencePhotos",
+  "pregnancyId",
+].join(" ");
 
 const normalizeTaskType = (value = "GeneralVisit") => {
   const raw = String(value || "GeneralVisit").trim();
@@ -384,7 +418,7 @@ export const getTaskById = async (req, res) => {
       $or: [ { technicianId: req.user._id }, { technicianId: { $exists: false } }, { technicianId: null } ]
     })
       .populate("farmerId", "name imageUrl phoneNumber address farmLocation")
-      .populate("animalIds", "animalId earTag species breed color");
+      .populate("animalIds", TASK_ANIMAL_DETAIL_FIELDS);
 
     if (!task) return res.status(404).json({ message: "Task not found" });
 
@@ -423,7 +457,8 @@ export const getTaskById = async (req, res) => {
         : { verificationTaskId: task._id, deletedAt: null };
 
       const insemination = await Insemination.findOne(inseminationQuery)
-        .populate("animalId", "animalId earTag species breed color");
+        .select(INSEMINATION_DETAIL_FIELDS)
+        .populate("animalId", TASK_ANIMAL_DETAIL_FIELDS);
       const policyResolution = await loadPregnancyConfirmationPolicy();
       taskObj.metadata = withNormalizedPregnancyTaskMetadata(taskObj);
       taskObj.insemination = insemination || null;
@@ -432,6 +467,41 @@ export const getTaskById = async (req, res) => {
         policy: policyResolution.policy,
         species: insemination?.animalId?.species || taskObj.animalIds?.[0]?.species,
       });
+
+      const pregnancyId =
+        task.metadata?.pregnancyId ||
+        insemination?.pregnancyId ||
+        (task.relatedRecordType === "pregnancy" ? task.relatedRecordId : null);
+      if (pregnancyId) {
+        taskObj.pregnancy = await Pregnancy.findOne({
+          _id: pregnancyId,
+          deletedAt: null,
+        }).populate("inseminationId", INSEMINATION_DETAIL_FIELDS);
+      }
+    }
+
+    if (["CD", "Calving"].includes(task.taskType)) {
+      const pregnancyId =
+        task.metadata?.pregnancyId ||
+        (task.relatedRecordType === "pregnancy" ? task.relatedRecordId : null);
+      const inseminationId = task.metadata?.inseminationId;
+      const pregnancyQuery = pregnancyId
+        ? { _id: pregnancyId, deletedAt: null }
+        : inseminationId
+          ? { inseminationId, deletedAt: null }
+          : null;
+
+      if (pregnancyQuery) {
+        const pregnancy = await Pregnancy.findOne(pregnancyQuery).populate(
+          "inseminationId",
+          INSEMINATION_DETAIL_FIELDS,
+        );
+        taskObj.pregnancy = pregnancy || null;
+        taskObj.insemination = pregnancy?.inseminationId || null;
+      } else {
+        taskObj.pregnancy = null;
+        taskObj.insemination = null;
+      }
     }
 
     res.status(200).json(taskObj);

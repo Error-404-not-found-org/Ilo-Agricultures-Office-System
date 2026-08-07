@@ -20,7 +20,6 @@ import { Text } from "@/components/ui/Text";
 import { SearchBar } from "@/components/shared";
 import { toast } from "sonner-native";
 import type { WorkQueueItem } from "@/features/technician-requests/types/technicianRequests.types";
-import { isCanonicalWorkflowId } from "@/features/technician-requests/utils/aiWorkflow";
 import {
   MY_WORK_FILTERS,
   getServicePresentation,
@@ -411,7 +410,7 @@ export default function TechnicianMyWorkPanel({
                       >
                         {t.workflowType === "Health" || t.type === "health"
                           ? (String(t.status || "").toLowerCase() === "pending"
-                            ? "Claim Request"
+                            ? "Review Request"
                             : ["approved", "assigned", "triaged"].includes(String(t.status || "").toLowerCase())
                               ? "Schedule Visit"
                               : String(t.status || "").toLowerCase() === "scheduled"

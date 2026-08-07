@@ -1,10 +1,9 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { View, FlatList, TouchableOpacity, RefreshControl } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { safeBack } from "@/utils/navigation";
 import { CalendarDays, SlidersHorizontal } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "@/lib/theme";
 import { toast } from "sonner-native";
 import { Text } from "@/components/ui/Text";
@@ -21,18 +20,10 @@ import {
 
 import { useTechnicianRequests } from "../hooks/useTechnicianRequests";
 import { RequestListCard } from "../components/RequestListCard";
-import { AIRequestModal } from "../components/AIRequestModal";
 import TechnicianMyWorkPanel from "../components/TechnicianMyWorkPanel";
 import { RequestWorkFilterChips } from "../components/RequestWorkBadge";
-import type {
-  RequestItem,
-  VisitPeriod,
-} from "../types/technicianRequests.types";
-import {
-  getClaimScheduleErrorMessage,
-  isCanonicalWorkflowId,
-} from "../utils/aiWorkflow";
-import { technicianKeys } from "@/lib/queryKeys";
+import type { RequestItem } from "../types/technicianRequests.types";
+import { isCanonicalWorkflowId } from "../utils/aiWorkflow";
 import { OPEN_REQUEST_FILTERS } from "../utils/requestWorkPresentation";
 import {
   SearchBar,
@@ -55,8 +46,6 @@ export default function TechnicianRequestsScreen({
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const queryClient = useQueryClient();
-  const scheduleSubmissionRef = useRef(false);
   const { section } = useLocalSearchParams<{
     section?: string | string[];
   }>();
@@ -85,16 +74,7 @@ export default function TechnicianRequestsScreen({
     isLoading,
     isRefetching,
     handleRefresh,
-    handleDeclineForMe,
-    handleClaimRequest,
-    handleClaimAndSchedule,
-    isClaimingAndScheduling,
-    isUpdating,
   } = useTechnicianRequests();
-
-  const [aiModal, setAIModal] = useState<{
-    request: RequestItem;
-  } | null>(null);
   const [activeSection, setActiveSection] =
     useState<RequestSection>("openRequests");
 
@@ -231,36 +211,22 @@ export default function TechnicianRequestsScreen({
     }
   };
 
-  const openAIRequest = (item: RequestItem) => {
-    if (!isCanonicalWorkflowId(item.workflowId)) {
-      toast.error("This AI request is missing its workflow identifier.");
-      return;
-    }
-    setAIModal({ request: item });
-  };
-
   const handleActionPress = (item: RequestItem | any) => {
     if (item.workflowType === "AI" || item.type === "ai") {
-      if (item.workflowType !== "AI") {
-        toast.error(
-          "This AI request is missing its canonical workflow contract.",
-        );
+      const canonicalWorkflowId = item.workflowId || item.id || item._id;
+      if (!isCanonicalWorkflowId(canonicalWorkflowId)) {
+        toast.error("This AI request is missing its workflow identifier.");
         return;
       }
-      if (item.allowedAction === "CLAIM_AND_SCHEDULE") {
-        openAIRequest(item);
-      } else if (item.allowedAction === "VIEW_RECORD") {
-        router.push({
-          pathname: "/(technician)/request-details",
-          params: { id: item.workflowId, type: "ai", viewOnly: "true" },
-        });
-      } else if (item.allowedAction === "RECORD_SERVICE") {
-        toast.error("Open this scheduled service from My Work.");
-      } else if (item.allowedAction === "SCHEDULE_VISIT") {
-        openAIRequest(item);
-      } else {
-        toast.error("This AI request has no available action.");
-      }
+      router.push({
+        pathname: "/(technician)/request-details",
+        params: {
+          id: canonicalWorkflowId,
+          workflowId: canonicalWorkflowId,
+          type: "ai",
+          ...(item.allowedAction === "VIEW_RECORD" ? { viewOnly: "true" } : {}),
+        },
+      });
       return;
     }
 
@@ -281,104 +247,7 @@ export default function TechnicianRequestsScreen({
     });
   };
 
-  const handleDeclineRequest = async (item: any) => {
-    if (item.type === "breeding_verification" || item.type === "task") {
-      handleActionPress(item);
-      return;
-    }
-
-    try {
-      await handleDeclineForMe(item.id, item.type, "Declined by technician.");
-      toast.success("Request hidden from your queue");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to decline request");
-    }
-  };
-
-  const handleAcceptRequest = async (item: RequestItem) => {
-    if (item.workflowType === "AI" || item.type === "ai") {
-      if (item.workflowType !== "AI") {
-        toast.error(
-          "This AI request is missing its canonical workflow contract.",
-        );
-        return;
-      }
-      if (item.allowedAction === "CLAIM_AND_SCHEDULE") {
-        openAIRequest(item);
-      } else {
-        handleActionPress(item);
-      }
-      return;
-    }
-
-    const currentStatus = item.status.toLowerCase();
-
-    // Check if the request is unassigned / pending
-    const isUnassigned =
-      currentStatus === "pending" &&
-      (!item.assignedTechnician || item.assignedTechnician === "");
-
-    if (isUnassigned) {
-      try {
-        await handleClaimRequest(item.id, item.type);
-        toast.success("Request claimed successfully");
-      } catch (err: any) {
-        toast.error(err.message || "Failed to claim request");
-      }
-      return;
-    }
-
-    if (item.type === "breeding_verification") {
-      handleActionPress(item);
-      return;
-    }
-
-    if (currentStatus === "scheduled") {
-      handleActionPress(item);
-      return;
-    }
-
-    // Scheduling and completion require their full forms and confirmations.
-    handleActionPress(item);
-  };
-
-  const handleConfirmAISchedule = async (
-    workflowId: string,
-    payload: { scheduledDate: string; visitPeriod: VisitPeriod },
-  ) => {
-    if (scheduleSubmissionRef.current) return;
-    if (!isCanonicalWorkflowId(workflowId)) {
-      toast.error("This AI request has an invalid workflow identifier.");
-      return;
-    }
-    scheduleSubmissionRef.current = true;
-    try {
-      await handleClaimAndSchedule(workflowId, payload);
-      await Promise.all([
-        handleRefresh(),
-        queryClient.invalidateQueries({
-          queryKey: technicianKeys.workQueue(),
-        }),
-      ]);
-      setAIModal(null);
-      setActiveSection("myWork");
-      router.setParams({ section: "myWork" });
-      toast.success("Visit scheduled successfully.");
-    } catch (error: any) {
-      toast.error(getClaimScheduleErrorMessage(error));
-      if (error?.response?.status === 409) {
-        await handleRefresh();
-        await queryClient.invalidateQueries({
-          queryKey: technicianKeys.workQueue(),
-        });
-      }
-    } finally {
-      scheduleSubmissionRef.current = false;
-    }
-  };
-
   const selectSection = (nextSection: RequestSection) => {
-    if (nextSection === "myWork") setAIModal(null);
     setActiveSection(nextSection);
     router.setParams({ section: nextSection });
   };
@@ -658,9 +527,6 @@ export default function TechnicianRequestsScreen({
           renderItem={({ item }) => (
             <RequestListCard
               item={item}
-              isUpdating={isUpdating}
-              onAccept={() => handleAcceptRequest(item)}
-              onDecline={() => handleDeclineRequest(item)}
               onPress={() => handleActionPress(item)}
             />
           )}
@@ -702,15 +568,6 @@ export default function TechnicianRequestsScreen({
           <TechnicianMyWorkPanel />
         )}
       </View>
-      <AIRequestModal
-        visible={!!aiModal}
-        request={aiModal?.request || null}
-        isSubmitting={isClaimingAndScheduling}
-        onClose={() => {
-          if (!isClaimingAndScheduling) setAIModal(null);
-        }}
-        onConfirm={handleConfirmAISchedule}
-      />
     </ScreenLayout>
   );
 }

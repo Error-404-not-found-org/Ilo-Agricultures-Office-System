@@ -7,6 +7,38 @@ import { Notification } from "../models/notification.model.js";
 import { User } from "../models/user.model.js";
 import { sendPushNotification } from "../lib/push-notifications.js";
 
+const cleanLocationPart = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+const joinLocationParts = (...parts) =>
+  [...new Set(parts.map(cleanLocationPart).filter(Boolean))].join(", ");
+
+/**
+ * Builds human-readable notification copy without affecting dispatch resolution.
+ * Recipient selection must continue to use the canonical dispatch location.
+ */
+export const resolveDispatchDisplayLocation = (
+  dispatchLocation = {},
+  farmer = {},
+) => {
+  const canonicalLocation = joinLocationParts(
+    dispatchLocation.barangayName,
+    dispatchLocation.municipalityName,
+  );
+  if (canonicalLocation) return canonicalLocation;
+
+  const addressLocation = joinLocationParts(
+    farmer.address?.barangay,
+    farmer.address?.city || farmer.address?.municipality,
+  );
+  if (addressLocation) return addressLocation;
+
+  const confirmedDetectedAddress = farmer.farmLocation?.isConfirmed
+    ? cleanLocationPart(farmer.farmLocation.detectedAddress)
+    : "";
+  return confirmedDetectedAddress || "location not provided";
+};
+
 /**
  * Orchestrates dispatch notifications, ensuring safe isolation from request creation.
  */
@@ -23,6 +55,10 @@ export async function notifyDispatchRequestSubmitted({
   const mode = resolveDispatchNotificationMode();
   const dispatchLocation = request.dispatch?.location || {};
   const dispatchStage = request.dispatch?.stage || "local";
+  const displayLocation = resolveDispatchDisplayLocation(
+    dispatchLocation,
+    farmer,
+  );
   
   const isUnresolved = !dispatchLocation.municipalityCode || request.dispatch?.resolutionStatus === "unresolved";
   const unresolvedLocation = isUnresolved;
@@ -61,13 +97,14 @@ export async function notifyDispatchRequestSubmitted({
     urgency: request.urgency || "normal",
     animalTag: animal.earTag || animal.animalId || "an animal",
     municipalityCode: dispatchLocation.municipalityCode,
-    municipalityName: dispatchLocation.municipality,
+    municipalityName: dispatchLocation.municipalityName,
     barangayCode: dispatchLocation.barangayCode,
-    barangayName: dispatchLocation.barangay,
+    barangayName: dispatchLocation.barangayName,
+    location: displayLocation,
     dispatchStage,
   };
 
-  const locString = dispatchLocation.municipality || "unknown location";
+  const locString = displayLocation;
   const notificationTitle = requestType === "AI" 
     ? `New AI request in ${locString}` 
     : `New health request in ${locString}`;
@@ -158,7 +195,7 @@ export async function notifyDispatchRequestSubmitted({
     requestType: requestType,
     urgency: request.urgency || "normal",
     municipalityCode: dispatchLocation.municipalityCode,
-    municipalityName: dispatchLocation.municipality,
+    municipalityName: dispatchLocation.municipalityName,
     dispatchOutcome,
     eligibleLocalRecipientCount: eligibleLocalRecipients.length,
     selectedRecipientCount: recipientsToNotify.length,
@@ -211,7 +248,7 @@ export async function notifyDispatchRequestSubmitted({
     requestId: request._id,
     requestType,
     municipalityCode: dispatchLocation.municipalityCode || null,
-    municipalityName: dispatchLocation.municipality || null,
+    municipalityName: dispatchLocation.municipalityName || null,
     legacyRecipientCount: legacyRecipients.length,
     eligibleLocalRecipientCount: eligibleLocalRecipients.length,
     selectedRecipientCount: recipientsToNotify.length,

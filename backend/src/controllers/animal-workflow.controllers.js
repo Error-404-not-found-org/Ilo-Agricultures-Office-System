@@ -180,6 +180,10 @@ export const getOfficialRecords = async (req, res) => {
               )
               .populate("farmerId", "name phoneNumber address")
               .populate("technicianId", "name role")
+              .populate(
+                "healthRequestId",
+                "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+              )
               .lean()
           : [],
       ]);
@@ -323,6 +327,10 @@ export const getAnimalHealthHistory = async (req, res) => {
       MedicalRecord.find(medicalQuery)
         .sort({ date: -1 })
         .populate("technicianId", "name role")
+        .populate(
+          "healthRequestId",
+          "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+        )
         .lean(),
     ]);
     const visibleHealthRequests = excludeRequestsWithOfficialMedicalRecords(
@@ -418,6 +426,10 @@ export const getAnimalRecords = async (req, res) => {
       MedicalRecord.find(medicalQuery)
         .sort({ date: -1 })
         .populate("technicianId", "name role")
+        .populate(
+          "healthRequestId",
+          "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+        )
         .lean(),
     ]);
     const visibleHealthRequests = excludeRequestsWithOfficialMedicalRecords(

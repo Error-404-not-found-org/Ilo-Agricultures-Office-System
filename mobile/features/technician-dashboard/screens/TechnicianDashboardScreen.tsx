@@ -36,13 +36,13 @@ export default function TechnicianDashboardScreen() {
     loading,
     refreshing,
     onRefresh,
-    stats,
     unreadCount,
     agendaItems,
     pendingRequests,
     profileWarningVisible,
     setProfileWarningVisible,
     handleAction,
+    handleRequestReview,
     isUpdating,
   } = useTechnicianDashboardScreen();
 
@@ -113,9 +113,8 @@ export default function TechnicianDashboardScreen() {
           <TechnicianRequestsSection
             loading={loading}
             pendingRequests={pendingRequests}
-            dbUser={dbUser}
             isUpdating={isUpdating}
-            handleAction={handleAction}
+            handleAction={handleRequestReview}
           />
         </View>
       </ScrollView>

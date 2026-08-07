@@ -15,6 +15,12 @@ interface RecordDetailContentProps {
   selectedActivity: ActivityFeedItem;
 }
 
+const hasDisplayValue = (value: unknown) => {
+  if (value === null || value === undefined) return false;
+  const text = String(value).trim().toLowerCase();
+  return Boolean(text) && !["n/a", "na", "none", "null", "undefined"].includes(text);
+};
+
 export function RecordDetailContent({ selectedActivity }: RecordDetailContentProps) {
   const { colors, isDark } = useTheme();
 
@@ -163,19 +169,27 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
         </Text>
 
         <View style={{ gap: 10 }}>
-          <DetailRow label="Service Date" value={selectedActivity.details?.serviceDate} />
-          <DetailRow label="Entered in BreedSmart" value={selectedActivity.details?.entryDate} />
+          {hasDisplayValue(selectedActivity.details?.serviceDate) ? (
+            <DetailRow label="Service Date" value={selectedActivity.details?.serviceDate} />
+          ) : null}
+          {hasDisplayValue(selectedActivity.details?.entryDate) ? (
+            <DetailRow label="Entered in BreedSmart" value={selectedActivity.details?.entryDate} />
+          ) : null}
           {selectedActivity.details?.isHistoricalEntry && (
             <DetailRow label="Entry Type" value="Past Record" highlightColor="#d97706" />
           )}
-          <DetailRow
-            label="Originally Performed By"
-            value={selectedActivity.details?.performedByName}
-          />
-          <DetailRow
-            label="Reason for Late Entry"
-            value={selectedActivity.details?.lateEntryReason}
-          />
+          {hasDisplayValue(selectedActivity.details?.performedByName) ? (
+            <DetailRow
+              label="Originally Performed By"
+              value={selectedActivity.details?.performedByName}
+            />
+          ) : null}
+          {hasDisplayValue(selectedActivity.details?.lateEntryReason) ? (
+            <DetailRow
+              label="Reason for Late Entry"
+              value={selectedActivity.details?.lateEntryReason}
+            />
+          ) : null}
         </View>
 
         {!selectedActivity.details ? (
@@ -304,72 +318,114 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
 
             {selectedActivity.type === "health" && (
               <View style={{ gap: 10 }}>
-                <DetailRow
-                  label="Status"
-                  value={
-                    selectedActivity.details.status === "rejected"
-                      ? "Declined"
-                      : selectedActivity.details.status ===
-                          "cancelled"
-                        ? "Cancelled"
-                        : selectedActivity.details.status ===
-                            "approved"
-                          ? "Accepted"
-                          : selectedActivity.details.status ===
-                              "resolved"
+                {hasDisplayValue(selectedActivity.details.status) ? (
+                  <DetailRow
+                    label="Status"
+                    value={
+                      selectedActivity.details.status === "rejected"
+                        ? "Declined"
+                        : selectedActivity.details.status === "cancelled"
+                            ? "Cancelled"
+                          : ["resolved", "done", "completed"].includes(
+                                selectedActivity.details.status || "",
+                              )
                             ? "Completed"
                             : selectedActivity.details.status
-                  }
-                  highlightColor={
-                    selectedActivity.details.status ===
-                      "rejected" ||
-                    selectedActivity.details.status === "cancelled"
-                      ? "#dc2626"
-                      : selectedActivity.details.status ===
-                            "approved" ||
-                          selectedActivity.details.status ===
-                            "resolved"
-                        ? "#00643B"
-                        : "#d97706"
-                  }
-                />
-                <DetailRow
-                  label="Request Type"
-                  value={selectedActivity.details.requestType}
-                />
-                <DetailRow
-                  label="Symptoms"
-                  value={selectedActivity.details.symptoms}
-                />
-                <DetailRow
-                  label="Urgency"
-                  value={selectedActivity.details.urgency}
-                  highlightColor={
-                    selectedActivity.details.urgency?.toLowerCase() ===
-                    "high"
-                      ? "#dc2626"
-                      : selectedActivity.details.urgency?.toLowerCase() ===
-                          "medium"
-                        ? "#d97706"
-                        : "#059669"
-                  }
-                />
-                <DetailRow
-                  label="Diagnosis"
-                  value={selectedActivity.details.diagnosis}
-                />
-                <DetailRow
-                  label="Treatment"
-                  value={selectedActivity.details.treatment}
-                />
-                <DetailRow
-                  label="Medicine / Advice"
-                  value={selectedActivity.details.advice}
-                />
-                <DetailRow
-                  label="Technician / Vet"
-                  value={selectedActivity.details.technician}
-                />
+                    }
+                    highlightColor={
+                      selectedActivity.details.status === "rejected" ||
+                      selectedActivity.details.status === "cancelled"
+                        ? "#dc2626"
+                        : "#00643B"
+                    }
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.requestType) ? (
+                  <DetailRow
+                    label="Request Type"
+                    value={selectedActivity.details.requestType}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.symptoms) ? (
+                  <DetailRow
+                    label="Concern / Symptoms"
+                    value={selectedActivity.details.symptoms}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.farmerNotes) ? (
+                  <DetailRow
+                    label="Farmer Notes"
+                    value={selectedActivity.details.farmerNotes}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.urgency) ? (
+                  <DetailRow
+                    label="Urgency"
+                    value={selectedActivity.details.urgency}
+                    highlightColor={
+                      selectedActivity.details.urgency?.toLowerCase() === "high"
+                        ? "#dc2626"
+                        : selectedActivity.details.urgency?.toLowerCase() ===
+                            "medium"
+                          ? "#d97706"
+                          : "#059669"
+                    }
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.diagnosis) ? (
+                  <DetailRow
+                    label="Diagnosis"
+                    value={selectedActivity.details.diagnosis}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.treatment) ? (
+                  <DetailRow
+                    label="Treatment"
+                    value={selectedActivity.details.treatment}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.medicine) ? (
+                  <DetailRow
+                    label="Medicine"
+                    value={selectedActivity.details.medicine}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.dosage) ? (
+                  <DetailRow
+                    label="Dosage"
+                    value={selectedActivity.details.dosage}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.advice) ? (
+                  <DetailRow
+                    label="Advice"
+                    value={selectedActivity.details.advice}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.followUpDate) ? (
+                  <DetailRow
+                    label="Follow-up"
+                    value={selectedActivity.details.followUpDate}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.withdrawalPeriod) ? (
+                  <DetailRow
+                    label="Withdrawal Period"
+                    value={selectedActivity.details.withdrawalPeriod}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.withdrawalEndDate) ? (
+                  <DetailRow
+                    label="Withdrawal Ends"
+                    value={selectedActivity.details.withdrawalEndDate}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.technician) ? (
+                  <DetailRow
+                    label="Technician"
+                    value={selectedActivity.details.technician}
+                  />
+                ) : null}
               </View>
             )}
 

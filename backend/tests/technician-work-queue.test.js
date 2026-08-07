@@ -228,7 +228,7 @@ test("Technician Work Queue backend contract", async (t) => {
       const request = requests.body.requests[0];
       assert.equal(String(request.workflowId), ids.pending);
       assert.equal(request.allowedAction, "CLAIM_AND_SCHEDULE");
-      assert.equal(request.actionLabel, "Claim & Set Visit");
+      assert.equal(request.actionLabel, "Accept & Set Visit");
       const expectedKeys = [
         "id", "workflowId", "workflowType", "type", "serviceType",
         "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",

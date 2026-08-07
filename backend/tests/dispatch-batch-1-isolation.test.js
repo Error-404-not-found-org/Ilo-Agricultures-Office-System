@@ -91,6 +91,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
         _id: "ai-2",
         status: "scheduled",
         scheduledDate: new Date(),
+        visitPeriod: "morning",
         approvedBy: { _id: "tech-a" },
         technicianId: "tech-a",
       }
@@ -109,6 +110,7 @@ test("Dispatch Batch 1: Immediate visibility and privacy containment", async (t)
     // Only tech-a's records should appear in agendaItems
     assert.equal(res.body.agendaItems.length, 1);
     assert.equal(res.body.agendaItems[0].id, "ai-2");
+    assert.equal(res.body.agendaItems[0].visitPeriod, "morning");
 
     // Test unassigned request keys
     const unassignedAiRecord = {

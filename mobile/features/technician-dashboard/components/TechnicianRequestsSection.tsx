@@ -27,7 +27,6 @@ import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
 interface TechnicianRequestsSectionProps {
   loading: boolean;
   pendingRequests: any[];
-  dbUser: any;
   isUpdating: boolean;
   handleAction: (item: any) => void;
 }
@@ -35,7 +34,6 @@ interface TechnicianRequestsSectionProps {
 export function TechnicianRequestsSection({
   loading,
   pendingRequests,
-  dbUser,
   isUpdating,
   handleAction,
 }: TechnicianRequestsSectionProps) {
@@ -78,21 +76,6 @@ export function TechnicianRequestsSection({
         </View>
       ) : (
         previewRequests.map((request: any, index: number) => {
-          const assignedTechnicianId =
-            request.raw?.approvedBy?._id ||
-            request.raw?.approvedBy ||
-            request.raw?.handledBy?._id ||
-            request.raw?.handledBy ||
-            null;
-          const assignedTechnicianName =
-            request.raw?.approvedBy?.name ||
-            request.raw?.handledBy?.name ||
-            (assignedTechnicianId ? "another technician" : null);
-          const assignedToOther =
-            assignedTechnicianId &&
-            dbUser?._id &&
-            String(assignedTechnicianId) !== String(dbUser._id);
-
           return (
             <RequestRow
               key={`${request.type}-${request._id || request.id || index}`}
@@ -275,7 +258,7 @@ function RequestRow({
               numberOfLines={1}
               style={{ flex: 1, color: colors.warningForeground }}
             >
-              Tap to review and claim
+              Tap to review request
             </Text>
           </View>
         ) : null}

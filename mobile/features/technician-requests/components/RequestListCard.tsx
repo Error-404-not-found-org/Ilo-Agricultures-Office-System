@@ -25,9 +25,6 @@ import {
 
 interface RequestListCardProps {
   item: RequestItem;
-  isUpdating: boolean;
-  onAccept: () => void;
-  onDecline: () => void;
   onPress: () => void;
 }
 
@@ -40,26 +37,18 @@ function formatDate(dateValue?: string) {
     month: "short",
     day: "numeric",
     year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
   });
 }
 
 export function RequestListCard({
   item,
-  isUpdating,
-  onAccept,
-  onDecline,
   onPress,
 }: RequestListCardProps) {
   const { colors, isDark } = useTheme();
-  const isHealth = item.type === "health";
+  const isHealth = item.workflowType === "Health" || item.type === "health";
   const isAIRequest = item.workflowType === "AI" || item.type === "ai";
-  const isCanonicalAI = item.workflowType === "AI";
   const isPregnancyCheck = item.type === "breeding_verification";
   const normalizedStatus = item.status.toLowerCase();
-  const cancellationRequested =
-    item.raw?.cancellationStatus === "requested";
   const isUrgent = item.urgency === "urgent";
   const isReInsemination =
     item.type === "ai" && Boolean(item.raw?.previousAttemptId);
@@ -87,23 +76,11 @@ export function RequestListCard({
             ? "Calving Assistance"
             : "Other service";
 
-  const primaryActionLabel = isAIRequest
-    ? isCanonicalAI
-      ? item.actionLabel
-      : null
+  const primaryActionLabel = isAIRequest || isHealth
+    ? "Review Request"
     : isPregnancyCheck
     ? "Open task"
-    : isHealth
-      ? normalizedStatus === "pending"
-        ? "Claim Request"
-        : ["approved", "assigned", "triaged"].includes(normalizedStatus)
-          ? "Schedule Visit"
-          : normalizedStatus === "scheduled"
-            ? "Record Health Assistance"
-            : ["in-progress", "in_progress"].includes(normalizedStatus)
-              ? "Continue Service"
-              : "View Record"
-      : normalizedStatus === "pending"
+    : normalizedStatus === "pending"
         ? "Claim"
         : ["approved", "assigned", "triaged"].includes(normalizedStatus)
           ? "Schedule"
@@ -112,7 +89,9 @@ export function RequestListCard({
             : "Complete";
 
   const displayDate =
-    item.scheduledDate || item.preferredDate || item.createdAt;
+    isAIRequest || isHealth
+      ? item.createdAt
+      : item.scheduledDate || item.preferredDate || item.createdAt;
   const animalLabel = [item.breed, item.earTag || item.animal]
     .filter(Boolean)
     .join(" · ");
@@ -335,54 +314,19 @@ export function RequestListCard({
         />
       </View>
 
-      {!isClosed && (!isAIRequest || primaryActionLabel) ? (
+      {!isClosed && primaryActionLabel ? (
         <View
           style={{
-            flexDirection: "row",
-            gap: 8,
             marginTop: 16,
           }}
         >
-          {cancellationRequested ? (
-            <Button
-              label="Review cancellation"
-              variant="destructive"
-              className="flex-1"
-              loading={isUpdating}
-              onPress={(event) => {
-                event.stopPropagation();
-                onPress();
-              }}
-            />
-          ) : (
-            <>
-              {!isPregnancyCheck &&
-              !isAIRequest &&
-              ["pending", "approved", "assigned", "triaged"].includes(
-                normalizedStatus,
-              ) ? (
-                <Button
-                  label="Skip"
-                  variant="outline"
-                  className="flex-1"
-                  disabled={isUpdating}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    onDecline();
-                  }}
-                />
-              ) : null}
-              <Button
-                label={primaryActionLabel || "Open"}
-                className="flex-1"
-                loading={isUpdating}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  onAccept();
-                }}
-              />
-            </>
-          )}
+          <Button
+            label={primaryActionLabel}
+            onPress={(event) => {
+              event.stopPropagation();
+              onPress();
+            }}
+          />
         </View>
       ) : null}
     </Pressable>
