@@ -26,8 +26,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import React, { useState, useEffect, useRef } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { toast } from "sonner-native";
-import { validateRequestTime } from "@/lib/utils";
-import DateTimePicker from "@react-native-community/datetimepicker";
+
 import { useTheme } from "@/lib/theme";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
@@ -37,9 +36,9 @@ import {
   useFarmerSelfProfileQuery,
   useMyHealthRequestsQuery,
   useSubmitHealthRequestMutation,
-  useSystemConfigQuery,
   useTechnicianDirectoryQuery,
 } from "@/features/farmer-requests/hooks/useFarmerRequestForms";
+import { buildFarmerHealthRequestPayload } from "@/features/farmer-requests/utils/payloadBuilders";
 import {
   findActiveHealthCase,
   getHealthRequestErrorMessage,
@@ -141,12 +140,8 @@ export default function ReportSickness() {
   const [requestType, setRequestType] = useState("disease");
   const [urgency, setUrgency] = useState("medium");
   const [symptoms, setSymptoms] = useState("");
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [preferredDate, setPreferredDate] = useState<Date | null>(null);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
-
-  const { data: config } = useSystemConfigQuery();
+  const [farmerNotes, setFarmerNotes] = useState("");
+  const [photos, setPhotos] = useState<{ uri: string; base64: string }[]>([]);
   const mutation = useSubmitHealthRequestMutation();
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -162,26 +157,12 @@ export default function ReportSickness() {
 
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
   const [typeModalVisible, setTypeModalVisible] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [timeModalVisible, setTimeModalVisible] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [farmPinModalVisible, setFarmPinModalVisible] = useState(false);
   const [noContactModalVisible, setNoContactModalVisible] = useState(false);
   const [serverConflictCase, setServerConflictCase] = useState<any>(null);
-
-  const TIME_SLOTS = [
-    "08:00 AM",
-    "09:00 AM",
-    "10:00 AM",
-    "11:00 AM",
-    "01:00 PM",
-    "02:00 PM",
-    "03:00 PM",
-    "04:00 PM",
-    "05:00 PM",
-  ];
 
   // ── Load profile ────────────────────────────────────────────────────────────
   const { data: profile, isLoading: loadingProfile } = useFarmerSelfProfileQuery();
@@ -223,39 +204,47 @@ export default function ReportSickness() {
   }, [animalsData]);
 
   const handleSelectPhoto = async (source: "camera" | "library") => {
+    if (photos.length >= 5) {
+      toast.error("You can attach up to 5 photos only.");
+      return;
+    }
     const result = await pickImageFromSource(source, { aspect: [4, 3] });
     if (result) {
-      setImageUri(result.uri);
-      setImageBase64(result.base64);
+      setPhotos((prev) => [...prev, { uri: result.uri, base64: result.base64 }]);
       toast.success("Photo attached!");
     }
   };
 
   const submitRequest = async () => {
-    if (!selectedAnimal || !preferredDate) return;
+    if (!selectedAnimal) return;
+
+    const base64Photos = photos.map(p => p.base64);
+
+    const payload = buildFarmerHealthRequestPayload(
+      selectedAnimal._id,
+      requestType,
+      symptoms,
+      urgency,
+      farmerNotes,
+      base64Photos
+    );
 
     setIsSubmitting(true);
     try {
       const result = await mutation.mutateAsync({
-        animalId: selectedAnimal._id,
-        requestType,
-        symptoms: symptoms.trim(),
-        urgency,
-        imageUrl: imageBase64,
-        preferredDate: preferredDate.toISOString(),
+        ...payload,
+        imageUrl: base64Photos[0] || "",
       });
       if (result.status === "synced") {
         toast.success(
-          "Request submitted! A technician will attend to your animal.",
+          "Health request submitted. A technician will review your request and schedule the visit.",
           { duration: 4000, position: "top-center" },
         );
       }
       setSelectedAnimal(null);
       setSymptoms("");
-      setImageUri(null);
-      setImageBase64(null);
-      setPreferredDate(null);
-      setSelectedTimeSlot(null);
+      setFarmerNotes("");
+      setPhotos([]);
       router.back();
     } catch (error: any) {
       if (error?.response?.data?.code === "ACTIVE_HEALTH_CASE_EXISTS") {
@@ -314,27 +303,6 @@ export default function ReportSickness() {
         return;
       }
 
-      if (!preferredDate) {
-        showSubmitError("Please select a preferred visit date.");
-        return;
-      }
-
-      if (!selectedTimeSlot) {
-        showSubmitError("Please select a preferred time slot.");
-        return;
-      }
-
-      const validation = validateRequestTime(
-        preferredDate,
-        !!config?.isHoliday,
-      );
-      if (!validation.isValid) {
-        showSubmitError(validation.message || "Invalid request time.", {
-          duration: 5000,
-        });
-        return;
-      }
-
       if (!skipFarmPinWarning && !hasFarmPin) {
         setFarmPinModalVisible(true);
         return;
@@ -344,34 +312,6 @@ export default function ReportSickness() {
     } finally {
       submitLockRef.current = false;
     }
-  };
-
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (event.type === "set" && selectedDate) {
-      const baseDate = preferredDate ? new Date(preferredDate) : new Date(selectedDate);
-      baseDate.setFullYear(
-        selectedDate.getFullYear(),
-        selectedDate.getMonth(),
-        selectedDate.getDate(),
-      );
-      setPreferredDate(baseDate);
-    }
-  };
-
-  const handleSelectTime = (timeStr: string) => {
-    setTimeModalVisible(false);
-    setSelectedTimeSlot(timeStr);
-
-    const [time, modifier] = timeStr.split(" ");
-    let [hours, minutes] = time.split(":").map(Number);
-
-    if (modifier === "PM" && hours < 12) hours += 12;
-    if (modifier === "AM" && hours === 12) hours = 0;
-
-    const baseDate = preferredDate ? new Date(preferredDate) : new Date();
-    baseDate.setHours(hours, minutes, 0, 0);
-    setPreferredDate(baseDate);
   };
 
   const selectedType = REQUEST_TYPES.find((t) => t.value === requestType);
@@ -427,9 +367,9 @@ export default function ReportSickness() {
                 className="text-xs mt-1 leading-5"
                 style={{ color: colors.textSecondary }}
               >
-                Select the animal and concern type, describe the symptoms, and
-                choose a preferred visit. Use the emergency contacts below if
-                the animal needs immediate help.
+                Select the animal and concern type, and describe the symptoms.
+                A technician will review your request and schedule a visit.
+                Use the emergency contacts below if the animal needs immediate help.
               </Text>
             </View>
           </View>
@@ -808,136 +748,53 @@ export default function ReportSickness() {
             ))}
           </View>
 
-          {/* Preferred Date/Time Picker */}
+          {/* Photos */}
+          {/* Photos */}
           <Text
             className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
             style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
           >
-            Preferred Visit Date/Time *
+            Attach Photos (Up to 5)
           </Text>
-          <View className="flex-row gap-3 mb-5">
-            <TouchableOpacity
-              onPress={() => setShowDatePicker(true)}
-              className="flex-1 border rounded-2xl px-4 py-4 flex-row items-center justify-between"
-              style={{
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                elevation: 1,
-              }}
-            >
-              <View>
-                <Text
-                  className="mb-0.5"
-                  style={[requestFormStyles.compactLabel, { color: colors.textMuted }]}
-                >
-                  Date
-                </Text>
-                <Text
-                  className="text-sm font-bold"
-                  style={[
-                    requestFormStyles.fieldValue,
-                    { color: preferredDate ? colors.textPrimary : colors.textMuted },
-                  ]}
-                >
-                  {preferredDate ? preferredDate.toLocaleDateString() : "Select date"}
-                </Text>
-              </View>
-              <Clock size={16} color={colors.textMuted} />
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={() => setTimeModalVisible(true)}
-              className="flex-1 border rounded-2xl px-4 py-4 flex-row items-center justify-between"
-              style={{
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                elevation: 1,
-              }}
-            >
-              <View>
-                <Text
-                  className="mb-0.5"
-                  style={[requestFormStyles.compactLabel, { color: colors.textMuted }]}
-                >
-                  Time Slot
-                </Text>
-                <Text
-                  className="text-sm font-bold"
-                  style={[
-                    requestFormStyles.fieldValue,
-                    { color: selectedTimeSlot ? colors.textPrimary : colors.textMuted },
-                  ]}
-                >
-                  {selectedTimeSlot || "Select time"}
-                </Text>
-              </View>
-              <Clock size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-5">
+            <View className="flex-row gap-3">
+              {photos.map((photo, index) => (
+                <View key={index} className="relative">
+                  <Image
+                    source={{ uri: photo.uri }}
+                    className="w-32 h-32 rounded-2xl"
+                    resizeMode="cover"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setPhotos((prev) => prev.filter((_, i) => i !== index))}
+                    className="absolute top-2 right-2 bg-black/60 rounded-full w-7 h-7 items-center justify-center"
+                  >
+                    <X size={14} color="white" />
+                  </TouchableOpacity>
+                </View>
+              ))}
 
-          {showDatePicker && (
-            <DateTimePicker
-              value={preferredDate || new Date()}
-              mode="date"
-              display="default"
-              onChange={onDateChange}
-              minimumDate={new Date()}
-            />
-          )}
-
-          {/* Photo */}
-          <Text
-            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
-          >
-            Attach Photo (Optional)
-          </Text>
-          {imageUri ? (
-            <View className="mb-5 relative">
-              <TouchableOpacity
-                onPress={() => setPhotoModalVisible(true)}
-                activeOpacity={0.9}
-              >
-                <Image
-                  source={{ uri: imageUri }}
-                  className="w-full h-44 rounded-2xl"
-                  resizeMode="cover"
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => {
-                  setImageUri(null);
-                  setImageBase64(null);
-                }}
-                className="absolute top-3 right-3 bg-black/60 rounded-full w-9 h-9 items-center justify-center"
-              >
-                <X size={18} color="white" />
-              </TouchableOpacity>
+              {photos.length < 5 && (
+                <TouchableOpacity
+                  onPress={() => setPhotoModalVisible(true)}
+                  className="w-32 h-32 border-2 border-dashed rounded-2xl items-center justify-center gap-2"
+                  style={{
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <Camera size={24} color={colors.textMuted} />
+                  <Text
+                    className="text-[11px] font-medium text-center px-2"
+                    style={{ color: colors.textSecondary }}
+                  >
+                    Add photo
+                  </Text>
+                </TouchableOpacity>
+              )}
             </View>
-          ) : (
-            <TouchableOpacity
-              onPress={() => setPhotoModalVisible(true)}
-              className="w-full h-36 border-2 border-dashed rounded-2xl items-center justify-center mb-5 gap-2"
-              style={{
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              }}
-            >
-              <Camera size={32} color={colors.textMuted} />
-              <Text
-                className="text-sm font-medium"
-                style={{ color: colors.textSecondary }}
-              >
-                Tap to attach a photo
-              </Text>
-              <Text
-                className="text-xs"
-                style={{ color: colors.textMuted }}
-              >
-                of the wound, swelling, or symptom
-              </Text>
-            </TouchableOpacity>
-          )}
+          </ScrollView>
 
           {/* Symptoms / Description */}
           <Text
@@ -947,7 +804,7 @@ export default function ReportSickness() {
             Symptoms / Description *
           </Text>
           <TextInput
-            className="border rounded-2xl px-4 py-4 text-sm mb-6"
+            className="border rounded-2xl px-4 py-4 text-sm mb-5"
             style={[
               requestFormStyles.textInput,
               {
@@ -963,14 +820,49 @@ export default function ReportSickness() {
             onChangeText={setSymptoms}
             onFocus={() =>
               setTimeout(
-                () => scrollRef.current?.scrollToEnd({ animated: true }),
+                () => scrollRef.current?.scrollTo({ y: 800, animated: true }),
                 350,
               )
             }
             placeholder="Describe what you observed..."
             placeholderTextColor={colors.textMuted}
             multiline
-            numberOfLines={5}
+            numberOfLines={4}
+            blurOnSubmit={false}
+          />
+
+          {/* Farmer Notes */}
+          <Text
+            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
+            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
+          >
+            Additional Notes (Optional)
+          </Text>
+          <TextInput
+            className="border rounded-2xl px-4 py-4 text-sm mb-6"
+            style={[
+              requestFormStyles.textInput,
+              {
+              minHeight: 100,
+              textAlignVertical: "top",
+              elevation: 1,
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              color: colors.textPrimary,
+              },
+            ]}
+            value={farmerNotes}
+            onChangeText={setFarmerNotes}
+            onFocus={() =>
+              setTimeout(
+                () => scrollRef.current?.scrollToEnd({ animated: true }),
+                350,
+              )
+            }
+            placeholder="Any other details for the technician..."
+            placeholderTextColor={colors.textMuted}
+            multiline
+            numberOfLines={3}
             blurOnSubmit={false}
           />
 
@@ -1194,92 +1086,6 @@ export default function ReportSickness() {
           </View>
         </View>
       </Modal>
-      {/* Time Slot Selection Modal */}
-      <Modal
-        animationType="fade"
-        transparent
-        visible={timeModalVisible}
-        onRequestClose={() => setTimeModalVisible(false)}
-      >
-        <View className="flex-1 bg-black/40 justify-center px-6">
-          <View
-            className="rounded-[32px] p-6 shadow-2xl"
-            style={{ backgroundColor: colors.card }}
-          >
-            <View className="flex-row justify-between items-center mb-6">
-              <View>
-                <Text
-                  className="text-xl font-bold"
-                  style={{ color: colors.textPrimary }}
-                >
-                  Select Time Slot
-                </Text>
-                <Text
-                  className="text-xs mt-1"
-                  style={[requestFormStyles.modalHelper, { color: colors.textMuted }]}
-                >
-                  Available service hours: 8 AM - 5 PM
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setTimeModalVisible(false)}
-                className="p-2 rounded-full"
-                style={{
-                  backgroundColor: isDark ? colors.background : "#f8fafc",
-                }}
-              >
-                <X size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <View className="flex-row flex-wrap gap-3 justify-between">
-              {TIME_SLOTS.map((slot) => {
-                const isSelected = selectedTimeSlot === slot;
-                return (
-                  <TouchableOpacity
-                    key={slot}
-                    onPress={() => handleSelectTime(slot)}
-                    className="w-[30%] py-3 rounded-2xl items-center border"
-                    style={{
-                      backgroundColor: isSelected
-                        ? primaryColor
-                        : isDark
-                          ? colors.background
-                          : "#f8fafc",
-                      borderColor: isSelected ? primaryColor : colors.border,
-                    }}
-                  >
-                    <Text
-                      className="text-[12px] font-bold"
-                      style={{
-                        color: isSelected ? "#fff" : colors.textPrimary,
-                      }}
-                    >
-                      {slot}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <TouchableOpacity
-              onPress={() => setTimeModalVisible(false)}
-              className="mt-8 py-4 rounded-2xl items-center"
-              style={{
-                backgroundColor: isDark ? colors.background : "#f1f5f9",
-              }}
-            >
-              <Text
-                className="font-bold"
-                style={{ color: colors.textSecondary }}
-              >
-                Close
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* Photo Selector Modal */}
       <PhotoOptionModal
         visible={photoModalVisible}
