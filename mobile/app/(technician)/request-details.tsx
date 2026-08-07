@@ -262,7 +262,11 @@ export default function RequestDetailsScreen() {
     try {
       const connectivity = await NetInfo.fetch();
       if (!connectivity.isConnected || !connectivity.isInternetReachable) {
-        toast.error("Scheduling requires an internet connection.");
+        setActionNotice(
+          nextStatus === "scheduled"
+            ? "Scheduling requires an internet connection."
+            : "Updating request status requires an internet connection."
+        );
         return false;
       }
       setUpdating(true);
@@ -284,9 +288,9 @@ export default function RequestDetailsScreen() {
       return true;
     } catch (err: any) {
       if (err.response?.status === 409) {
-        toast.error("This request was claimed by another technician. Refreshing your work list.");
+        setActionNotice("This request was claimed by another technician. Refreshing your work list.");
         void queryClient.invalidateQueries();
-        router.back();
+        setTimeout(() => router.back(), 2000);
         return false;
       }
       const message =

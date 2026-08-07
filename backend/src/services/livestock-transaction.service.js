@@ -728,8 +728,8 @@ export const resolveHealthRequest = ({
       action: "RESOLVE_HEALTH_REQUEST",
       actorId: technicianId,
       actorType: "Technician",
-      targetId: request._id,
-      targetType: "HealthRequest",
+      entityId: request._id,
+      entityType: "HealthRequest",
       details: { status: "resolved", taskId: task ? task._id : undefined },
       createdAt: new Date(),
     }], { session });
@@ -776,9 +776,9 @@ export const createResolvedWalkInHealth = ({ requestData, medicalRecord, taskId 
       action: "CREATE_WALKIN_HEALTH",
       actorId: medicalRecord.technicianId,
       actorType: "Technician",
-      targetId: request._id,
-      targetType: "HealthRequest",
-      details: { status: "resolved" },
+      entityId: request._id,
+      entityType: "HealthRequest",
+      details: { medicalRecordId: record._id },
       createdAt: new Date(),
     }], { session });
 

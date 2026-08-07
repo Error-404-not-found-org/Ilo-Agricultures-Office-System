@@ -421,9 +421,14 @@ export const updateHealthRequestStatus = async (req, res) => {
     }
 
     if (technicianNote !== undefined) updateFields.technicianNote = technicianNote;
+    if (req.body.resolutionNotes !== undefined) updateFields.resolutionNotes = req.body.resolutionNotes;
     if (req.body.diagnosis !== undefined) updateFields.diagnosis = req.body.diagnosis;
+    if (req.body.findings !== undefined) updateFields.findings = req.body.findings;
     if (req.body.treatment !== undefined) updateFields.treatment = req.body.treatment;
+    if (req.body.medicineGiven !== undefined) updateFields.medicineGiven = req.body.medicineGiven;
+    if (req.body.dosage !== undefined) updateFields.dosage = req.body.dosage;
     if (req.body.advice !== undefined) updateFields.advice = req.body.advice;
+    if (req.body.withdrawalPeriodDays !== undefined) updateFields.withdrawalPeriodDays = req.body.withdrawalPeriodDays;
     if (status === "scheduled") {
       updateFields.scheduledDate = normalizedScheduledDate;
       updateFields.visitPeriod = normalizedVisitPeriod;
@@ -437,6 +442,7 @@ export const updateHealthRequestStatus = async (req, res) => {
 
     let request;
     if (status === "resolved") {
+      updateFields.resolvedAt = new Date();
       const recordTypes = { medicine: "Treatment", disease: "Check-up", checkup: "Check-up", injury: "Treatment", vaccination: "Vaccination", deworming: "Deworming" };
       const withdrawalDays = req.body.withdrawalPeriodDays;
       const withdrawalEndDate = withdrawalDays && !isNaN(withdrawalDays)
@@ -453,13 +459,14 @@ export const updateHealthRequestStatus = async (req, res) => {
           type: recordTypes[existing.requestType] || "Check-up",
           date: new Date(),
           details: {
-            medicineName: updateFields.treatment || existing.treatment || "None",
+            medicineName: updateFields.medicineGiven || existing.medicineGiven || "None",
+            dosage: updateFields.dosage || existing.dosage || "",
             diagnosis: updateFields.diagnosis || existing.diagnosis || "No specific diagnosis logged.",
             treatment: updateFields.treatment || existing.treatment || "No treatment logged.",
             withdrawalPeriodDays: withdrawalDays ? Number(withdrawalDays) : undefined,
             withdrawalEndDate,
           },
-          note: updateFields.technicianNote || existing.technicianNote || "Resolved through health request queue.",
+          note: updateFields.resolutionNotes || updateFields.technicianNote || updateFields.findings || existing.resolutionNotes || existing.technicianNote || existing.findings || "Resolved through health request queue.",
           followUpDate: updateFields.followUpDate,
         },
       });
