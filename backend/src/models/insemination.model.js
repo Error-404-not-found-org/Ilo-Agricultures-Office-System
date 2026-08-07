@@ -102,7 +102,6 @@ const InseminationSchema = new mongoose.Schema(
     },
     preferredDate: {
       type: Date,
-      default: Date.now,
     },
     scheduledDate: {
       type: Date,

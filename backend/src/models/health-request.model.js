@@ -50,9 +50,17 @@ const HealthRequestSchema = new mongoose.Schema(
     farmerNotes: { type: String, default: "" },
     preferredDate: {
       type: Date,
-      default: Date.now,
     },
     scheduledDate: {
+      type: Date,
+    },
+    visitPeriod: {
+      type: String,
+      enum: ["morning", "afternoon"],
+      trim: true,
+      lowercase: true,
+    },
+    serviceStartedAt: {
       type: Date,
     },
     status: {

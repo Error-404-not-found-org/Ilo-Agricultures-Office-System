@@ -44,6 +44,7 @@ import {
   normalizeVisitPeriod,
 } from "../domain/ai-recording-fields.js";
 import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
+import { hasVisitScheduleChanged } from "../domain/visit-scheduling.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -210,7 +211,6 @@ export const createAIRequest = async (req, res) => {
       imageUrl: imageUrl || "",
       comment: comment || "",
       heatSigns: heatSigns || [],
-      preferredDate: req.body.preferredDate || new Date(),
       status: "pending",
       dispatch: dispatchSnapshot,
       ...attemptLink,
@@ -226,7 +226,7 @@ export const createAIRequest = async (req, res) => {
         title: "AI service requested",
         summary: comment || "Farmer requested artificial insemination service.",
         attachments: imageUrl ? [imageUrl] : [],
-        metadata: { attemptNumber, preferredDate: request.preferredDate },
+        metadata: { attemptNumber },
       }),
       createAuditLog({
         entityType: "Insemination",
@@ -492,7 +492,7 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
-    const normalizedVisitPeriod = normalizeVisitPeriod(visitPeriod);
+    const finalVisitPeriod = visitPeriod !== undefined ? normalizeVisitPeriod(visitPeriod) : undefined;
 
     const existing = await Insemination.findById(id);
     if (!existing) {
@@ -505,11 +505,28 @@ export const updateRequestStatus = async (req, res) => {
       isAdmin: req.user.role === "admin",
     });
 
-    if (status === "scheduled" && !scheduledDate) {
-      return res.status(400).json({
-        message: "A visit date and time are required before scheduling.",
-        code: "SCHEDULE_DATE_REQUIRED",
-      });
+    let normalizedScheduledDate;
+    if (status === "scheduled") {
+      try {
+        if (!scheduledDate) {
+          return res.status(400).json({
+            message: "A visit date is required before scheduling.",
+            code: "SCHEDULE_DATE_REQUIRED",
+          });
+        }
+        if (!visitPeriod) {
+          return res.status(400).json({
+            message: "A visit period is required before scheduling.",
+            code: "VISIT_PERIOD_REQUIRED",
+          });
+        }
+        normalizedScheduledDate = normalizeAIScheduleDate(scheduledDate);
+      } catch (err) {
+        return res.status(400).json({
+          message: err.message,
+          code: err.code || "INVALID_SCHEDULE",
+        });
+      }
     }
 
     if (status === "in-progress" && !existing.scheduledDate) {
@@ -572,52 +589,17 @@ export const updateRequestStatus = async (req, res) => {
       ...assignmentGuard,
     };
 
-    // Schedule conflict guard
-    if ((status === "scheduled" || status === "in-progress") && scheduledDate) {
-      const targetTime = new Date(scheduledDate);
-      if (Number.isNaN(targetTime.getTime())) {
-        return res.status(400).json({ message: "Invalid scheduled date." });
-      }
-      if (targetTime.getTime() < Date.now() - 5 * 60 * 1000) {
-        return res.status(400).json({
-          message: "Scheduled date and time cannot be in the past.",
-        });
-      }
-      const startTime = new Date(targetTime.getTime() - 30 * 60 * 1000);
-      const endTime = new Date(targetTime.getTime() + 30 * 60 * 1000);
-
-      const insemConflict = await Insemination.findOne({
-        _id: { $ne: id },
-        approvedBy: targetTechId,
-        status: "scheduled",
-        scheduledDate: { $gte: startTime, $lte: endTime },
-        deletedAt: null,
-      });
-
-      const healthConflict = await HealthRequest.findOne({
-        _id: { $ne: id },
-        handledBy: targetTechId,
-        status: "scheduled",
-        scheduledDate: { $gte: startTime, $lte: endTime },
-        deletedAt: null,
-      });
-
-      if (insemConflict || healthConflict) {
-        return res.status(409).json({
-          message:
-            "Schedule conflict: The assigned technician already has another visit scheduled within 30 minutes of this time.",
-        });
-      }
-    }
-
     const isRescheduled =
       (existing.status === "approved" ||
         existing.status === "in-progress" ||
         existing.status === "scheduled") &&
-      scheduledDate &&
-      existing.scheduledDate &&
-      new Date(existing.scheduledDate).getTime() !==
-        new Date(scheduledDate).getTime();
+      status === "scheduled" &&
+      hasVisitScheduleChanged(
+        existing.scheduledDate,
+        existing.visitPeriod,
+        normalizedScheduledDate,
+        finalVisitPeriod
+      );
 
     const updateData = {
       status,
@@ -631,8 +613,8 @@ export const updateRequestStatus = async (req, res) => {
       updateData.technicianNote = normalizedTechnicianNote;
     }
 
-    if (normalizedVisitPeriod !== undefined) {
-      updateData.visitPeriod = normalizedVisitPeriod;
+    if (finalVisitPeriod !== undefined) {
+      updateData.visitPeriod = finalVisitPeriod;
     }
 
     if (isActiveAIRequestStatus(status)) {
@@ -642,7 +624,7 @@ export const updateRequestStatus = async (req, res) => {
     }
 
     if (status === "scheduled") {
-      updateData.scheduledDate = new Date(scheduledDate);
+      updateData.scheduledDate = normalizedScheduledDate;
     }
 
     if (status === "in-progress" && startTiming) {
