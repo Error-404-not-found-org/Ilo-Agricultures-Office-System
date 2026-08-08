@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "expo-router";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { useQuery } from "@tanstack/react-query";
@@ -6,6 +6,8 @@ import { toast } from "sonner-native";
 
 import { useApi } from "@/lib/api";
 import { useTechnicianDashboardQuery } from "@/features/technician/hooks/useTechnicianDashboard";
+import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
+import { normalizeTechnicianWorkItems } from "@/features/technician-requests/utils/requestWorkPresentation";
 
 export function useTechnicianDashboardScreen() {
   const api = useApi();
@@ -20,6 +22,23 @@ export function useTechnicianDashboardScreen() {
     isRefetching: refreshing,
     refetch: refetchDashboard,
   } = useTechnicianDashboardQuery(isEnabled);
+  const { tasksQuery: workQueueQuery } = useTechnicianTasks(undefined, {
+    scope: "mine",
+  });
+  const workItems = useMemo(
+    () => normalizeTechnicianWorkItems(workQueueQuery.data || []),
+    [workQueueQuery.data],
+  );
+  const todayWorkItems = useMemo(
+    () =>
+      workItems.filter(
+        (item) =>
+          item.isReadyToday &&
+          item.state !== "completed" &&
+          item.state !== "cancelled",
+      ),
+    [workItems],
+  );
 
   const { data: unreadData, refetch: refetchUnread } = useQuery({
     queryKey: ["notifications", "unread-count"],
@@ -50,12 +69,23 @@ export function useTechnicianDashboardScreen() {
   }, [dbUser]);
 
   const onRefresh = async () => {
-    await Promise.all([refetchDashboard(), refetchUnread(), refetchUser()]);
+    await Promise.all([
+      refetchDashboard(),
+      workQueueQuery.refetch(),
+      refetchUnread(),
+      refetchUser(),
+    ]);
   };
 
   const openItemDetails = (item: any) => {
-    if (item.type === "task" || item.type === "breeding_verification") {
-      const taskId = item.id || item._id;
+    if (
+      item.workType === "pregnancy_check" ||
+      item.workType === "calving" ||
+      item.workType === "task" ||
+      item.type === "task" ||
+      item.type === "breeding_verification"
+    ) {
+      const taskId = item.taskId || item.id || item._id;
       if (!taskId) {
         toast.error("This task is missing its identifier.");
         return;
@@ -65,13 +95,15 @@ export function useTechnicianDashboardScreen() {
     }
 
     const type =
-      item.type === "health" || item.workflowType === "Health"
+      item.workType === "health" ||
+      item.type === "health" ||
+      item.workflowType === "Health"
         ? "health"
         : "ai";
     const requestId =
       type === "ai"
         ? item.workflowId || item.id || item._id
-        : item.id || item._id;
+        : item.workflowId || item.id || item._id;
 
     if (!requestId) {
       toast.error("This request is missing its request identifier.");
@@ -96,7 +128,9 @@ export function useTechnicianDashboardScreen() {
     refreshing,
     onRefresh,
     unreadCount: unreadData?.count || 0,
-    agendaItems: data?.agendaItems || [],
+    workItems,
+    todayWorkItems,
+    workLoading: workQueueQuery.isLoading,
     pendingRequests: data?.pendingRequests || [],
     profileWarningVisible,
     setProfileWarningVisible,

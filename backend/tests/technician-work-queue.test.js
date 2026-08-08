@@ -261,6 +261,16 @@ test("Technician Work Queue backend contract", async (t) => {
           _id: ids.secondScheduled,
           scheduledDate: sharedSchedule,
           visitPeriod: "afternoon",
+          attemptNumber: 2,
+          attemptSeriesId: ids.pendingAssigned,
+          previousAttemptId: {
+            _id: ids.pending,
+            attemptNumber: 1,
+            status: "done",
+            isSuccess: false,
+            outcome: "Failed (Re-heat)",
+            outcomeVerificationStatus: "verified",
+          },
         }),
         aiRecord({
           _id: ids.inProgress,
@@ -349,6 +359,16 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(second.workflowId, ids.secondScheduled);
       assert.equal(second.taskId, ids.linkedSecondAiTask);
       assert.equal(second.schedule.visitPeriod, "afternoon");
+      assert.equal(second.requestKind, "re_insemination");
+      assert.equal(second.attemptNumber, 2);
+      assert.equal(second.previousAttemptId, ids.pending);
+      assert.equal(second.attemptSeriesId, ids.pendingAssigned);
+      assert.equal(second.previousAttemptOutcome, "Failed (Re-heat)");
+      assert.equal(second.previousAttemptVerified, true);
+
+      assert.equal(scheduled.requestKind, "initial_ai");
+      assert.equal(scheduled.attemptNumber, 1);
+      assert.equal(scheduled.previousAttemptVerified, false);
 
       const legacy = byId.get(ids.inProgress);
       assert.equal(legacy.allowedAction, "RECORD_SERVICE");

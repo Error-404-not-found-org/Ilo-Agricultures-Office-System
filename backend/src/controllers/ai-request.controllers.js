@@ -45,6 +45,8 @@ import {
 } from "../domain/ai-recording-fields.js";
 import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
 import { hasVisitScheduleChanged } from "../domain/visit-scheduling.js";
+import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -1010,7 +1012,8 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       return res.status(404).json({ message: "Animal not found." });
     }
 
-    // Timing guard: return-to-heat follow-up is useful earlier than pregnancy diagnosis.
+    // Return-to-heat has its own observation window. Pregnancy verification
+    // follows the same configurable readiness policy as official diagnosis.
     if (verificationRequested) {
       const aiDate =
         request.inseminationDate ||
@@ -1021,17 +1024,30 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         const daysSinceAI = Math.floor(
           (Date.now() - new Date(aiDate).getTime()) / (1000 * 60 * 60 * 24),
         );
-        const minimumDays = reportType === "return_to_heat" ? 18 : 35;
-        if (daysSinceAI < minimumDays) {
+        if (reportType === "return_to_heat" && daysSinceAI < 18) {
           return res.status(400).json({
-            message:
-              reportType === "return_to_heat"
-                ? `Return-to-heat follow-up is usually useful around Day 18 post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please keep monitoring or submit your observation without requesting verification.`
-                : `Pregnancy verification is typically accurate after 35 days post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please wait or submit your observation without requesting verification.`,
+            message: `Return-to-heat follow-up is usually useful around Day 18 post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please keep monitoring or submit your observation without requesting verification.`,
             code: "VERIFICATION_TOO_EARLY",
             daysSinceAI,
-            minimumDays,
+            minimumDays: 18,
           });
+        }
+        if (reportType !== "return_to_heat") {
+          const policyResolution = await loadPregnancyConfirmationPolicy();
+          const readiness = getPregnancyCheckReadiness({
+            insemination: request,
+            policy: policyResolution.policy,
+            species: animal.species,
+          });
+          if (!readiness.isEligible) {
+            return res.status(400).json({
+              message: readiness.reason,
+              code: "VERIFICATION_TOO_EARLY",
+              daysSinceAI: readiness.daysPostAI,
+              minimumDays: readiness.minimumDays,
+              pregnancyReadiness: readiness,
+            });
+          }
         }
       }
     }
@@ -1091,6 +1107,31 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     if (technicianVerificationRequired) {
       if (request.verificationTaskId) {
         verificationTask = await Task.findById(request.verificationTaskId);
+        if (
+          verificationTask &&
+          !["Pending", "In Progress"].includes(verificationTask.status)
+        ) {
+          verificationTask = null;
+        }
+      }
+
+      if (!verificationTask) {
+        verificationTask = await Task.findOne({
+          farmerId: req.user._id,
+          animalIds: animal._id,
+          taskType: "PD",
+          status: { $in: ["Pending", "In Progress"] },
+          $or: [
+            { "metadata.inseminationId": request._id },
+            {
+              relatedRecordType: "insemination",
+              relatedRecordId: request._id,
+            },
+          ],
+        });
+        if (verificationTask) {
+          request.verificationTaskId = verificationTask._id;
+        }
       }
 
       if (!verificationTask) {

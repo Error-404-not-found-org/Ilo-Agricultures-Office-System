@@ -179,6 +179,53 @@ export function FarmerHomeScreen() {
     () => selectNeedsAttention(Array.isArray(milestones) ? milestones : []),
     [milestones],
   );
+  const handleAttentionPress = (item: (typeof attentionItems)[number]) => {
+    const animalId = item.animal?._id;
+    if (!animalId) {
+      toast.error("This breeding milestone is missing its animal record.");
+      return;
+    }
+
+    if (item.actionKind === "report_signs") {
+      router.push({
+        pathname: "/(farmer)/report-breeding-observation",
+        params: {
+          animalId,
+          requestId: item.relatedId,
+          defaultReport: item.farmerObservation?.reportType || "unsure",
+        },
+      } as never);
+      return;
+    }
+
+    if (item.actionKind === "request_pregnancy_check") {
+      router.push({
+        pathname: "/(farmer)/report-breeding-observation",
+        params: {
+          animalId,
+          requestId: item.relatedId,
+          defaultReport: item.farmerObservation?.reportType || "unsure",
+          requestVerification: "true",
+        },
+      } as never);
+      return;
+    }
+
+    if (item.actionKind === "record_calving" && item.relatedId) {
+      router.push({
+        pathname: "/(farmer)/record-calving",
+        params: {
+          pregnancyId: item.relatedId,
+          animalId,
+          earTag: item.animal?.earTag || item.animal?.animalId,
+          taskId: item.taskId || undefined,
+        },
+      } as never);
+      return;
+    }
+
+    router.push(`/(farmer)/animal-details?id=${animalId}`);
+  };
   const recentActivities = React.useMemo(
     () =>
       selectRecentActivities(Array.isArray(activityFeed) ? activityFeed : []),
@@ -762,8 +809,9 @@ export function FarmerHomeScreen() {
                 <View key={`${m.type}-${m.animal?._id || m.relatedId}-${idx}`}>
                   <AlertItem
                     title={m.displayTitle}
-                    subtitle={`${m.displaySubtitle}${m.date ? ` · ${format(new Date(m.date), "MMM d")}` : ""}`}
-                    accessibilityLabel={`${m.displayTitle} for ${getFullAnimalReference(m.animal)}. ${m.displaySubtitle}`}
+                    subtitle={`${m.displaySubtitle}\n${m.guidance}`}
+                    actionLabel={m.actionLabel}
+                    accessibilityLabel={`${m.displayTitle} for ${getFullAnimalReference(m.animal)}. ${m.displaySubtitle}. ${m.guidance}. ${m.actionLabel}`}
                     icon={
                       m.urgency === "awaiting" ? (
                         <MaterialCommunityIcons
@@ -809,10 +857,7 @@ export function FarmerHomeScreen() {
                             ? "#f97316"
                             : "#9A3412"
                     }
-                    onPress={() =>
-                      m.animal?._id &&
-                      router.push(`/(farmer)/animal-details?id=${m.animal._id}`)
-                    }
+                    onPress={() => handleAttentionPress(m)}
                   />
                   {idx < attentionItems.length - 1 && <View className="h-2" />}
                 </View>
@@ -2215,6 +2260,7 @@ const AlertItem = ({
   textColor,
   onPress,
   accessibilityLabel,
+  actionLabel,
 }: any) => (
   <TouchableOpacity
     onPress={onPress}
@@ -2240,14 +2286,27 @@ const AlertItem = ({
         {title}
       </Text>
       <Text
-        numberOfLines={2}
+        numberOfLines={3}
         className="mt-1 font-outfit-medium text-[12px]"
         style={{ color: textColor, opacity: 0.82 }}
       >
         {subtitle}
       </Text>
     </View>
-    {onPress ? <ChevronRight size={18} color={textColor} /> : null}
+    {onPress ? (
+      <View style={{ alignItems: "flex-end", marginLeft: 8, maxWidth: 92 }}>
+        {actionLabel ? (
+          <Text
+            numberOfLines={2}
+            className="font-outfit-bold text-[11px] text-right"
+            style={{ color: textColor }}
+          >
+            {actionLabel}
+          </Text>
+        ) : null}
+        <ChevronRight size={18} color={textColor} style={{ marginTop: 4 }} />
+      </View>
+    ) : null}
   </TouchableOpacity>
 );
 

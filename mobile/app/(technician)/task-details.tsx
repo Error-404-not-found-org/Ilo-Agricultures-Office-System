@@ -376,7 +376,11 @@ export default function TaskDetailsScreen() {
           <ArrowLeft size={24} color={isDark ? "white" : "#1e293b"} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          Visit / Task Details
+          {task?.taskType === "PD"
+            ? "Pregnancy Check Details"
+            : task?.taskType === "Calving"
+              ? "Calving Monitoring"
+              : "Task Details"}
         </Text>
       </View>
 
@@ -392,10 +396,18 @@ export default function TaskDetailsScreen() {
           >
             <View style={styles.summaryHeading}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.summaryEyebrow, { color: colors.primary }]}>
-                  {isCalvingTask ? "CALVING VISIT" : isPregnancyTask ? "PREGNANCY VISIT" : "FIELD VISIT"}
+                <Text
+                  style={[styles.summaryEyebrow, { color: colors.primary }]}
+                >
+                  {isCalvingTask
+                    ? "CALVING VISIT"
+                    : isPregnancyTask
+                      ? "PREGNANCY VISIT"
+                      : "FIELD VISIT"}
                 </Text>
-                <Text style={[styles.summaryTitle, { color: colors.textPrimary }]}>
+                <Text
+                  style={[styles.summaryTitle, { color: colors.textPrimary }]}
+                >
                   {serviceTitle}
                 </Text>
               </View>
@@ -409,7 +421,9 @@ export default function TaskDetailsScreen() {
                   },
                 ]}
               >
-                <Text style={[styles.statusPillText, { color: colors.primary }]}>
+                <Text
+                  style={[styles.statusPillText, { color: colors.primary }]}
+                >
                   {humanize(task.status || "Pending")}
                 </Text>
               </View>
@@ -419,10 +433,20 @@ export default function TaskDetailsScreen() {
               <View style={styles.scheduleLine}>
                 <CalendarClock size={19} color={colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.scheduleLabel, { color: colors.textSecondary }]}>
+                  <Text
+                    style={[
+                      styles.scheduleLabel,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
                     Scheduled visit
                   </Text>
-                  <Text style={[styles.scheduleValue, { color: colors.textPrimary }]}>
+                  <Text
+                    style={[
+                      styles.scheduleValue,
+                      { color: colors.textPrimary },
+                    ]}
+                  >
                     {visitDate}
                     {visitPeriod === "morning"
                       ? " · Morning"
@@ -433,17 +457,26 @@ export default function TaskDetailsScreen() {
                 </View>
               </View>
             ) : (
-              <Text style={[styles.unscheduledText, { color: colors.textSecondary }]}>
+              <Text
+                style={[
+                  styles.unscheduledText,
+                  { color: colors.textSecondary },
+                ]}
+              >
                 Visit date not scheduled
               </Text>
             )}
 
             <View style={styles.summaryMetaRow}>
-              <Text style={[styles.summaryMeta, { color: colors.textSecondary }]}>
+              <Text
+                style={[styles.summaryMeta, { color: colors.textSecondary }]}
+              >
                 {task.category || "Routine"}
               </Text>
               {task.priority ? (
-                <Text style={[styles.summaryMeta, { color: colors.textSecondary }]}>
+                <Text
+                  style={[styles.summaryMeta, { color: colors.textSecondary }]}
+                >
                   Priority {task.priority}
                 </Text>
               ) : null}
@@ -451,7 +484,13 @@ export default function TaskDetailsScreen() {
           </View>
 
           {/* Farmer Info section */}
-          <View style={[styles.section, styles.cardContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.section,
+              styles.cardContainer,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
             <View style={styles.sectionHeader}>
               <User size={18} color={isDark ? "#34d399" : "#00643B"} />
               <Text
@@ -463,8 +502,15 @@ export default function TaskDetailsScreen() {
                 Farmer Info
               </Text>
             </View>
-            
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 8 }}>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 16,
+                marginTop: 8,
+              }}
+            >
               {/* Farmer Profile Pic */}
               {task.farmerId?.imageUrl ? (
                 <Image
@@ -473,43 +519,76 @@ export default function TaskDetailsScreen() {
                   resizeMode="cover"
                 />
               ) : (
-                <View style={[styles.profileAvatar, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
+                <View
+                  style={[
+                    styles.profileAvatar,
+                    { backgroundColor: isDark ? "#1e293b" : "#f1f5f9" },
+                  ]}
+                >
                   <User size={24} color={colors.textSecondary} />
                 </View>
               )}
-              
+
               <View style={{ flex: 1 }}>
-                <Text style={[styles.farmerName, { color: colors.textPrimary }]}>
+                <Text
+                  style={[styles.farmerName, { color: colors.textPrimary }]}
+                >
                   {task.farmerId?.name}
                 </Text>
-                
+
                 {isClaimed ? (
                   <>
                     <View style={styles.row}>
                       <Phone size={14} color={colors.textSecondary} />
-                      <Text style={[styles.farmerSub, { color: colors.textSecondary }]}>
+                      <Text
+                        style={[
+                          styles.farmerSub,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
                         {task.farmerId?.phoneNumber || "Phone not provided"}
                       </Text>
                     </View>
                     {displayAddress ? (
                       <View style={styles.row}>
                         <MapPin size={14} color={colors.textSecondary} />
-                        <Text style={[styles.farmerSub, { color: colors.textSecondary }]}>
+                        <Text
+                          style={[
+                            styles.farmerSub,
+                            { color: colors.textSecondary },
+                          ]}
+                        >
                           {displayAddress}
                         </Text>
                       </View>
                     ) : (
-                      <Text style={[styles.locationNote, { color: colors.textMuted }]}>
+                      <Text
+                        style={[
+                          styles.locationNote,
+                          { color: colors.textMuted },
+                        ]}
+                      >
                         Farm location not provided
                       </Text>
                     )}
                     {farmLocation?.landmark || farmerAddress.landmark ? (
-                      <Text style={[styles.locationNote, { color: colors.textSecondary }]}>
-                        Landmark: {farmLocation?.landmark || farmerAddress.landmark}
+                      <Text
+                        style={[
+                          styles.locationNote,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
+                        Landmark:{" "}
+                        {farmLocation?.landmark || farmerAddress.landmark}
                       </Text>
                     ) : null}
                     {farmLocation?.directionsNote ? (
-                      <Text style={[styles.locationNote, { color: colors.textSecondary }]}>
+                      <Text
+                        style={[
+                          styles.locationNote,
+                          { color: colors.textSecondary },
+                        ]}
+                      >
                         Directions: {farmLocation.directionsNote}
                       </Text>
                     ) : null}
@@ -517,23 +596,28 @@ export default function TaskDetailsScreen() {
                 ) : (
                   <View style={styles.row}>
                     <Lock size={14} color={colors.textMuted} />
-                    <Text style={[styles.farmerSub, { color: colors.textMuted, fontStyle: "italic" }]}>
+                    <Text
+                      style={[
+                        styles.farmerSub,
+                        { color: colors.textMuted, fontStyle: "italic" },
+                      ]}
+                    >
                       Claim task to view contact details
                     </Text>
                   </View>
                 )}
               </View>
             </View>
-            
+
             {/* Navigate Button */}
             {isClaimed && destinationQuery ? (
               <TouchableOpacity
                 style={[
                   styles.navigateBtn,
                   {
-                    backgroundColor: isDark ? '#064e3b' : '#f0fdf4',
-                    borderColor: isDark ? '#065f46' : '#bbf7d0',
-                  }
+                    backgroundColor: isDark ? "#064e3b" : "#f0fdf4",
+                    borderColor: isDark ? "#065f46" : "#bbf7d0",
+                  },
                 ]}
                 onPress={() => {
                   const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destinationQuery)}&travelmode=driving`;
@@ -542,20 +626,31 @@ export default function TaskDetailsScreen() {
                   );
                 }}
               >
-                <Navigation size={14} color={isDark ? '#34d399' : '#00643B'} />
-                <Text style={[styles.navigateBtnText, { color: isDark ? '#34d399' : '#00643B' }]}>
+                <Navigation size={14} color={isDark ? "#34d399" : "#00643B"} />
+                <Text
+                  style={[
+                    styles.navigateBtnText,
+                    { color: isDark ? "#34d399" : "#00643B" },
+                  ]}
+                >
                   {typeof farmLocation?.latitude === "number"
                     ? "Get directions to farm"
-                    : (task.farmerId?.address?.coordinates?.lat
+                    : task.farmerId?.address?.coordinates?.lat
                       ? "Navigate to Address Coordinates"
-                      : "Navigate to Barangay Area")}
+                      : "Navigate to Barangay Area"}
                 </Text>
               </TouchableOpacity>
             ) : null}
           </View>
 
           {/* Task Description section */}
-          <View style={[styles.section, styles.cardContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.section,
+              styles.cardContainer,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
             <View style={styles.sectionHeader}>
               <Info size={18} color={isDark ? "#34d399" : "#00643B"} />
               <Text
@@ -633,8 +728,7 @@ export default function TaskDetailsScreen() {
             </View>
           ) : null}
 
-          {task.taskType === "PD" &&
-          task.insemination?.farmerOutcomeReport ? (
+          {task.taskType === "PD" && task.insemination?.farmerOutcomeReport ? (
             <View
               style={[
                 styles.section,
@@ -764,9 +858,7 @@ export default function TaskDetailsScreen() {
                   marginTop: 14,
                   padding: 12,
                   borderRadius: 12,
-                  backgroundColor: isDark
-                    ? "rgba(245,158,11,0.1)"
-                    : "#FFFBEB",
+                  backgroundColor: isDark ? "rgba(245,158,11,0.1)" : "#FFFBEB",
                 }}
               >
                 <Text
@@ -790,7 +882,11 @@ export default function TaskDetailsScreen() {
               <Text
                 style={[
                   styles.sectionTitle,
-                  { color: isDark ? "#34d399" : "#00643B", marginBottom: 12, marginLeft: 4 },
+                  {
+                    color: isDark ? "#34d399" : "#00643B",
+                    marginBottom: 12,
+                    marginLeft: 4,
+                  },
                 ]}
               >
                 {isCalvingTask ? "Mother Animal" : "Associated Animals"}
@@ -819,9 +915,20 @@ export default function TaskDetailsScreen() {
                       resizeMode="cover"
                     />
                   ) : (
-                    <View style={[styles.animalAvatar, { backgroundColor: isDark ? '#1e293b' : '#f1f5f9' }]}>
-                      <Text style={{ fontFamily: 'Outfit_700Bold', color: colors.textSecondary, fontSize: 16 }}>
-                        {(anim.species || 'A').charAt(0).toUpperCase()}
+                    <View
+                      style={[
+                        styles.animalAvatar,
+                        { backgroundColor: isDark ? "#1e293b" : "#f1f5f9" },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_700Bold",
+                          color: colors.textSecondary,
+                          fontSize: 16,
+                        }}
+                      >
+                        {(anim.species || "A").charAt(0).toUpperCase()}
                       </Text>
                     </View>
                   )}
@@ -840,8 +947,9 @@ export default function TaskDetailsScreen() {
                     >
                       {[anim.breed, anim.species].filter(Boolean).join(" · ")}
                     </Text>
-                    {[anim.gender, anim.color, anim.reproductiveStatus]
-                      .filter(Boolean).length ? (
+                    {[anim.gender, anim.color, anim.reproductiveStatus].filter(
+                      Boolean,
+                    ).length ? (
                       <Text
                         style={[
                           styles.animalFacts,
@@ -895,11 +1003,22 @@ export default function TaskDetailsScreen() {
             >
               <View style={styles.sectionHeader}>
                 <Info size={18} color={isDark ? "#fbbf24" : "#92400e"} />
-                <Text style={[styles.sectionTitle, { color: isDark ? "#fbbf24" : "#92400e" }]}>
+                <Text
+                  style={[
+                    styles.sectionTitle,
+                    { color: isDark ? "#fbbf24" : "#92400e" },
+                  ]}
+                >
                   Pregnancy check not yet available
                 </Text>
               </View>
-              <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 20 }}>
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontSize: 13,
+                  lineHeight: 20,
+                }}
+              >
                 {pregnancyReadiness.reason}
               </Text>
             </View>
@@ -992,13 +1111,19 @@ export default function TaskDetailsScreen() {
               ]}
             >
               <CheckCircle size={20} color={colors.textMuted} />
-              <Text style={[styles.completeBtnText, { color: colors.textMuted }]}>Completed</Text>
+              <Text
+                style={[styles.completeBtnText, { color: colors.textMuted }]}
+              >
+                Completed
+              </Text>
             </View>
           ) : (
             <TouchableOpacity
               disabled={completing || initialPregnancyCheckLocked}
               accessibilityRole="button"
-              accessibilityState={{ disabled: completing || initialPregnancyCheckLocked }}
+              accessibilityState={{
+                disabled: completing || initialPregnancyCheckLocked,
+              }}
               accessibilityLabel={
                 initialPregnancyCheckLocked
                   ? `Pregnancy check unavailable. ${pregnancyReadiness?.reason || "Not yet available."}`

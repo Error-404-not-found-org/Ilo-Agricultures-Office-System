@@ -742,6 +742,12 @@ test("technician route and task details preserve canonical visit context", async
     "TechnicianRouteSection.tsx",
   );
   const taskDetails = read("app", "(technician)", "task-details.tsx");
+  const workPresentation = read(
+    "features",
+    "technician-requests",
+    "utils",
+    "requestWorkPresentation.ts",
+  );
   const dashboardController = readRepository(
     "backend",
     "src",
@@ -756,10 +762,10 @@ test("technician route and task details preserve canonical visit context", async
   );
 
   await t.test("route rows show Morning or Afternoon without deriving a clock time", () => {
-    assert.match(route, /item\.raw\?\.visitPeriod/);
-    assert.match(route, /item\.raw\?\.metadata\?\.visitPeriod/);
-    assert.match(route, /label \+= " · Morning"/);
-    assert.match(route, /label \+= " · Afternoon"/);
+    assert.match(route, /item\.timingLabel/);
+    assert.doesNotMatch(route, /item\.raw/);
+    assert.match(workPresentation, /item\.raw\?\.visitPeriod/);
+    assert.match(workPresentation, /period === "morning" \? "Morning" : "Afternoon"/);
     assert.doesNotMatch(route, /toLocaleTimeString/);
     assert.match(dashboardController, /visitPeriod: ins\.visitPeriod \|\| null/);
     assert.match(
@@ -780,5 +786,274 @@ test("technician route and task details preserve canonical visit context", async
       taskController,
       /taskObj\.insemination = pregnancy\?\.inseminationId \|\| null/,
     );
+  });
+});
+
+test("Dashboard and My Work share normalized technician work semantics", () => {
+  const presentation = loadTypeScriptModule(
+    "features",
+    "technician-requests",
+    "utils",
+    "requestWorkPresentation.ts",
+  );
+  const hook = read(
+    "features",
+    "technician-dashboard",
+    "hooks",
+    "useTechnicianDashboardScreen.ts",
+  );
+  const screen = read(
+    "features",
+    "technician-dashboard",
+    "screens",
+    "TechnicianDashboardScreen.tsx",
+  );
+  const now = new Date("2026-08-08T10:00:00.000Z");
+  const base = {
+    id: "work-1",
+    workflowId: "workflow-1",
+    taskId: null,
+    status: "scheduled",
+    farmer: { name: "Farmer One", location: "Oton" },
+    animal: { name: "Bessie", earTag: "C-01" },
+    allowedAction: "RECORD_SERVICE",
+  };
+
+  assert.match(hook, /useTechnicianTasks\(undefined, \{/);
+  assert.match(hook, /normalizeTechnicianWorkItems/);
+  assert.match(screen, /TechnicianStatsCard loading=\{workLoading\} workItems=\{workItems\}/);
+  assert.match(screen, /workItems=\{todayWorkItems\}/);
+
+  const ai = presentation.normalizeTechnicianWorkItem(
+    {
+      ...base,
+      workflowType: "AI",
+      schedule: { date: "2026-08-08T04:00:00.000Z", visitPeriod: "morning" },
+    },
+    now,
+  );
+  const health = presentation.normalizeTechnicianWorkItem(
+    {
+      ...base,
+      id: "health-1",
+      workflowType: "Health",
+      schedule: { date: "2026-08-08T04:00:00.000Z", visitPeriod: null },
+      raw: { visitPeriod: "afternoon" },
+    },
+    now,
+  );
+  assert.equal(ai.isReadyToday, true);
+  assert.equal(ai.timingLabel, "Aug 8, 2026 · Morning");
+  assert.equal(health.timingLabel, "Aug 8, 2026 · Afternoon");
+
+  const pregnancy = presentation.normalizeTechnicianWorkItem(
+    {
+      ...base,
+      workflowId: null,
+      taskId: "pd-1",
+      workflowType: "PD",
+      taskType: "PD",
+      schedule: { date: "2026-08-08T04:00:00.000Z", visitPeriod: null },
+      raw: { dueDate: "2026-08-08T04:00:00.000Z" },
+    },
+    now,
+  );
+  assert.equal(pregnancy.timingKind, "confirmation_due");
+  assert.equal(pregnancy.statusLabel, "Needs confirmation");
+  assert.doesNotMatch(`${pregnancy.timingLabel} ${pregnancy.statusLabel}`, /Morning|Afternoon|Scheduled/);
+
+  const calving = presentation.normalizeTechnicianWorkItem(
+    {
+      ...base,
+      workflowId: null,
+      taskId: "calving-1",
+      workflowType: "Calving",
+      taskType: "CD",
+      schedule: { date: "2026-08-07T04:00:00.000Z", visitPeriod: null },
+      raw: { dueDate: "2026-08-07T04:00:00.000Z" },
+    },
+    now,
+  );
+  assert.equal(calving.statusLabel, "Monitoring");
+  assert.match(calving.timingLabel, /^Past expected date/);
+  assert.equal(calving.needsAttention, true);
+  assert.equal(calving.overdue, false);
+
+  for (const workflowType of ["AI", "Health"]) {
+    const unscheduled = presentation.normalizeTechnicianWorkItem(
+      {
+        ...base,
+        workflowType,
+        status: "approved",
+        schedule: { date: null, visitPeriod: null },
+      },
+      now,
+    );
+    assert.equal(unscheduled.state, "needs_scheduling");
+    assert.equal(unscheduled.actionLabel, "Set Visit");
+  }
+
+  const metrics = presentation.summarizeTechnicianWork(
+    presentation.normalizeTechnicianWorkItems(
+      [
+        { ...base, workflowType: "AI", schedule: { date: "2026-08-08T04:00:00.000Z", visitPeriod: "morning" } },
+        { ...base, id: "old", workflowType: "Health", schedule: { date: "2026-08-07T04:00:00.000Z", visitPeriod: "afternoon" } },
+        { ...base, id: "done", workflowType: "AI", status: "done", completedAt: "2026-08-08T03:00:00.000Z", schedule: { date: null, visitPeriod: null } },
+        { ...base, id: "cancelled", workflowType: "Health", status: "cancelled", schedule: { date: "2026-08-08T04:00:00.000Z", visitPeriod: "morning" } },
+      ],
+      now,
+    ),
+    now,
+  );
+  assert.deepEqual(metrics, {
+    dueToday: 1,
+    needsAttention: 1,
+    completedToday: 1,
+  });
+
+  const reInsemination = presentation.normalizeTechnicianWorkItem(
+    {
+      ...base,
+      id: "attempt-2",
+      workflowType: "AI",
+      attemptNumber: 2,
+      previousAttemptId: "attempt-1",
+      previousAttemptOutcome: "Failed (Re-heat)",
+      previousAttemptVerified: true,
+      schedule: { date: "2026-08-08T04:00:00.000Z", visitPeriod: "morning" },
+    },
+    now,
+  );
+  assert.equal(reInsemination.requestKind, "re_insemination");
+  assert.equal(reInsemination.title, "Re-insemination");
+  assert.equal(reInsemination.attemptNumber, 2);
+  assert.equal(reInsemination.previousAttemptId, "attempt-1");
+  assert.equal(reInsemination.previousAttemptVerified, true);
+  assert.equal(presentation.normalizeServiceType(reInsemination), "ai");
+
+  const unverified = presentation.normalizeTechnicianWorkItem(
+    {
+      ...base,
+      id: "attempt-2-unverified",
+      workflowType: "AI",
+      attemptNumber: 2,
+      previousAttemptOutcome: "Failed (Re-heat)",
+      previousAttemptVerified: false,
+      schedule: { date: "2026-08-08T04:00:00.000Z", visitPeriod: "morning" },
+    },
+    now,
+  );
+  assert.equal(unverified.previousAttemptVerified, false);
+});
+
+test("Farmer Needs Attention follows the canonical reproduction lifecycle", async (t) => {
+  const home = read(
+    "features",
+    "farmer-dashboard",
+    "screens",
+    "FarmerHomeScreen.tsx",
+  );
+  const transforms = read(
+    "features",
+    "farmer-dashboard",
+    "utils",
+    "farmerDashboard.transforms.ts",
+  );
+  const observation = read(
+    "features",
+    "breeding",
+    "screens",
+    "BreedingObservationScreen.tsx",
+  );
+  const milestonesController = readRepository(
+    "backend",
+    "src",
+    "controllers",
+    "user.controllers.js",
+  );
+  const aiController = readRepository(
+    "backend",
+    "src",
+    "controllers",
+    "ai-request.controllers.js",
+  );
+
+  await t.test("breeding follow-up opens the observation screen, never a diagnosis mutation", () => {
+    assert.match(transforms, /displayTitle = "Breeding Follow-up"/);
+    assert.match(transforms, /"Report Signs"/);
+    assert.match(home, /pathname: "\/\(farmer\)\/report-breeding-observation"/);
+    assert.match(home, /requestId: item\.relatedId/);
+    assert.doesNotMatch(home, /Confirm Pregnant|confirmPregnancy/);
+  });
+
+  await t.test("pregnancy confirmation copy consumes backend readiness and reuses task state", () => {
+    assert.match(milestonesController, /getPregnancyCheckReadiness/);
+    assert.match(milestonesController, /taskForInsemination/);
+    assert.match(aiController, /Task\.findOne\(\{/);
+    assert.match(aiController, /"metadata\.inseminationId": request\._id/);
+    assert.match(aiController, /request\.verificationTaskId = verificationTask\._id/);
+    assert.match(transforms, /milestone\.pregnancyReadiness\?\.isEligible/);
+    assert.match(transforms, /Pregnancy check requested/);
+    assert.match(transforms, /Awaiting technician confirmation/);
+    assert.match(observation, /latestInsemination\?\.pregnancyReadiness/);
+    assert.doesNotMatch(observation, /reportType === "return_to_heat" \? 18 : 35/);
+  });
+
+  await t.test("calving uses the real pregnancy and animal identifiers only when due", () => {
+    assert.match(transforms, /Expected Calving Today/);
+    assert.match(transforms, /Past Expected Calving Date/);
+    assert.match(home, /pathname: "\/\(farmer\)\/record-calving"/);
+    assert.match(home, /pregnancyId: item\.relatedId/);
+    assert.match(home, /taskId: item\.taskId \|\| undefined/);
+    assert.doesNotMatch(home, /calving.*completed/i);
+  });
+});
+
+test("Farmer Breeding Observation uses the shared header and optional evidence contract", async (t) => {
+  const observation = read(
+    "features",
+    "breeding",
+    "screens",
+    "BreedingObservationScreen.tsx",
+  );
+  const service = read(
+    "features",
+    "breeding",
+    "services",
+    "breedingObservation.service.ts",
+  );
+
+  await t.test("loading, error, and form states share the canonical Farmer header", () => {
+    const headerUsages = observation.match(/<AppPageHeader/g) || [];
+
+    assert.match(observation, /import \{ AppPageHeader \}/);
+    assert.ok(headerUsages.length >= 3);
+    assert.doesNotMatch(observation, /backgroundColor: "#00643B"/);
+    assert.doesNotMatch(observation, /StatusBar barStyle="light-content"/);
+    assert.match(observation, /onBack=\{\(\) => safeBack\(\)\}/);
+  });
+
+  await t.test("photos reuse the shared picker and reject local-only values", () => {
+    assert.match(observation, /pickImageFromSource/);
+    assert.match(observation, /PhotoOptionModal/);
+    assert.match(observation, /const MAX_EVIDENCE_PHOTOS = 3/);
+    assert.match(observation, /handleSelectPhoto\("camera"\)/);
+    assert.match(observation, /handleSelectPhoto\("library"\)/);
+    assert.match(observation, /removeEvidencePhoto/);
+    assert.match(observation, /isPickingPhoto/);
+    assert.ok(observation.includes("if (!/^data:image\\/"));
+  });
+
+  await t.test("submission keeps the canonical farmer-observation endpoint", () => {
+    assert.match(
+      observation,
+      /evidencePhotos: evidencePhotos\.map\(\(photo\) => photo\.base64\)/,
+    );
+    assert.match(service, /evidencePhotos\?: string\[\]/);
+    assert.match(
+      service,
+      /`\/ai-request\/\$\{requestId\}\/farmer-observation`/,
+    );
+    assert.doesNotMatch(service, /\/outcome/);
   });
 });

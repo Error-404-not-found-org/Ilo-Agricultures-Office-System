@@ -15,38 +15,12 @@ import { useTheme } from "@/lib/theme";
 import { formatDashboardLocation } from "../utils/dashboardPresentation";
 import { TechnicianRouteSkeleton } from "./skeletons/TechnicianDashboardSkeletons";
 import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
+import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
 
 interface TechnicianRouteSectionProps {
   loading: boolean;
-  agendaItems: any[];
-  dbUser: any;
-  handleAction: (item: any) => void;
-}
-
-function cleanServiceTitle(
-  rawTask?: string,
-  defaultLabel = "Farm visit",
-): string {
-  if (!rawTask) return defaultLabel;
-
-  // Remove test seed prefixes like SEED-repro-..., RC26-..., etc.
-  let text = rawTask
-    .replace(/-?\s*SEED-[A-Za-z0-9-]+/gi, "")
-    .replace(/-?\s*RC\d+-[A-Za-z0-9-]+/gi, "")
-    .trim();
-
-  // Normalize acronyms to user-facing terms per BreedSmart rules
-  if (text.startsWith("PD") || text === "PD") {
-    text = text.replace(/^PD\s*-\s*/i, "").replace(/^PD$/i, "");
-    text = text ? `Pregnancy Check (${text})` : "Pregnancy Check";
-  } else if (text.startsWith("AI") || text === "AI") {
-    text = text.replace(/^AI\s*-\s*/i, "").replace(/^AI$/i, "");
-    text = text
-      ? `Artificial Insemination (${text})`
-      : "Artificial Insemination";
-  }
-
-  return text.length > 0 ? text : defaultLabel;
+  workItems: TechnicianWorkItem[];
+  handleAction: (item: TechnicianWorkItem) => void;
 }
 
 function getServiceTheme(
@@ -94,18 +68,17 @@ function getServiceTheme(
 
 export function TechnicianRouteSection({
   loading,
-  agendaItems,
-  dbUser,
+  workItems,
   handleAction,
 }: TechnicianRouteSectionProps) {
   const router = useRouter();
   const { colors } = useTheme();
-  const previewItems = agendaItems.slice(0, 3);
+  const previewItems = workItems.slice(0, 3);
 
   return (
     <View style={{ marginBottom: 24 }}>
       <SectionHeader
-        title="Today's visits"
+        title="Today's work"
         rightAction={
           <TouchableOpacity
             onPress={() =>
@@ -148,8 +121,8 @@ export function TechnicianRouteSection({
         >
           <AsyncState
             state="empty"
-            title="No visits scheduled today"
-            message="Scheduled field work will appear here."
+            title="No work due today"
+            message="Scheduled visits and due livestock follow-ups will appear here."
             style={{
               paddingVertical: 20,
               paddingHorizontal: 8,
@@ -157,30 +130,10 @@ export function TechnicianRouteSection({
           />
         </View>
       ) : (
-        previewItems.map((item: any, index: number) => {
-          const assignedTechnicianId =
-            item.raw?.approvedBy?._id ||
-            item.raw?.approvedBy ||
-            item.raw?.handledBy?._id ||
-            item.raw?.handledBy ||
-            null;
-
-          const assignedTechnicianName =
-            item.raw?.approvedBy?.name ||
-            item.raw?.handledBy?.name ||
-            (assignedTechnicianId ? "another technician" : null);
-
-          const assignedToOther =
-            assignedTechnicianId &&
-            dbUser?._id &&
-            String(assignedTechnicianId) !== String(dbUser._id);
-
-          void assignedTechnicianName;
-          void assignedToOther;
-
+        previewItems.map((item, index) => {
           return (
             <VisitRow
-              key={`${item.type}-${item.id || index}`}
+              key={`${item.workType}-${item.id || index}`}
               item={item}
               onPress={() => handleAction(item)}
             />
@@ -191,116 +144,43 @@ export function TechnicianRouteSection({
   );
 }
 
-function VisitRow({ item, onPress }: any) {
+function VisitRow({
+  item,
+  onPress,
+}: {
+  item: TechnicianWorkItem;
+  onPress: () => void;
+}) {
   const { width } = useWindowDimensions();
 
   const { colors, isDark } = useTheme();
 
   const compact = width < 390;
 
-  const overdue = item.overdue === true;
+  const service = item.title;
 
-  const farmer = item.raw?.farmerId || {};
-
-  const farmLocation = farmer.farmLocation || {};
-
-  const hasFarmPin =
-    item.hasFarmPin ??
-    (Number.isFinite(farmLocation.latitude) &&
-      Number.isFinite(farmLocation.longitude));
-
-  const location = formatDashboardLocation(
-    item,
-    item.farmLocationLabel ||
-      farmLocation.detectedAddress ||
-      farmLocation.landmark ||
-      item.location,
-  );
-
-  const sentAt =
-    item.sentTime ||
-    item.createdAt ||
-    item.requestedAt ||
-    item.raw?.createdAt ||
-    item.raw?.requestedAt ||
-    item.raw?.requestId?.createdAt;
-
-  void sentAt;
-
-  const rawService =
-    item.serviceType || item.taskType || item.task || "Farm visit";
-
-  const service = cleanServiceTitle(rawService);
-
-  const animalName =
-    item.animalName ||
-    item.animal ||
-    item.raw?.animalId?.name ||
-    item.raw?.animalId?.animalName;
-
-  const animalTag =
-    item.animalTag ||
-    item.earTag ||
-    item.raw?.animalId?.earTag ||
-    item.raw?.animalId?.animalId;
-
-  const animal = animalName
-    ? animalTag
-      ? `${animalName} (${animalTag})`
-      : animalName
-    : animalTag
-      ? `Animal ${animalTag}`
+  const animal = item.animalName
+    ? item.animalTag
+      ? `${item.animalName} (${item.animalTag})`
+      : item.animalName
+    : item.animalTag
+      ? `Animal ${item.animalTag}`
       : null;
-
-  const normalizedStatus = String(
-    item.status || item.displayStatus || "",
-  ).toLowerCase();
-
-  const inProgress =
-    normalizedStatus.includes("in-progress") ||
-    normalizedStatus.includes("in_progress") ||
-    normalizedStatus.includes("in progress");
-
-  const statusLabel = overdue
-    ? "Overdue"
-    : inProgress
-      ? "In progress"
-      : "Scheduled";
-
-  const isAIService =
-    service.toLowerCase().includes("insemination") ||
-    service.toLowerCase().includes("ai service");
-
-  const canStart =
-    !isAIService && !overdue && !inProgress && item.isReadyToday === true;
-
-  const actionLabel = isAIService
-    ? "View My Work"
-    : canStart
-      ? "Start service"
-      : "View";
-
-  void actionLabel;
-
-  const ServiceIcon = service.toLowerCase().includes("health")
+  const ServiceIcon = item.workType === "health"
     ? Stethoscope
-    : service.toLowerCase().includes("pregnancy")
+    : item.workType === "pregnancy_check"
       ? HeartPulse
-      : isAIService
+      : item.workType === "ai"
         ? Syringe
         : CalendarDays;
-
-  const statusVariant = overdue ? "danger" : inProgress ? "info" : "warning";
-
-  const exceptionLabel = !hasFarmPin ? "Farm location not set" : null;
-
-  const serviceTheme = getServiceTheme(service, overdue, isDark, colors);
-  const visitPeriod =
-    item.visitPeriod ||
-    item.schedule?.visitPeriod ||
-    item.raw?.visitPeriod ||
-    item.raw?.metadata?.visitPeriod ||
-    item.raw?.requestId?.visitPeriod;
+  const statusVariant = item.overdue
+    ? "danger"
+    : item.state === "in_progress"
+      ? "info"
+      : item.state === "completed"
+        ? "success"
+        : "warning";
+  const serviceTheme = getServiceTheme(service, item.overdue, isDark, colors);
 
   const actionColumn = (
     <View
@@ -315,7 +195,7 @@ function VisitRow({ item, onPress }: any) {
       }}
     >
       <StatusBadge
-        label={statusLabel}
+        label={item.statusLabel}
         variant={statusVariant}
         domain="service"
         compact
@@ -341,7 +221,7 @@ function VisitRow({ item, onPress }: any) {
           onPress={onPress}
           activeOpacity={0.8}
           accessibilityRole="button"
-          accessibilityLabel={`${service} for ${item.farmer || location}`}
+          accessibilityLabel={`${service}${item.farmerName ? ` for ${item.farmerName}` : ""}`}
           style={{
             flex: 1,
             minWidth: 0,
@@ -379,7 +259,7 @@ function VisitRow({ item, onPress }: any) {
             </Text>
 
             <Text textRole="body" numberOfLines={1}>
-              {item.farmer || "Farmer Request"}
+              {item.farmerName || "Farmer"}
             </Text>
 
             {animal ? (
@@ -388,7 +268,7 @@ function VisitRow({ item, onPress }: any) {
               </Text>
             ) : null}
 
-            <View
+            {item.location ? <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
@@ -406,9 +286,9 @@ function VisitRow({ item, onPress }: any) {
                   flex: 1,
                 }}
               >
-                {location}
+                {formatDashboardLocation(item, item.location)}
               </Text>
-            </View>
+            </View> : null}
 
             <View
               style={{
@@ -428,36 +308,9 @@ function VisitRow({ item, onPress }: any) {
                   flex: 1,
                 }}
               >
-                {formatScheduleDateTime(
-                  item.displayDate || item.scheduledDate,
-                  visitPeriod,
-                )}
+                {item.timingLabel || "Timing not set"}
               </Text>
             </View>
-
-            {exceptionLabel ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 4,
-                  marginTop: 2,
-                }}
-              >
-                <MapPin size={13} color={colors.warning} />
-
-                <Text
-                  textRole="label"
-                  numberOfLines={1}
-                  style={{
-                    flex: 1,
-                    color: colors.warningForeground,
-                  }}
-                >
-                  {exceptionLabel}
-                </Text>
-              </View>
-            ) : null}
           </View>
         </TouchableOpacity>
 
@@ -467,35 +320,4 @@ function VisitRow({ item, onPress }: any) {
       {compact ? actionColumn : null}
     </View>
   );
-}
-
-function formatScheduleDateTime(dateStr?: string, visitPeriod?: string) {
-  if (!dateStr) {
-    return "Schedule not set";
-  }
-
-  const date = new Date(dateStr);
-
-  let label = "Schedule not set";
-
-  if (!Number.isNaN(date.getTime())) {
-    label = date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  } else {
-    label = dateStr;
-  }
-
-  const period = String(visitPeriod || "")
-    .trim()
-    .toLowerCase();
-
-  if (period === "morning") {
-    label += " · Morning";
-  } else if (period === "afternoon") {
-    label += " · Afternoon";
-  }
-
-  return label;
 }

@@ -49,6 +49,20 @@ export interface FarmerMilestone {
   relatedId?: string;
   resolved?: boolean;
   status?: string;
+  taskId?: string | null;
+  pregnancyReadiness?: {
+    isEligible?: boolean;
+    reason?: string;
+    availableDate?: string | null;
+    availableDateLabel?: string | null;
+    daysPostAI?: number | null;
+    minimumDays?: number | null;
+  } | null;
+  farmerObservation?: {
+    reportType?: "possible_pregnancy" | "return_to_heat" | "unsure" | null;
+    verificationStatus?: string | null;
+    reportedAt?: string | null;
+  } | null;
 }
 
 export interface FarmerAttentionItem extends FarmerMilestone {
@@ -56,6 +70,13 @@ export interface FarmerAttentionItem extends FarmerMilestone {
   displaySubtitle: string;
   urgency: "overdue" | "due_today" | "actionable" | "awaiting";
   animalReference: string;
+  guidance: string;
+  actionLabel: string;
+  actionKind:
+    | "report_signs"
+    | "request_pregnancy_check"
+    | "record_calving"
+    | "view_animal";
 }
 
 export interface FarmerActivityPresentation {

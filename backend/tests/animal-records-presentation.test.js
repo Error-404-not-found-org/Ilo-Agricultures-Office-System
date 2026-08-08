@@ -72,6 +72,59 @@ test("Farmer, Technician, and Admin Animal Details share one role-aware records 
   );
 });
 
+test("Technician Recent Records loads canonical record details by identifiers", () => {
+  const shared = source(
+    "mobile/features/animals/screens/RoleAwareAnimalDetailsScreen.tsx",
+  );
+  const technicianDetails = source(
+    "mobile/features/technician-records/screens/RecordDetailsScreen.tsx",
+  );
+  const recordsBackend = source(
+    "backend/src/controllers/animal-workflow.controllers.js",
+  );
+  const technicianBranch = shared.slice(
+    shared.indexOf('else if (role === "technician")'),
+    shared.indexOf("const ownerId"),
+  );
+
+  assert.match(technicianBranch, /pathname: "\/\(technician\)\/record-details"/);
+  assert.match(technicianBranch, /animalId: id/);
+  assert.match(
+    technicianBranch,
+    /recordId: String\(record\.sourceId \|\| record\._id \|\| record\.id \|\| ""\)/,
+  );
+  assert.match(
+    technicianBranch,
+    /recordType: String\(record\.recordKind \|\| record\.type \|\| ""\)/,
+  );
+  assert.doesNotMatch(technicianBranch, /recordData|JSON\.stringify/);
+
+  assert.match(technicianDetails, /animalId\?: string/);
+  assert.match(technicianDetails, /recordId\?: string/);
+  assert.match(technicianDetails, /recordType\?: string/);
+  assert.match(technicianDetails, /params\.recordId \|\|/);
+  assert.match(technicianDetails, /if \(params\.animalId\) return params\.animalId/);
+  assert.match(technicianDetails, /getAnimalRecords\(api, animalId \|\| ""/);
+  assert.match(technicianDetails, /useAnimalDetailsQuery\(animalId \|\| ""\)/);
+  assert.match(technicianDetails, /String\(r\.sourceId \|\| ""\) === String\(recordId\)/);
+  assert.match(
+    technicianDetails,
+    /item\.recordKind \|\| item\.type \|\| params\.recordType/,
+  );
+  assert.match(technicianDetails, /recordKind === "medical_record"/);
+
+  for (const kind of [
+    'recordKind: "insemination"',
+    'recordKind: "health_request"',
+    'recordKind: "medical_record"',
+    'recordKind: "pregnancy"',
+    'recordKind: "calving"',
+  ]) {
+    assert.match(recordsBackend, new RegExp(kind.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.match(recordsBackend, /previousAttemptReference/);
+});
+
 test("animal records show one official outcome per linked health request", () => {
   const healthRequest = {
     _id: "health-request-1",

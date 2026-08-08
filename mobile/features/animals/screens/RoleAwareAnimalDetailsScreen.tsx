@@ -1,5 +1,13 @@
 import React, { useMemo, useState } from "react";
-import { useWindowDimensions, ActivityIndicator, Image, Linking, Pressable, ScrollView, View } from "react-native";
+import {
+  useWindowDimensions,
+  ActivityIndicator,
+  Image,
+  Linking,
+  Pressable,
+  ScrollView,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import {
@@ -42,11 +50,6 @@ import type {
   Technician,
 } from "@/types";
 import { safeBack } from "@/utils/navigation";
-import {
-  formatVisitSchedule,
-  getFarmerRequestListStatusLabel,
-  isVisitTodayOrLater,
-} from "@/features/farmer-requests/utils/requestDetailPresentation";
 
 export type AnimalDetailsRole = "farmer" | "technician" | "admin";
 
@@ -78,8 +81,6 @@ type ServiceSummary = {
   status: string;
   activityDate?: string;
   scheduledDate?: string;
-  visitPeriod?: "morning" | "afternoon" | null;
-  createdAt?: string;
   technician?: string;
   location?: string;
 };
@@ -118,11 +119,7 @@ const ACTIVE_REQUEST_STATUSES = new Set([
   "in_progress",
 ]);
 
-const SCHEDULED_VISIT_STATUSES = new Set([
-  "assigned",
-  "approved",
-  "scheduled",
-]);
+const SCHEDULED_VISIT_STATUSES = new Set(["assigned", "approved", "scheduled"]);
 
 const formatDate = (value?: string, includeTime = false) => {
   if (!value) return "";
@@ -217,8 +214,6 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
       title: "AI Service",
       status,
       scheduledDate: item.scheduledDate,
-      visitPeriod: item.visitPeriod,
-      createdAt: item.createdAt,
       activityDate:
         item.scheduledDate ||
         item.inseminationDate ||
@@ -242,8 +237,6 @@ const getServices = (animal?: AnimalDetailsData): ServiceSummary[] => {
         title: getHealthTitle(item.requestType),
         status,
         scheduledDate: item.scheduledDate,
-        visitPeriod: item.visitPeriod,
-        createdAt: item.createdAt,
         activityDate:
           item.scheduledDate || item.preferredDate || item.createdAt,
         technician:
@@ -416,7 +409,8 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
           ) {
             return false;
           }
-          return isVisitTodayOrLater(service.scheduledDate);
+          const scheduledAt = new Date(service.scheduledDate).getTime();
+          return Number.isFinite(scheduledAt) && scheduledAt > Date.now();
         })
         .sort(
           (first, second) =>
@@ -532,15 +526,14 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
     );
   const hasPregnancyTrackerData = Boolean(
     latestAi?.value ||
-      animal.lastInseminationDate ||
-      animal.expectedCalvingDate ||
-      animal.pregnancyConfirmedAt ||
-      ["Inseminated", "Likely Pregnant", "Pregnant"].includes(
-        animal.reproductiveStatus || "",
-      ),
+    animal.lastInseminationDate ||
+    animal.expectedCalvingDate ||
+    animal.pregnancyConfirmedAt ||
+    ["Inseminated", "Likely Pregnant", "Pregnant"].includes(
+      animal.reproductiveStatus || "",
+    ),
   );
-  const canOpenPregnancyTracker =
-    role === "farmer" && hasPregnancyTrackerData;
+  const canOpenPregnancyTracker = role === "farmer" && hasPregnancyTrackerData;
 
   const quickFacts: QuickFact[] = [];
   if (gender) {
@@ -651,39 +644,19 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
         pathname: "/(farmer)/animal-record-detail",
         params: {
           animalId: id,
-          recordId: String(
-            record.sourceId || record._id || record.id || "",
-          ),
+          recordId: String(record.sourceId || record._id || record.id || ""),
           recordType: String(record.recordKind || record.type || ""),
         },
       } as never);
     } else if (role === "technician") {
-      const leanRecord = {
-        _id: record._id || record.id,
-        id: record.id || record._id,
-        sourceId: record.sourceId,
-        recordKind: record.recordKind || record.type,
-        type: record.type || record.recordKind,
-        recordDate: record.recordDate || record.date || record.createdAt,
-        date: record.date || record.recordDate || record.createdAt,
-        createdAt: record.createdAt,
-        animalId: record.animalId || animal,
-        farmerId: record.farmerId || owner,
-        details: record.details,
-        notes: record.notes,
-        summary: record.summary,
-        outcome: record.outcome,
-        status: record.status,
-        attemptNumber: record.attemptNumber,
-        pregnancyDiagnosis: record.pregnancyDiagnosis,
-        inseminationId: record.inseminationId,
-        requestType: record.requestType,
-      };
-      router.push(
-        `/(technician)/record-details?recordData=${encodeURIComponent(
-          JSON.stringify(leanRecord),
-        )}` as never,
-      );
+      router.push({
+        pathname: "/(technician)/record-details",
+        params: {
+          animalId: id,
+          recordId: String(record.sourceId || record._id || record.id || ""),
+          recordType: String(record.recordKind || record.type || ""),
+        },
+      } as never);
     }
   };
 
@@ -718,134 +691,134 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
               gap: 14,
             }}
           >
-          {animal.imageUrl?.trim() ? (
-            <Image
-              source={{ uri: animal.imageUrl }}
-              resizeMode="cover"
-              style={{
-                width: 84,
-                height: 84,
-                borderRadius: 16,
-                borderWidth: 1.5,
-                borderColor: "rgba(255,255,255,0.35)",
-              }}
-              accessibilityLabel="Animal photo"
-            />
-          ) : (
-            <View
-              style={{
-                width: 84,
-                height: 84,
-                borderRadius: 16,
-                alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(255,255,255,0.12)",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.24)",
-              }}
-            >
-              <MaterialCommunityIcons
-                name="cow"
-                size={44}
-                color="rgba(255,255,255,0.88)"
+            {animal.imageUrl?.trim() ? (
+              <Image
+                source={{ uri: animal.imageUrl }}
+                resizeMode="cover"
+                style={{
+                  width: 84,
+                  height: 84,
+                  borderRadius: 16,
+                  borderWidth: 1.5,
+                  borderColor: "rgba(255,255,255,0.35)",
+                }}
+                accessibilityLabel="Animal photo"
               />
-            </View>
-          )}
-
-          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: 8,
-              }}
-            >
-              <Text
-                numberOfLines={1}
-                style={{
-                  color: "#FFFFFF",
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 22,
-                  lineHeight: 26,
-                  flexShrink: 1,
-                }}
-              >
-                {primaryIdentity || "Animal profile"}
-              </Text>
-              {heroStatus ? (
-                <View
-                  style={{
-                    borderRadius: 999,
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    backgroundColor: "rgba(255,255,255,0.2)",
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 4,
-                  }}
-                >
-                  <MaterialCommunityIcons
-                    name="check-circle-outline"
-                    size={12}
-                    color="#FFFFFF"
-                  />
-                  <Text
-                    style={{
-                      color: "#FFFFFF",
-                      fontFamily: "Outfit_600SemiBold",
-                      fontSize: 11,
-                      lineHeight: 14,
-                    }}
-                  >
-                    {heroStatus}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            {speciesBreed ? (
-              <Text
-                numberOfLines={1}
-                style={{
-                  color: "rgba(255,255,255,0.85)",
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 13,
-                  lineHeight: 16,
-                }}
-              >
-                {speciesBreed}
-              </Text>
-            ) : null}
-
-            {identityLabel ? (
+            ) : (
               <View
                 style={{
-                  alignSelf: "flex-start",
-                  maxWidth: "100%",
-                  borderRadius: 10,
-                  marginTop: 2,
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  backgroundColor: "rgba(255,255,255,0.14)",
+                  width: 84,
+                  height: 84,
+                  borderRadius: 16,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: "rgba(255,255,255,0.12)",
                   borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.22)",
+                  borderColor: "rgba(255,255,255,0.24)",
+                }}
+              >
+                <MaterialCommunityIcons
+                  name="cow"
+                  size={44}
+                  color="rgba(255,255,255,0.88)"
+                />
+              </View>
+            )}
+
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 8,
                 }}
               >
                 <Text
                   numberOfLines={1}
                   style={{
                     color: "#FFFFFF",
-                    fontFamily: "Outfit_600SemiBold",
-                    fontSize: 12,
-                    lineHeight: 15,
+                    fontFamily: "Outfit_700Bold",
+                    fontSize: 22,
+                    lineHeight: 26,
+                    flexShrink: 1,
                   }}
                 >
-                  {identityLabel.label}: {identityLabel.value}
+                  {primaryIdentity || "Animal profile"}
                 </Text>
+                {heroStatus ? (
+                  <View
+                    style={{
+                      borderRadius: 999,
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      backgroundColor: "rgba(255,255,255,0.2)",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name="check-circle-outline"
+                      size={12}
+                      color="#FFFFFF"
+                    />
+                    <Text
+                      style={{
+                        color: "#FFFFFF",
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 11,
+                        lineHeight: 14,
+                      }}
+                    >
+                      {heroStatus}
+                    </Text>
+                  </View>
+                ) : null}
               </View>
-            ) : null}
-          </View>
+
+              {speciesBreed ? (
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: "rgba(255,255,255,0.85)",
+                    fontFamily: "Outfit_500Medium",
+                    fontSize: 13,
+                    lineHeight: 16,
+                  }}
+                >
+                  {speciesBreed}
+                </Text>
+              ) : null}
+
+              {identityLabel ? (
+                <View
+                  style={{
+                    alignSelf: "flex-start",
+                    maxWidth: "100%",
+                    borderRadius: 10,
+                    marginTop: 2,
+                    paddingHorizontal: 10,
+                    paddingVertical: 5,
+                    backgroundColor: "rgba(255,255,255,0.14)",
+                    borderWidth: 1,
+                    borderColor: "rgba(255,255,255,0.22)",
+                  }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      color: "#FFFFFF",
+                      fontFamily: "Outfit_600SemiBold",
+                      fontSize: 12,
+                      lineHeight: 15,
+                    }}
+                  >
+                    {identityLabel.label}: {identityLabel.value}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
 
           <QuickFactsCard facts={quickFacts} />
@@ -888,10 +861,15 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       borderRadius: 22,
                       alignItems: "center",
                       justifyContent: "center",
-                      backgroundColor: isDark ? "rgba(52,211,153,0.18)" : "#DCFCE7",
+                      backgroundColor: isDark
+                        ? "rgba(52,211,153,0.18)"
+                        : "#DCFCE7",
                     }}
                   >
-                    <Calendar size={20} color={isDark ? "#34D399" : "#00643B"} />
+                    <Calendar
+                      size={20}
+                      color={isDark ? "#34D399" : "#00643B"}
+                    />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text
@@ -903,10 +881,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                         lineHeight: 18,
                       }}
                     >
-                      Next Visit: {formatVisitSchedule(
-                        nextVisit.scheduledDate,
-                        nextVisit.visitPeriod,
-                      )}
+                      Next Visit: {formatDate(nextVisit.scheduledDate, true)}
                     </Text>
                     <Text
                       numberOfLines={1}
@@ -943,9 +918,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
           />
           <Pressable
             disabled={!canOpenPregnancyTracker}
-            accessibilityRole={
-              canOpenPregnancyTracker ? "button" : undefined
-            }
+            accessibilityRole={canOpenPregnancyTracker ? "button" : undefined}
             accessibilityLabel={
               canOpenPregnancyTracker
                 ? `View pregnancy tracker for ${primaryIdentity}`
@@ -994,9 +967,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                     borderRadius: 22,
                     alignItems: "center",
                     justifyContent: "center",
-                    backgroundColor: isDark
-                      ? "rgba(0,100,59,0.15)"
-                      : "#E6F4EA",
+                    backgroundColor: isDark ? "rgba(0,100,59,0.15)" : "#E6F4EA",
                   }}
                 >
                   <Heart size={20} color={colors.primary} />
@@ -1226,156 +1197,147 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
           </View>
         ) : null}
 
-        {activeRequest ? (() => {
-          const isUnclaimedActiveRequest =
-            activeRequest.status?.toLowerCase() === "pending" ||
-            !activeRequest.technician;
-          return (
-            <View style={{ gap: SPACE.sm }}>
-              <SectionHeader
-                icon={<Clock size={18} color={colors.primary} />}
-                title="Active Request / Visit"
-              />
-              <View
-                style={{
-                  width: "100%",
-                  borderRadius: 16,
-                  backgroundColor: isDark ? "rgba(0,100,59,0.14)" : "#F0FDF4",
-                  borderWidth: 1,
-                  borderColor: isDark ? "rgba(52,211,153,0.3)" : "#D1FAE5",
-                  overflow: "hidden",
-                }}
-              >
-                <Pressable
-                  onPress={() => openService(activeRequest)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Open ${activeRequest.title}`}
-                  style={({ pressed }) => ({
-                    width: "100%",
-                    opacity: pressed ? 0.78 : 1,
-                  })}
-                >
+        {activeRequest
+          ? (() => {
+              const isUnclaimedActiveRequest =
+                activeRequest.status?.toLowerCase() === "pending" ||
+                !activeRequest.technician;
+              return (
+                <View style={{ gap: SPACE.sm }}>
+                  <SectionHeader
+                    icon={<Clock size={18} color={colors.primary} />}
+                    title="Active Request / Visit"
+                  />
                   <View
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
                       width: "100%",
-                      gap: 12,
-                      paddingHorizontal: 16,
-                      paddingVertical: 14,
+                      borderRadius: 16,
+                      backgroundColor: isDark
+                        ? "rgba(0,100,59,0.14)"
+                        : "#F0FDF4",
+                      borderWidth: 1,
+                      borderColor: isDark ? "rgba(52,211,153,0.3)" : "#D1FAE5",
+                      overflow: "hidden",
                     }}
                   >
-                    <View
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 22,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: isDark ? "rgba(52,211,153,0.18)" : "#DCFCE7",
-                      }}
+                    <Pressable
+                      onPress={() => openService(activeRequest)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Open ${activeRequest.title}`}
+                      style={({ pressed }) => ({
+                        width: "100%",
+                        opacity: pressed ? 0.78 : 1,
+                      })}
                     >
-                      {activeRequest.kind === "health" ? (
-                        <Stethoscope size={20} color={colors.primary} />
-                      ) : (
-                        <Syringe size={20} color={colors.primary} />
-                      )}
-                    </View>
-                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                      <Text
-                        numberOfLines={1}
+                      <View
                         style={{
-                          color: colors.textPrimary,
-                          fontFamily: "Outfit_700Bold",
-                          fontSize: 15,
-                          lineHeight: 20,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          width: "100%",
+                          gap: 12,
+                          paddingHorizontal: 16,
+                          paddingVertical: 14,
                         }}
                       >
-                        {activeRequest.title}
-                      </Text>
-                      {activeRequest.scheduledDate ? (
-                        <Text
-                          numberOfLines={1}
+                        <View
                           style={{
-                            color: colors.textSecondary,
-                            fontFamily: "Outfit_500Medium",
-                            fontSize: 12,
-                            lineHeight: 16,
+                            width: 44,
+                            height: 44,
+                            borderRadius: 22,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isDark
+                              ? "rgba(52,211,153,0.18)"
+                              : "#DCFCE7",
                           }}
                         >
-                          📅 Scheduled: {formatVisitSchedule(
-                            activeRequest.scheduledDate,
-                            activeRequest.visitPeriod,
+                          {activeRequest.kind === "health" ? (
+                            <Stethoscope size={20} color={colors.primary} />
+                          ) : (
+                            <Syringe size={20} color={colors.primary} />
                           )}
-                        </Text>
-                      ) : activeRequest.createdAt ? (
-                        <Text
-                          numberOfLines={1}
+                        </View>
+                        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                          <Text
+                            numberOfLines={1}
+                            style={{
+                              color: colors.textPrimary,
+                              fontFamily: "Outfit_700Bold",
+                              fontSize: 15,
+                              lineHeight: 20,
+                            }}
+                          >
+                            {activeRequest.title}
+                          </Text>
+                          {activeRequest.activityDate ? (
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                color: colors.textSecondary,
+                                fontFamily: "Outfit_500Medium",
+                                fontSize: 12,
+                                lineHeight: 16,
+                              }}
+                            >
+                              📅 {formatDate(activeRequest.activityDate, true)}
+                            </Text>
+                          ) : null}
+                          {activeRequest.location ? (
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                color: colors.textSecondary,
+                                fontFamily: "Outfit_500Medium",
+                                fontSize: 12,
+                                lineHeight: 16,
+                              }}
+                            >
+                              📍 {activeRequest.location}
+                            </Text>
+                          ) : null}
+                          {role === "technician" && isUnclaimedActiveRequest ? (
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                color: isDark ? "#FBBF24" : "#D97706",
+                                fontFamily: "Outfit_600SemiBold",
+                                fontSize: 12,
+                                lineHeight: 16,
+                                marginTop: 2,
+                              }}
+                            >
+                              ✋ Unclaimed — Tap to review & claim
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View
                           style={{
-                            color: colors.textSecondary,
-                            fontFamily: "Outfit_500Medium",
-                            fontSize: 12,
-                            lineHeight: 16,
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
                           }}
                         >
-                          Submitted: {formatDate(activeRequest.createdAt)}
-                        </Text>
-                      ) : null}
-                      {activeRequest.location ? (
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            color: colors.textSecondary,
-                            fontFamily: "Outfit_500Medium",
-                            fontSize: 12,
-                            lineHeight: 16,
-                          }}
-                        >
-                          📍 {activeRequest.location}
-                        </Text>
-                      ) : null}
-                      {role === "technician" && isUnclaimedActiveRequest ? (
-                        <Text
-                          numberOfLines={1}
-                          style={{
-                            color: isDark ? "#FBBF24" : "#D97706",
-                            fontFamily: "Outfit_600SemiBold",
-                            fontSize: 12,
-                            lineHeight: 16,
-                            marginTop: 2,
-                          }}
-                        >
-                          ✋ Unclaimed — Tap to review & claim
-                        </Text>
-                      ) : null}
-                    </View>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: 8,
-                      }}
-                    >
-                      <StatusBadge
-                        label={
-                          isUnclaimedActiveRequest
-                            ? "Unclaimed"
-                            : getFarmerRequestListStatusLabel(
-                                activeRequest.status,
-                              )
-                        }
-                        variant={isUnclaimedActiveRequest ? "warning" : undefined}
-                        domain="request"
-                        compact
-                      />
-                      <ChevronRight size={18} color={colors.textMuted} />
-                    </View>
+                          <StatusBadge
+                            label={
+                              isUnclaimedActiveRequest
+                                ? "Unclaimed"
+                                : activeRequest.status
+                            }
+                            variant={
+                              isUnclaimedActiveRequest ? "warning" : undefined
+                            }
+                            domain="request"
+                            compact
+                          />
+                          <ChevronRight size={18} color={colors.textMuted} />
+                        </View>
+                      </View>
+                    </Pressable>
                   </View>
-                </Pressable>
-              </View>
-            </View>
-          );
-        })() : null}
+                </View>
+              );
+            })()
+          : null}
 
         <View style={{ gap: SPACE.sm, marginTop: SPACE.xs }}>
           <SectionHeader
@@ -1437,24 +1399,24 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                     ? "rgba(245,158,11,0.15)"
                     : "#FFF7ED"
                   : isPregnancyOrCalving
-                  ? isDark
-                    ? "rgba(168,85,247,0.15)"
-                    : "#F3E8FF"
-                  : isDark
-                  ? "rgba(0,100,59,0.15)"
-                  : "#E6F4EA";
+                    ? isDark
+                      ? "rgba(168,85,247,0.15)"
+                      : "#F3E8FF"
+                    : isDark
+                      ? "rgba(0,100,59,0.15)"
+                      : "#E6F4EA";
 
                 const iconColor = isHealth
                   ? isDark
                     ? "#FBBF24"
                     : "#D97706"
                   : isPregnancyOrCalving
-                  ? isDark
-                    ? "#C084FC"
-                    : "#7E22CE"
-                  : isDark
-                  ? "#34D399"
-                  : "#00643B";
+                    ? isDark
+                      ? "#C084FC"
+                      : "#7E22CE"
+                    : isDark
+                      ? "#34D399"
+                      : "#00643B";
 
                 const detailPerson = presentation.details
                   .find((d: string) =>
@@ -1481,7 +1443,10 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                   borderTopColor: colors.border,
                 };
                 const key = String(
-                  record.sourceId || record._id || record.id || `record-${index}`,
+                  record.sourceId ||
+                    record._id ||
+                    record.id ||
+                    `record-${index}`,
                 );
 
                 const rowInnerContent = (
@@ -1509,7 +1474,9 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       )}
                     </View>
 
-                    <View style={{ flex: 1, minWidth: 0, justifyContent: "center" }}>
+                    <View
+                      style={{ flex: 1, minWidth: 0, justifyContent: "center" }}
+                    >
                       <Text
                         numberOfLines={1}
                         style={{
@@ -1573,9 +1540,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                       opacity: pressed ? 0.76 : 1,
                     })}
                   >
-                    <View style={itemRowStyle}>
-                      {rowInnerContent}
-                    </View>
+                    <View style={itemRowStyle}>{rowInnerContent}</View>
                   </Pressable>
                 ) : (
                   <View key={key} style={itemRowStyle}>
@@ -1652,8 +1617,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                 !singleColumnInformation &&
                 informationItems.length % 2 === 1 &&
                 index === informationItems.length - 1;
-              const isLeft =
-                singleColumnInformation || index % 2 === 0;
+              const isLeft = singleColumnInformation || index % 2 === 0;
               const hasRowAbove = singleColumnInformation
                 ? index > 0
                 : index >= 2;
@@ -1669,8 +1633,7 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
                     justifyContent: "center",
                     paddingHorizontal: 16,
                     paddingVertical: 14,
-                    borderLeftWidth:
-                      isLeft || isUnpairedLastItem ? 0 : 1,
+                    borderLeftWidth: isLeft || isUnpairedLastItem ? 0 : 1,
                     borderLeftColor: colors.border,
                     borderTopWidth: hasRowAbove ? 1 : 0,
                     borderTopColor: colors.border,
@@ -1924,7 +1887,6 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
             </View>
           </View>
         ) : null}
-
       </ScrollView>
 
       {/* Sticky Fixed Bottom Action Footer */}

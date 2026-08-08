@@ -21,6 +21,8 @@ import {
   normalizePhilippineMobileNumber,
 } from "../utils/phone.js";
 import { resolveOrSyncUser } from "../services/auth-user.service.js";
+import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
 // Structured Console Log Helper for Audit Trail
 const logAdminAction = (action, admin, target, details = {}) => {
@@ -1706,29 +1708,31 @@ export const getBreedingMilestones = async (req, res) => {
     const farmerId = req.user._id;
 
     // 1. Get completed inseminations with pending outcomes
-    const inseminations = await Insemination.find({
-      farmerId,
-      status: "done",
-      isSuccess: null,
-      deletedAt: null,
-    })
-      .populate("animalId", "animalId earTag species breed")
-      .sort({ createdAt: -1 });
-
-    // 2. Get all active pregnancies (to calculate Calvings)
-    const pregnancies = await Pregnancy.find({
-      farmerId,
-      "pregnancyDiagnosis.result": "Pregnant",
-      deletedAt: null,
-    })
-      .populate("animalId", "animalId earTag species breed")
-      .sort({ targetCalvingDate: 1 });
-
-    // 3. Get all calving records to identify pregnancies that have already calved
-    const calvings = await Calving.find({
-      farmerId,
-      deletedAt: null,
-    }).select("pregnancyId");
+    const [inseminations, pregnancies, calvings, reproductiveTasks, policyResolution] =
+      await Promise.all([
+        Insemination.find({
+          farmerId,
+          status: "done",
+          isSuccess: null,
+          deletedAt: null,
+        })
+          .populate("animalId", "animalId earTag species breed")
+          .sort({ createdAt: -1 }),
+        Pregnancy.find({
+          farmerId,
+          "pregnancyDiagnosis.result": "Pregnant",
+          deletedAt: null,
+        })
+          .populate("animalId", "animalId earTag species breed")
+          .sort({ targetCalvingDate: 1 }),
+        Calving.find({ farmerId, deletedAt: null }).select("pregnancyId"),
+        Task.find({
+          farmerId,
+          taskType: { $in: ["PD", "Calving", "CD"] },
+          status: { $in: ["Pending", "In Progress"] },
+        }).lean(),
+        loadPregnancyConfirmationPolicy(),
+      ]);
 
     const calvedPregIds = calvings
       .map((c) => c.pregnancyId?.toString())
@@ -1736,6 +1740,23 @@ export const getBreedingMilestones = async (req, res) => {
 
     const milestones = [];
     const now = new Date();
+    const idOf = (value) => String(value?._id || value || "");
+    const taskForInsemination = (insemination) =>
+      reproductiveTasks.find(
+        (task) =>
+          task.taskType === "PD" &&
+          (idOf(task._id) === idOf(insemination.verificationTaskId) ||
+            idOf(task.metadata?.inseminationId) === idOf(insemination._id) ||
+            idOf(task.relatedRecordId) === idOf(insemination._id)),
+      ) || null;
+    const taskForPregnancy = (pregnancy) =>
+      reproductiveTasks.find(
+        (task) =>
+          ["Calving", "CD"].includes(task.taskType) &&
+          (idOf(task.metadata?.pregnancyId) === idOf(pregnancy._id) ||
+            (task.relatedRecordType === "pregnancy" &&
+              idOf(task.relatedRecordId) === idOf(pregnancy._id))),
+      ) || null;
 
     // Process Pregnancies -> Upcoming Calvings (excluding already calved ones)
     pregnancies.forEach((p) => {
@@ -1756,6 +1777,7 @@ export const getBreedingMilestones = async (req, res) => {
             daysLeft,
             priority: "high",
             relatedId: p._id,
+            taskId: taskForPregnancy(p)?._id || null,
           });
         }
       }
@@ -1767,6 +1789,15 @@ export const getBreedingMilestones = async (req, res) => {
       const daysSinceAI = Math.floor(
         (now.getTime() - new Date(aiDate).getTime()) / (1000 * 3600 * 24),
       );
+      const verificationTask = taskForInsemination(ins);
+      const farmerObservation = ins.farmerOutcomeReport
+        ? {
+            reportType: ins.farmerOutcomeReport,
+            verificationStatus:
+              ins.verificationStatus || ins.outcomeVerificationStatus || null,
+            reportedAt: ins.farmerOutcomeReportedAt || null,
+          }
+        : null;
 
       // Heat Watch (21 days) - show between day 15 and day 25 post-AI
       if (daysSinceAI >= 15 && daysSinceAI <= 25) {
@@ -1783,24 +1814,40 @@ export const getBreedingMilestones = async (req, res) => {
           ),
           priority: "medium",
           relatedId: ins._id,
+          taskId: verificationTask?._id || null,
+          status: verificationTask ? "awaiting_confirmation" : "actionable",
+          farmerObservation,
         });
       }
 
-      // Preg-Check Due (60 days) - show between day 26 and day 90 post-AI
+      // Pregnancy confirmation presentation is driven by the canonical
+      // backend policy rather than a frontend day threshold.
       if (daysSinceAI >= 26 && daysSinceAI <= 90) {
-        const pdDate = new Date(aiDate);
-        pdDate.setDate(pdDate.getDate() + 60);
+        const pregnancyReadiness = getPregnancyCheckReadiness({
+          insemination: ins,
+          at: now,
+          policy: policyResolution.policy,
+          species: ins.animalId?.species,
+        });
+        const pdDate = pregnancyReadiness.availableDate
+          ? new Date(pregnancyReadiness.availableDate)
+          : null;
+        const daysLeft = pdDate
+          ? Math.ceil((pdDate.getTime() - now.getTime()) / (1000 * 3600 * 24))
+          : null;
 
         milestones.push({
           type: "pd_check",
-          title: "Preg-Check Due",
+          title: "Pregnancy Confirmation",
           animal: ins.animalId,
           date: pdDate,
-          daysLeft: Math.ceil(
-            (pdDate.getTime() - now.getTime()) / (1000 * 3600 * 24),
-          ),
+          daysLeft,
           priority: "medium",
           relatedId: ins._id,
+          taskId: verificationTask?._id || null,
+          status: verificationTask ? "awaiting_confirmation" : "actionable",
+          pregnancyReadiness,
+          farmerObservation,
         });
       }
     });

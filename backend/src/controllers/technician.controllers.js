@@ -26,6 +26,7 @@ import {
   activeRequestKeyForAnimal,
   createAIRequestWithGuard,
   findActiveAIRequest,
+  isVerifiedFailedAIAttempt,
 } from "../services/ai-request-creation.service.js";
 import { getAnimalAIEligibility } from "../services/ai-eligibility.service.js";
 import { buildAIServiceContext } from "../domain/ai-service-context.js";
@@ -3863,6 +3864,10 @@ export const getWorkQueue = async (req, res) => {
           "name phoneNumber phone address farmLocation imageUrl avatarUrl profilePicture avatar",
         )
         .populate("animalId", "name animalId earTag imageUrl breed species")
+        .populate(
+          "previousAttemptId",
+          "attemptNumber outcome isSuccess outcomeVerificationStatus reviewedBy status",
+        )
         .sort({ createdAt: -1 })
         .lean(),
 
@@ -4099,6 +4104,13 @@ export const getWorkQueue = async (req, res) => {
       const itemDisplayDate =
         scheduleDate || completedAt || ins.createdAt || null;
       const terminal = ins.status === "done";
+      const attemptNumber = Number.isInteger(ins.attemptNumber)
+        ? ins.attemptNumber
+        : null;
+      const previousAttempt =
+        ins.previousAttemptId && typeof ins.previousAttemptId === "object"
+          ? ins.previousAttemptId
+          : null;
 
       let allowedAction = null;
       let actionLabel = null;
@@ -4127,6 +4139,17 @@ export const getWorkQueue = async (req, res) => {
         type: "insemination",
         taskType: "AI",
         serviceType: "Artificial Insemination",
+        requestKind:
+          attemptNumber && attemptNumber > 1
+            ? "re_insemination"
+            : "initial_ai",
+        attemptNumber,
+        previousAttemptId: idOf(ins.previousAttemptId),
+        attemptSeriesId: idOf(ins.attemptSeriesId),
+        previousAttemptOutcome: previousAttempt?.outcome || null,
+        previousAttemptVerified: previousAttempt
+          ? isVerifiedFailedAIAttempt(previousAttempt)
+          : false,
         status: ins.status,
         allowedAction,
         actionLabel,
