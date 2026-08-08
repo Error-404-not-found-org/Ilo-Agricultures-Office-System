@@ -1899,14 +1899,15 @@ export const getRecentActivities = async (req, res) => {
         .lean(),
 
       // Calving Recorded
-      Calving.find({})
+      Calving.find({ deletedAt: null })
         .sort({ createdAt: -1 })
         .limit(queryLimit)
         .populate("farmerId", "name address")
-        .populate("motherId", "earTag breed species")
-        .select("motherId farmerId calfSex calfEarTag createdAt")
+        .populate("animalId", "earTag animalId breed species")
+        .select(
+          "animalId farmerId pregnancyId outcome numberOfCalves livingCalfCount stillbornCount calves date createdAt",
+        )
         .lean(),
-
       // User / Technician Created or Invited
       User.find({ role: { $in: ["technician", "farmer"] } })
         .sort({ createdAt: -1 })
@@ -2011,7 +2012,9 @@ export const getRecentActivities = async (req, res) => {
       const tag = item.animalId?.earTag
         ? `for Tag #${item.animalId.earTag}`
         : "";
-      const isCompleted = item.status === "completed";
+      const isCompleted = ["resolved", "completed"].includes(
+        String(item.status || "").toLowerCase(),
+      );
 
       rawEvents.push({
         id: `health-${item._id}`,
@@ -2038,29 +2041,46 @@ export const getRecentActivities = async (req, res) => {
     }
 
     // Calvings
+    // Calvings
     for (const item of calvings) {
-      if (!item.createdAt) continue;
-      const tag = item.motherId?.earTag
-        ? `Tag #${item.motherId.earTag}`
-        : "mother animal";
-      const sex = item.calfSex ? `(${item.calfSex})` : "";
+      const date = item.date || item.createdAt;
+      if (!date) continue;
+
+      const animalReference =
+        item.animalId?.earTag || item.animalId?.animalId || "";
+
+      const tag = animalReference ? `Tag #${animalReference}` : "mother animal";
+
+      let outcomeLabel = "Calving";
+
+      if (item.outcome === "live_birth") {
+        outcomeLabel = "Live birth";
+      } else if (item.outcome === "mixed") {
+        outcomeLabel = "Mixed calving outcome";
+      } else if (item.outcome === "stillbirth") {
+        outcomeLabel = "Stillbirth";
+      } else if (item.outcome === "abortion") {
+        outcomeLabel = "Pregnancy loss";
+      }
 
       rawEvents.push({
         id: `calving-${item._id}`,
         type: "calving_recorded",
         title: "Calving Recorded",
-        description:
-          `Calf drop ${sex} successfully registered for ${tag}.`.trim(),
-        occurredAt: item.createdAt.toISOString(),
+        description: `${outcomeLabel} recorded for ${tag}.`,
+        occurredAt: new Date(date).toISOString(),
         entityType: "Calving",
         entityId: item._id.toString(),
         metadata: {
-          animalTag: item.motherId?.earTag || "",
-          calfSex: item.calfSex || "",
+          animalTag: animalReference,
+          outcome: item.outcome || "",
+          numberOfCalves: item.numberOfCalves ?? 0,
+          livingCalfCount: item.livingCalfCount ?? 0,
+          stillbornCount: item.stillbornCount ?? 0,
+          farmerName: item.farmerId?.name || "",
         },
       });
     }
-
     // Users / Technician Invitations
     for (const item of userInvites) {
       if (!item.createdAt) continue;
@@ -2126,10 +2146,7 @@ export const updateTechnicianDispatchProfile = async (req, res) => {
     const { serviceMunicipalities, serviceCapabilities } = req.body;
 
     const technician = await User.findById(id);
-    if (
-      !technician ||
-      (technician.role !== "technician")
-    ) {
+    if (!technician || technician.role !== "technician") {
       return res.status(404).json({ message: "Technician not found." });
     }
 
