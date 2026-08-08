@@ -268,7 +268,7 @@ test("unconfigured deployments preserve the legacy Day-60 diagnosis contract", a
 });
 
 test("method policy rejects missing, disabled, early, stale, and unauthorized submissions", async () => {
-  for (const role of ["farmer", "veterinarian"]) {
+  for (const role of ["farmer"]) {
     assert.throws(
       () => confirmPregnancyDiagnosis({ animalId: ids.animal, inseminationId: ids.insemination, result: "Pregnant", actor: { _id: ids.farmer, role } }),
       (error) => error.code === "UNAUTHORIZED_PREGNANCY_CONFIRMATION",

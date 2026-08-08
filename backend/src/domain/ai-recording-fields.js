@@ -1,97 +1,24 @@
 import { AppError } from "../utils/app-error.js";
+import {
+  VISIT_PERIODS as AI_VISIT_PERIODS,
+  VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES as AI_SCHEDULE_TIMEZONE_OFFSET_MINUTES,
+  normalizeVisitPeriod,
+  normalizeVisitScheduleDate as normalizeAIScheduleDate,
+} from "./visit-scheduling.js";
 
-export const AI_VISIT_PERIODS = Object.freeze(["morning", "afternoon"]);
+export {
+  AI_VISIT_PERIODS,
+  AI_SCHEDULE_TIMEZONE_OFFSET_MINUTES,
+  normalizeVisitPeriod,
+  normalizeAIScheduleDate,
+};
+
 export const SIRE_BREED_MAX_LENGTH = 100;
 export const SIRE_CODE_MAX_LENGTH = 64;
 export const AI_TECHNICIAN_NOTE_MAX_LENGTH = 2000;
-export const AI_SCHEDULE_TIMEZONE_OFFSET_MINUTES = 8 * 60;
 
 const invalidField = (message, code) =>
   new AppError(message, { status: 400, code });
-
-export const normalizeVisitPeriod = (value) => {
-  if (value === undefined || value === null) return undefined;
-
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (!AI_VISIT_PERIODS.includes(normalized)) {
-    throw invalidField(
-      "Visit period must be morning or afternoon.",
-      "INVALID_VISIT_PERIOD",
-    );
-  }
-  return normalized;
-};
-
-// The new date-only scheduling operation persists the selected Philippine
-// calendar day at 12:00 Asia/Manila (04:00 UTC). Noon is a neutral storage
-// anchor, not an appointment time; visitPeriod remains the service window.
-export const normalizeAIScheduleDate = (value, { now = new Date() } = {}) => {
-  if (value === undefined || value === null || value === "") {
-    throw invalidField(
-      "A visit date is required before scheduling.",
-      "SCHEDULE_DATE_REQUIRED",
-    );
-  }
-
-  let year;
-  let month;
-  let day;
-  if (typeof value === "string") {
-    const text = value.trim();
-    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
-    const hasValidTimestamp =
-      text.length === 10 || !Number.isNaN(Date.parse(text));
-    if (match && hasValidTimestamp) {
-      year = Number(match[1]);
-      month = Number(match[2]);
-      day = Number(match[3]);
-    }
-  } else if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    const manilaValue = new Date(
-      value.getTime() + AI_SCHEDULE_TIMEZONE_OFFSET_MINUTES * 60 * 1000,
-    );
-    year = manilaValue.getUTCFullYear();
-    month = manilaValue.getUTCMonth() + 1;
-    day = manilaValue.getUTCDate();
-  }
-
-  const calendarCheck = new Date(Date.UTC(year, month - 1, day));
-  if (
-    !Number.isInteger(year) ||
-    !Number.isInteger(month) ||
-    !Number.isInteger(day) ||
-    calendarCheck.getUTCFullYear() !== year ||
-    calendarCheck.getUTCMonth() !== month - 1 ||
-    calendarCheck.getUTCDate() !== day
-  ) {
-    throw invalidField("Visit date is invalid.", "INVALID_SCHEDULE_DATE");
-  }
-
-  const manilaNow = new Date(
-    now.getTime() + AI_SCHEDULE_TIMEZONE_OFFSET_MINUTES * 60 * 1000,
-  );
-  const selectedDay = Date.UTC(year, month - 1, day);
-  const today = Date.UTC(
-    manilaNow.getUTCFullYear(),
-    manilaNow.getUTCMonth(),
-    manilaNow.getUTCDate(),
-  );
-  if (selectedDay < today) {
-    throw invalidField(
-      "Visit date cannot be in the past.",
-      "SCHEDULE_DATE_IN_PAST",
-    );
-  }
-
-  return new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      day,
-      12 - AI_SCHEDULE_TIMEZONE_OFFSET_MINUTES / 60,
-    ),
-  );
-};
 
 const normalizeManualText = (
   value,

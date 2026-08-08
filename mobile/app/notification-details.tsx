@@ -147,7 +147,7 @@ export default function NotificationDetailsScreen() {
 
   const openLinkedRequest = () => {
     const taskId = notification.metadata?.taskId;
-    if (taskId && (role === "technician" || role === "veterinarian")) {
+    if (taskId && (role === "technician")) {
       router.push({
         pathname: "/(technician)/task-details",
         params: { id: taskId },

@@ -148,8 +148,13 @@ test("Reproduction seeder: scenario identifiers, ear tags, and chronology are va
   const plan = buildPlan();
   assert.equal(validateSeedPlan(plan), true);
   assert.deepEqual(plan.scenarios.map((item) => item.scenario), SCENARIO_NAMES);
-  assert.equal(new Set(plan.scenarios.map((item) => item.scenario)).size, 16);
+  assert.equal(
+    new Set(plan.scenarios.map((item) => item.scenario)).size,
+    SCENARIO_NAMES.length,
+  );
   assert.equal(new Set(plan.collections.animals.map((item) => item.earTag.toLowerCase())).size, plan.collections.animals.length);
+  assert.ok(plan.collections.animals.every((item) => item.imageUrl));
+  assert.ok(new Set(plan.collections.animals.map((item) => item.imageUrl)).size >= 2);
   const activeKeys = plan.collections.inseminations.map((item) => item.activeRequestKey).filter(Boolean);
   assert.equal(new Set(activeKeys).size, activeKeys.length);
   for (const scenario of plan.scenarios) {
@@ -290,7 +295,8 @@ test("Reproduction seeder: mixed builder separates living and non-living offspri
 test("Reproduction cleanup: operations use manifest IDs only and dependency order", () => {
   const operations = buildCleanupOperations(buildManifest());
   assert.deepEqual(operations.map((item) => item.name), [
-    "notifications", "audits", "timelines", "tasks", "calvings",
+    "notifications", "audits", "timelines", "tasks", "medicalRecords",
+    "healthRequests", "calvings",
     "pregnancies", "inseminations", "offspring", "mothers",
   ]);
   for (const operation of operations) {
@@ -304,7 +310,8 @@ test("Reproduction cleanup: executor never broadens manifest filters", async () 
   const model = { deleteMany: async (filter) => { calls.push(filter); return { deletedCount: filter._id.$in.length }; } };
   const models = {
     Animal: model, Insemination: model, Pregnancy: model, Calving: model,
-    Task: model, Notification: model, AnimalTimelineEvent: model, AuditLog: model,
+    HealthRequest: model, MedicalRecord: model, Task: model,
+    Notification: model, AnimalTimelineEvent: model, AuditLog: model,
   };
   await cleanupFromManifest({ manifest: buildManifest(), models });
   assert.ok(calls.length > 0);

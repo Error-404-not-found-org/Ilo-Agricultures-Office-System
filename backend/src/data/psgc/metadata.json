@@ -1,0 +1,23 @@
+{
+  "dataset": "Philippine Standard Geographic Code",
+  "release": "2026-Q2",
+  "effectiveDate": "2026-06-30",
+  "sourceAuthority": "Philippine Statistics Authority",
+  "sourceFileName": "PSGC-2Q-2026-Publication-Datafile.xlsx",
+  "sourceFileSha256": "31892BC2BDDE3EA0682562D9412B5BAB4D45A0BE5E5A5B4F6C9D7714B94BCA5D",
+  "generatedFileSha256": "8BDD3420B7988FCF30C5D2EE4D9C9414EBB3FE72E431912203EF6D361C235915",
+  "generatedAt": "2026-08-05T23:21:53.919Z",
+  "scope": [
+    "Province of Iloilo",
+    "City of Iloilo"
+  ],
+  "counts": {
+    "regions": 1,
+    "provinces": 1,
+    "highlyUrbanizedCities": 1,
+    "componentCities": 1,
+    "municipalities": 42,
+    "barangays": 1901,
+    "totalRecords": 1947
+  }
+}

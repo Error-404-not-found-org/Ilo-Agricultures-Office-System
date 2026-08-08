@@ -235,7 +235,7 @@ io.on("connection", (socket) => {
 const originalEmit = io.emit;
 io.emit = function (event, ...args) {
   if (event === "dashboardUpdate") {
-    return io.to(["admin", "technician", "veterinarian"]).emit(event, ...args);
+    return io.to(["admin", "technician"]).emit(event, ...args);
   }
   return originalEmit.apply(io, arguments);
 };

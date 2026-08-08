@@ -15,8 +15,8 @@ export const assertCanReadUser = (requester, targetUser) => {
     return;
   }
 
-  // Technicians and Veterinarians can view farmer profiles (read-only)
-  if (["technician", "veterinarian"].includes(requester.role) && targetUser.role === "farmer") {
+  // Technicians can view farmer profiles (read-only)
+  if (["technician"].includes(requester.role) && targetUser.role === "farmer") {
     return;
   }
 
@@ -33,7 +33,7 @@ export const assertCanUpdateUser = (requester, targetUser, updates = {}) => {
     return;
   }
 
-  // Technicians and Veterinarians must not freely modify farmer/other profiles
+  // Technicians must not freely modify farmer/other profiles
   if (requester._id.toString() !== targetUser._id.toString()) {
     throw new AppError("Forbidden - you do not have permission to modify other users' profiles", { status: 403, code: "USER_UPDATE_DENIED" });
   }
@@ -66,7 +66,7 @@ export const assertTechnicianOrAdmin = (user) => {
 };
 
 export const assertClinicalRole = (user) => {
-  if (!["admin", "technician", "veterinarian"].includes(user.role)) {
+  if (!["admin", "technician"].includes(user.role)) {
     throw new AppError("Forbidden - clinical access is required", { status: 403, code: "CLINICAL_ACCESS_REQUIRED" });
   }
 };

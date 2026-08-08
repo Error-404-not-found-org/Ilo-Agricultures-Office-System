@@ -55,11 +55,11 @@ test("Route Security: cleanup routes are admin-only", () => {
 });
 
 test("Route Security: admin can access task endpoints", () => {
-  const allowed = runRoleGuard(["admin", "technician", "veterinarian"], "admin");
+  const allowed = runRoleGuard(["admin", "technician"], "admin");
   assert.equal(allowed.nextCalled, true);
   assert.equal(allowed.statusCode, null);
 
-  const blocked = runRoleGuard(["admin", "technician", "veterinarian"], "farmer");
+  const blocked = runRoleGuard(["admin", "technician"], "farmer");
   assert.equal(blocked.nextCalled, false);
   assert.equal(blocked.statusCode, 403);
   assert.match(blocked.payload.message, /Forbidden/);

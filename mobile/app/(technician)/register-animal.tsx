@@ -13,11 +13,8 @@ import {
   Platform,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import {
-  ArrowLeft,
-  User,
   ChevronDown,
   Camera,
   X,
@@ -27,7 +24,6 @@ import {
 } from "lucide-react-native";
 import { useApi } from "@/lib/api";
 import { toast } from "sonner-native";
-import * as ImagePicker from "expo-image-picker";
 import {
   CATTLE_BREEDS,
   CATTLE_SPECIES,
@@ -40,6 +36,17 @@ import { useTheme } from "@/lib/theme";
 import EarTagGenerator from "@/components/EarTagGenerator";
 import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import { PhotoOptionModal } from "@/components/PhotoOptionModal";
+import { AppPageHeader } from "@/components/AppPageHeader";
+import { ScreenLayout } from "@/components/ScreenLayout";
+import { Button } from "@/components/ui/Button";
+import {
+  TechnicianFarmerListItem,
+  TechnicianFarmerSelector,
+  TechnicianFormInfo,
+  TechnicianFormSection,
+  TechnicianPickerSearch,
+  TechnicianPickerSheet,
+} from "@/components/technician/TechnicianFormUI";
 
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import {
@@ -248,98 +255,57 @@ export default function RegisterAnimalScreen() {
   }, [farmers, searchFarmerQuery, selectedMunicipality]);
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F8FAFC] dark:bg-slate-950">
-      <View className="flex-row items-center px-6 py-4 bg-white dark:bg-slate-900 border-b border-gray-100 dark:border-slate-800 shadow-sm z-10">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="mr-4 p-2 bg-slate-50 dark:bg-slate-800 rounded-full"
-        >
-          <ArrowLeft size={20} color={isDark ? "#f8fafc" : "#1e293b"} />
-        </TouchableOpacity>
-        <Text
-          style={{
-            fontFamily: "Outfit_900Black",
-            fontSize: 20,
-            color: colors.textPrimary,
-          }}
-        >
-          Add Animal
-        </Text>
-      </View>
+    <ScreenLayout edges={[]}>
+      <AppPageHeader title="Register Animal" onBack={() => router.back()} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
         <ScrollView
-          className="flex-1 px-6 pt-6"
-          contentContainerStyle={{ paddingBottom: 100 }}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 72, gap: 14 }}
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-4 mb-6 border border-emerald-100 dark:border-emerald-800/50 flex-row items-center">
-            <View className="w-10 h-10 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
-              <ShieldCheck size={20} color={isDark ? "#34d399" : "#059669"} />
-            </View>
-            <Text
-              style={{ fontFamily: "Outfit_600SemiBold" }}
-              className="text-emerald-800 dark:text-emerald-300 text-xs flex-1"
-            >
-              Manually register an animal profile for walk-in clients. Records
-              are synced instantly to the city registry.
-            </Text>
-          </View>
+          <TechnicianFormInfo
+            icon={<ShieldCheck size={18} color={colors.primary} />}
+          >
+            Manually register an animal profile for walk-in clients. Records
+            are synced instantly to the city registry.
+          </TechnicianFormInfo>
 
           {/* FARMER OWNER SELECTION */}
-          <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
-            Owner / Client Selection
-          </Text>
-          <TouchableOpacity
-            onPress={() => setShowFarmerModal(true)}
-            className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 flex-row items-center justify-between mb-6 shadow-sm"
+          <TechnicianFormSection
+            title="Owner / Client"
+            description="Select the farmer who owns this animal."
           >
-            <View className="flex-row items-center flex-1">
-              <View className="w-10 h-10 bg-emerald-50 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-3">
-                <User size={20} color={isDark ? "#34d399" : "#00643B"} />
-              </View>
-              <View className="flex-1">
-                <Text
-                  style={{ fontFamily: "Outfit_700Bold" }}
-                  className={`text-base ${selectedFarmer ? "text-slate-800 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}
-                >
-                  {selectedFarmer
-                    ? selectedFarmer.name
-                    : "Select Farmer / Owner..."}
-                </Text>
-                {selectedFarmer && (
-                  <Text
-                    style={{ fontFamily: "Outfit_500Medium" }}
-                    className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5"
-                    numberOfLines={1}
-                  >
-                    {formatAddressLabel(
-                      selectedFarmer.address,
-                      selectedFarmer.farmLocation,
-                      "Location not provided",
-                    )} ·{" "}
-                    {selectedFarmer.phoneNumber ||
-                      selectedFarmer.address?.phoneNumber ||
-                      "No contact"}
-                  </Text>
-                )}
-              </View>
-            </View>
-            <ChevronDown size={20} color={isDark ? "#6b7280" : "#94a3b8"} />
-          </TouchableOpacity>
+          <TechnicianFarmerSelector
+            farmer={selectedFarmer}
+            secondaryText={selectedFarmer
+              ? `${formatAddressLabel(
+                  selectedFarmer.address,
+                  selectedFarmer.farmLocation,
+                  "Location not provided",
+                )} · ${
+                  selectedFarmer.phoneNumber ||
+                  selectedFarmer.address?.phoneNumber ||
+                  "No contact"
+                }`
+              : undefined}
+            onPress={() => setShowFarmerModal(true)}
+          />
+          </TechnicianFormSection>
 
           {/* ANIMAL IDENTITY */}
-          <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[10px] tracking-widest mb-3 ml-1">
-            Animal Identity
-          </Text>
-          <View className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm mb-6 gap-4">
+          <TechnicianFormSection title="Animal Identity">
+          <View className="gap-4">
             {/* Photo upload */}
             <View className="items-center mb-2 mt-1">
               <TouchableOpacity
                 onPress={() => setShowPhotoOptionModal(true)}
+                accessibilityRole="button"
+                accessibilityLabel={imageUri ? "Change animal photo" : "Add animal photo"}
                 className="w-24 h-24 rounded-full items-center justify-center border border-dashed border-slate-200 dark:border-slate-700 overflow-hidden relative shadow-inner bg-slate-50 dark:bg-slate-800"
               >
                 {imageUri ? (
@@ -530,85 +496,39 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
             </View>
           </View>
+          </TechnicianFormSection>
 
           {/* SUBMIT BUTTON */}
-          <TouchableOpacity
-            className={`py-5 rounded-[24px] flex-row justify-center items-center shadow-lg mb-10 ${mutation.isPending ? "bg-slate-400" : "bg-[#00643B]"}`}
+          <Button
+            size="lg"
+            className="mt-1 mb-4"
             onPress={handleSave}
+            loading={mutation.isPending}
             disabled={mutation.isPending}
           >
-            {mutation.isPending ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <>
-                <Plus size={20} color="white" style={{ marginRight: 10 }} />
-                <Text
-                  style={{ fontFamily: "Outfit_800ExtraBold" }}
-                  className="text-white text-base"
-                >
-                  Register Livestock
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+            <Plus size={19} color="white" style={{ marginRight: 9 }} />
+            <Text
+              style={{ fontFamily: "Outfit_700Bold" }}
+              className="text-white text-sm"
+            >
+              Register Livestock
+            </Text>
+          </Button>
         </ScrollView>
       </KeyboardAvoidingView>
 
       {/* FARMER SELECTION MODAL */}
-      <Modal
+      <TechnicianPickerSheet
         visible={showFarmerModal}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowFarmerModal(false)}
+        title="Select Farmer"
+        subtitle="Choose the owner of the animal"
+        onClose={() => setShowFarmerModal(false)}
       >
-        <View className="flex-1 bg-slate-900/40 justify-end">
-          <View className="bg-white dark:bg-slate-900 rounded-t-[40px] p-6 pb-12 max-h-[90%] min-h-[60%] shadow-2xl">
-            <View className="flex-row justify-between items-center mb-5">
-              <View>
-                <Text
-                  style={{ fontFamily: "Outfit_900Black" }}
-                  className="text-2xl text-slate-800 dark:text-white"
-                >
-                  Select Farmer
-                </Text>
-                <Text className="text-xs text-slate-400 dark:text-slate-500 font-outfit-medium mt-0.5">
-                  Choose the owner of the animal
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setShowFarmerModal(false)}
-                accessibilityRole="button"
-                accessibilityLabel="Close farmer selection"
-                className="bg-slate-100 dark:bg-slate-800 p-2.5 rounded-full"
-              >
-                <X size={22} color={isDark ? "#94a3b8" : "#64748b"} />
-              </TouchableOpacity>
-            </View>
-
-            <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl px-4 py-3 mb-4 shadow-inner">
-              <MaterialCommunityIcons
-                name="magnify"
-                size={20}
-                color={isDark ? "#94a3b8" : "#64748b"}
-                style={{ marginRight: 8 }}
-              />
-              <TextInput
-                className="flex-1 text-slate-800 dark:text-white font-outfit-medium text-sm p-0"
-                placeholder="Search by name or phone..."
-                placeholderTextColor={isDark ? "#6b7280" : "#94a3b8"}
-                value={searchFarmerQuery}
-                onChangeText={setSearchFarmerQuery}
-              />
-              {searchFarmerQuery !== "" && (
-                <TouchableOpacity onPress={() => setSearchFarmerQuery("")}>
-                  <MaterialCommunityIcons
-                    name="close-circle"
-                    size={18}
-                    color={isDark ? "#6b7280" : "#94a3b8"}
-                  />
-                </TouchableOpacity>
-              )}
-            </View>
+        <TechnicianPickerSearch
+          value={searchFarmerQuery}
+          onChangeText={setSearchFarmerQuery}
+          placeholder="Search name or phone"
+        />
 
             <View className="mb-4">
               <Text className="font-outfit-bold text-slate-400 dark:text-slate-500 uppercase text-[9px] tracking-wider mb-2 ml-1">
@@ -619,7 +539,7 @@ export default function RegisterAnimalScreen() {
                   setSearchMunicipality("");
                   setShowMunicipalityDropdown(!showMunicipalityDropdown);
                 }}
-                className={`bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl p-4 flex-row justify-between items-center shadow-sm ${
+                className={`bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-3 flex-row justify-between items-center ${
                   showMunicipalityDropdown
                     ? "border-emerald-500 dark:border-emerald-500 rounded-b-none"
                     : ""
@@ -643,8 +563,8 @@ export default function RegisterAnimalScreen() {
               </TouchableOpacity>
 
               {showMunicipalityDropdown && (
-                <View className="bg-white dark:bg-slate-900 border-x border-b border-emerald-500 dark:border-emerald-500 rounded-b-2xl p-4 shadow-lg z-50">
-                  <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-3 py-2 mb-3 shadow-inner">
+                <View className="bg-white dark:bg-slate-900 border-x border-b border-emerald-500 dark:border-emerald-500 rounded-b-xl p-4 z-50">
+                  <View className="flex-row items-center bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 mb-3">
                     <MaterialCommunityIcons
                       name="magnify"
                       size={18}
@@ -739,56 +659,25 @@ export default function RegisterAnimalScreen() {
                 data={filteredFarmers}
                 keyExtractor={(item) => item._id}
                 showsVerticalScrollIndicator={false}
-                renderItem={({ item }) => {
-                  const isSelected = selectedFarmer?._id === item._id;
-                  return (
-                    <TouchableOpacity
-                      onPress={() => handleFarmerSelect(item)}
-                      className={`flex-row items-center border p-5 rounded-[24px] mb-3 ${
-                        isSelected
-                          ? "border-emerald-500 bg-emerald-50/50 dark:bg-emerald-900/20"
-                          : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700"
-                      }`}
-                    >
-                      <View className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-full items-center justify-center mr-4">
-                        <User size={24} color={isDark ? "#34d399" : "#00643B"} />
-                      </View>
-                      <View className="flex-1">
-                        <Text
-                          style={{ fontFamily: "Outfit_700Bold" }}
-                          className="text-slate-800 dark:text-white text-base"
-                        >
-                          {item.name}
-                        </Text>
-                        <Text
-                          className="text-slate-500 dark:text-slate-400 text-xs mt-0.5"
-                          numberOfLines={1}
-                        >
-                          {formatAddressLabel(
-                            item.address,
-                            item.farmLocation,
-                            "Location not provided",
-                          )} ·{" "}
-                          {item.phoneNumber ||
-                            item.address?.phoneNumber ||
-                            "No contact"}
-                        </Text>
-                      </View>
-                      {isSelected && (
-                        <MaterialCommunityIcons
-                          name="check-circle"
-                          size={24}
-                          color={isDark ? "#34d399" : "#00643B"}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  );
-                }}
+                renderItem={({ item }) => (
+                  <TechnicianFarmerListItem
+                    farmer={item}
+                    selected={selectedFarmer?._id === item._id}
+                    secondaryText={`${formatAddressLabel(
+                      item.address,
+                      item.farmLocation,
+                      "Location not provided",
+                    )} · ${
+                      item.phoneNumber ||
+                      item.address?.phoneNumber ||
+                      "No contact"
+                    }`}
+                    onPress={() => handleFarmerSelect(item)}
+                  />
+                )}
               />
             )}
-          </View>
-        </View>
-      </Modal>
+      </TechnicianPickerSheet>
 
       {/* SPECIES SELECTION MODAL */}
       <Modal visible={showSpeciesModal} animationType="slide" transparent>
@@ -998,6 +887,6 @@ export default function RegisterAnimalScreen() {
         onSelectCamera={() => handleSelectPhoto("camera")}
         onSelectLibrary={() => handleSelectPhoto("library")}
       />
-    </SafeAreaView>
+    </ScreenLayout>
   );
 }

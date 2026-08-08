@@ -20,6 +20,9 @@ import {
   maskPhoneNumber,
   normalizePhilippineMobileNumber,
 } from "../utils/phone.js";
+import { resolveOrSyncUser } from "../services/auth-user.service.js";
+import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
 // Structured Console Log Helper for Audit Trail
 const logAdminAction = (action, admin, target, details = {}) => {
@@ -45,6 +48,46 @@ const logAdminAction = (action, admin, target, details = {}) => {
     details,
   };
   console.log(`[AUDIT LOG] ${JSON.stringify(logObj)}`);
+};
+
+/**
+ * Synchronous Bootstrap Endpoint for Auth Hotfix.
+ * Calls resolveOrSyncUser and returns the authoritative MongoDB user.
+ */
+export const bootstrapUser = async (req, res) => {
+  try {
+    const clerkId = req.clerkId;
+    if (!clerkId) {
+      return res.status(401).json({ success: false, message: "No clerkId provided by middleware." });
+    }
+
+    const user = await resolveOrSyncUser(clerkId);
+
+    // Safety check - should be handled by resolveOrSyncUser but double check
+    if (!user) {
+      return res.status(503).json({ success: false, message: "User profile could not be created or loaded." });
+    }
+
+    // Return safe user payload (omit sensitive fields/tokens if any)
+    const safeUser = user.toObject();
+    delete safeUser.password;
+    delete safeUser.pushToken; // optional, but standard
+
+    return res.status(200).json({
+      success: true,
+      user: safeUser,
+    });
+  } catch (error) {
+    console.error("[bootstrapUser ERROR]", error.message);
+    const code = error.code || "AUTH_RESOLUTION_ERROR";
+    const status = error.status || 500;
+    return res.status(status).json({
+      success: false,
+      message: error.message || "Failed to bootstrap user.",
+      code,
+      retryable: error.retryable !== false,
+    });
+  }
 };
 
 const FARM_LANDMARK_MAX_LENGTH = 80;
@@ -593,18 +636,63 @@ export const createInvitedUser = async (req, res) => {
         .json({ message: "Farmers cannot create accounts." });
     }
 
+    let invitedUser;
+
     if (targetRole === "technician") {
       return createTechnician(req, res);
     } else {
-      // Create local offline user (no Clerk account/invitation)
-      invitedUser = await User.create({
-        name: fullName,
-        phoneNumber,
-        address,
-        imageUrl: finalImageUrl,
-        role: targetRole,
-        isVerified: false,
-      });
+      // Create local offline user OR send Clerk invite if email is provided
+      const rawFirstName = (firstName || "").trim();
+      const rawLastName = (lastName || "").trim();
+      const rawEmail = (email || "").trim().toLowerCase();
+      const fullName = [rawFirstName, middleName, rawLastName, suffix]
+        .filter(Boolean)
+        .map((s) => String(s).trim())
+        .join(" ");
+
+      let invitation = null;
+      if (rawEmail) {
+        try {
+          invitation = await clerkClient.invitations.createInvitation({
+            emailAddress: rawEmail,
+            publicMetadata: { role: targetRole },
+            ignoreExisting: false,
+          });
+        } catch (clerkErr) {
+          console.error(`[${targetRole} Onboarding] Clerk invitation failed:`, clerkErr);
+          const clerkMessage = clerkErr.errors?.[0]?.longMessage || clerkErr.errors?.[0]?.message;
+          return res.status(400).json({
+            message: clerkMessage || `The ${targetRole} was not created because the invitation could not be sent.`,
+            code: "CLERK_INVITATION_FAILED",
+          });
+        }
+      }
+
+      try {
+        invitedUser = await User.create({
+          name: fullName,
+          email: rawEmail || undefined,
+          phoneNumber,
+          address,
+          imageUrl: imageUrl || "",
+          role: targetRole,
+          isVerified: false,
+          profileClaimStatus: rawEmail ? "unclaimed" : "none",
+        });
+      } catch (dbErr) {
+        console.error(`[${targetRole} Onboarding] MongoDB creation failed. Initiating rollback.`, dbErr);
+        if (invitation?.id && typeof clerkClient?.invitations?.revokeInvitation === "function") {
+          try {
+            await clerkClient.invitations.revokeInvitation(invitation.id);
+          } catch (revokeErr) {
+            console.error("Failed to revoke Clerk invitation during rollback:", invitation.id, revokeErr);
+          }
+        }
+        if (dbErr.code === 11000) {
+          return res.status(409).json({ message: "An account with this email already exists." });
+        }
+        throw dbErr;
+      }
     }
 
     // Audit & Log Admin Action
@@ -634,7 +722,7 @@ export const createInvitedUser = async (req, res) => {
 
     req.app.get("io").emit("dashboardUpdate", {
       type: "FARMER_REGISTERED",
-      message: `New ${targetRole} ${fullName} registered.`,
+      message: `New ${targetRole} ${invitedUser.name} registered.`,
     });
 
     res.status(201).json({
@@ -756,16 +844,16 @@ export const getUsers = async (req, res) => {
     const query = { deletedAt: null };
 
     if (req.user.role === "farmer") {
-      if (role && !["technician", "veterinarian"].includes(role)) {
+      if (role && !["technician"].includes(role)) {
         return res
           .status(403)
           .json({
             message:
-              "Forbidden - farmers can only query technicians or veterinarians.",
+              "Forbidden - farmers can only query technicians.",
           });
       }
       if (!role) {
-        query.role = { $in: ["technician", "veterinarian"] };
+        query.role = { $in: ["technician"] };
       } else {
         query.role = role;
       }
@@ -1123,7 +1211,7 @@ export const getUserById = async (req, res) => {
       }
     }
 
-    if (user.role === "technician" || user.role === "veterinarian") {
+    if (user.role === "technician") {
       const totalInseminations = await Insemination.countDocuments({
         approvedBy: id,
         deletedAt: null,
@@ -1620,29 +1708,31 @@ export const getBreedingMilestones = async (req, res) => {
     const farmerId = req.user._id;
 
     // 1. Get completed inseminations with pending outcomes
-    const inseminations = await Insemination.find({
-      farmerId,
-      status: "done",
-      isSuccess: null,
-      deletedAt: null,
-    })
-      .populate("animalId", "animalId earTag species breed")
-      .sort({ createdAt: -1 });
-
-    // 2. Get all active pregnancies (to calculate Calvings)
-    const pregnancies = await Pregnancy.find({
-      farmerId,
-      "pregnancyDiagnosis.result": "Pregnant",
-      deletedAt: null,
-    })
-      .populate("animalId", "animalId earTag species breed")
-      .sort({ targetCalvingDate: 1 });
-
-    // 3. Get all calving records to identify pregnancies that have already calved
-    const calvings = await Calving.find({
-      farmerId,
-      deletedAt: null,
-    }).select("pregnancyId");
+    const [inseminations, pregnancies, calvings, reproductiveTasks, policyResolution] =
+      await Promise.all([
+        Insemination.find({
+          farmerId,
+          status: "done",
+          isSuccess: null,
+          deletedAt: null,
+        })
+          .populate("animalId", "animalId earTag species breed")
+          .sort({ createdAt: -1 }),
+        Pregnancy.find({
+          farmerId,
+          "pregnancyDiagnosis.result": "Pregnant",
+          deletedAt: null,
+        })
+          .populate("animalId", "animalId earTag species breed")
+          .sort({ targetCalvingDate: 1 }),
+        Calving.find({ farmerId, deletedAt: null }).select("pregnancyId"),
+        Task.find({
+          farmerId,
+          taskType: { $in: ["PD", "Calving", "CD"] },
+          status: { $in: ["Pending", "In Progress"] },
+        }).lean(),
+        loadPregnancyConfirmationPolicy(),
+      ]);
 
     const calvedPregIds = calvings
       .map((c) => c.pregnancyId?.toString())
@@ -1650,6 +1740,23 @@ export const getBreedingMilestones = async (req, res) => {
 
     const milestones = [];
     const now = new Date();
+    const idOf = (value) => String(value?._id || value || "");
+    const taskForInsemination = (insemination) =>
+      reproductiveTasks.find(
+        (task) =>
+          task.taskType === "PD" &&
+          (idOf(task._id) === idOf(insemination.verificationTaskId) ||
+            idOf(task.metadata?.inseminationId) === idOf(insemination._id) ||
+            idOf(task.relatedRecordId) === idOf(insemination._id)),
+      ) || null;
+    const taskForPregnancy = (pregnancy) =>
+      reproductiveTasks.find(
+        (task) =>
+          ["Calving", "CD"].includes(task.taskType) &&
+          (idOf(task.metadata?.pregnancyId) === idOf(pregnancy._id) ||
+            (task.relatedRecordType === "pregnancy" &&
+              idOf(task.relatedRecordId) === idOf(pregnancy._id))),
+      ) || null;
 
     // Process Pregnancies -> Upcoming Calvings (excluding already calved ones)
     pregnancies.forEach((p) => {
@@ -1670,6 +1777,7 @@ export const getBreedingMilestones = async (req, res) => {
             daysLeft,
             priority: "high",
             relatedId: p._id,
+            taskId: taskForPregnancy(p)?._id || null,
           });
         }
       }
@@ -1681,6 +1789,15 @@ export const getBreedingMilestones = async (req, res) => {
       const daysSinceAI = Math.floor(
         (now.getTime() - new Date(aiDate).getTime()) / (1000 * 3600 * 24),
       );
+      const verificationTask = taskForInsemination(ins);
+      const farmerObservation = ins.farmerOutcomeReport
+        ? {
+            reportType: ins.farmerOutcomeReport,
+            verificationStatus:
+              ins.verificationStatus || ins.outcomeVerificationStatus || null,
+            reportedAt: ins.farmerOutcomeReportedAt || null,
+          }
+        : null;
 
       // Heat Watch (21 days) - show between day 15 and day 25 post-AI
       if (daysSinceAI >= 15 && daysSinceAI <= 25) {
@@ -1697,24 +1814,40 @@ export const getBreedingMilestones = async (req, res) => {
           ),
           priority: "medium",
           relatedId: ins._id,
+          taskId: verificationTask?._id || null,
+          status: verificationTask ? "awaiting_confirmation" : "actionable",
+          farmerObservation,
         });
       }
 
-      // Preg-Check Due (60 days) - show between day 26 and day 90 post-AI
+      // Pregnancy confirmation presentation is driven by the canonical
+      // backend policy rather than a frontend day threshold.
       if (daysSinceAI >= 26 && daysSinceAI <= 90) {
-        const pdDate = new Date(aiDate);
-        pdDate.setDate(pdDate.getDate() + 60);
+        const pregnancyReadiness = getPregnancyCheckReadiness({
+          insemination: ins,
+          at: now,
+          policy: policyResolution.policy,
+          species: ins.animalId?.species,
+        });
+        const pdDate = pregnancyReadiness.availableDate
+          ? new Date(pregnancyReadiness.availableDate)
+          : null;
+        const daysLeft = pdDate
+          ? Math.ceil((pdDate.getTime() - now.getTime()) / (1000 * 3600 * 24))
+          : null;
 
         milestones.push({
           type: "pd_check",
-          title: "Preg-Check Due",
+          title: "Pregnancy Confirmation",
           animal: ins.animalId,
           date: pdDate,
-          daysLeft: Math.ceil(
-            (pdDate.getTime() - now.getTime()) / (1000 * 3600 * 24),
-          ),
+          daysLeft,
           priority: "medium",
           relatedId: ins._id,
+          taskId: verificationTask?._id || null,
+          status: verificationTask ? "awaiting_confirmation" : "actionable",
+          pregnancyReadiness,
+          farmerObservation,
         });
       }
     });

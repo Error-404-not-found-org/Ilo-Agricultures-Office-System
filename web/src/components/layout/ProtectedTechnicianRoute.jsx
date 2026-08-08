@@ -40,8 +40,8 @@ const ProtectedTechnicianRoute = ({ children }) => {
   // We sync role to publicMetadata from the backend.
   const role = user?.publicMetadata?.role;
 
-  if (role !== "technician" && role !== "veterinarian") {
-    // Redirect non-technicians and non-veterinarians to home
+  if (role !== "technician") {
+    // Redirect non-technicians to home
     return <Navigate to="/" replace />;
   }
 

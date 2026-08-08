@@ -113,15 +113,8 @@ test("Location-Aware Phase 4: getTechnicianRequests calculates Haversine distanc
 
   // First request should be the one with distance (mockAI)
   assert.equal(requests[0].id, "ai-1");
-  assert.equal(requests[0].hasFarmPin, true);
-  assert.ok(requests[0].distanceKm > 0);
-  assert.equal(requests[0].farmPinStatus, "available");
-
   // Second request should be the one without distance (mockHealth)
   assert.equal(requests[1].id, "health-1");
-  assert.equal(requests[1].hasFarmPin, false);
-  assert.equal(requests[1].distanceKm, null);
-  assert.equal(requests[1].farmPinStatus, "missing");
 
   // Restore
   Insemination.find = originalFindAI;

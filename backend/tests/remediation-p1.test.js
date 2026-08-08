@@ -58,22 +58,6 @@ test("Reproductive Lifecycle: allows AI after postpartum window passes", () => {
   assert.equal(result.code, "AVAILABLE");
 });
 
-// 2. Veterinarian Escalations
-test("Urgency Escalation Policy: veterinarian notifications sent only on Emergency", () => {
-  const veterinarians = [{ _id: "vet-1", role: "veterinarian" }];
-  const technicians = [{ _id: "tech-1", role: "technician" }];
-
-  const checkEscalation = (urgency) => {
-    // Simulated controller logic
-    const veterinariansToNotify = urgency === "emergency" ? veterinarians : [];
-    return veterinariansToNotify.length > 0;
-  };
-
-  assert.equal(checkEscalation("low"), false);
-  assert.equal(checkEscalation("medium"), false);
-  assert.equal(checkEscalation("high"), false);
-  assert.equal(checkEscalation("emergency"), true);
-});
 
 test("Reproductive Lifecycle: active AI response exposes canonical next action", () => {
   const result = getReproductionEligibility({

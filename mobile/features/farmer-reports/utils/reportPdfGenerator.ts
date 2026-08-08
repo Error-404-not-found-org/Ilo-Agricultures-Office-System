@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import type { ActivityFeedItem } from "../types/farmerReports.types";
+import { formatVisitSchedule } from "@/features/farmer-requests/utils/requestDetailPresentation";
 
 const clean = (value: unknown) =>
   String(value || "N/A").replace(/[&<>"']/g, (char) =>
@@ -35,8 +36,18 @@ export function generateSingleRecordPdfHtml(record: ActivityFeedItem): string {
       ["Species", animal.species || "N/A"],
       ["Request Status", record.details?.status || "Not recorded"],
       ["Requested", formatReportDate(record.details?.requestedAt)],
-      ["Preferred Visit", formatReportDate(record.details?.preferredDate)],
-      ["Scheduled Visit", formatReportDate(record.details?.scheduledDate)],
+      [
+        "Legacy Preferred Date",
+        formatVisitSchedule(record.details?.preferredDate, null) ||
+          "Not recorded",
+      ],
+      [
+        "Scheduled Visit",
+        formatVisitSchedule(
+          record.details?.scheduledDate,
+          record.details?.visitPeriod,
+        ) || "Not recorded",
+      ],
       ["A.I. Performed", formatReportDate(record.details?.serviceDate || record.date)],
       ["Attempt Number", record.details?.attemptNumber?.toString() || "1"],
       ["Sire Breed", record.details?.sireBreed || "N/A"],

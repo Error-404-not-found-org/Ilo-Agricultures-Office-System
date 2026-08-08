@@ -19,15 +19,14 @@ import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
 import { SearchBar } from "@/components/shared";
 import { toast } from "sonner-native";
-import type { WorkQueueItem } from "@/features/technician-requests/types/technicianRequests.types";
-import { isCanonicalWorkflowId } from "@/features/technician-requests/utils/aiWorkflow";
+import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
 import {
   MY_WORK_FILTERS,
   getServicePresentation,
-  getWorkflowStatusPresentation,
+  getTechnicianWorkStatePresentation,
   matchesServiceFilter,
   normalizeServiceType,
-  normalizeWorkflowStatus,
+  normalizeTechnicianWorkItems,
 } from "../utils/requestWorkPresentation";
 import { RequestWorkBadge, RequestWorkFilterChips } from "./RequestWorkBadge";
 import type { RequestWorkFilterOption } from "../utils/requestWorkPresentation";
@@ -52,17 +51,17 @@ export default function TechnicianMyWorkPanel({
 
   const { tasksQuery } = useTechnicianTasks(undefined, { scope: "mine" });
   const { data: tasks = [], isLoading, refetch, isRefetching } = tasksQuery;
+  const workItems = useMemo(() => normalizeTechnicianWorkItems(tasks), [tasks]);
 
   const workStateTasks = useMemo(() => {
-    return (tasks || []).filter((t: any) => {
-      const status = normalizeWorkflowStatus(t);
+    return workItems.filter((item) => {
       if (workStateFilter === "active") {
-        return status !== "completed" && status !== "cancelled";
+        return item.state !== "completed" && item.state !== "cancelled";
       } else {
-        return status === "completed";
+        return item.state === "completed";
       }
     });
-  }, [tasks, workStateFilter]);
+  }, [workItems, workStateFilter]);
 
   const serviceCounts = useMemo(() => {
     const source = workStateTasks || [];
@@ -82,79 +81,41 @@ export default function TechnicianMyWorkPanel({
     };
   }, [workStateTasks]);
 
-  const filteredTasks = (workStateTasks || []).filter((t: any) => {
-    if (!matchesServiceFilter(t, serviceFilter)) return false;
+  const filteredTasks = (workStateTasks || []).filter((item) => {
+    if (!matchesServiceFilter(item, serviceFilter)) return false;
     const text = searchQuery.toLowerCase();
-    const farmerName = String(
-      t.farmer?.name || t.farmerId?.name || "",
-    ).toLowerCase();
-    const notes = String(
-      t.notes || t.task || t.serviceType || "",
-    ).toLowerCase();
-    const animalTags = t.animal
-      ? [String(t.animal.earTag || t.animal.name || "").toLowerCase()]
-      : (t.animalIds || []).map((a: any) =>
-          (a.earTag || a.animalId || "").toLowerCase(),
-        );
+    const farmerName = String(item.farmerName || "").toLowerCase();
+    const title = item.title.toLowerCase();
+    const animalTags = [item.animalName, item.animalTag]
+      .filter(Boolean)
+      .map((value) => String(value).toLowerCase());
     const searchMatch =
       !searchQuery ||
       farmerName.includes(text) ||
-      notes.includes(text) ||
+      title.includes(text) ||
       animalTags.some((tag: string) => tag.includes(text));
 
     return searchMatch;
   });
 
-  const openWorkItem = (item: WorkQueueItem | any) => {
-    const isAIShapedItem =
-      item.workflowType === "AI" ||
-      String(item.taskType || "").toUpperCase() === "AI" ||
-      item.type === "insemination";
-    if (isAIShapedItem && item.workflowType !== "AI") {
-      toast.error(
-        "This AI work item is missing its canonical workflow contract.",
-      );
-      return;
-    }
+  const openWorkItem = (item: TechnicianWorkItem) => {
+    if (item.workType === "ai") {
+      if (!item.workflowId && !item.id) {
+        toast.error("This AI work item is missing its canonical identifier.");
+        return;
+      }
 
-    if (isAIShapedItem) {
-      if (!isCanonicalWorkflowId(item.workflowId)) {
-        toast.error("This AI work item is missing its workflow identifier.");
-        return;
-      }
-      if (item.allowedAction === "RECORD_SERVICE") {
-        router.push({
-          pathname: "/(technician)/record-ai",
-          params: {
-            mode: "request-linked",
-            workflowId: item.workflowId,
-            taskId: item.taskId || undefined,
-            farmerId: item.farmer?.id || undefined,
-            farmerName: item.farmer?.name || undefined,
-            animalId: item.animal?.id || undefined,
-            animalName: item.animal?.name || undefined,
-            earTag: item.animal?.earTag || undefined,
-            scheduleDate: item.schedule?.date || undefined,
-            visitPeriod: item.schedule?.visitPeriod || undefined,
-          },
-        });
-        return;
-      }
-      if (item.allowedAction === "VIEW_RECORD") {
-        router.push({
-          pathname: "/(technician)/request-details",
-          params: { id: item.workflowId, type: "ai", viewOnly: "true" },
-        });
-        return;
-      }
-      toast.error("This AI work item has no supported action.");
-      return;
-    }
-
-    if (item.workflowType === "Health" && item.workflowId) {
       router.push({
         pathname: "/(technician)/request-details",
-        params: { id: item.workflowId, type: "health" },
+        params: { id: item.workflowId || item.id, type: "ai", viewOnly: item.allowedAction === "VIEW_RECORD" ? "true" : undefined, taskId: item.taskId || undefined, workflowId: item.workflowId || undefined },
+      });
+      return;
+    }
+
+    if (item.workType === "health" && (item.id || item.workflowId)) {
+      router.push({
+        pathname: "/(technician)/request-details",
+        params: { id: item.workflowId || item.id, type: "health", taskId: item.taskId || undefined, workflowId: item.workflowId || undefined },
       });
       return;
     }
@@ -243,20 +204,16 @@ export default function TechnicianMyWorkPanel({
               </Text>
             </View>
           ) : (
-            filteredTasks.map((t: any) => {
+            filteredTasks.map((t) => {
               const servicePresentation = getServicePresentation(
                 normalizeServiceType(t),
               );
-              const statusPresentation = getWorkflowStatusPresentation(
-                normalizeWorkflowStatus(t),
+              const statusPresentation = getTechnicianWorkStatePresentation(
+                t.state,
               );
-              const pregnancyReadiness =
-                t.taskType === "PD"
-                  ? t.pregnancyReadiness || t.raw?.pregnancyReadiness
-                  : null;
               return (
                 <TouchableOpacity
-                  key={t.id || t._id}
+                  key={t.id}
                   activeOpacity={0.7}
                   className="rounded-2xl p-4 mb-4 border shadow-sm"
                   style={{
@@ -268,7 +225,7 @@ export default function TechnicianMyWorkPanel({
                   {/* Badge Row */}
                   <View className="flex-row justify-between items-center mb-2">
                     <RequestWorkBadge
-                      label={servicePresentation.label}
+                      label={t.workType === "ai" ? t.title : servicePresentation.label}
                       tone={servicePresentation.tone}
                       accessibilityPrefix="Service"
                     />
@@ -284,10 +241,36 @@ export default function TechnicianMyWorkPanel({
                     numberOfLines={2}
                     style={{ color: colors.textPrimary }}
                   >
-                    {t.task || t.notes || t.serviceType}
+                    {t.title}
                   </Text>
 
-                  {pregnancyReadiness && !pregnancyReadiness.isEligible && (
+                  {t.workType === "ai" && t.attemptNumber ? (
+                    <View className="mt-2">
+                      <Text
+                        style={{
+                          color: colors.textSecondary,
+                          fontFamily: "Outfit_700Bold",
+                          fontSize: 12,
+                        }}
+                      >
+                        Attempt {t.attemptNumber}
+                      </Text>
+                      {t.previousAttemptVerified ? (
+                        <Text
+                          style={{
+                            color: colors.textMuted,
+                            fontFamily: "Outfit_500Medium",
+                            fontSize: 11,
+                            marginTop: 2,
+                          }}
+                        >
+                          Previous attempt · Unsuccessful
+                        </Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {t.readinessMessage ? (
                     <View
                       className="rounded-xl p-3 mt-3 border"
                       style={{
@@ -317,10 +300,10 @@ export default function TechnicianMyWorkPanel({
                           lineHeight: 16,
                         }}
                       >
-                        {pregnancyReadiness.reason}
+                        {t.readinessMessage}
                       </Text>
                     </View>
-                  )}
+                  ) : null}
 
                   <View
                     className="rounded-lg p-3 mt-3"
@@ -337,9 +320,9 @@ export default function TechnicianMyWorkPanel({
                         fontSize: 13,
                       }}
                     >
-                      {t.farmer?.name || t.farmerId?.name || "Unknown Farmer"}
+                      {t.farmerName || "Farmer"}
                     </Text>
-                    {(t.schedule?.date || t.dueDate) && (
+                    {t.timingLabel ? (
                       <Text
                         style={{
                           fontFamily: "Outfit_500Medium",
@@ -348,20 +331,21 @@ export default function TechnicianMyWorkPanel({
                           marginTop: 2,
                         }}
                       >
-                        {t.workflowType === "AI" ? "Scheduled" : "Due Date"}:{" "}
-                        {new Date(
-                          t.schedule?.date || t.dueDate,
-                        ).toLocaleDateString("en-US", {
-                          month: "short",
-                          day: "numeric",
-                          year: "numeric",
-                        })}
-                        {t.schedule?.visitPeriod
-                          ? ` · ${String(t.schedule.visitPeriod).replace(/^./, (value: string) => value.toUpperCase())}`
-                          : ""}
+                        {t.timingLabel}
                       </Text>
-                    )}
-                    {t.animal ? (
+                    ) : t.state === "needs_scheduling" ? (
+                      <Text
+                        style={{
+                          fontFamily: "Outfit_500Medium",
+                          color: colors.textSecondary,
+                          fontSize: 11,
+                          marginTop: 2,
+                        }}
+                      >
+                        Claimed · Needs scheduling
+                      </Text>
+                    ) : null}
+                    {t.animalName || t.animalTag ? (
                       <Text
                         style={{
                           fontFamily: "Outfit_500Medium",
@@ -370,22 +354,8 @@ export default function TechnicianMyWorkPanel({
                           marginTop: 4,
                         }}
                       >
-                        Animal: {t.animal.name}
-                        {t.animal.earTag ? ` · ${t.animal.earTag}` : ""}
-                      </Text>
-                    ) : t.animalIds && t.animalIds.length > 0 ? (
-                      <Text
-                        style={{
-                          fontFamily: "Outfit_500Medium",
-                          color: colors.textMuted,
-                          fontSize: 11,
-                          marginTop: 4,
-                        }}
-                      >
-                        Animals:{" "}
-                        {t.animalIds
-                          .map((a: any) => a.earTag || a.animalId)
-                          .join(", ")}
+                        Animal: {t.animalName || t.animalTag}
+                        {t.animalName && t.animalTag ? ` · ${t.animalTag}` : ""}
                       </Text>
                     ) : null}
                   </View>
@@ -410,7 +380,7 @@ export default function TechnicianMyWorkPanel({
                           marginLeft: 6,
                         }}
                       >
-                        {t.actionLabel || "View Details"}
+                        {t.actionLabel}
                       </Text>
                     </View>
                   </View>

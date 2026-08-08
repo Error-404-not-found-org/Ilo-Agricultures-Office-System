@@ -459,6 +459,23 @@ export default function AdminUsersScreen() {
                       },
                     ]
                   : []),
+                ...(activeUserForDialog?.role === "technician"
+                  ? [
+                      {
+                        text: "Manage Dispatch",
+                        variant: "primary" as const,
+                        onPress: () => {
+                          setDialogVisible(false);
+                          if (activeUserForDialog) {
+                            router.push({
+                              pathname: "/(admin)/manage-dispatch" as any,
+                              params: { id: activeUserForDialog._id },
+                            });
+                          }
+                        },
+                      },
+                    ]
+                  : []),
                 {
                   text:
                     activeUserForDialog?.status === "suspended"

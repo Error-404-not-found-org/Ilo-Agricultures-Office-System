@@ -1,6 +1,6 @@
 import type { QueuedMutation } from "../lib/offlineQueue";
 
-export type UserRole = "admin" | "technician" | "veterinarian" | "farmer";
+export type UserRole = "admin" | "technician" | "farmer";
 
 export type UserStatus = "active" | "on-site" | "on-leave" | "inactive";
 
@@ -108,10 +108,6 @@ export interface Technician extends AppUser {
   assignedBarangays?: string[];
 }
 
-export interface Veterinarian extends AppUser {
-  role: "veterinarian";
-  assignedBarangays?: string[];
-}
 
 export interface FarmerStats {
   totalAnimals: number;
@@ -196,6 +192,7 @@ export interface ServiceRequest {
   serviceType?: ServiceType;
   preferredDate?: string;
   scheduledDate?: string;
+  visitPeriod?: "morning" | "afternoon" | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -254,7 +251,6 @@ export interface HealthRequest extends ServiceRequest {
   dosage?: string;
   followUpDate?: string;
   assignedTechnicianId?: string | Technician;
-  assignedVeterinarianId?: string | Veterinarian;
 }
 
 export interface PregnancyRecord {

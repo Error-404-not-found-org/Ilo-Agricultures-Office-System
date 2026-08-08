@@ -50,9 +50,17 @@ const HealthRequestSchema = new mongoose.Schema(
     farmerNotes: { type: String, default: "" },
     preferredDate: {
       type: Date,
-      default: Date.now,
     },
     scheduledDate: {
+      type: Date,
+    },
+    visitPeriod: {
+      type: String,
+      enum: ["morning", "afternoon"],
+      trim: true,
+      lowercase: true,
+    },
+    serviceStartedAt: {
       type: Date,
     },
     status: {
@@ -73,7 +81,6 @@ const HealthRequestSchema = new mongoose.Schema(
       default: null,
     },
     assignedTechnicianId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    assignedVeterinarianId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     technicianNote: {
       type: String,
       default: "",
@@ -118,6 +125,26 @@ const HealthRequestSchema = new mongoose.Schema(
     // Hides a terminal request from its farmer without deleting the official
     // service history used by technicians and administrators.
     farmerDismissedAt: { type: Date, default: null },
+    dispatch: {
+      location: {
+        municipalityCode: { type: String },
+        municipalityName: { type: String },
+        localityType: { type: String, enum: ["municipality", "city", "unresolved"] },
+        provinceCode: { type: String },
+        provinceName: { type: String },
+        barangayCode: { type: String },
+        barangayName: { type: String },
+        source: {
+          type: String,
+          enum: ["confirmed_farm_location", "canonical_contact_address", "legacy_address_fallback", "unresolved"],
+        },
+        psgcVersion: { type: String },
+      },
+      stage: { type: String, enum: ["local", "adjacent", "regional"], default: "local" },
+      resolutionStatus: { type: String, enum: ["resolved", "legacy_fallback", "unresolved"] },
+      version: { type: Number, default: 1 },
+      resolvedAt: { type: Date },
+    },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
@@ -131,7 +158,7 @@ HealthRequestSchema.index({ status: 1 });
 HealthRequestSchema.index({ urgency: -1, createdAt: -1 });
 HealthRequestSchema.index({ scheduledDate: 1 });
 HealthRequestSchema.index({ assignedTechnicianId: 1, status: 1 });
-HealthRequestSchema.index({ assignedVeterinarianId: 1, status: 1 });
+
 HealthRequestSchema.index({ deletedAt: 1 });
 HealthRequestSchema.index({ declinedByTechnicianIds: 1 });
 HealthRequestSchema.index(

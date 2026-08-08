@@ -10,6 +10,7 @@ export interface UpdateStatusPayload {
   sireCode?: string;
   estrus?: string;
   scheduledDate?: string;
+  visitPeriod?: string;
   earlyStartConfirmed?: boolean;
 }
 
@@ -51,11 +52,6 @@ export const getTechnicianRequestDetail = async (
   return response.data?.data || response.data;
 };
 
-export const getTechnicianAnimalHistory = async (api: AxiosInstance, animalId: string) => {
-  const response = await api.get(`/technician/animal-history/${animalId}`);
-  return response.data?.timeline || [];
-};
-
 export const updateRequestStatus = async (
   api: AxiosInstance,
   type: "health" | "ai",
@@ -94,6 +90,17 @@ export const declineTechnicianRequest = async (
 ) => {
   const response = await api.patch(`/technician/requests/${type}/${requestId}/decline`, {
     technicianNote,
+  });
+  return response.data;
+};
+
+export const cancelTechnicianHealthRequest = async (
+  api: AxiosInstance,
+  requestId: string,
+  reason: string,
+) => {
+  const response = await api.patch(`/health-request/${requestId}/cancel`, {
+    reason,
   });
   return response.data;
 };

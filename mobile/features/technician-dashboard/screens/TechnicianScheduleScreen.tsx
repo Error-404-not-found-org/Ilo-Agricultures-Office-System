@@ -451,15 +451,6 @@ function VisitCard({ item, technicianId, colors, isDark, onPress }: any) {
     item.location ||
     item.raw?.farmAddress ||
     "Location not provided";
-  const assignedTechnician =
-    item.raw?.approvedBy?._id ||
-    item.raw?.approvedBy ||
-    item.raw?.handledBy?._id ||
-    item.raw?.handledBy;
-  const locked =
-    assignedTechnician &&
-    technicianId &&
-    String(assignedTechnician) !== String(technicianId);
 
   return (
     <View
@@ -502,7 +493,7 @@ function VisitCard({ item, technicianId, colors, isDark, onPress }: any) {
               { color: urgent ? colors.warning : colors.primary },
             ]}
           >
-            {locked ? "Assigned" : statusName(item)}
+            {statusName(item)}
           </Text>
         </View>
       </View>

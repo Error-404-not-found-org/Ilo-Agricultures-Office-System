@@ -423,7 +423,7 @@ export default function TechMyProfile() {
 
                 <div className="form-control">
                   <label className="label text-[10px] font-bold uppercase tracking-wider text-base-content/40">
-                    Veterinarian Specialization
+                    Specialization
                   </label>
                   <input
                     type="text"

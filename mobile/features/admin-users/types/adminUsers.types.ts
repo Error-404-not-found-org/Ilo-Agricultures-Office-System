@@ -2,7 +2,7 @@ export interface UserItem {
   _id: string;
   name?: string;
   email?: string;
-  role: 'farmer' | 'technician' | 'admin' | 'veterinarian';
+  role: 'farmer' | 'technician' | 'admin';
   clerkId?: string;
   isVerified?: boolean;
   createdAt?: string;
@@ -20,4 +20,16 @@ export interface UserItem {
     province?: string;
   };
   deletedAt?: string;
+  dispatchProfile?: {
+    serviceMunicipalities?: {
+      municipalityCode: string;
+      municipalityName: string;
+      localityType: string;
+      provinceCode: string;
+      provinceName: string;
+    }[];
+    serviceCapabilities?: string[];
+    availabilityStatus?: string;
+    acceptsNewRequests?: boolean;
+  };
 }

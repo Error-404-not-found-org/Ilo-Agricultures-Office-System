@@ -35,6 +35,7 @@ import {
   declineTechnicianRequest,
   claimRequest,
   getAIServiceContext,
+  updateDispatchStatus,
 } from "../controllers/technician.controllers.js";
 import { protectedRoute, requireRole } from "../middleware/auth.middleware.js";
 import {
@@ -47,7 +48,7 @@ const router = Router();
 
 router.use(
   protectedRoute,
-  requireRole(["admin", "technician", "veterinarian"]),
+  requireRole(["admin", "technician"]),
 );
 
 // Maintenance
@@ -60,6 +61,7 @@ router.get("/requests", getTechnicianRequests);
 router.get("/work-queue", getWorkQueue);
 router.patch("/requests/:type/:id/decline", declineTechnicianRequest);
 router.patch("/requests/:type/:id/claim", claimRequest);
+router.patch("/dispatch-status", updateDispatchStatus);
 router.get("/field-notes", getFieldNotes);
 router.get("/dashboard-stats", getDashboardStats);
 router.get("/dashboard-feed", getDashboardFeed);

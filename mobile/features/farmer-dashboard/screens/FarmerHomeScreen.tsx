@@ -47,6 +47,10 @@ import {
   selectUpcomingVisits,
 } from "../utils/farmerDashboard.transforms";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import {
+  formatVisitPeriod,
+  formatVisitSchedule,
+} from "@/features/farmer-requests/utils/requestDetailPresentation";
 
 const PRIMARY = "#00643B";
 
@@ -175,6 +179,53 @@ export function FarmerHomeScreen() {
     () => selectNeedsAttention(Array.isArray(milestones) ? milestones : []),
     [milestones],
   );
+  const handleAttentionPress = (item: (typeof attentionItems)[number]) => {
+    const animalId = item.animal?._id;
+    if (!animalId) {
+      toast.error("This breeding milestone is missing its animal record.");
+      return;
+    }
+
+    if (item.actionKind === "report_signs") {
+      router.push({
+        pathname: "/(farmer)/report-breeding-observation",
+        params: {
+          animalId,
+          requestId: item.relatedId,
+          defaultReport: item.farmerObservation?.reportType || "unsure",
+        },
+      } as never);
+      return;
+    }
+
+    if (item.actionKind === "request_pregnancy_check") {
+      router.push({
+        pathname: "/(farmer)/report-breeding-observation",
+        params: {
+          animalId,
+          requestId: item.relatedId,
+          defaultReport: item.farmerObservation?.reportType || "unsure",
+          requestVerification: "true",
+        },
+      } as never);
+      return;
+    }
+
+    if (item.actionKind === "record_calving" && item.relatedId) {
+      router.push({
+        pathname: "/(farmer)/record-calving",
+        params: {
+          pregnancyId: item.relatedId,
+          animalId,
+          earTag: item.animal?.earTag || item.animal?.animalId,
+          taskId: item.taskId || undefined,
+        },
+      } as never);
+      return;
+    }
+
+    router.push(`/(farmer)/animal-details?id=${animalId}`);
+  };
   const recentActivities = React.useMemo(
     () =>
       selectRecentActivities(Array.isArray(activityFeed) ? activityFeed : []),
@@ -484,7 +535,11 @@ export function FarmerHomeScreen() {
                       lineHeight: 42,
                     }}
                   >
-                    {isLoading ? "-" : stats.totalAnimals  <= 0 ? "0" : stats.totalAnimals}
+                    {isLoading
+                      ? "-"
+                      : stats.totalAnimals <= 0
+                        ? "0"
+                        : stats.totalAnimals}
                   </Text>
                   <Text
                     numberOfLines={1}
@@ -598,87 +653,9 @@ export function FarmerHomeScreen() {
                 iconBg={isDark ? "rgba(251,191,36,0.15)" : "#FEF9C3"}
                 onPress={() => router.push("/(farmer)/register-animal" as any)}
               />
-              <QuickActionItem
-                title={t("askMoowie")}
-                icon={
-                  <MessageSquare
-                    size={24}
-                    color={isDark ? colors.primary : "#166534"}
-                  />
-                }
-                iconBg={isDark ? "rgba(16,185,129,0.15)" : "#F0FDF4"}
-                onPress={() => router.push("/ask-moowie")}
-              />
             </View>
           </View>
         </View>
-
-        {/* --- MOOWIE ASSISTANT CTA ---
-        <View className="px-6 mb-8">
-          <TouchableOpacity
-            activeOpacity={0.9}
-            onPress={() => router.push("/ask-moowie")}
-            className="p-4 flex-row items-center border"
-            style={{
-              borderRadius: 8,
-              backgroundColor: isDark ? "#102A20" : "#EAF7EE",
-              borderColor: isDark ? "#24563A" : "#B7DFC4",
-            }}
-          >
-            <View
-              className="w-16 h-16 items-center justify-center overflow-hidden"
-              style={{
-                borderRadius: 8,
-                backgroundColor: isDark ? "#173C2A" : "#FFFFFF",
-              }}
-            >
-              <Image
-                source={{
-                  uri: "https://res.cloudinary.com/donhulins/image/upload/v1778122530/image-removebg-preview_f6mqrz.png",
-                }}
-                className="w-full h-full"
-                resizeMode="contain"
-              />
-            </View>
-
-            <View className="flex-1 ml-4">
-              <Text
-                style={{
-                  color: isDark ? "#DDF7E5" : "#123B24",
-                  fontFamily: "Outfit_700Bold",
-                  fontSize: 18,
-                }}
-              >
-                {t("moowieGreeting")}
-              </Text>
-              <Text
-                className="mt-0.5"
-                style={{
-                  color: isDark ? "#A8CDB4" : "#4E6F59",
-                  fontFamily: "Outfit_500Medium",
-                  fontSize: 12,
-                  lineHeight: 17,
-                }}
-              >
-                {t("moowieHelperText")}
-              </Text>
-            </View>
-
-            <View
-              className="w-10 h-10 items-center justify-center"
-              style={{
-                borderRadius: 8,
-                backgroundColor: isDark ? colors.primary : "#00643B",
-              }}
-            >
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={24}
-                color="white"
-              />
-            </View>
-          </TouchableOpacity>
-        </View> */}
 
         {/* --- UPCOMING VISITS --- */}
         <View
@@ -733,6 +710,11 @@ export function FarmerHomeScreen() {
                 const canCancel =
                   normalizedStatus === "scheduled" &&
                   visit.cancellationStatus !== "requested";
+                const visitPeriod = formatVisitPeriod(visit.visitPeriod);
+                const visitSchedule = formatVisitSchedule(
+                  visit.scheduledDate,
+                  visit.visitPeriod,
+                );
 
                 return (
                   <View key={visit._id}>
@@ -744,7 +726,7 @@ export function FarmerHomeScreen() {
                         new Date(visit.scheduledDate),
                         "EEE, MMM d, yyyy",
                       )}
-                      timeStr={format(new Date(visit.scheduledDate), "h:mm a")}
+                      timeStr={visitPeriod || undefined}
                       technician={visit.technician || "Pending Assignment"}
                       serviceStatus={statusLabel}
                       reproductiveOutcome={reproductiveOutcome}
@@ -752,7 +734,9 @@ export function FarmerHomeScreen() {
                         isHealthVisit ? "Health check" : "AI service"
                       } for ${getFullAnimalReference(
                         visit.animalId,
-                      )}. Service status ${visit.status}.`}
+                      )}.${
+                        visitSchedule ? ` Scheduled ${visitSchedule}.` : ""
+                      } Service status ${visit.status}.`}
                       icon={
                         isHealthVisit ? (
                           <Stethoscope
@@ -825,8 +809,9 @@ export function FarmerHomeScreen() {
                 <View key={`${m.type}-${m.animal?._id || m.relatedId}-${idx}`}>
                   <AlertItem
                     title={m.displayTitle}
-                    subtitle={`${m.displaySubtitle}${m.date ? ` · ${format(new Date(m.date), "MMM d")}` : ""}`}
-                    accessibilityLabel={`${m.displayTitle} for ${getFullAnimalReference(m.animal)}. ${m.displaySubtitle}`}
+                    subtitle={`${m.displaySubtitle}\n${m.guidance}`}
+                    actionLabel={m.actionLabel}
+                    accessibilityLabel={`${m.displayTitle} for ${getFullAnimalReference(m.animal)}. ${m.displaySubtitle}. ${m.guidance}. ${m.actionLabel}`}
                     icon={
                       m.urgency === "awaiting" ? (
                         <MaterialCommunityIcons
@@ -872,10 +857,7 @@ export function FarmerHomeScreen() {
                             ? "#f97316"
                             : "#9A3412"
                     }
-                    onPress={() =>
-                      m.animal?._id &&
-                      router.push(`/(farmer)/animal-details?id=${m.animal._id}`)
-                    }
+                    onPress={() => handleAttentionPress(m)}
                   />
                   {idx < attentionItems.length - 1 && <View className="h-2" />}
                 </View>
@@ -2278,6 +2260,7 @@ const AlertItem = ({
   textColor,
   onPress,
   accessibilityLabel,
+  actionLabel,
 }: any) => (
   <TouchableOpacity
     onPress={onPress}
@@ -2303,14 +2286,27 @@ const AlertItem = ({
         {title}
       </Text>
       <Text
-        numberOfLines={2}
+        numberOfLines={3}
         className="mt-1 font-outfit-medium text-[12px]"
         style={{ color: textColor, opacity: 0.82 }}
       >
         {subtitle}
       </Text>
     </View>
-    {onPress ? <ChevronRight size={18} color={textColor} /> : null}
+    {onPress ? (
+      <View style={{ alignItems: "flex-end", marginLeft: 8, maxWidth: 92 }}>
+        {actionLabel ? (
+          <Text
+            numberOfLines={2}
+            className="font-outfit-bold text-[11px] text-right"
+            style={{ color: textColor }}
+          >
+            {actionLabel}
+          </Text>
+        ) : null}
+        <ChevronRight size={18} color={textColor} style={{ marginTop: 4 }} />
+      </View>
+    ) : null}
   </TouchableOpacity>
 );
 

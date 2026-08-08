@@ -64,4 +64,9 @@ old_web/
 # Local planning documents
 docs/
 
+backend/.cache/
+backend/tests/fixtures/*.xlsx
+backend/tests/fixtures/*.json
+!backend/tests/fixtures/psgc-small-fixture.json
+
 backend/backups/

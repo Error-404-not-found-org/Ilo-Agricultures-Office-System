@@ -18,6 +18,8 @@ import {
   reproductiveStatusQuery,
 } from "../domain/status-vocabulary.js";
 import { persistCalving } from "../services/calving.service.js";
+import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
 export const registerAnimal = async (req, res) => {
   try {
@@ -306,6 +308,7 @@ export const getAnimalById = async (req, res) => {
       });
     }
     assertAnimalAccess(req.user, animal);
+    const policyResolution = await loadPregnancyConfirmationPolicy();
     const inseminations = inseminationsList.map((insemination) => {
       const pregnancy = pregnancies.find(
         (item) =>
@@ -316,6 +319,11 @@ export const getAnimalById = async (req, res) => {
       return {
         ...insemination.toObject(),
         pregnancy: pregnancy || null,
+        pregnancyReadiness: getPregnancyCheckReadiness({
+          insemination,
+          policy: policyResolution.policy,
+          species: animal.species,
+        }),
       };
     });
     const activeRequest =
@@ -586,7 +594,7 @@ export const recordCalving = async (req, res) => {
         code: "EARLY_CALVING_OVERRIDE_FORBIDDEN",
       });
     }
-    if (!["farmer", "technician", "veterinarian", "admin"].includes(req.user.role)) {
+    if (!["farmer", "technician", "admin"].includes(req.user.role)) {
       return res.status(403).json({ message: "Unauthorized role." });
     }
 

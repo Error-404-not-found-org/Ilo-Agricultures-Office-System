@@ -19,6 +19,7 @@ import {
   getMethodThresholdForSpecies,
   LEGACY_PREGNANCY_POLICY_VERSION,
 } from "../domain/pregnancy-confirmation-policy.js";
+import { AnimalTimelineEvent } from "../models/animal-timeline-event.model.js";
 import { getAnimalAIEligibility } from "./ai-eligibility.service.js";
 import {
   createAIRequestWithGuard,
@@ -617,8 +618,61 @@ export const resolveHealthRequest = ({
   updateFields,
   technicianId,
   medicalRecord,
+  taskId,
 }) =>
   runTransaction(async (session) => {
+    let task = null;
+
+    if (taskId) {
+      if (!mongoose.Types.ObjectId.isValid(taskId)) {
+        throw new AppError("Invalid task ID format.", {
+          status: 400,
+          code: "INVALID_TASK_ID",
+        });
+      }
+
+      task = await Task.findById(taskId).session(session);
+      if (!task) {
+        throw new AppError("Task not found.", {
+          status: 404,
+          code: "TASK_NOT_FOUND",
+        });
+      }
+
+      if (task.taskType !== "Health") {
+        throw new AppError("Invalid task type for Health resolution.", {
+          status: 400,
+          code: "INVALID_TASK_TYPE",
+        });
+      }
+
+      if (String(task.technicianId) !== String(technicianId)) {
+        throw new AppError("This task is not assigned to you.", {
+          status: 403,
+          code: "TASK_ASSIGNMENT_MISMATCH",
+        });
+      }
+
+      if (task.status === "Completed") {
+        if (String(task.relatedRecordId) === String(id)) {
+          const existingRequest = await HealthRequest.findById(id).session(session);
+          return existingRequest;
+        } else {
+          throw new AppError("This task is already completed and linked to another request.", {
+            status: 409,
+            code: "TASK_ALREADY_LINKED",
+          });
+        }
+      }
+
+      if (task.status !== "Pending" && task.status !== "In Progress") {
+        throw new AppError(`Task is ${task.status} and cannot be completed.`, {
+          status: 400,
+          code: "INVALID_TASK_STATUS",
+        });
+      }
+    }
+
     const request = await HealthRequest.findOneAndUpdate(
       {
         _id: id,
@@ -628,11 +682,36 @@ export const resolveHealthRequest = ({
       { $set: updateFields, $unset: { activeCaseKey: 1 } },
       { returnDocument: "after", session },
     );
+
     if (!request)
       throw new AppError("Health request is no longer active.", {
         status: 409,
         code: "HEALTH_REQUEST_NOT_ACTIVE",
       });
+
+    if (taskId && task) {
+      if (String(task.farmerId) !== String(request.farmerId)) {
+        throw new AppError("Task farmer mismatch.", {
+          status: 409,
+          code: "TASK_FARMER_MISMATCH",
+        });
+      }
+      if (!task.animalIds || !task.animalIds.some((aid) => String(aid) === String(request.animalId))) {
+        throw new AppError("Task animal mismatch.", {
+          status: 409,
+          code: "TASK_ANIMAL_MISMATCH",
+        });
+      }
+
+      task.status = "Completed";
+      task.completedAt = new Date();
+      task.relatedRecordType = "health";
+      task.relatedRecordId = request._id;
+      if (!task.metadata) task.metadata = {};
+      task.metadata.requestId = request._id;
+      await task.save({ session });
+    }
+
     await MedicalRecord.updateOne(
       { healthRequestId: request._id },
       {
@@ -644,11 +723,44 @@ export const resolveHealthRequest = ({
       },
       { upsert: true, session },
     );
+
+    await AuditLog.create([{
+      action: "RESOLVE_HEALTH_REQUEST",
+      actorId: technicianId,
+      actorType: "Technician",
+      entityId: request._id,
+      entityType: "HealthRequest",
+      details: { status: "resolved", taskId: task ? task._id : undefined },
+      createdAt: new Date(),
+    }], { session });
+
+    await AnimalTimelineEvent.create([{
+      animalId: request.animalId,
+      eventType: "Health Check",
+      occurredAt: new Date(),
+      title: "Health Check Completed",
+      summary: updateFields.diagnosis || "Health issue resolved",
+      sourceType: "HealthRequest",
+      sourceId: request._id,
+      metadata: {
+        taskId: task ? task._id : undefined,
+        technicianId,
+        diagnosis: updateFields.diagnosis
+      }
+    }], { session });
+
     return request;
   });
 
-export const createResolvedWalkInHealth = ({ requestData, medicalRecord }) =>
+export const createResolvedWalkInHealth = ({ requestData, medicalRecord, taskId }) =>
   runTransaction(async (session) => {
+    if (taskId) {
+      throw new AppError("Walk-in health records cannot be linked to a pre-existing task.", {
+        status: 400,
+        code: "WALKIN_TASK_FORBIDDEN",
+      });
+    }
+
     const [request] = await HealthRequest.create([requestData], { session });
     const [record] = await MedicalRecord.create(
       [
@@ -659,6 +771,28 @@ export const createResolvedWalkInHealth = ({ requestData, medicalRecord }) =>
       ],
       { session },
     );
+
+    await AuditLog.create([{
+      action: "CREATE_WALKIN_HEALTH",
+      actorId: medicalRecord.technicianId,
+      actorType: "Technician",
+      entityId: request._id,
+      entityType: "HealthRequest",
+      details: { medicalRecordId: record._id },
+      createdAt: new Date(),
+    }], { session });
+
+    await AnimalTimelineEvent.create([{
+      animalId: request.animalId,
+      eventType: "Health Check",
+      occurredAt: new Date(),
+      title: "Walk-in Health Check Completed",
+      summary: "Walk-in health log recorded",
+      sourceType: "HealthRequest",
+      sourceId: request._id,
+      metadata: { technicianId: medicalRecord.technicianId }
+    }], { session });
+
     return { request, medicalRecord: record };
   });
 

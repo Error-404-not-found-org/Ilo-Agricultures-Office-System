@@ -4,6 +4,8 @@ import { addToOfflineQueue, createStableId, createTemporaryId } from "../lib/off
 import NetInfo from "@react-native-community/netinfo";
 import { AxiosInstance } from "axios";
 import { toast } from "sonner-native";
+import { useUser } from "@clerk/clerk-expo";
+import { queryClient } from "../lib/queryClient";
 
 const OFFLINE_FALLBACK_TIMEOUT_MS = 7000;
 const CONNECTIVITY_CHECK_TIMEOUT_MS = 1500;
@@ -73,6 +75,8 @@ export async function executeOfflineMutation<TData = any, TVariables = any>(
   variables: TVariables,
   idempotencyKeyInput?: string,
   onLifecycleStateChange?: (state: OfflineMutationLifecycleState) => void,
+  ownerUserId?: string,
+  ownerRole?: string,
 ): Promise<MutationResult<TData>> {
   const idempotencyKey = idempotencyKeyInput || createStableId();
   const queueMutation = async (
@@ -88,6 +92,8 @@ export async function executeOfflineMutation<TData = any, TVariables = any>(
       tempId,
       entityType: params.entityType,
       idempotencyKey: queueIdempotencyKey,
+      ownerUserId,
+      ownerRole,
     });
 
     onLifecycleStateChange?.("queued");
@@ -195,17 +201,26 @@ export function useOfflineMutation<TData = any, TError = any, TVariables = any, 
   options?: OfflineMutationOptions<TData, TError, TVariables, TContext>,
 ) {
   const api = useApi();
+  const { user } = useUser();
   const { onLifecycleStateChange, ...mutationOptions } = options || {};
 
   return useMutation({
     ...mutationOptions,
     mutationFn: async (variables: TVariables): Promise<MutationResult<TData>> => {
+      const dbUserResponse = queryClient.getQueryData(["mongodb-user", user?.id]) as any;
+      const ownerUserId = dbUserResponse?.user?._id;
+      const ownerRole = dbUserResponse?.user?.role;
+      if (!ownerUserId) {
+        throw new Error("Cannot execute offline mutation without an authoritative user session");
+      }
       return executeOfflineMutation<TData, TVariables>(
         api,
         params,
         variables,
         undefined,
         onLifecycleStateChange,
+        ownerUserId,
+        ownerRole
       );
     },
     onSuccess: (data, variables, context, mutation) => {

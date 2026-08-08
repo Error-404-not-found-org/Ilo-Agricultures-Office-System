@@ -32,17 +32,18 @@ export default function TechnicianDashboardScreen() {
 
   const {
     clerkUser,
-    dbUser,
     loading,
     refreshing,
     onRefresh,
-    stats,
     unreadCount,
-    agendaItems,
+    workItems,
+    todayWorkItems,
+    workLoading,
     pendingRequests,
     profileWarningVisible,
     setProfileWarningVisible,
     handleAction,
+    handleRequestReview,
     isUpdating,
   } = useTechnicianDashboardScreen();
 
@@ -99,23 +100,21 @@ export default function TechnicianDashboardScreen() {
             alignSelf: "center",
           }}
         >
-          <TechnicianStatsCard loading={loading} agendaItems={agendaItems} />
+          <TechnicianStatsCard loading={workLoading} workItems={workItems} />
 
           <TechnicianQuickActions />
 
           <TechnicianRouteSection
-            loading={loading}
-            agendaItems={agendaItems}
-            dbUser={dbUser}
+            loading={workLoading}
+            workItems={todayWorkItems}
             handleAction={handleAction}
           />
 
           <TechnicianRequestsSection
             loading={loading}
             pendingRequests={pendingRequests}
-            dbUser={dbUser}
             isUpdating={isUpdating}
-            handleAction={handleAction}
+            handleAction={handleRequestReview}
           />
         </View>
       </ScrollView>

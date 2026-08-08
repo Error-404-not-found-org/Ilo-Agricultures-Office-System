@@ -127,26 +127,87 @@ const isResolvedMilestone = (milestone: FarmerMilestone) => {
 const toAttentionItem = (milestone: FarmerMilestone): FarmerAttentionItem | null => {
   if (isResolvedMilestone(milestone)) return null;
 
-  const daysLeft = Number(milestone.daysLeft ?? 0);
+  const daysLeft = milestone.daysLeft !== null &&
+    milestone.daysLeft !== undefined &&
+    Number.isFinite(Number(milestone.daysLeft))
+    ? Number(milestone.daysLeft)
+    : null;
   const animalReference = formatAnimalReference(milestone.animal);
   const isPregnancyCheck = milestone.type === "pd_check";
+  const isCalving = milestone.type === "calving";
+  const hasVerificationTask = Boolean(milestone.taskId) &&
+    ["awaiting_confirmation", "pending", "in_progress"].includes(
+      String(milestone.status || "").toLowerCase(),
+    );
   const urgency: FarmerAttentionItem["urgency"] =
-    daysLeft < 0
+    hasVerificationTask
+      ? "awaiting"
+      : isCalving && daysLeft !== null && daysLeft <= 0
+        ? "due_today"
+        : daysLeft !== null && daysLeft < 0
       ? "overdue"
       : daysLeft === 0
         ? "due_today"
-        : isPregnancyCheck
+        : isPregnancyCheck && milestone.pregnancyReadiness?.isEligible !== true
           ? "awaiting"
           : "actionable";
 
-  const displayTitle = isPregnancyCheck && daysLeft > 0
-    ? `Pregnancy check available in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
-    : milestone.title || (milestone.type === "calving" ? "Calving check" : "Breeding action");
-  const displaySubtitle = daysLeft < 0
-    ? `${animalReference} · Overdue by ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"}`
-    : daysLeft === 0
+  let displayTitle = milestone.title || "Breeding action";
+  let displaySubtitle = animalReference;
+  let guidance = "Review this animal's breeding record.";
+  let actionLabel = "View Animal";
+  let actionKind: FarmerAttentionItem["actionKind"] = "view_animal";
+
+  if (milestone.type === "heat_check") {
+    displayTitle = "Breeding Follow-up";
+    displaySubtitle = daysLeft === 0
       ? `${animalReference} · Due today`
-      : `${animalReference} · ${urgency === "awaiting" ? "Not yet available" : `Due in ${daysLeft} days`}`;
+      : daysLeft !== null && daysLeft < 0
+        ? `${animalReference} · Follow-up window open`
+        : `${animalReference}${daysLeft !== null ? ` · Due in ${daysLeft} day${daysLeft === 1 ? "" : "s"}` : ""}`;
+    guidance = hasVerificationTask
+      ? "Breeding signs reported. Awaiting technician review."
+      : "Check whether this animal returned to heat.";
+    actionLabel = hasVerificationTask ? "View Animal" : "Report Signs";
+    actionKind = hasVerificationTask ? "view_animal" : "report_signs";
+  } else if (isPregnancyCheck) {
+    if (hasVerificationTask) {
+      displayTitle = "Pregnancy check requested";
+      displaySubtitle = `${animalReference} · Awaiting technician confirmation`;
+      guidance = "A technician verification task is already active.";
+    } else if (milestone.pregnancyReadiness?.isEligible) {
+      displayTitle = "Pregnancy Confirmation Due";
+      displaySubtitle = `${animalReference} · Available now`;
+      guidance = "A technician can now perform the pregnancy check.";
+      actionLabel = "Request Technician Check";
+      actionKind = "request_pregnancy_check";
+    } else {
+      displayTitle = "Pregnancy Confirmation";
+      displaySubtitle = daysLeft !== null && daysLeft > 0
+        ? `${animalReference} · Available in ${daysLeft} day${daysLeft === 1 ? "" : "s"}`
+        : `${animalReference} · Not yet available`;
+      guidance = milestone.pregnancyReadiness?.reason ||
+        "The technician pregnancy check is not yet available.";
+    }
+  } else if (isCalving) {
+    if (daysLeft !== null && daysLeft < 0) {
+      displayTitle = "Past Expected Calving Date";
+      displaySubtitle = `${animalReference} · ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} past expected date`;
+      guidance = "Please update the outcome when known.";
+      actionLabel = "Record Outcome";
+      actionKind = "record_calving";
+    } else if (daysLeft === 0) {
+      displayTitle = "Expected Calving Today";
+      displaySubtitle = `${animalReference} · Today`;
+      guidance = "Has calving occurred?";
+      actionLabel = "Record Calving";
+      actionKind = "record_calving";
+    } else {
+      displayTitle = "Expected Calving";
+      displaySubtitle = `${animalReference}${daysLeft !== null ? ` · Expected in ${daysLeft} day${daysLeft === 1 ? "" : "s"}` : ""}`;
+      guidance = "Prepare for the expected calving date.";
+    }
+  }
 
   return {
     ...milestone,
@@ -154,6 +215,9 @@ const toAttentionItem = (milestone: FarmerMilestone): FarmerAttentionItem | null
     displaySubtitle,
     urgency,
     animalReference,
+    guidance,
+    actionLabel,
+    actionKind,
   };
 };
 

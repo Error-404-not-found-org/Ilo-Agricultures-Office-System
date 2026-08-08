@@ -1,0 +1,56 @@
+[
+  {
+    "code": "063034000",
+    "name": "Oton",
+    "level": "Mun",
+    "provinceCode": "063000000",
+    "provinceName": "Iloilo",
+    "regionCode": "060000000",
+    "regionName": "Region VI"
+  },
+  {
+    "code": "063043000",
+    "name": "Tigbauan",
+    "level": "Mun",
+    "provinceCode": "063000000",
+    "provinceName": "Iloilo",
+    "regionCode": "060000000",
+    "regionName": "Region VI"
+  },
+  {
+    "code": "063031000",
+    "name": "Miagao",
+    "level": "Mun",
+    "provinceCode": "063000000",
+    "provinceName": "Iloilo",
+    "regionCode": "060000000",
+    "regionName": "Region VI"
+  },
+  {
+    "code": "063022000",
+    "name": "Iloilo City",
+    "level": "City",
+    "provinceCode": "063000000",
+    "provinceName": "Iloilo",
+    "regionCode": "060000000",
+    "regionName": "Region VI"
+  },
+  {
+    "code": "063018000",
+    "name": "Guimbal",
+    "level": "Mun",
+    "provinceCode": "063000000",
+    "provinceName": "Iloilo",
+    "regionCode": "060000000",
+    "regionName": "Region VI"
+  },
+  {
+    "code": "063035000",
+    "name": "Passi City",
+    "level": "City",
+    "provinceCode": "063000000",
+    "provinceName": "Iloilo",
+    "regionCode": "060000000",
+    "regionName": "Region VI"
+  }
+]

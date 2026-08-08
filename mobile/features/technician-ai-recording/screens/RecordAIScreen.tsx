@@ -8,7 +8,10 @@ import { AsyncState } from "@/components/shared/AsyncState";
 import { useTheme } from "@/lib/theme";
 import { getAIEligibility } from "@/lib/reproductionEligibility";
 import { safeBack } from "@/utils/navigation";
-import { useWalkInInseminationMutation } from "@/features/technician/hooks/useTechnicianFieldRecords";
+import {
+  useWalkInInseminationMutation,
+  useCompleteAIRequestMutation,
+} from "@/features/technician/hooks/useTechnicianFieldRecords";
 import {
   formatLocalCalendarDate,
   formatLocalTime,
@@ -74,11 +77,14 @@ export default function RecordAIScreen() {
     isRequestLoading,
     requestError,
   } = useRecordAIContext();
-  const recordingMutation = useWalkInInseminationMutation();
+  const requestMutation = useCompleteAIRequestMutation(
+    mode.kind === "request-linked" ? mode.workflowId : "placeholder",
+  );
+  const walkInMutation = useWalkInInseminationMutation();
   const submissionLockRef = useRef(false);
   const [values, setValues] = useState<AIRecordingValues>(initialValues);
   const [reviewSnapshot, setReviewSnapshot] = useState<ReviewSnapshot | null>(null);
-  const saving = recordingMutation.isPending;
+  const saving = requestMutation.isPending || walkInMutation.isPending;
 
   const updateValues = (next: Partial<AIRecordingValues>) => {
     setValues((current) => ({ ...current, ...next }));
@@ -158,17 +164,15 @@ export default function RecordAIScreen() {
     let accepted = false;
 
     try {
-      let payload: RequestLinkedInseminationPayload | DirectInseminationPayload;
+      let payload: RequestLinkedInseminationPayload | DirectInseminationPayload | any;
       if (mode.kind === "request-linked") {
         if (!requestContext || requestContext.workflowId !== mode.workflowId) {
           throw new Error("The official AI request context is no longer available.");
         }
         payload = {
-          farmerId: requestContext.farmer._id,
-          animalId: requestContext.animal._id,
-          requestId: mode.workflowId,
+          status: "done",
           ...(mode.taskId ? { taskId: mode.taskId } : {}),
-          inseminationDetails: reviewSnapshot.details,
+          ...reviewSnapshot.details,
         };
       } else if (mode.kind === "direct") {
         payload = {
@@ -184,7 +188,12 @@ export default function RecordAIScreen() {
         throw new Error("This AI recording link is invalid.");
       }
 
-      const result = await recordingMutation.mutateAsync(payload);
+      let result;
+      if (mode.kind === "request-linked") {
+        result = await requestMutation.mutateAsync(payload);
+      } else {
+        result = await walkInMutation.mutateAsync(payload);
+      }
       accepted = result.status === "synced" || result.status === "queued";
       if (!accepted) {
         throw new Error("The AI recording was not accepted.");

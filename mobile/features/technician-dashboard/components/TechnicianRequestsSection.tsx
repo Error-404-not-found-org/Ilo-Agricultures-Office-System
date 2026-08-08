@@ -4,7 +4,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   Hand,
-  LockKeyhole,
   MapPin,
   Send,
   Stethoscope,
@@ -28,7 +27,6 @@ import { TECHNICIAN_DASHBOARD_CARD_CLASSNAME } from "./dashboardCardStyles";
 interface TechnicianRequestsSectionProps {
   loading: boolean;
   pendingRequests: any[];
-  dbUser: any;
   isUpdating: boolean;
   handleAction: (item: any) => void;
 }
@@ -36,7 +34,6 @@ interface TechnicianRequestsSectionProps {
 export function TechnicianRequestsSection({
   loading,
   pendingRequests,
-  dbUser,
   isUpdating,
   handleAction,
 }: TechnicianRequestsSectionProps) {
@@ -79,27 +76,10 @@ export function TechnicianRequestsSection({
         </View>
       ) : (
         previewRequests.map((request: any, index: number) => {
-          const assignedTechnicianId =
-            request.raw?.approvedBy?._id ||
-            request.raw?.approvedBy ||
-            request.raw?.handledBy?._id ||
-            request.raw?.handledBy ||
-            null;
-          const assignedTechnicianName =
-            request.raw?.approvedBy?.name ||
-            request.raw?.handledBy?.name ||
-            (assignedTechnicianId ? "another technician" : null);
-          const assignedToOther =
-            assignedTechnicianId &&
-            dbUser?._id &&
-            String(assignedTechnicianId) !== String(dbUser._id);
-
           return (
             <RequestRow
               key={`${request.type}-${request._id || request.id || index}`}
               item={request}
-              isLocked={assignedToOther}
-              lockedByName={assignedTechnicianName}
               isUpdating={isUpdating}
               onPress={() => handleAction(request)}
             />
@@ -113,8 +93,6 @@ export function TechnicianRequestsSection({
 function RequestRow({
   item,
   onPress,
-  isLocked,
-  lockedByName,
   isUpdating,
 }: any) {
   const { colors, isDark } = useTheme();
@@ -143,7 +121,7 @@ function RequestRow({
     item.raw?.requestedAt ||
     item.sentTime;
 
-  const badgeInfo = getTechnicianRequestBadge(item, isLocked);
+  const badgeInfo = getTechnicianRequestBadge(item);
   const ServiceIcon = isPregnancyCheck
     ? ClipboardCheck
     : isHealth
@@ -203,7 +181,7 @@ function RequestRow({
             numberOfLines={1}
             style={{ flex: 1, color: colors.textPrimary }}
           >
-            {item.farmer || "Farmer"}
+            {item.farmer || "Farmer Request"}
           </Text>
           <StatusBadge
             label={badgeInfo.label}
@@ -280,26 +258,7 @@ function RequestRow({
               numberOfLines={1}
               style={{ flex: 1, color: colors.warningForeground }}
             >
-              Tap to review and claim
-            </Text>
-          </View>
-        ) : isLocked ? (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-              marginTop: 4,
-            }}
-          >
-            <LockKeyhole size={13} color={colors.warning} />
-            <Text
-              variant="semibold"
-              size={12}
-              numberOfLines={1}
-              style={{ flex: 1, color: colors.warningForeground }}
-            >
-              Assigned to {lockedByName}
+              Tap to review request
             </Text>
           </View>
         ) : null}
@@ -307,5 +266,6 @@ function RequestRow({
 
       <ChevronRight size={18} color={colors.textMuted} />
     </TouchableOpacity>
+
   );
 }

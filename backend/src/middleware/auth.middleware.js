@@ -5,6 +5,22 @@ import {
 
 export { getClerkUserId } from "../services/auth-user.service.js";
 
+// Middleware purely for checking Clerk authentication, bypassing MongoDB resolution errors
+export const requireClerkAuthentication = (req, res, next) => {
+  const clerkId = getClerkUserId(req);
+
+  if (!clerkId) {
+    return res.status(401).json({
+      message: "Authentication is required.",
+      code: "AUTH_REQUIRED",
+      retryable: false,
+    });
+  }
+
+  req.clerkId = clerkId;
+  next();
+};
+
 // Protected route middleware returning JSON 401 instead of 302 Found redirect
 export const protectedRoute = async (req, res, next) => {
   try {
@@ -17,6 +33,7 @@ export const protectedRoute = async (req, res, next) => {
     }
 
     if (req.userResolutionError) {
+      // Allow bootstrap requests to bypass this error by not using protectedRoute
       return res.status(503).json({
         message: "Your account could not be loaded. Please try again.",
         code: "USER_RESOLUTION_FAILED",
@@ -25,7 +42,16 @@ export const protectedRoute = async (req, res, next) => {
     }
 
     let user = req.user || (await resolveOrSyncUser(clerkId));
-    if (user && (user.deletedAt || user.status === "suspended")) {
+
+    if (!user) {
+      return res.status(503).json({
+        message: "User profile could not be loaded.",
+        code: "USER_PROFILE_UNAVAILABLE",
+        retryable: true,
+      });
+    }
+
+    if (user.deletedAt || user.status === "suspended" || user.status === "deleted") {
       const isSuspended = user.status === "suspended";
       console.warn(
         `[AUTH] Blocked ${isSuspended ? "suspended" : "deactivated"} account.`,
@@ -34,7 +60,7 @@ export const protectedRoute = async (req, res, next) => {
         message: isSuspended
           ? "Account has been suspended."
           : "Account has been deactivated.",
-        code: isSuspended ? "ACCOUNT_SUSPENDED" : "ACCOUNT_DEACTIVATED",
+        code: isSuspended ? "ACCOUNT_SUSPENDED" : "ACCOUNT_DELETED",
       });
     }
 
@@ -42,10 +68,12 @@ export const protectedRoute = async (req, res, next) => {
     next();
   } catch (error) {
     console.error("[AUTH ERROR]", error.message);
-    res.status(500).json({
-      message: "Internal server error",
-      code: "AUTH_RESOLUTION_ERROR",
-      retryable: true,
+    const code = error.code || "AUTH_RESOLUTION_ERROR";
+    const status = error.status || 500;
+    res.status(status).json({
+      message: error.message || "Internal server error",
+      code: code,
+      retryable: error.retryable !== false,
     });
   }
 };
@@ -70,4 +98,4 @@ export const AdminOnly = requireRole(["admin"]);
 
 // Example: Technician-only route
 export const TechnicianOnly = requireRole(["technician"]);
-export const ClinicalOnly = requireRole(["technician", "veterinarian", "admin"]);
+export const ClinicalOnly = requireRole(["technician", "admin"]);

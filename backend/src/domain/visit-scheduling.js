@@ -1,0 +1,119 @@
+import { AppError } from "../utils/app-error.js";
+
+export const VISIT_PERIODS = Object.freeze(["morning", "afternoon"]);
+export const VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES = 8 * 60;
+
+const invalidField = (message, code) =>
+  new AppError(message, { status: 400, code });
+
+export const normalizeVisitPeriod = (value) => {
+  if (value === undefined || value === null) return undefined;
+
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!VISIT_PERIODS.includes(normalized)) {
+    throw invalidField(
+      "Visit period must be morning or afternoon.",
+      "INVALID_VISIT_PERIOD",
+    );
+  }
+  return normalized;
+};
+
+// The new date-only scheduling operation persists the selected Philippine
+// calendar day at 12:00 Asia/Manila (04:00 UTC). Noon is a neutral storage
+// anchor, not an appointment time; visitPeriod remains the service window.
+export const normalizeVisitScheduleDate = (value, { now = new Date() } = {}) => {
+  if (value === undefined || value === null || value === "") {
+    throw invalidField(
+      "A visit date is required before scheduling.",
+      "SCHEDULE_DATE_REQUIRED",
+    );
+  }
+
+  let year;
+  let month;
+  let day;
+  if (typeof value === "string") {
+    const text = value.trim();
+    const match = text.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T)/);
+    const hasValidTimestamp =
+      text.length === 10 || !Number.isNaN(Date.parse(text));
+    if (match && hasValidTimestamp) {
+      year = Number(match[1]);
+      month = Number(match[2]);
+      day = Number(match[3]);
+    }
+  } else if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const manilaValue = new Date(
+      value.getTime() + VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES * 60 * 1000,
+    );
+    year = manilaValue.getUTCFullYear();
+    month = manilaValue.getUTCMonth() + 1;
+    day = manilaValue.getUTCDate();
+  }
+
+  const calendarCheck = new Date(Date.UTC(year, month - 1, day));
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    calendarCheck.getUTCFullYear() !== year ||
+    calendarCheck.getUTCMonth() !== month - 1 ||
+    calendarCheck.getUTCDate() !== day
+  ) {
+    throw invalidField("Visit date is invalid.", "INVALID_SCHEDULE_DATE");
+  }
+
+  const manilaNow = new Date(
+    now.getTime() + VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES * 60 * 1000,
+  );
+  const selectedDay = Date.UTC(year, month - 1, day);
+  const today = Date.UTC(
+    manilaNow.getUTCFullYear(),
+    manilaNow.getUTCMonth(),
+    manilaNow.getUTCDate(),
+  );
+  if (selectedDay < today) {
+    throw invalidField(
+      "Visit date cannot be in the past.",
+      "SCHEDULE_DATE_IN_PAST",
+    );
+  }
+
+  return new Date(
+    Date.UTC(
+      year,
+      month - 1,
+      day,
+      12 - VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES / 60,
+    ),
+  );
+};
+
+export const getVisitCalendarDayRange = (anchorDate) => {
+  if (!anchorDate || !(anchorDate instanceof Date) || Number.isNaN(anchorDate.getTime())) {
+    return null;
+  }
+  
+  const manilaValue = new Date(
+    anchorDate.getTime() + VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES * 60 * 1000,
+  );
+  const year = manilaValue.getUTCFullYear();
+  const month = manilaValue.getUTCMonth();
+  const day = manilaValue.getUTCDate();
+  
+  const startOfDay = new Date(Date.UTC(year, month, day, 0 - (VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES / 60)));
+  const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
+  
+  return { start: startOfDay, end: endOfDay };
+};
+
+export const hasVisitScheduleChanged = (currentDate, currentPeriod, targetDate, targetPeriod) => {
+  const currentKey = currentDate ? currentDate.getTime() : null;
+  const targetKey = targetDate ? targetDate.getTime() : null;
+  
+  if (currentKey !== targetKey) return true;
+  if (currentPeriod !== targetPeriod) return true;
+  
+  return false;
+};

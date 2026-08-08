@@ -1,7 +1,7 @@
 import React from "react";
 import { Image, Pressable, View } from "react-native";
 import {
-  CalendarDays,
+  Send,
   Link2,
   MapPin,
   PawPrint,
@@ -25,9 +25,6 @@ import {
 
 interface RequestListCardProps {
   item: RequestItem;
-  isUpdating: boolean;
-  onAccept: () => void;
-  onDecline: () => void;
   onPress: () => void;
 }
 
@@ -40,26 +37,18 @@ function formatDate(dateValue?: string) {
     month: "short",
     day: "numeric",
     year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
   });
 }
 
 export function RequestListCard({
   item,
-  isUpdating,
-  onAccept,
-  onDecline,
   onPress,
 }: RequestListCardProps) {
   const { colors, isDark } = useTheme();
-  const isHealth = item.type === "health";
+  const isHealth = item.workflowType === "Health" || item.type === "health";
   const isAIRequest = item.workflowType === "AI" || item.type === "ai";
-  const isCanonicalAI = item.workflowType === "AI";
   const isPregnancyCheck = item.type === "breeding_verification";
   const normalizedStatus = item.status.toLowerCase();
-  const cancellationRequested =
-    item.raw?.cancellationStatus === "requested";
   const isUrgent = item.urgency === "urgent";
   const isReInsemination =
     item.type === "ai" && Boolean(item.raw?.previousAttemptId);
@@ -87,29 +76,30 @@ export function RequestListCard({
             ? "Calving Assistance"
             : "Other service";
 
-  const primaryActionLabel = isAIRequest
-    ? isCanonicalAI
-      ? item.actionLabel
-      : null
+  const primaryActionLabel = isAIRequest || isHealth
+    ? "Review Request"
     : isPregnancyCheck
     ? "Open task"
     : normalizedStatus === "pending"
-      ? "Claim"
-      : ["approved", "assigned", "triaged"].includes(normalizedStatus)
-        ? "Schedule"
-        : normalizedStatus === "scheduled"
-          ? "Start"
-          : isHealth
-            ? "Resolve"
+        ? "Claim"
+        : ["approved", "assigned", "triaged"].includes(normalizedStatus)
+          ? "Schedule"
+          : normalizedStatus === "scheduled"
+            ? "Start"
             : "Complete";
 
   const displayDate =
-    item.scheduledDate || item.preferredDate || item.createdAt;
+    isAIRequest || isHealth
+      ? item.createdAt
+      : item.scheduledDate || item.preferredDate || item.createdAt;
   const animalLabel = [item.breed, item.earTag || item.animal]
     .filter(Boolean)
     .join(" · ");
   const locationLabel =
-    item.locationLabel || item.location || "Location not provided";
+    item.locationLabel ||
+    item.location ||
+    [item.barangay, item.municipality].filter(Boolean).join(", ") ||
+    "Location not provided";
   const typeIcon = isPregnancyCheck
     ? "clipboard-pulse-outline"
     : isHealth
@@ -130,11 +120,13 @@ export function RequestListCard({
       ? colors.warningContainer
       : colors.tint;
 
+  const farmerLabel = item.farmer?.trim() || "Farmer Request";
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${serviceLabel} request from ${item.farmer}`}
+      accessibilityLabel={`Open ${serviceLabel} request from ${farmerLabel}`}
       className="mb-3 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm active:opacity-80 dark:border-slate-800 dark:bg-slate-900"
     >
       <View
@@ -175,7 +167,7 @@ export function RequestListCard({
               lineHeight: 20,
             }}
           >
-            {item.farmer}
+            {farmerLabel}
           </Text>
           <View
             style={{
@@ -307,7 +299,7 @@ export function RequestListCard({
           colors={colors}
         />
         <MetadataRow
-          icon={CalendarDays}
+          icon={Send}
           text={formatDate(displayDate)}
           colors={colors}
         />
@@ -322,54 +314,19 @@ export function RequestListCard({
         />
       </View>
 
-      {!isClosed && (!isAIRequest || primaryActionLabel) ? (
+      {!isClosed && primaryActionLabel ? (
         <View
           style={{
-            flexDirection: "row",
-            gap: 8,
             marginTop: 16,
           }}
         >
-          {cancellationRequested ? (
-            <Button
-              label="Review cancellation"
-              variant="destructive"
-              className="flex-1"
-              loading={isUpdating}
-              onPress={(event) => {
-                event.stopPropagation();
-                onPress();
-              }}
-            />
-          ) : (
-            <>
-              {!isPregnancyCheck &&
-              !isAIRequest &&
-              ["pending", "approved", "assigned", "triaged"].includes(
-                normalizedStatus,
-              ) ? (
-                <Button
-                  label="Skip"
-                  variant="outline"
-                  className="flex-1"
-                  disabled={isUpdating}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    onDecline();
-                  }}
-                />
-              ) : null}
-              <Button
-                label={primaryActionLabel || "Open"}
-                className="flex-1"
-                loading={isUpdating}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  onAccept();
-                }}
-              />
-            </>
-          )}
+          <Button
+            label={primaryActionLabel}
+            onPress={(event) => {
+              event.stopPropagation();
+              onPress();
+            }}
+          />
         </View>
       ) : null}
     </Pressable>

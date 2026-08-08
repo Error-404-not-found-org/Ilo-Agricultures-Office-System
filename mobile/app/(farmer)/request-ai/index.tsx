@@ -19,14 +19,11 @@ import {
   X,
   Check,
   AlertCircle,
-  Clock,
 } from "lucide-react-native";
 import React, { useState, useEffect, useRef } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { toast } from "sonner-native";
-import { validateRequestTime } from "@/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useOfflineMutation } from "@/hooks/useOfflineMutation";
 import { useTheme } from "@/lib/theme";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
@@ -41,8 +38,8 @@ import {
   useFarmerAnimalsForAiQuery,
   useFarmerSelfProfileQuery,
   useMyAIRequestsQuery,
-  useSystemConfigQuery,
 } from "@/features/farmer-requests/hooks/useFarmerRequestForms";
+import { buildFarmerAIRequestPayload } from "@/features/farmer-requests/utils/payloadBuilders";
 import {
   findActiveAIRequestForAnimal,
   AI_REQUEST_INVALIDATION_KEYS,
@@ -192,8 +189,6 @@ export default function RequestAI() {
   const [comment, setComment] = useState("");
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
-  const [preferredDate, setPreferredDate] = useState<Date | null>(null);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState<string | null>(null);
 
   const [profileModalVisible, setProfileModalVisible] = useState(false);
   const [farmPinModalVisible, setFarmPinModalVisible] = useState(false);
@@ -231,8 +226,6 @@ export default function RequestAI() {
   });
   const previousAttempt = previousAttemptData;
 
-  const { data: config } = useSystemConfigQuery();
-
   const mutation = useOfflineMutation(
     {
       url: isReInsemination
@@ -245,7 +238,7 @@ export default function RequestAI() {
       onSuccess: (result) => {
         if (result.status === "synced") {
           toast.success(
-            "AI request submitted! A technician will contact you soon.",
+            "AI request submitted. A technician will review your request and schedule the visit.",
             { duration: 4000, position: "top-center" },
           );
         }
@@ -254,8 +247,6 @@ export default function RequestAI() {
         setComment("");
         setImageUri(null);
         setImageBase64(null);
-        setPreferredDate(null);
-        setSelectedTimeSlot(null);
 
         for (const queryKey of AI_REQUEST_INVALIDATION_KEYS) {
           queryClient.invalidateQueries({ queryKey: [...queryKey] });
@@ -299,21 +290,7 @@ export default function RequestAI() {
 
   // UI states
   const [animalModalVisible, setAnimalModalVisible] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [timeModalVisible, setTimeModalVisible] = useState(false);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
-
-  const TIME_SLOTS = [
-    "08:00 AM",
-    "09:00 AM",
-    "10:00 AM",
-    "11:00 AM",
-    "01:00 PM",
-    "02:00 PM",
-    "03:00 PM",
-    "04:00 PM",
-    "05:00 PM",
-  ];
 
   const { data: profile, isLoading: loadingProfile } =
     useFarmerSelfProfileQuery();
@@ -373,27 +350,19 @@ export default function RequestAI() {
   };
 
   const submitRequest = async () => {
-    if (!selectedAnimal || !preferredDate) return;
+    if (!selectedAnimal) return;
 
-    const selectedLabels = HEAT_SIGNS.filter((s) =>
-      selectedSigns.includes(s.id),
-    ).map((s) => `• ${s.label}`);
-    const formattedComment = [
-      "Observed Heat Signs:\n" + selectedLabels.join("\n"),
-      comment.trim() ? `Additional Notes:\n${comment.trim()}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n");
+    const payload = buildFarmerAIRequestPayload(
+      selectedAnimal._id,
+      imageBase64,
+      comment,
+      selectedSigns,
+      HEAT_SIGNS
+    );
 
     setIsSubmitting(true);
     try {
-      await mutation.mutateAsync({
-        animalId: selectedAnimal._id,
-        imageUrl: imageBase64,
-        comment: formattedComment,
-        heatSigns: selectedSigns,
-        preferredDate: preferredDate.toISOString(),
-      });
+      await mutation.mutateAsync(payload);
     } catch {
       // Handled by react-query mutation callbacks
     } finally {
@@ -458,27 +427,6 @@ export default function RequestAI() {
         return;
       }
 
-      if (!preferredDate) {
-        showSubmitError("Please select a preferred visit date.");
-        return;
-      }
-
-      if (!selectedTimeSlot) {
-        showSubmitError("Please select a preferred time slot.");
-        return;
-      }
-
-      const validation = validateRequestTime(
-        preferredDate,
-        !!config?.isHoliday,
-      );
-      if (!validation.isValid) {
-        showSubmitError(validation.message || "Invalid request time.", {
-          duration: 5000,
-        });
-        return;
-      }
-
       if (!skipFarmPinWarning && !hasFarmPin) {
         setFarmPinModalVisible(true);
         return;
@@ -488,34 +436,6 @@ export default function RequestAI() {
     } finally {
       submitLockRef.current = false;
     }
-  };
-
-  const onDateChange = (event: any, selectedDate?: Date) => {
-    setShowDatePicker(false);
-    if (event.type === "set" && selectedDate) {
-      const baseDate = preferredDate ? new Date(preferredDate) : new Date(selectedDate);
-      baseDate.setFullYear(
-        selectedDate.getFullYear(),
-        selectedDate.getMonth(),
-        selectedDate.getDate(),
-      );
-      setPreferredDate(baseDate);
-    }
-  };
-
-  const handleSelectTime = (timeStr: string) => {
-    setTimeModalVisible(false);
-    setSelectedTimeSlot(timeStr);
-
-    const [time, modifier] = timeStr.split(" ");
-    let [hours, minutes] = time.split(":").map(Number);
-
-    if (modifier === "PM" && hours < 12) hours += 12;
-    if (modifier === "AM" && hours === 12) hours = 0;
-
-    const baseDate = preferredDate ? new Date(preferredDate) : new Date();
-    baseDate.setHours(hours, minutes, 0, 0);
-    setPreferredDate(baseDate);
   };
 
   return (
@@ -568,9 +488,8 @@ export default function RequestAI() {
                 className="text-xs mt-1 leading-5"
                 style={{ color: colors.textSecondary }}
               >
-                Select an eligible female animal, record observed heat signs,
-                and choose your preferred visit time. A technician will confirm
-                the final schedule.
+                Select an eligible female animal and record the heat signs you observed.
+                A technician will review your request and schedule the visit.
               </Text>
             </View>
           </View>
@@ -795,83 +714,6 @@ export default function RequestAI() {
                 )}
               </View>
             </View>
-          )}
-
-          {/* ── Preferred Date/Time Picker ───────────────────────────────── */}
-          <Text
-            className="text-xs font-bold uppercase tracking-widest mb-2 ml-1"
-            style={[requestFormStyles.fieldLabel, { color: colors.textMuted }]}
-          >
-            Preferred Visit Date/Time *
-          </Text>
-          <View className="flex-row gap-3 mb-5">
-            <TouchableOpacity
-              onPress={() => setShowDatePicker(true)}
-              className="flex-1 border rounded-2xl px-4 py-4 flex-row items-center justify-between"
-              style={{
-                elevation: 1,
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              }}
-            >
-              <View>
-                <Text
-                  className="text-[11px] font-medium uppercase tracking-widest"
-                  style={[requestFormStyles.compactLabel, { color: colors.textMuted }]}
-                >
-                  Date
-                </Text>
-                <Text
-                  className="text-[15px] font-bold"
-                  style={[
-                    requestFormStyles.fieldValue,
-                    { color: preferredDate ? colors.textPrimary : colors.textMuted },
-                  ]}
-                >
-                  {preferredDate ? preferredDate.toLocaleDateString() : "Select date"}
-                </Text>
-              </View>
-              <Clock size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setTimeModalVisible(true)}
-              className="flex-1 border rounded-2xl px-4 py-4 flex-row items-center justify-between"
-              style={{
-                elevation: 1,
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              }}
-            >
-              <View>
-                <Text
-                  className="text-[11px] font-medium uppercase tracking-widest"
-                  style={[requestFormStyles.compactLabel, { color: colors.textMuted }]}
-                >
-                  Time Slot
-                </Text>
-                <Text
-                  className="text-[15px] font-bold"
-                  style={[
-                    requestFormStyles.fieldValue,
-                    { color: selectedTimeSlot ? colors.textPrimary : colors.textMuted },
-                  ]}
-                >
-                  {selectedTimeSlot || "Select time"}
-                </Text>
-              </View>
-              <Clock size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-
-          {showDatePicker && (
-            <DateTimePicker
-              value={preferredDate || new Date()}
-              mode="date"
-              display="default"
-              onChange={onDateChange}
-              minimumDate={new Date()}
-            />
           )}
 
           {/* ── Observed Heat Signs Checklists ───────────────────────────── */}
@@ -1250,98 +1092,6 @@ export default function RequestAI() {
                 )}
               />
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── Time Slot Selection Modal ─────────────────────────────────────────── */}
-      <Modal
-        animationType="fade"
-        transparent
-        visible={timeModalVisible}
-        onRequestClose={() => setTimeModalVisible(false)}
-      >
-        <View className="flex-1 bg-black/40 justify-center px-6">
-          <View
-            className="rounded-[32px] p-6 shadow-2xl"
-            style={{ backgroundColor: colors.card }}
-          >
-            <View className="flex-row justify-between items-center mb-6">
-              <View>
-                <Text
-                  className="text-xl font-bold"
-                  style={{ color: colors.textPrimary }}
-                >
-                  Select Time Slot
-                </Text>
-                <Text
-                  className="text-xs mt-1"
-                  style={{ color: colors.textMuted }}
-                >
-                  Available service hours: 8 AM - 5 PM
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setTimeModalVisible(false)}
-                className="p-2 rounded-full"
-                style={{
-                  backgroundColor: isDark ? colors.background : "#f8fafc",
-                }}
-              >
-                <X size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <View className="flex-row flex-wrap gap-3 justify-between">
-              {TIME_SLOTS.map((slot) => {
-                const isSelected = selectedTimeSlot === slot;
-                return (
-                  <TouchableOpacity
-                    key={slot}
-                    onPress={() => handleSelectTime(slot)}
-                    className="w-[30%] py-3 rounded-2xl items-center border"
-                    style={{
-                      backgroundColor: isSelected
-                        ? isDark
-                          ? colors.primary
-                          : "#00643B"
-                        : isDark
-                          ? colors.background
-                          : "#f8fafc",
-                      borderColor: isSelected
-                        ? isDark
-                          ? colors.primary
-                          : "#00643B"
-                        : colors.border,
-                    }}
-                  >
-                    <Text
-                      className="text-[12px] font-bold"
-                      style={{
-                        color: isSelected ? "#fff" : colors.textPrimary,
-                      }}
-                    >
-                      {slot}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <TouchableOpacity
-              onPress={() => setTimeModalVisible(false)}
-              className="mt-8 py-4 rounded-2xl items-center"
-              style={{
-                backgroundColor: isDark ? colors.background : "#f1f5f9",
-              }}
-            >
-              <Text
-                className="font-bold"
-                style={{ color: colors.textSecondary }}
-              >
-                Close
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>

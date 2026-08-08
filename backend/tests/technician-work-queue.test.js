@@ -228,15 +228,16 @@ test("Technician Work Queue backend contract", async (t) => {
       const request = requests.body.requests[0];
       assert.equal(String(request.workflowId), ids.pending);
       assert.equal(request.allowedAction, "CLAIM_AND_SCHEDULE");
-      assert.equal(request.actionLabel, "Claim & Set Visit");
-      assert.equal(request.farmer, farmer.name);
-      assert.equal(request.farmerPhone, farmer.phoneNumber);
-      assert.equal(request.phone, farmer.phoneNumber);
-      assert.equal(request.animal, animal.animalId);
-      assert.equal(request.location, "San Roque, Iloilo City");
+      assert.equal(request.actionLabel, "Accept & Set Visit");
+      const expectedKeys = [
+        "id", "workflowId", "workflowType", "type", "serviceType",
+        "status", "allowedAction", "actionLabel", "isReadyToday", "displayStatus",
+        "urgency", "animal", "earTag", "breed", "species", "municipality", "barangay",
+        "preferredDate", "scheduledDate", "visitPeriod", "heatSigns", "requestSubmissionDate", "createdAt", "farmer"
+      ].sort();
+      assert.deepEqual(Object.keys(request).sort(), expectedKeys);
+      assert.equal(request.farmer, "Maria Santos");
       assert.deepEqual(request.heatSigns, ["standing heat"]);
-      assert.equal(request.attachments.count, 1);
-      assert.equal(request.requestSubmissionDate.toISOString(), "2026-08-01T00:00:00.000Z");
 
       const workQueue = responseRecorder();
       await getWorkQueue(
@@ -260,6 +261,16 @@ test("Technician Work Queue backend contract", async (t) => {
           _id: ids.secondScheduled,
           scheduledDate: sharedSchedule,
           visitPeriod: "afternoon",
+          attemptNumber: 2,
+          attemptSeriesId: ids.pendingAssigned,
+          previousAttemptId: {
+            _id: ids.pending,
+            attemptNumber: 1,
+            status: "done",
+            isSuccess: false,
+            outcome: "Failed (Re-heat)",
+            outcomeVerificationStatus: "verified",
+          },
         }),
         aiRecord({
           _id: ids.inProgress,
@@ -348,6 +359,16 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(second.workflowId, ids.secondScheduled);
       assert.equal(second.taskId, ids.linkedSecondAiTask);
       assert.equal(second.schedule.visitPeriod, "afternoon");
+      assert.equal(second.requestKind, "re_insemination");
+      assert.equal(second.attemptNumber, 2);
+      assert.equal(second.previousAttemptId, ids.pending);
+      assert.equal(second.attemptSeriesId, ids.pendingAssigned);
+      assert.equal(second.previousAttemptOutcome, "Failed (Re-heat)");
+      assert.equal(second.previousAttemptVerified, true);
+
+      assert.equal(scheduled.requestKind, "initial_ai");
+      assert.equal(scheduled.attemptNumber, 1);
+      assert.equal(scheduled.previousAttemptVerified, false);
 
       const legacy = byId.get(ids.inProgress);
       assert.equal(legacy.allowedAction, "RECORD_SERVICE");

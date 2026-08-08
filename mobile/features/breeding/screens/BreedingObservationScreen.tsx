@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   ScrollView,
-  StatusBar,
   Switch,
   Text,
   TextInput,
@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { ArrowLeft, CheckCircle2, Circle, Send } from "lucide-react-native";
+import { Camera, CheckCircle2, Circle, Send, X } from "lucide-react-native";
 import { differenceInCalendarDays, format } from "date-fns";
 import { toast } from "sonner-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -20,6 +20,9 @@ import { safeBack } from "@/utils/navigation";
 import { generatePregnancyTimeline } from "@/lib/cattleCore";
 import { usePregnancyTrackerQuery } from "../hooks/usePregnancyTracker";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { AppPageHeader } from "@/components/AppPageHeader";
+import { PhotoOptionModal } from "@/components/PhotoOptionModal";
+import { pickImageFromSource } from "@/lib/imagePickerHelper";
 import {
   BreedingObservationType,
   BreedingObservationPayload,
@@ -33,11 +36,18 @@ type BreedingObservationScreenProps = {
   requestVerification?: boolean;
 };
 
-const reportOptions: Array<{
+type EvidencePhoto = {
+  uri: string;
+  base64: string;
+};
+
+const MAX_EVIDENCE_PHOTOS = 3;
+
+const reportOptions: {
   value: BreedingObservationType;
   title: string;
   description: string;
-}> = [
+}[] = [
   {
     value: "possible_pregnancy",
     title: "Possible pregnancy",
@@ -79,48 +89,12 @@ const signsByReport: Record<BreedingObservationType, string[]> = {
 };
 
 function BreedingObservationSkeleton() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
     <FarmerScreen scroll={false}>
-      <StatusBar barStyle="light-content" />
-
-      {/* Header matching real screen green banner */}
-      <View
-        style={{
-          paddingTop: insets.top + 16,
-          paddingHorizontal: 24,
-          paddingBottom: 24,
-          backgroundColor: "#00643B",
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-          flexDirection: "row",
-          alignItems: "center",
-        }}
-      >
-        <TouchableOpacity
-          disabled
-          className="w-10 h-10 rounded-full items-center justify-center"
-          style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View className="ml-4 flex-1 gap-2">
-          <Skeleton
-            width="60%"
-            height={20}
-            radius={4}
-            style={{ backgroundColor: "rgba(255,255,255,0.25)" }}
-          />
-          <Skeleton
-            width="40%"
-            height={10}
-            radius={3}
-            style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-          />
-        </View>
-      </View>
+      <AppPageHeader title="Breeding Observation" onBack={() => safeBack()} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -215,6 +189,9 @@ export function BreedingObservationScreen({
   const [notes, setNotes] = useState("");
   const [verificationRequested, setVerificationRequested] =
     useState(requestVerification);
+  const [evidencePhotos, setEvidencePhotos] = useState<EvidencePhoto[]>([]);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [isPickingPhoto, setIsPickingPhoto] = useState(false);
 
   const animal = animalQuery.data;
   const latestInsemination = useMemo(() => {
@@ -246,13 +223,15 @@ export function BreedingObservationScreen({
   const dayAfterAi = aiDate
     ? Math.max(0, differenceInCalendarDays(new Date(), aiDate))
     : null;
-  const verificationMinimumDay = reportType === "return_to_heat" ? 18 : 35;
-  const verificationBlocked =
-    dayAfterAi !== null && dayAfterAi < verificationMinimumDay;
+  const pregnancyReadiness = latestInsemination?.pregnancyReadiness;
+  const verificationBlocked = reportType === "return_to_heat"
+    ? dayAfterAi !== null && dayAfterAi < 18
+    : pregnancyReadiness?.isEligible === false;
   const verificationNotice =
     reportType === "return_to_heat"
       ? `Return-to-heat follow-up is usually useful around Day 18 post-AI. You can still save this observation.`
-      : `Pregnancy verification is usually available around Day 35-60 after AI. You can still save this observation.`;
+      : pregnancyReadiness?.reason ||
+        "Pregnancy verification is not yet available under the current policy. You can still save this observation.";
 
   useEffect(() => {
     if (verificationBlocked && verificationRequested) {
@@ -268,6 +247,38 @@ export function BreedingObservationScreen({
     );
   };
 
+  const handleSelectPhoto = async (source: "camera" | "library") => {
+    if (evidencePhotos.length >= MAX_EVIDENCE_PHOTOS) {
+      toast.error(`You can attach up to ${MAX_EVIDENCE_PHOTOS} photos.`);
+      return;
+    }
+
+    setIsPickingPhoto(true);
+    try {
+      const result = await pickImageFromSource(source, { aspect: [4, 3] });
+      if (!result) return;
+
+      if (!/^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(result.base64)) {
+        toast.error("This photo could not be prepared. Please choose it again.");
+        return;
+      }
+
+      setEvidencePhotos((current) => [
+        ...current,
+        { uri: result.uri, base64: result.base64 },
+      ]);
+      toast.success("Photo evidence added.");
+    } finally {
+      setIsPickingPhoto(false);
+    }
+  };
+
+  const removeEvidencePhoto = (index: number) => {
+    setEvidencePhotos((current) =>
+      current.filter((_, photoIndex) => photoIndex !== index),
+    );
+  };
+
   const submit = async () => {
     const targetRequestId = requestId || latestInsemination?._id;
     if (!targetRequestId) {
@@ -279,6 +290,7 @@ export function BreedingObservationScreen({
       reportType,
       signs: selectedSigns,
       notes,
+      evidencePhotos: evidencePhotos.map((photo) => photo.base64),
       verificationRequested,
     };
 
@@ -313,59 +325,22 @@ export function BreedingObservationScreen({
 
   if (animalQuery.isError || !animal) {
     return (
-      <FarmerScreen style={{ alignItems: "center", justifyContent: "center" }}>
-        <AsyncState
-          state="error"
-          message="Breeding information could not be loaded."
-          onAction={() => animalQuery.refetch()}
-        />
+      <FarmerScreen scroll={false}>
+        <AppPageHeader title="Breeding Observation" onBack={() => safeBack()} />
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <AsyncState
+            state="error"
+            message="Breeding information could not be loaded."
+            onAction={() => animalQuery.refetch()}
+          />
+        </View>
       </FarmerScreen>
     );
   }
 
   return (
     <FarmerScreen scroll={false}>
-      <StatusBar barStyle="light-content" />
-      <View
-        style={{
-          paddingTop: insets.top + 16,
-          paddingHorizontal: 24,
-          paddingBottom: 24,
-          backgroundColor: "#00643B",
-          borderBottomLeftRadius: 30,
-          borderBottomRightRadius: 30,
-          flexDirection: "row",
-          alignItems: "center",
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => safeBack()}
-          className="w-10 h-10 rounded-full items-center justify-center"
-          style={{ backgroundColor: "rgba(255,255,255,0.15)" }}
-        >
-          <ArrowLeft size={20} color="white" />
-        </TouchableOpacity>
-        <View className="ml-4 flex-1">
-          <Text
-            style={{
-              color: "white",
-              fontFamily: "Outfit_900Black",
-              fontSize: 22,
-            }}
-          >
-            Breeding Observation
-          </Text>
-          <Text
-            style={{
-              color: "rgba(255,255,255,0.75)",
-              fontFamily: "Outfit_500Medium",
-              fontSize: 12,
-            }}
-          >
-            Tell the technician what you observed
-          </Text>
-        </View>
-      </View>
+      <AppPageHeader title="Breeding Observation" onBack={() => safeBack()} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -435,7 +410,7 @@ export function BreedingObservationScreen({
                 ["Ultrasound window", timeline.ultrasoundCheckDate],
                 ["Pregnancy check", timeline.palpationCheckDate],
                 ["Expected calving", timeline.expectedCalvingDate],
-              ] as Array<[string, Date]>
+              ] as [string, Date][]
             ).map(([label, value]) => (
               <View
                 key={String(label)}
@@ -580,6 +555,116 @@ export function BreedingObservationScreen({
         />
 
         <View
+          className="rounded-2xl p-4 border mb-5"
+          style={{ backgroundColor: colors.card, borderColor: colors.border }}
+        >
+          <View className="flex-row items-center justify-between gap-3">
+            <Text
+              style={{
+                color: colors.textPrimary,
+                fontFamily: "Outfit_700Bold",
+                fontSize: 14,
+              }}
+            >
+              Photo evidence
+            </Text>
+            <View
+              className="rounded-full px-3 py-1"
+              style={{ backgroundColor: colors.surfaceSubtle }}
+            >
+              <Text
+                style={{
+                  color: colors.textSecondary,
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 12,
+                }}
+              >
+                Optional
+              </Text>
+            </View>
+          </View>
+
+          <Text
+            style={{
+              color: colors.textSecondary,
+              fontFamily: "Outfit_400Regular",
+              fontSize: 12,
+              lineHeight: 17,
+              marginTop: 6,
+            }}
+          >
+            Add photos of visible signs to help the technician review your
+            observation. Photos do not replace technician verification.
+          </Text>
+
+          <View className="flex-row flex-wrap gap-3 mt-4">
+            {evidencePhotos.map((photo, index) => (
+              <View key={`${photo.uri}-${index}`} className="relative">
+                <Image
+                  source={{ uri: photo.uri }}
+                  accessibilityLabel={`Photo evidence ${index + 1}`}
+                  className="w-20 h-20 rounded-xl"
+                  resizeMode="cover"
+                />
+                <TouchableOpacity
+                  onPress={() => removeEvidencePhoto(index)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove photo evidence ${index + 1}`}
+                  className="absolute -top-2 -right-2 w-8 h-8 rounded-full items-center justify-center"
+                  style={{ backgroundColor: colors.modalBackdrop }}
+                >
+                  <X size={16} color={colors.onPrimary} />
+                </TouchableOpacity>
+              </View>
+            ))}
+
+            {evidencePhotos.length < MAX_EVIDENCE_PHOTOS ? (
+              <TouchableOpacity
+                onPress={() => setPhotoModalVisible(true)}
+                disabled={isPickingPhoto}
+                accessibilityRole="button"
+                accessibilityLabel="Add photo evidence"
+                className="w-20 h-20 rounded-xl border items-center justify-center"
+                style={{
+                  backgroundColor: colors.surfaceSubtle,
+                  borderColor: colors.border,
+                  opacity: isPickingPhoto ? 0.7 : 1,
+                }}
+              >
+                {isPickingPhoto ? (
+                  <ActivityIndicator color={colors.primary} />
+                ) : (
+                  <>
+                    <Camera size={20} color={colors.primary} />
+                    <Text
+                      style={{
+                        color: colors.primary,
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 12,
+                        marginTop: 6,
+                      }}
+                    >
+                      Add photo
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <Text
+            style={{
+              color: colors.textMuted,
+              fontFamily: "Outfit_400Regular",
+              fontSize: 12,
+              marginTop: 12,
+            }}
+          >
+            {evidencePhotos.length} of {MAX_EVIDENCE_PHOTOS} photos added
+          </Text>
+        </View>
+
+        <View
           className="rounded-2xl p-4 border flex-row items-center justify-between mb-6"
           style={{
             backgroundColor: colors.card,
@@ -634,11 +719,11 @@ export function BreedingObservationScreen({
 
         <TouchableOpacity
           onPress={submit}
-          disabled={submitMutation.isPending}
+          disabled={submitMutation.isPending || isPickingPhoto}
           className="rounded-2xl py-4 items-center justify-center flex-row"
           style={{
             backgroundColor: colors.primary,
-            opacity: submitMutation.isPending ? 0.7 : 1,
+            opacity: submitMutation.isPending || isPickingPhoto ? 0.7 : 1,
           }}
         >
           {submitMutation.isPending ? (
@@ -660,6 +745,14 @@ export function BreedingObservationScreen({
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      <PhotoOptionModal
+        visible={photoModalVisible}
+        onClose={() => setPhotoModalVisible(false)}
+        onSelectCamera={() => handleSelectPhoto("camera")}
+        onSelectLibrary={() => handleSelectPhoto("library")}
+        title="Add photo evidence"
+      />
     </FarmerScreen>
   );
 }

@@ -3,17 +3,18 @@ import { Buffer } from 'buffer';
 // @ts-ignore
 import { decode, encode } from 'base-64';
 
-import { 
+import {
   useFonts,
   Outfit_400Regular,
   Outfit_500Medium,
   Outfit_600SemiBold,
   Outfit_700Bold,
   Outfit_800ExtraBold,
-  Outfit_900Black 
+  Outfit_900Black
 } from '@expo-google-fonts/outfit';
 import "../global.css"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
+import { useQuery } from "@tanstack/react-query";
 import { queryClient, persistOptions } from "../lib/queryClient";
 import { tokenCache } from "../utils/cache";
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
@@ -117,11 +118,30 @@ function AppContent({
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       queryClient.clear();
-      AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE').catch(err => 
+      AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE').catch(err =>
         console.error("Failed to clear AsyncStorage react-query cache", err)
       );
     }
   }, [isLoaded, isSignedIn]);
+
+  const { signOut } = useAuth();
+
+  const {
+    data: dbUserResponse,
+    isLoading: isDbUserLoading,
+    error: dbUserError,
+    refetch: retryBootstrap,
+  } = useQuery({
+    queryKey: ["mongodb-user", user?.id],
+    queryFn: async () => {
+      const res = await api.post("/user/bootstrap");
+      return res.data;
+    },
+    enabled: !!(isSignedIn && user),
+    retry: false, // Do not automatically retry 401/403/409 errors
+  });
+
+  const dbUser = dbUserResponse?.user;
 
   // Auth Guard Logic
   useEffect(() => {
@@ -137,36 +157,39 @@ function AppContent({
     const isActuallySignedIn = isSignedIn && !!user;
 
     if (isActuallySignedIn) {
-      const role = user?.publicMetadata?.role;
-      const verified = user?.publicMetadata?.isVerified === true || 
-                       user?.primaryEmailAddress?.verification.status === 'verified';
+      if (isDbUserLoading) {
+        return; // Wait for the authoritative bootstrap response
+      }
 
-      // 1. Verification Guard
-      if (!verified) {
-        if (!isVerifying) {
-          router.replace('/(auth)/verify');
-        }
-        // If they are unverified, stop evaluating routing rules so they stay on the verify screen.
+      if (dbUserError) {
+        // Do not route to dashboard if bootstrap failed
         return;
       }
 
-      // 2. Redirect to correct dashboard
-      const atRoot = routeSegments.length === 0 || routeSegments[0] === '';
-      
-      // FIX: Only consider it a "wrong group" if the role is actually loaded/defined
-      // This prevents the "bounce" effect while role metadata is still syncing
-      const wrongGroup = role ? (
-        (inAdminGroup && role !== 'admin') || 
-        (inTechnicianGroup && role !== 'technician') ||
-        (inFarmerGroup && (role === 'technician' || role === 'admin'))
-      ) : false;
+      if (dbUser) {
+        const role = dbUser.role;
+        const verified = dbUser.isVerified;
 
-      // Since we returned early for unverified users, anyone hitting this block IS verified.
-      // If a verified user is in the auth group or at root, send them to their dashboard.
-      if (inAuthGroup || atRoot || wrongGroup) {
-        if (role === 'admin') router.replace('/(admin)/(tabs)/admin.dashboard');
-        else if (role === 'technician') router.replace('/(technician)/(tabs)/technician.dashboard');
-        else router.replace('/(farmer)/(tabs)');
+        // 1. Verification Guard
+        if (!verified) {
+          if (!isVerifying) {
+            router.replace('/(auth)/verify');
+          }
+          return;
+        }
+
+        // 2. Redirect to correct dashboard based on authoritative MongoDB role
+        const atRoot = routeSegments.length === 0 || routeSegments[0] === '';
+
+        const wrongGroup = (inAdminGroup && role !== 'admin') ||
+                           (inTechnicianGroup && role !== 'technician') ||
+                           (inFarmerGroup && (role === 'technician' || role === 'admin'));
+
+        if (inAuthGroup || atRoot || wrongGroup) {
+          if (role === 'admin') router.replace('/(admin)/(tabs)/admin.dashboard');
+          else if (role === 'technician') router.replace('/(technician)/(tabs)/technician.dashboard');
+          else router.replace('/(farmer)/(tabs)');
+        }
       }
     } else if (isLoaded && !isSignedIn) {
       // 3. Force Auth
@@ -174,7 +197,50 @@ function AppContent({
         router.replace('/(auth)');
       }
     }
-  }, [isSignedIn, isLoaded, user, segments, navigationState?.key]);
+  }, [isSignedIn, isLoaded, user, dbUser, isDbUserLoading, dbUserError, segments, navigationState?.key]);
+  if (isSignedIn && isDbUserLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator size="large" color="#00643B" />
+        <Text style={{ marginTop: 12, fontFamily: 'Outfit_600SemiBold', color: '#004D2E' }}>
+          Loading your profile...
+        </Text>
+      </View>
+    );
+  }
+
+  if (isSignedIn && dbUserError) {
+    const errorStatus = (dbUserError as any)?.response?.status;
+    const errorMsg = (dbUserError as any)?.response?.data?.message || "Account setup failed.";
+
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <MaterialCommunityIcons name="alert-circle-outline" size={48} color="#ef4444" />
+        <Text style={{ fontSize: 20, fontFamily: 'Outfit_700Bold', marginTop: 16, textAlign: 'center', color: isDark ? '#f8fafc' : '#1e293b' }}>
+          {errorStatus === 403 ? "Account Disabled" : errorStatus === 409 ? "Identity Conflict" : "Setup Incomplete"}
+        </Text>
+        <Text style={{ marginTop: 12, textAlign: 'center', fontFamily: 'Outfit_400Regular', color: isDark ? '#cbd5e1' : '#64748b' }}>
+          {errorMsg}
+        </Text>
+
+        {errorStatus !== 403 && errorStatus !== 409 && (
+          <TouchableOpacity
+            onPress={() => retryBootstrap()}
+            style={{ marginTop: 24, backgroundColor: '#00643B', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
+          >
+            <Text style={{ color: 'white', fontFamily: 'Outfit_600SemiBold' }}>Retry Setup</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          onPress={() => signOut()}
+          style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 12 }}
+        >
+          <Text style={{ color: '#ef4444', fontFamily: 'Outfit_600SemiBold' }}>Sign Out</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>
@@ -184,7 +250,7 @@ function AppContent({
           contentStyle: { backgroundColor: colors.background },
         }}
       />
-      
+
       {/* Persistent connectivity banner. Kept at the top of the screen. */}
       {showOfflineToast && (
         <View
@@ -312,6 +378,14 @@ function AppContent({
 function InitialLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
+  const dbUserResponse = queryClient.getQueryData(["mongodb-user", user?.id]) as any;
+  const currentUserId = dbUserResponse?.user?._id;
+  const currentUserIdRef = useRef<string | undefined>(currentUserId);
+
+  useEffect(() => {
+    currentUserIdRef.current = currentUserId;
+  }, [currentUserId]);
+
   const [appReady, setAppReady] = useState(false);
   const { setColorScheme } = useNativeWindColorScheme();
   const api = useApi();
@@ -405,7 +479,7 @@ function InitialLayout() {
             offlineBannerTimeoutRef.current = null;
           }
           toast.dismiss("connection-offline");
-          processOfflineQueue(api);
+          processOfflineQueue(api, () => currentUserIdRef.current);
           setShowOfflineToast(false);
           if (!isToastCooldownRef.current && prev === false) {
             setShowOnlineToast(true);
@@ -434,7 +508,7 @@ function InitialLayout() {
         if (isOfflineMode && !isToastCooldownRef.current) {
           setShowOfflineToast(true);
         } else if (isConnected) {
-          processOfflineQueue(api);
+          processOfflineQueue(api, () => currentUserIdRef.current);
         }
       }
       connectionRef.current = isConnected;
@@ -517,7 +591,7 @@ function InitialLayout() {
           marginBottom: 32,
           lineHeight: 20,
         }}>
-          {isOffline 
+          {isOffline
             ? "Please check your internet connection or turn on your mobile data or Wi-Fi to log in."
             : "We are having difficulty connecting to our secure authentication servers. Please verify your connection or try again."}
         </Text>
@@ -558,12 +632,12 @@ function InitialLayout() {
     const subtextColor = '#64748b';
 
     return (
-      <View style={{ 
-        flex: 1, 
-        backgroundColor: splashBg, 
-        alignItems: 'center', 
+      <View style={{
+        flex: 1,
+        backgroundColor: splashBg,
+        alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 24 
+        paddingHorizontal: 24
       }}>
         {/* Layered Decorative Background Glows */}
         <View style={{
@@ -604,28 +678,28 @@ function InitialLayout() {
             borderWidth: 1,
             borderColor: '#f1f5f9',
           }}>
-            <Image 
-              source={require('../assets/logo.png')} 
-              style={{ width: 110, height: 110, borderRadius: 55 }} 
-              resizeMode="contain" 
+            <Image
+              source={require('../assets/logo.png')}
+              style={{ width: 110, height: 110, borderRadius: 55 }}
+              resizeMode="contain"
             />
           </View>
 
           {/* Typography */}
-          <Text style={{ 
-            color: brandNameColor, 
-            fontFamily: 'Outfit_900Black', 
-            fontSize: 34, 
+          <Text style={{
+            color: brandNameColor,
+            fontFamily: 'Outfit_900Black',
+            fontSize: 34,
             letterSpacing: 0.5,
             marginBottom: 4,
           }}>
             BreedSmart
           </Text>
 
-          <Text style={{ 
-            color: accentText, 
-            fontFamily: 'Outfit_600SemiBold', 
-            fontSize: 12, 
+          <Text style={{
+            color: accentText,
+            fontFamily: 'Outfit_600SemiBold',
+            fontSize: 12,
             letterSpacing: 2.5,
             textTransform: 'uppercase',
             marginBottom: 40,
@@ -647,10 +721,10 @@ function InitialLayout() {
             gap: 12
           }}>
             <ActivityIndicator size="small" color="#00643B" />
-            <Text style={{ 
-              color: brandNameColor, 
-              fontFamily: 'Outfit_700Bold', 
-              fontSize: 10, 
+            <Text style={{
+              color: brandNameColor,
+              fontFamily: 'Outfit_700Bold',
+              fontSize: 10,
               letterSpacing: 1.5,
               opacity: 0.85
             }}>

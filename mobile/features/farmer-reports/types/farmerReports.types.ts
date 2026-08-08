@@ -51,6 +51,7 @@ export interface ActivityFeedItem {
     previousAttemptDate?: string;
     inseminationDate?: string;
     scheduledDate?: string;
+    visitPeriod?: "morning" | "afternoon" | null;
     preferredDate?: string;
     requestedAt?: string;
     serviceDate?: string;
@@ -62,9 +63,16 @@ export interface ActivityFeedItem {
     requestType?: string;
     symptoms?: string;
     urgency?: string;
+    farmerNotes?: string;
     diagnosis?: string;
     treatment?: string;
+    medicine?: string;
+    dosage?: string;
     advice?: string;
+    followUpDate?: string;
+    withdrawalPeriod?: string;
+    withdrawalPeriodDays?: number;
+    withdrawalEndDate?: string;
     targetCalvingDate?: string;
 
     calvingEase?: string;

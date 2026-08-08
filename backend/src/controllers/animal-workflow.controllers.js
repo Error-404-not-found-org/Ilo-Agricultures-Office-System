@@ -68,7 +68,7 @@ const recordMatchesSearch = (record, search) => {
 
 export const getOfficialRecords = async (req, res) => {
   try {
-    const allowedRoles = ["farmer", "technician", "veterinarian", "admin"];
+    const allowedRoles = ["farmer", "technician", "admin"];
     if (!allowedRoles.includes(req.user.role)) {
       throw new AppError("You cannot access official animal records.", {
         status: 403,
@@ -180,6 +180,10 @@ export const getOfficialRecords = async (req, res) => {
               )
               .populate("farmerId", "name phoneNumber address")
               .populate("technicianId", "name role")
+              .populate(
+                "healthRequestId",
+                "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+              )
               .lean()
           : [],
       ]);
@@ -318,11 +322,15 @@ export const getAnimalHealthHistory = async (req, res) => {
     const [healthRequests, medicalRecords] = await Promise.all([
       HealthRequest.find(healthQuery)
         .sort({ createdAt: -1 })
-        .populate("handledBy assignedVeterinarianId", "name role")
+        .populate("handledBy assignedTechnicianId", "name role")
         .lean(),
       MedicalRecord.find(medicalQuery)
         .sort({ date: -1 })
         .populate("technicianId", "name role")
+        .populate(
+          "healthRequestId",
+          "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+        )
         .lean(),
     ]);
     const visibleHealthRequests = excludeRequestsWithOfficialMedicalRecords(
@@ -413,11 +421,15 @@ export const getAnimalRecords = async (req, res) => {
         .lean(),
       HealthRequest.find(healthQuery)
         .sort({ createdAt: -1 })
-        .populate("handledBy assignedVeterinarianId", "name role")
+        .populate("handledBy assignedTechnicianId", "name role")
         .lean(),
       MedicalRecord.find(medicalQuery)
         .sort({ date: -1 })
         .populate("technicianId", "name role")
+        .populate(
+          "healthRequestId",
+          "requestType symptoms urgency farmerNotes advice followUpDate resolutionNotes",
+        )
         .lean(),
     ]);
     const visibleHealthRequests = excludeRequestsWithOfficialMedicalRecords(
@@ -621,7 +633,7 @@ export const createFarmerAnimalUpdate = async (req, res) => {
     const animal = await getAccessibleAnimal(req.params.id, req.user);
     if (
       req.user.role !== "farmer" &&
-      !["technician", "veterinarian", "admin"].includes(req.user.role)
+      !["technician", "admin"].includes(req.user.role)
     ) {
       throw new AppError("You cannot submit updates for this animal", {
         status: 403,

@@ -7,6 +7,7 @@ import {
 } from "../domain/status-vocabulary.js";
 import { Animal } from "../models/animal.model.js";
 import { User } from "../models/user.model.js";
+import { resolveRequestLocation } from "../domain/geographic/municipalityResolver.js";
 import { Pregnancy } from "../models/pregnancy.model.js";
 import { inngest } from "../config/inngest.js";
 import { checkInseminationAgeEligibility } from "../utils/cattleCore.js";
@@ -42,6 +43,10 @@ import {
   normalizeTechnicianNoteInput,
   normalizeVisitPeriod,
 } from "../domain/ai-recording-fields.js";
+import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
+import { hasVisitScheduleChanged } from "../domain/visit-scheduling.js";
+import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
+import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
 // POST /api/ai-request
 // Farmer submits an AI service request for one of their animals
@@ -193,14 +198,23 @@ export const createAIRequest = async (req, res) => {
       });
     }
 
+    const dispatchLocation = resolveRequestLocation(req.user);
+    const dispatchSnapshot = {
+      location: dispatchLocation,
+      stage: "local",
+      resolutionStatus: dispatchLocation.source === "unresolved" ? "unresolved" : "resolved",
+      version: 1,
+      resolvedAt: new Date()
+    };
+
     const request = await createAIRequestWithGuard({
       farmerId,
       animalId,
       imageUrl: imageUrl || "",
       comment: comment || "",
       heatSigns: heatSigns || [],
-      preferredDate: req.body.preferredDate || new Date(),
       status: "pending",
+      dispatch: dispatchSnapshot,
       ...attemptLink,
     });
     const attemptNumber = request.attemptNumber;
@@ -214,7 +228,7 @@ export const createAIRequest = async (req, res) => {
         title: "AI service requested",
         summary: comment || "Farmer requested artificial insemination service.",
         attachments: imageUrl ? [imageUrl] : [],
-        metadata: { attemptNumber, preferredDate: request.preferredDate },
+        metadata: { attemptNumber },
       }),
       createAuditLog({
         entityType: "Insemination",
@@ -231,52 +245,14 @@ export const createAIRequest = async (req, res) => {
 
     // --- TRIGGER NOTIFICATIONS ---
     try {
-      const technicians = await User.find({ role: "technician" });
-      const admins = await User.find({ role: "admin" });
-      const farmerBarangay = req.user.address?.barangay;
-      const farmerMunicipality =
-        req.user.address?.municipality || req.user.address?.city || "Iloilo";
-      const generalLocation = farmerBarangay
-        ? `Brgy. ${farmerBarangay}, ${farmerMunicipality}`
-        : farmerMunicipality;
-
-      const metadata = {
-        requestId: request._id,
-        animalId: animal._id,
-        animalTag: animal.earTag || animal.animalId,
-        farmerName: req.user.name,
-        serviceType: "ai",
-        location: generalLocation,
-      };
-      await Promise.all([
-        ...technicians.map((technician) =>
-          notifyUser({
-            recipient: technician,
-            senderId: farmerId,
-            type: "ai-request",
-            relatedId: request._id,
-            category: "ai",
-            eventType: "service_request_submitted",
-            linkType: "request",
-            metadata,
-          }),
-        ),
-        ...admins.map((admin) =>
-          notifyUser({
-            recipient: admin,
-            senderId: farmerId,
-            type: "ai-request",
-            relatedId: request._id,
-            category: "ai",
-            eventType: "service_request_submitted",
-            linkType: "request",
-            metadata,
-            sendPush: false,
-          }),
-        ),
-      ]);
+      await notifyDispatchRequestSubmitted({
+        request,
+        requestType: "AI",
+        animal,
+        farmer: req.user,
+      });
     } catch (notifyErr) {
-      console.error("[Notification Trigger Error]", notifyErr.message);
+      console.error("[Notification Delivery Error]", notifyErr.message);
     }
 
     // --- TRIGGER SOCKET UPDATE ---
@@ -518,7 +494,7 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(400).json({ message: "Invalid status value." });
     }
 
-    const normalizedVisitPeriod = normalizeVisitPeriod(visitPeriod);
+    const finalVisitPeriod = visitPeriod !== undefined ? normalizeVisitPeriod(visitPeriod) : undefined;
 
     const existing = await Insemination.findById(id);
     if (!existing) {
@@ -531,11 +507,28 @@ export const updateRequestStatus = async (req, res) => {
       isAdmin: req.user.role === "admin",
     });
 
-    if (status === "scheduled" && !scheduledDate) {
-      return res.status(400).json({
-        message: "A visit date and time are required before scheduling.",
-        code: "SCHEDULE_DATE_REQUIRED",
-      });
+    let normalizedScheduledDate;
+    if (status === "scheduled") {
+      try {
+        if (!scheduledDate) {
+          return res.status(400).json({
+            message: "A visit date is required before scheduling.",
+            code: "SCHEDULE_DATE_REQUIRED",
+          });
+        }
+        if (!visitPeriod) {
+          return res.status(400).json({
+            message: "A visit period is required before scheduling.",
+            code: "VISIT_PERIOD_REQUIRED",
+          });
+        }
+        normalizedScheduledDate = normalizeAIScheduleDate(scheduledDate);
+      } catch (err) {
+        return res.status(400).json({
+          message: err.message,
+          code: err.code || "INVALID_SCHEDULE",
+        });
+      }
     }
 
     if (status === "in-progress" && !existing.scheduledDate) {
@@ -598,52 +591,17 @@ export const updateRequestStatus = async (req, res) => {
       ...assignmentGuard,
     };
 
-    // Schedule conflict guard
-    if ((status === "scheduled" || status === "in-progress") && scheduledDate) {
-      const targetTime = new Date(scheduledDate);
-      if (Number.isNaN(targetTime.getTime())) {
-        return res.status(400).json({ message: "Invalid scheduled date." });
-      }
-      if (targetTime.getTime() < Date.now() - 5 * 60 * 1000) {
-        return res.status(400).json({
-          message: "Scheduled date and time cannot be in the past.",
-        });
-      }
-      const startTime = new Date(targetTime.getTime() - 30 * 60 * 1000);
-      const endTime = new Date(targetTime.getTime() + 30 * 60 * 1000);
-
-      const insemConflict = await Insemination.findOne({
-        _id: { $ne: id },
-        approvedBy: targetTechId,
-        status: "scheduled",
-        scheduledDate: { $gte: startTime, $lte: endTime },
-        deletedAt: null,
-      });
-
-      const healthConflict = await HealthRequest.findOne({
-        _id: { $ne: id },
-        handledBy: targetTechId,
-        status: "scheduled",
-        scheduledDate: { $gte: startTime, $lte: endTime },
-        deletedAt: null,
-      });
-
-      if (insemConflict || healthConflict) {
-        return res.status(409).json({
-          message:
-            "Schedule conflict: The assigned technician already has another visit scheduled within 30 minutes of this time.",
-        });
-      }
-    }
-
     const isRescheduled =
       (existing.status === "approved" ||
         existing.status === "in-progress" ||
         existing.status === "scheduled") &&
-      scheduledDate &&
-      existing.scheduledDate &&
-      new Date(existing.scheduledDate).getTime() !==
-        new Date(scheduledDate).getTime();
+      status === "scheduled" &&
+      hasVisitScheduleChanged(
+        existing.scheduledDate,
+        existing.visitPeriod,
+        normalizedScheduledDate,
+        finalVisitPeriod
+      );
 
     const updateData = {
       status,
@@ -657,8 +615,8 @@ export const updateRequestStatus = async (req, res) => {
       updateData.technicianNote = normalizedTechnicianNote;
     }
 
-    if (normalizedVisitPeriod !== undefined) {
-      updateData.visitPeriod = normalizedVisitPeriod;
+    if (finalVisitPeriod !== undefined) {
+      updateData.visitPeriod = finalVisitPeriod;
     }
 
     if (isActiveAIRequestStatus(status)) {
@@ -668,7 +626,7 @@ export const updateRequestStatus = async (req, res) => {
     }
 
     if (status === "scheduled") {
-      updateData.scheduledDate = new Date(scheduledDate);
+      updateData.scheduledDate = normalizedScheduledDate;
     }
 
     if (status === "in-progress" && startTiming) {
@@ -756,6 +714,7 @@ export const updateRequestStatus = async (req, res) => {
             serviceType: "ai",
             technicianName: req.user.name,
             scheduledDate: request.scheduledDate,
+            visitPeriod: request.visitPeriod,
             reason: normalizedTechnicianNote || "",
           },
         });
@@ -1053,7 +1012,8 @@ export const submitFarmerBreedingObservation = async (req, res) => {
       return res.status(404).json({ message: "Animal not found." });
     }
 
-    // Timing guard: return-to-heat follow-up is useful earlier than pregnancy diagnosis.
+    // Return-to-heat has its own observation window. Pregnancy verification
+    // follows the same configurable readiness policy as official diagnosis.
     if (verificationRequested) {
       const aiDate =
         request.inseminationDate ||
@@ -1064,17 +1024,30 @@ export const submitFarmerBreedingObservation = async (req, res) => {
         const daysSinceAI = Math.floor(
           (Date.now() - new Date(aiDate).getTime()) / (1000 * 60 * 60 * 24),
         );
-        const minimumDays = reportType === "return_to_heat" ? 18 : 35;
-        if (daysSinceAI < minimumDays) {
+        if (reportType === "return_to_heat" && daysSinceAI < 18) {
           return res.status(400).json({
-            message:
-              reportType === "return_to_heat"
-                ? `Return-to-heat follow-up is usually useful around Day 18 post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please keep monitoring or submit your observation without requesting verification.`
-                : `Pregnancy verification is typically accurate after 35 days post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please wait or submit your observation without requesting verification.`,
+            message: `Return-to-heat follow-up is usually useful around Day 18 post-AI. It has only been ${daysSinceAI} day(s) since insemination. Please keep monitoring or submit your observation without requesting verification.`,
             code: "VERIFICATION_TOO_EARLY",
             daysSinceAI,
-            minimumDays,
+            minimumDays: 18,
           });
+        }
+        if (reportType !== "return_to_heat") {
+          const policyResolution = await loadPregnancyConfirmationPolicy();
+          const readiness = getPregnancyCheckReadiness({
+            insemination: request,
+            policy: policyResolution.policy,
+            species: animal.species,
+          });
+          if (!readiness.isEligible) {
+            return res.status(400).json({
+              message: readiness.reason,
+              code: "VERIFICATION_TOO_EARLY",
+              daysSinceAI: readiness.daysPostAI,
+              minimumDays: readiness.minimumDays,
+              pregnancyReadiness: readiness,
+            });
+          }
         }
       }
     }
@@ -1134,6 +1107,31 @@ export const submitFarmerBreedingObservation = async (req, res) => {
     if (technicianVerificationRequired) {
       if (request.verificationTaskId) {
         verificationTask = await Task.findById(request.verificationTaskId);
+        if (
+          verificationTask &&
+          !["Pending", "In Progress"].includes(verificationTask.status)
+        ) {
+          verificationTask = null;
+        }
+      }
+
+      if (!verificationTask) {
+        verificationTask = await Task.findOne({
+          farmerId: req.user._id,
+          animalIds: animal._id,
+          taskType: "PD",
+          status: { $in: ["Pending", "In Progress"] },
+          $or: [
+            { "metadata.inseminationId": request._id },
+            {
+              relatedRecordType: "insemination",
+              relatedRecordId: request._id,
+            },
+          ],
+        });
+        if (verificationTask) {
+          request.verificationTaskId = verificationTask._id;
+        }
       }
 
       if (!verificationTask) {
@@ -1395,6 +1393,72 @@ export const getUpcomingVisits = async (req, res) => {
   }
 };
 
+const safeCandidateText = (value) =>
+  typeof value === "string" ? value.trim() : "";
+
+export const buildCandidateAIDetail = (request) => {
+  const farmer =
+    request?.farmerId && typeof request.farmerId === "object"
+      ? request.farmerId
+      : {};
+  const address =
+    farmer.address && typeof farmer.address === "object"
+      ? farmer.address
+      : {};
+  const dispatchLocation = request?.dispatch?.location || {};
+
+  return {
+    id: request._id,
+    _id: request._id,
+    workflowId: request._id,
+    workflowType: "AI",
+    allowedAction: "CLAIM_AND_SCHEDULE",
+    actionLabel: "Accept & Set Visit",
+    type: request.type,
+    serviceType: "Artificial Insemination",
+    status: request.status,
+    urgency: request.urgency,
+    preferredDate: request.preferredDate,
+    createdAt: request.createdAt,
+    updatedAt: request.updatedAt,
+    heatSigns: request.heatSigns,
+    farmerNotes: safeCandidateText(request.comment),
+    comment: safeCandidateText(request.comment),
+    imageUrl: safeCandidateText(request.imageUrl),
+    animalId: request.animalId,
+    farmerName: safeCandidateText(farmer.name),
+    municipality:
+      safeCandidateText(dispatchLocation.municipalityName) ||
+      safeCandidateText(address.administrativeArea?.municipalityName) ||
+      safeCandidateText(address.municipality) ||
+      safeCandidateText(address.city),
+    barangay:
+      safeCandidateText(dispatchLocation.barangayName) ||
+      safeCandidateText(address.administrativeArea?.barangayName) ||
+      safeCandidateText(address.barangay),
+  };
+};
+
+export const buildTechnicianCandidateAIDetail = (request) => {
+  const candidate = buildCandidateAIDetail(request);
+  const farmer =
+    request?.farmerId && typeof request.farmerId === "object"
+      ? request.farmerId
+      : {};
+
+  return {
+    ...candidate,
+    farmerId: {
+      _id: farmer._id,
+      name: safeCandidateText(farmer.name),
+      phoneNumber: safeCandidateText(farmer.phoneNumber),
+      imageUrl: safeCandidateText(farmer.imageUrl),
+      address: farmer.address || null,
+      farmLocation: farmer.farmLocation || null,
+    },
+  };
+};
+
 // GET /api/ai-request/:id
 export const getAIRequestDetail = async (req, res) => {
   try {
@@ -1507,24 +1571,27 @@ export const getAIRequestDetail = async (req, res) => {
     requestObj.nextAction = nextAction;
     requestObj.nextActionAt = nextAction?.at || null;
 
-    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin") {
-      if (requestObj.farmerId) {
-        requestObj.farmerId.phoneNumber = "";
+    if (req.user.role === "technician") {
+      const isAssignedToMe =
+        requestObj.approvedBy?._id?.toString() === req.user._id.toString() ||
+        requestObj.technicianId?._id?.toString() === req.user._id.toString();
 
-        if (requestObj.farmerId.address) {
-          requestObj.farmerId.address.landmark = "";
-          requestObj.farmerId.address.street = "";
-          requestObj.farmerId.address.houseNumber = "";
-          requestObj.farmerId.address.coordinates = null;
-        }
-
-        if (requestObj.farmerId.farmLocation) {
-          requestObj.farmerId.farmLocation.landmark = "";
-          requestObj.farmerId.farmLocation.directionsNote = "";
-          requestObj.farmerId.farmLocation.latitude = null;
-          requestObj.farmerId.farmLocation.longitude = null;
-        }
+      if (!isUnclaimed && !isAssignedToMe) {
+        return res.status(403).json({
+          message: "Request is assigned to another technician.",
+          code: "AI_REQUEST_ASSIGNED_TO_OTHER",
+        });
       }
+
+      if (isUnclaimed) {
+        return res
+          .status(200)
+          .json(buildTechnicianCandidateAIDetail(requestObj));
+      }
+    }
+
+    if (isUnclaimed && !isOwnFarmer && req.user.role !== "admin" && req.user.role !== "technician") {
+      return res.status(200).json(buildCandidateAIDetail(requestObj));
     }
 
     return res.status(200).json({

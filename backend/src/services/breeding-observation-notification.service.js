@@ -42,7 +42,7 @@ export const notifyTechniciansOfBreedingObservation = async ({
     insemination?.approvedBy ||
     null;
   const technicianQuery = {
-    role: { $in: ["technician", "veterinarian"] },
+    role: { $in: ["technician"] },
     status: { $ne: "suspended" },
     deletedAt: null,
   };

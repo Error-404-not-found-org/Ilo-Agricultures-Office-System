@@ -7,7 +7,10 @@ import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { useAnimalDetailsQuery } from "@/features/animals/hooks/useAnimalDetails";
 import { getAnimalMedicalRecords } from "@/features/animals/services/animals.service";
-import { getFarmerActivity } from "@/features/farmer-reports/services/farmerReports.service";
+import {
+  getFarmerActivity,
+  mapHealthMedicalRecordDetails,
+} from "@/features/farmer-reports/services/farmerReports.service";
 import { getAnimalRecords } from "@/features/animal-records/services/animalRecords.service";
 import { RecordDetailContent } from "@/features/farmer-reports/components/RecordDetailContent";
 import type { ActivityFeedItem } from "@/features/farmer-reports/types/farmerReports.types";
@@ -121,59 +124,58 @@ export default function AnimalRecordDetailScreen() {
           animalQuery.data?._id ||
           animalId,
       },
-      details: record.details || {
-        status: record.status,
-        requestType: record.requestType || (isMedicalRecord ? record.type : undefined),
-        symptoms: record.symptoms,
-        urgency: record.urgency,
-        diagnosis: record.diagnosis || record.details?.diagnosis,
-        treatment: record.treatment || record.details?.treatment,
-        advice:
-          record.advice ||
-          record.comment ||
-          record.note ||
-          record.technicianNote ||
-          "",
-        recordedBy: record.technicianId?.name || record.handledBy?.name || "",
-        serviceDate: record.recordDate || record.date
-          ? new Date(record.recordDate || record.date).toLocaleDateString()
-          : undefined,
-        entryDate: record.createdAt
-          ? new Date(record.createdAt).toLocaleDateString()
-          : undefined,
-        isHistoricalEntry: Boolean(record.isHistoricalEntry),
-        performedByName: record.performedByName,
-        lateEntryReason: record.lateEntryReason,
-        withdrawalPeriodDays:
-          record.details?.withdrawalPeriodDays || record.withdrawalPeriodDays,
-        withdrawalEndDate:
-          record.details?.withdrawalEndDate || record.withdrawalEndDate,
-        followUpDate: record.followUpDate || record.followUpCheckupDate,
-        sireBreed: record.sireBreed,
-        sireCode: record.sireCode,
-        attemptNumber: record.attemptNumber,
-        previousAttempt: record.previousAttemptReference,
-        nextAttempt: record.nextAttemptReference,
-        failureReason: record.failureReason,
-        estrus: record.estrus || record.estrusType,
-        outcome:
-          record.pregnancyDiagnosis?.result ||
-          record.pregnancyStatus ||
-          record.outcome,
-        targetCalvingDate: record.targetCalvingDate,
-        diagnosticMethod: record.confirmation?.methodCode,
-        confirmationStage: record.confirmation?.stage,
-        recheckStatus: record.recheckStatus,
-        relatedAttempt: record.inseminationId?.attemptNumber,
-        technician: record.technicianId?.name || record.handledBy?.name || "",
-        technicianNote: record.technicianNote || record.note || record.notes,
-        calvingEase: record.calvingEase,
-        numberOfCalves: record.numberOfCalves,
-        calvingOutcome: record.outcome,
-        livingCalfCount: record.livingCalfCount,
-        stillbornCount: record.stillbornCount,
-        calves: record.calves,
-      },
+      details: isMedicalRecord
+        ? mapHealthMedicalRecordDetails(record, {
+            recordDate: record.recordDate || record.date,
+            enteredAt: record.createdAt,
+            technicianId: record.technicianId,
+          })
+        : record.details || {
+            status: record.status,
+            requestType: record.requestType,
+            symptoms: record.symptoms,
+            urgency: record.urgency,
+            diagnosis: record.diagnosis,
+            treatment: record.treatment,
+            advice:
+              record.advice ||
+              record.comment ||
+              record.note ||
+              record.technicianNote ||
+              "",
+            serviceDate: record.recordDate || record.date
+              ? new Date(record.recordDate || record.date).toLocaleDateString()
+              : undefined,
+            entryDate: record.createdAt
+              ? new Date(record.createdAt).toLocaleDateString()
+              : undefined,
+            sireBreed: record.sireBreed,
+            sireCode: record.sireCode,
+            attemptNumber: record.attemptNumber,
+            previousAttempt: record.previousAttemptReference,
+            nextAttempt: record.nextAttemptReference,
+            failureReason: record.failureReason,
+            estrus: record.estrus || record.estrusType,
+            outcome:
+              record.pregnancyDiagnosis?.result ||
+              record.pregnancyStatus ||
+              record.outcome,
+            targetCalvingDate: record.targetCalvingDate,
+            diagnosticMethod: record.confirmation?.methodCode,
+            confirmationStage: record.confirmation?.stage,
+            recheckStatus: record.recheckStatus,
+            relatedAttempt: record.inseminationId?.attemptNumber,
+            technician:
+              record.technicianId?.name || record.handledBy?.name || "",
+            technicianNote:
+              record.technicianNote || record.note || record.notes,
+            calvingEase: record.calvingEase,
+            numberOfCalves: record.numberOfCalves,
+            calvingOutcome: record.outcome,
+            livingCalfCount: record.livingCalfCount,
+            stillbornCount: record.stillbornCount,
+            calves: record.calves,
+          },
     };
   }, [animalId, animalQuery.data, recordType]);
 

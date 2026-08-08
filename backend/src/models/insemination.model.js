@@ -102,7 +102,6 @@ const InseminationSchema = new mongoose.Schema(
     },
     preferredDate: {
       type: Date,
-      default: Date.now,
     },
     scheduledDate: {
       type: Date,
@@ -247,6 +246,26 @@ const InseminationSchema = new mongoose.Schema(
       createdAt: { type: Date, default: Date.now },
     }],
 
+    dispatch: {
+      location: {
+        municipalityCode: { type: String },
+        municipalityName: { type: String },
+        localityType: { type: String, enum: ["municipality", "city", "unresolved"] },
+        provinceCode: { type: String },
+        provinceName: { type: String },
+        barangayCode: { type: String },
+        barangayName: { type: String },
+        source: {
+          type: String,
+          enum: ["confirmed_farm_location", "canonical_contact_address", "legacy_address_fallback", "unresolved"],
+        },
+        psgcVersion: { type: String },
+      },
+      stage: { type: String, enum: ["local", "adjacent", "regional"], default: "local" },
+      resolutionStatus: { type: String, enum: ["resolved", "legacy_fallback", "unresolved"] },
+      version: { type: Number, default: 1 },
+      resolvedAt: { type: Date },
+    },
     deletedAt: { type: Date, default: null },
   },
   { timestamps: true },

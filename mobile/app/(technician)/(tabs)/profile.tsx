@@ -119,6 +119,16 @@ const TechnicianProfile = () => {
     onError: () => toast.error("Update failed."),
   });
 
+  const dispatchMutation = useMutation({
+    mutationFn: async (updatedData: any) => {
+      return await api.patch(`/technician/dispatch-status`, updatedData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["user", "me"] });
+    },
+    onError: () => toast.error("Dispatch status update failed."),
+  });
+
   const handleUpdate = async () => {
     if (mutation.isPending) return;
     toast.dismiss();
@@ -360,8 +370,149 @@ const TechnicianProfile = () => {
           </View>
         </View>
 
+        {/* Dispatch Profile Section */}
+        <View className="px-6 mt-8">
+          <Text
+            className="font-outfit-black text-[10px] uppercase tracking-widest mb-3 ml-1"
+            style={{ color: colors.textMuted }}
+          >
+            Dispatch Profile
+          </Text>
+
+          <View
+            className="rounded-3xl overflow-hidden border mb-2"
+            style={{ backgroundColor: colors.card, borderColor: colors.border }}
+          >
+            {/* Accepts New Requests Toggle */}
+            <TouchableOpacity
+              onPress={() => {
+                const currentVal =
+                  dbUser?.dispatchProfile?.acceptsNewRequests || false;
+                dispatchMutation.mutate({ acceptsNewRequests: !currentVal });
+              }}
+              activeOpacity={0.7}
+              style={{
+                padding: 18,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: colors.card,
+              }}
+            >
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 14 }}
+              >
+                <View
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 12,
+                    backgroundColor: isDark ? "#1e293b" : "#f8fafc",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Briefcase size={18} color="#0891b2" />
+                </View>
+                <View>
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontFamily: "Outfit_600SemiBold",
+                      color: colors.textPrimary,
+                    }}
+                  >
+                    Accepting Requests
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 10,
+                      fontFamily: "Outfit_700Bold",
+                      color: colors.textMuted,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {dbUser?.dispatchProfile?.acceptsNewRequests
+                      ? "Active"
+                      : "Inactive"}
+                  </Text>
+                </View>
+              </View>
+              <View
+                style={{
+                  width: 44,
+                  height: 24,
+                  borderRadius: 12,
+                  backgroundColor: dbUser?.dispatchProfile?.acceptsNewRequests
+                    ? colors.primary
+                    : "#e2e8f0",
+                  padding: 2,
+                  justifyContent: "center",
+                }}
+              >
+                <View
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    backgroundColor: "#fff",
+                    alignSelf: dbUser?.dispatchProfile?.acceptsNewRequests
+                      ? "flex-end"
+                      : "flex-start",
+                    shadowColor: "#000",
+                    shadowOpacity: 0.1,
+                    shadowRadius: 2,
+                    elevation: 2,
+                  }}
+                />
+              </View>
+            </TouchableOpacity>
+
+            <Divider />
+
+            <DetailRow
+              icon={<MapPin size={18} color={colors.textMuted} />}
+              label="Service Municipalities"
+              value={
+                dbUser?.dispatchProfile?.serviceMunicipalities
+                  ?.map((m: any) => m.municipalityName)
+                  .join(", ") || "None"
+              }
+            />
+            {(!dbUser?.dispatchProfile?.serviceMunicipalities ||
+              dbUser.dispatchProfile.serviceMunicipalities.length === 0) && (
+              <View
+                style={{
+                  padding: 12,
+                  backgroundColor: "rgba(234, 179, 8, 0.1)",
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: "#eab308",
+                    fontFamily: "Outfit_500Medium",
+                    textAlign: "center",
+                  }}
+                >
+                  Warning: No official service coverage assigned.
+                </Text>
+              </View>
+            )}
+            <Divider />
+            <DetailRow
+              icon={<Shield size={18} color={colors.textMuted} />}
+              label="Service Capabilities"
+              value={
+                dbUser?.dispatchProfile?.serviceCapabilities?.join(", ") ||
+                "None"
+              }
+            />
+          </View>
+        </View>
+
         {/* System & Support Section */}
-        <View className="px-6 mt-2">
+        <View className="px-6 mt-6">
           <Text
             className="font-outfit-black text-[10px] uppercase tracking-widest mb-3 ml-1"
             style={{ color: colors.textMuted }}

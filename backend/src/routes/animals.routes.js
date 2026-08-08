@@ -30,7 +30,7 @@ const router = Router();
 
 router.post("/register", protectedRoute, registerAnimal);
 router.get("/all", protectedRoute, getAllAnimals);
-router.get("/farmer/:farmerId", protectedRoute, requireRole(["technician", "veterinarian", "admin"]), getAnimalsByFarmer);
+router.get("/farmer/:farmerId", protectedRoute, requireRole(["technician", "admin"]), getAnimalsByFarmer);
 router.get("/my", protectedRoute, getMyAnimals);
 router.get("/records", protectedRoute, getOfficialRecords);
 router.get("/archived", protectedRoute, getArchivedAnimals);
