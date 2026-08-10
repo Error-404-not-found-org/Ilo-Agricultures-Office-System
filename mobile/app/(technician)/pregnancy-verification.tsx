@@ -205,144 +205,22 @@ export default function PregnancyVerificationScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20 }}>
-          {/* Animal & Farmer Overview */}
+          {/* Compact Context Summary */}
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.cardHeader}>
-              <Heart size={20} color={isDark ? "#34d399" : "#00643B"} />
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Animal Details</Text>
-            </View>
-            <View style={styles.grid}>
-              <View style={styles.gridItem}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Ear Tag / ID</Text>
-                <Text style={[styles.value, { color: colors.textPrimary }]}>
-                  {animal.earTag || animal.animalId || "N/A"}
+            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+              Cow {animal.earTag || animal.animalId || "N/A"} · Attempt #{insem.attemptNumber || "N/A"}
+            </Text>
+            <View style={{ marginTop: 8, gap: 2 }}>
+              <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 13, color: colors.textSecondary }}>
+                AI date: {formatDate(insem.inseminationDate || insem.scheduledDate)}
+              </Text>
+              {pregnancyReadiness?.daysPostAI !== undefined ? (
+                <Text style={{ fontFamily: "Outfit_500Medium", fontSize: 13, color: colors.textSecondary }}>
+                  Day {pregnancyReadiness.daysPostAI} after AI
                 </Text>
-              </View>
-              <View style={styles.gridItem}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Breed / Species</Text>
-                <Text style={[styles.value, { color: colors.textPrimary }]}>
-                  {animal.breed} ({animal.species})
-                </Text>
-              </View>
-              <View style={styles.gridItem}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Farmer</Text>
-                <Text style={[styles.value, { color: colors.textPrimary }]}>
-                  {task.farmerId?.name || "N/A"}
-                </Text>
-              </View>
-              <View style={styles.gridItem}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Reproductive Status</Text>
-                <Text style={[styles.value, { color: colors.textPrimary }]}>
-                  {animal.reproductiveStatus || "N/A"}
-                </Text>
-              </View>
+              ) : null}
             </View>
           </View>
-
-          {/* Farmer observation is supportive context, not a diagnosis. */}
-          {insem.farmerOutcomeReport ? (
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={styles.cardHeader}>
-              <FileText size={20} color={isDark ? "#34d399" : "#00643B"} />
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Farmer Breeding Observation</Text>
-            </View>
-            
-            <View style={styles.obsSection}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>Reported Condition</Text>
-              <View style={[styles.badge, { backgroundColor: isDark ? "rgba(139, 92, 246, 0.15)" : "#f5f3ff" }]}>
-                <Text style={[styles.badgeText, { color: isDark ? "#c4b5fd" : "#7c3aed" }]}>
-                  {getBreedingObservationLabel(insem.farmerOutcomeReport)}
-                </Text>
-              </View>
-            </View>
-
-            {insem.farmerObservationSigns && insem.farmerObservationSigns.length > 0 && (
-              <View style={styles.obsSection}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Observed Signs</Text>
-                <View style={styles.signsRow}>
-                  {insem.farmerObservationSigns.map((sign: string) => (
-                    <View key={sign} style={[styles.signPill, { backgroundColor: colors.border }]}>
-                      <Text style={[styles.signText, { color: colors.textPrimary }]}>
-                        {getBreedingObservationSignLabel(sign)}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {insem.farmerObservationNotes ? (
-              <View style={styles.obsSection}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>Farmer Notes</Text>
-                <Text style={[styles.notesText, { color: colors.textPrimary }]}>
-                  {insem.farmerObservationNotes}
-                </Text>
-              </View>
-            ) : null}
-            <View
-              style={[
-                styles.obsSection,
-                {
-                  borderRadius: 12,
-                  padding: 12,
-                  backgroundColor: isDark
-                    ? "rgba(245,158,11,0.1)"
-                    : "#FFFBEB",
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  color: isDark ? "#FCD34D" : "#92400E",
-                  fontFamily: "Outfit_600SemiBold",
-                  fontSize: 12,
-                  lineHeight: 17,
-                }}
-              >
-                Farmer observation only. Record your official diagnosis below.
-              </Text>
-            </View>
-          </View>
-          ) : null}
-
-          {/* Scientific Milestones Checklist */}
-          {milestones && !methodBased && (
-            <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.cardHeader}>
-                <CalendarCheck size={20} color={isDark ? "#34d399" : "#00643B"} />
-                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Scientific Milestones</Text>
-              </View>
-              <Text style={[styles.milestonesDesc, { color: colors.textSecondary }]}>
-                Milestone estimates calculated relative to insemination date: {formatDate(insem.inseminationDate || insem.createdAt)}
-              </Text>
-              <View style={styles.milestoneList}>
-                <View style={[styles.milestoneItem, { borderBottomColor: colors.border }]}>
-                  <Text style={[styles.milestoneLabel, { color: colors.textPrimary }]}>Heat Return Window (Day 21)</Text>
-                  <Text style={[styles.milestoneValue, { color: colors.textSecondary }]}>
-                    {formatDate(milestones.heatReturnCheckDate)}
-                  </Text>
-                </View>
-                <View style={[styles.milestoneItem, { borderBottomColor: colors.border }]}>
-                  <Text style={[styles.milestoneLabel, { color: colors.textPrimary }]}>Optimal Ultrasound Window (Day 35)</Text>
-                  <Text style={[styles.milestoneValue, { color: colors.textSecondary }]}>
-                    {formatDate(milestones.ultrasoundCheckDate)}
-                  </Text>
-                </View>
-                <View style={[styles.milestoneItem, { borderBottomColor: colors.border }]}>
-                  <Text style={[styles.milestoneLabel, { color: colors.textPrimary }]}>Manual Palpation Threshold (Day 60)</Text>
-                  <Text style={[styles.milestoneValue, { color: colors.textSecondary }]}>
-                    {formatDate(milestones.palpationCheckDate)}
-                  </Text>
-                </View>
-                <View style={[styles.milestoneItem, { borderBottomColor: "transparent" }]}>
-                  <Text style={[styles.milestoneLabel, { color: colors.textPrimary }]}>Target Calving Estimate</Text>
-                  <Text style={[styles.milestoneValue, { color: isDark ? "#34d399" : "#00643B", fontFamily: "Outfit_700Bold" }]}>
-                    {formatDate(milestones.expectedCalvingDate)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          )}
 
           {/* Verification Outcome Form */}
           <Text style={[styles.sectionTitle, { color: isDark ? "#34d399" : "#00643B" }]}>Verification Form</Text>
@@ -557,7 +435,7 @@ export default function PregnancyVerificationScreen() {
             ) : (
               <>
                 <CheckCircle size={20} color="#fff" />
-                <Text style={styles.submitBtnText}>Submit Verification</Text>
+                <Text style={styles.submitBtnText}>Save Pregnancy Confirmation</Text>
               </>
             )}
           </TouchableOpacity>
@@ -622,14 +500,10 @@ const styles = StyleSheet.create({
     fontSize: 20,
   },
   card: {
-    padding: 20,
-    borderRadius: 24,
+    padding: 16,
+    borderRadius: 16,
     borderWidth: 1,
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 10,
-    elevation: 2,
+    marginBottom: 16,
   },
   cardHeader: {
     flexDirection: "row",
@@ -799,12 +673,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
-    borderRadius: 24,
+    borderRadius: 16,
     gap: 12,
     marginBottom: 40,
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
-    elevation: 8,
   },
   submitBtnText: {
     color: "#fff",

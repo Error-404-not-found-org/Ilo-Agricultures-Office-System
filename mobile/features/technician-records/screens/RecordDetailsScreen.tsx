@@ -17,6 +17,8 @@ import {
   Syringe,
   FileText,
   User,
+  MapPinHouse,
+  House,
 } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "@/lib/theme";
@@ -31,6 +33,8 @@ import { getAnimalRecords } from "@/features/animal-records/services/animalRecor
 import { getAnimalMedicalRecords } from "@/features/animals/services/animals.service";
 import { getFarmerActivity } from "@/features/farmer-reports/services/farmerReports.service";
 import { useAnimalDetailsQuery } from "@/features/animals/hooks/useAnimalDetails";
+import { getTechnicianRequestDetail } from "@/features/technician/services/technician.service";
+import { getAIRecordDisplayData } from "../utils/aiRecordPresentation";
 
 const PRIMARY = "#00643B";
 
@@ -83,7 +87,20 @@ export default function RecordDetailsScreen() {
     return parsedRecord.animalId || null;
   }, [params.animalId, parsedRecord]);
 
-  const animalQuery = useAnimalDetailsQuery(animalId || "");
+  const isDirectAIRecord =
+    !!recordId && ["ai", "insemination"].includes(params.recordType || "");
+
+  // The completed request and the official AI record are the same canonical
+  // Insemination document, so direct navigation uses its existing detail DTO.
+  const directAIQuery = useQuery({
+    queryKey: ["ai-request", "record-detail", recordId],
+    queryFn: () => getTechnicianRequestDetail(api, "ai", recordId || ""),
+    enabled: isDirectAIRecord,
+  });
+
+  const animalQuery = useAnimalDetailsQuery(
+    isDirectAIRecord ? "" : animalId || "",
+  );
 
   // Query 1: Fetch animal records to find the full record data
   const recordsQuery = useQuery({
@@ -93,26 +110,27 @@ export default function RecordDetailsScreen() {
         page: 1,
         limit: 100,
       }),
-    enabled: !!animalId && !!recordId,
+    enabled: !isDirectAIRecord && !!animalId && !!recordId,
   });
 
   // Query 2: Fetch medical records as fallback
   const medicalRecordsQuery = useQuery({
     queryKey: ["animal-records", "medical", "technician", animalId],
     queryFn: () => getAnimalMedicalRecords(api, animalId || ""),
-    enabled: !!animalId && !!recordId,
+    enabled: !isDirectAIRecord && !!animalId && !!recordId,
   });
 
   // Query 3: Fetch activity feed as final backup
   const activityQuery = useQuery({
     queryKey: ["user", "activity", "technician"],
     queryFn: () => getFarmerActivity(api),
-    enabled: !!recordId,
+    enabled: !isDirectAIRecord && !!recordId,
   });
 
   // Find the full record from the fetched data
   const fullRecord = useMemo(() => {
     if (!recordId) return parsedRecord;
+    if (isDirectAIRecord && directAIQuery.data) return directAIQuery.data;
 
     // Search in animal records first
     const historyRec = (recordsQuery.data?.data || []).find(
@@ -145,6 +163,8 @@ export default function RecordDetailsScreen() {
     return parsedRecord;
   }, [
     recordId,
+    isDirectAIRecord,
+    directAIQuery.data,
     parsedRecord,
     recordsQuery.data,
     medicalRecordsQuery.data,
@@ -152,6 +172,7 @@ export default function RecordDetailsScreen() {
   ]);
 
   const isLoading =
+    directAIQuery.isLoading ||
     animalQuery.isLoading ||
     recordsQuery.isLoading ||
     medicalRecordsQuery.isLoading ||
@@ -208,11 +229,29 @@ export default function RecordDetailsScreen() {
     );
   }
 
-  // The animal endpoint supplies canonical owner/animal context because
-  // individual record rows intentionally carry identifiers in many cases.
+  const sourceItem =
+    item.source && typeof item.source === "object" ? item.source : item;
+  const recordKind =
+    item.recordKind ||
+    sourceItem.recordKind ||
+    item.type ||
+    params.recordType ||
+    "";
+  const isAI = Boolean(
+    recordKind === "insemination" ||
+    recordKind === "ai" ||
+    sourceItem.inseminationDate ||
+    sourceItem.sireCode,
+  );
+  const displayItem = isAI
+    ? { ...sourceItem, recordKind: "insemination" }
+    : item;
+
+  // The canonical detail endpoints populate owner and animal context. Legacy
+  // list navigation can still obtain the same context from the animal query.
   const farmer = (() => {
-    if (typeof item.farmerId === "object" && item.farmerId) {
-      return item.farmerId;
+    if (typeof displayItem.farmerId === "object" && displayItem.farmerId) {
+      return displayItem.farmerId;
     }
     // If farmerId is a string, try to find it in the record data
     if (typeof item.farmerId === "string" && item.farmerDetails) {
@@ -232,8 +271,8 @@ export default function RecordDetailsScreen() {
   })();
 
   const animal = (() => {
-    if (typeof item.animalId === "object" && item.animalId) {
-      return item.animalId;
+    if (typeof displayItem.animalId === "object" && displayItem.animalId) {
+      return displayItem.animalId;
     }
     if (item.animal) {
       return item.animal;
@@ -242,15 +281,9 @@ export default function RecordDetailsScreen() {
   })();
 
   // Get presentation data
-  const presentation = formatAnimalRecord(item, animal);
+  const presentation = formatAnimalRecord(displayItem, animal);
 
   // Determine record type
-  const recordKind = item.recordKind || item.type || params.recordType || "";
-  const isAI =
-    recordKind === "insemination" ||
-    recordKind === "ai" ||
-    item.inseminationDate ||
-    item.sireCode;
   const isHealth =
     presentation.category === "Health" ||
     recordKind === "health_request" ||
@@ -270,12 +303,12 @@ export default function RecordDetailsScreen() {
 
   // Get the date
   const dateRaw =
-    item.recordDate ||
-    item.date ||
-    item.createdAt ||
-    item.inseminationDate ||
-    item.scheduledDate ||
-    item.activityDate;
+    displayItem.recordDate ||
+    displayItem.date ||
+    displayItem.inseminationDate ||
+    displayItem.createdAt ||
+    displayItem.scheduledDate ||
+    displayItem.activityDate;
   const date = dateRaw
     ? new Date(dateRaw).toLocaleDateString("en-US", {
         month: "long",
@@ -300,29 +333,54 @@ export default function RecordDetailsScreen() {
     null;
 
   // Get farmer address
-  const farmerAddress = (() => {
-    if (!farmer) return "No address provided";
-    const address = farmer.address;
-    if (address) {
-      const parts = [address.street, address.barangay, address.city].filter(
-        Boolean,
-      );
-      if (parts.length > 0) return parts.join(", ");
-    }
-    const farmLocation = farmer.farmLocation;
-    if (farmLocation) {
-      const parts = [farmLocation.barangay, farmLocation.city].filter(Boolean);
-      if (parts.length > 0) return `Brgy. ${parts.join(", ")}`;
-    }
-    return "No address provided";
+  const homeAddress = (() => {
+    if (!farmer) return null;
+    const address = Array.isArray(farmer.address)
+      ? farmer.address[0]
+      : farmer.address;
+    if (!address) return null;
+    const parts = [
+      address.houseNumber,
+      address.street,
+      address.subdivision,
+      address.barangay,
+      address.city || address.municipality,
+      address.province,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : null;
   })();
+
+  const farmAddress = (() => {
+    if (!farmer) return null;
+    const farmLoc = farmer.farmLocation;
+    if (!farmLoc) return null;
+    if (farmLoc.detectedAddress) return farmLoc.detectedAddress;
+    const parts = [
+      farmLoc.barangay,
+      farmLoc.city || farmLoc.municipality,
+      farmLoc.province,
+    ].filter(Boolean);
+    return parts.length > 0 ? parts.join(", ") : null;
+  })();
+
+  const farmLat =
+    farmer?.farmLocation?.latitude ??
+    (Array.isArray(farmer?.address)
+      ? farmer?.address[0]?.coordinates?.lat
+      : farmer?.address?.coordinates?.lat);
+  const farmLng =
+    farmer?.farmLocation?.longitude ??
+    (Array.isArray(farmer?.address)
+      ? farmer?.address[0]?.coordinates?.lng
+      : farmer?.address?.coordinates?.lng);
 
   const handleCall = () => {
     if (farmerPhone) Linking.openURL(`tel:${farmerPhone}`);
   };
 
   // Status
-  const status = item.status || item.outcomeVerificationStatus || "COMPLETED";
+  const status =
+    displayItem.status || displayItem.outcomeVerificationStatus || "COMPLETED";
   const statusColor =
     status === "pending" || status === "Pending"
       ? "#f59e0b"
@@ -341,7 +399,7 @@ export default function RecordDetailsScreen() {
   // Title
   const titleText =
     presentation?.pageTitle ||
-    item.title ||
+    displayItem.title ||
     (isAI
       ? "AI Insemination"
       : isHealth
@@ -351,6 +409,8 @@ export default function RecordDetailsScreen() {
           : isCalving
             ? "Calving Record"
             : "Record");
+
+  const aiDetails = isAI ? getAIRecordDisplayData(displayItem, animal) : null;
 
   // Get icon
   const getIcon = () => {
@@ -433,9 +493,14 @@ export default function RecordDetailsScreen() {
                   color: statusColor,
                 }}
               >
-                {typeof status === "string"
-                  ? status.toUpperCase()
-                  : "COMPLETED"}
+                {isAI &&
+                ["done", "completed", "resolved"].includes(
+                  String(status).toLowerCase(),
+                )
+                  ? "DONE"
+                  : typeof status === "string"
+                    ? status.toUpperCase()
+                    : "COMPLETED"}
               </Text>
             </View>
           </View>
@@ -449,7 +514,62 @@ export default function RecordDetailsScreen() {
           >
             {titleText}
           </Text>
+          {isAI && (
+            <Text
+              style={{
+                marginTop: 6,
+                color: colors.textSecondary,
+                fontFamily: "Outfit_500Medium",
+                fontSize: 12,
+                lineHeight: 18,
+              }}
+            >
+              The AI procedure is complete. Breeding outcome is tracked
+              separately.
+            </Text>
+          )}
         </View>
+
+        {isAI && aiDetails && (
+          <View
+            style={{
+              borderRadius: 16,
+              padding: 16,
+              marginBottom: 16,
+              backgroundColor: colors.card,
+              borderWidth: 1,
+              borderColor: colors.border,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 13,
+                fontFamily: "Outfit_700Bold",
+                color: colors.textPrimary,
+                marginBottom: 12,
+              }}
+            >
+              Animal
+            </Text>
+            <View style={{ gap: 10 }}>
+              <DetailRow
+                label="Ear tag"
+                value={aiDetails.earTag}
+                colors={colors}
+              />
+              <DetailRow
+                label="Species"
+                value={aiDetails.species}
+                colors={colors}
+              />
+              <DetailRow
+                label="Breed"
+                value={aiDetails.breed}
+                colors={colors}
+              />
+            </View>
+          </View>
+        )}
 
         {/* Farmer Info & Location Card */}
         <View
@@ -536,49 +656,86 @@ export default function RecordDetailsScreen() {
           />
 
           <View style={{ gap: 10 }}>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
-              <MapPin size={16} color={isDark ? colors.primary : PRIMARY} />
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontFamily: "Outfit_500Medium",
-                  color: colors.textSecondary,
-                  flex: 1,
-                }}
+            {homeAddress ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
               >
-                {farmerAddress}
-              </Text>
-            </View>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
-              <Calendar size={16} color={isDark ? colors.primary : PRIMARY} />
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontFamily: "Outfit_500Medium",
-                  color: colors.textSecondary,
-                }}
+                <House size={16} color={isDark ? colors.primary : PRIMARY} />
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontFamily: "Outfit_500Medium",
+                    color: colors.textSecondary,
+                    flex: 1,
+                  }}
+                >
+                  {homeAddress}
+                </Text>
+              </View>
+            ) : null}
+            {farmAddress ? (
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
               >
-                {date}
-              </Text>
-            </View>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
-            >
-              <Clock size={16} color={isDark ? colors.primary : PRIMARY} />
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontFamily: "Outfit_500Medium",
-                  color: colors.textSecondary,
-                }}
-              >
-                {time}
-              </Text>
-            </View>
+                <MapPinHouse
+                  size={16}
+                  color={isDark ? colors.primary : PRIMARY}
+                />
+                <Text
+                  style={{
+                    fontSize: 13,
+                    fontFamily: "Outfit_500Medium",
+                    color: colors.textSecondary,
+                    flex: 1,
+                  }}
+                >
+                  {farmAddress}
+                </Text>
+              </View>
+            ) : null}
+            {!isAI && (
+              <>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <Calendar
+                    size={16}
+                    color={isDark ? colors.primary : PRIMARY}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontFamily: "Outfit_500Medium",
+                      color: colors.textSecondary,
+                    }}
+                  >
+                    {date}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <Clock size={16} color={isDark ? colors.primary : PRIMARY} />
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontFamily: "Outfit_500Medium",
+                      color: colors.textSecondary,
+                    }}
+                  >
+                    {time}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
         </View>
 
@@ -601,130 +758,154 @@ export default function RecordDetailsScreen() {
               marginBottom: 12,
             }}
           >
-            Record Details
+            {isAI ? "Actual Service Details" : "Record Details"}
           </Text>
 
-          {presentation?.details && presentation.details.length > 0 && (
-            <View style={{ gap: 8 }}>
-              {presentation.details.map((detail: string, index: number) => (
+          {!isAI &&
+            presentation?.details &&
+            presentation.details.length > 0 && (
+              <View style={{ gap: 8 }}>
+                {presentation.details.map((detail: string, index: number) => (
+                  <View
+                    key={index}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "flex-start",
+                      gap: 8,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.textMuted,
+                        fontFamily: "Outfit_600SemiBold",
+                        fontSize: 12,
+                      }}
+                    >
+                      •
+                    </Text>
+                    <Text
+                      style={{
+                        color: colors.textSecondary,
+                        fontFamily: "Outfit_500Medium",
+                        fontSize: 13,
+                        flex: 1,
+                      }}
+                    >
+                      {detail}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+          {/* AI specific details */}
+          {isAI && aiDetails && (
+            <View style={{ gap: 10 }}>
+              <DetailRow
+                label="Actual insemination"
+                value={aiDetails.actualInsemination}
+                colors={colors}
+              />
+              <DetailRow
+                label="Estrus type"
+                value={aiDetails.estrus}
+                colors={colors}
+              />
+              <DetailRow
+                label="Sire breed"
+                value={aiDetails.sireBreed}
+                colors={colors}
+              />
+              <DetailRow
+                label="Sire / semen code"
+                value={aiDetails.sireCode}
+                colors={colors}
+              />
+              <DetailRow
+                label="Semen doses used"
+                value={aiDetails.semenDosesUsed}
+                colors={colors}
+              />
+              <DetailRow
+                label="Technician"
+                value={aiDetails.technician}
+                colors={colors}
+              />
+              <DetailRow
+                label="Attempt"
+                value={aiDetails.attempt}
+                colors={colors}
+              />
+
+              {aiDetails.scheduledVisit && (
                 <View
-                  key={index}
                   style={{
-                    flexDirection: "row",
-                    alignItems: "flex-start",
-                    gap: 8,
+                    marginTop: 6,
+                    paddingTop: 14,
+                    borderTopWidth: 1,
+                    borderTopColor: colors.border,
                   }}
                 >
                   <Text
                     style={{
-                      color: colors.textMuted,
-                      fontFamily: "Outfit_600SemiBold",
-                      fontSize: 12,
-                    }}
-                  >
-                    •
-                  </Text>
-                  <Text
-                    style={{
-                      color: colors.textSecondary,
-                      fontFamily: "Outfit_500Medium",
+                      color: colors.textPrimary,
+                      fontFamily: "Outfit_700Bold",
                       fontSize: 13,
-                      flex: 1,
+                      marginBottom: 10,
                     }}
                   >
-                    {detail}
+                    Scheduled Visit
                   </Text>
+                  <DetailRow
+                    label="Planned visit"
+                    value={aiDetails.scheduledVisit}
+                    colors={colors}
+                  />
                 </View>
-              ))}
-            </View>
-          )}
+              )}
 
-          {/* AI specific details */}
-          {isAI && (
-            <View style={{ marginTop: 12, gap: 10 }}>
               <View
                 style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
+                  marginTop: 6,
+                  paddingTop: 14,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.border,
                 }}
               >
                 <Text
                   style={{
-                    color: colors.textMuted,
-                    fontFamily: "Outfit_600SemiBold",
-                    fontSize: 12,
-                  }}
-                >
-                  Attempt Number
-                </Text>
-                <Text
-                  style={{
                     color: colors.textPrimary,
-                    fontFamily: "Outfit_800ExtraBold",
+                    fontFamily: "Outfit_700Bold",
                     fontSize: 13,
+                    marginBottom: 10,
                   }}
                 >
-                  #{item.attemptNumber || 1}
+                  Breeding Result
                 </Text>
+                <DetailRow
+                  label="Breeding outcome"
+                  value={aiDetails.breedingOutcome}
+                  colors={colors}
+                  valueColor={
+                    aiDetails.breedingOutcomePending
+                      ? colors.textSecondary
+                      : colors.primary
+                  }
+                />
+                {aiDetails.breedingOutcomePending && (
+                  <Text
+                    style={{
+                      marginTop: 8,
+                      color: colors.textSecondary,
+                      fontFamily: "Outfit_500Medium",
+                      fontSize: 12,
+                      lineHeight: 18,
+                    }}
+                  >
+                    Pregnancy or breeding outcome has not yet been confirmed.
+                  </Text>
+                )}
               </View>
-              {item.sireCode && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.textMuted,
-                      fontFamily: "Outfit_600SemiBold",
-                      fontSize: 12,
-                    }}
-                  >
-                    Sire Code
-                  </Text>
-                  <Text
-                    style={{
-                      color: colors.textPrimary,
-                      fontFamily: "Outfit_800ExtraBold",
-                      fontSize: 13,
-                    }}
-                  >
-                    {item.sireCode}
-                  </Text>
-                </View>
-              )}
-              {item.outcome && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.textMuted,
-                      fontFamily: "Outfit_600SemiBold",
-                      fontSize: 12,
-                    }}
-                  >
-                    Outcome
-                  </Text>
-                  <Text
-                    style={{
-                      color:
-                        item.outcome === "Pregnant" ||
-                        item.outcome === "pregnant"
-                          ? "#10b981"
-                          : colors.textSecondary,
-                      fontFamily: "Outfit_800ExtraBold",
-                      fontSize: 13,
-                    }}
-                  >
-                    {item.outcome}
-                  </Text>
-                </View>
-              )}
             </View>
           )}
 
@@ -845,10 +1026,12 @@ export default function RecordDetailsScreen() {
           )}
 
           {/* Notes */}
-          {(item.note ||
-            item.technicianNote ||
-            item.notes ||
-            item.details?.advice) && (
+          {(isAI
+            ? aiDetails?.technicianNote
+            : item.note ||
+              item.technicianNote ||
+              item.notes ||
+              item.details?.advice) && (
             <View
               style={{
                 marginTop: 12,
@@ -868,7 +1051,7 @@ export default function RecordDetailsScreen() {
                   marginBottom: 4,
                 }}
               >
-                Notes
+                {isAI ? "Technician Notes" : "Notes"}
               </Text>
               <Text
                 style={{
@@ -877,15 +1060,62 @@ export default function RecordDetailsScreen() {
                   fontSize: 13,
                 }}
               >
-                {item.note ||
-                  item.technicianNote ||
-                  item.notes ||
-                  item.details?.advice}
+                {isAI
+                  ? aiDetails?.technicianNote
+                  : item.note ||
+                    item.technicianNote ||
+                    item.notes ||
+                    item.details?.advice}
               </Text>
             </View>
           )}
         </View>
       </ScrollView>
     </ScreenLayout>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  colors,
+  valueColor,
+}: {
+  label: string;
+  value: string;
+  colors: any;
+  valueColor?: string;
+}) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: 16,
+      }}
+    >
+      <Text
+        style={{
+          color: colors.textMuted,
+          fontFamily: "Outfit_600SemiBold",
+          fontSize: 12,
+          flexShrink: 0,
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{
+          color: valueColor || colors.textPrimary,
+          fontFamily: "Outfit_700Bold",
+          fontSize: 13,
+          flex: 1,
+          textAlign: "right",
+        }}
+      >
+        {value}
+      </Text>
+    </View>
   );
 }
