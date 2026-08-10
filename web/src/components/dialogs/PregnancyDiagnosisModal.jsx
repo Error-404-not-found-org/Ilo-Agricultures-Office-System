@@ -22,12 +22,12 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
     const isVerificationTask = taskData && (taskData.raw?.taskType === "PD" || taskData.type === "breeding_verification" || taskData.type === "pregnancy_check");
     const rawTask = taskData?.raw || taskData || {};
     const workflowStage = getWorkflowStage(rawTask);
-    const isInitialDiagnosis = workflowStage === PREGNANCY_WORKFLOW_STAGE.INITIAL;
+    const isInitialDiagnosis = !taskData || workflowStage === PREGNANCY_WORKFLOW_STAGE.INITIAL;
     const isContinuation = workflowStage === PREGNANCY_WORKFLOW_STAGE.CONTINUATION;
     const isDiagnosticFollowUp = workflowStage === PREGNANCY_WORKFLOW_STAGE.FOLLOW_UP;
     const isContinuationFlow = isContinuation || isDiagnosticFollowUp;
     const pregnancyId = rawTask.metadata?.pregnancyId || rawTask.relatedRecordId?._id || rawTask.relatedRecordId;
-    const readiness = rawTask.pregnancyReadiness;
+    const taskReadiness = rawTask.pregnancyReadiness;
     
     // Form & UI state
     const [result, setResult] = useState(''); // 'Pregnant' or 'Empty'
@@ -35,6 +35,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
     const [diagnosisDate, setDiagnosisDate] = useState(new Date().toISOString().slice(0, 10));
     const [followUpDate, setFollowUpDate] = useState("");
     const [diagnosticMethod, setDiagnosticMethod] = useState("");
+    const [fieldErrors, setFieldErrors] = useState({});
     const [minimumFollowUpDate] = useState(
         () => new Date(Date.now() + 86400000).toISOString().slice(0, 10),
     );
@@ -86,6 +87,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                 setIsDropdownOpen(false);
                 setSelectedAnimalId('');
                 setSelectedInseminationId('');
+                setFieldErrors({});
             });
         }
         return () => {
@@ -94,7 +96,13 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
     }, [isOpen, onClose, preSelectedFarmer, preSelectedAnimal, taskData, isVerificationTask]);
 
     // Queries for standalone mode
-    const { data: farmers = [] } = useQuery({
+    const {
+        data: farmers = [],
+        error: farmersError,
+        isError: isFarmersError,
+        isLoading: isLoadingFarmers,
+        refetch: refetchFarmers,
+    } = useQuery({
         queryKey: ["farmers", "list"],
         queryFn: async () => {
             const res = await axiosInstance.get("/user?role=farmer");
@@ -103,7 +111,13 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
         enabled: isOpen && (!taskData || isVerificationTask),
     });
 
-    const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({
+    const {
+        data: animals = [],
+        error: animalsError,
+        isError: isAnimalsError,
+        isLoading: isLoadingAnimals,
+        refetch: refetchAnimals,
+    } = useQuery({
         queryKey: ["farmer-animals", selectedFarmerId],
         queryFn: async () => {
             const res = await axiosInstance.get(`/animals/farmer/${selectedFarmerId}`);
@@ -112,7 +126,13 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
         enabled: !!selectedFarmerId && isOpen && (!taskData || isVerificationTask),
     });
 
-    const { data: animalHistory = {}, isLoading: isLoadingHistory } = useQuery({
+    const {
+        data: animalHistory = {},
+        error: historyError,
+        isError: isHistoryError,
+        isLoading: isLoadingHistory,
+        refetch: refetchHistory,
+    } = useQuery({
         queryKey: ["animal-history", selectedAnimalId],
         queryFn: async () => {
             const res = await axiosInstance.get(`/technician/animal-history/${selectedAnimalId}`);
@@ -147,7 +167,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
         ? []
         : historyInseminations.filter(
             (item) =>
-                (item.status === "done" || item.status === "completed" || item.status === "in-progress" || item.status === "approved") &&
+                ["done", "resolved", "completed"].includes(String(item.status || "").trim().toLowerCase()) &&
                 (!item.outcome || item.outcome === "Pending")
         );
 
@@ -157,7 +177,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
             const historyInsem = animalHistory.inseminations || [];
             const valid = historyInsem.filter(
                 (item) =>
-                    (item.status === "done" || item.status === "completed" || item.status === "in-progress" || item.status === "approved") &&
+                    ["done", "resolved", "completed"].includes(String(item.status || "").trim().toLowerCase()) &&
                     (!item.outcome || item.outcome === "Pending")
             );
             if (valid.length > 0) {
@@ -182,6 +202,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
         : (isVerificationTask
             ? (animalHistory.inseminations || []).find(i => (i._id || i.id) === (taskData.raw?.metadata?.inseminationId || taskData.inseminationId))
             : validInseminations.find(i => (i._id || i.id) === selectedInseminationId));
+    const readiness = taskReadiness || selectedInsemination?.pregnancyReadiness;
 
     // Calculate days since AI
     let daysSinceAI = 0;
@@ -207,31 +228,56 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
     });
 
     const handleSubmit = async () => {
+        if (isSubmitting) return;
+        const nextErrors = {};
+        if (!taskData && !selectedFarmerId) {
+            nextErrors.farmer = "Select a farmer.";
+        }
         if (!animalId) {
-            toast.error("Please select a valid cow record.");
-            return;
+            nextErrors.animal = "Select a valid female animal.";
         }
         if (!isContinuationFlow && !inseminationId) {
-            toast.error("No active breeding attempt referenced.");
-            return;
+            nextErrors.insemination = "Select a completed breeding attempt.";
         }
         if (isContinuationFlow && !pregnancyId) {
-            toast.error("The related pregnancy record is missing from this task.");
-            return;
+            nextErrors.form = "The related pregnancy record is missing from this task.";
         }
         if (!result) {
-            toast.error("Please select a diagnosis result.");
-            return;
+            nextErrors.result = "Select a diagnosis result.";
         }
         if (isInitialDiagnosis && readiness?.policyMode === "method_based" && !diagnosticMethod) {
-            toast.error("Select an available diagnostic method.");
+            nextErrors.diagnosticMethod = "Select an available diagnostic method.";
+        }
+        if (isInitialDiagnosis && readiness && !readiness.isEligible) {
+            nextErrors.form = readiness.reason || "Pregnancy diagnosis is not available yet.";
+        }
+        const diagnosisTimestamp = new Date(diagnosisDate).getTime();
+        if (!diagnosisDate || Number.isNaN(diagnosisTimestamp)) {
+            nextErrors.diagnosisDate = "Enter a valid diagnosis date.";
+        } else if (diagnosisTimestamp > new Date().getTime()) {
+            nextErrors.diagnosisDate = "Diagnosis date cannot be in the future.";
+        } else if (
+            selectedInsemination?.inseminationDate &&
+            diagnosisTimestamp < new Date(selectedInsemination.inseminationDate).setUTCHours(0, 0, 0, 0)
+        ) {
+            nextErrors.diagnosisDate = "Diagnosis date cannot be earlier than the AI service date.";
+        }
+        if (result === "follow_up_required") {
+            const followUpTimestamp = new Date(followUpDate).getTime();
+            if (!followUpDate || Number.isNaN(followUpTimestamp) || followUpTimestamp <= diagnosisTimestamp) {
+                nextErrors.followUpDate = "Choose a follow-up date after the diagnosis date.";
+            }
+        }
+        if (Object.keys(nextErrors).length > 0) {
+            setFieldErrors(nextErrors);
             return;
         }
 
+        setFieldErrors({});
         setIsSubmitting(true);
         try {
             const request = buildPregnancyActionRequest({
-                task: rawTask,
+                task: { ...rawTask, pregnancyReadiness: readiness },
                 animalId,
                 inseminationId,
                 result,
@@ -244,9 +290,12 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
             await axiosInstance.post(request.url, request.payload);
 
             toast.success(isContinuationFlow ? "Pregnancy follow-up recorded." : `Diagnosis recorded: ${result}`);
-            queryClient.invalidateQueries({ queryKey: ["technician"] });
-            queryClient.invalidateQueries({ queryKey: ["farmer-animals"] });
-            queryClient.invalidateQueries({ queryKey: ["animal-history"] });
+            await Promise.allSettled([
+                queryClient.invalidateQueries({ queryKey: ["technician"] }),
+                queryClient.invalidateQueries({ queryKey: ["farmer-animals"] }),
+                queryClient.invalidateQueries({ queryKey: ["animal-history"] }),
+                queryClient.invalidateQueries({ queryKey: ["animal", animalId] }),
+            ]);
             if (onSuccess) onSuccess();
             onClose();
         } catch (err) {
@@ -264,13 +313,13 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-neutral/45" role="dialog" aria-modal="true" aria-labelledby="pregnancy-modal-title">
+            <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="pregnancy-modal-title">
                 
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="bg-base-100 rounded-2xl max-w-3xl w-full shadow-2xl relative overflow-hidden flex flex-col md:flex-row border border-base-300 max-h-[86vh]"
+                    className="modal-box relative flex max-h-[86vh] w-11/12 max-w-3xl flex-col overflow-hidden border border-base-300 p-0 md:flex-row"
                 >
                     {/* LEFT SIDE: Breeding Context */}
                     <div className="md:w-5/12 bg-base-200 p-5 border-r border-base-300 flex flex-col justify-between overflow-y-auto custom-scrollbar">
@@ -335,7 +384,8 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                         {animal.animalId && <span className="sr-only"> Full animal identifier: {animal.animalId}.</span>}
                                     </p>
                                 </div>
-                                <button
+                                 <button
+                                    type="button"
                                     onClick={() => !isSubmitting && onClose()}
                                     disabled={isSubmitting}
                                     className="btn btn-ghost btn-circle min-h-11 min-w-11"
@@ -350,7 +400,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                 <div className="space-y-4 mb-6">
                                     {/* Farmer Selector */}
                                     <div className="space-y-1.5">
-                                        <label className={labelClass}>Farmer Client</label>
+                                        <label className={labelClass} htmlFor="pregnancy-farmer-search">Farmer</label>
                                         {preSelectedFarmer ? (
                                             <div className="flex items-center gap-3 h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content/65 select-none">
                                                 <span className="truncate">{preSelectedFarmer.name}</span>
@@ -359,11 +409,14 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                             <div className="relative">
                                                 <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/20" />
                                                 <input
+                                                    id="pregnancy-farmer-search"
                                                     value={searchFarmer}
                                                     onChange={(e) => {
                                                         setSearchFarmer(e.target.value);
                                                         setSelectedFarmerId("");
                                                         setSelectedAnimalId("");
+                                                        setSelectedInseminationId("");
+                                                        setFieldErrors((current) => ({ ...current, farmer: null, animal: null, insemination: null }));
                                                         setIsDropdownOpen(true);
                                                     }}
                                                     onFocus={() => setIsDropdownOpen(true)}
@@ -381,7 +434,17 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                                             aria-label="Matching farmers"
                                                             className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl custom-scrollbar"
                                                         >
-                                                            {farmers.filter((f) =>
+                                                            {isLoadingFarmers ? (
+                                                                <div className="space-y-2 p-3" role="status" aria-label="Loading farmers">
+                                                                    <div className="skeleton h-10 w-full" />
+                                                                    <div className="skeleton h-10 w-full" />
+                                                                </div>
+                                                            ) : isFarmersError ? (
+                                                                <div className="alert alert-error m-2 w-auto text-sm" role="alert">
+                                                                    <span>{farmersError?.response?.data?.message || "Unable to load farmers."}</span>
+                                                                    <button type="button" className="btn btn-ghost btn-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => refetchFarmers()}>Try again</button>
+                                                                </div>
+                                                            ) : farmers.filter((f) =>
                                                                 (f.name || "").toLowerCase().includes(searchFarmer.toLowerCase()) ||
                                                                 (f.phoneNumber || "").toLowerCase().includes(searchFarmer.toLowerCase()) ||
                                                                 (typeof f.address === "string" ? f.address : f.address?.barangay || "").toLowerCase().includes(searchFarmer.toLowerCase())
@@ -403,6 +466,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                                                                 setSelectedAnimalId("");
                                                                                 setSearchFarmer(farmer.name);
                                                                                 setIsDropdownOpen(false);
+                                                                                setFieldErrors((current) => ({ ...current, farmer: null, animal: null, insemination: null }));
                                                                             }}
                                                                             className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary cursor-pointer"
                                                                         >
@@ -425,48 +489,74 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                                 </AnimatePresence>
                                             </div>
                                         )}
+                                        {fieldErrors.farmer && <p role="alert" className="text-sm text-error">{fieldErrors.farmer}</p>}
                                     </div>
 
                                     {/* Animal Selector */}
                                     <div className="space-y-1.5">
-                                        <label className={labelClass}>Livestock Cow</label>
+                                        <label className={labelClass} htmlFor="pregnancy-animal">Animal</label>
                                         {preSelectedAnimal ? (
                                             <div className="flex items-center gap-3 h-11 bg-base-200 border border-base-300 rounded-xl px-4 text-xs font-bold text-base-content/65 select-none">
                                                 <span className="truncate">Tag #{preSelectedAnimal.earTag} ({preSelectedAnimal.breed || "Crossbreed"})</span>
                                             </div>
                                         ) : (
                                             <select
-                                                disabled={!selectedFarmerId || isLoadingAnimals}
+                                                id="pregnancy-animal"
+                                                disabled={!selectedFarmerId || isLoadingAnimals || isAnimalsError}
                                                 value={selectedAnimalId}
-                                                onChange={(e) => setSelectedAnimalId(e.target.value)}
+                                                onChange={(e) => {
+                                                    setSelectedAnimalId(e.target.value);
+                                                    setSelectedInseminationId("");
+                                                    setFieldErrors((current) => ({ ...current, animal: null, insemination: null }));
+                                                }}
                                                 className={`${selectClass} cursor-pointer disabled:opacity-50`}
                                             >
                                                 <option value="">{isLoadingAnimals ? "Synchronizing..." : "Select female cow..."}</option>
                                                 {animals.map((a) => (
                                                     <option key={a._id} value={a._id} disabled={a.gender === "Male" || a.reproductiveStatus === "Pregnant"}>
-                                                        Tag #{a.earTag} ({a.breed}) — {a.reproductiveStatus || "Normal"}{a.gender === "Male" ? " (Male - Restricted)" : ""}{a.reproductiveStatus === "Pregnant" ? " (Already Pregnant)" : ""}
+                                                        Tag #{a.earTag} ({a.breed}) - {a.reproductiveStatus || "Normal"}{a.gender === "Male" ? " (Male - Restricted)" : ""}{a.reproductiveStatus === "Pregnant" ? " (Already Pregnant)" : ""}
                                                     </option>
                                                 ))}
                                             </select>
                                         )}
+                                        {selectedFarmerId && isAnimalsError && (
+                                            <div className="alert alert-error text-sm" role="alert">
+                                                <span>{animalsError?.response?.data?.message || "Unable to load this farmer's animals."}</span>
+                                                <button type="button" className="btn btn-ghost btn-xs" onClick={() => refetchAnimals()}>Try again</button>
+                                            </div>
+                                        )}
+                                        {selectedFarmerId && !isLoadingAnimals && !isAnimalsError && animals.length === 0 && (
+                                            <p className="text-sm text-base-content/60">No registered animals found for this farmer.</p>
+                                        )}
+                                        {fieldErrors.animal && <p role="alert" className="text-sm text-error">{fieldErrors.animal}</p>}
                                     </div>
 
                                     {/* Breeding attempt selector */}
                                     {selectedAnimalId && (
                                         <div className="space-y-1.5">
-                                            <label className={labelClass}>Breeding Attempt Reference</label>
+                                            <label className={labelClass} htmlFor="pregnancy-insemination">Completed breeding attempt</label>
                                             {isLoadingHistory ? (
-                                                <div className="text-xs font-bold text-slate-400">Loading attempts...</div>
+                                                <div className="skeleton h-11 w-full" role="status" aria-label="Loading breeding attempts" />
+                                            ) : isHistoryError ? (
+                                                <div className="alert alert-error text-sm" role="alert">
+                                                    <span>{historyError?.response?.data?.message || "Unable to load breeding history."}</span>
+                                                    <button type="button" className="btn btn-ghost btn-xs" onClick={() => refetchHistory()}>Try again</button>
+                                                </div>
                                             ) : validInseminations.length > 0 ? (
                                                 <select
+                                                    id="pregnancy-insemination"
                                                     value={selectedInseminationId}
-                                                    onChange={(e) => setSelectedInseminationId(e.target.value)}
+                                                    onChange={(e) => {
+                                                        setSelectedInseminationId(e.target.value);
+                                                        setDiagnosticMethod("");
+                                                        setFieldErrors((current) => ({ ...current, insemination: null, diagnosticMethod: null }));
+                                                    }}
                                                     className={`${selectClass} cursor-pointer`}
                                                 >
                                                     <option value="" disabled>Select breeding attempt...</option>
                                                     {validInseminations.map((item) => (
                                                         <option key={item._id || item.id} value={item._id || item.id}>
-                                                            Attempt #{item.attemptNumber || 1} — {formatDate(item.inseminationDate)} (Sire: {item.sireCode})
+                                                            Attempt #{item.attemptNumber || 1} - {formatDate(item.inseminationDate)} (Sire: {item.sireCode})
                                                         </option>
                                                     ))}
                                                 </select>
@@ -481,6 +571,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                                     </div>
                                                 </div>
                                             )}
+                                            {fieldErrors.insemination && <p role="alert" className="text-sm text-error">{fieldErrors.insemination}</p>}
                                         </div>
                                     )}
                                 </div>
@@ -508,34 +599,49 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                     <span>{readiness.reason || "Pregnancy diagnosis is not available yet."}</span>
                                 </div>
                             )}
+                            {fieldErrors.form && (
+                                <div className="alert alert-error mb-5" role="alert">
+                                    <AlertCircle size={18} />
+                                    <span>{fieldErrors.form}</span>
+                                </div>
+                            )}
 
                             {/* Result & Diagnosis details */}
                             {(taskData || selectedInseminationId) && (
                                 <div className="space-y-6">
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">
+                                        <label htmlFor="pregnancy-diagnosis-date" className={labelClass}>
                                             Diagnosis Date
                                         </label>
                                         <input
+                                            id="pregnancy-diagnosis-date"
                                             type="date"
                                             value={diagnosisDate}
                                             max={new Date().toISOString().slice(0, 10)}
-                                            onChange={(event) => setDiagnosisDate(event.target.value)}
+                                            onChange={(event) => {
+                                                setDiagnosisDate(event.target.value);
+                                                setFieldErrors((current) => ({ ...current, diagnosisDate: null }));
+                                            }}
                                             className={inputClass}
                                         />
                                         <p className="text-[10px] text-base-content/50 ml-1">
                                             Use the actual examination date when entering a past result.
                                         </p>
+                                        {fieldErrors.diagnosisDate && <p role="alert" className="text-sm text-error">{fieldErrors.diagnosisDate}</p>}
                                     </div>
                                     {/* Result Selection */}
-                                    <div className="space-y-2.5">
-                                        <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">
+                                    <fieldset className="space-y-2.5">
+                                        <legend className={labelClass}>
                                             Diagnosis Result
-                                        </label>
+                                        </legend>
                                         <div className="grid grid-cols-2 gap-3">
                                             <button
                                                 type="button"
-                                                onClick={() => setResult(isContinuationFlow ? 'continuing' : 'Pregnant')}
+                                                aria-pressed={result === (isContinuationFlow ? 'continuing' : 'Pregnant')}
+                                                onClick={() => {
+                                                    setResult(isContinuationFlow ? 'continuing' : 'Pregnant');
+                                                    setFieldErrors((current) => ({ ...current, result: null, followUpDate: null }));
+                                                }}
                                                 className={`btn min-h-20 h-auto flex-col ${result === (isContinuationFlow ? 'continuing' : 'Pregnant') ? 'btn-success' : 'btn-outline'}`}
                                             >
                                                 <Sparkles size={22} />
@@ -543,24 +649,30 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                             </button>
                                             <button
                                                 type="button"
-                                                onClick={() => setResult(isContinuationFlow ? 'loss_detected' : 'Empty')}
+                                                aria-pressed={result === (isContinuationFlow ? 'loss_detected' : 'Empty')}
+                                                onClick={() => {
+                                                    setResult(isContinuationFlow ? 'loss_detected' : 'Empty');
+                                                    setFieldErrors((current) => ({ ...current, result: null, followUpDate: null }));
+                                                }}
                                                 className={`btn min-h-20 h-auto flex-col ${result === (isContinuationFlow ? 'loss_detected' : 'Empty') ? 'btn-error' : 'btn-outline'}`}
                                             >
                                                 <AlertCircle size={22} />
                                                 <span>{isContinuationFlow ? "Pregnancy loss detected" : "Not pregnant"}</span>
                                             </button>
                                             {isContinuationFlow && (
-                                                <button type="button" onClick={() => setResult('follow_up_required')} className={`btn col-span-2 min-h-14 ${result === 'follow_up_required' ? 'btn-warning' : 'btn-outline'}`}>
+                                                <button type="button" aria-pressed={result === 'follow_up_required'} onClick={() => { setResult('follow_up_required'); setFieldErrors((current) => ({ ...current, result: null })); }} className={`btn col-span-2 min-h-14 ${result === 'follow_up_required' ? 'btn-warning' : 'btn-outline'}`}>
                                                     Additional follow-up required
                                                 </button>
                                             )}
                                         </div>
-                                    </div>
+                                        {fieldErrors.result && <p role="alert" className="text-sm text-error">{fieldErrors.result}</p>}
+                                    </fieldset>
 
                                     {isContinuationFlow && result === "follow_up_required" && (
                                         <div className="space-y-1.5">
                                             <label className={labelClass} htmlFor="pregnancy-follow-up-date">Follow-up date</label>
-                                            <input id="pregnancy-follow-up-date" type="date" min={minimumFollowUpDate} value={followUpDate} onChange={(event) => setFollowUpDate(event.target.value)} className={inputClass} required />
+                                            <input id="pregnancy-follow-up-date" type="date" min={minimumFollowUpDate} value={followUpDate} onChange={(event) => { setFollowUpDate(event.target.value); setFieldErrors((current) => ({ ...current, followUpDate: null })); }} className={inputClass} required />
+                                            {fieldErrors.followUpDate && <p role="alert" className="text-sm text-error">{fieldErrors.followUpDate}</p>}
                                         </div>
                                     )}
 
@@ -574,24 +686,27 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                                         type="button"
                                                         className={`btn min-h-14 h-auto justify-start text-left ${diagnosticMethod === method.methodCode ? "btn-primary" : "btn-outline"}`}
                                                         disabled={!method.enabled || !method.isEligible}
-                                                        onClick={() => setDiagnosticMethod(method.methodCode)}
+                                                        aria-pressed={diagnosticMethod === method.methodCode}
+                                                        onClick={() => { setDiagnosticMethod(method.methodCode); setFieldErrors((current) => ({ ...current, diagnosticMethod: null })); }}
                                                         title={method.reason}
                                                     >
                                                         <span><span className="block">{method.label}</span><span className="block text-xs font-normal opacity-75">{method.isEligible ? "Available now" : method.availableDateLabel || method.reason}</span></span>
                                                     </button>
                                                 ))}
                                             </div>
+                                            {fieldErrors.diagnosticMethod && <p role="alert" className="text-sm text-error">{fieldErrors.diagnosticMethod}</p>}
                                         </fieldset>
                                     )}
 
                                     {/* Note */}
                                     <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-base-content/40 uppercase tracking-widest ml-1 block">Findings</label>
+                                        <label className={labelClass} htmlFor="pregnancy-findings">Findings (optional)</label>
                                         <textarea
-                                            placeholder="Optional notes..."
+                                            id="pregnancy-findings"
+                                            placeholder="Add examination findings"
                                             value={note}
                                             onChange={(e) => setNote(e.target.value)}
-                                            className="w-full bg-base-200 border border-base-300 rounded-2xl p-4 text-xs font-bold text-base-content placeholder:text-base-content/30 focus:border-purple-600 focus:outline-none transition-all min-h-20 resize-none"
+                                            className="textarea textarea-bordered min-h-24 w-full resize-none"
                                         />
                                     </div>
 
@@ -599,7 +714,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                         <motion.div
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
-                                            className="bg-purple-600 rounded-2xl p-4 flex items-center justify-between text-white shadow-md shadow-purple-900/25"
+                                            className="alert alert-info flex items-center justify-between"
                                         >
                                             <div className="flex items-center gap-3">
                                                 <Calendar size={18} className="opacity-60" />
@@ -610,7 +725,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                                                     </p>
                                                 </div>
                                             </div>
-                                            <CheckCircle size={18} className="text-white" />
+                                            <CheckCircle size={18} />
                                         </motion.div>
                                     )}
                                 </div>
@@ -619,8 +734,9 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
 
                         <div className="mt-6">
                             <button
+                                type="button"
                                 onClick={handleSubmit}
-                                disabled={isSubmitting || !result || (!taskData && !selectedInseminationId) || (isInitialDiagnosis && readiness && !readiness.isEligible) || (isInitialDiagnosis && readiness?.policyMode === "method_based" && !diagnosticMethod) || (result === "follow_up_required" && !followUpDate)}
+                                disabled={isSubmitting || (isInitialDiagnosis && readiness && !readiness.isEligible)}
                                 className="btn btn-primary min-h-11 w-full"
                             >
                                 {isSubmitting ? <span className="loading loading-spinner loading-xs"></span> : isContinuationFlow ? 'Save follow-up result' : 'Finalize diagnosis'}
@@ -628,6 +744,7 @@ const PregnancyDiagnosisModal = ({ isOpen, onClose, taskData, onSuccess, preSele
                         </div>
                     </div>
                 </motion.div>
+                <button type="button" className="modal-backdrop" onClick={() => !isSubmitting && onClose()} aria-label="Close pregnancy form" />
             </div>
         </AnimatePresence>
     );

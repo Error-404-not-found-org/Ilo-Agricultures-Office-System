@@ -443,6 +443,12 @@ export const getTechnicianDashboardData = async (req, res) => {
             overdue: isOverdue,
             sentTime: formatTime(ins.createdAt),
             createdAt: ins.createdAt,
+            farmerImageUrl:
+              ins.farmerId?.imageUrl ||
+              ins.farmerId?.avatarUrl ||
+              ins.farmerId?.profilePicture ||
+              ins.farmerId?.avatar ||
+              "",
           };
           pendingRequests.push(candidateItem);
         } else if (assignedToMeAI) {
@@ -463,11 +469,17 @@ export const getTechnicianDashboardData = async (req, res) => {
 
     // Process Health Requests
     healthReqs.forEach((healthRequest) => {
-      const farmLocationDetails = getFarmLocationDetails(healthRequest.farmerId);
+      const farmLocationDetails = getFarmLocationDetails(
+        healthRequest.farmerId,
+      );
       const itemDisplayDate =
         healthRequest.status === "resolved" || healthRequest.status === "done"
-          ? healthRequest.scheduledDate || healthRequest.preferredDate || healthRequest.createdAt // Health doesn't have inseminationDate
-          : healthRequest.scheduledDate || healthRequest.preferredDate || healthRequest.createdAt;
+          ? healthRequest.scheduledDate ||
+            healthRequest.preferredDate ||
+            healthRequest.createdAt // Health doesn't have inseminationDate
+          : healthRequest.scheduledDate ||
+            healthRequest.preferredDate ||
+            healthRequest.createdAt;
 
       const isOverdue =
         [
@@ -478,7 +490,8 @@ export const getTechnicianDashboardData = async (req, res) => {
           "scheduled",
           "in-progress",
           "in_progress",
-        ].includes(healthRequest.status) && new Date(itemDisplayDate) < todayStart;
+        ].includes(healthRequest.status) &&
+        new Date(itemDisplayDate) < todayStart;
       const isReadyToday =
         ["approved", "scheduled"].includes(healthRequest.status) &&
         new Date(itemDisplayDate) >= todayStart &&
@@ -497,7 +510,10 @@ export const getTechnicianDashboardData = async (req, res) => {
         visitPeriod: healthRequest.visitPeriod || null,
         farmer: healthRequest.farmerId?.name || "Unknown Farmer",
         farmerName: healthRequest.farmerId?.name || "Unknown Farmer",
-        farmerPhone: healthRequest.farmerId?.phoneNumber || healthRequest.farmerId?.phone || null,
+        farmerPhone:
+          healthRequest.farmerId?.phoneNumber ||
+          healthRequest.farmerId?.phone ||
+          null,
         farmerImageUrl:
           healthRequest.farmerId?.imageUrl ||
           healthRequest.farmerId?.avatarUrl ||
@@ -506,7 +522,10 @@ export const getTechnicianDashboardData = async (req, res) => {
           "",
         location: formatAddress(healthRequest.farmerId?.address),
         ...farmLocationDetails,
-        animalTag: healthRequest.animalId?.earTag || healthRequest.animalId?.animalId || null,
+        animalTag:
+          healthRequest.animalId?.earTag ||
+          healthRequest.animalId?.animalId ||
+          null,
         displayStatus: isReadyToday ? "Ready Today" : healthRequest.status,
         task: `Health Check - ${healthRequest.animalId?.animalId || healthRequest.animalId?.earTag || "Unknown"}`,
         urgent: ["high", "emergency"].includes(healthRequest.urgency),
@@ -518,12 +537,13 @@ export const getTechnicianDashboardData = async (req, res) => {
 
       const assignedToMeHealth =
         req.user?.role === "admin" ||
-        healthRequest.handledBy?._id?.toString() === req.user?._id?.toString() ||
-        healthRequest.assignedTechnicianId?.toString() === req.user?._id?.toString();
+        healthRequest.handledBy?._id?.toString() ===
+          req.user?._id?.toString() ||
+        healthRequest.assignedTechnicianId?.toString() ===
+          req.user?._id?.toString();
 
       const isUnassignedHealth =
-        !healthRequest.handledBy &&
-        !healthRequest.assignedTechnicianId;
+        !healthRequest.handledBy && !healthRequest.assignedTechnicianId;
 
       if (
         [
@@ -548,7 +568,10 @@ export const getTechnicianDashboardData = async (req, res) => {
             preferredTime: formatTime(itemDisplayDate),
             displayDate: itemDisplayDate,
             farmer: healthRequest.farmerId?.name || "Unknown Farmer",
-            animalTag: healthRequest.animalId?.earTag || healthRequest.animalId?.animalId || null,
+            animalTag:
+              healthRequest.animalId?.earTag ||
+              healthRequest.animalId?.animalId ||
+              null,
             municipality:
               healthRequest.farmerId?.address?.city ||
               healthRequest.farmerId?.address?.municipality ||
@@ -560,6 +583,12 @@ export const getTechnicianDashboardData = async (req, res) => {
             overdue: isOverdue,
             sentTime: formatTime(healthRequest.createdAt),
             createdAt: healthRequest.createdAt,
+            farmerImageUrl:
+              healthRequest.farmerId?.imageUrl ||
+              healthRequest.farmerId?.avatarUrl ||
+              healthRequest.farmerId?.profilePicture ||
+              healthRequest.farmerId?.avatar ||
+              "",
           };
           pendingRequests.push(candidateItem);
         } else if (assignedToMeHealth) {
@@ -4134,9 +4163,7 @@ export const getWorkQueue = async (req, res) => {
         taskType: "AI",
         serviceType: "Artificial Insemination",
         requestKind:
-          attemptNumber && attemptNumber > 1
-            ? "re_insemination"
-            : "initial_ai",
+          attemptNumber && attemptNumber > 1 ? "re_insemination" : "initial_ai",
         attemptNumber,
         previousAttemptId: idOf(ins.previousAttemptId),
         attemptSeriesId: idOf(ins.attemptSeriesId),
@@ -4242,7 +4269,10 @@ export const getWorkQueue = async (req, res) => {
         actionLabel,
         farmer: serializeFarmer(req.farmerId),
         animal: serializeAnimal(req.animalId),
-        schedule: { date: scheduleDate, visitPeriod: null },
+        schedule: {
+          date: scheduleDate,
+          visitPeriod: req.visitPeriod || null,
+        },
         requestedAt: req.createdAt || null,
         completedAt,
         isReadyToday:
@@ -4274,7 +4304,7 @@ export const getWorkQueue = async (req, res) => {
         overdue: isOverdue(scheduleDate, terminal),
         sentTime: formatTime(req.createdAt),
         scheduledDate: scheduleDate,
-        visitPeriod: null,
+        visitPeriod: req.visitPeriod || null,
         raw: req,
       };
 
@@ -4427,7 +4457,9 @@ export const updateDispatchStatus = async (req, res) => {
 
     if (acceptsNewRequests !== undefined) {
       if (typeof acceptsNewRequests !== "boolean") {
-        return res.status(400).json({ message: "acceptsNewRequests must be a boolean." });
+        return res
+          .status(400)
+          .json({ message: "acceptsNewRequests must be a boolean." });
       }
       updates["dispatchProfile.acceptsNewRequests"] = acceptsNewRequests;
     }
@@ -4436,11 +4468,13 @@ export const updateDispatchStatus = async (req, res) => {
       updates["dispatchProfile.updatedAt"] = new Date();
 
       // Ensure dispatchProfile object exists with safe defaults if missing
-      const user = await User.findById(req.user._id).select("dispatchProfile").lean();
+      const user = await User.findById(req.user._id)
+        .select("dispatchProfile")
+        .lean();
       if (!user) {
         return res.status(404).json({ message: "Technician not found." });
       }
-      
+
       if (!user.dispatchProfile) {
         if (!updates["dispatchProfile.availabilityStatus"]) {
           updates["dispatchProfile.availabilityStatus"] = "off_duty";
@@ -4453,7 +4487,7 @@ export const updateDispatchStatus = async (req, res) => {
       const updatedUser = await User.findByIdAndUpdate(
         req.user._id,
         { $set: updates },
-        { returnDocument: "after", runValidators: true }
+        { returnDocument: "after", runValidators: true },
       );
 
       return res.status(200).json({

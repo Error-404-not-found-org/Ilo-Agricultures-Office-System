@@ -1,37 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="breedsmart-dark">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BreedSmart Technician Portal</title>
-    <script>
-      (function () {
-        const storedTheme = localStorage.getItem("theme");
-        const legacyTheme =
-          storedTheme === "night"
-            ? "breedsmart-dark"
-            : storedTheme === "emerald"
-              ? "breedsmart"
-              : storedTheme;
-        const supportedThemes = [
-          "breedsmart",
-          "breedsmart-dark",
-          "black",
-          "dracula",
-        ];
-        const theme = supportedThemes.includes(legacyTheme)
-          ? legacyTheme
-          : "breedsmart";
-        if (storedTheme !== theme) localStorage.setItem("theme", theme);
-        document.documentElement.setAttribute("data-theme", theme);
-        if (theme !== "breedsmart") {
-          document.documentElement.classList.add("dark");
-        } else {
-          document.documentElement.classList.remove("dark");
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>

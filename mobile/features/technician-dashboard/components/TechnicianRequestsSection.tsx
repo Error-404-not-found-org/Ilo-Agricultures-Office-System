@@ -90,11 +90,7 @@ export function TechnicianRequestsSection({
   );
 }
 
-function RequestRow({
-  item,
-  onPress,
-  isUpdating,
-}: any) {
+function RequestRow({ item, onPress, isUpdating }: any) {
   const { colors, isDark } = useTheme();
   const isHealth = item.type === "health";
   const isPregnancyCheck = item.type === "breeding_verification";
@@ -263,9 +259,6 @@ function RequestRow({
           </View>
         ) : null}
       </View>
-
-      <ChevronRight size={18} color={colors.textMuted} />
     </TouchableOpacity>
-
   );
 }

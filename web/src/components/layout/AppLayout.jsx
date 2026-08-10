@@ -1,9 +1,9 @@
 import { useEffect, useRef } from "react";
-import { Outlet } from 'react-router-dom';
-import { useClerk } from '@clerk/clerk-react';
-import { toast } from 'sonner';
-import Sidebar from './Sidebar';
-import { useSidebar } from '../../contexts/SidebarContext';
+import { Outlet } from "react-router-dom";
+import { useClerk } from "@clerk/clerk-react";
+import { toast } from "sonner";
+import Sidebar from "./Sidebar";
+import { useSidebar } from "../../contexts/SidebarContext";
 
 export default function Layout() {
   const { signOut } = useClerk();
@@ -17,15 +17,24 @@ export default function Layout() {
     const resetTimer = () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => {
-        toast.error("⏱️ Session expired due to inactivity. Please sign in again.", {
-          duration: 5000,
-          id: "inactivity-signout",
-        });
+        toast.error(
+          "⏱️ Session expired due to inactivity. Please sign in again.",
+          {
+            duration: 5000,
+            id: "inactivity-signout",
+          },
+        );
         setTimeout(() => signOut(), 2000);
       }, timeoutDuration);
     };
 
-    const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
+    const events = [
+      "mousedown",
+      "mousemove",
+      "keypress",
+      "scroll",
+      "touchstart",
+    ];
     resetTimer();
     events.forEach((e) => window.addEventListener(e, resetTimer));
 
@@ -44,7 +53,7 @@ export default function Layout() {
   }, []);
 
   return (
-    <div className="drawer lg:drawer-open h-screen bg-base-200 text-base-content font-sans antialiased">
+    <div className="drawer lg:drawer-open h-screen bg-base-100 text-base-content font-sans antialiased">
       <input
         id="app-navigation-drawer"
         type="checkbox"
@@ -56,7 +65,7 @@ export default function Layout() {
         aria-label="Open application navigation"
       />
       <div className="drawer-content flex min-w-0 flex-col h-screen overflow-hidden">
-          <Outlet />
+        <Outlet />
       </div>
       <div className="drawer-side z-40">
         <label
@@ -70,4 +79,3 @@ export default function Layout() {
     </div>
   );
 }
-

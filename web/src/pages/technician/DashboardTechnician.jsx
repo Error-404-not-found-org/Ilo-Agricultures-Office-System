@@ -6,13 +6,13 @@ import {
   Tractor,
   HeartPulse,
   Baby,
-  Search,
   ArrowRight,
   Clock,
   CalendarCheck,
   CheckCircle,
   AlertTriangle,
   MapPin,
+  CalendarDays,
   ClipboardList,
   PawPrint,
 } from "lucide-react";
@@ -34,17 +34,26 @@ import RegisterLivestockModal from "../../components/dialogs/RegisterLivestockMo
 import PregnancyDiagnosisModal from "../../components/dialogs/PregnancyDiagnosisModal";
 import RecordCalvingModal from "../../components/dialogs/RecordCalvingModal";
 
-function QuickAction({ icon: IconComponent, label, bgClass, textClass, onClick }) {
+function QuickAction({
+  icon: IconComponent,
+  label,
+  bgClass,
+  textClass,
+  onClick,
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group flex min-w-0 flex-col items-center text-center cursor-pointer rounded-box focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+      aria-haspopup="dialog"
+      className="group flex min-w-0 flex-col items-center rounded-box text-center focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
     >
-      <div className={`size-16 rounded-full flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-md ${bgClass} ${textClass}`}>
-        <IconComponent size={28} className="stroke-2" />
-      </div>
-      <span className="mt-3 block text-xs font-bold text-base-content/85 group-hover:text-primary transition-colors leading-tight px-1 max-w-30">
+      <span
+        className={`flex size-16 items-center justify-center rounded-full transition-all duration-300 group-hover:scale-110 group-hover:shadow-md ${bgClass} ${textClass}`}
+      >
+        <IconComponent size={28} className="stroke-2" aria-hidden="true" />
+      </span>
+      <span className="mt-3 block max-w-30 px-1 text-xs font-bold leading-tight text-base-content/85 transition-colors group-hover:text-primary">
         {label}
       </span>
     </button>
@@ -52,7 +61,7 @@ function QuickAction({ icon: IconComponent, label, bgClass, textClass, onClick }
 }
 
 export default function Dashboard() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchQuery = "";
 
   // Query logged-in user profile to check for incomplete details
   const { data: dbUser } = useQuery({
@@ -63,7 +72,8 @@ export default function Dashboard() {
     },
   });
 
-  const isProfileIncomplete = dbUser && (!dbUser.phoneNumber || !dbUser.address?.barangay);
+  const isProfileIncomplete =
+    dbUser && (!dbUser.phoneNumber || !dbUser.address?.barangay);
 
   // Backend States
   const [dashboardData, setDashboardData] = useState({
@@ -74,7 +84,11 @@ export default function Dashboard() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [dashboardLoadState, setDashboardLoadState] = useState({
-    dashboardData: { ok: true, label: "Dashboard schedule and requests", error: null },
+    dashboardData: {
+      ok: true,
+      label: "Dashboard schedule and requests",
+      error: null,
+    },
   });
 
   // Dedicated Modals Visibility States
@@ -135,6 +149,58 @@ export default function Dashboard() {
     () => dashboardData?.pendingRequests || [],
     [dashboardData?.pendingRequests],
   );
+  const farmerRequests = React.useMemo(
+    () =>
+      pendingRequests.map((request, index) => {
+        const requestType = String(request.type || request.taskType || "")
+          .trim()
+          .toLowerCase();
+        const urgency = String(
+          request.urgency || request.raw?.urgency || "",
+        ).toLowerCase();
+        const isHealthRequest = requestType === "health";
+        const hasSentTime =
+          request.sentTime && request.sentTime !== "Not Set";
+
+        return {
+          id:
+            request.id ||
+            request._id ||
+            `${requestType || "request"}-${index}`,
+          farmerName:
+            request.farmerName || request.farmer || "Unknown Farmer",
+          serviceType:
+            request.serviceType ||
+            request.requestType ||
+            request.raw?.requestType ||
+            (isHealthRequest
+              ? "Health Assistance"
+              : "Artificial Insemination"),
+          animalTag:
+            request.animalTag ||
+            request.raw?.animalId?.earTag ||
+            request.raw?.animalId?.animalId ||
+            null,
+          timeAgo: hasSentTime
+            ? `Sent ${request.sentTime}`
+            : "Recently submitted",
+          priority:
+            request.overdue ||
+            request.urgent ||
+            ["high", "emergency", "critical"].includes(urgency)
+              ? "high"
+              : request.isReadyToday || urgency === "medium"
+                ? "medium"
+                : "new",
+          icon: isHealthRequest ? (
+            <Stethoscope size={18} aria-hidden="true" />
+          ) : (
+            <Syringe size={18} aria-hidden="true" />
+          ),
+        };
+      }),
+    [pendingRequests],
+  );
   const agendaItems = React.useMemo(
     () => dashboardData?.agendaItems || [],
     [dashboardData?.agendaItems],
@@ -161,7 +227,8 @@ export default function Dashboard() {
               .toUpperCase()
               .slice(0, 2)
           : "FI",
-        location: item.farmLocationLabel || item.location || "Location not recorded",
+        location:
+          item.farmLocationLabel || item.location || "Location not recorded",
         time: item.time || "Time not set",
         status: presentation.statusLabel,
         statusClass: presentation.statusClass,
@@ -183,13 +250,20 @@ export default function Dashboard() {
         v.animalTag.toLowerCase().includes(searchQuery.toLowerCase()) ||
         v.serviceType.toLowerCase().includes(searchQuery.toLowerCase())),
   );
-  const failedDashboardSources = Object.values(dashboardLoadState).filter((source) => !source.ok);
+  const failedDashboardSources = Object.values(dashboardLoadState).filter(
+    (source) => !source.ok,
+  );
   const dashboardValue = (sourceKey, value) =>
     dashboardLoadState[sourceKey]?.ok === false || value == null
       ? "Unavailable"
       : value;
   const currentHour = new Date().getHours();
-  const timeBasedGreeting = currentHour < 12 ? "Good morning" : currentHour < 18 ? "Good afternoon" : "Good evening";
+  const timeBasedGreeting =
+    currentHour < 12
+      ? "Good morning"
+      : currentHour < 18
+        ? "Good afternoon"
+        : "Good evening";
 
   return (
     <div className={`${ui.page} min-w-0 overflow-x-hidden`}>
@@ -211,7 +285,9 @@ export default function Dashboard() {
                   Profile Setup Required
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold mt-1.5 leading-relaxed">
-                  Your phone number or assigned barangay location is missing. Please complete your profile so local farmers can contact you directly during critical emergency dispatches.
+                  Your phone number or assigned barangay location is missing.
+                  Please complete your profile so local farmers can contact you
+                  directly during critical emergency dispatches.
                 </p>
               </div>
             </div>
@@ -234,7 +310,8 @@ export default function Dashboard() {
                   Some dashboard data did not load
                 </h4>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold mt-1.5 leading-relaxed">
-                  Loaded widgets remain visible. Failed widgets are marked unavailable.
+                  Loaded widgets remain visible. Failed widgets are marked
+                  unavailable.
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
                   {failedDashboardSources.map((source) => (
@@ -258,86 +335,70 @@ export default function Dashboard() {
           </div>
         )}
 
-
-
-        {/* 5 SaaS Dashboard Metric Cards */}
-        <div className="grid min-w-0 grid-cols-2 gap-4 mb-6 sm:grid-cols-3 xl:grid-cols-5">
-          {/* 1. Today's Visits */}
+        {/* 3 SaaS Dashboard Metric Cards */}
+        <div className="grid min-w-0 grid-cols-1 gap-4 mb-6 sm:grid-cols-3">
+          {/* 1. Due Today */}
           <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
             <div className="size-11 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
               <CalendarCheck size={20} />
             </div>
             <div className="min-w-0">
               <span className="block text-2xl font-black text-base-content leading-none">
-                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.dueTodayCount)}
+                {isLoading ? (
+                  <span className="loading loading-dots loading-xs" />
+                ) : (
+                  dashboardValue("dashboardData", workSummary.dueTodayCount)
+                )}
               </span>
-              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Today's Visits</span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">
+                Due Today
+              </span>
               <span className="block text-[10px] text-base-content/60 font-semibold mt-0.5">
-                Scheduled today
+                Scheduled for today
               </span>
             </div>
           </div>
 
-          {/* 2. Active Work */}
+          {/* 2. Needs Attention */}
           <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
             <div className="size-11 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
               <Clock size={20} />
             </div>
             <div className="min-w-0">
               <span className="block text-2xl font-black text-base-content leading-none">
-                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.activeWorkCount)}
+                {isLoading ? (
+                  <span className="loading loading-dots loading-xs" />
+                ) : (
+                  dashboardValue("dashboardData", workSummary.activeWorkCount)
+                )}
               </span>
-              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Active Work</span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">
+                Needs Attention
+              </span>
               <span className="block text-[10px] text-warning font-semibold mt-0.5">
-                Needs your attention
+                Requires your action
               </span>
             </div>
           </div>
 
-          {/* 3. Animals to See */}
-          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
-            <div className="size-11 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center shrink-0">
-              <Tractor size={20} />
-            </div>
-            <div className="min-w-0">
-              <span className="block text-2xl font-black text-base-content leading-none">
-                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.animalsToSeeCount)}
-              </span>
-              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Animals to See</span>
-              <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
-                Across all farms
-              </span>
-            </div>
-          </div>
-
-          {/* 4. Requests */}
-          <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
-            <div className="size-11 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center shrink-0">
-              <ClipboardList size={20} />
-            </div>
-            <div className="min-w-0">
-              <span className="block text-2xl font-black text-base-content leading-none">
-                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", workSummary.activeRequestCount)}
-              </span>
-              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Service Requests</span>
-              <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
-                Awaiting service completion
-              </span>
-            </div>
-          </div>
-
-          {/* 5. Completed */}
+          {/* 3. Completed Today */}
           <div className="card bg-base-100 border border-base-300 p-4 shadow-2xs hover:shadow-xs transition-shadow flex flex-row items-center gap-4">
             <div className="size-11 rounded-xl bg-teal-500/10 text-teal-600 flex items-center justify-center shrink-0">
               <CheckCircle size={20} />
             </div>
             <div className="min-w-0">
               <span className="block text-2xl font-black text-base-content leading-none">
-                {isLoading ? <span className="loading loading-dots loading-xs" /> : dashboardValue("dashboardData", stats?.completedToday)}
+                {isLoading ? (
+                  <span className="loading loading-dots loading-xs" />
+                ) : (
+                  dashboardValue("dashboardData", stats?.completedToday)
+                )}
               </span>
-              <span className="block text-xs font-bold text-base-content/85 mt-1.5">Completed</span>
+              <span className="block text-xs font-bold text-base-content/85 mt-1.5">
+                Completed
+              </span>
               <span className="block text-[10px] text-base-content/40 font-semibold mt-0.5">
-                Today
+                Completed today
               </span>
             </div>
           </div>
@@ -347,8 +408,10 @@ export default function Dashboard() {
         <section className="card bg-base-100 border border-base-300 shadow-sm mb-6">
           <div className="card-body p-6">
             <div className="mb-6">
-              <h2 className="card-title text-base font-black tracking-tight">Quick Actions</h2>
-              <p className="mt-0.5 text-xs text-base-content/55 font-semibold">
+              <h2 className="card-title text-l font-bold tracking-tight">
+                Quick Actions
+              </h2>
+              <p className="mt-0.5 text-xs text-base-content/60 font-semibold">
                 Access the primary livestock workflows instantly
               </p>
             </div>
@@ -401,17 +464,25 @@ export default function Dashboard() {
         </section>
 
         {/* Main Grid: Today's Schedule + Work Queue Overview */}
-        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.7fr)_minmax(18rem,0.7fr)] pb-20">
-          {/* Today's Schedule */}
+        <section className="grid gap-6 xl:grid-cols-2 pb-20">
+          {/* Today's Work */}
           <div className="card bg-base-100 border border-base-300 shadow-sm">
             <div className="card-body p-6">
               <div className="flex items-center justify-between gap-3 border-b border-base-300 pb-4 mb-5">
                 <div>
-                  <h2 className="card-title text-base font-black tracking-tight">Today’s Schedule</h2>
-                  <p className="mt-0.5 text-xs text-base-content/55 font-semibold">Today’s services and lifecycle follow-ups</p>
+                  <h2 className="card-title text-base font-black tracking-tight">
+                    Today's Work
+                  </h2>
+                  <p className="mt-0.5 text-xs text-base-content/55 font-semibold">
+                    Today's services and lifecycle follow-ups
+                  </p>
                 </div>
-                <Link to="/technician/schedule" className="text-[10px] font-black uppercase tracking-wider text-primary hover:underline">
-                  View Calendar
+                <Link
+                  to="/technician/schedule"
+                  className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary hover:underline"
+                >
+                  <CalendarDays size={14} />
+                  Open Calendar
                 </Link>
               </div>
 
@@ -419,7 +490,10 @@ export default function Dashboard() {
               <div className="relative pl-4 border-l border-base-300/80 ml-2 space-y-6">
                 {isLoading ? (
                   [...Array(3)].map((_, idx) => (
-                    <div key={idx} className="relative flex items-start gap-4 animate-pulse">
+                    <div
+                      key={idx}
+                      className="relative flex items-start gap-4 animate-pulse"
+                    >
                       <div className="absolute -left-5.5 top-1.5 size-2.5 rounded-full bg-base-300 border-4 border-base-100" />
                       <div className="w-16 skeleton h-3 mt-1 shrink-0" />
                       <div className="flex-1 space-y-2">
@@ -430,9 +504,16 @@ export default function Dashboard() {
                   ))
                 ) : filteredVisits.length === 0 ? (
                   <div className="rounded-box border border-dashed border-base-300 py-10 text-center -ml-4">
-                    <CalendarCheck className="mx-auto mb-2 text-base-content/30" size={24} />
-                    <p className="text-sm font-semibold">No visits scheduled for today</p>
-                    <p className="mt-1 text-xs text-base-content/50">Scheduled visits will appear in your timeline.</p>
+                    <CalendarCheck
+                      className="mx-auto mb-2 text-base-content/30"
+                      size={24}
+                    />
+                    <p className="text-sm font-semibold">
+                      No work scheduled for today
+                    </p>
+                    <p className="mt-1 text-xs text-base-content/50">
+                      Scheduled work will appear in your timeline.
+                    </p>
                   </div>
                 ) : (
                   filteredVisits.slice(0, 3).map((v) => {
@@ -448,17 +529,17 @@ export default function Dashboard() {
                               : "bg-primary";
 
                     return (
-                      <div key={v.id} className="relative flex flex-col sm:flex-row items-start gap-4">
+                      <div
+                        key={v.id}
+                        className="relative flex flex-col sm:flex-row items-start gap-4"
+                      >
                         {/* Timeline Bullet Point */}
-                        <div className={`absolute -left-5.5 top-1.5 size-3 rounded-full ${dotClass} border-4 border-base-100 ring-4 ring-base-100`} />
-
-                        {/* Time label */}
-                        <div className="w-20 shrink-0 text-xs font-black text-base-content/70 mt-1">
-                          {v.time}
-                        </div>
+                        <div
+                          className={`absolute -left-5.5 top-1.5 size-3 rounded-full ${dotClass} border-4 border-base-100 ring-4 ring-base-100`}
+                        />
 
                         {/* Details Card */}
-                        <div className="flex-1 flex items-center justify-between gap-4 p-3.5 bg-base-200/50 hover:bg-base-200 border border-base-300/60 rounded-2xl transition-all">
+                        <div className="flex-1 flex items-center justify-between gap-4 p-3.5 bg-base-200/50 hover:bg-base-200 border border-base-300/60 rounded-2xl transition-all w-full">
                           <div className="flex items-center gap-3 min-w-0">
                             {/* Animal Avatar Initials */}
                             <div className="size-11 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 font-black text-sm">
@@ -472,7 +553,10 @@ export default function Dashboard() {
                                 {v.farmer} · {v.animalTag}
                               </p>
                               <p className="text-[10px] text-base-content/40 font-bold mt-1 flex items-center gap-1">
-                                <MapPin size={11} className="text-primary shrink-0" />
+                                <MapPin
+                                  size={11}
+                                  className="text-primary shrink-0"
+                                />
                                 {v.location}
                               </p>
                               <p className="mt-1.5 text-[10px] font-semibold leading-relaxed text-base-content/70">
@@ -485,7 +569,9 @@ export default function Dashboard() {
                           </div>
 
                           {/* Right side status badge */}
-                          <span className={`badge badge-sm badge-soft shrink-0 text-[9px] font-black uppercase tracking-wider ${v.statusClass}`}>
+                          <span
+                            className={`badge badge-sm badge-soft shrink-0 text-[9px] font-black uppercase tracking-wider ${v.statusClass}`}
+                          >
                             {v.status}
                           </span>
                         </div>
@@ -497,7 +583,10 @@ export default function Dashboard() {
 
               {!isLoading && filteredVisits.length > 0 && (
                 <div className="border-t border-base-300 mt-5 pt-4 text-center">
-                  <Link to="/technician/schedule" className="text-xs font-bold text-primary inline-flex items-center gap-1.5 hover:underline">
+                  <Link
+                    to="/technician/schedule"
+                    className="text-xs font-bold text-primary inline-flex items-center gap-1.5 hover:underline"
+                  >
                     View full schedule <ArrowRight size={14} />
                   </Link>
                 </div>
@@ -505,87 +594,97 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Work Queue Overview */}
+          {/* Farmer Requests */}
           <div className="card bg-base-100 border border-base-300 shadow-sm">
             <div className="card-body p-6 flex flex-col h-full">
               <div className="flex items-center justify-between gap-3 border-b border-base-300 pb-4 mb-4">
                 <div>
-                  <h2 className="card-title text-base font-black tracking-tight">Work Queue Overview</h2>
-                  <p className="mt-0.5 text-xs text-base-content/55 font-semibold">Real active work by operational state</p>
+                  <h2 className="card-title text-base font-black tracking-tight">
+                    Farmer Requests
+                  </h2>
+                  <p className="mt-0.5 text-xs text-base-content/55 font-semibold">
+                    Real-time farmer service requests
+                  </p>
                 </div>
-                <Link to="/technician/work-queue" className="text-[10px] font-black uppercase tracking-wider text-primary hover:underline">
+                <Link
+                  to="/technician/requests"
+                  className="text-[10px] font-black uppercase tracking-wider text-primary hover:underline"
+                >
                   View all
                 </Link>
               </div>
 
-              {/* Pie/Donut Chart Representation */}
-              <div className="flex-1 flex flex-col justify-center py-4">
-                <div className="relative size-36 mx-auto flex items-center justify-center mb-6">
-                  <div className="absolute inset-0 rounded-full border-10 border-base-300" />
-                  <div className="absolute inset-0 rounded-full border-10 border-primary border-t-warning border-r-info border-l-error animate-in spin-in duration-500" />
-                  <div className="text-center z-10">
-                    <span className="block text-3xl font-black text-base-content leading-none">
-                      {workSummary.activeWorkCount}
-                    </span>
-                    <span className="block text-[9px] text-base-content/50 font-black uppercase tracking-wider mt-1.5">
-                      Active Work
-                    </span>
-                  </div>
-                </div>
-
-                {/* Legend list */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <div className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-error" />
-                      <span className="text-base-content/70">Overdue</span>
+              {/* Requests List */}
+              <div className="flex-1 flex flex-col">
+                {isLoading ? (
+                  [...Array(4)].map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-3 py-3 border-b border-base-300/50 last:border-0 animate-pulse"
+                    >
+                      <div className="skeleton size-10 rounded-xl shrink-0" />
+                      <div className="flex-1 space-y-2">
+                        <div className="skeleton h-3 w-1/3" />
+                        <div className="skeleton h-2 w-1/2" />
+                      </div>
+                      <div className="skeleton h-6 w-16 rounded-full" />
                     </div>
-                    <span className="text-base-content">{workSummary.overdueCount} items</span>
+                  ))
+                ) : farmerRequests.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center py-8">
+                    <ClipboardList
+                      className="mx-auto mb-2 text-base-content/30"
+                      size={32}
+                    />
+                    <p className="text-sm font-semibold">No pending requests</p>
+                    <p className="mt-1 text-xs text-base-content/50">
+                      All farmer requests have been addressed.
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <div className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-warning" />
-                      <span className="text-base-content/70">Due Today</span>
+                ) : (
+                  farmerRequests.slice(0, 5).map((request) => (
+                    <div
+                      key={request.id}
+                      className="flex items-center gap-3 py-3 border-b border-base-300/50 last:border-0"
+                    >
+                      <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        {request.icon || <Tractor size={18} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-base-content truncate">
+                          {request.farmerName}
+                        </p>
+                        <p className="text-[10px] text-base-content/60 font-semibold truncate">
+                          {request.serviceType} · {request.animalTag || "N/A"}
+                        </p>
+                        <p className="text-[9px] text-base-content/40 font-bold mt-0.5">
+                          {request.timeAgo}
+                        </p>
+                      </div>
+                      <span
+                        className={`badge badge-sm badge-soft text-[9px] font-black uppercase tracking-wider ${
+                          request.priority === "high"
+                            ? "badge-error"
+                            : request.priority === "medium"
+                              ? "badge-warning"
+                              : "badge-info"
+                        }`}
+                      >
+                        {request.priority || "New"}
+                      </span>
                     </div>
-                    <span className="text-base-content">{workSummary.dueTodayCount} items</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <div className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-info" />
-                      <span className="text-base-content/70">AI requests</span>
-                    </div>
-                    <span className="text-base-content">{workSummary.aiRequestCount} cases</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <div className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-error" />
-                      <span className="text-base-content/70">Health requests</span>
-                    </div>
-                    <span className="text-base-content">{workSummary.healthRequestCount} cases</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <div className="flex items-center gap-2">
-                      <span className="size-2 rounded-full bg-secondary" />
-                      <span className="text-base-content/70">Pregnancy follow-ups</span>
-                    </div>
-                    <span className="text-base-content">{workSummary.pregnancyFollowUpCount} tasks</span>
-                  </div>
-                </div>
+                  ))
+                )}
               </div>
 
-              {/* Overdue Alert Banner */}
-              {workSummary.activeWorkCount > 0 && (
-                <div className={`alert alert-soft mt-4 flex items-center justify-between gap-3 p-3 ${workSummary.overdueCount > 0 ? "alert-warning" : "alert-info"}`}>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <AlertTriangle className="shrink-0" size={16} />
-                    <span className="text-[11px] font-black text-base-content truncate">
-                      {workSummary.overdueCount > 0
-                        ? `${workSummary.overdueCount} work items are overdue`
-                        : `${workSummary.activeWorkCount} work items are active`}
-                    </span>
-                  </div>
-                  <Link to="/technician/work-queue" className="btn btn-xs h-7 font-black uppercase tracking-wider rounded-xl text-[9px] px-3 shrink-0">
-                    View Now
+              {/* Quick Action Footer */}
+              {!isLoading && farmerRequests.length > 0 && (
+                <div className="border-t border-base-300 mt-4 pt-4">
+                  <Link
+                    to="/technician/requests"
+                    className="w-full btn btn-primary btn-sm font-black uppercase tracking-wider text-[10px]"
+                  >
+                    View All Requests
                   </Link>
                 </div>
               )}
@@ -597,7 +696,7 @@ export default function Dashboard() {
         <div className="h-12" />
       </main>
 
-      {/* Dedicated Quick Action Modals */} 
+      {/* Dedicated Quick Action Modals */}
       <AIServiceModal
         existingOnly
         isOpen={isAIModalOpen}

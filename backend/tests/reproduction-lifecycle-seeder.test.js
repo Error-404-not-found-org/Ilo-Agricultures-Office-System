@@ -5,6 +5,10 @@ import mongoose from "mongoose";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { CUSTOM_DNS_SERVERS, configureCustomDns } from "../src/config/custom-dns.js";
 import {
+  LEGACY_PREGNANCY_DIAGNOSIS_DAYS,
+  LEGACY_PREGNANCY_POLICY_VERSION,
+} from "../src/domain/pregnancy-confirmation-policy.js";
+import {
   SCENARIO_NAMES,
   applySeedPlan,
   assertDevelopmentEnvironment,
@@ -190,6 +194,76 @@ test("Reproduction seeder: canonical next actions match key manual-test stages",
   assert.equal(table.get("RC26-08-PREGNANT")["Next phase"], "PREGNANT");
   assert.equal(table.get("RC26-09-CALVING-DUE")["Next phase"], "CALVING_DUE");
   assert.equal(table.get("RC26-11-POSTPARTUM")["Next phase"], "RECOVERY_PERIOD");
+});
+
+test("Reproduction seeder: pending AI requests follow the unassigned request journey", () => {
+  const plan = buildPlan();
+
+  for (const scenarioName of ["RC26-02-AI-PENDING", "RC26-16-ATTEMPT-2"]) {
+    const scenario = plan.scenarios.find(
+      (item) => item.scenario === scenarioName,
+    );
+    const pending = scenario.inseminations.find(
+      (item) => item.status === "pending",
+    );
+
+    assert.ok(pending);
+    assert.equal(pending.technicianId, undefined);
+    assert.equal(pending.approvedBy, undefined);
+    assert.equal(pending.scheduledDate, undefined);
+    assert.equal(pending.visitPeriod, undefined);
+    assert.equal(pending.estrus, undefined);
+    assert.equal(pending.sireBreed, undefined);
+    assert.equal(pending.sireCode, undefined);
+    assert.ok(pending.heatSigns.length > 0);
+    assert.match(scenario.expectedResult, /Accept & Set Visit/);
+  }
+});
+
+test("Reproduction seeder: follow-ups omit invented periods and Health visits preserve explicit periods", () => {
+  const plan = buildPlan();
+  const genericFollowUps = plan.collections.tasks.filter((task) =>
+    ["PD", "CD", "Calving"].includes(task.taskType),
+  );
+  const healthVisits = plan.collections.tasks.filter(
+    (task) => task.taskType === "Health",
+  );
+
+  assert.ok(genericFollowUps.length > 0);
+  assert.ok(
+    genericFollowUps.every((task) => task.metadata?.visitPeriod === undefined),
+  );
+  assert.deepEqual(
+    healthVisits.map((task) => task.metadata?.visitPeriod).sort(),
+    ["afternoon", "morning", "morning"],
+  );
+});
+
+test("Reproduction seeder: confirmed pregnancies include canonical technician attribution", () => {
+  const plan = buildPlan();
+
+  assert.ok(plan.collections.pregnancies.length > 0);
+  for (const pregnancy of plan.collections.pregnancies) {
+    assert.equal(
+      String(pregnancy.confirmation.confirmedBy),
+      String(plan.technician._id),
+    );
+    assert.equal(
+      pregnancy.confirmation.confirmedAt,
+      pregnancy.pregnancyDiagnosis.date,
+    );
+    assert.equal(
+      pregnancy.confirmation.policyVersion,
+      LEGACY_PREGNANCY_POLICY_VERSION,
+    );
+    assert.equal(
+      pregnancy.confirmation.earliestThresholdSnapshot,
+      LEGACY_PREGNANCY_DIAGNOSIS_DAYS,
+    );
+    assert.equal(pregnancy.confirmation.stage, "legacy_unclassified");
+    assert.equal(pregnancy.confirmation.recheckRequired, false);
+    assert.equal(pregnancy.recheckStatus, "not_required");
+  }
 });
 
 test("Reproduction seeder: farmer observation scenarios cover the technician handoff states", () => {

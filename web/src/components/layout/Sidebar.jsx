@@ -293,7 +293,7 @@ export default function Sidebar() {
   return (
     <>
       <aside
-        className={`relative bg-base-100 text-base-content flex flex-col h-screen border-r border-base-300/80 shadow-sm transition-all duration-300 ease-in-out lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "w-20 min-w-20" : "w-72 min-w-72"}`}
+        className={`relative bg-base-200 text-gray-800 dark:text-gray-200 flex flex-col h-screen border-r border-base-300 shadow-sm transition-all duration-300 ease-in-out lg:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"} ${isCollapsed ? "w-20 min-w-20" : "w-72 min-w-72"}`}
       >
         {/* Logo */}
         {isCollapsed ? (
@@ -314,7 +314,7 @@ export default function Sidebar() {
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-between p-6 border-b border-base-300/80 bg-base-100 group transition-all duration-300">
+          <div className="bg-base-200 flex items-center justify-between p-6 border-b border-base-300/80 group transition-all duration-300">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-9 h-9 bg-primary/10 text-primary rounded-lg flex items-center justify-center font-bold text-lg shrink-0 transition-transform group-hover:scale-105 duration-300">
                 <img
@@ -358,7 +358,7 @@ export default function Sidebar() {
               return (
                 <div
                   key={idx}
-                  className="text-xs font-semibold uppercase text-base-content/40 tracking-widest px-3 pt-6 pb-2.5 mt-4 first:mt-0 animate-in fade-in duration-300"
+                  className="text-xs font-semibold uppercase text-base-content/50 tracking-widest px-3 pt-6 pb-2.5 mt-4 first:mt-0 animate-in fade-in duration-300"
                 >
                   {item.label}
                 </div>
@@ -377,14 +377,14 @@ export default function Sidebar() {
                 } ${
                   isActive
                     ? "bg-primary text-primary-content shadow-md font-bold"
-                    : "text-base-content/75 hover:bg-primary/10 hover:text-primary"
+                    : "text-base-content hover:bg-primary/10 hover:text-primary"
                 }`}
               >
                 <span
                   className={
                     isActive
                       ? "text-primary-content shrink-0"
-                      : "text-base-content/60 group-hover:text-primary shrink-0"
+                      : "text-base-content group-hover:text-primary shrink-0"
                   }
                 >
                   {item.icon}
@@ -409,7 +409,7 @@ export default function Sidebar() {
 
         {/* Footer User Block Integration */}
         <div
-          className={`p-4 border-t border-base-300/80 bg-base-100 transition-all duration-300 ${isCollapsed ? "flex flex-col items-center gap-4" : ""}`}
+          className={`p-4 border-t border-base-300/80 bg-base-200 transition-all duration-300 ${isCollapsed ? "flex flex-col items-center gap-4" : ""}`}
         >
           <div
             className={`flex items-center rounded-xl transition-all duration-300 ${isCollapsed ? "justify-center p-0 hover:bg-transparent" : "justify-between p-2.5 hover:bg-base-200 mb-3"}`}

@@ -259,4 +259,38 @@ describe("request-linked AI recording modal", () => {
 
     expect(await screen.findByText(message)).toBeInTheDocument();
   });
+
+  it("keeps the dashboard walk-in action limited to existing farmer and animal records", async () => {
+    mocks.get.mockImplementation(async (url) => {
+      if (url === "/config") return { data: {} };
+      if (url === "/user?role=farmer") return { data: [] };
+      throw new Error(`Unexpected GET ${url}`);
+    });
+
+    renderModal({
+      context: "walk-in",
+      existingOnly: true,
+      workflowId: null,
+      taskId: null,
+      requestContext: null,
+      taskData: null,
+      preSelectedFarmer: null,
+      preSelectedAnimal: null,
+    });
+
+    fireEvent.focus(screen.getByPlaceholderText("Name, phone, or barangay"));
+
+    expect(await screen.findByText("No matching registered farmer is available for this service.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Sire breed")).toBeVisible();
+    expect(screen.getByLabelText("Sire breed")).toBeDisabled();
+    expect(screen.getByLabelText("Number of semen doses used")).toBeVisible();
+    expect(screen.getByLabelText("Technician notes")).toBeVisible();
+    expect(
+      screen.getByText(
+        "Select a registered farmer and animal to enable the AI service fields.",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByRole("button", { name: /register farmer/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /register animal/i })).not.toBeInTheDocument();
+  });
 });

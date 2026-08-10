@@ -2,13 +2,42 @@ import { describe, expect, it } from "vitest";
 
 import {
   deriveScheduleState,
+  formatCanonicalVisitSchedule,
   getServicePresentation,
   getWorkflowStatusPresentation,
+  isDateOnlyWorkflowType,
   normalizeServiceType,
   normalizeWorkflowStatus,
 } from "./requestWorkPresentation";
 
 describe("request and work presentation", () => {
+  it("formats canonical visit dates with periods and no invented clock time", () => {
+    const morning = formatCanonicalVisitSchedule({
+      date: "2026-08-12T04:00:00.000Z",
+      visitPeriod: "morning",
+    });
+    const afternoon = formatCanonicalVisitSchedule({
+      date: "2026-08-12T04:00:00.000Z",
+      visitPeriod: "afternoon",
+    });
+
+    expect(morning).toBe("August 12, 2026 · Morning");
+    expect(afternoon).toBe("August 12, 2026 · Afternoon");
+    expect(`${morning} ${afternoon}`).not.toContain("12:00");
+    expect(formatCanonicalVisitSchedule()).toBe("Not scheduled");
+    expect(formatCanonicalVisitSchedule({ date: "not-a-date" })).toBe(
+      "Not scheduled",
+    );
+  });
+
+  it("keeps reproductive milestone deadlines date-only", () => {
+    expect(isDateOnlyWorkflowType("PD")).toBe(true);
+    expect(isDateOnlyWorkflowType("Pregnancy")).toBe(true);
+    expect(isDateOnlyWorkflowType("CD")).toBe(true);
+    expect(isDateOnlyWorkflowType("Calving")).toBe(true);
+    expect(isDateOnlyWorkflowType("GeneralVisit")).toBe(false);
+  });
+
   it.each([
     [{ workflowType: "AI" }, "ai"],
     [{ workflowType: "Health" }, "health"],
