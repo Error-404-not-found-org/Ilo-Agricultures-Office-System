@@ -47,6 +47,7 @@ import {
 import { presentNotificationDocument } from "../domain/notification-presentation.js";
 import { buildAIRequestAssignmentGuard } from "../policies/request.policy.js";
 import { normalizeTechnicianNoteInput } from "../domain/ai-recording-fields.js";
+import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 
 export const getTechnicianDashboardData = async (req, res) => {
   try {
@@ -1153,19 +1154,12 @@ export const walkInInsemination = async (req, res) => {
       });
     }
 
-    // Combine date and time into a single timestamp
-    const entryDateString =
-      inseminationDetails?.inseminationDate ||
-      new Date().toISOString().split("T")[0];
-    const entryTimeString = inseminationDetails?.time || "08:00";
-    const entryDate = new Date(
-      `${entryDateString}T${entryTimeString}:00+08:00`,
-    );
-    if (Number.isNaN(entryDate.getTime())) {
-      return res
-        .status(400)
-        .json({ message: "A valid AI service date and time are required." });
-    }
+    // Preserve the actual Manila service timestamp. Missing current-field
+    // inputs fall back to the current clock, never a fixed appointment time.
+    const entryDate = combineManilaServiceDateTime({
+      date: inseminationDetails?.inseminationDate,
+      time: inseminationDetails?.time,
+    });
     if (entryDate.getTime() > Date.now() + 5 * 60 * 1000) {
       return res
         .status(400)

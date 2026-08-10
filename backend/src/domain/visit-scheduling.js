@@ -90,6 +90,43 @@ export const normalizeVisitScheduleDate = (value, { now = new Date() } = {}) => 
   );
 };
 
+export const assertVisitDaypartAvailable = ({
+  scheduledDate,
+  visitPeriod,
+  now = new Date(),
+}) => {
+  if (!(scheduledDate instanceof Date) || Number.isNaN(scheduledDate.getTime())) {
+    return;
+  }
+  if (!VISIT_PERIODS.includes(visitPeriod)) return;
+
+  const toManilaParts = (value) => {
+    const local = new Date(
+      value.getTime() + VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES * 60 * 1000,
+    );
+    return {
+      day: Date.UTC(
+        local.getUTCFullYear(),
+        local.getUTCMonth(),
+        local.getUTCDate(),
+      ),
+      hour: local.getUTCHours(),
+    };
+  };
+  const selected = toManilaParts(scheduledDate);
+  const current = toManilaParts(now);
+  if (
+    selected.day === current.day &&
+    current.hour >= 12 &&
+    visitPeriod === "morning"
+  ) {
+    throw invalidField(
+      "Today Morning is no longer available. Choose another visit period.",
+      "VISIT_PERIOD_IN_PAST",
+    );
+  }
+};
+
 export const getVisitCalendarDayRange = (anchorDate) => {
   if (!anchorDate || !(anchorDate instanceof Date) || Number.isNaN(anchorDate.getTime())) {
     return null;

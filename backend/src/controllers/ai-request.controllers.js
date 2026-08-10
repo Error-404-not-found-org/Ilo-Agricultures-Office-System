@@ -36,6 +36,7 @@ import {
 } from "../services/ai-request-creation.service.js";
 import { notifyTechniciansOfBreedingObservation } from "../services/breeding-observation-notification.service.js";
 import { getEarlyStartTiming } from "../domain/service-timing.js";
+import { combineManilaServiceDateTime } from "../domain/service-date-time.js";
 import { notifyUser } from "../services/notification-delivery.service.js";
 import {
   normalizeAICompletionFields,
@@ -44,7 +45,10 @@ import {
   normalizeVisitPeriod,
 } from "../domain/ai-recording-fields.js";
 import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
-import { hasVisitScheduleChanged } from "../domain/visit-scheduling.js";
+import {
+  assertVisitDaypartAvailable,
+  hasVisitScheduleChanged,
+} from "../domain/visit-scheduling.js";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
@@ -480,6 +484,7 @@ export const updateRequestStatus = async (req, res) => {
       status,
       scheduledDate,
       inseminationDate,
+      time,
       sireBreed,
       sireCode,
       semenDosesUsed,
@@ -500,6 +505,9 @@ export const updateRequestStatus = async (req, res) => {
     if (!existing) {
       return res.status(404).json({ message: "AI request record not found." });
     }
+    const authoritativePreviousStatus = existing.status;
+
+    assertAIRequestStatusAccess(req.user, existing);
 
     assertAIRequestStatusAccess(req.user, existing);
 
@@ -523,6 +531,10 @@ export const updateRequestStatus = async (req, res) => {
           });
         }
         normalizedScheduledDate = normalizeAIScheduleDate(scheduledDate);
+        assertVisitDaypartAvailable({
+          scheduledDate: normalizedScheduledDate,
+          visitPeriod: finalVisitPeriod,
+        });
       } catch (err) {
         return res.status(400).json({
           message: err.message,
@@ -540,7 +552,11 @@ export const updateRequestStatus = async (req, res) => {
 
     const startTiming =
       status === "in-progress"
-        ? getEarlyStartTiming(existing.scheduledDate)
+        ? getEarlyStartTiming(
+            existing.scheduledDate,
+            new Date(),
+            existing.visitPeriod,
+          )
         : null;
 
     if (startTiming?.isEarly && earlyStartConfirmed !== true) {
@@ -565,9 +581,10 @@ export const updateRequestStatus = async (req, res) => {
             "Sire breed, sire code, and estrus type are required when completing AI.",
         });
       }
-      const completedAt = inseminationDate
-        ? new Date(inseminationDate)
-        : new Date();
+      const completedAt = combineManilaServiceDateTime({
+        date: inseminationDate,
+        time,
+      });
       if (Number.isNaN(completedAt.getTime())) {
         return res.status(400).json({ message: "Invalid insemination date." });
       }
@@ -636,9 +653,10 @@ export const updateRequestStatus = async (req, res) => {
 
     if (status === "done") {
       updateData.technicianId = targetTechId;
-      updateData.inseminationDate = inseminationDate
-        ? new Date(inseminationDate)
-        : new Date();
+      updateData.inseminationDate = combineManilaServiceDateTime({
+        date: inseminationDate,
+        time,
+      });
       updateData.semenDosesUsed = completionFields.semenDosesUsed;
     }
 
@@ -679,6 +697,20 @@ export const updateRequestStatus = async (req, res) => {
         code: "AI_REQUEST_CONCURRENT_UPDATE",
       });
     }
+
+    if (status === "done") {
+      console.info("[AI_COMPLETION_COMMITTED]", {
+        requestId: String(request._id),
+        previousStatus: authoritativePreviousStatus,
+        status: request.status,
+        transactionCommitted: true,
+      });
+    }
+
+    // The authoritative domain write is complete. Respond before downstream
+    // notification/automation work so those integrations cannot turn a
+    // committed completion into a client-visible PATCH failure or timeout.
+    res.status(200).json({ message: "Request status updated.", request });
 
     // --- TRIGGER NOTIFICATION TO FARMER ---
     try {
@@ -724,11 +756,15 @@ export const updateRequestStatus = async (req, res) => {
     }
 
     // --- TRIGGER SOCKET UPDATE ---
-    req.app.get("io").emit("dashboardUpdate", {
-      type: "AI_REQUEST_UPDATED",
-      message: `AI request marked as ${status}`,
-      status,
-    });
+    try {
+      req.app?.get("io")?.emit("dashboardUpdate", {
+        type: "AI_REQUEST_UPDATED",
+        message: `AI request marked as ${status}`,
+        status,
+      });
+    } catch (socketErr) {
+      console.error("[AI Request Socket Error]", socketErr.message);
+    }
 
     // --- TRIGGER INNGEST AUTOMATION & STATUS SYNC ---
     if (status === "approved" || status === "done") {
@@ -751,9 +787,9 @@ export const updateRequestStatus = async (req, res) => {
       }
     }
 
-    res.status(200).json({ message: "Request status updated.", request });
   } catch (error) {
     console.error("[updateRequestStatus ERROR]", error.message);
+    if (res.headersSent) return;
     const transactionUnavailable =
       /Transaction numbers are only allowed|replica set|mongos/i.test(
         error.message,
@@ -796,6 +832,7 @@ export const claimAndScheduleAIRequest = async (req, res) => {
         code: "VISIT_PERIOD_REQUIRED",
       });
     }
+    assertVisitDaypartAvailable({ scheduledDate, visitPeriod });
 
     const changedAt = new Date();
     const request = await Insemination.findOneAndUpdate(
