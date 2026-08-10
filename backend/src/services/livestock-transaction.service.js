@@ -49,6 +49,19 @@ const runTransaction = async (work) => {
 };
 
 const FINAL_PREGNANCY_RESULTS = new Set(["pregnant", "not_pregnant"]);
+export const buildActiveInseminationCompletionFilter = ({
+  id,
+  requestFilter = {},
+}) => ({
+  $and: [
+    {
+      _id: id,
+      status: { $nin: ["done", "rejected", "cancelled"] },
+      deletedAt: null,
+    },
+    requestFilter,
+  ],
+});
 export const completeInsemination = async (
   {
     id,
@@ -82,12 +95,7 @@ export const completeInsemination = async (
 
   const executeWork = async (session) => {
     const request = await Insemination.findOneAndUpdate(
-      {
-        _id: id,
-        status: { $nin: ["done", "rejected", "cancelled"] },
-        deletedAt: null,
-        ...requestFilter,
-      },
+      buildActiveInseminationCompletionFilter({ id, requestFilter }),
       { $set: updateData, $unset: { activeRequestKey: 1 } },
       { returnDocument: "after", session },
     );

@@ -370,6 +370,7 @@ const baseInsemination = ({
   aiDate,
   status = "done",
   seedBatch,
+  visitPeriod = "morning",
   extra = {},
 }) => ({
   _id,
@@ -383,6 +384,8 @@ const baseInsemination = ({
   inseminationDate: aiDate,
 
   preferredDate: aiDate,
+
+  visitPeriod,
 
   scheduledDate: ACTIVE_AI_REQUEST_STATUSES.includes(status)
     ? aiDate
@@ -578,6 +581,8 @@ const baseTask = ({
 
   notes,
 
+  visitPeriod = "morning",
+
   metadata = {},
 }) => ({
   _id,
@@ -610,6 +615,7 @@ const baseTask = ({
 
   metadata: {
     seedBatch,
+    visitPeriod,
 
     ...(inseminationId
       ? {

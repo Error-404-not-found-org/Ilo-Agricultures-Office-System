@@ -10,9 +10,11 @@ import { Config } from "../models/config.model.js";
 import { clerkClient } from "@clerk/clerk-sdk-node";
 import { sendPushNotification } from "../lib/push-notifications.js";
 import { getLegacyPregnancyReminderRelevance } from "../services/pregnancy-reminder-relevance.service.js";
+import { ENV } from "./env.js";
 
 export const inngest = new Inngest({
   id: "ilo-agricultures-office-system-backend",
+  eventKey: ENV.INNGEST_EVENT_KEY,
 });
 
 const handleUserSync = async ({ event }) => {
