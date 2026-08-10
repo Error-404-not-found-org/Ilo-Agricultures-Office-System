@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import NetInfo from "@react-native-community/netinfo";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   ActivityIndicator,
   Image,
@@ -16,34 +15,43 @@ import {
 import {
   AlertCircle,
   CalendarDays,
-  Clock3,
+  House,
   MapPin,
+  MapPinHouse,
   Phone,
   Send,
   Syringe,
   UserRound,
+  X,
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner-native";
 
 import { AppPageHeader } from "@/components/AppPageHeader";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { StatusBadge } from "@/components/shared";
 import { Text } from "@/components/ui/Text";
 import { useApi } from "@/lib/api";
-import { technicianKeys } from "@/lib/queryKeys";
+import { aiRequestKeys, technicianKeys } from "@/lib/queryKeys";
 import { useTheme } from "@/lib/theme";
 import {
   declineTechnicianRequest,
   updateRequestStatus,
 } from "@/features/technician/services/technician.service";
 import { claimAndScheduleAIRequest } from "../services/technicianRequests.service";
+import { VisitScheduleSheet } from "./VisitScheduleSheet";
 import type { VisitPeriod } from "../types/technicianRequests.types";
 import {
-  formatLocalCalendarDate,
+  getAIStartErrorMessage,
   getClaimScheduleErrorMessage,
   isCanonicalWorkflowId,
 } from "../utils/aiWorkflow";
+import {
+  getAISchedulePeriodAvailability,
+  getAIScheduleTiming,
+  getRelativeAIScheduleDayLabel,
+} from "../utils/aiScheduleAvailability";
 
 type ScheduleMode = "accept" | "schedule" | "reschedule";
 
@@ -145,19 +153,25 @@ export function AIRequestDetails({
   const router = useRouter();
   const queryClient = useQueryClient();
   const { colors } = useTheme();
+  const [selectedAttachment, setSelectedAttachment] = useState<string | null>(
+    null,
+  );
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("accept");
   const [scheduleVisible, setScheduleVisible] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [earlyStartVisible, setEarlyStartVisible] = useState(false);
   const [reasonVisible, setReasonVisible] = useState(false);
   const [reason, setReason] = useState("");
   const submittingRef = useRef(false);
 
   const requestId = getEntityId(request?._id || request?.id);
   const workflowId =
-    [getEntityId(request?.workflowId), cleanText(routeWorkflowId), requestId].find(
-      isCanonicalWorkflowId,
-    ) || "";
+    [
+      getEntityId(request?.workflowId),
+      cleanText(routeWorkflowId),
+      requestId,
+    ].find(isCanonicalWorkflowId) || "";
   const farmer =
     request?.farmerId && typeof request.farmerId === "object"
       ? request.farmerId
@@ -208,6 +222,16 @@ export function AIRequestDetails({
     ? farmer.address[0] || {}
     : farmer?.address || {};
   const farmerLocation = getFarmerLocation(farmer);
+  const homeAddressString = [
+    cleanText(farmerAddress.houseNumber),
+    cleanText(farmerAddress.street),
+    cleanText(farmerAddress.subdivision),
+    cleanText(farmerAddress.barangay),
+    cleanText(farmerAddress.city || farmerAddress.municipality),
+    cleanText(farmerAddress.province),
+  ]
+    .filter(Boolean)
+    .join(", ");
   const farmLocation = farmer?.farmLocation || {};
   const landmark = cleanText(farmLocation.landmark);
   const directionsNote = cleanText(
@@ -220,9 +244,7 @@ export function AIRequestDetails({
   const municipality =
     cleanText(farmerAddress.city || farmerAddress.municipality) ||
     cleanText(request?.municipality);
-  const candidateArea = [barangay, municipality]
-    .filter(Boolean)
-    .join(", ");
+  const candidateArea = [barangay, municipality].filter(Boolean).join(", ");
   const heatSigns = normalizeText(request?.heatSigns);
   const farmerNotes = normalizeText(
     request?.farmerNotes || request?.comment || request?.note,
@@ -231,7 +253,16 @@ export function AIRequestDetails({
   const attachments = useMemo(() => getAttachmentUrls(request), [request]);
   const submittedAt = formatDate(request?.createdAt, true);
   const scheduledDate = formatDate(request?.scheduledDate);
-  const visitPeriod = cleanText(request?.visitPeriod).toLowerCase() as VisitPeriod;
+  const visitPeriod = cleanText(
+    request?.visitPeriod,
+  ).toLowerCase() as VisitPeriod;
+  const scheduleTiming = isScheduled
+    ? getAIScheduleTiming(request?.scheduledDate, visitPeriod)
+    : "unknown";
+  const isPastSchedule = scheduleTiming === "past";
+  const relativeScheduleDay = getRelativeAIScheduleDayLabel(
+    request?.scheduledDate,
+  );
 
   const cardStyle = {
     padding: 16,
@@ -250,15 +281,15 @@ export function AIRequestDetails({
     ]);
   };
 
-  const requireOnline = async () => {
+  const requireOnline = async (
+    message = "Accepting and scheduling AI visits requires an internet connection.",
+  ) => {
     const connectivity = await NetInfo.fetch();
     if (
       connectivity.isConnected === false ||
       connectivity.isInternetReachable === false
     ) {
-      setActionNotice(
-        "Accepting and scheduling AI visits requires an internet connection.",
-      );
+      setActionNotice(message);
       return false;
     }
     return true;
@@ -357,24 +388,94 @@ export function AIRequestDetails({
     });
   };
 
+  const handleStartAIRecord = async (earlyStartConfirmed = false) => {
+    if (
+      submittingRef.current ||
+      !(await requireOnline(
+        "Starting an AI service requires an internet connection.",
+      ))
+    ) {
+      return;
+    }
+    if (!workflowId) {
+      setActionNotice("This AI request is missing its workflow identifier.");
+      return;
+    }
+
+    submittingRef.current = true;
+    setUpdating(true);
+    setActionNotice(null);
+    try {
+      const result = await updateRequestStatus(api, "ai", workflowId, {
+        status: "in-progress",
+        ...(earlyStartConfirmed ? { earlyStartConfirmed: true } : {}),
+      });
+      const authoritativeRequest = result?.request;
+      if (authoritativeRequest?.status !== "in-progress") {
+        throw new Error("The AI request did not enter the in-progress state.");
+      }
+
+      queryClient.setQueryData(
+        aiRequestKeys.detail(workflowId),
+        authoritativeRequest,
+      );
+      await invalidateWorkflow();
+      await onRefresh().catch(() => undefined);
+      setEarlyStartVisible(false);
+      openAIRecord();
+    } catch (error: any) {
+      const code = String(error?.response?.data?.code || "");
+      if (code === "EARLY_START_CONFIRMATION_REQUIRED") {
+        setEarlyStartVisible(true);
+        return;
+      }
+
+      const message = getAIStartErrorMessage(error);
+      setActionNotice(message);
+      toast.error(message);
+      await invalidateWorkflow();
+      await onRefresh().catch(() => undefined);
+    } finally {
+      setUpdating(false);
+      submittingRef.current = false;
+    }
+  };
+
   const primaryLabel = isAvailable
     ? "Accept & Set Visit"
     : isClaimedUnscheduled
       ? "Set Visit"
       : isScheduled
-        ? "Record AI Service"
+        ? isPastSchedule
+          ? "Record Completed Service"
+          : "Record AI Service"
         : isInProgress
           ? "Continue AI Service"
           : isResolved
-            ? "View AI Record"
+            ? "View Full Insemination Record"
             : "";
 
   const handlePrimaryAction = () => {
     if (isAvailable) openSchedule("accept");
     else if (isClaimedUnscheduled) openSchedule("schedule");
-    else if (isScheduled || isInProgress) openAIRecord();
+    else if (isScheduled) void handleStartAIRecord();
+    else if (isInProgress) openAIRecord();
     else if (isResolved) {
-      router.push("/(technician)/(tabs)/technician.records" as never);
+      if (!workflowId) {
+        toast.error(
+          "This completed AI request does not include a record identifier. Open Technician Records to locate the legacy record.",
+        );
+        router.push("/(technician)/(tabs)/technician.records" as never);
+        return;
+      }
+
+      router.push({
+        pathname: "/(technician)/record-details",
+        params: {
+          id: workflowId,
+          recordType: "insemination",
+        },
+      });
     }
   };
 
@@ -393,7 +494,9 @@ export function AIRequestDetails({
       toast.success("Request removed from your available requests.");
       onBack();
     } catch (error: any) {
-      setActionNotice(getErrorMessage(error, "The request could not be declined."));
+      setActionNotice(
+        getErrorMessage(error, "The request could not be declined."),
+      );
     } finally {
       setUpdating(false);
     }
@@ -414,7 +517,9 @@ export function AIRequestDetails({
       setReason("");
       await onRefresh();
     } catch (error: any) {
-      setActionNotice(getErrorMessage(error, "The request could not be cancelled."));
+      setActionNotice(
+        getErrorMessage(error, "The request could not be cancelled."),
+      );
     } finally {
       setUpdating(false);
     }
@@ -434,7 +539,9 @@ export function AIRequestDetails({
         }}
       >
         <View style={cardStyle}>
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+          <View
+            style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}
+          >
             <View
               style={{
                 width: 48,
@@ -451,7 +558,10 @@ export function AIRequestDetails({
               <Text textRole="title" style={{ color: colors.textPrimary }}>
                 Artificial Insemination
               </Text>
-              <Text textRole="caption" style={{ color: colors.textMuted, marginTop: 2 }}>
+              <Text
+                textRole="caption"
+                style={{ color: colors.textMuted, marginTop: 2 }}
+              >
                 Farmer request
               </Text>
             </View>
@@ -463,12 +573,19 @@ export function AIRequestDetails({
             />
           </View>
           {isAvailable ? (
-            <Text textRole="body" style={{ color: colors.textSecondary, marginTop: 12 }}>
-              Visit not scheduled
+            <Text
+              textRole="body"
+              style={{ color: colors.textSecondary, marginTop: 12 }}
+            >
+              Request is available to accept and schedule a visit
             </Text>
           ) : isClaimedUnscheduled ? (
-            <Text textRole="bodyStrong" style={{ color: colors.warningForeground, marginTop: 12 }}>
-              Needs scheduling
+            <Text
+              textRole="bodyStrong"
+              style={{ color: colors.warningForeground, marginTop: 12 }}
+            >
+              Request is awaiting scheduling. Tap "Set Visit" to schedule a
+              visit.
             </Text>
           ) : null}
         </View>
@@ -487,14 +604,18 @@ export function AIRequestDetails({
               <InfoLine icon={Phone} text={farmerPhone} />
             </TouchableOpacity>
           ) : null}
+
+          {homeAddressString ? (
+            <InfoLine icon={House} text={homeAddressString} />
+          ) : null}
+
           {farmerLocation || candidateArea ? (
-            <InfoLine icon={MapPin} text={farmerLocation || candidateArea} />
+            <InfoLine
+              icon={MapPinHouse}
+              text={farmerLocation || candidateArea}
+            />
           ) : null}
-          {barangay ? <DetailRow label="Barangay" value={barangay} /> : null}
-          {municipality ? (
-            <DetailRow label="Municipality" value={municipality} />
-          ) : null}
-          {landmark ? <DetailRow label="Landmark" value={landmark} /> : null}
+
           {directionsNote ? (
             <DetailRow label="Directions" value={directionsNote} />
           ) : null}
@@ -519,9 +640,9 @@ export function AIRequestDetails({
                 borderColor: colors.border,
               }}
             >
-              <MapPin size={17} color={colors.primary} />
+              <MapPinHouse size={17} color={colors.primary} />
               <Text textRole="bodyStrong" style={{ color: colors.primary }}>
-                Get Directions
+                View Farm Location
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -555,7 +676,9 @@ export function AIRequestDetails({
             )}
             <View style={{ flex: 1, gap: 4 }}>
               <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
-                Ear tag: {cleanText(animal?.earTag || animal?.animalId) || "Not recorded"}
+                Ear tag:{" "}
+                {cleanText(animal?.earTag || animal?.animalId) ||
+                  "Not recorded"}
               </Text>
               {cleanText(animal?.breed) ? (
                 <Text textRole="body" style={{ color: colors.textSecondary }}>
@@ -569,26 +692,34 @@ export function AIRequestDetails({
               ) : null}
               {cleanText(animal?.reproductiveStatus) ? (
                 <Text textRole="body" style={{ color: colors.textSecondary }}>
-                  Reproductive status: {formatLabel(animal.reproductiveStatus, "")}
+                  Reproductive status:{" "}
+                  {formatLabel(animal.reproductiveStatus, "")}
                 </Text>
               ) : null}
             </View>
           </View>
-        </View>
 
-        <View style={cardStyle}>
-          <Text textRole="title" style={{ color: colors.textPrimary }}>
+          <Text
+            textRole="title"
+            style={{ color: colors.textPrimary, marginTop: 24 }}
+          >
             Request Details
           </Text>
-          <DetailRow
-            label="Heat signs"
-            value={heatSigns ? formatLabel(heatSigns, "") : "No heat signs were submitted."}
-          />
-          {farmerNotes ? <DetailRow label="Farmer notes" value={farmerNotes} /> : null}
-        </View>
 
-        <View style={cardStyle}>
-          <Text textRole="title" style={{ color: colors.textPrimary }}>
+          {farmerNotes ? (
+            <DetailRow label="Farmer notes" value={farmerNotes} />
+          ) : null}
+
+          {submittedAt ? (
+            <View style={{ marginTop: 8 }}>
+              <InfoLine icon={Send} text={`Submitted ${submittedAt}`} />
+            </View>
+          ) : null}
+
+          <Text
+            textRole="title"
+            style={{ color: colors.textPrimary, marginTop: 24 }}
+          >
             Attachments
           </Text>
           {attachments.length > 0 ? (
@@ -598,27 +729,28 @@ export function AIRequestDetails({
               contentContainerStyle={{ gap: 8, paddingTop: 12 }}
             >
               {attachments.map((uri, index) => (
-                <Image
+                <TouchableOpacity
                   key={uri}
-                  source={{ uri }}
-                  resizeMode="cover"
-                  accessibilityLabel={`AI request attachment ${index + 1}`}
-                  style={{ width: 112, height: 88, borderRadius: 12 }}
-                />
+                  onPress={() => setSelectedAttachment(uri)}
+                >
+                  <Image
+                    source={{ uri }}
+                    resizeMode="cover"
+                    accessibilityLabel={`AI request attachment ${index + 1}`}
+                    style={{ width: 112, height: 88, borderRadius: 12 }}
+                  />
+                </TouchableOpacity>
               ))}
             </ScrollView>
           ) : (
-            <Text textRole="body" style={{ color: colors.textSecondary, marginTop: 8 }}>
+            <Text
+              textRole="body"
+              style={{ color: colors.textSecondary, marginTop: 8 }}
+            >
               No attachments submitted.
             </Text>
           )}
         </View>
-
-        {submittedAt ? (
-          <View style={cardStyle}>
-            <InfoLine icon={Send} text={`Submitted ${submittedAt}`} />
-          </View>
-        ) : null}
 
         {isClaimedUnscheduled || isScheduled || isInProgress ? (
           <View style={cardStyle}>
@@ -626,18 +758,56 @@ export function AIRequestDetails({
               {isClaimedUnscheduled ? "Visit" : "Scheduled Visit"}
             </Text>
             {scheduledDate ? (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                  marginTop: 12,
+                }}
+              >
                 <CalendarDays size={18} color={colors.primary} />
-                <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
+                <Text
+                  textRole="bodyStrong"
+                  style={{ color: colors.textPrimary }}
+                >
                   {scheduledDate}
                   {visitPeriod ? ` · ${formatLabel(visitPeriod, "")}` : ""}
                 </Text>
               </View>
             ) : (
-              <Text textRole="bodyStrong" style={{ color: colors.warningForeground, marginTop: 8 }}>
+              <Text
+                textRole="bodyStrong"
+                style={{ color: colors.warningForeground, marginTop: 8 }}
+              >
                 Needs scheduling
               </Text>
             )}
+            {isPastSchedule ? (
+              <View
+                style={{
+                  marginTop: 14,
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: colors.warningContainer,
+                }}
+              >
+                <Text
+                  textRole="bodyStrong"
+                  style={{ color: colors.warningForeground }}
+                >
+                  Scheduled visit has passed
+                </Text>
+                <Text
+                  textRole="body"
+                  style={{ color: colors.textSecondary, marginTop: 3 }}
+                >
+                  This service was scheduled for{" "}
+                  {relativeScheduleDay || "an earlier date"}
+                  {visitPeriod ? ` ${visitPeriod}` : ""}.
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 
@@ -656,7 +826,10 @@ export function AIRequestDetails({
             }}
           >
             <AlertCircle size={19} color={colors.errorForeground} />
-            <Text textRole="body" style={{ flex: 1, color: colors.errorForeground }}>
+            <Text
+              textRole="body"
+              style={{ flex: 1, color: colors.errorForeground }}
+            >
               {actionNotice}
             </Text>
           </View>
@@ -693,9 +866,14 @@ export function AIRequestDetails({
                 accessibilityLabel="Decline"
                 disabled={updating}
                 onPress={handleDecline}
-                style={{ minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: 8 }}
+                style={{
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 8,
+                }}
               >
-                <Text textRole="bodyStrong" style={{ color: colors.textSecondary }}>
+                <Text textRole="bodyStrong" style={{ color: colors.error }}>
                   Decline
                 </Text>
               </TouchableOpacity>
@@ -729,9 +907,17 @@ export function AIRequestDetails({
                 accessibilityLabel="Cancel With Reason"
                 disabled={updating}
                 onPress={() => setReasonVisible(true)}
-                style={{ minHeight: 48, alignItems: "center", justifyContent: "center", marginTop: 8 }}
+                style={{
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: 8,
+                }}
               >
-                <Text textRole="bodyStrong" style={{ color: colors.errorForeground }}>
+                <Text
+                  textRole="bodyStrong"
+                  style={{ color: colors.errorForeground }}
+                >
                   Cancel With Reason
                 </Text>
               </TouchableOpacity>
@@ -739,12 +925,13 @@ export function AIRequestDetails({
           </View>
         ) : null}
       </ScrollView>
-
       <AIScheduleModal
         visible={scheduleVisible}
         mode={scheduleMode}
         isSubmitting={updating}
-        initialDate={scheduleMode === "reschedule" ? request?.scheduledDate : null}
+        initialDate={
+          scheduleMode === "reschedule" ? request?.scheduledDate : null
+        }
         initialVisitPeriod={scheduleMode === "reschedule" ? visitPeriod : null}
         onClose={() => {
           if (!updating) setScheduleVisible(false);
@@ -752,6 +939,17 @@ export function AIRequestDetails({
         onConfirm={handleSchedule}
       />
 
+      <ConfirmationModal
+        visible={earlyStartVisible}
+        title="Start service early?"
+        message={`This AI service is scheduled for ${relativeScheduleDay || "the planned visit"}${visitPeriod ? ` ${visitPeriod}` : ""}. Are you sure you want to start it now?`}
+        confirmText="Start Early"
+        cancelText="Go Back"
+        isDestructive={false}
+        onClose={() => setEarlyStartVisible(false)}
+        onCancel={() => setEarlyStartVisible(false)}
+        onConfirm={() => handleStartAIRecord(true)}
+      />
       <Modal
         visible={reasonVisible}
         transparent
@@ -778,12 +976,21 @@ export function AIRequestDetails({
           />
           <View
             accessibilityViewIsModal
-            style={{ width: "100%", maxWidth: 420, padding: 20, borderRadius: 16, backgroundColor: colors.card }}
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              padding: 20,
+              borderRadius: 16,
+              backgroundColor: colors.card,
+            }}
           >
             <Text textRole="title" style={{ color: colors.textPrimary }}>
               Cancel AI Request
             </Text>
-            <Text textRole="body" style={{ color: colors.textSecondary, marginTop: 6 }}>
+            <Text
+              textRole="body"
+              style={{ color: colors.textSecondary, marginTop: 6 }}
+            >
               Give the farmer a clear reason for cancelling this visit.
             </Text>
             <TextInput
@@ -813,9 +1020,20 @@ export function AIRequestDetails({
                 accessibilityRole="button"
                 disabled={updating}
                 onPress={() => setReasonVisible(false)}
-                style={{ flex: 1, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
               >
-                <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
+                <Text
+                  textRole="bodyStrong"
+                  style={{ color: colors.textPrimary }}
+                >
                   Keep Request
                 </Text>
               </TouchableOpacity>
@@ -823,17 +1041,147 @@ export function AIRequestDetails({
                 accessibilityRole="button"
                 disabled={updating || !reason.trim()}
                 onPress={handleCancel}
-                style={{ flex: 1, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.errorForeground, opacity: updating || !reason.trim() ? 0.55 : 1 }}
+                style={{
+                  flex: 1,
+                  minHeight: 48,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  backgroundColor: colors.errorForeground,
+                  opacity: updating || !reason.trim() ? 0.55 : 1,
+                }}
               >
                 {updating ? (
                   <ActivityIndicator color={colors.onPrimary} />
                 ) : (
-                  <Text textRole="bodyStrong" style={{ color: colors.onPrimary }}>
+                  <Text
+                    textRole="bodyStrong"
+                    style={{ color: colors.onPrimary }}
+                  >
                     Cancel Request
                   </Text>
                 )}
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={!!selectedAttachment}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedAttachment(null)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.4)",
+            alignItems: "center",
+            justifyContent: "center",
+            paddingHorizontal: 20,
+          }}
+        >
+          <View
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              backgroundColor: "#FFFFFF",
+              borderRadius: 16,
+              padding: 16,
+            }}
+          >
+            {/* Header */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 14,
+              }}
+            >
+              <View>
+                <Text
+                  style={{
+                    color: "#111827",
+                    fontFamily: "Outfit_600SemiBold",
+                    fontSize: 17,
+                  }}
+                >
+                  Attachment
+                </Text>
+
+                <Text
+                  style={{
+                    color: "#6B7280",
+                    fontFamily: "Outfit_400Regular",
+                    fontSize: 13,
+                    marginTop: 2,
+                  }}
+                >
+                  Farmer submitted photo
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() => setSelectedAttachment(null)}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: "#F3F4F6",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <X size={19} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Image */}
+            {selectedAttachment ? (
+              <View
+                style={{
+                  width: "100%",
+                  height: 300,
+                  backgroundColor: "#F3F4F6",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                }}
+              >
+                <Image
+                  source={{ uri: selectedAttachment }}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                  }}
+                  resizeMode="contain"
+                />
+              </View>
+            ) : null}
+
+            {/* Close */}
+            <TouchableOpacity
+              onPress={() => setSelectedAttachment(null)}
+              style={{
+                marginTop: 16,
+                minHeight: 46,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: "#D1D5DB",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  color: "#374151",
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 14,
+                }}
+              >
+                Close
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -858,169 +1206,27 @@ function AIScheduleModal({
   onClose: () => void;
   onConfirm: (payload: AISchedulePayload) => Promise<void>;
 }) {
-  const { colors, isDark } = useTheme();
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const initial = initialDate ? new Date(initialDate) : today;
-  if (Number.isNaN(initial.getTime())) initial.setTime(today.getTime());
-  initial.setHours(0, 0, 0, 0);
-  const [selectedDate, setSelectedDate] = useState(initial);
-  const [dateChoice, setDateChoice] = useState<"today" | "tomorrow" | "custom">("today");
-  const [visitPeriod, setVisitPeriod] = useState<VisitPeriod | null>(initialVisitPeriod || null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-
-  useEffect(() => {
-    if (!visible) return;
-    const nextDate = initialDate ? new Date(initialDate) : new Date();
-    if (Number.isNaN(nextDate.getTime())) nextDate.setTime(Date.now());
-    nextDate.setHours(0, 0, 0, 0);
-    setSelectedDate(nextDate);
-    setDateChoice(initialDate ? "custom" : "today");
-    setVisitPeriod(initialVisitPeriod || null);
-    setShowDatePicker(false);
-  }, [initialDate, initialVisitPeriod, visible]);
-
-  const selectRelativeDate = (choice: "today" | "tomorrow") => {
-    const value = new Date();
-    value.setHours(0, 0, 0, 0);
-    if (choice === "tomorrow") value.setDate(value.getDate() + 1);
-    setDateChoice(choice);
-    setSelectedDate(value);
-  };
-
   return (
-    <Modal
+    <VisitScheduleSheet
       visible={visible}
-      transparent
-      animationType="fade"
-      presentationStyle="overFullScreen"
-      onRequestClose={onClose}
-    >
-      <View style={{ flex: 1, justifyContent: "center", padding: 16, backgroundColor: colors.modalBackdrop }}>
-        <Pressable accessible={false} disabled={isSubmitting} onPress={onClose} style={StyleSheet.absoluteFill} />
-        <View accessibilityViewIsModal style={{ width: "100%", maxWidth: 420, alignSelf: "center", padding: 20, borderRadius: 16, backgroundColor: colors.card }}>
-          <Text textRole="title" style={{ color: colors.textPrimary }}>
-            {mode === "reschedule" ? "Reschedule AI Visit" : "Set AI Visit"}
-          </Text>
-
-          <Text textRole="label" style={{ color: colors.textMuted, marginTop: 18, marginBottom: 8 }}>
-            Visit Date
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {(["today", "tomorrow", "custom"] as const).map((choice) => (
-              <TouchableOpacity
-                key={choice}
-                accessibilityRole="button"
-                onPress={() => {
-                  if (choice === "custom") {
-                    setDateChoice("custom");
-                    setShowDatePicker(true);
-                  } else selectRelativeDate(choice);
-                }}
-                style={{
-                  flex: 1,
-                  minHeight: 48,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: dateChoice === choice ? colors.primary : colors.border,
-                  backgroundColor: dateChoice === choice ? (isDark ? colors.successContainer : colors.tint) : colors.card,
-                }}
-              >
-                <Text textRole="label" style={{ color: dateChoice === choice ? colors.primary : colors.textSecondary }}>
-                  {choice === "today" ? "Today" : choice === "tomorrow" ? "Tomorrow" : "Choose date"}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 12 }}>
-            <CalendarDays size={17} color={colors.primary} />
-            <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
-              {selectedDate.toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" })}
-            </Text>
-          </View>
-
-          <Text textRole="label" style={{ color: colors.textMuted, marginTop: 18, marginBottom: 8 }}>
-            Visit Period
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            {(["morning", "afternoon"] as const).map((period) => (
-              <TouchableOpacity
-                key={period}
-                accessibilityRole="button"
-                onPress={() => setVisitPeriod(period)}
-                style={{
-                  flex: 1,
-                  minHeight: 48,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 7,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: visitPeriod === period ? colors.primary : colors.border,
-                  backgroundColor: visitPeriod === period ? (isDark ? colors.successContainer : colors.tint) : colors.card,
-                }}
-              >
-                <Clock3 size={16} color={colors.primary} />
-                <Text textRole="bodyStrong" style={{ color: colors.textPrimary, textTransform: "capitalize" }}>
-                  {period}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
-            <TouchableOpacity
-              accessibilityRole="button"
-              disabled={isSubmitting}
-              onPress={onClose}
-              style={{ flex: 1, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
-            >
-              <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
-                Cancel
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              accessibilityRole="button"
-              disabled={isSubmitting || !visitPeriod}
-              onPress={() =>
-                onConfirm({
-                  scheduledDate: formatLocalCalendarDate(selectedDate),
-                  visitPeriod: visitPeriod as VisitPeriod,
-                })
-              }
-              style={{ flex: 1, minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.primary, opacity: isSubmitting || !visitPeriod ? 0.55 : 1 }}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator color={colors.onPrimary} />
-              ) : (
-                <Text textRole="bodyStrong" style={{ color: colors.onPrimary }}>
-                  {mode === "accept" ? "Accept & Schedule" : "Save Visit"}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-
-      {showDatePicker ? (
-        <DateTimePicker
-          value={selectedDate}
-          mode="date"
-          minimumDate={today}
-          onChange={(_, value) => {
-            setShowDatePicker(false);
-            if (value) {
-              value.setHours(0, 0, 0, 0);
-              setSelectedDate(value);
-              setDateChoice("custom");
-            }
-          }}
-        />
-      ) : null}
-    </Modal>
+      title={mode === "reschedule" ? "Reschedule AI Visit" : "Set AI Visit"}
+      description="Choose a visit day and service period. The farmer will see the confirmed window, not an exact appointment time."
+      confirmLabel={
+        mode === "accept"
+          ? "Accept & Schedule"
+          : mode === "reschedule"
+            ? "Save New Visit"
+            : "Schedule Visit"
+      }
+      isSubmitting={isSubmitting}
+      initialDate={initialDate}
+      initialVisitPeriod={initialVisitPeriod}
+      getPeriodAvailability={(date, period) =>
+        getAISchedulePeriodAvailability(date, period)
+      }
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
   );
 }
 
@@ -1047,7 +1253,14 @@ function InfoLine({
 }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10, marginTop: 12 }}>
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 10,
+        marginTop: 12,
+      }}
+    >
       <Icon size={17} color={colors.textMuted} style={{ marginTop: 1 }} />
       <Text textRole="body" style={{ flex: 1, color: colors.textPrimary }}>
         {text}

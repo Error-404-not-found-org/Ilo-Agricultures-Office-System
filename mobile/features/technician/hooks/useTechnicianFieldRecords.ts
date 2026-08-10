@@ -49,6 +49,7 @@ export const useCompleteAIRequestMutation = (requestId: string) => {
       url: `/ai-request/${requestId}/status`,
       method: "PATCH",
       description: "Complete AI Request",
+      reconcileOnTimeout: true,
     },
     {
       onSuccess: (_result, variables: any) => {
