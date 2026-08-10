@@ -18,6 +18,7 @@ import {
   getAnimalHealthHistory,
   getAnimalRecords,
   getOfficialRecords,
+  getOfficialRecordDetail,
   getAnimalReproductionEligibility,
   getAnimalTimeline,
   createFarmerAnimalUpdate,
@@ -34,6 +35,11 @@ router.get("/farmer/:farmerId", protectedRoute, requireRole(["technician", "admi
 router.get("/my", protectedRoute, getMyAnimals);
 router.get("/records", protectedRoute, getOfficialRecords);
 router.get("/archived", protectedRoute, getArchivedAnimals);
+router.get(
+  "/:id/records/:recordKind/:recordId",
+  protectedRoute,
+  getOfficialRecordDetail,
+);
 router.get("/:id/timeline", protectedRoute, getAnimalTimeline);
 router.get("/:id/history", protectedRoute, getAnimalTimeline);
 router.get("/:id/records", protectedRoute, getAnimalRecords);

@@ -5,6 +5,7 @@ import {
   type VisitSchedulePayload,
 } from "@/features/technician-requests/components/VisitScheduleSheet";
 import type { VisitPeriod } from "@/features/technician-requests/types/technicianRequests.types";
+import { getVisitSchedulePeriodAvailability } from "@/features/technician-requests/utils/visitScheduleAvailability";
 
 export type HealthVisitSchedulePayload = VisitSchedulePayload;
 
@@ -43,6 +44,7 @@ export function HealthVisitScheduleModal({
       isSubmitting={isSubmitting}
       initialDate={initialDate}
       initialVisitPeriod={initialVisitPeriod}
+      getPeriodAvailability={getVisitSchedulePeriodAvailability}
       onClose={onClose}
       onConfirm={onConfirm}
     />

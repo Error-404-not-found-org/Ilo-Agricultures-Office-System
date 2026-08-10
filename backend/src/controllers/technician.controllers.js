@@ -17,7 +17,10 @@ import {
   confirmPregnancyDiagnosis,
   recordPregnancyContinuationRecheck,
 } from "../services/pregnancy-confirmation.service.js";
-import { persistCalving } from "../services/calving.service.js";
+import {
+  getCalvingReadiness,
+  persistCalving,
+} from "../services/calving.service.js";
 import {
   correctCalvingRecord,
   correctPregnancyRecord,
@@ -1291,6 +1294,23 @@ export const getAnimalHistory = async (req, res) => {
         species: animal.species,
       }),
     }));
+    const pregnanciesWithReadiness = pregnancies
+      .map(withPregnancyConfirmationMetadata)
+      .map((pregnancy) => {
+        const insemination = inseminations.find(
+          (item) =>
+            String(item._id) ===
+            String(pregnancy.inseminationId?._id || pregnancy.inseminationId),
+        );
+        return {
+          ...pregnancy,
+          calvingReadiness: getCalvingReadiness({
+            mother: animal,
+            pregnancy,
+            insemination,
+          }),
+        };
+      });
 
     // 2. Build Timeline Events
     const timeline = [];
@@ -1336,7 +1356,7 @@ export const getAnimalHistory = async (req, res) => {
     });
 
     // - Pregnancy Checks
-    pregnancies.map(withPregnancyConfirmationMetadata).forEach((p) => {
+    pregnanciesWithReadiness.forEach((p) => {
       const result = p.pregnancyDiagnosis?.result || "Pending";
       timeline.push({
         _id: p._id,
@@ -1419,7 +1439,7 @@ export const getAnimalHistory = async (req, res) => {
       animal,
       timeline,
       inseminations: inseminationsWithReadiness,
-      pregnancies: pregnancies.map(withPregnancyConfirmationMetadata),
+      pregnancies: pregnanciesWithReadiness,
       calvings,
       healthRequests,
     });
@@ -1713,7 +1733,13 @@ export const recordCalving = async (req, res) => {
       offspring: registeredCalves,
     });
   } catch (error) {
-    console.error("[recordCalving ERROR]", error);
+    if (error.status && error.status < 500) {
+      console.warn(
+        `[recordCalving REJECTED] ${error.code || "CALVING_REJECTED"}: ${error.message}`,
+      );
+    } else {
+      console.error("[recordCalving ERROR]", error);
+    }
     const transactionUnavailable =
       /Transaction numbers are only allowed|replica set|mongos/i.test(
         error.message,
@@ -1723,6 +1749,7 @@ export const recordCalving = async (req, res) => {
         ? "This operation requires a transaction-capable database."
         : error.message || "Failed to record calving",
       code: transactionUnavailable ? "TRANSACTION_UNAVAILABLE" : error.code,
+      ...(error.details || {}),
     });
   }
 };
@@ -3456,6 +3483,7 @@ export const getTechnicianRequests = async (req, res) => {
           allowedAction,
           actionLabel,
           farmer: farmer.name || "Unknown Farmer",
+          farmerImageUrl: farmer.imageUrl || "",
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"
@@ -3591,6 +3619,7 @@ export const getTechnicianRequests = async (req, res) => {
           requestType: rec.requestType || "health",
           status: rec.status,
           farmer: farmer.name || "Unknown Farmer",
+          farmerImageUrl: farmer.imageUrl || "",
           isReadyToday: !!isReady,
           displayStatus: isReady
             ? "Ready Today"

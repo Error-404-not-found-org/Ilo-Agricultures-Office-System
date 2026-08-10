@@ -27,6 +27,7 @@ export default function TechnicianLayout() {
       <Stack.Screen name="register-client" />
       <Stack.Screen name="register-animal" />
       <Stack.Screen name="pregnancy-check" />
+      <Stack.Screen name="pregnancy-tracker" />
       <Stack.Screen name="record-calf-drop" />
       <Stack.Screen name="health-log" />
       <Stack.Screen name="record-ai" />

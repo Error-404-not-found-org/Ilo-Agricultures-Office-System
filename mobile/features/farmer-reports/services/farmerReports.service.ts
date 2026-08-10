@@ -1,5 +1,9 @@
 import type { AxiosInstance } from "axios";
-import type { ActivityFeedItem } from "../types/farmerReports.types";
+import type {
+  ActivityFeedItem,
+  OfficialRecordDetail,
+  OfficialRecordKind,
+} from "../types/farmerReports.types";
 
 const getRecordText = (value: unknown): string | undefined => {
   if (value === null || value === undefined) return undefined;
@@ -106,6 +110,18 @@ export const getFarmerActivity = async (api: AxiosInstance) => {
   return response.data;
 };
 
+export const getFarmerOfficialRecordDetail = async (
+  api: AxiosInstance,
+  animalId: string,
+  sourceKind: OfficialRecordKind,
+  sourceId: string,
+) => {
+  const response = await api.get<{ data: OfficialRecordDetail }>(
+    `/animals/${animalId}/records/${sourceKind}/${sourceId}`,
+  );
+  return response.data.data;
+};
+
 export const getFarmerOfficialRecords = async (
   api: AxiosInstance,
   page = 1,
@@ -141,6 +157,8 @@ export const getFarmerOfficialRecords = async (
 
     return {
       id: String(record.id),
+      sourceId: String(record.id),
+      sourceKind: record.recordKind,
       title: isHealthRecord ? "Health Assistance" : record.title,
       description: record.summary,
       date: record.recordDate || record.enteredAt,

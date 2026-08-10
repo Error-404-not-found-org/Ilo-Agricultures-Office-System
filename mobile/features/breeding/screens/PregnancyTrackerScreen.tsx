@@ -39,9 +39,14 @@ import {
 
 interface PregnancyTrackerScreenProps {
   id: string;
+  viewerRole?: "farmer" | "technician";
 }
 
-function PregnancyTrackerSkeleton() {
+function PregnancyTrackerSkeleton({
+  backFallback,
+}: {
+  backFallback: string;
+}) {
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -49,7 +54,7 @@ function PregnancyTrackerSkeleton() {
     <FarmerScreen scroll={false}>
       <AppPageHeader
         title="Pregnancy Tracker"
-        onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
+        onBack={() => safeBack(backFallback)}
       />
 
       <ScrollView
@@ -280,15 +285,22 @@ function PregnancyTrackerSkeleton() {
   );
 }
 
-export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
+export function PregnancyTrackerScreen({
+  id,
+  viewerRole = "farmer",
+}: PregnancyTrackerScreenProps) {
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const isTechnician = viewerRole === "technician";
+  const backFallback = isTechnician
+    ? "/(technician)/(tabs)/technician.animals"
+    : "/(farmer)/(tabs)/farmer.records";
 
   const query = usePregnancyTrackerQuery(id);
 
   if (query.isLoading) {
-    return <PregnancyTrackerSkeleton />;
+    return <PregnancyTrackerSkeleton backFallback={backFallback} />;
   }
 
   if (query.isError || !query.data) {
@@ -296,7 +308,7 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
       <FarmerScreen scroll={false}>
         <AppPageHeader
           title="Pregnancy Tracker"
-          onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
+          onBack={() => safeBack(backFallback)}
         />
         <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
           <AsyncState
@@ -312,6 +324,7 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
   const animal = query.data;
   const latest = animal.inseminations?.[0];
   const canReportObservation =
+    !isTechnician &&
     Boolean(latest?._id) &&
     ["done", "completed", "resolved"].includes(
       String(latest?.status || "").toLowerCase(),
@@ -413,7 +426,7 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
     <FarmerScreen scroll={false}>
       <AppPageHeader
         title="Pregnancy Tracker"
-        onBack={() => safeBack("/(farmer)/(tabs)/farmer.records")}
+        onBack={() => safeBack(backFallback)}
       />
 
       <ScrollView
@@ -927,12 +940,46 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
         {/* Action Buttons */}
         {activePregnancy && animal.reproductiveStatus === "Pregnant" && (
         <View style={{ marginHorizontal: 24, marginTop: 24, gap: 12 }}>
+          {isTechnician && !activePregnancy.calvingReadiness?.isEligible ? (
+            <View
+              style={{
+                padding: 12,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: colors.warningBorder,
+                backgroundColor: colors.warningContainer,
+              }}
+            >
+              <Text
+                style={{
+                  color: colors.warningForeground,
+                  fontFamily: "Outfit_600SemiBold",
+                  fontSize: 12,
+                  lineHeight: 18,
+                }}
+              >
+                {activePregnancy.calvingReadiness?.reason ||
+                  "Live-birth readiness is unavailable. Review the timing before recording an outcome."}
+              </Text>
+            </View>
+          ) : null}
           <TouchableOpacity
             onPress={() =>
-              router.push({
-                pathname: "/(farmer)/record-calving",
-                params: { animalId: id, pregnancyId: activePregnancy._id },
-              })
+              router.push(
+                isTechnician
+                  ? ({
+                      pathname: "/(technician)/record-calf-drop",
+                      params: {
+                        motherId: id,
+                        motherTag: animal.earTag || animal.animalId || "",
+                        pregnancyId: activePregnancy._id,
+                      },
+                    } as never)
+                  : ({
+                      pathname: "/(farmer)/record-calving",
+                      params: { animalId: id, pregnancyId: activePregnancy._id },
+                    } as never),
+              )
             }
             activeOpacity={0.8}
             style={{
@@ -958,10 +1005,11 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
                 marginLeft: 8,
               }}
             >
-              Record Calving
+              {isTechnician ? "Record Calving / Loss" : "Record Calving"}
             </Text>
           </TouchableOpacity>
 
+          {!isTechnician ? <>
           <TouchableOpacity
             onPress={() =>
               router.push({
@@ -1024,6 +1072,7 @@ export function PregnancyTrackerScreen({ id }: PregnancyTrackerScreenProps) {
               Contact Technician
             </Text>
           </TouchableOpacity>
+          </> : null}
         </View>
         )}
 

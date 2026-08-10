@@ -11,6 +11,7 @@ export interface UpdateStatusPayload {
   estrus?: string;
   scheduledDate?: string;
   visitPeriod?: string;
+  samePeriodConfirmed?: boolean;
   earlyStartConfirmed?: boolean;
 }
 

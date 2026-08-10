@@ -96,7 +96,9 @@ export const useFarmerReports = () => {
           pathname: "/(farmer)/animal-record-detail",
           params: {
             animalId: found.animalId?._id || "",
-            recordId: found.id,
+            sourceId: found.sourceId || found.id,
+            sourceKind: found.sourceKind || "",
+            recordId: found.sourceId || found.id,
             recordType: found.type,
           },
         });

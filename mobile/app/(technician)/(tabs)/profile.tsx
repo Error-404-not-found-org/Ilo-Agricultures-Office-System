@@ -609,7 +609,7 @@ const TechnicianProfile = () => {
               icon={<Briefcase size={18} color={colors.textSecondary} />}
               label="Service Schedule"
               onPress={() =>
-                router.push("/(technician)/(tabs)/technician.calendar" as any)
+                router.push("/(technician)/technician.calendar" as any)
               }
             />
 

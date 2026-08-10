@@ -1,11 +1,12 @@
 import React from "react";
-import { View, Text, Image } from "react-native";
+import { View, Image } from "react-native";
 import { CalendarCheck, Syringe, Stethoscope } from "lucide-react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { format } from "date-fns";
+import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
 import type { ActivityFeedItem } from "../types/farmerReports.types";
 import DetailRow from "./DetailRow";
+import { RecordEvidenceGallery } from "./RecordEvidenceGallery";
 import {
   formatAnimalReference,
   getFullAnimalReference,
@@ -19,6 +20,33 @@ const hasDisplayValue = (value: unknown) => {
   if (value === null || value === undefined) return false;
   const text = String(value).trim().toLowerCase();
   return Boolean(text) && !["n/a", "na", "none", "null", "undefined"].includes(text);
+};
+
+const humanize = (value: unknown) =>
+  String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+    .trim();
+
+const formatRecordDate = (value: unknown, includeTime = false) => {
+  if (!hasDisplayValue(value)) return undefined;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    ...(includeTime
+      ? { hour: "numeric", minute: "2-digit", hour12: true }
+      : {}),
+  }).format(date);
+};
+
+const calfSexLabel = (value: unknown) => {
+  if (value === "M") return "Male";
+  if (value === "F") return "Female";
+  return humanize(value) || "Not recorded";
 };
 
 export function RecordDetailContent({ selectedActivity }: RecordDetailContentProps) {
@@ -85,19 +113,14 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
         >
           {selectedActivity.title}
         </Text>
-        <Text
-          style={{
-            fontSize: 11,
-            fontFamily: "Outfit_700Bold",
-            color: colors.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: 0.5,
-          }}
-        >
+        <Text textRole="label" style={{ color: colors.textMuted }}>
+          {selectedActivity.dateLabel || "Official record date"}
+        </Text>
+        <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
           {selectedActivity.date
-            ? format(
-                new Date(selectedActivity.date),
-                "MMMM dd, yyyy • h:mm a",
+            ? formatRecordDate(
+                selectedActivity.date,
+                selectedActivity.datePrecision !== "date",
               )
             : "No Date"}
         </Text>
@@ -118,37 +141,33 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
             borderColor: colors.border,
           }}
         >
-          <Text
-            style={{
-              fontSize: 10,
-              fontFamily: "Outfit_800ExtraBold",
-              color: colors.textMuted,
-              textTransform: "uppercase",
-              marginBottom: 4,
-            }}
-          >
-            Subject Animal
-          </Text>
-          <Text
-            style={{
-              fontSize: 14,
-              fontFamily: "Outfit_700Bold",
-              color: colors.textPrimary,
-            }}
-          >
-            Tag: #{formatAnimalReference(selectedActivity.animalId)}
-          </Text>
-          <Text
-            style={{
-              fontSize: 12,
-              fontFamily: "Outfit_500Medium",
-              color: colors.textSecondary,
-              marginTop: 2,
-            }}
-          >
-            {selectedActivity.animalId.breed || "Breed unavailable"} •{" "}
-            {selectedActivity.animalId.species || "Species unavailable"}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            {selectedActivity.animalId.imageUrl ? (
+              <Image
+                source={{ uri: selectedActivity.animalId.imageUrl }}
+                resizeMode="cover"
+                accessibilityLabel={`Animal ${formatAnimalReference(selectedActivity.animalId)}`}
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 12,
+                  backgroundColor: colors.surfaceSubtle,
+                }}
+              />
+            ) : null}
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text textRole="label" style={{ color: colors.textMuted }}>
+                Subject animal
+              </Text>
+              <Text textRole="bodyStrong" style={{ color: colors.textPrimary }}>
+                Tag: #{formatAnimalReference(selectedActivity.animalId)}
+              </Text>
+              <Text textRole="caption" style={{ color: colors.textSecondary }}>
+                {selectedActivity.animalId.breed || "Breed unavailable"} •{" "}
+                {selectedActivity.animalId.species || "Species unavailable"}
+              </Text>
+            </View>
+          </View>
         </View>
       )}
 
@@ -170,10 +189,26 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
 
         <View style={{ gap: 10 }}>
           {hasDisplayValue(selectedActivity.details?.serviceDate) ? (
-            <DetailRow label="Service Date" value={selectedActivity.details?.serviceDate} />
+            <DetailRow
+              label={
+                selectedActivity.details?.serviceDateLabel ||
+                selectedActivity.dateLabel ||
+                "Official record date"
+              }
+              value={formatRecordDate(
+                selectedActivity.details?.serviceDate,
+                selectedActivity.datePrecision === "datetime",
+              )}
+            />
           ) : null}
           {hasDisplayValue(selectedActivity.details?.entryDate) ? (
-            <DetailRow label="Entered in BreedSmart" value={selectedActivity.details?.entryDate} />
+            <DetailRow
+              label={
+                selectedActivity.details?.entryDateLabel ||
+                "Recorded in BreedSmart at"
+              }
+              value={formatRecordDate(selectedActivity.details?.entryDate, true)}
+            />
           ) : null}
           {selectedActivity.details?.isHistoricalEntry && (
             <DetailRow label="Entry Type" value="Past Record" highlightColor="#d97706" />
@@ -261,8 +296,20 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                   value={selectedActivity.details.sireCode}
                 />
                 <DetailRow
+                  label="Semen Doses"
+                  value={selectedActivity.details.semenDosesUsed?.toString()}
+                />
+                <DetailRow
                   label="Attempt Number"
                   value={selectedActivity.details.attemptNumber?.toString()}
+                />
+                <DetailRow
+                  label="Previous Attempt"
+                  value={
+                    selectedActivity.details.previousAttemptNumber
+                      ? `Attempt ${selectedActivity.details.previousAttemptNumber}`
+                      : undefined
+                  }
                 />
                 <DetailRow
                   label="Estrus Type"
@@ -285,6 +332,12 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                   label="Technician"
                   value={selectedActivity.details.technician}
                 />
+                {hasDisplayValue(selectedActivity.details.failureReason) ? (
+                  <DetailRow
+                    label="Failure Reason"
+                    value={humanize(selectedActivity.details.failureReason)}
+                  />
+                ) : null}
               </View>
             )}
 
@@ -301,10 +354,52 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                         : "#d97706"
                   }
                 />
+                {hasDisplayValue(selectedActivity.details.diagnosticMethod) ? (
+                  <DetailRow
+                    label="Confirmation Method"
+                    value={humanize(selectedActivity.details.diagnosticMethod)}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.confirmationStage) ? (
+                  <DetailRow
+                    label="Confirmation Stage"
+                    value={humanize(selectedActivity.details.confirmationStage)}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.confirmedAt) ? (
+                  <DetailRow
+                    label="Confirmed On"
+                    value={formatRecordDate(
+                      selectedActivity.details.confirmedAt,
+                    )}
+                  />
+                ) : null}
+                {selectedActivity.details.relatedAttempt ? (
+                  <DetailRow
+                    label="Related AI Attempt"
+                    value={`Attempt ${selectedActivity.details.relatedAttempt}`}
+                  />
+                ) : null}
                 <DetailRow
                   label="Target Calving Date"
-                  value={selectedActivity.details.targetCalvingDate}
+                  value={formatRecordDate(
+                    selectedActivity.details.targetCalvingDate,
+                  )}
                 />
+                {hasDisplayValue(selectedActivity.details.recheckStatus) ? (
+                  <DetailRow
+                    label="Recheck Status"
+                    value={humanize(selectedActivity.details.recheckStatus)}
+                  />
+                ) : null}
+                {hasDisplayValue(selectedActivity.details.recheckDueAt) ? (
+                  <DetailRow
+                    label="Recheck Due"
+                    value={formatRecordDate(
+                      selectedActivity.details.recheckDueAt,
+                    )}
+                  />
+                ) : null}
                 <DetailRow
                   label="Technician"
                   value={selectedActivity.details.technician}
@@ -405,19 +500,27 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                 {hasDisplayValue(selectedActivity.details.followUpDate) ? (
                   <DetailRow
                     label="Follow-up"
-                    value={selectedActivity.details.followUpDate}
+                    value={formatRecordDate(
+                      selectedActivity.details.followUpDate,
+                    )}
                   />
                 ) : null}
-                {hasDisplayValue(selectedActivity.details.withdrawalPeriod) ? (
+                {hasDisplayValue(selectedActivity.details.withdrawalPeriod) ||
+                selectedActivity.details.withdrawalPeriodDays !== undefined ? (
                   <DetailRow
                     label="Withdrawal Period"
-                    value={selectedActivity.details.withdrawalPeriod}
+                    value={
+                      selectedActivity.details.withdrawalPeriod ||
+                      `${selectedActivity.details.withdrawalPeriodDays} ${selectedActivity.details.withdrawalPeriodDays === 1 ? "day" : "days"}`
+                    }
                   />
                 ) : null}
                 {hasDisplayValue(selectedActivity.details.withdrawalEndDate) ? (
                   <DetailRow
                     label="Withdrawal Ends"
-                    value={selectedActivity.details.withdrawalEndDate}
+                    value={formatRecordDate(
+                      selectedActivity.details.withdrawalEndDate,
+                    )}
                   />
                 ) : null}
                 {hasDisplayValue(selectedActivity.details.technician) ? (
@@ -432,12 +535,24 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
             {selectedActivity.type === "calving" && (
               <View style={{ gap: 10 }}>
                 <DetailRow
+                  label="Delivery Outcome"
+                  value={humanize(selectedActivity.details.calvingOutcome)}
+                />
+                <DetailRow
                   label="Calving Ease"
                   value={selectedActivity.details.calvingEase}
                 />
                 <DetailRow
                   label="Number of Calves"
                   value={selectedActivity.details.numberOfCalves?.toString()}
+                />
+                <DetailRow
+                  label="Living Calves"
+                  value={selectedActivity.details.livingCalfCount?.toString()}
+                />
+                <DetailRow
+                  label="Stillborn Calves"
+                  value={selectedActivity.details.stillbornCount?.toString()}
                 />
                 <DetailRow
                   label="Technician"
@@ -477,7 +592,7 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                                 color: colors.textPrimary,
                               }}
                             >
-                              Calf #{index + 1}: {calf.sex}
+                              Calf #{index + 1}: {calfSexLabel(calf.sex)}
                             </Text>
                             {calf.earTag && (
                               <Text
@@ -526,11 +641,64 @@ export function RecordDetailContent({ selectedActivity }: RecordDetailContentPro
                       )}
                     </View>
                   )}
+                {selectedActivity.details.nonLivingCalves &&
+                selectedActivity.details.nonLivingCalves.length > 0 ? (
+                  <View style={{ marginTop: 8, gap: 6 }}>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "Outfit_700Bold",
+                        color: colors.textSecondary,
+                      }}
+                    >
+                      Non-living offspring:
+                    </Text>
+                    {selectedActivity.details.nonLivingCalves.map(
+                      (calf, index) => (
+                        <View
+                          key={`${calf.earTag || "non-living"}-${index}`}
+                          style={{
+                            backgroundColor: colors.surfaceSubtle,
+                            padding: 8,
+                            borderRadius: 10,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: 12,
+                              fontFamily: "Outfit_700Bold",
+                              color: colors.textPrimary,
+                            }}
+                          >
+                            Offspring #{index + 1}: {calfSexLabel(calf.sex)}
+                          </Text>
+                          {calf.earTag ? (
+                            <Text
+                              style={{
+                                fontSize: 11,
+                                fontFamily: "Outfit_500Medium",
+                                color: colors.textSecondary,
+                              }}
+                            >
+                              Tag: #{calf.earTag}
+                            </Text>
+                          ) : null}
+                        </View>
+                      ),
+                    )}
+                  </View>
+                ) : null}
               </View>
             )}
           </>
         )}
       </View>
+
+      <RecordEvidenceGallery
+        attachments={selectedActivity.attachments?.filter(
+          (attachment) => attachment.category !== "offspring_identity",
+        )}
+      />
 
       {/* Technician Notes */}
       {selectedActivity.details?.technicianNote && (

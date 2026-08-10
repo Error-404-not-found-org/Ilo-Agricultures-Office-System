@@ -534,9 +534,10 @@ export const updateRequestStatus = async (req, res) => {
         assertVisitDaypartAvailable({
           scheduledDate: normalizedScheduledDate,
           visitPeriod: finalVisitPeriod,
+          samePeriodConfirmed: req.body.samePeriodConfirmed === true,
         });
       } catch (err) {
-        return res.status(400).json({
+        return res.status(err.status || 400).json({
           message: err.message,
           code: err.code || "INVALID_SCHEDULE",
         });
@@ -832,7 +833,11 @@ export const claimAndScheduleAIRequest = async (req, res) => {
         code: "VISIT_PERIOD_REQUIRED",
       });
     }
-    assertVisitDaypartAvailable({ scheduledDate, visitPeriod });
+    assertVisitDaypartAvailable({
+      scheduledDate,
+      visitPeriod,
+      samePeriodConfirmed: req.body.samePeriodConfirmed === true,
+    });
 
     const changedAt = new Date();
     const request = await Insemination.findOneAndUpdate(

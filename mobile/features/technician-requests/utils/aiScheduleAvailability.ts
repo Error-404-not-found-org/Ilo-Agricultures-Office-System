@@ -1,6 +1,14 @@
 import type { VisitPeriod } from "../types/technicianRequests.types";
+import {
+  getCurrentVisitPeriod,
+  getVisitSchedulePeriodAvailability,
+  getVisitScheduleTiming,
+  philippineDateKey,
+} from "./visitScheduleAvailability";
 
 export type AIScheduleTiming = "past" | "current" | "future" | "unknown";
+
+const MANILA_TIME_ZONE = "Asia/Manila";
 
 export interface AIScheduleDaypartOption {
   dateKey: string;
@@ -10,38 +18,6 @@ export interface AIScheduleDaypartOption {
   supportingText?: string;
 }
 
-const MANILA_TIME_ZONE = "Asia/Manila";
-
-const philippineDateKey = (value: unknown) => {
-  if (!value) return null;
-  if (typeof value === "string") {
-    const dateOnly = value.match(/^(\d{4}-\d{2}-\d{2})$/)?.[1];
-    if (dateOnly) return dateOnly;
-  }
-  const date = value instanceof Date ? value : new Date(String(value));
-  if (Number.isNaN(date.getTime())) return null;
-  const parts = new Intl.DateTimeFormat("en-PH", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone: MANILA_TIME_ZONE,
-  }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((item) => item.type === type)?.value || "";
-  return `${part("year")}-${part("month")}-${part("day")}`;
-};
-
-const manilaHour = (now: Date) => {
-  const hour = new Intl.DateTimeFormat("en-PH", {
-    hour: "2-digit",
-    hourCycle: "h23",
-    timeZone: MANILA_TIME_ZONE,
-  })
-    .formatToParts(now)
-    .find((part) => part.type === "hour")?.value;
-  return Number(hour || 0);
-};
-
 const addCalendarDays = (dateKey: string, days: number) => {
   const [year, month, day] = dateKey.split("-").map(Number);
   if (![year, month, day].every(Number.isFinite)) return "";
@@ -50,26 +26,13 @@ const addCalendarDays = (dateKey: string, days: number) => {
 };
 
 export const getCurrentAIVisitPeriod = (now = new Date()): VisitPeriod =>
-  manilaHour(now) < 12 ? "morning" : "afternoon";
+  getCurrentVisitPeriod(now);
 
 export const getAISchedulePeriodAvailability = (
   scheduledDate: unknown,
   visitPeriod: VisitPeriod,
   now = new Date(),
-) => {
-  const scheduleKey = philippineDateKey(scheduledDate);
-  const todayKey = philippineDateKey(now);
-  const disabled =
-    Boolean(scheduleKey && todayKey && scheduleKey < todayKey) ||
-    (scheduleKey === todayKey &&
-      visitPeriod === "morning" &&
-      getCurrentAIVisitPeriod(now) === "afternoon");
-
-  return {
-    disabled,
-    ...(disabled ? { supportingText: "Time has passed" } : {}),
-  };
-};
+) => getVisitSchedulePeriodAvailability(scheduledDate, visitPeriod, now);
 
 export const getAIScheduleDaypartOptions = (
   now = new Date(),
@@ -94,7 +57,7 @@ export const getAIScheduleDaypartOptions = (
       dateKey: todayKey,
       dayLabel: "Today",
       period: "afternoon",
-      disabled: false,
+      ...getAISchedulePeriodAvailability(todayKey, "afternoon", now),
     },
     {
       dateKey: tomorrowKey,
@@ -115,17 +78,7 @@ export const getAIScheduleTiming = (
   scheduledDate: unknown,
   visitPeriod: VisitPeriod | null | undefined,
   now = new Date(),
-): AIScheduleTiming => {
-  const scheduleKey = philippineDateKey(scheduledDate);
-  const todayKey = philippineDateKey(now);
-  if (!scheduleKey || !todayKey || !visitPeriod) return "unknown";
-  if (scheduleKey < todayKey) return "past";
-  if (scheduleKey > todayKey) return "future";
-
-  const currentPeriod = getCurrentAIVisitPeriod(now);
-  if (visitPeriod === currentPeriod) return "current";
-  return visitPeriod === "morning" ? "past" : "future";
-};
+): AIScheduleTiming => getVisitScheduleTiming(scheduledDate, visitPeriod, now);
 
 export const getRelativeAIScheduleDayLabel = (
   scheduledDate: unknown,

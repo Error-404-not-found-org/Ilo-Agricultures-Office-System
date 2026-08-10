@@ -5,7 +5,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useApi } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
-import { useAnimalDetailsQuery } from "@/features/animals/hooks/useAnimalDetails";
 import { getAnimalMedicalRecords } from "@/features/animals/services/animals.service";
 import {
   getFarmerActivity,
@@ -13,21 +12,36 @@ import {
 } from "@/features/farmer-reports/services/farmerReports.service";
 import { getAnimalRecords } from "@/features/animal-records/services/animalRecords.service";
 import { RecordDetailContent } from "@/features/farmer-reports/components/RecordDetailContent";
-import type { ActivityFeedItem } from "@/features/farmer-reports/types/farmerReports.types";
+import type {
+  ActivityFeedItem,
+  OfficialRecordDetail,
+  OfficialRecordKind,
+} from "@/features/farmer-reports/types/farmerReports.types";
+import { useOfficialRecordDetail } from "@/features/farmer-reports/hooks/useOfficialRecordDetail";
 import { FarmerScreen } from "@/features/farmer-ui/components";
 import { AppPageHeader } from "@/components/AppPageHeader";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { formatAnimalRecord } from "@/features/animal-records/utils/recordPresentation";
 
 type RecordActivity = ActivityFeedItem & {
-  sourceKind?: string;
-  sourceId?: string;
   reportId?: string;
+  actions?: OfficialRecordDetail["actions"];
 };
 
+const OFFICIAL_RECORD_KINDS: OfficialRecordKind[] = [
+  "insemination",
+  "pregnancy",
+  "calving",
+  "health_request",
+  "medical_record",
+];
+
 export default function AnimalRecordDetailScreen() {
-  const { animalId, recordId, recordType } = useLocalSearchParams<{
+  const { animalId, sourceId, sourceKind, recordId, recordType } =
+    useLocalSearchParams<{
     animalId: string;
+    sourceId?: string;
+    sourceKind?: string;
     recordId: string;
     recordType?: string;
   }>();
@@ -37,10 +51,23 @@ export default function AnimalRecordDetailScreen() {
   const { colors, isDark } = useTheme();
   const primaryColor = isDark ? colors.primary : "#00643B";
 
-  // Query 1: Animal details
-  const animalQuery = useAnimalDetailsQuery(animalId || "");
+  const canonicalKind = OFFICIAL_RECORD_KINDS.includes(
+    sourceKind as OfficialRecordKind,
+  )
+    ? (sourceKind as OfficialRecordKind)
+    : undefined;
+  const canonicalId = sourceId || recordId;
+  const hasCanonicalIdentity = Boolean(
+    animalId && canonicalId && canonicalKind,
+  );
+  const officialRecordQuery = useOfficialRecordDetail({
+    animalId,
+    sourceId: canonicalId,
+    sourceKind: canonicalKind,
+  });
 
-  // Query 2: Same source used by Animal Details Records tab.
+  // Legacy lookup remains available for older notification/dashboard links
+  // that do not yet carry a canonical sourceKind.
   const recordsQuery = useQuery({
     queryKey: ["animal-records", "records-detail", animalId],
     queryFn: () =>
@@ -48,27 +75,28 @@ export default function AnimalRecordDetailScreen() {
         page: 1,
         limit: 100,
       }),
-    enabled: !!animalId,
+    enabled: Boolean(animalId && !hasCanonicalIdentity),
   });
 
   // Query 3: Medical records list for fallback compatibility.
   const medicalRecordsQuery = useQuery({
     queryKey: ["animal-records", "medical", animalId],
     queryFn: () => getAnimalMedicalRecords(api, animalId || ""),
-    enabled: !!animalId,
+    enabled: Boolean(animalId && !hasCanonicalIdentity),
   });
 
   // Query 4: Activity feed as final backup.
   const activityQuery = useQuery({
     queryKey: ["user", "activity"],
     queryFn: () => getFarmerActivity(api),
+    enabled: !hasCanonicalIdentity,
   });
 
-  const isLoading =
-    animalQuery.isLoading ||
-    recordsQuery.isLoading ||
-    medicalRecordsQuery.isLoading ||
-    activityQuery.isLoading;
+  const isLoading = hasCanonicalIdentity
+    ? officialRecordQuery.isLoading
+    : recordsQuery.isLoading ||
+      medicalRecordsQuery.isLoading ||
+      activityQuery.isLoading;
 
   const mapRecordToActivity = useCallback((
     record: any,
@@ -88,7 +116,7 @@ export default function AnimalRecordDetailScreen() {
       sourceKind === "calving" ||
       record.type === "calving" ||
       record.type === "Calving";
-    const presentation = formatAnimalRecord(record, animalQuery.data);
+    const presentation = formatAnimalRecord(record, record.animalId);
 
     const type: ActivityFeedItem["type"] = isAiRecord
       ? "ai"
@@ -113,7 +141,6 @@ export default function AnimalRecordDetailScreen() {
         "",
       date: record.recordDate || record.date || record.createdAt,
       animalId: {
-        ...(animalQuery.data || {}),
         ...(record.animalId && typeof record.animalId === "object"
           ? record.animalId
           : {}),
@@ -121,7 +148,6 @@ export default function AnimalRecordDetailScreen() {
           (record.animalId && typeof record.animalId === "object"
             ? record.animalId._id
             : record.animalId) ||
-          animalQuery.data?._id ||
           animalId,
       },
       details: isMedicalRecord
@@ -166,7 +192,10 @@ export default function AnimalRecordDetailScreen() {
             recheckStatus: record.recheckStatus,
             relatedAttempt: record.inseminationId?.attemptNumber,
             technician:
-              record.technicianId?.name || record.handledBy?.name || "",
+              record.confirmation?.confirmedBy?.name ||
+              record.technicianId?.name ||
+              record.handledBy?.name ||
+              "",
             technicianNote:
               record.technicianNote || record.note || record.notes,
             calvingEase: record.calvingEase,
@@ -177,9 +206,13 @@ export default function AnimalRecordDetailScreen() {
             calves: record.calves,
           },
     };
-  }, [animalId, animalQuery.data, recordType]);
+  }, [animalId, recordType]);
 
   const foundRecord: RecordActivity | null = useMemo(() => {
+    if (hasCanonicalIdentity) {
+      return officialRecordQuery.data || null;
+    }
+
     if (!recordId) return null;
 
     // Search the same source used by the Animal Details Records tab first.
@@ -204,6 +237,8 @@ export default function AnimalRecordDetailScreen() {
   }, [
     recordId,
     recordType,
+    hasCanonicalIdentity,
+    officialRecordQuery.data,
     recordsQuery.data,
     medicalRecordsQuery.data,
     activityQuery.data,
@@ -234,6 +269,7 @@ export default function AnimalRecordDetailScreen() {
   }
 
   if (!foundRecord) {
+    const failedToLoad = hasCanonicalIdentity && officialRecordQuery.isError;
     return (
       <FarmerScreen scroll={false}>
         <AppPageHeader title="Record Detail" />
@@ -246,7 +282,7 @@ export default function AnimalRecordDetailScreen() {
               textAlign: "center",
             }}
           >
-            Record Not Found
+            {failedToLoad ? "Record could not be loaded" : "Record Not Found"}
           </Text>
           <Text
             style={{
@@ -258,10 +294,18 @@ export default function AnimalRecordDetailScreen() {
               lineHeight: 20,
             }}
           >
-            We could not retrieve details for this record. It might have been deleted or no longer exists.
+            {failedToLoad
+              ? "Check your connection and try loading this official record again."
+              : "We could not retrieve details for this record. It might have been deleted or no longer exists."}
           </Text>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => {
+              if (failedToLoad) {
+                officialRecordQuery.refetch();
+                return;
+              }
+              router.back();
+            }}
             style={{
               marginTop: 24,
               paddingVertical: 12,
@@ -271,7 +315,7 @@ export default function AnimalRecordDetailScreen() {
             }}
           >
             <Text style={{ fontFamily: "Outfit_700Bold", color: "#fff", fontSize: 13 }}>
-              Go Back
+              {failedToLoad ? "Try Again" : "Go Back"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -286,11 +330,21 @@ export default function AnimalRecordDetailScreen() {
       foundRecord.details?.diagnosis?.toLowerCase().includes("pregnant"));
 
   const isPregnant =
-    animalQuery.data?.reproductiveStatus === "Pregnant" ||
+    foundRecord.animalId?.reproductiveStatus === "Pregnant" ||
     foundRecord.details?.outcome === "Pregnant" ||
     foundRecord.details?.status === "Pregnant";
-  const canPreviewHealthReport = foundRecord.sourceKind === "health_request";
-  const canPreviewAiReport = foundRecord.type === "ai" && Boolean(foundRecord.reportId);
+  const canPreviewHealthReport =
+    foundRecord.type === "health" &&
+    (foundRecord.actions?.reportPreviewAvailable ||
+      foundRecord.sourceKind === "health_request");
+  const canPreviewAiReport =
+    foundRecord.type === "ai" &&
+    (foundRecord.actions?.reportPreviewAvailable || Boolean(foundRecord.reportId));
+  const reportId =
+    foundRecord.actions?.reportId || foundRecord.reportId || foundRecord.id;
+  const canOpenPregnancyTracker =
+    foundRecord.actions?.pregnancyTrackerAvailable ??
+    (isPregnancyCheck || isPregnant);
 
   return (
     <FarmerScreen scroll={false}>
@@ -328,7 +382,7 @@ export default function AnimalRecordDetailScreen() {
             onPress={() =>
               router.push({
                 pathname: "/(farmer)/health-report-preview",
-                params: { id: foundRecord.reportId || foundRecord.id },
+                params: { id: reportId },
               })
             }
             className="py-3.5 flex-row items-center justify-center border"
@@ -353,7 +407,7 @@ export default function AnimalRecordDetailScreen() {
             onPress={() =>
               router.push({
                 pathname: "/(farmer)/ai-report-preview",
-                params: { id: foundRecord.reportId || foundRecord.id },
+                params: { id: reportId },
               })
             }
             className="py-3.5 flex-row items-center justify-center border"
@@ -373,7 +427,7 @@ export default function AnimalRecordDetailScreen() {
           </TouchableOpacity>
         )}
 
-        {(isPregnancyCheck || isPregnant) && animalId && (
+        {canOpenPregnancyTracker && animalId && (
           <TouchableOpacity
             onPress={() =>
               router.push({

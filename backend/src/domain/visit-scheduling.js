@@ -2,14 +2,22 @@ import { AppError } from "../utils/app-error.js";
 
 export const VISIT_PERIODS = Object.freeze(["morning", "afternoon"]);
 export const VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES = 8 * 60;
+const VISIT_AFTERNOON_CUTOFF_HOUR = 18;
 
 const invalidField = (message, code) =>
   new AppError(message, { status: 400, code });
 
+const confirmationRequired = (message) =>
+  new AppError(message, {
+    status: 409,
+    code: "VISIT_PERIOD_CONFIRMATION_REQUIRED",
+  });
+
 export const normalizeVisitPeriod = (value) => {
   if (value === undefined || value === null) return undefined;
 
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  const normalized =
+    typeof value === "string" ? value.trim().toLowerCase() : "";
   if (!VISIT_PERIODS.includes(normalized)) {
     throw invalidField(
       "Visit period must be morning or afternoon.",
@@ -22,7 +30,10 @@ export const normalizeVisitPeriod = (value) => {
 // The new date-only scheduling operation persists the selected Philippine
 // calendar day at 12:00 Asia/Manila (04:00 UTC). Noon is a neutral storage
 // anchor, not an appointment time; visitPeriod remains the service window.
-export const normalizeVisitScheduleDate = (value, { now = new Date() } = {}) => {
+export const normalizeVisitScheduleDate = (
+  value,
+  { now = new Date() } = {},
+) => {
   if (value === undefined || value === null || value === "") {
     throw invalidField(
       "A visit date is required before scheduling.",
@@ -93,9 +104,13 @@ export const normalizeVisitScheduleDate = (value, { now = new Date() } = {}) => 
 export const assertVisitDaypartAvailable = ({
   scheduledDate,
   visitPeriod,
+  samePeriodConfirmed = false,
   now = new Date(),
 }) => {
-  if (!(scheduledDate instanceof Date) || Number.isNaN(scheduledDate.getTime())) {
+  if (
+    !(scheduledDate instanceof Date) ||
+    Number.isNaN(scheduledDate.getTime())
+  ) {
     return;
   }
   if (!VISIT_PERIODS.includes(visitPeriod)) return;
@@ -115,42 +130,77 @@ export const assertVisitDaypartAvailable = ({
   };
   const selected = toManilaParts(scheduledDate);
   const current = toManilaParts(now);
-  if (
-    selected.day === current.day &&
-    current.hour >= 12 &&
-    visitPeriod === "morning"
-  ) {
+  if (selected.day < current.day) {
+    throw invalidField(
+      "Visit date cannot be in the past.",
+      "SCHEDULE_DATE_IN_PAST",
+    );
+  }
+  if (selected.day !== current.day) return;
+
+  const currentPeriod = current.hour < 12 ? "morning" : "afternoon";
+  if (currentPeriod === "afternoon" && visitPeriod === "morning") {
     throw invalidField(
       "Today Morning is no longer available. Choose another visit period.",
       "VISIT_PERIOD_IN_PAST",
     );
   }
+
+  if (
+    visitPeriod === "afternoon" &&
+    current.hour >= VISIT_AFTERNOON_CUTOFF_HOUR
+  ) {
+    throw invalidField(
+      "Today Afternoon is no longer available. Choose tomorrow instead.",
+      "VISIT_PERIOD_IN_PAST",
+    );
+  }
+
+  const currentPeriodNeedsConfirmation =
+    visitPeriod === "afternoon" && currentPeriod === "afternoon";
+  if (currentPeriodNeedsConfirmation && samePeriodConfirmed !== true) {
+    const label = visitPeriod === "morning" ? "Morning" : "Afternoon";
+    throw confirmationRequired(
+      `It is already Today ${label}. Confirm that you still have enough time to travel to the farm and provide the service.`,
+    );
+  }
 };
 
 export const getVisitCalendarDayRange = (anchorDate) => {
-  if (!anchorDate || !(anchorDate instanceof Date) || Number.isNaN(anchorDate.getTime())) {
+  if (
+    !anchorDate ||
+    !(anchorDate instanceof Date) ||
+    Number.isNaN(anchorDate.getTime())
+  ) {
     return null;
   }
-  
+
   const manilaValue = new Date(
     anchorDate.getTime() + VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES * 60 * 1000,
   );
   const year = manilaValue.getUTCFullYear();
   const month = manilaValue.getUTCMonth();
   const day = manilaValue.getUTCDate();
-  
-  const startOfDay = new Date(Date.UTC(year, month, day, 0 - (VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES / 60)));
+
+  const startOfDay = new Date(
+    Date.UTC(year, month, day, 0 - VISIT_SCHEDULE_TIMEZONE_OFFSET_MINUTES / 60),
+  );
   const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000 - 1);
-  
+
   return { start: startOfDay, end: endOfDay };
 };
 
-export const hasVisitScheduleChanged = (currentDate, currentPeriod, targetDate, targetPeriod) => {
+export const hasVisitScheduleChanged = (
+  currentDate,
+  currentPeriod,
+  targetDate,
+  targetPeriod,
+) => {
   const currentKey = currentDate ? currentDate.getTime() : null;
   const targetKey = targetDate ? targetDate.getTime() : null;
-  
+
   if (currentKey !== targetKey) return true;
   if (currentPeriod !== targetPeriod) return true;
-  
+
   return false;
 };

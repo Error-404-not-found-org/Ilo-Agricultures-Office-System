@@ -8,22 +8,29 @@ import {
   View,
 } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { CalendarDays, Clock3 } from "lucide-react-native";
+import { AlertTriangle, CalendarDays, Clock3 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
 import { formatLocalCalendarDate } from "../utils/aiWorkflow";
 import type { VisitPeriod } from "../types/technicianRequests.types";
+import {
+  getVisitSchedulePeriodAvailability,
+  type VisitScheduleTiming,
+} from "../utils/visitScheduleAvailability";
 
 export interface VisitSchedulePayload {
   scheduledDate: string;
   visitPeriod: VisitPeriod;
+  samePeriodConfirmed?: boolean;
 }
 
 export interface VisitPeriodAvailability {
   disabled: boolean;
+  requiresConfirmation?: boolean;
   supportingText?: string;
+  timing?: VisitScheduleTiming;
 }
 
 interface VisitScheduleSheetProps {
@@ -37,6 +44,7 @@ interface VisitScheduleSheetProps {
   getPeriodAvailability?: (
     date: Date,
     period: VisitPeriod,
+    now?: Date,
   ) => VisitPeriodAvailability;
   onClose: () => void;
   onConfirm: (payload: VisitSchedulePayload) => Promise<void>;
@@ -65,8 +73,6 @@ const parseInitialDate = (value?: string | null) => {
   return parsed;
 };
 
-const available = (): VisitPeriodAvailability => ({ disabled: false });
-
 export function VisitScheduleSheet({
   visible,
   title,
@@ -75,18 +81,59 @@ export function VisitScheduleSheet({
   isSubmitting,
   initialDate,
   initialVisitPeriod,
-  getPeriodAvailability = available,
+  getPeriodAvailability = getVisitSchedulePeriodAvailability,
   onClose,
   onConfirm,
 }: VisitScheduleSheetProps) {
   const { colors, isDark } = useTheme();
   const [selectedDate, setSelectedDate] = useState(startOfToday);
-  const [dateChoice, setDateChoice] = useState<
-    "today" | "tomorrow" | "custom"
-  >("today");
+  const [dateChoice, setDateChoice] = useState<"today" | "tomorrow" | "custom">(
+    "today",
+  );
   const [visitPeriod, setVisitPeriod] = useState<VisitPeriod | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showCurrentPeriodWarning, setShowCurrentPeriodWarning] =
+    useState(false);
+  const [availabilityNow, setAvailabilityNow] = useState(() => new Date());
   const submitLock = useRef(false);
+
+  useEffect(() => {
+    if (!visible) return;
+
+    const refreshAvailability = () => setAvailabilityNow(new Date());
+    refreshAvailability();
+
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+    const millisecondsToNextMinute = 60_000 - (Date.now() % 60_000) + 25;
+    const timeoutId = setTimeout(() => {
+      refreshAvailability();
+      intervalId = setInterval(refreshAvailability, 60_000);
+    }, millisecondsToNextMinute);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || !visitPeriod) return;
+    const availability = getPeriodAvailability(
+      selectedDate,
+      visitPeriod,
+      availabilityNow,
+    );
+    if (!availability.disabled) return;
+
+    setVisitPeriod(null);
+    setShowCurrentPeriodWarning(false);
+  }, [
+    availabilityNow,
+    getPeriodAvailability,
+    selectedDate,
+    visible,
+    visitPeriod,
+  ]);
 
   useEffect(() => {
     if (!visible) return;
@@ -95,7 +142,7 @@ export function VisitScheduleSheet({
     const tomorrow = addDays(today, 1);
     const nextKey = formatLocalCalendarDate(nextDate);
     const initialAvailability = initialVisitPeriod
-      ? getPeriodAvailability(nextDate, initialVisitPeriod)
+      ? getPeriodAvailability(nextDate, initialVisitPeriod, new Date())
       : null;
     setSelectedDate(nextDate);
     setDateChoice(
@@ -109,6 +156,7 @@ export function VisitScheduleSheet({
       initialAvailability?.disabled ? null : initialVisitPeriod || null,
     );
     setShowDatePicker(false);
+    setShowCurrentPeriodWarning(false);
     submitLock.current = false;
   }, [getPeriodAvailability, initialDate, initialVisitPeriod, visible]);
 
@@ -119,22 +167,33 @@ export function VisitScheduleSheet({
     nextDate.setHours(0, 0, 0, 0);
     setSelectedDate(nextDate);
     setDateChoice(choice);
+    setShowCurrentPeriodWarning(false);
     if (
       visitPeriod &&
-      getPeriodAvailability(nextDate, visitPeriod).disabled
+      getPeriodAvailability(nextDate, visitPeriod, new Date()).disabled
     ) {
       setVisitPeriod(null);
     }
   };
 
-  const handleConfirm = async () => {
+  const submitSchedule = async (samePeriodConfirmed = false) => {
     if (!visitPeriod || submitLock.current) return;
-    if (getPeriodAvailability(selectedDate, visitPeriod).disabled) return;
+    const availability = getPeriodAvailability(
+      selectedDate,
+      visitPeriod,
+      new Date(),
+    );
+    if (availability.disabled) return;
+    if (availability.requiresConfirmation && !samePeriodConfirmed) {
+      setShowCurrentPeriodWarning(true);
+      return;
+    }
     submitLock.current = true;
     try {
       await onConfirm({
         scheduledDate: formatLocalCalendarDate(selectedDate),
         visitPeriod,
+        ...(samePeriodConfirmed ? { samePeriodConfirmed: true } : {}),
       });
     } finally {
       submitLock.current = false;
@@ -239,9 +298,7 @@ export function VisitScheduleSheet({
                     <Text
                       textRole="label"
                       style={{
-                        color: selected
-                          ? colors.primary
-                          : colors.textSecondary,
+                        color: selected ? colors.primary : colors.textSecondary,
                         textAlign: "center",
                       }}
                     >
@@ -281,6 +338,7 @@ export function VisitScheduleSheet({
                 const availability = getPeriodAvailability(
                   selectedDate,
                   period,
+                  availabilityNow,
                 );
                 return (
                   <TouchableOpacity
@@ -292,7 +350,10 @@ export function VisitScheduleSheet({
                     }}
                     accessibilityLabel={label}
                     disabled={isSubmitting || availability.disabled}
-                    onPress={() => setVisitPeriod(period)}
+                    onPress={() => {
+                      setVisitPeriod(period);
+                      setShowCurrentPeriodWarning(false);
+                    }}
                     style={{
                       flex: 1,
                       minHeight: availability.supportingText ? 58 : 48,
@@ -343,7 +404,13 @@ export function VisitScheduleSheet({
                     {availability.supportingText ? (
                       <Text
                         textRole="caption"
-                        style={{ color: colors.textMuted, marginTop: 2 }}
+                        style={{
+                          width: "100%",
+                          marginTop: 2,
+                          paddingHorizontal: 8,
+                          color: colors.textMuted,
+                          textAlign: "center",
+                        }}
                       >
                         {availability.supportingText}
                       </Text>
@@ -353,6 +420,88 @@ export function VisitScheduleSheet({
               })}
             </View>
           </View>
+
+          {showCurrentPeriodWarning && visitPeriod ? (
+            <View
+              accessibilityRole="alert"
+              style={{
+                marginTop: 20,
+                padding: 14,
+                borderRadius: 12,
+                backgroundColor: colors.warningContainer,
+                gap: 10,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "flex-start",
+                  gap: 10,
+                }}
+              >
+                <AlertTriangle size={20} color={colors.warningForeground} />
+                <View style={{ flex: 1, gap: 3 }}>
+                  <Text
+                    textRole="bodyStrong"
+                    style={{ color: colors.warningForeground }}
+                  >
+                    Schedule for the current period?
+                  </Text>
+                  <Text
+                    textRole="caption"
+                    style={{ color: colors.warningForeground, lineHeight: 18 }}
+                  >
+                    It is already Today{" "}
+                    {visitPeriod === "morning" ? "Morning" : "Afternoon"}. Make
+                    sure you still have enough time to travel to the farm and
+                    provide the service.
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back and change the visit period"
+                  disabled={isSubmitting}
+                  onPress={() => setShowCurrentPeriodWarning(false)}
+                  style={{
+                    flex: 1,
+                    minHeight: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.warningForeground,
+                  }}
+                >
+                  <Text
+                    textRole="bodyStrong"
+                    style={{ color: colors.warningForeground }}
+                  >
+                    Go Back
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Schedule during the current period anyway"
+                  disabled={isSubmitting}
+                  onPress={() => void submitSchedule(true)}
+                  style={{
+                    flex: 1.35,
+                    minHeight: 48,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 12,
+                    backgroundColor: colors.warningForeground,
+                  }}
+                >
+                  <Text textRole="bodyStrong" style={{ color: colors.card }}>
+                    Schedule Anyway
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
 
           <View
             style={{
@@ -385,7 +534,7 @@ export function VisitScheduleSheet({
               accessibilityRole="button"
               accessibilityLabel={confirmLabel}
               disabled={isSubmitting || !visitPeriod}
-              onPress={handleConfirm}
+              onPress={() => void submitSchedule(false)}
               style={{
                 flex: 1.35,
                 minHeight: 48,

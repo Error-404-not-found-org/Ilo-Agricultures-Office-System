@@ -1,6 +1,7 @@
 import React from "react";
-import { View, Text } from "react-native";
+import { View } from "react-native";
 import { useTheme } from "@/lib/theme";
+import { Text } from "@/components/ui/Text";
 
 interface DetailRowProps {
   label: string;
@@ -15,31 +16,29 @@ const DetailRow = ({ label, value, highlightColor }: DetailRowProps) => {
       style={{
         flexDirection: "row",
         justifyContent: "space-between",
-        alignItems: "center",
-        paddingVertical: 4,
+        alignItems: "flex-start",
+        paddingVertical: 6,
       }}
     >
       <Text
+        textRole="label"
         style={{
-          fontSize: 12,
-          fontFamily: "Outfit_500Medium",
+          flex: 0.9,
           color: colors.textSecondary,
         }}
       >
         {label}
       </Text>
       <Text
+        textRole="bodyStrong"
         style={{
-          fontSize: 13,
-          fontFamily: "Outfit_700Bold",
           color: highlightColor || colors.textPrimary,
-          textTransform: "capitalize",
           textAlign: "right",
-          flex: 1,
+          flex: 1.2,
           marginLeft: 16,
         }}
       >
-        {value || "N/A"}
+        {value || "Not recorded"}
       </Text>
     </View>
   );

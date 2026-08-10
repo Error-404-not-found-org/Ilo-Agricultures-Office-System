@@ -127,6 +127,77 @@ const cleanupUploadedImages = async (uploads) => {
   }));
 };
 
+export const getCalvingReadiness = ({
+  mother,
+  pregnancy,
+  insemination,
+  at = new Date(),
+}) => {
+  if (pregnancy?.pregnancyDiagnosis?.result !== "Pregnant") {
+    return {
+      isEligible: false,
+      code: "PREGNANCY_NOT_CONFIRMED",
+      reason: "A technician-confirmed pregnancy is required.",
+      gestationDays: null,
+      minimumDays: null,
+      earliestEligibleDate: null,
+    };
+  }
+
+  const aiDate = new Date(insemination?.inseminationDate);
+  const checkDate = new Date(at);
+  if (Number.isNaN(aiDate.getTime()) || Number.isNaN(checkDate.getTime())) {
+    return {
+      isEligible: false,
+      code: "CALVING_READINESS_UNAVAILABLE",
+      reason: "Calving readiness cannot be calculated without a valid AI date.",
+      gestationDays: null,
+      minimumDays: null,
+      earliestEligibleDate: null,
+    };
+  }
+
+  const { avgGestationDays } = getBreedProfile(
+    mother?.species,
+    mother?.breed,
+  );
+  const minimumDays = avgGestationDays - EARLY_CALVING_TOLERANCE_DAYS;
+  // Calving forms capture a calendar date, while AI records can include a
+  // timestamp. Compare UTC calendar days so an AI time does not create an
+  // off-by-one result or make the displayed eligible date fail at midnight.
+  const aiCalendarDay = Date.UTC(
+    aiDate.getUTCFullYear(),
+    aiDate.getUTCMonth(),
+    aiDate.getUTCDate(),
+  );
+  const checkCalendarDay = Date.UTC(
+    checkDate.getUTCFullYear(),
+    checkDate.getUTCMonth(),
+    checkDate.getUTCDate(),
+  );
+  const gestationDays = Math.floor(
+    (checkCalendarDay - aiCalendarDay) / DAY_MS,
+  );
+  const earliestEligibleDate = new Date(
+    aiCalendarDay + minimumDays * DAY_MS,
+  );
+  const isEligible = gestationDays >= minimumDays;
+
+  return {
+    isEligible,
+    code: isEligible ? "CALVING_WINDOW_OPEN" : "CALVING_TOO_EARLY",
+    reason: isEligible
+      ? `Live-birth recording is available at Day ${gestationDays}.`
+      : `Live-birth recording becomes available on Day ${minimumDays}. Pregnancy loss can still be recorded when clinically applicable.`,
+    gestationDays,
+    minimumDays,
+    averageGestationDays: avgGestationDays,
+    daysRemaining: Math.max(0, minimumDays - gestationDays),
+    earliestEligibleDate,
+    expectedCalvingDate: pregnancy?.targetCalvingDate || null,
+  };
+};
+
 const validateChronology = ({ calvingDate, mother, pregnancy, insemination, outcome }) => {
   const aiDate = new Date(insemination.inseminationDate);
   const diagnosisDate = new Date(pregnancy.pregnancyDiagnosis?.date);
@@ -163,13 +234,20 @@ const validateChronology = ({ calvingDate, mother, pregnancy, insemination, outc
   }
 
   if (outcome !== "abortion") {
-    const { avgGestationDays } = getBreedProfile(mother.species, mother.breed);
-    const gestationDays = Math.floor((calvingDate - aiDate) / DAY_MS);
-    const minimumDays = avgGestationDays - EARLY_CALVING_TOLERANCE_DAYS;
-    if (gestationDays < minimumDays) {
+    const readiness = getCalvingReadiness({
+      mother,
+      pregnancy,
+      insemination,
+      at: calvingDate,
+    });
+    if (!readiness.isEligible) {
       throw new AppError(
-        `Calving is too early for ${mother.species}; at least ${minimumDays} gestation days are required.`,
-        { status: 422, code: "CALVING_TOO_EARLY", details: { gestationDays, minimumDays } },
+        `Calving is too early for ${mother.species}; at least ${readiness.minimumDays} gestation days are required.`,
+        {
+          status: 422,
+          code: readiness.code,
+          details: readiness,
+        },
       );
     }
   }

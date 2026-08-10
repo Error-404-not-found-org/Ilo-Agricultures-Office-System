@@ -1,7 +1,6 @@
 import React from "react";
 import { Image, View, TouchableOpacity } from "react-native";
 import {
-  ChevronRight,
   ClipboardCheck,
   Hand,
   MapPin,
@@ -38,12 +37,14 @@ export function TechnicianRequestsSection({
   handleAction,
 }: TechnicianRequestsSectionProps) {
   const router = useRouter();
+  const { colors } = useTheme();
   const availableRequests = pendingRequests.filter(
     (request: any) =>
       String(request.status || request.raw?.status || "").toLowerCase() ===
         "pending" && !hasTechnicianRequestAssignee(request),
   );
-  const previewRequests = availableRequests.slice(0, 3);
+  const previewRequests = availableRequests.slice(0, 2);
+  const remainingCount = availableRequests.length - 2;
 
   return (
     <View style={{ marginBottom: 24 }}>
@@ -64,6 +65,7 @@ export function TechnicianRequestsSection({
         <TechnicianRequestSkeleton />
       ) : previewRequests.length === 0 ? (
         <View
+          key="empty-requests"
           className={TECHNICIAN_DASHBOARD_CARD_CLASSNAME}
           style={{ padding: 16 }}
         >
@@ -75,16 +77,31 @@ export function TechnicianRequestsSection({
           />
         </View>
       ) : (
-        previewRequests.map((request: any, index: number) => {
-          return (
+        <View key="available-requests">
+          {previewRequests.map((request: any, index: number) => (
             <RequestRow
               key={`${request.type}-${request._id || request.id || index}`}
               item={request}
               isUpdating={isUpdating}
               onPress={() => handleAction(request)}
             />
-          );
-        })
+          ))}
+
+          {remainingCount > 0 && (
+            <Text
+              style={{
+                textAlign: "center",
+                color: colors.primary,
+                fontFamily: "Outfit_500Medium",
+                marginTop: 4,
+                marginBottom: 8,
+              }}
+            >
+              + {remainingCount} more pending{" "}
+              {remainingCount === 1 ? "request" : "requests"}
+            </Text>
+          )}
+        </View>
       )}
     </View>
   );
@@ -179,12 +196,6 @@ function RequestRow({ item, onPress, isUpdating }: any) {
           >
             {item.farmer || "Farmer Request"}
           </Text>
-          <StatusBadge
-            label={badgeInfo.label}
-            variant={badgeInfo.variant}
-            domain="request"
-            compact
-          />
         </View>
 
         <View
@@ -258,6 +269,15 @@ function RequestRow({ item, onPress, isUpdating }: any) {
             </Text>
           </View>
         ) : null}
+      </View>
+
+      <View style={{ justifyContent: "center" }}>
+        <StatusBadge
+          label={badgeInfo.label}
+          variant={badgeInfo.variant}
+          domain="request"
+          compact
+        />
       </View>
     </TouchableOpacity>
   );

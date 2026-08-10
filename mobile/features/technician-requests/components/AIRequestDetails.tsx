@@ -16,7 +16,6 @@ import {
   AlertCircle,
   CalendarDays,
   House,
-  MapPin,
   MapPinHouse,
   Phone,
   Send,
@@ -66,6 +65,7 @@ interface AIRequestDetailsProps {
 interface AISchedulePayload {
   scheduledDate: string;
   visitPeriod: VisitPeriod;
+  samePeriodConfirmed?: boolean;
 }
 
 const cleanText = (value: unknown) => {
@@ -233,7 +233,6 @@ export function AIRequestDetails({
     .filter(Boolean)
     .join(", ");
   const farmLocation = farmer?.farmLocation || {};
-  const landmark = cleanText(farmLocation.landmark);
   const directionsNote = cleanText(
     farmLocation.directionsNote || farmerAddress?.directionsNote,
   );
@@ -245,7 +244,6 @@ export function AIRequestDetails({
     cleanText(farmerAddress.city || farmerAddress.municipality) ||
     cleanText(request?.municipality);
   const candidateArea = [barangay, municipality].filter(Boolean).join(", ");
-  const heatSigns = normalizeText(request?.heatSigns);
   const farmerNotes = normalizeText(
     request?.farmerNotes || request?.comment || request?.note,
     "\n\n",
@@ -263,6 +261,14 @@ export function AIRequestDetails({
   const relativeScheduleDay = getRelativeAIScheduleDayLabel(
     request?.scheduledDate,
   );
+
+  const rawAttemptNumber = Number(
+    request?.attemptNumber ?? request?.raw?.attemptNumber,
+  );
+  const attemptNumber =
+    Number.isInteger(rawAttemptNumber) && rawAttemptNumber > 0
+      ? rawAttemptNumber
+      : 1;
 
   const cardStyle = {
     padding: 16,
@@ -313,6 +319,7 @@ export function AIRequestDetails({
           status: "scheduled",
           scheduledDate: payload.scheduledDate,
           visitPeriod: payload.visitPeriod,
+          samePeriodConfirmed: payload.samePeriodConfirmed,
           technicianNote:
             scheduleMode === "reschedule"
               ? "AI visit rescheduled."
@@ -472,7 +479,10 @@ export function AIRequestDetails({
       router.push({
         pathname: "/(technician)/record-details",
         params: {
-          id: workflowId,
+          animalId: getEntityId(request?.animalId),
+          sourceId: workflowId,
+          sourceKind: "insemination",
+          recordId: workflowId,
           recordType: "insemination",
         },
       });
@@ -573,18 +583,42 @@ export function AIRequestDetails({
             />
           </View>
           {isAvailable ? (
-            <Text
-              textRole="body"
-              style={{ color: colors.textSecondary, marginTop: 12 }}
-            >
-              Request is available to accept and schedule a visit
-            </Text>
+            attemptNumber > 1 ? (
+              <View
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 12,
+                  backgroundColor: colors.warningContainer,
+                }}
+              >
+                <Text
+                  textRole="bodyStrong"
+                  style={{ color: colors.warningForeground }}
+                >
+                  Re-insemination (Attempt {attemptNumber})
+                </Text>
+                <Text
+                  textRole="body"
+                  style={{ color: colors.warningForeground, marginTop: 4 }}
+                >
+                  Please review the attached heat evidence before accepting this request.
+                </Text>
+              </View>
+            ) : (
+              <Text
+                textRole="body"
+                style={{ color: colors.textSecondary, marginTop: 12 }}
+              >
+                Request is available to accept and schedule a visit
+              </Text>
+            )
           ) : isClaimedUnscheduled ? (
             <Text
               textRole="bodyStrong"
               style={{ color: colors.warningForeground, marginTop: 12 }}
             >
-              Request is awaiting scheduling. Tap "Set Visit" to schedule a
+              Request is awaiting scheduling. Tap “Set Visit” to schedule a
               visit.
             </Text>
           ) : null}
@@ -1221,8 +1255,8 @@ function AIScheduleModal({
       isSubmitting={isSubmitting}
       initialDate={initialDate}
       initialVisitPeriod={initialVisitPeriod}
-      getPeriodAvailability={(date, period) =>
-        getAISchedulePeriodAvailability(date, period)
+      getPeriodAvailability={(date, period, now) =>
+        getAISchedulePeriodAvailability(date, period, now)
       }
       onClose={onClose}
       onConfirm={onConfirm}
