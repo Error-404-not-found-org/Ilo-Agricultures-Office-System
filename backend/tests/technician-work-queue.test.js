@@ -431,6 +431,7 @@ test("Technician Work Queue backend contract", async (t) => {
           assignedTechnicianId: ids.technician,
           status: "scheduled",
           scheduledDate: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          visitPeriod: "afternoon",
           requestType: "checkup",
           urgency: "medium",
           deletedAt: null,
@@ -473,6 +474,8 @@ test("Technician Work Queue backend contract", async (t) => {
       assert.equal(byId.has(ids.linkedHealthTask), false);
       assert.equal(byId.get(ids.health).taskId, ids.linkedHealthTask);
       assert.equal(byId.get(ids.health).allowedAction, "START_SERVICE");
+      assert.equal(byId.get(ids.health).schedule.visitPeriod, "afternoon");
+      assert.equal(byId.get(ids.health).visitPeriod, "afternoon");
       assert.equal(byId.get(ids.pdTask).workflowType, "PD");
       assert.equal(byId.get(ids.pdTask).allowedAction, "START_SERVICE");
       assert.equal(byId.get(ids.calvingTask).workflowType, "Calving");

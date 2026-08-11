@@ -2520,9 +2520,10 @@ export function AnimalDetailsScreen({ id }: AnimalDetailsScreenProps) {
                             pathname: "/(farmer)/animal-record-detail",
                             params: {
                               animalId: id,
-                              recordId: record._id || record.id,
-                              recordType:
-                                record.recordKind || record.type || "",
+                              sourceId: record.sourceId || record._id || record.id,
+                              sourceKind: record.recordKind || "",
+                              recordId: record.sourceId || record._id || record.id,
+                              recordType: record.recordKind || record.type || "",
                             },
                           });
                         }}

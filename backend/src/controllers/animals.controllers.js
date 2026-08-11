@@ -17,7 +17,10 @@ import {
   isActiveAIRequestStatus,
   reproductiveStatusQuery,
 } from "../domain/status-vocabulary.js";
-import { persistCalving } from "../services/calving.service.js";
+import {
+  getCalvingReadiness,
+  persistCalving,
+} from "../services/calving.service.js";
 import { getPregnancyCheckReadiness } from "../domain/pregnancy-readiness.js";
 import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.service.js";
 
@@ -318,7 +321,16 @@ export const getAnimalById = async (req, res) => {
       );
       return {
         ...insemination.toObject(),
-        pregnancy: pregnancy || null,
+        pregnancy: pregnancy
+          ? {
+              ...pregnancy.toObject(),
+              calvingReadiness: getCalvingReadiness({
+                mother: animal,
+                pregnancy,
+                insemination,
+              }),
+            }
+          : null,
         pregnancyReadiness: getPregnancyCheckReadiness({
           insemination,
           policy: policyResolution.policy,

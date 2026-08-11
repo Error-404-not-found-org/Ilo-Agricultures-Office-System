@@ -853,9 +853,9 @@ const EditProfileModal = ({
             <ScrollView keyboardShouldPersistTaps="handled">
               {pickerState.options
                 .filter((opt) => opt.toLowerCase().includes(pickerSearchQuery.toLowerCase()))
-                .map((option) => (
+                .map((option, index) => (
                   <TouchableOpacity
-                    key={option}
+                    key={`${option}-${index}`}
                     onPress={() => {
                       pickerState.onSelect(option);
                       setPickerSearchQuery("");

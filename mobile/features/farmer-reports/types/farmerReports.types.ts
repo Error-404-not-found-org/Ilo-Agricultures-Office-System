@@ -5,6 +5,26 @@ export interface Animal {
   breed: string;
   species: string;
   reproductiveStatus?: string;
+  imageUrl?: string;
+}
+
+export type OfficialRecordKind =
+  | "insemination"
+  | "pregnancy"
+  | "calving"
+  | "health_request"
+  | "medical_record";
+
+export interface RecordAttachment {
+  url: string;
+  category:
+    | "request_evidence"
+    | "follow_up_evidence"
+    | "farmer_evidence"
+    | "medical_record_evidence"
+    | "offspring_identity";
+  label: string;
+  animalId?: string | null;
 }
 
 export interface Milestone {
@@ -24,23 +44,32 @@ export interface Milestone {
 
 export interface ActivityFeedItem {
   id: string;
+  sourceId?: string;
+  sourceKind?: OfficialRecordKind;
   title: string;
   description: string;
   date: string;
+  dateLabel?: string;
+  datePrecision?: "date" | "datetime";
+  attachments?: RecordAttachment[];
   type: "ai" | "health" | "pregnancy" | "calving";
   animalId?: {
     _id: string;
     earTag?: string;
     breed?: string;
     species?: string;
+    reproductiveStatus?: string;
+    imageUrl?: string;
   };
   details?: {
     sireBreed?: string;
     sireCode?: string;
+    semenDosesUsed?: number;
     attemptNumber?: number;
     estrus?: string;
     status?: string;
     outcome?: string;
+    failureReason?: string;
     technician?: string;
     technicianPhone?: string;
     technicianNote?: string;
@@ -55,7 +84,9 @@ export interface ActivityFeedItem {
     preferredDate?: string;
     requestedAt?: string;
     serviceDate?: string;
+    serviceDateLabel?: string;
     entryDate?: string;
+    entryDateLabel?: string;
     isHistoricalEntry?: boolean;
     performedByName?: string;
     lateEntryReason?: string;
@@ -74,15 +105,50 @@ export interface ActivityFeedItem {
     withdrawalPeriodDays?: number;
     withdrawalEndDate?: string;
     targetCalvingDate?: string;
+    diagnosticMethod?: string | null;
+    confirmationStage?: string;
+    confirmedAt?: string;
+    policyVersion?: string;
+    relatedAttempt?: number;
+    recheckRequired?: boolean;
+    recheckDueAt?: string | null;
+    recheckStatus?: string;
 
     calvingEase?: string;
     numberOfCalves?: number;
+    calvingOutcome?: string;
+    livingCalfCount?: number;
+    stillbornCount?: number;
+    relatedPregnancyId?: string | null;
+    relatedInseminationId?: string | null;
+    nonLivingCalves?: {
+      sex: string;
+      earTag?: string;
+      color?: string;
+      brand?: string;
+    }[];
     calves?: {
       sex: string;
       earTag?: string;
+      animalId?: string | null;
       weight?: number;
       imageUrl?: string;
     }[];
+  };
+}
+
+export interface OfficialRecordDetail extends ActivityFeedItem {
+  sourceId: string;
+  sourceKind: OfficialRecordKind;
+  datePrecision: "date" | "datetime";
+  technician?: {
+    id: string | null;
+    name: string;
+  } | null;
+  actions: {
+    reportPreviewAvailable: boolean;
+    reportId?: string | null;
+    pregnancyTrackerAvailable: boolean;
   };
 }
 

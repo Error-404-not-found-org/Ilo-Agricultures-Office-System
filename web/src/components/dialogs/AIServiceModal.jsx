@@ -17,11 +17,6 @@ import {
 } from "lucide-react";
 import axiosInstance from "../../lib/axios";
 import { useToast } from "../../contexts/ToastContext";
-import {
-  CATTLE_BREEDS,
-  BREED_OPTIONS_BY_SPECIES,
-} from "../../constants/breeds";
-import { getSireCodeByBreed } from "../../constants/sireRegistry";
 import { getAIRequestErrorMessage } from "../../utils/aiRequestErrors";
 import RegisterFarmerModal from "./RegisterFarmerModal";
 import RegisterLivestockModal from "./RegisterLivestockModal";
@@ -130,6 +125,7 @@ const AIServiceModal = ({
   isOpen,
   onClose,
   onSuccess,
+  existingOnly = false,
   preSelectedFarmer,
   preSelectedAnimal,
   context = "walk-in", // "walk-in" | "task" | "admin"
@@ -144,7 +140,7 @@ const AIServiceModal = ({
   const capabilities = {
     showFarmerSearch: context === "walk-in",
     showAnimalSelector: context === "walk-in",
-    showRegistration: context === "walk-in",
+    showRegistration: context === "walk-in" && !existingOnly,
     showServiceContext: context === "walk-in" || context === "admin",
     fetchContext: context === "walk-in" || context === "admin",
   };
@@ -174,7 +170,13 @@ const AIServiceModal = ({
     enabled: isOpen && context !== "task",
   });
 
-  const { data: farmers = [] } = useQuery({
+  const {
+    data: farmers = [],
+    error: farmersError,
+    isError: isFarmersError,
+    isLoading: isLoadingFarmers,
+    refetch: refetchFarmers,
+  } = useQuery({
     queryKey: ["farmers", "list"],
     queryFn: async () => {
       const response = await axiosInstance.get("/user?role=farmer");
@@ -187,6 +189,8 @@ const AIServiceModal = ({
 
   const {
     data: animals = [],
+    error: animalsError,
+    isError: isAnimalsError,
     isLoading: isLoadingAnimals,
     refetch: refetchAnimals,
   } = useQuery({
@@ -417,24 +421,6 @@ const AIServiceModal = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isRegisterAnimalOpen, isRegisterFarmerOpen, onClose]);
 
-  useEffect(() => {
-    const species = selectedAnimal?.species;
-    if (
-      context !== "task" &&
-      species &&
-      procedure.sireBreed &&
-      !(BREED_OPTIONS_BY_SPECIES[species] || []).includes(procedure.sireBreed)
-    ) {
-      Promise.resolve().then(() =>
-        setProcedure((current) => ({
-          ...current,
-          sireBreed: "",
-          sireCode: "",
-        })),
-      );
-    }
-  }, [context, procedure.sireBreed, selectedAnimal?.species]);
-
   if (!isOpen) return null;
 
   const selectFarmer = (farmer) => {
@@ -512,24 +498,15 @@ const AIServiceModal = ({
       return;
     }
 
-    const inseminationDetails =
-      context === "task"
-        ? {
-            inseminationDate: procedure.inseminationDate,
-            time: procedure.time,
-            estrus: procedure.estrus,
-            sireBreed,
-            sireCode,
-            semenDosesUsed,
-            technicianNote: procedure.technicianNote.trim(),
-          }
-        : {
-            inseminationDate: procedure.inseminationDate,
-            time: procedure.time,
-            estrus: procedure.estrus,
-            sireBreed,
-            sireCode,
-          };
+    const inseminationDetails = {
+      inseminationDate: procedure.inseminationDate,
+      time: procedure.time,
+      estrus: procedure.estrus,
+      sireBreed,
+      sireCode,
+      semenDosesUsed,
+      technicianNote: procedure.technicianNote.trim(),
+    };
 
     submittingRef.current = true;
     recordMutation.mutate({
@@ -544,6 +521,14 @@ const AIServiceModal = ({
 
   const activeRequest = serviceContext?.activeRequest;
   const isWalkIn = serviceContext?.mode === "walk_in";
+  const showProcedureForm = context === "walk-in" || context === "task";
+  const hasDirectSelection = Boolean(selectedFarmerId && selectedAnimalId);
+  const procedureDisabled =
+    context !== "task" &&
+    (!hasDirectSelection ||
+      isLoadingContext ||
+      isContextError ||
+      serviceContext?.mode !== "walk_in");
   const taskFarmer = requestContext?.farmer || preSelectedFarmer || {};
   const taskAnimal = requestContext?.animal || preSelectedAnimal || {};
   const taskHeatSigns = Array.isArray(taskData?.heatSigns)
@@ -665,7 +650,42 @@ const AIServiceModal = ({
                             aria-label="Matching farmers"
                             className="absolute inset-x-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-box border border-base-300 bg-base-100 p-1 shadow-lg"
                           >
-                            {matchingFarmers.length ? (
+                            {isLoadingFarmers ? (
+                              <div
+                                className="space-y-3 p-4"
+                                role="status"
+                                aria-live="polite"
+                              >
+                                <div className="skeleton h-10 w-full" />
+                                <div className="skeleton h-10 w-full" />
+                                <span className="sr-only">
+                                  Loading registered farmers
+                                </span>
+                              </div>
+                            ) : isFarmersError ? (
+                              <div className="space-y-3 p-4">
+                                <div
+                                  role="alert"
+                                  className="alert alert-error alert-soft"
+                                >
+                                  <AlertCircle size={16} />
+                                  <span className="text-sm">
+                                    {farmersError?.response?.data?.message ||
+                                      "Registered farmers could not be loaded."}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm w-full"
+                                  onMouseDown={(event) =>
+                                    event.preventDefault()
+                                  }
+                                  onClick={() => refetchFarmers()}
+                                >
+                                  Try again
+                                </button>
+                              </div>
+                            ) : matchingFarmers.length ? (
                               matchingFarmers.map((farmer) => (
                                 <button
                                   key={farmer._id}
@@ -702,19 +722,25 @@ const AIServiceModal = ({
                                     Farmer not found
                                   </div>
                                   <div className="text-sm text-base-content/55">
-                                    Register the farmer before adding an animal.
+                                    {capabilities.showRegistration
+                                      ? "Register the farmer before adding an animal."
+                                      : "No matching registered farmer is available for this service."}
                                   </div>
                                 </div>
-                                <button
-                                  type="button"
-                                  className="btn btn-sm"
-                                  onMouseDown={(event) =>
-                                    event.preventDefault()
-                                  }
-                                  onClick={() => setIsRegisterFarmerOpen(true)}
-                                >
-                                  <UserPlus size={15} /> Register farmer
-                                </button>
+                                {capabilities.showRegistration && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm"
+                                    onMouseDown={(event) =>
+                                      event.preventDefault()
+                                    }
+                                    onClick={() =>
+                                      setIsRegisterFarmerOpen(true)
+                                    }
+                                  >
+                                    <UserPlus size={15} /> Register farmer
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -739,6 +765,7 @@ const AIServiceModal = ({
                         </div>
                       ) : selectedFarmerId &&
                         !isLoadingAnimals &&
+                        !isAnimalsError &&
                         availableAnimals.length === 0 ? (
                         <div className="space-y-3 rounded-field border border-base-300 bg-base-200 p-4 text-center">
                           <div>
@@ -749,19 +776,21 @@ const AIServiceModal = ({
                               This farmer has no registered animals.
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() => setIsRegisterAnimalOpen(true)}
-                          >
-                            <Plus size={15} /> Register animal
-                          </button>
+                          {capabilities.showRegistration && (
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => setIsRegisterAnimalOpen(true)}
+                            >
+                              <Plus size={15} /> Register animal
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <>
                           <select
                             className="select w-full"
-                            disabled={!selectedFarmerId || isLoadingAnimals}
+                            disabled={!selectedFarmerId || isLoadingAnimals || isAnimalsError}
                             value={selectedAnimalId}
                             onChange={(event) => {
                               setSelectedAnimalId(event.target.value);
@@ -793,6 +822,13 @@ const AIServiceModal = ({
                               </option>
                             ))}
                           </select>
+                          {isAnimalsError && (
+                            <div className="alert alert-error mt-2 text-sm" role="alert">
+                              <AlertCircle size={16} />
+                              <span>{animalsError?.response?.data?.message || "Registered animals could not be loaded."}</span>
+                              <button type="button" className="btn btn-ghost btn-xs" onClick={() => refetchAnimals()}>Try again</button>
+                            </div>
+                          )}
                         </>
                       )}
                     </fieldset>
@@ -1063,14 +1099,24 @@ const AIServiceModal = ({
             {/* ========================================== */}
             {/* PROCEDURE FORM */}
             {/* ========================================== */}
-            {(isWalkIn || context === "task") && (
-              <section className="space-y-4">
+            {showProcedureForm && (
+              <fieldset disabled={procedureDisabled} className="space-y-4">
                 <div className="flex items-center gap-2 border-b border-base-300 pb-3">
                   <History size={16} className="text-primary" />
                   <h3 className="font-bold text-base-content">
                     AI procedure details
                   </h3>
                 </div>
+
+                {context === "walk-in" && !hasDirectSelection && (
+                  <div role="status" className="alert alert-info alert-soft">
+                    <Activity size={18} />
+                    <span>
+                      Select a registered farmer and animal to enable the AI
+                      service fields.
+                    </span>
+                  </div>
+                )}
 
                 {submissionError && (
                   <div role="alert" className="alert alert-error alert-soft">
@@ -1082,51 +1128,24 @@ const AIServiceModal = ({
                 <div className="grid gap-4 md:grid-cols-2">
                   <fieldset className="fieldset">
                     <legend className="fieldset-legend">Sire breed</legend>
-                    {context === "task" ? (
-                      <input
-                        type="text"
-                        aria-label="Sire breed"
-                        className={`input w-full ${fieldErrors.sireBreed ? "input-error" : ""}`}
-                        value={procedure.sireBreed}
-                        placeholder="Enter sire breed"
-                        maxLength={100}
-                        onChange={(event) => {
-                          setProcedure((current) => ({
-                            ...current,
-                            sireBreed: event.target.value,
-                          }));
-                          setFieldErrors((current) => ({
-                            ...current,
-                            sireBreed: null,
-                          }));
-                        }}
-                      />
-                    ) : (
-                      <select
-                        className="select w-full"
-                        value={procedure.sireBreed}
-                        onChange={(event) => {
-                          const breed = event.target.value;
-                          setProcedure((current) => ({
-                            ...current,
-                            sireBreed: breed,
-                            sireCode: getSireCodeByBreed(breed),
-                          }));
-                        }}
-                      >
-                        <option value="" disabled>
-                          Select sire breed
-                        </option>
-                        {(
-                          BREED_OPTIONS_BY_SPECIES[selectedAnimal?.species] ||
-                          CATTLE_BREEDS
-                        ).map((breed) => (
-                          <option key={breed} value={breed}>
-                            {breed}
-                          </option>
-                        ))}
-                      </select>
-                    )}
+                    <input
+                      type="text"
+                      aria-label="Sire breed"
+                      className={`input w-full ${fieldErrors.sireBreed ? "input-error" : ""}`}
+                      value={procedure.sireBreed}
+                      placeholder="Enter the recorded sire breed"
+                      maxLength={100}
+                      onChange={(event) => {
+                        setProcedure((current) => ({
+                          ...current,
+                          sireBreed: event.target.value,
+                        }));
+                        setFieldErrors((current) => ({
+                          ...current,
+                          sireBreed: null,
+                        }));
+                      }}
+                    />
                     {fieldErrors.sireBreed && (
                       <p role="alert" className="label text-error">
                         {fieldErrors.sireBreed}
@@ -1137,18 +1156,13 @@ const AIServiceModal = ({
                   <fieldset className="fieldset">
                     <legend className="fieldset-legend">Sire code</legend>
                     <label
-                      className={`input w-full ${context !== "task" ? "bg-base-200" : ""} ${fieldErrors.sireCode ? "input-error" : ""}`}
+                      className={`input w-full ${fieldErrors.sireCode ? "input-error" : ""}`}
                     >
                       <BadgeCheck size={16} className="text-base-content/40" />
                       <input
-                        readOnly={context !== "task"}
                         aria-label="Sire code"
                         value={procedure.sireCode}
-                        placeholder={
-                          context === "task"
-                            ? "Enter sire code"
-                            : "Filled from sire breed"
-                        }
+                        placeholder="Enter the sire or semen code"
                         maxLength={64}
                         onChange={(event) => {
                           setProcedure((current) => ({
@@ -1231,8 +1245,7 @@ const AIServiceModal = ({
                   </fieldset>
                 </div>
 
-                {context === "task" && (
-                  <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2">
                     <fieldset className="fieldset">
                       <legend className="fieldset-legend">
                         Number of semen doses used
@@ -1269,6 +1282,7 @@ const AIServiceModal = ({
                         className="textarea w-full"
                         aria-label="Technician notes"
                         rows={3}
+                        maxLength={2000}
                         value={procedure.technicianNote}
                         placeholder="Add service observations"
                         onChange={(event) =>
@@ -1280,8 +1294,7 @@ const AIServiceModal = ({
                       />
                     </fieldset>
                   </div>
-                )}
-              </section>
+              </fieldset>
             )}
           </div>
 
@@ -1290,13 +1303,13 @@ const AIServiceModal = ({
           {/* ========================================== */}
           <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-base-300 bg-base-100 px-5 py-4">
             <button type="button" className="btn" onClick={onClose}>
-              {isWalkIn ? "Cancel" : "Close"}
+              {context === "walk-in" ? "Cancel" : "Close"}
             </button>
-            {(isWalkIn || context === "task") && (
+            {showProcedureForm && (
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={recordMutation.isPending}
+                disabled={recordMutation.isPending || procedureDisabled}
                 onClick={saveService}
               >
                 {recordMutation.isPending && (

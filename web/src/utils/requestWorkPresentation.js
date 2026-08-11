@@ -19,6 +19,34 @@ const normalizedValue = (value) =>
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
 
+export const formatCanonicalVisitSchedule = (schedule = {}) => {
+  if (!schedule?.date) return "Not scheduled";
+
+  const date = new Date(schedule.date);
+  if (Number.isNaN(date.getTime())) return "Not scheduled";
+
+  const dateLabel = date.toLocaleDateString("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const period = normalizedValue(schedule.visitPeriod);
+  const periodLabel =
+    period === "morning"
+      ? "Morning"
+      : period === "afternoon"
+        ? "Afternoon"
+        : null;
+
+  return [dateLabel, periodLabel].filter(Boolean).join(" · ");
+};
+
+export const isDateOnlyWorkflowType = (workflowType) =>
+  ["pd", "pregnancy", "cd", "calving"].includes(
+    normalizedValue(workflowType),
+  );
+
 export const normalizeServiceType = (itemOrValue) => {
   if (itemOrValue && typeof itemOrValue === "object") {
     const workflowType = normalizedValue(itemOrValue.workflowType);

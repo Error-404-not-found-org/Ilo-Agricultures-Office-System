@@ -114,7 +114,7 @@ export function getServicePresentation(service: RequestWorkService) {
     RequestWorkService,
     { label: string; tone: RequestWorkTone }
   > = {
-    ai: { label: "AI", tone: "emerald" },
+    ai: { label: "Insemination", tone: "emerald" },
     health: { label: "Health", tone: "rose" },
     pregnancy: { label: "Pregnancy", tone: "violet" },
     calving: { label: "Calving", tone: "orange" },

@@ -533,7 +533,8 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
       animal.reproductiveStatus || "",
     ),
   );
-  const canOpenPregnancyTracker = role === "farmer" && hasPregnancyTrackerData;
+  const canOpenPregnancyTracker =
+    (role === "farmer" || role === "technician") && hasPregnancyTrackerData;
 
   const quickFacts: QuickFact[] = [];
   if (gender) {
@@ -644,6 +645,8 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
         pathname: "/(farmer)/animal-record-detail",
         params: {
           animalId: id,
+          sourceId: String(record.sourceId || record._id || record.id || ""),
+          sourceKind: String(record.recordKind || ""),
           recordId: String(record.sourceId || record._id || record.id || ""),
           recordType: String(record.recordKind || record.type || ""),
         },
@@ -653,6 +656,8 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
         pathname: "/(technician)/record-details",
         params: {
           animalId: id,
+          sourceId: String(record.sourceId || record._id || record.id || ""),
+          sourceKind: String(record.recordKind || ""),
           recordId: String(record.sourceId || record._id || record.id || ""),
           recordType: String(record.recordKind || record.type || ""),
         },
@@ -933,7 +938,10 @@ export function RoleAwareAnimalDetailsScreen({ id, role }: Props) {
               canOpenPregnancyTracker
                 ? () =>
                     router.push({
-                      pathname: "/(farmer)/pregnancy-tracker",
+                      pathname:
+                        role === "technician"
+                          ? "/(technician)/pregnancy-tracker"
+                          : "/(farmer)/pregnancy-tracker",
                       params: { id: animal._id },
                     } as never)
                 : undefined

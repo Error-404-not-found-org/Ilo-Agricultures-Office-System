@@ -228,7 +228,9 @@ export const FarmerReportsScreen = () => {
                     pathname: "/(farmer)/animal-record-detail",
                     params: {
                       animalId: item.animalId?._id || "",
-                      recordId: item.id,
+                      sourceId: item.sourceId || item.id,
+                      sourceKind: item.sourceKind || "",
+                      recordId: item.sourceId || item.id,
                       recordType: item.type,
                     },
                   });

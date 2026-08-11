@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { Bell, Search, Check, Trash2, Info, Syringe, HeartPulse, Menu } from "lucide-react";
+import {
+  Bell,
+  Search,
+  Check,
+  Trash2,
+  Info,
+  Syringe,
+  HeartPulse,
+  Menu,
+} from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axiosInstance from "../../lib/axios";
@@ -85,10 +94,14 @@ export default function Topbar({
   const getNotifIcon = (type) => {
     const t = type?.toLowerCase() || "";
     if (t.includes("ai") || t.includes("insemination")) {
-      return <Syringe size={14} className="text-emerald-600 dark:text-emerald-400" />;
+      return (
+        <Syringe size={14} className="text-emerald-600 dark:text-emerald-400" />
+      );
     }
     if (t.includes("health") || t.includes("medical")) {
-      return <HeartPulse size={14} className="text-rose-600 dark:text-rose-400" />;
+      return (
+        <HeartPulse size={14} className="text-rose-600 dark:text-rose-400" />
+      );
     }
     return <Info size={14} className="text-blue-600 dark:text-blue-400" />;
   };
@@ -137,9 +150,6 @@ export default function Topbar({
         {/* Custom Extra Slots (e.g. filters, dropdowns) */}
         {children}
 
-        {/* Theme Toggle Button */}
-        <ThemeToggle />
-
         {/* Notification Bell with Dropdown */}
         <div className="relative">
           <button
@@ -164,7 +174,9 @@ export default function Topbar({
               <div className="dropdown-content absolute right-0 mt-3 w-[min(22rem,calc(100vw-2rem))] bg-base-100 border border-base-300 rounded-box shadow-xl z-30 overflow-hidden">
                 {/* Dropdown Header */}
                 <div className="flex items-center justify-between p-4 border-b border-base-300 bg-base-200">
-                  <h3 className="font-bold text-sm text-base-content">Notifications</h3>
+                  <h3 className="font-bold text-sm text-base-content">
+                    Notifications
+                  </h3>
                   <div className="flex gap-2">
                     {unreadCount > 0 && (
                       <button
@@ -203,9 +215,7 @@ export default function Topbar({
                         >
                           <div
                             className={`p-2 rounded-xl shrink-0 h-min ${
-                              !notif.isRead
-                                ? "bg-primary/10"
-                                : "bg-base-200"
+                              !notif.isRead ? "bg-primary/10" : "bg-base-200"
                             }`}
                           >
                             {getNotifIcon(notif.type)}

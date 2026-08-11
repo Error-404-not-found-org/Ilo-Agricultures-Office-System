@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, FlatList, Image } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Save, Info, X, Camera, Image as ImageIcon } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, Save, Info, X, Camera, Image as ImageIcon } from 'lucide-react-native';
 import { useApi } from '@/lib/api';
 import { toast } from 'sonner-native';
 import { useQueryClient } from '@tanstack/react-query';
@@ -52,6 +52,16 @@ const CALF_COLOR_OPTIONS = [
     'Spotted',
     'Mixed',
 ];
+
+const getCalendarDayDifference = (laterValue: string, earlierValue: string) => {
+    const later = new Date(laterValue);
+    const earlier = new Date(earlierValue);
+    if (Number.isNaN(later.getTime()) || Number.isNaN(earlier.getTime())) return null;
+
+    const laterDay = Date.UTC(later.getUTCFullYear(), later.getUTCMonth(), later.getUTCDate());
+    const earlierDay = Date.UTC(earlier.getUTCFullYear(), earlier.getUTCMonth(), earlier.getUTCDate());
+    return Math.floor((laterDay - earlierDay) / 86400000);
+};
 
 export default function RecordCalfDropScreen() {
     const router = useRouter();
@@ -344,6 +354,25 @@ export default function RecordCalfDropScreen() {
             return false;
         }
 
+        if (outcome !== 'abortion') {
+            const readiness = selectedPregnancy?.calvingReadiness;
+            const aiDateValue = selectedPregnancy?.insemination?.inseminationDate;
+            const gestationDays = aiDateValue
+                ? getCalendarDayDifference(date, aiDateValue)
+                : null;
+            if (typeof readiness?.minimumDays !== 'number' || gestationDays === null) {
+                toast.error('Calving readiness is unavailable. Refresh the selected animal before continuing.');
+                return false;
+            }
+            if (gestationDays < readiness.minimumDays) {
+                const availableDate = readiness.earliestEligibleDate
+                    ? new Date(readiness.earliestEligibleDate).toLocaleDateString()
+                    : `Day ${readiness.minimumDays}`;
+                toast.error(`Live-birth recording is too early at Day ${gestationDays}. It becomes available ${availableDate}.`);
+                return false;
+            }
+        }
+
         const normalizedCalves = calves.map((calf) => ({
             ...calf,
             sex: calf.sex?.trim(),
@@ -458,6 +487,24 @@ export default function RecordCalfDropScreen() {
     const aiDate = selectedPregnancy?.insemination?.inseminationDate;
     const diagnosisDate = selectedPregnancy?.pregnancyDiagnosis?.date;
     const expectedCalvingDate = selectedPregnancy?.targetCalvingDate || selectedAnimal?.expectedCalvingDate;
+    const calvingReadiness = selectedPregnancy?.calvingReadiness;
+    const selectedGestationDays = aiDate && date
+        ? getCalendarDayDifference(date, aiDate)
+        : null;
+    const minimumGestationDays = typeof calvingReadiness?.minimumDays === 'number'
+        ? calvingReadiness.minimumDays
+        : null;
+    const isLiveOutcomeTooEarly = outcome !== 'abortion' && (
+        minimumGestationDays === null ||
+        selectedGestationDays === null ||
+        selectedGestationDays < minimumGestationDays
+    );
+    const earliestCalvingDate = calvingReadiness?.earliestEligibleDate;
+    const calvingReadinessMessage = minimumGestationDays === null || selectedGestationDays === null
+        ? 'Authoritative calving readiness is unavailable. Refresh the selected animal before recording a live-birth outcome.'
+        : selectedGestationDays < minimumGestationDays
+            ? `Selected date is Day ${selectedGestationDays}. Live-birth, mixed, and stillbirth records open on Day ${minimumGestationDays}${earliestCalvingDate ? ` (${new Date(earliestCalvingDate).toLocaleDateString()})` : ''}. Select Abortion only for a confirmed pregnancy loss.`
+            : `Calving window is open at Day ${selectedGestationDays}.`;
     const eventTiming = (() => {
         if (!expectedCalvingDate || !date) return 'Timing unavailable';
         const differenceDays = Math.round(
@@ -546,6 +593,45 @@ export default function RecordCalfDropScreen() {
                             <Text className="text-slate-500 dark:text-slate-400 font-outfit-medium text-xs mt-1">Expected calving: {formatDate(expectedCalvingDate)}</Text>
                             <Text className="text-emerald-700 dark:text-emerald-400 font-outfit-bold text-xs mt-2">{eventTiming}</Text>
                         </View>
+
+                        {isLiveOutcomeTooEarly ? (
+                            <View
+                                accessibilityRole="alert"
+                                style={{
+                                    flexDirection: 'row',
+                                    gap: 10,
+                                    padding: 12,
+                                    marginBottom: 16,
+                                    borderRadius: 12,
+                                    borderWidth: 1,
+                                    borderColor: colors.warningBorder,
+                                    backgroundColor: colors.warningContainer,
+                                }}
+                            >
+                                <AlertTriangle size={18} color={colors.warningForeground} />
+                                <View style={{ flex: 1, gap: 3 }}>
+                                    <Text
+                                        style={{
+                                            color: colors.warningForeground,
+                                            fontFamily: 'Outfit_700Bold',
+                                            fontSize: 13,
+                                        }}
+                                    >
+                                        Live-birth window not open
+                                    </Text>
+                                    <Text
+                                        style={{
+                                            color: colors.textSecondary,
+                                            fontFamily: 'Outfit_400Regular',
+                                            fontSize: 12,
+                                            lineHeight: 18,
+                                        }}
+                                    >
+                                        {calvingReadinessMessage}
+                                    </Text>
+                                </View>
+                            </View>
+                        ) : null}
 
                         <View className="gap-y-4">
                             <View>
@@ -819,7 +905,7 @@ export default function RecordCalfDropScreen() {
                             className="mb-4"
                             onPress={handleSave}
                             loading={submissionLocked}
-                            disabled={submissionLocked}
+                            disabled={submissionLocked || isLiveOutcomeTooEarly}
                         >
                             <Save size={19} color="white" style={{ marginRight: 9 }} />
                             <Text style={{ fontFamily: 'Outfit_700Bold' }} className="text-white text-sm">Submit Calving Registry</Text>
@@ -876,7 +962,7 @@ export default function RecordCalfDropScreen() {
             <TechnicianPickerSheet
               visible={showAnimalModal}
               title="Select Pregnant Cow"
-              subtitle="Only eligible pregnancy records are shown"
+              subtitle="Active confirmed pregnancies; timing is checked after selection"
               onClose={() => setShowAnimalModal(false)}
             >
               <TechnicianPickerSearch

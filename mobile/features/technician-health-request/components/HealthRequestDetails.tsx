@@ -290,6 +290,7 @@ export function HealthRequestDetails({
           status: "scheduled",
           scheduledDate: payload.scheduledDate,
           visitPeriod: payload.visitPeriod,
+          samePeriodConfirmed: payload.samePeriodConfirmed,
           technicianNote:
             scheduleMode === "reschedule"
               ? "Health visit rescheduled."
@@ -636,10 +637,14 @@ export function HealthRequestDetails({
           {farmerNotes ? (
             <DetailRow label="Farmer notes" value={farmerNotes} />
           ) : null}
-        </View>
 
-        <View style={cardStyle}>
-          <Text textRole="title" style={{ color: colors.textPrimary }}>
+          {submittedAt ? (
+            <View style={{ marginTop: 8 }}>
+              <InfoLine icon={Send} text={`Submitted ${submittedAt}`} />
+            </View>
+          ) : null}
+
+          <Text textRole="title" style={{ color: colors.textPrimary, marginTop: 24 }}>
             Attachments
           </Text>
           {photos.length > 0 ? (
@@ -667,12 +672,6 @@ export function HealthRequestDetails({
             </Text>
           )}
         </View>
-
-        {submittedAt ? (
-          <View style={cardStyle}>
-            <InfoLine icon={Send} text={`Submitted ${submittedAt}`} />
-          </View>
-        ) : null}
 
         {isClaimedUnscheduled || isScheduled || isInProgress ? (
           <View style={cardStyle}>

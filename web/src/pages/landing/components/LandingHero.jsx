@@ -1,5 +1,5 @@
 import { SignInButton } from "@clerk/clerk-react";
-import { ArrowRight, Smartphone, ShieldCheck } from "lucide-react";
+import { Smartphone, ShieldCheck } from "lucide-react";
 import { HERO_BG } from "../data/landingContent";
 
 export default function LandingHero() {

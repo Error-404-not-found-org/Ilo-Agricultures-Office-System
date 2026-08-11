@@ -30,6 +30,7 @@ const BarangayInsights = lazy(() => import("./pages/admin/BarangayInsights"));
 const SupportTickets = lazy(() => import("./pages/admin/SupportTickets"));
 const AuditLogs = lazy(() => import("./pages/admin/AuditLogs"));
 const ArchivedRecords = lazy(() => import("./pages/admin/ArchivedRecords"));
+const PregnancyTracker = lazy(() => import("./pages/admin/PregnancyTracker"));
 
 // Technician Pages
 const TechnicianDashboard = lazy(
@@ -180,6 +181,8 @@ function App() {
               <Route path="technicians/:id" element={<TechnicianProfile />} />
               <Route path="livestock" element={<Livestock />} />
               <Route path="livestock/:id" element={<LivestockProfile />} />
+              <Route path="pregnancy-tracker/:id" element={<PregnancyTracker />} />
+              <Route path="pregnancy-tracker" element={<PregnancyTracker />} />
               <Route path="inseminations" element={<Inseminations />} />
               <Route path="users" element={<Users />} />
               <Route path="settings" element={<AdminSettings />} />
@@ -215,6 +218,8 @@ function App() {
               <Route path="farmers/:id" element={<FarmerProfile />} />
               <Route path="animals" element={<TechnicianAnimals />} />
               <Route path="animals/:id" element={<LivestockProfile />} />
+              <Route path="pregnancy-tracker/:id" element={<PregnancyTracker />} />
+              <Route path="pregnancy-tracker" element={<PregnancyTracker />} />
               <Route
                 path="inseminations"
                 element={<TechnicianInseminations />}

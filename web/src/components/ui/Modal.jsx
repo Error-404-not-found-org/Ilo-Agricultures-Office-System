@@ -20,6 +20,7 @@ export default function Modal({
   icon = null,
   bodyClassName = "",
   closeOnBackdropClick = false,
+  closeOnEscape = false,
 }) {
   const dialogRef = useRef(null);
   const titleId = `modal-title-${useId().replaceAll(":", "")}`;
@@ -98,6 +99,7 @@ export default function Modal({
       className="modal modal-bottom sm:modal-middle"
       onCancel={(event) => {
         event.preventDefault();
+        if (closeOnEscape) onClose?.();
       }}
       aria-labelledby={titleId}
       aria-describedby={descriptionId}

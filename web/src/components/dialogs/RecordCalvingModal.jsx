@@ -35,6 +35,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
     const [searchFarmer, setSearchFarmer] = useState("");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [selectedAnimalId, setSelectedAnimalId] = useState("");
+    const [fieldErrors, setFieldErrors] = useState({});
 
     const [formData, setFormData] = useState({
         pregnancyId: '',
@@ -73,6 +74,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                 setSearchFarmer('');
                 setIsDropdownOpen(false);
                 setSelectedAnimalId('');
+                setFieldErrors({});
                 setFormData({
                     pregnancyId: '',
                     animalId: '',
@@ -93,7 +95,13 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
     }, [isOpen, onClose, preSelectedFarmer, preSelectedAnimal]);
 
     // Queries for standalone mode
-    const { data: farmers = [] } = useQuery({
+    const {
+        data: farmers = [],
+        error: farmersError,
+        isError: isFarmersError,
+        isLoading: isLoadingFarmers,
+        refetch: refetchFarmers,
+    } = useQuery({
         queryKey: ["farmers", "list"],
         queryFn: async () => {
             const res = await axiosInstance.get("/user?role=farmer");
@@ -102,7 +110,13 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
         enabled: isOpen && !pregnancyData,
     });
 
-    const { data: animals = [], isLoading: isLoadingAnimals } = useQuery({
+    const {
+        data: animals = [],
+        error: animalsError,
+        isError: isAnimalsError,
+        isLoading: isLoadingAnimals,
+        refetch: refetchAnimals,
+    } = useQuery({
         queryKey: ["farmer-animals", selectedFarmerId],
         queryFn: async () => {
             const res = await axiosInstance.get(`/animals/farmer/${selectedFarmerId}`);
@@ -111,7 +125,13 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
         enabled: !!selectedFarmerId && isOpen && !pregnancyData,
     });
 
-    const { data: animalHistory = {}, isLoading: isLoadingHistory } = useQuery({
+    const {
+        data: animalHistory = {},
+        error: historyError,
+        isError: isHistoryError,
+        isLoading: isLoadingHistory,
+        refetch: refetchHistory,
+    } = useQuery({
         queryKey: ["animal-history", selectedAnimalId],
         queryFn: async () => {
             const res = await axiosInstance.get(`/technician/animal-history/${selectedAnimalId}`);
@@ -127,10 +147,17 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
 
     const activePregnancy = useMemo(
         () => {
-            const pregnanciesList = animalHistory.pregnancies || [];
-            return pregnancyData || (pregnanciesList.length > 0 ? pregnanciesList[0] : null);
+            const calvedPregnancyIds = new Set(
+                (animalHistory.calvings || []).map((item) => String(item.pregnancyId?._id || item.pregnancyId)),
+            );
+            const activePregnancyRecord = (animalHistory.pregnancies || []).find((item) =>
+                item.pregnancyDiagnosis?.result === "Pregnant" &&
+                !["lost", "completed"].includes(item.cycleStatus) &&
+                !calvedPregnancyIds.has(String(item._id || item.id)),
+            );
+            return pregnancyData || activePregnancyRecord || null;
         },
-        [animalHistory.pregnancies, pregnancyData]
+        [animalHistory.calvings, animalHistory.pregnancies, pregnancyData]
     );
 
     // Sync active pregnancy details with form data
@@ -168,6 +195,49 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
         }
         
         setFormData({ ...formData, numberOfCalves: count, calves: newCalves });
+        setFieldErrors((current) => ({ ...current, calves: null }));
+    };
+
+    const _handleOutcomeChange = (outcome) => {
+        if (outcome === "abortion") {
+            setFormData((current) => ({
+                ...current,
+                outcome,
+                numberOfCalves: 0,
+                calves: [],
+            }));
+            setFieldErrors((current) => ({ ...current, calves: null }));
+            return;
+        }
+
+        setFormData((current) => {
+            let calves = current.calves.length
+                ? current.calves
+                : [{ sex: "F", earTag: "", color: "", brand: "", imageUrl: "", isLiving: true }];
+            if (outcome === "mixed" && calves.length < 2) {
+                calves = [
+                    { ...calves[0], isLiving: true },
+                    { sex: "F", earTag: "", color: "", brand: "", imageUrl: "", isLiving: false },
+                ];
+            } else {
+                calves = calves.map((calf, index) => ({
+                    ...calf,
+                    isLiving:
+                        outcome === "live_birth"
+                            ? true
+                            : outcome === "stillbirth"
+                              ? false
+                              : index === 0,
+                }));
+            }
+            return {
+                ...current,
+                outcome,
+                numberOfCalves: calves.length,
+                calves,
+            };
+        });
+        setFieldErrors((current) => ({ ...current, calves: null }));
     };
 
     const updateCalf = (index, field, value) => {
@@ -179,6 +249,10 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
     const handleImageUpload = (index, e) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        if (!file.type.startsWith("image/")) {
+            toast.error("Select a valid image file.");
+            return;
+        }
         
         if (file.size > 5 * 1024 * 1024) {
             toast.error("Image size must be less than 5MB");
@@ -202,14 +276,15 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
             const res = await axiosInstance.post('/technician/record-calving', data);
             return res.data;
         },
-        onSuccess: () => {
+        onSuccess: async (result) => {
             toast.success("Calf Drop and offspring successfully recorded!");
-            queryClient.invalidateQueries({ queryKey: ["technician", "dashboard"] });
-            queryClient.invalidateQueries({ queryKey: ["technician", "requests"] });
-            queryClient.invalidateQueries({ queryKey: ["technician", "schedule"] });
-            queryClient.invalidateQueries({ queryKey: ["farmer-animals"] });
-            queryClient.invalidateQueries({ queryKey: ["animal-history"] });
-            if (onSuccess) onSuccess();
+            await Promise.allSettled([
+                queryClient.invalidateQueries({ queryKey: ["technician"] }),
+                queryClient.invalidateQueries({ queryKey: ["farmer-animals"] }),
+                queryClient.invalidateQueries({ queryKey: ["animal-history"] }),
+                queryClient.invalidateQueries({ queryKey: ["animal", formData.animalId] }),
+            ]);
+            if (onSuccess) onSuccess(result);
             onClose();
         },
         onError: (error) => {
@@ -223,25 +298,43 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
             return;
         }
 
-        // Validate calf tags
-        for (let i = 0; i < formData.calves.length; i++) {
-            if (!formData.calves[i].earTag.trim()) {
+        const livingCalves = formData.outcome === "mixed"
+            ? formData.calves.filter((calf) => calf.isLiving)
+            : formData.outcome === "live_birth" ? formData.calves : [];
+        const nonLivingCalves = formData.outcome === "mixed"
+            ? formData.calves.filter((calf) => !calf.isLiving)
+            : formData.outcome === "stillbirth" ? formData.calves : [];
+
+        if (formData.outcome === "mixed" && (livingCalves.length === 0 || nonLivingCalves.length === 0)) {
+            toast.error("A mixed outcome requires at least one living and one non-living calf.");
+            return;
+        }
+
+        // Living offspring become registered animals and require unique identifiers.
+        for (let i = 0; i < livingCalves.length; i++) {
+            if (!livingCalves[i].earTag.trim()) {
                 toast.error(`Please provide an Ear Tag ID for Calf #${i + 1}`);
                 return;
             }
+        }
+        const normalizedLivingTags = livingCalves.map((calf) => calf.earTag.trim().toLowerCase());
+        if (new Set(normalizedLivingTags).size !== normalizedLivingTags.length) {
+            toast.error("Living calf ear tags must be unique within this record.");
+            return;
         }
 
         let payload = { ...formData, taskId };
         
         // Handle Mixed outcome logic
         if (formData.outcome === 'mixed') {
-            const living = formData.calves.filter(c => c.isLiving);
-            const nonLiving = formData.calves.filter(c => !c.isLiving);
-            payload.calves = living;
-            payload.nonLivingCalves = nonLiving;
-        } else if (formData.outcome === 'stillbirth' || formData.outcome === 'abortion') {
-            // Backend handles this differently but web just sends them normally, though abortion ignores calves
+            payload.calves = livingCalves;
+            payload.nonLivingCalves = nonLivingCalves;
+        } else if (formData.outcome === 'stillbirth') {
             payload.nonLivingCalves = formData.calves;
+            payload.calves = [];
+        } else if (formData.outcome === 'abortion') {
+            payload.numberOfCalves = 0;
+            payload.nonLivingCalves = [];
             payload.calves = [];
         }
 
@@ -255,31 +348,33 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
 
     return (
         <AnimatePresence>
-            <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]">
+            <div className="modal modal-open" role="dialog" aria-modal="true" aria-labelledby="record-calving-title">
                 
                 <motion.div
                     initial={{ opacity: 0, scale: 0.95, y: 20 }}
                     animate={{ opacity: 1, scale: 1, y: 0 }}
                     exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                    className="bg-base-100 border border-base-300 rounded-2xl max-w-3xl w-full shadow-2xl relative overflow-hidden flex flex-col max-h-[86vh]"
+                    className="modal-box relative flex max-h-[86vh] w-11/12 max-w-3xl flex-col overflow-hidden border border-base-300 p-0"
                 >
                     {/* Header */}
                     <div className="p-6 border-b border-base-300 bg-base-200/40 flex justify-between items-center">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                                 <Baby size={20} />
                             </div>
                             <div>
-                                <h2 className="text-lg font-black text-base-content leading-none uppercase">Record Calving</h2>
-                                <p className="text-[10px] font-black text-base-content/40 uppercase tracking-widest mt-1.5 leading-none">
+                                <h2 id="record-calving-title" className="text-lg font-bold text-base-content">Record Calving</h2>
+                                <p className="mt-1 text-sm text-base-content/65">
                                     Link birth details and offspring to Mother #{motherEarTag}
                                 </p>
                             </div>
                         </div>
                         <button
+                            type="button"
                             onClick={() => !mutation.isPending && onClose()}
                             disabled={mutation.isPending}
-                            className="p-2 bg-base-200 text-base-content/40 hover:text-base-content rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="btn btn-ghost btn-sm btn-square"
+                            aria-label="Close calving form"
                         >
                             <X size={18} />
                         </button>
@@ -322,7 +417,17 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                                         aria-label="Matching farmers"
                                                         className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-base-300 bg-base-100 p-1 shadow-xl custom-scrollbar"
                                                     >
-                                                        {farmers.filter((f) =>
+                                                        {isLoadingFarmers ? (
+                                                            <div className="space-y-2 p-3" role="status" aria-label="Loading farmers">
+                                                                <div className="skeleton h-10 w-full" />
+                                                                <div className="skeleton h-10 w-full" />
+                                                            </div>
+                                                        ) : isFarmersError ? (
+                                                            <div className="alert alert-error m-2 w-auto text-sm" role="alert">
+                                                                <span>{farmersError?.response?.data?.message || "Unable to load farmers."}</span>
+                                                                <button type="button" className="btn btn-ghost btn-xs" onMouseDown={(event) => event.preventDefault()} onClick={() => refetchFarmers()}>Try again</button>
+                                                            </div>
+                                                        ) : farmers.filter((f) =>
                                                             (f.name || "").toLowerCase().includes(searchFarmer.toLowerCase()) ||
                                                             (f.phoneNumber || "").toLowerCase().includes(searchFarmer.toLowerCase()) ||
                                                             (typeof f.address === "string" ? f.address : f.address?.barangay || "").toLowerCase().includes(searchFarmer.toLowerCase())
@@ -377,7 +482,7 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                         </div>
                                     ) : (
                                         <select
-                                            disabled={!selectedFarmerId || isLoadingAnimals}
+                                            disabled={!selectedFarmerId || isLoadingAnimals || isAnimalsError}
                                             value={selectedAnimalId}
                                             onChange={(e) => setSelectedAnimalId(e.target.value)}
                                             className={`${selectClass} cursor-pointer disabled:opacity-50`}
@@ -385,10 +490,19 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                             <option value="">{isLoadingAnimals ? "Synchronizing..." : "Select pregnant cow..."}</option>
                                             {pregnantAnimals.map((a) => (
                                                 <option key={a._id} value={a._id}>
-                                                    Tag #{a.earTag} ({a.breed}) — {a.reproductiveStatus || "Normal"}
+                                                    Tag #{a.earTag} ({a.breed}) - {a.reproductiveStatus || "Normal"}
                                                 </option>
                                             ))}
                                         </select>
+                                    )}
+                                    {selectedFarmerId && isAnimalsError && (
+                                        <div className="alert alert-error text-sm" role="alert">
+                                            <span>{animalsError?.response?.data?.message || "Unable to load this farmer's animals."}</span>
+                                            <button type="button" className="btn btn-ghost btn-xs" onClick={() => refetchAnimals()}>Try again</button>
+                                        </div>
+                                    )}
+                                    {selectedFarmerId && !isLoadingAnimals && !isAnimalsError && pregnantAnimals.length === 0 && (
+                                        <p className="text-sm text-base-content/60">No pregnant cows are available for this farmer.</p>
                                     )}
                                 </div>
 
@@ -396,14 +510,19 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                                 {selectedAnimalId && (
                                     <div className="col-span-2">
                                         {isLoadingHistory ? (
-                                            <div className="text-xs font-bold text-slate-400">Loading pregnancy references...</div>
+                                            <div className="skeleton h-16 w-full" role="status" aria-label="Loading pregnancy references" />
+                                        ) : isHistoryError ? (
+                                            <div className="alert alert-error text-sm" role="alert">
+                                                <span>{historyError?.response?.data?.message || "Unable to load pregnancy records."}</span>
+                                                <button type="button" className="btn btn-ghost btn-xs" onClick={() => refetchHistory()}>Try again</button>
+                                            </div>
                                         ) : activePregnancy ? (
                                             <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-4 flex items-center gap-3">
                                                 <Sparkles size={16} className="text-emerald-500" />
                                                 <div>
                                                     <h5 className="text-[10px] font-black text-emerald-500 uppercase tracking-widest leading-none">Active Pregnancy Connected</h5>
                                                     <p className="text-[9px] font-bold text-base-content/40 uppercase mt-1 leading-tight">
-                                                        Diagnosis Date: {formatDate(activePregnancy.pregnancyDiagnosis?.date || activePregnancy.createdAt)} • Expected calving: {new Date(activePregnancy.targetCalvingDate).toLocaleDateString()}
+                                                        Diagnosis Date: {formatDate(activePregnancy.pregnancyDiagnosis?.date || activePregnancy.createdAt)} • Expected calving: {formatDate(activePregnancy.targetCalvingDate)}
                                                     </p>
                                                 </div>
                                             </div>
@@ -643,28 +762,31 @@ const RecordCalfDropModal = ({ isOpen, onClose, pregnancyData, onSuccess, preSel
                     {/* Footer Actions */}
                     <div className="p-6 border-t border-base-300 bg-base-200/20 flex gap-4">
                         <button 
+                            type="button"
                             onClick={() => !mutation.isPending && onClose()}
                             disabled={mutation.isPending}
-                            className="flex-1 h-12 rounded-xl font-black text-[10px] uppercase tracking-widest text-base-content/50 hover:bg-base-200 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="btn btn-ghost flex-1"
                         >
                             Discard
                         </button>
                         <button 
+                            type="button"
                             onClick={handleSave}
                             disabled={mutation.isPending || (!pregnancyData && !activePregnancy)}
-                            className="flex-2 h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                            className="btn btn-primary flex-2"
                         >
                             {mutation.isPending ? (
                                 <span className="loading loading-spinner loading-xs"></span>
                             ) : (
                                 <>
                                     <ClipboardCheck size={16} />
-                                    <span>Register Offspring & Update Ledger</span>
+                                    <span>Save calving record</span>
                                 </>
                             )}
                         </button>
                     </div>
                 </motion.div>
+                <button type="button" className="modal-backdrop" onClick={() => !mutation.isPending && onClose()} aria-label="Close calving form" />
             </div>
         </AnimatePresence>
     );

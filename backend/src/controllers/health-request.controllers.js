@@ -23,6 +23,7 @@ import {
 import { notifyUser } from "../services/notification-delivery.service.js";
 import { notifyDispatchRequestSubmitted } from "../services/dispatch-request-notification.service.js";
 import {
+  assertVisitDaypartAvailable,
   hasVisitScheduleChanged,
   normalizeVisitPeriod,
   normalizeVisitScheduleDate,
@@ -368,8 +369,13 @@ export const updateHealthRequestStatus = async (req, res) => {
         }
         normalizedScheduledDate = normalizeVisitScheduleDate(req.body.scheduledDate);
         normalizedVisitPeriod = normalizeVisitPeriod(req.body.visitPeriod);
+        assertVisitDaypartAvailable({
+          scheduledDate: normalizedScheduledDate,
+          visitPeriod: normalizedVisitPeriod,
+          samePeriodConfirmed: req.body.samePeriodConfirmed === true,
+        });
       } catch (err) {
-        return res.status(400).json({
+        return res.status(err.status || 400).json({
           message: err.message,
           code: err.code || "INVALID_SCHEDULE",
         });

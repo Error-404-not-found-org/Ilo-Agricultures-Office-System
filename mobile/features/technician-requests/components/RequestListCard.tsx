@@ -147,9 +147,9 @@ export function RequestListCard({
             backgroundColor: typeBackground,
           }}
         >
-          {item.farmerImageUrl ? (
+          {item.farmerImageUrl || item.raw?.farmerImageUrl || item.raw?.farmerId?.imageUrl ? (
             <Image
-              source={{ uri: item.farmerImageUrl }}
+              source={{ uri: item.farmerImageUrl || item.raw?.farmerImageUrl || item.raw?.farmerId?.imageUrl }}
               style={{ width: 44, height: 44 }}
             />
           ) : (
