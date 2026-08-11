@@ -91,7 +91,11 @@ test("Technician Recent Records loads canonical record details by identifiers", 
   assert.match(technicianBranch, /animalId: id/);
   assert.match(
     technicianBranch,
-    /recordId: String\(record\.sourceId \|\| record\._id \|\| record\.id \|\| ""\)/,
+    /sourceId: String\(record\.sourceId \|\| record\._id \|\| record\.id \|\| ""\)/,
+  );
+  assert.match(
+    technicianBranch,
+    /sourceKind: String\(record\.recordKind \|\| ""\)/,
   );
   assert.match(
     technicianBranch,
@@ -100,18 +104,15 @@ test("Technician Recent Records loads canonical record details by identifiers", 
   assert.doesNotMatch(technicianBranch, /recordData|JSON\.stringify/);
 
   assert.match(technicianDetails, /animalId\?: string/);
+  assert.match(technicianDetails, /sourceId\?: string/);
+  assert.match(technicianDetails, /sourceKind\?: string/);
   assert.match(technicianDetails, /recordId\?: string/);
   assert.match(technicianDetails, /recordType\?: string/);
-  assert.match(technicianDetails, /params\.recordId \|\|/);
-  assert.match(technicianDetails, /if \(params\.animalId\) return params\.animalId/);
-  assert.match(technicianDetails, /getAnimalRecords\(api, animalId \|\| ""/);
-  assert.match(technicianDetails, /useAnimalDetailsQuery\(animalId \|\| ""\)/);
-  assert.match(technicianDetails, /String\(r\.sourceId \|\| ""\) === String\(recordId\)/);
-  assert.match(
-    technicianDetails,
-    /item\.recordKind \|\| item\.type \|\| params\.recordType/,
-  );
-  assert.match(technicianDetails, /recordKind === "medical_record"/);
+  assert.match(technicianDetails, /params\.sourceId \|\|/);
+  assert.match(technicianDetails, /params\.animalId \|\| legacyRecord\?\.animalId/);
+  assert.match(technicianDetails, /useOfficialRecordDetail\(\{/);
+  assert.match(technicianDetails, /sourceKind,/);
+  assert.doesNotMatch(technicianDetails, /getAnimalRecords|useAnimalDetailsQuery/);
 
   for (const kind of [
     'recordKind: "insemination"',

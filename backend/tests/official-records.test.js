@@ -1,10 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import mongoose from "mongoose";
 import { Insemination } from "../src/models/insemination.model.js";
 import { Pregnancy } from "../src/models/pregnancy.model.js";
 import { Calving } from "../src/models/calving.model.js";
 import { MedicalRecord } from "../src/models/medical-record.model.js";
-import { getOfficialRecords } from "../src/controllers/animal-workflow.controllers.js";
+import { Animal } from "../src/models/animal.model.js";
+import {
+  getOfficialRecordDetail,
+  getOfficialRecords,
+} from "../src/controllers/animal-workflow.controllers.js";
 
 const queryResult = (data) => ({
   populate() {
@@ -206,4 +211,293 @@ test("Official records: invalid date range is rejected", async () => {
   );
   assert.equal(recorder.statusCode, 400);
   assert.equal(recorder.body.code, "RECORD_DATE_RANGE_INVALID");
+});
+
+test("Official record detail: AI exposes only its persisted evidence", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    insemination: Insemination.findOne,
+  };
+  const animal = {
+    _id: "animal-1",
+    farmerId: "farmer-1",
+    earTag: "TAG-001",
+  };
+
+  Animal.findOne = async () => animal;
+  Insemination.findOne = () =>
+    queryResult({
+      _id: "ai-1",
+      animalId: animal,
+      status: "done",
+      attemptNumber: 1,
+      inseminationDate: new Date("2026-08-01T07:10:00.000Z"),
+      createdAt: new Date("2026-07-31T08:00:00.000Z"),
+      imageUrl: "https://example.test/request.jpg",
+      evidencePhotos: [
+        "https://example.test/follow-up.jpg",
+        "https://example.test/request.jpg",
+      ],
+    });
+
+  const recorder = responseRecorder();
+  try {
+    await getOfficialRecordDetail(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: {
+          id: "animal-1",
+          recordKind: "insemination",
+          recordId: "ai-1",
+        },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(recorder.body.data.dateLabel, "AI performed at");
+    assert.equal(recorder.body.data.datePrecision, "datetime");
+    assert.deepEqual(
+      recorder.body.data.attachments.map((attachment) => attachment.url),
+      [
+        "https://example.test/request.jpg",
+        "https://example.test/follow-up.jpg",
+      ],
+    );
+  } finally {
+    Animal.findOne = originals.animal;
+    Insemination.findOne = originals.insemination;
+  }
+});
+
+test("Official record detail: pregnancy returns canonical confirmation metadata", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    pregnancy: Pregnancy.findOne,
+  };
+  let pregnancyScope = null;
+  const animal = {
+    _id: "animal-1",
+    farmerId: "farmer-1",
+    earTag: "TAG-001",
+    breed: "Brahman",
+    species: "Cattle",
+    reproductiveStatus: "Pregnant",
+  };
+  const confirmedAt = new Date("2026-07-10T04:00:00.000Z");
+  const pregnancyId = new mongoose.Types.ObjectId();
+
+  Animal.findOne = async () => animal;
+  Pregnancy.findOne = (scope) => {
+    pregnancyScope = scope;
+    return queryResult({
+      _id: pregnancyId,
+      animalId: animal,
+      pregnancyDiagnosis: { date: confirmedAt, result: "Pregnant" },
+      confirmation: {
+        methodCode: "ultrasound",
+        stage: "standard",
+        confirmedAt,
+        confirmedBy: { _id: "tech-1", name: "Tech One" },
+        policyVersion: "policy-1",
+        recheckRequired: false,
+      },
+      recheckStatus: "not_required",
+      inseminationId: { _id: "ai-1", attemptNumber: 2 },
+      targetCalvingDate: new Date("2027-04-18T04:00:00.000Z"),
+      technicianNote: "Pregnancy confirmed.",
+      createdAt: confirmedAt,
+    });
+  };
+
+  const recorder = responseRecorder();
+  try {
+    await getOfficialRecordDetail(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: {
+          id: "animal-1",
+          recordKind: "pregnancy",
+          recordId: String(pregnancyId),
+        },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(pregnancyScope.animalId, "animal-1");
+    assert.equal(recorder.body.data.sourceKind, "pregnancy");
+    assert.equal(recorder.body.data.sourceId, String(pregnancyId));
+    assert.equal(recorder.body.data.type, "pregnancy");
+    assert.equal(recorder.body.data.animalId.earTag, "TAG-001");
+    assert.equal(recorder.body.data.datePrecision, "date");
+    assert.equal(
+      recorder.body.data.dateLabel,
+      "Pregnancy diagnosis performed on",
+    );
+    assert.deepEqual(recorder.body.data.attachments, []);
+    assert.equal(recorder.body.data.details.diagnosticMethod, "ultrasound");
+    assert.equal(recorder.body.data.details.relatedAttempt, 2);
+    assert.equal(recorder.body.data.details.technician, "Tech One");
+    assert.equal(
+      recorder.body.data.actions.pregnancyTrackerAvailable,
+      true,
+    );
+  } finally {
+    Animal.findOne = originals.animal;
+    Pregnancy.findOne = originals.pregnancy;
+  }
+});
+
+test("Official record detail: calving separates occurrence date from entry time and loads calf photos", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    calving: Calving.findOne,
+  };
+  const calvingDate = new Date("2026-08-02T00:00:00.000Z");
+  const enteredAt = new Date("2026-08-02T07:10:00.000Z");
+  const animal = {
+    _id: "animal-1",
+    farmerId: "farmer-1",
+    earTag: "DAM-001",
+  };
+
+  Animal.findOne = async () => animal;
+  Calving.findOne = () =>
+    queryResult({
+      _id: "calving-1",
+      animalId: animal,
+      technicianId: { _id: "tech-1", name: "Tech One" },
+      date: calvingDate,
+      createdAt: enteredAt,
+      outcome: "live_birth",
+      calvingEase: "natural",
+      numberOfCalves: 1,
+      livingCalfCount: 1,
+      stillbornCount: 0,
+      calves: [
+        {
+          sex: "F",
+          earTag: "CALF-001",
+          animalId: {
+            _id: "calf-animal-1",
+            earTag: "CALF-001",
+            imageUrl: "https://example.test/calf.jpg",
+          },
+        },
+      ],
+      nonLivingCalves: [],
+    });
+
+  const recorder = responseRecorder();
+  try {
+    await getOfficialRecordDetail(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: {
+          id: "animal-1",
+          recordKind: "calving",
+          recordId: "calving-1",
+        },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(recorder.body.data.dateLabel, "Calving occurred on");
+    assert.equal(recorder.body.data.datePrecision, "date");
+    assert.equal(recorder.body.data.details.serviceDate, calvingDate);
+    assert.equal(recorder.body.data.details.entryDate, enteredAt);
+    assert.equal(
+      recorder.body.data.details.entryDateLabel,
+      "Recorded in BreedSmart at",
+    );
+    assert.equal(
+      recorder.body.data.details.calves[0].imageUrl,
+      "https://example.test/calf.jpg",
+    );
+    assert.equal(recorder.body.data.attachments.length, 1);
+    assert.equal(
+      recorder.body.data.attachments[0].category,
+      "offspring_identity",
+    );
+  } finally {
+    Animal.findOne = originals.animal;
+    Calving.findOne = originals.calving;
+  }
+});
+
+test("Official record detail: linked MedicalRecord exposes the Health report action", async () => {
+  const originals = {
+    animal: Animal.findOne,
+    medical: MedicalRecord.findOne,
+  };
+  const animal = {
+    _id: "animal-1",
+    farmerId: "farmer-1",
+    earTag: "TAG-001",
+  };
+
+  Animal.findOne = async () => animal;
+  MedicalRecord.findOne = () =>
+    queryResult({
+      _id: "medical-1",
+      animalId: animal,
+      technicianId: { _id: "tech-1", name: "Tech One" },
+      healthRequestId: {
+        _id: "health-1",
+        requestType: "disease",
+        symptoms: "Low appetite",
+        urgency: "medium",
+        farmerNotes: "Started yesterday",
+        photos: [
+          "https://example.test/health-1.jpg",
+          "https://example.test/shared.jpg",
+        ],
+        imageUrl: "https://example.test/shared.jpg",
+      },
+      type: "Treatment",
+      date: new Date("2026-08-08T04:00:00.000Z"),
+      details: {
+        diagnosis: "Bacterial infection",
+        treatment: "Antibiotic",
+        withdrawalPeriodDays: 7,
+      },
+      imageUrl: "https://example.test/medical.jpg",
+      createdAt: new Date("2026-08-08T04:30:00.000Z"),
+    });
+
+  const recorder = responseRecorder();
+  try {
+    await getOfficialRecordDetail(
+      {
+        user: { _id: "farmer-1", role: "farmer" },
+        params: {
+          id: "animal-1",
+          recordKind: "medical_record",
+          recordId: "medical-1",
+        },
+      },
+      recorder.response,
+    );
+
+    assert.equal(recorder.statusCode, 200);
+    assert.equal(recorder.body.data.type, "health");
+    assert.equal(recorder.body.data.details.symptoms, "Low appetite");
+    assert.equal(recorder.body.data.details.diagnosis, "Bacterial infection");
+    assert.equal(recorder.body.data.dateLabel, "Health service record date");
+    assert.deepEqual(
+      recorder.body.data.attachments.map((attachment) => attachment.url),
+      [
+        "https://example.test/health-1.jpg",
+        "https://example.test/shared.jpg",
+        "https://example.test/medical.jpg",
+      ],
+    );
+    assert.equal(recorder.body.data.actions.reportPreviewAvailable, true);
+    assert.equal(recorder.body.data.actions.reportId, "health-1");
+  } finally {
+    Animal.findOne = originals.animal;
+    MedicalRecord.findOne = originals.medical;
+  }
 });

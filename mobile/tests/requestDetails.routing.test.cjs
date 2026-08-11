@@ -255,6 +255,8 @@ test("H4 Request Details architecture and lifecycle", async (t) => {
     assert.match(dashboardHookCode, /handleRequestReview: openItemDetails/);
     assert.match(dashboardHookCode, /pathname: "\/\(technician\)\/request-details"/);
     assert.match(dashboardRequestsCode, /Tap to review request/);
+    assert.match(dashboardRequestsCode, /key="empty-requests"/);
+    assert.match(dashboardRequestsCode, /key="available-requests"/);
     assert.doesNotMatch(dashboardRequestsCode, /Tap to review and claim/);
     assert.match(requestsScreenCode, /pathname: "\/\(technician\)\/request-details"/);
     assert.doesNotMatch(requestsScreenCode, /claimAndScheduleAIRequest|claimTechnicianRequest/);
