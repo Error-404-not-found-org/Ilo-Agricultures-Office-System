@@ -50,6 +50,16 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "BreedSmart accesses livestock photos when you choose to save or manage them.",
+          "savePhotosPermission": "BreedSmart saves livestock photos to your device only when you request it.",
+          "granularPermissions": [
+            "photo"
+          ]
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",

@@ -573,49 +573,6 @@ export default function MyRequests({ showBackButton = true }: MyRequestsProps) {
                   </View>
                 ) : null}
 
-                {/* Comment / Reason */}
-                {(
-                  isHealth
-                    ? healthSymptoms
-                    : getAdditionalNotesOnly(req.comment || req.reason)
-                ) ? (
-                  <View className="mb-4">
-                    <Text
-                      className="text-[10px] font-bold uppercase mb-1"
-                      style={{ color: colors.textMuted }}
-                    >
-                      {isHealth ? "Symptoms" : "Notes"}
-                    </Text>
-                    <Text
-                      className="text-[12px] italic"
-                      style={{ color: colors.textSecondary }}
-                    >
-                      &quot;
-                      {isHealth
-                        ? healthSymptoms
-                        : getAdditionalNotesOnly(req.comment || req.reason)}
-                      &quot;
-                    </Text>
-                  </View>
-                ) : null}
-
-                {isHealth && farmerNotes && farmerNotes !== healthSymptoms ? (
-                  <View className="mb-4">
-                    <Text
-                      className="text-[10px] font-bold uppercase mb-1"
-                      style={{ color: colors.textMuted }}
-                    >
-                      Farmer Notes
-                    </Text>
-                    <Text
-                      className="text-[12px]"
-                      style={{ color: colors.textSecondary }}
-                    >
-                      {farmerNotes}
-                    </Text>
-                  </View>
-                ) : null}
-
                 {/* Heat Signs Badges */}
                 {!isHealth && req.heatSigns && req.heatSigns.length > 0 ? (
                   <View className="mb-4">

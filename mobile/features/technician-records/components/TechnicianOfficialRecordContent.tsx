@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import { Image, ScrollView, StyleSheet, View } from "react-native";
 import {
   CalendarCheck,
@@ -10,6 +10,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
+import { ImageViewerModal, type ImageViewerItem } from "@/components/shared";
 import { RecordPhotoEvidence } from "@/features/farmer-reports/components/RecordPhotoEvidence";
 import type {
   OfficialRecordDetail,
@@ -254,6 +255,17 @@ function EvidenceSection({
   title?: string;
 }) {
   const { colors } = useTheme();
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [galleryInitialIndex, setGalleryInitialIndex] = useState(0);
+
+  const galleryImages = useMemo<ImageViewerItem[]>(() => {
+    return attachments.map((attachment, index) => ({
+      uri: attachment.url,
+      fileName: attachment.label || `evidence-photo-${index + 1}`,
+      accessibilityLabel: attachment.label || `Evidence photo ${index + 1}`,
+    }));
+  }, [attachments]);
+
   if (attachments.length === 0) return null;
 
   return (
@@ -282,6 +294,10 @@ function EvidenceSection({
               height={96}
               compact
               resizeMode="contain"
+              onPress={() => {
+                setGalleryInitialIndex(index);
+                setGalleryVisible(true);
+              }}
             />
             <Text
               numberOfLines={2}
@@ -292,6 +308,14 @@ function EvidenceSection({
           </View>
         ))}
       </ScrollView>
+
+      <ImageViewerModal
+        visible={galleryVisible}
+        images={galleryImages}
+        initialIndex={galleryInitialIndex}
+        title={title}
+        onClose={() => setGalleryVisible(false)}
+      />
     </View>
   );
 }

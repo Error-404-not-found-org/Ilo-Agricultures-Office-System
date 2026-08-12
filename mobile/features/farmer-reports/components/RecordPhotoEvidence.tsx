@@ -2,14 +2,13 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   Image,
-  Modal,
   Pressable,
   View,
   type DimensionValue,
   type ImageResizeMode,
   StyleSheet,
 } from "react-native";
-import { ImageOff, Maximize2, RefreshCw, X } from "lucide-react-native";
+import { ImageOff, RefreshCw } from "lucide-react-native";
 
 import { Text } from "@/components/ui/Text";
 import { useTheme } from "@/lib/theme";
@@ -21,6 +20,7 @@ interface RecordPhotoEvidenceProps {
   width?: DimensionValue;
   compact?: boolean;
   resizeMode?: ImageResizeMode;
+  onPress: () => void;
 }
 
 export function RecordPhotoEvidence({
@@ -30,13 +30,13 @@ export function RecordPhotoEvidence({
   width = "100%",
   compact = false,
   resizeMode = "cover",
+  onPress,
 }: RecordPhotoEvidenceProps) {
   const { isDark } = useTheme();
   const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">(
     "loading",
   );
   const [reloadKey, setReloadKey] = useState(0);
-  const [expanded, setExpanded] = useState(false);
 
   // Design system mapped colors
   const primaryColor = isDark ? "#10B981" : "#00643B";
@@ -44,7 +44,6 @@ export function RecordPhotoEvidence({
   const surfaceSubtle = isDark ? "#1F2937" : "#F3F4F6";
   const borderColor = isDark ? "#374151" : "#E5E7EB";
   const modalBackdrop = isDark ? "rgba(0,0,0,0.8)" : "rgba(0,0,0,0.5)";
-  const textPrimary = isDark ? "#F9FAFB" : "#111827";
   const textSecondary = isDark ? "#9CA3AF" : "#6B7280";
   const textMuted = isDark ? "#6B7280" : "#9CA3AF";
 
@@ -60,7 +59,7 @@ export function RecordPhotoEvidence({
         accessibilityLabel={`Open ${label}`}
         accessibilityState={{ disabled: loadState !== "loaded" }}
         disabled={loadState !== "loaded"}
-        onPress={() => setExpanded(true)}
+        onPress={onPress}
         style={({ pressed }) => ({
           width,
           height,
@@ -151,69 +150,7 @@ export function RecordPhotoEvidence({
           </View>
         ) : null}
 
-        {loadState === "loaded" ? (
-          <View
-            style={{
-              position: "absolute",
-              right: 8,
-              bottom: 8,
-              width: 36,
-              height: 36,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 10,
-              backgroundColor: surfaceBg,
-            }}
-          >
-            <Maximize2 size={17} color={textPrimary} />
-          </View>
-        ) : null}
       </Pressable>
-
-      <Modal
-        visible={expanded}
-        transparent
-        statusBarTranslucent
-        animationType="fade"
-        onRequestClose={() => setExpanded(false)}
-      >
-        <View
-          style={[styles.modalContainer, { backgroundColor: modalBackdrop }]}
-        >
-          <View style={[styles.modalContent, { backgroundColor: surfaceBg }]}>
-            <View style={styles.modalHeader}>
-              <Text
-                numberOfLines={2}
-                style={[styles.bodyStrongText, { flex: 1, color: textPrimary }]}
-              >
-                {label}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close evidence photo"
-                onPress={() => setExpanded(false)}
-                style={({ pressed }) => ({
-                  width: 44, // 44px minimum touch target
-                  height: 44,
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderRadius: 12,
-                  backgroundColor: surfaceSubtle,
-                  opacity: pressed ? 0.72 : 1,
-                })}
-              >
-                <X size={20} color={textPrimary} />
-              </Pressable>
-            </View>
-            <Image
-              source={{ uri: url }}
-              resizeMode="contain"
-              accessibilityLabel={label}
-              style={[styles.modalImage, { backgroundColor: surfaceSubtle }]}
-            />
-          </View>
-        </View>
-      </Modal>
     </>
   );
 }
@@ -242,31 +179,5 @@ const styles = StyleSheet.create({
     fontFamily: "Outfit_600SemiBold", // Label (SemiBold)
     fontSize: 14,
     lineHeight: 20,
-  },
-  bodyStrongText: {
-    fontFamily: "Outfit_600SemiBold", // Body Strong
-    fontSize: 14,
-    lineHeight: 21,
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: "center",
-    padding: 16,
-  },
-  modalContent: {
-    padding: 12,
-    gap: 12,
-    borderRadius: 16, // Aligned to 16px radius
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  modalImage: {
-    width: "100%",
-    height: 440,
-    borderRadius: 12, // Aligned to 12px radius
   },
 });

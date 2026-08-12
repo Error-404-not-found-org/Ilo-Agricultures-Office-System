@@ -239,6 +239,7 @@ export interface AIRequest extends ServiceRequest {
 export interface HealthRequest extends ServiceRequest {
   serviceType?: "health";
   symptoms?: string;
+  imageUrl?: string | null;
   handledBy?: string | Technician;
   requestType?: string;
   urgency?: "low" | "medium" | "high" | "emergency";
