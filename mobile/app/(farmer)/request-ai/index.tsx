@@ -1038,16 +1038,19 @@ export default function RequestAI() {
       </View>
 
       {/* ── Animal Selection Modal ──────────────────────────────────────────── */}
+      {/* Animal Modal */}
       <AnimatedBottomSheet
         visible={animalModalVisible}
         onClose={() => setAnimalModalVisible(false)}
         backgroundColor={colors.card}
-        maxHeight={animals.length >= 5 ? height * 0.75 : undefined}
       >
         <View
-          className={`px-6 pt-6 pb-0`}
-          style={{ backgroundColor: colors.card }}
+          className="px-6 pt-6 pb-0"
+          style={{
+            backgroundColor: colors.card,
+          }}
         >
+          {/* Header */}
           <View className="flex-row justify-between items-center mb-4">
             <Text
               className="text-lg font-bold"
@@ -1058,11 +1061,12 @@ export default function RequestAI() {
             >
               Select Animal
             </Text>
+
             <TouchableOpacity
               onPress={() => setAnimalModalVisible(false)}
               className="p-1 rounded-full"
               style={{
-                backgroundColor: isDark ? colors.background : "#f1f5f9",
+                backgroundColor: isDark ? colors.background : "#f8fafc",
               }}
             >
               <X size={20} color={colors.textMuted} />
@@ -1072,8 +1076,9 @@ export default function RequestAI() {
           {isLoadingAnimals ? (
             <View className="items-center py-20">
               <ActivityIndicator color={primaryColor} size="large" />
+
               <Text
-                className="mt-4 font-medium"
+                className="mt-4 font-outfit-bold"
                 style={{ color: colors.textMuted }}
               >
                 Loading your animals...
@@ -1082,66 +1087,55 @@ export default function RequestAI() {
           ) : animals.length === 0 ? (
             <View className="items-center py-10 gap-3">
               <AlertCircle size={36} color={colors.textMuted} />
+
               <Text
                 className="text-center font-medium"
                 style={{ color: colors.textSecondary }}
               >
                 You have no registered animals yet.
               </Text>
+
               <Text
                 className="text-xs text-center"
                 style={{ color: colors.textMuted }}
               >
-                Please register an animal first before requesting AI.
+                Register an animal before reporting a health concern.
               </Text>
             </View>
           ) : (
             <FlatList
-              style={{ flexGrow: 0, flexShrink: 1 }}
-              contentContainerStyle={{
-                paddingBottom: animals.length >= 5 ? 24 : 0,
-              }}
-              scrollEnabled={animals.length >= 5}
-              showsVerticalScrollIndicator={animals.length >= 5}
               data={animals}
               keyExtractor={(item) => item._id}
+              // IMPORTANT:
+              // only the LIST gets capped
+              style={{
+                maxHeight: height * 0.55,
+                flexGrow: 0,
+              }}
+              contentContainerStyle={{
+                paddingBottom: 12,
+              }}
+              showsVerticalScrollIndicator={animals.length > 4}
+              nestedScrollEnabled
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
-                    if (item.reproductiveStatus === "Pregnant") {
-                      setPregnantModalVisible(true);
-                      return;
-                    }
-                    if (item.gender === "Male") {
-                      setMaleModalVisible(true);
-                      return;
-                    }
-                    const ageCheck = checkInseminationAgeEligibility(
-                      item.birthDate,
-                      item.species,
-                    );
-                    if (!ageCheck.isEligible) {
-                      setAgeCheckReason(
-                        ageCheck.reason ||
-                          "Animal is too young for insemination.",
-                      );
-                      setAgeModalVisible(true);
-                      return;
-                    }
                     setSelectedAnimal(item);
                     setAnimalModalVisible(false);
                   }}
-                  className={`py-4 px-3 border-b flex-row items-center justify-between ${item.reproductiveStatus === "Pregnant" || item.gender === "Male" || !checkInseminationAgeEligibility(item.birthDate, item.species).isEligible ? "opacity-50" : ""}`}
+                  className="py-4 px-3 border-b flex-row items-center justify-between"
                   style={{
                     borderBottomColor: colors.border,
                     backgroundColor:
                       selectedAnimal?._id === item._id
-                        ? colors.tint
+                        ? isDark
+                          ? "rgba(239, 68, 68, 0.15)"
+                          : "#fef2f2"
                         : undefined,
                     borderRadius: selectedAnimal?._id === item._id ? 16 : 0,
                   }}
                 >
-                  <View className="flex-row items-center gap-3">
+                  <View className="flex-row items-center gap-3 flex-1">
                     <View className="flex-1">
                       <Text
                         className="text-[15px] font-bold"
@@ -1154,6 +1148,7 @@ export default function RequestAI() {
                           ? `Ear tag ${item.earTag}`
                           : `Registry ID ${item.animalId}`}
                       </Text>
+
                       <View className="flex-row items-center gap-2 mt-1">
                         <Text
                           className="text-xs"
@@ -1164,35 +1159,30 @@ export default function RequestAI() {
                         >
                           {item.breed} · {item.species}
                         </Text>
+
                         {item.reproductiveStatus && (
                           <View
-                            className={`px-2 py-0.5 rounded-full ${item.reproductiveStatus === "Pregnant" ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200" : "bg-gray-100 dark:bg-slate-800"}`}
+                            className={`px-2 py-0.5 rounded-full ${
+                              item.reproductiveStatus === "Pregnant"
+                                ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200"
+                                : "bg-gray-100 dark:bg-slate-800"
+                            }`}
                           >
                             <Text
-                              className={`text-[9px] font-black uppercase ${item.reproductiveStatus === "Pregnant" ? "text-purple-600" : "text-gray-500"}`}
+                              className="text-[9px] font-outfit-black uppercase"
+                              style={{
+                                color:
+                                  item.reproductiveStatus === "Pregnant"
+                                    ? "#9333ea"
+                                    : colors.textMuted,
+                              }}
                             >
                               {item.reproductiveStatus}
                             </Text>
                           </View>
                         )}
-                        {item.gender === "Male" && (
-                          <View className="px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200">
-                            <Text className="text-[9px] font-black uppercase text-red-600">
-                              Male
-                            </Text>
-                          </View>
-                        )}
-                        {!checkInseminationAgeEligibility(
-                          item.birthDate,
-                          item.species,
-                        ).isEligible && (
-                          <View className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-200">
-                            <Text className="text-[9px] font-black uppercase text-amber-600">
-                              Underage
-                            </Text>
-                          </View>
-                        )}
                       </View>
+
                       {item.earTag && (
                         <Text
                           className="text-xs mt-1"
@@ -1202,16 +1192,7 @@ export default function RequestAI() {
                         </Text>
                       )}
                     </View>
-                    {item.reproductiveStatus === "Pregnant" && (
-                      <AlertCircle size={16} color="#9333ea" />
-                    )}
-                    {item.gender === "Male" && (
-                      <AlertCircle size={16} color="#ef4444" />
-                    )}
-                    {!checkInseminationAgeEligibility(
-                      item.birthDate,
-                      item.species,
-                    ).isEligible && <AlertCircle size={16} color="#d97706" />}
+
                     {selectedAnimal?._id === item._id && (
                       <Check size={18} color={primaryColor} />
                     )}
@@ -1222,7 +1203,6 @@ export default function RequestAI() {
           )}
         </View>
       </AnimatedBottomSheet>
-
       {/* Photo Selector Modal */}
       <PhotoOptionModal
         visible={photoModalVisible}

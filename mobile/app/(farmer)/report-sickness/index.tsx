@@ -957,16 +957,19 @@ export default function ReportSickness() {
       </View>
 
       {/* Animal Modal */}
+      {/* Animal Modal */}
       <AnimatedBottomSheet
         visible={animalModalVisible}
         onClose={() => setAnimalModalVisible(false)}
         backgroundColor={colors.card}
-        maxHeight={animals.length >= 5 ? height * 0.75 : undefined}
       >
         <View
-          className={`px-6 pt-6 pb-0`}
-          style={{ backgroundColor: colors.card }}
+          className="px-6 pt-6 pb-0"
+          style={{
+            backgroundColor: colors.card,
+          }}
         >
+          {/* Header */}
           <View className="flex-row justify-between items-center mb-4">
             <Text
               className="text-lg font-bold"
@@ -977,6 +980,7 @@ export default function ReportSickness() {
             >
               Select Animal
             </Text>
+
             <TouchableOpacity
               onPress={() => setAnimalModalVisible(false)}
               className="p-1 rounded-full"
@@ -991,6 +995,7 @@ export default function ReportSickness() {
           {isLoadingAnimals ? (
             <View className="items-center py-20">
               <ActivityIndicator color={primaryColor} size="large" />
+
               <Text
                 className="mt-4 font-outfit-bold"
                 style={{ color: colors.textMuted }}
@@ -1001,12 +1006,14 @@ export default function ReportSickness() {
           ) : animals.length === 0 ? (
             <View className="items-center py-10 gap-3">
               <AlertCircle size={36} color={colors.textMuted} />
+
               <Text
                 className="text-center font-medium"
                 style={{ color: colors.textSecondary }}
               >
                 You have no registered animals yet.
               </Text>
+
               <Text
                 className="text-xs text-center"
                 style={{ color: colors.textMuted }}
@@ -1016,14 +1023,19 @@ export default function ReportSickness() {
             </View>
           ) : (
             <FlatList
-              style={{ flexGrow: 0, flexShrink: 1 }}
-              contentContainerStyle={{
-                paddingBottom: animals.length >= 5 ? 24 : 0,
-              }}
-              scrollEnabled={animals.length >= 5}
-              showsVerticalScrollIndicator={animals.length >= 5}
               data={animals}
               keyExtractor={(item) => item._id}
+              // IMPORTANT:
+              // only the LIST gets capped
+              style={{
+                maxHeight: height * 0.55,
+                flexGrow: 0,
+              }}
+              contentContainerStyle={{
+                paddingBottom: 12,
+              }}
+              showsVerticalScrollIndicator={animals.length > 4}
+              nestedScrollEnabled
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => {
@@ -1055,6 +1067,7 @@ export default function ReportSickness() {
                           ? `Ear tag ${item.earTag}`
                           : `Registry ID ${item.animalId}`}
                       </Text>
+
                       <View className="flex-row items-center gap-2 mt-1">
                         <Text
                           className="text-xs"
@@ -1065,9 +1078,14 @@ export default function ReportSickness() {
                         >
                           {item.breed} · {item.species}
                         </Text>
+
                         {item.reproductiveStatus && (
                           <View
-                            className={`px-2 py-0.5 rounded-full ${item.reproductiveStatus === "Pregnant" ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200" : "bg-gray-100 dark:bg-slate-800"}`}
+                            className={`px-2 py-0.5 rounded-full ${
+                              item.reproductiveStatus === "Pregnant"
+                                ? "bg-purple-100 dark:bg-purple-900/30 border border-purple-200"
+                                : "bg-gray-100 dark:bg-slate-800"
+                            }`}
                           >
                             <Text
                               className="text-[9px] font-outfit-black uppercase"
@@ -1083,6 +1101,7 @@ export default function ReportSickness() {
                           </View>
                         )}
                       </View>
+
                       {item.earTag && (
                         <Text
                           className="text-xs mt-1"
@@ -1092,6 +1111,7 @@ export default function ReportSickness() {
                         </Text>
                       )}
                     </View>
+
                     {selectedAnimal?._id === item._id && (
                       <Check size={18} color={primaryColor} />
                     )}
@@ -1225,103 +1245,103 @@ export default function ReportSickness() {
         backgroundColor={colors.card}
       >
         <View className="p-6" style={{ backgroundColor: colors.card }}>
-            <View className="flex-row justify-between items-center mb-6">
-              <Text
-                className="text-lg font-outfit-bold"
-                style={{ color: colors.textPrimary }}
-              >
-                Select Technician
-              </Text>
-              <TouchableOpacity
-                onPress={() => setTechSelectModalVisible(false)}
-                style={{ padding: 4 }}
-              >
-                <X size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={{ maxHeight: 420 }}
-              showsVerticalScrollIndicator={false}
+          <View className="flex-row justify-between items-center mb-6">
+            <Text
+              className="text-lg font-outfit-bold"
+              style={{ color: colors.textPrimary }}
             >
-              {technicians?.map((tech: any) => {
-                const initials = tech.name
-                  ? tech.name
-                      .split(" ")
-                      .map((n: string) => n[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase()
-                  : "VO";
-                const isSelected =
-                  selectedTechId === tech._id ||
-                  (!selectedTechId && technicians[0]?._id === tech._id);
+              Select Technician
+            </Text>
+            <TouchableOpacity
+              onPress={() => setTechSelectModalVisible(false)}
+              style={{ padding: 4 }}
+            >
+              <X size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView
+            style={{ maxHeight: 420 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {technicians?.map((tech: any) => {
+              const initials = tech.name
+                ? tech.name
+                    .split(" ")
+                    .map((n: string) => n[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()
+                : "VO";
+              const isSelected =
+                selectedTechId === tech._id ||
+                (!selectedTechId && technicians[0]?._id === tech._id);
 
-                return (
-                  <TouchableOpacity
-                    key={tech._id}
-                    accessibilityRole="button"
-                    onPress={() => {
-                      setSelectedTechId(tech._id);
-                      setTechSelectModalVisible(false);
-                    }}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      borderRadius: 14,
-                      padding: 12,
-                      marginBottom: 10,
-                      borderWidth: 1,
-                      backgroundColor: isSelected
-                        ? isDark
-                          ? "rgba(52,211,153,0.1)"
-                          : "#ecfdf5"
-                        : isDark
-                          ? colors.background
-                          : "#f8fafc",
-                      borderColor: isSelected
-                        ? isDark
-                          ? "rgba(52,211,153,0.3)"
-                          : "#a7f3d0"
-                        : isDark
-                          ? colors.border
-                          : "#e2e8f0",
-                    }}
-                  >
-                    <View className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-950/30 items-center justify-center overflow-hidden mr-3">
-                      {tech.imageUrl ? (
-                        <Image
-                          source={{ uri: tech.imageUrl }}
-                          style={{ width: "100%", height: "100%" }}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <Text
-                          className="font-outfit-black text-xs"
-                          style={{ color: primaryColor }}
-                        >
-                          {initials}
-                        </Text>
-                      )}
-                    </View>
-                    <View className="flex-1">
+              return (
+                <TouchableOpacity
+                  key={tech._id}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setSelectedTechId(tech._id);
+                    setTechSelectModalVisible(false);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    borderRadius: 14,
+                    padding: 12,
+                    marginBottom: 10,
+                    borderWidth: 1,
+                    backgroundColor: isSelected
+                      ? isDark
+                        ? "rgba(52,211,153,0.1)"
+                        : "#ecfdf5"
+                      : isDark
+                        ? colors.background
+                        : "#f8fafc",
+                    borderColor: isSelected
+                      ? isDark
+                        ? "rgba(52,211,153,0.3)"
+                        : "#a7f3d0"
+                      : isDark
+                        ? colors.border
+                        : "#e2e8f0",
+                  }}
+                >
+                  <View className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-950/30 items-center justify-center overflow-hidden mr-3">
+                    {tech.imageUrl ? (
+                      <Image
+                        source={{ uri: tech.imageUrl }}
+                        style={{ width: "100%", height: "100%" }}
+                        resizeMode="cover"
+                      />
+                    ) : (
                       <Text
-                        style={{
-                          color: colors.textPrimary,
-                          fontFamily: "Outfit_700Bold",
-                          fontSize: 15,
-                        }}
+                        className="font-outfit-black text-xs"
+                        style={{ color: primaryColor }}
                       >
-                        {tech.name}
+                        {initials}
                       </Text>
-                      <Text className="text-[11px] font-outfit-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                        📍 {tech.address?.barangay || "Municipal"}, Oton
-                      </Text>
-                    </View>
-                    {isSelected && <Check size={18} color={primaryColor} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                    )}
+                  </View>
+                  <View className="flex-1">
+                    <Text
+                      style={{
+                        color: colors.textPrimary,
+                        fontFamily: "Outfit_700Bold",
+                        fontSize: 15,
+                      }}
+                    >
+                      {tech.name}
+                    </Text>
+                    <Text className="text-[11px] font-outfit-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                      📍 {tech.address?.barangay || "Municipal"}, Oton
+                    </Text>
+                  </View>
+                  {isSelected && <Check size={18} color={primaryColor} />}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
         </View>
       </AnimatedBottomSheet>
     </View>
