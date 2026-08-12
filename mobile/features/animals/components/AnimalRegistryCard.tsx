@@ -32,153 +32,228 @@ export function AnimalRegistryCard({
   onPress,
 }: AnimalRegistryCardProps) {
   const { colors, isDark } = useTheme();
-  const visibleStatuses = Array.from(new Set(statuses.filter(Boolean))).slice(0, 2);
+  const visibleStatuses = Array.from(new Set(statuses.filter(Boolean))).slice(
+    0,
+    2,
+  );
+
+  const renderSubtitleIcon = (part: string) => {
+    const lower = part.toLowerCase();
+    if (
+      lower.includes("cattle") ||
+      lower.includes("livestock") ||
+      lower.includes("bovine")
+    ) {
+      return (
+        <MaterialCommunityIcons
+          name="cow"
+          size={14}
+          color={colors.textSecondary}
+        />
+      );
+    }
+    if (lower === "female" || lower === "male") {
+      return (
+        <MaterialCommunityIcons
+          name={lower === "female" ? "gender-female" : "gender-male"}
+          size={14}
+          color={colors.textSecondary}
+        />
+      );
+    }
+    // Color indicator (e.g. Red, Black, White)
+    return (
+      <MaterialCommunityIcons
+        name="circle-outline"
+        size={14}
+        color={lower === "red" ? "#ef4444" : colors.textSecondary}
+      />
+    );
+  };
 
   return (
-    <Card
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`Open animal ${animalTag || title} record`}
+    <View
       style={{
-        padding: 0,
-        overflow: "hidden",
-        marginBottom: 16,
+        marginBottom: 20,
         borderRadius: 20,
-        borderWidth: 1,
-        borderColor: colors.border,
         backgroundColor: colors.card,
+        shadowColor: colors.modalBackdrop,
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: isDark ? 0.42 : 0.32,
+        shadowRadius: 6,
+        elevation: 4,
       }}
     >
-      <View
+      <Card
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`Open animal ${animalTag || title} record`}
         style={{
-          width: "100%",
-          height: 154,
-          backgroundColor: isDark ? colors.background : "#eef4ef",
-          alignItems: "center",
-          justifyContent: "center",
+          padding: 12,
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: colors.outline,
+          backgroundColor: colors.card,
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          elevation: 0,
         }}
       >
-        {imageUrl ? (
-          <Image
-            source={{ uri: imageUrl }}
-            style={{ width: "100%", height: "100%" }}
-            resizeMode="cover"
-          />
-        ) : (
-          <MaterialCommunityIcons
-            name="cow"
-            size={58}
-            color={isDark ? colors.textMuted : "#7a9a84"}
-          />
-        )}
-
-        {animalTag ? (
-          <View
-            style={{
-              position: "absolute",
-              top: 12,
-              left: 12,
-              minHeight: 28,
-              paddingHorizontal: 11,
-              borderRadius: 999,
-              backgroundColor: isDark ? "#064e3b" : "#00643B",
-              justifyContent: "center",
-            }}
-          >
-            <Text variant="bold" size={11} style={{ color: "#fff" }}>
-              {animalTag}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      <View style={{ padding: 16 }}>
         <View
           style={{
             flexDirection: "row",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: 12,
+            width: "100%",
+            alignItems: "stretch",
+            paddingVertical: 10,
+            paddingHorizontal: 15,
           }}
         >
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text
-              variant="extrabold"
-              size={17}
-              numberOfLines={1}
-              style={{ color: colors.textPrimary }}
-            >
-              {title}
-            </Text>
-            {ownerName ? (
-              <Text
-                variant="medium"
-                size={13}
-                numberOfLines={1}
-                style={{ color: colors.textSecondary, marginTop: 3 }}
+          <View
+            style={{
+              width: 110,
+              height: 110,
+              backgroundColor: colors.surfaceSubtle,
+              borderRadius: 16,
+              overflow: "hidden",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 16,
+            }}
+          >
+            {imageUrl ? (
+              <Image
+                source={{ uri: imageUrl }}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="cover"
+              />
+            ) : (
+              <MaterialCommunityIcons
+                name="cow"
+                size={48}
+                color={colors.textMuted}
+              />
+            )}
+
+            {animalTag ? (
+              <View
+                style={{
+                  position: "absolute",
+                  top: 6,
+                  left: 6,
+                  minHeight: 20,
+                  paddingHorizontal: 8,
+                  borderRadius: 10,
+                  backgroundColor: isDark ? colors.tint : colors.primary,
+                  justifyContent: "center",
+                }}
               >
-                Owner: {ownerName}
-              </Text>
-            ) : subtitle ? (
-              <Text
-                variant="medium"
-                size={13}
-                numberOfLines={1}
-                style={{ color: colors.textSecondary, marginTop: 3 }}
-              >
-                {subtitle}
-              </Text>
+                <Text
+                  variant="bold"
+                  size={9}
+                  style={{ color: colors.onPrimary }}
+                >
+                  {animalTag}
+                </Text>
+              </View>
             ) : null}
           </View>
 
-          {visibleStatuses.length ? (
-            <View style={{ alignItems: "flex-end", gap: 5 }}>
-              {visibleStatuses.map((status) => (
-                <StatusBadge key={status} label={status} />
-              ))}
-            </View>
-          ) : null}
-        </View>
+          <View
+            style={{
+              flex: 1,
+              flexDirection: "row",
+              alignItems: "center",
+              paddingVertical: 2,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text
+                variant="extrabold"
+                size={17}
+                numberOfLines={2}
+                style={{ color: colors.textPrimary, marginBottom: 4 }}
+              >
+                {title}
+              </Text>
 
-        <View
-          style={{
-            minHeight: 58,
-            marginTop: 14,
-            paddingHorizontal: 13,
-            paddingVertical: 10,
-            borderRadius: 13,
-            borderLeftWidth: 3,
-            borderLeftColor: colors.primary,
-            backgroundColor: isDark ? colors.background : "#f3f6f4",
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text
-              variant="bold"
-              size={10}
+              {visibleStatuses.length ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 6,
+                    flexWrap: "wrap",
+                    marginBottom: 6,
+                  }}
+                >
+                  {visibleStatuses.map((status) => (
+                    <StatusBadge key={status} label={status} />
+                  ))}
+                </View>
+              ) : null}
+
+              {ownerName ? (
+                <Text
+                  variant="medium"
+                  size={11}
+                  numberOfLines={1}
+                  style={{ color: colors.textSecondary }}
+                >
+                  Owner: {ownerName}
+                </Text>
+              ) : subtitle ? (
+                <View
+                  style={{
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    marginTop: 2,
+                    gap: 4,
+                  }}
+                >
+                  {subtitle
+                    .split(" / ")
+                    .slice(0, 2)
+                    .map((part, index, arr) => (
+                      <React.Fragment key={index}>
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 4,
+                          }}
+                        >
+                          {renderSubtitleIcon(part)}
+                          <Text
+                            variant="medium"
+                            size={11}
+                            style={{ color: colors.textSecondary }}
+                          >
+                            {part}
+                          </Text>
+                        </View>
+                      </React.Fragment>
+                    ))}
+                </View>
+              ) : null}
+            </View>
+
+            <View
               style={{
-                color: colors.textMuted,
-                textTransform: "uppercase",
-                letterSpacing: 0.7,
+                flexDirection: "row",
+                alignItems: "center",
+                marginLeft: 12,
               }}
             >
-              {actionEyebrow}
-            </Text>
-            <Text
-              variant="bold"
-              size={13}
-              numberOfLines={2}
-              style={{ color: colors.primary, marginTop: 2 }}
-            >
-              {actionLabel}
-            </Text>
+              <Text variant="bold" size={12} style={{ color: colors.primary }}>
+                {actionEyebrow === "Animal record"
+                  ? "View details"
+                  : actionLabel || "View details"}
+              </Text>
+              <ChevronRight size={16} color={colors.primary} />
+            </View>
           </View>
-          <ChevronRight size={20} color={colors.primary} />
         </View>
-      </View>
-    </Card>
+      </Card>
+    </View>
   );
 }

@@ -57,7 +57,7 @@ import { loadPregnancyConfirmationPolicy } from "../services/pregnancy-policy.se
 export const createAIRequest = async (req, res) => {
   try {
     const farmerId = req.user._id;
-    const { animalId, imageUrl, comment, heatSigns, previousAttemptId } =
+    const { animalId, imageUrl, photos, comment, heatSigns, previousAttemptId } =
       req.body;
 
     if (!animalId) {
@@ -214,7 +214,8 @@ export const createAIRequest = async (req, res) => {
     const request = await createAIRequestWithGuard({
       farmerId,
       animalId,
-      imageUrl: imageUrl || "",
+      imageUrl: imageUrl || (photos && photos.length > 0 ? photos[0] : ""),
+      photos: photos || [],
       comment: comment || "",
       heatSigns: heatSigns || [],
       status: "pending",
@@ -231,7 +232,7 @@ export const createAIRequest = async (req, res) => {
         sourceId: request._id,
         title: "AI service requested",
         summary: comment || "Farmer requested artificial insemination service.",
-        attachments: imageUrl ? [imageUrl] : [],
+        attachments: photos?.length > 0 ? photos : (imageUrl ? [imageUrl] : []),
         metadata: { attemptNumber },
       }),
       createAuditLog({
