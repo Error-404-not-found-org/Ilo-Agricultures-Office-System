@@ -1,4 +1,4 @@
-import { Stack, useSegments, router, useRootNavigationState } from "expo-router";
+import { Stack, router, useRootNavigationState } from "expo-router";
 import { Buffer } from 'buffer';
 // @ts-ignore
 import { decode, encode } from 'base-64';
@@ -14,12 +14,11 @@ import {
 } from '@expo-google-fonts/outfit';
 import "../global.css"
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
-import { useQuery } from "@tanstack/react-query";
 import { queryClient, persistOptions } from "../lib/queryClient";
 import { tokenCache } from "../utils/cache";
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
 import { useEffect, useState, useRef } from "react";
-import { View, ActivityIndicator, Text, Image, useColorScheme, TouchableOpacity, Animated } from "react-native";
+import { View, Text, useColorScheme, TouchableOpacity, Animated } from "react-native";
 import { Toaster, toast } from 'sonner-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -35,6 +34,9 @@ import * as Notifications from 'expo-notifications';
 import { useTheme } from "@/lib/theme";
 import { TranslationProvider } from "../contexts/TranslationContext";
 import { getPushNotificationTarget } from "@/features/notifications/utils/notificationPresentation";
+import { AuthBootstrapGate } from "@/features/auth/components/AuthBootstrapGate";
+import { getBootstrapUserQueryKey } from "@/features/auth/hooks/useBootstrapUser";
+import { AppStartupScreen } from "@/features/startup/components/AppStartupScreen";
 
 
 // Polyfills for crypto and auth libraries
@@ -55,10 +57,8 @@ if (!CLERK_PUBLISHABLE_KEY) {
 }
 
 function AppContent({
-  isLoaded,
   isSignedIn,
   user,
-  api,
   isDark,
   colors,
   insets,
@@ -66,10 +66,8 @@ function AppContent({
   showOnlineToast,
   onlineProgressAnim,
 }: {
-  isLoaded: boolean;
   isSignedIn: boolean;
   user: any;
-  api: any;
   isDark: boolean;
   colors: any;
   insets: any;
@@ -77,7 +75,6 @@ function AppContent({
   showOnlineToast: boolean;
   onlineProgressAnim: any;
 }) {
-  const segments = useSegments();
   const navigationState = useRootNavigationState();
   const handledNotificationResponseId = useRef<string | null>(null);
 
@@ -105,142 +102,13 @@ function AppContent({
       Notifications.addNotificationResponseReceivedListener(
         openNotificationResponse,
       );
-    Notifications.getLastNotificationResponseAsync()
-      .then(openNotificationResponse)
-      .catch((error) =>
-        console.error("Failed to open notification response", error),
-      );
+    const initialResponse = Notifications.getLastNotificationResponse();
+    if (initialResponse) {
+      openNotificationResponse(initialResponse);
+    }
 
     return () => subscription.remove();
   }, [isSignedIn, navigationState?.key, user?.publicMetadata?.role]);
-
-  // Clear query cache on sign-out to prevent data leakage between different accounts
-  useEffect(() => {
-    if (isLoaded && !isSignedIn) {
-      queryClient.clear();
-      AsyncStorage.removeItem('REACT_QUERY_OFFLINE_CACHE').catch(err =>
-        console.error("Failed to clear AsyncStorage react-query cache", err)
-      );
-    }
-  }, [isLoaded, isSignedIn]);
-
-  const { signOut } = useAuth();
-
-  const {
-    data: dbUserResponse,
-    isLoading: isDbUserLoading,
-    error: dbUserError,
-    refetch: retryBootstrap,
-  } = useQuery({
-    queryKey: ["mongodb-user", user?.id],
-    queryFn: async () => {
-      const res = await api.post("/user/bootstrap");
-      return res.data;
-    },
-    enabled: !!(isSignedIn && user),
-    retry: false, // Do not automatically retry 401/403/409 errors
-  });
-
-  const dbUser = dbUserResponse?.user;
-
-  // Auth Guard Logic
-  useEffect(() => {
-    if (!navigationState?.key) return;
-
-    const routeSegments = segments as string[];
-    const inAuthGroup = routeSegments[0] === '(auth)';
-    const isVerifying = routeSegments[1] === 'verify';
-    const inTechnicianGroup = routeSegments[0] === '(technician)';
-    const inFarmerGroup = routeSegments[0] === '(farmer)';
-    const inAdminGroup = routeSegments[0] === '(admin)';
-
-    const isActuallySignedIn = isSignedIn && !!user;
-
-    if (isActuallySignedIn) {
-      if (isDbUserLoading) {
-        return; // Wait for the authoritative bootstrap response
-      }
-
-      if (dbUserError) {
-        // Do not route to dashboard if bootstrap failed
-        return;
-      }
-
-      if (dbUser) {
-        const role = dbUser.role;
-        const verified = dbUser.isVerified;
-
-        // 1. Verification Guard
-        if (!verified) {
-          if (!isVerifying) {
-            router.replace('/(auth)/verify');
-          }
-          return;
-        }
-
-        // 2. Redirect to correct dashboard based on authoritative MongoDB role
-        const atRoot = routeSegments.length === 0 || routeSegments[0] === '';
-
-        const wrongGroup = (inAdminGroup && role !== 'admin') ||
-                           (inTechnicianGroup && role !== 'technician') ||
-                           (inFarmerGroup && (role === 'technician' || role === 'admin'));
-
-        if (inAuthGroup || atRoot || wrongGroup) {
-          if (role === 'admin') router.replace('/(admin)/(tabs)/admin.dashboard');
-          else if (role === 'technician') router.replace('/(technician)/(tabs)/technician.dashboard');
-          else router.replace('/(farmer)/(tabs)');
-        }
-      }
-    } else if (isLoaded && !isSignedIn) {
-      // 3. Force Auth
-      if (!inAuthGroup) {
-        router.replace('/(auth)');
-      }
-    }
-  }, [isSignedIn, isLoaded, user, dbUser, isDbUserLoading, dbUserError, segments, navigationState?.key]);
-  if (isSignedIn && isDbUserLoading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
-        <ActivityIndicator size="large" color="#00643B" />
-        <Text style={{ marginTop: 12, fontFamily: 'Outfit_600SemiBold', color: '#004D2E' }}>
-          Loading your profile...
-        </Text>
-      </View>
-    );
-  }
-
-  if (isSignedIn && dbUserError) {
-    const errorStatus = (dbUserError as any)?.response?.status;
-    const errorMsg = (dbUserError as any)?.response?.data?.message || "Account setup failed.";
-
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-        <MaterialCommunityIcons name="alert-circle-outline" size={48} color="#ef4444" />
-        <Text style={{ fontSize: 20, fontFamily: 'Outfit_700Bold', marginTop: 16, textAlign: 'center', color: isDark ? '#f8fafc' : '#1e293b' }}>
-          {errorStatus === 403 ? "Account Disabled" : errorStatus === 409 ? "Identity Conflict" : "Setup Incomplete"}
-        </Text>
-        <Text style={{ marginTop: 12, textAlign: 'center', fontFamily: 'Outfit_400Regular', color: isDark ? '#cbd5e1' : '#64748b' }}>
-          {errorMsg}
-        </Text>
-
-        {errorStatus !== 403 && errorStatus !== 409 && (
-          <TouchableOpacity
-            onPress={() => retryBootstrap()}
-            style={{ marginTop: 24, backgroundColor: '#00643B', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 8 }}
-          >
-            <Text style={{ color: 'white', fontFamily: 'Outfit_600SemiBold' }}>Retry Setup</Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          onPress={() => signOut()}
-          style={{ marginTop: 16, paddingHorizontal: 24, paddingVertical: 12 }}
-        >
-          <Text style={{ color: '#ef4444', fontFamily: 'Outfit_600SemiBold' }}>Sign Out</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
 
   return (
     <View style={{ flex: 1 }}>
@@ -252,7 +120,7 @@ function AppContent({
       />
 
       {/* Persistent connectivity banner. Kept at the top of the screen. */}
-      {showOfflineToast && (
+      {isSignedIn && showOfflineToast && (
         <View
           pointerEvents="none"
           accessibilityRole="alert"
@@ -288,7 +156,7 @@ function AppContent({
               fontFamily: 'Outfit_700Bold',
               fontSize: 12,
             }}>
-              Offline mode
+              You&apos;re offline
             </Text>
             <Text style={{
               color: isDark ? '#d6d3d1' : '#92400e',
@@ -296,14 +164,15 @@ function AppContent({
               fontSize: 10,
               marginTop: 1,
             }}>
-              New records will be saved on this device and synced later.
+              Supported actions will be saved on this device and synced when
+              you&apos;re back online.
             </Text>
           </View>
         </View>
       )}
 
       {/* Redesigned Online Mode Success Dialog (Positioned at the top) */}
-      {showOnlineToast && (
+      {isSignedIn && showOnlineToast && (
         <View
           pointerEvents="none"
           accessibilityRole="alert"
@@ -378,7 +247,9 @@ function AppContent({
 function InitialLayout() {
   const { isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
-  const dbUserResponse = queryClient.getQueryData(["mongodb-user", user?.id]) as any;
+  const dbUserResponse = queryClient.getQueryData(
+    getBootstrapUserQueryKey(user?.id),
+  ) as any;
   const currentUserId = dbUserResponse?.user?._id;
   const currentUserIdRef = useRef<string | undefined>(currentUserId);
 
@@ -481,7 +352,7 @@ function InitialLayout() {
           toast.dismiss("connection-offline");
           processOfflineQueue(api, () => currentUserIdRef.current);
           setShowOfflineToast(false);
-          if (!isToastCooldownRef.current && prev === false) {
+          if (isSignedIn && !isToastCooldownRef.current && prev === false) {
             setShowOnlineToast(true);
             const timer = setTimeout(() => {
               setShowOnlineToast(false);
@@ -491,9 +362,10 @@ function InitialLayout() {
           if (offlineBannerTimeoutRef.current) {
             clearTimeout(offlineBannerTimeoutRef.current);
           }
-          if (!isToastCooldownRef.current) {
+          if (isSignedIn && !isToastCooldownRef.current) {
             toast.info("You're offline", {
-              description: "New records will be saved on this device.",
+              description:
+                "Supported actions will be saved on this device and synced when you're back online.",
               duration: 2500,
               id: "connection-offline",
             });
@@ -514,7 +386,7 @@ function InitialLayout() {
       connectionRef.current = isConnected;
     });
     return () => unsubscribe();
-  }, [api]);
+  }, [api, isSignedIn]);
 
   // Push Token Sync (runs only when signed-in user changes)
   useEffect(() => {
@@ -626,146 +498,29 @@ function InitialLayout() {
   }
 
   if (!isFullyLoaded) {
-    const splashBg = '#ffffff';
-    const accentText = '#00643B';
-    const brandNameColor = '#004D2E';
-    const subtextColor = '#64748b';
-
-    return (
-      <View style={{
-        flex: 1,
-        backgroundColor: splashBg,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingHorizontal: 24
-      }}>
-        {/* Layered Decorative Background Glows */}
-        <View style={{
-          position: 'absolute',
-          width: 300,
-          height: 300,
-          borderRadius: 150,
-          backgroundColor: 'rgba(0, 100, 59, 0.02)',
-          top: '15%',
-          left: -50,
-        }} />
-        <View style={{
-          position: 'absolute',
-          width: 400,
-          height: 400,
-          borderRadius: 200,
-          backgroundColor: 'rgba(0, 100, 59, 0.02)',
-          bottom: '10%',
-          right: -100,
-        }} />
-
-        {/* Content Container */}
-        <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-          {/* Logo Frame */}
-          <View style={{
-            width: 140,
-            height: 140,
-            borderRadius: 70,
-            backgroundColor: '#ffffff',
-            alignItems: 'center',
-            justifyContent: 'center',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 8 },
-            shadowOpacity: 0.06,
-            shadowRadius: 12,
-            elevation: 5,
-            marginBottom: 28,
-            borderWidth: 1,
-            borderColor: '#f1f5f9',
-          }}>
-            <Image
-              source={require('../assets/logo.png')}
-              style={{ width: 110, height: 110, borderRadius: 55 }}
-              resizeMode="contain"
-            />
-          </View>
-
-          {/* Typography */}
-          <Text style={{
-            color: brandNameColor,
-            fontFamily: 'Outfit_900Black',
-            fontSize: 34,
-            letterSpacing: 0.5,
-            marginBottom: 4,
-          }}>
-            BreedSmart
-          </Text>
-
-          <Text style={{
-            color: accentText,
-            fontFamily: 'Outfit_600SemiBold',
-            fontSize: 12,
-            letterSpacing: 2.5,
-            textTransform: 'uppercase',
-            marginBottom: 40,
-            opacity: 0.9
-          }}>
-            Livestock Management
-          </Text>
-
-          {/* Loader */}
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: '#f8fafc',
-            paddingHorizontal: 20,
-            paddingVertical: 10,
-            borderRadius: 30,
-            borderWidth: 1,
-            borderColor: '#e2e8f0',
-            gap: 12
-          }}>
-            <ActivityIndicator size="small" color="#00643B" />
-            <Text style={{
-              color: brandNameColor,
-              fontFamily: 'Outfit_700Bold',
-              fontSize: 10,
-              letterSpacing: 1.5,
-              opacity: 0.85
-            }}>
-              {isSignedIn ? 'RESOLVING PERMISSIONS...' : 'AUTHENTICATING...'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Footer Brand Info */}
-        <View style={{
-          position: 'absolute',
-          bottom: 40,
-          alignItems: 'center'
-        }}>
-          <Text style={{
-            color: subtextColor,
-            fontFamily: 'Outfit_500Medium',
-            fontSize: 11,
-            letterSpacing: 1,
-            opacity: 0.6
-          }}>
-            © 2026 BreedSmart Initiative
-          </Text>
-        </View>
-      </View>
-    );
+    return <AppStartupScreen isSignedIn={Boolean(isSignedIn)} />;
   }
 
   return (
-    <AppContent
-      isLoaded={isLoaded}
-      isSignedIn={isSignedIn}
-      user={user}
+    <AuthBootstrapGate
       api={api}
-      isDark={isDark}
       colors={colors}
-      insets={insets}
-      showOfflineToast={showOfflineToast}
-      showOnlineToast={showOnlineToast}
-      onlineProgressAnim={onlineProgressAnim}
-    />
+      isDark={isDark}
+      isLoaded={isLoaded}
+      isSignedIn={Boolean(isSignedIn)}
+      userId={user?.id}
+    >
+      <AppContent
+        isSignedIn={Boolean(isSignedIn)}
+        user={user}
+        isDark={isDark}
+        colors={colors}
+        insets={insets}
+        showOfflineToast={showOfflineToast}
+        showOnlineToast={showOnlineToast}
+        onlineProgressAnim={onlineProgressAnim}
+      />
+    </AuthBootstrapGate>
   );
 }
 
