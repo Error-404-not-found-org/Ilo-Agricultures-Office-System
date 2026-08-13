@@ -11,13 +11,15 @@ import {
   CheckCircle,
   ClipboardList,
   ArrowLeft,
+  Sunrise,
+  Sunset,
 } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTechnicianTasks } from "@/features/technician/hooks/useTechnicianTasks";
 import { useTheme } from "@/lib/theme";
 import { Text } from "@/components/ui/Text";
-import { SearchBar } from "@/components/shared";
+import { SearchBar, SelectDropdown } from "@/components/shared";
 import { toast } from "sonner-native";
 import type { TechnicianWorkItem } from "@/features/technician-requests/types/technicianRequests.types";
 import {
@@ -139,29 +141,45 @@ export default function TechnicianMyWorkPanel({
         />
       </View>
 
-      {/* Work-state filters */}
-      <View className="mt-2">
-        <RequestWorkFilterChips
-          options={
-            [
+      {/* Filters Row */}
+      <View
+        style={{
+          flexDirection: "row",
+          gap: 8,
+          marginTop: 12,
+          marginBottom: 12,
+          paddingHorizontal: 16,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <SelectDropdown
+            label="Status"
+            options={[
               { value: "active", label: "Active" },
               { value: "completed", label: "Completed" },
-            ] as any
-          }
-          value={workStateFilter as any}
-          onChange={(val: any) => setWorkStateFilter(val)}
-        />
-      </View>
-
-      {/* Canonical service filters */}
-      <View className="mt-2 mb-3">
-        <RequestWorkFilterChips
-          options={MY_WORK_FILTERS}
-          value={serviceFilter}
-          onChange={setServiceFilter}
-          counts={serviceCounts}
-          countsLoading={isLoading}
-        />
+            ]}
+            value={workStateFilter}
+            onChange={(val) => setWorkStateFilter(val as any)}
+            highlightSelection={false}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SelectDropdown
+            label="Request Type"
+            options={MY_WORK_FILTERS.map((opt) => {
+              const count =
+                serviceCounts?.[opt.value as keyof typeof serviceCounts];
+              return {
+                label:
+                  count !== undefined ? `${opt.label} (${count})` : opt.label,
+                value: opt.value,
+              };
+            })}
+            value={serviceFilter}
+            onChange={(val) => setServiceFilter(val as any)}
+            highlightSelection={false}
+          />
+        </View>
       </View>
 
       {/* Task List Feed */}
@@ -313,6 +331,58 @@ export default function TechnicianMyWorkPanel({
                         : "#f8fafc",
                     }}
                   >
+                    {/* OPTION A: Highlighted Schedule Pill */}
+                    {t.visitPeriod ? (
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          alignSelf: "flex-start",
+                          backgroundColor:
+                            t.visitPeriod === "morning"
+                              ? isDark
+                                ? "rgba(245, 158, 11, 0.15)" // Amber
+                                : "#fffbeb"
+                              : isDark
+                                ? "rgba(99, 102, 241, 0.15)" // Indigo
+                                : "#e0e7ff",
+                          paddingHorizontal: 8,
+                          paddingVertical: 4,
+                          borderRadius: 8,
+                          marginBottom: 8,
+                          gap: 4,
+                        }}
+                      >
+                        {t.visitPeriod === "morning" ? (
+                          <Sunrise
+                            size={14}
+                            color={isDark ? "#fbbf24" : "#d97706"}
+                          />
+                        ) : (
+                          <Sunset
+                            size={14}
+                            color={isDark ? "#818cf8" : "#4f46e5"}
+                          />
+                        )}
+                        <Text
+                          style={{
+                            fontFamily: "Outfit_700Bold",
+                            fontSize: 11,
+                            color:
+                              t.visitPeriod === "morning"
+                                ? isDark
+                                  ? "#fbbf24"
+                                  : "#d97706"
+                                : isDark
+                                  ? "#818cf8"
+                                  : "#4f46e5",
+                          }}
+                        >
+                          {t.timingLabel || (t.visitPeriod === "morning" ? "Morning" : "Afternoon")}
+                        </Text>
+                      </View>
+                    ) : null}
+
                     <Text
                       style={{
                         fontFamily: "Outfit_700Bold",
@@ -322,7 +392,7 @@ export default function TechnicianMyWorkPanel({
                     >
                       {t.farmerName || "Farmer"}
                     </Text>
-                    {t.timingLabel ? (
+                    {t.timingLabel && !t.visitPeriod ? (
                       <Text
                         style={{
                           fontFamily: "Outfit_500Medium",
