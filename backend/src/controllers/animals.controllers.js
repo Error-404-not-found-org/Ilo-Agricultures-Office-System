@@ -771,6 +771,7 @@ export const recordCalving = async (req, res) => {
             numberOfCalves: offspring.length,
             offspringIds: offspring.map((c) => c._id),
             outcome,
+            actorRole: req.user.role,
           },
         });
       } catch (inngestErr) {

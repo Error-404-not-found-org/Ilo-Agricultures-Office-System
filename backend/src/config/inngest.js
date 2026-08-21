@@ -406,7 +406,7 @@ const onPregnancyConfirmed = inngest.createFunction(
  * Triggered when a calving event is recorded.
  * Waits for the Voluntary Waiting Period (VWP, e.g. 60 days) to recommend re-breeding.
  */
-const onCalvingRecorded = inngest.createFunction(
+export const onCalvingRecorded = inngest.createFunction(
   { id: "livestock/vwp-reminder" },
   { event: "livestock/calving-recorded" },
   async ({ event, step }) => {
@@ -416,6 +416,8 @@ const onCalvingRecorded = inngest.createFunction(
       farmerId,
       calvingId,
       outcome = "live_birth",
+      numberOfCalves = 0,
+      actorRole,
     } = event.data;
 
     await step.run("send-calving-recorded-push", async () => {
@@ -450,6 +452,53 @@ const onCalvingRecorded = inngest.createFunction(
         },
       );
     });
+
+    if (actorRole === "farmer") {
+      await step.run("notify-technicians-calving", async () => {
+        const animal = await Animal.findById(animalId);
+        if (!animal) return;
+
+        const animalTag = animal.earTag || animal.animalId || "an animal";
+        const title = "Calving recorded";
+
+        let message = `${animalTag} has a new calving record.`;
+        if (outcome === "abortion") {
+          message = `A pregnancy loss was recorded for ${animalTag}.`;
+        } else if (outcome === "stillbirth") {
+          message = `A stillbirth was recorded for ${animalTag}.`;
+        } else if (outcome === "live_birth" || outcome === "mixed") {
+          const calfWord = numberOfCalves === 1 ? "calf was" : "calves were";
+          message = `${animalTag} has a new calving record. ${numberOfCalves} living ${calfWord} recorded.`;
+        }
+
+        const technicians = await User.find({ role: "technician", deletedAt: null });
+
+        await Promise.all(
+          technicians.map(async (tech) => {
+            await Notification.create({
+              recipientId: tech._id,
+              senderId: farmerId,
+              type: "system",
+              relatedId: animalId,
+              linkType: "animal",
+              title,
+              message,
+            });
+
+            if (tech.pushToken) {
+              await sendPushNotification(tech.pushToken, title, message, {
+                type: "system",
+                eventType: "calving_recorded",
+                relatedId: animalId,
+                linkType: "animal",
+                animalId,
+                animalTag,
+              });
+            }
+          })
+        );
+      });
+    }
 
     // Wait for VWP period (typically 60 days)
     await step.sleep("wait-for-vwp-window", "60 days");
